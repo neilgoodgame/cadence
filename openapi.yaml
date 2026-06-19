@@ -1876,7 +1876,7 @@ components:
       properties:
         token:
           type: string
-          description: The signed RS256 bearer JWT. Send as `Authorization: Bearer <token>`.
+          description: "The signed RS256 bearer JWT. Send as `Authorization: Bearer <token>`."
           example: eyJhbGciOiJSUzI1NiIsImtpZCI6Ij8wMSJ9.eyJzdWIiOiJhdGhfbmVpbCJ9.SflKxw…
         token_type: { type: string, example: Bearer }
         expires_in: { type: integer, example: 3600 }
