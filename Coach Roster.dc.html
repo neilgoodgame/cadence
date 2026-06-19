@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- SIDEBAR -->
+  <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 20px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <!-- role switcher -->
+    <div style="margin:0 12px 16px;padding:10px 12px;border-radius:11px;background:var(--emberSoft,#fff5f1);border:1px solid rgba(236,74,38,0.22);">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <div style="width:28px;height:28px;border-radius:8px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;">LV</div>
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Lena Voss</div>
+          <div style="font-size:10px;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;color:var(--ember,#ec4a26);font-weight:600;">COACH WORKSPACE</div>
+        </div>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.7"><polyline points="5,3 10,8 5,13"></polyline></svg>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="5.5" cy="6" r="2.4"></circle><circle cx="11.5" cy="6.5" r="1.9"></circle><path d="M1.5 13c0-2.2 1.8-3.6 4-3.6s4 1.4 4 3.6"></path><path d="M10 9.6c1.9 0 3.5 1.2 3.5 3.4"></path></svg>Athletes</div>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Team calendar</div>
+      <a href="Workout Designer.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workout library</a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>Reports</div>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7a4 4 0 0 1 8 0c0 4 2 5 2 5H2s2-1 2-5Z"></path><path d="M6.5 13a1.5 1.5 0 0 0 3 0"></path></svg>Messages</div>
+    </div>
+    <div style="margin-top:auto;padding:16px 16px 20px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div><div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div data-screen-label="coach-roster" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- top bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
+      <div>
+        <h1 style="font-size:21px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Athletes</h1>
+        <div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:2px;">Monday, June 13 · your squad this week</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 4h12M4 8h8M6 12h4"></path></svg>This week</div>
+        <div style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">+ Invite athlete</div>
+      </div>
+    </div>
+
+    <div style="padding:22px 32px 64px;display:flex;flex-direction:column;gap:18px;">
+
+      <!-- SUMMARY STRIP -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+        <sc-for list="{{ summary }}" as="s" hint-placeholder-count="4">
+          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px 20px;">
+            <div style="display:flex;align-items:center;gap:9px;">
+              <span style="width:9px;height:9px;border-radius:3px;background:{{ s.dot }};"></span>
+              <span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);font-weight:600;">{{ s.label }}</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:5px;margin-top:13px;">
+              <span style="{{ s.valStyle }}">{{ s.value }}</span>
+              <span style="font-size:13px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ s.unit }}</span>
+            </div>
+            <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:4px;">{{ s.sub }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- FILTERS -->
+      <div style="display:flex;align-items:center;gap:8px;">
+        <sc-for list="{{ filters }}" as="f" hint-placeholder-count="5">
+          <div onClick="{{ f.onClick }}" style="{{ f.style }}">{{ f.label }}<span style="{{ f.countStyle }}">{{ f.count }}</span></div>
+        </sc-for>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.7"><circle cx="7" cy="7" r="4.5"></circle><line x1="10.5" y1="10.5" x2="14" y2="14"></line></svg>
+          <span style="font-size:13px;color:var(--ink3,#9a958d);">Search athletes…</span>
+        </div>
+      </div>
+
+      <!-- ROSTER TABLE -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
+        <!-- header -->
+        <div style="display:grid;grid-template-columns:248px 116px 1fr 132px 124px 1.2fr 96px;gap:14px;padding:13px 22px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);">
+          <span>Athlete</span><span>Focus</span><span>This week</span><span>Form (TSB)</span><span>Last activity</span><span>Next session</span><span style="text-align:right;">Action</span>
+        </div>
+        <sc-for list="{{ roster }}" as="a" hint-placeholder-count="8">
+          <a href="Athlete.dc.html" style="{{ a.rowStyle }}">
+            <!-- flag rail -->
+            <div style="{{ a.flagRail }}"></div>
+            <!-- athlete -->
+            <div style="display:flex;align-items:center;gap:11px;min-width:0;">
+              <div style="{{ a.avatarStyle }}">{{ a.initials }}</div>
+              <div style="min-width:0;">
+                <div style="display:flex;align-items:center;gap:7px;">
+                  <span style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ a.name }}</span>
+                  <sc-if value="{{ a.flagCount }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:#fff;background:#e0442e;border-radius:20px;padding:1px 6px;">{{ a.flagCount }}</span></sc-if>
+                </div>
+                <div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ a.handle }}</div>
+              </div>
+            </div>
+            <!-- focus -->
+            <div><span style="{{ a.focusStyle }}">{{ a.focus }}</span></div>
+            <!-- this week compliance -->
+            <div style="min-width:0;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--ink,#1b1a18);">{{ a.compLabel }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ a.compPct }}</span>
+              </div>
+              <div style="height:6px;border-radius:3px;background:var(--canvas,#f3f1ee);overflow:hidden;display:flex;">
+                <div style="{{ a.compBar }}"></div>
+              </div>
+            </div>
+            <!-- form -->
+            <div>
+              <div style="display:flex;align-items:center;gap:7px;">
+                <span style="{{ a.tsbDot }}"></span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ a.tsb }}</span>
+              </div>
+              <div style="font-size:11px;color:{{ a.tsbColor }};margin-top:2px;font-weight:600;">{{ a.tsbLabel }}</div>
+            </div>
+            <!-- last activity -->
+            <div>
+              <div style="font-size:13px;font-weight:600;color:{{ a.lastColor }};">{{ a.last }}</div>
+              <div style="font-size:11px;color:var(--ink3,#9a958d);">{{ a.lastSport }}</div>
+            </div>
+            <!-- next session -->
+            <div style="display:flex;align-items:center;gap:9px;min-width:0;">
+              <span style="width:8px;height:8px;border-radius:3px;background:{{ a.nextColor }};flex-shrink:0;"></span>
+              <div style="min-width:0;">
+                <div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ a.next }}</div>
+                <div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ a.nextWhen }}</div>
+              </div>
+            </div>
+            <!-- action -->
+            <div style="display:flex;justify-content:flex-end;">
+              <span style="display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);white-space:nowrap;">Assign
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"></path></svg>
+              </span>
+            </div>
+          </a>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:920}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', filter: 'attention' };
+
+  C = { Triathlon: '#ec4a26', Cycling: '#3d7fd6', Running: '#2fa66a' };
+
+  athletes = [
+    { first: 'Sofia', last: 'Greco', handle: '@sofiag', focus: 'Cycling', done: 2, planned: 5, tsb: -2, lastAgo: '5d ago', lastSport: 'Sweet Spot ride', next: 'Sweet Spot 3×12', nextWhen: 'Today', flags: 2, avHue: 18 },
+    { first: 'Noah', last: 'Bauer', handle: '@noahb', focus: 'Cycling', done: 4, planned: 6, tsb: -15, lastAgo: '12h ago', lastSport: 'VO2 intervals', next: 'Recovery Spin', nextWhen: 'Today', flags: 1, avHue: 212 },
+    { first: 'Priya', last: 'Nair', handle: '@priyan', focus: 'Running', done: 5, planned: 5, tsb: -12, lastAgo: '3h ago', lastSport: 'Threshold run', next: 'Easy Run', nextWhen: 'Tomorrow', flags: 1, avHue: 150 },
+    { first: 'Tom', last: 'Rivera', handle: '@tomr', focus: 'Cycling', done: 3, planned: 6, tsb: 6, lastAgo: '2d ago', lastSport: 'Endurance ride', next: 'Threshold 4×8', nextWhen: 'Tomorrow', flags: 1, avHue: 256 },
+    { first: 'Mara', last: 'Kessler', handle: '@marak', focus: 'Triathlon', done: 6, planned: 7, tsb: -4, lastAgo: '6h ago', lastSport: 'Brick session', next: 'VO2 Max 5×5', nextWhen: 'Tue', flags: 0, avHue: 12 },
+    { first: 'Daniel', last: 'Okoye', handle: '@danielo', focus: 'Running', done: 5, planned: 5, tsb: -7, lastAgo: '9h ago', lastSport: 'Tempo run', next: 'Race Pace 3×2k', nextWhen: 'Wed', flags: 0, avHue: 32 },
+    { first: 'Lukas', last: 'Brandt', handle: '@lukasb', focus: 'Triathlon', done: 5, planned: 6, tsb: 2, lastAgo: '1d ago', lastSport: 'Open water swim', next: 'Long Ride', nextWhen: 'Sat', flags: 0, avHue: 200 },
+    { first: 'Emma', last: 'Lindqvist', handle: '@emmal', focus: 'Triathlon', done: 4, planned: 5, tsb: 9, lastAgo: '1d ago', lastSport: 'Easy spin', next: 'Openers', nextWhen: 'Fri', flags: 0, avHue: 280 },
+  ];
+
+  rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+
+  tsbInfo(v) {
+    if (v > 5) return { color: '#3d7fd6', label: 'Fresh' };
+    if (v >= -10) return { color: '#2fa66a', label: 'Balanced' };
+    return { color: '#e0442e', label: 'Fatigued' };
+  }
+
+  buildRoster() {
+    const rows = this.athletes.map(a => {
+      const c = this.C[a.focus];
+      const ti = this.tsbInfo(a.tsb);
+      const pct = Math.round(a.done / a.planned * 100);
+      const stale = a.lastAgo.includes('d ago') && parseInt(a.lastAgo) >= 2;
+      const compColor = pct >= 90 ? '#2fa66a' : pct >= 70 ? '#f0a02e' : '#e0442e';
+      return {
+        _focus: a.focus, _flags: a.flags,
+        name: a.first + ' ' + a.last, handle: a.handle, initials: a.first[0] + a.last[0],
+        avatarStyle: { width: '38px', height: '38px', borderRadius: '11px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono',monospace", fontSize: '12px', fontWeight: 700, color: '#fff', background: 'hsl(' + a.avHue + ' 52% 52%)' },
+        flagCount: a.flags > 0 ? String(a.flags) : null,
+        flagRail: { position: 'absolute', left: 0, top: 0, bottom: 0, width: '3px', background: a.flags >= 2 ? '#e0442e' : a.flags === 1 ? '#f0a02e' : 'transparent' },
+        focus: a.focus,
+        focusStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600, padding: '3px 9px', borderRadius: '6px', color: c, background: this.rgba(c, 0.13), whiteSpace: 'nowrap' },
+        compLabel: a.done + '/' + a.planned,
+        compPct: pct + '%',
+        compBar: { width: pct + '%', background: compColor, borderRadius: '3px' },
+        tsb: (a.tsb > 0 ? '+' : '') + a.tsb,
+        tsbDot: { width: '8px', height: '8px', borderRadius: '50%', background: ti.color, display: 'inline-block' },
+        tsbColor: ti.color, tsbLabel: ti.label,
+        last: a.lastAgo, lastSport: a.lastSport, lastColor: stale ? '#cc7a14' : 'var(--ink,#1b1a18)',
+        next: a.next, nextWhen: a.nextWhen, nextColor: c,
+        rowStyle: { position: 'relative', textDecoration: 'none', display: 'grid', gridTemplateColumns: '248px 116px 1fr 132px 124px 1.2fr 96px', gap: '14px', padding: '15px 22px', borderBottom: '1px solid var(--line,#e6e2dc)', alignItems: 'center', cursor: 'pointer' },
+      };
+    });
+    return rows;
+  }
+
+  renderVals() {
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)' };
+    const isLab = this.state.theme === 'lab';
+    const seg = (active) => ({ flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent', boxShadow: active ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+
+    let rows = this.buildRoster();
+    const f = this.state.filter;
+    if (f === 'attention') rows = rows.filter(r => r._flags > 0);
+    else if (['Triathlon', 'Cycling', 'Running'].includes(f)) rows = rows.filter(r => r._focus === f);
+
+    const counts = {
+      all: this.athletes.length,
+      attention: this.athletes.filter(a => a.flags > 0).length,
+      Cycling: this.athletes.filter(a => a.focus === 'Cycling').length,
+      Running: this.athletes.filter(a => a.focus === 'Running').length,
+      Triathlon: this.athletes.filter(a => a.focus === 'Triathlon').length,
+    };
+    const mkFilter = (key, label) => {
+      const active = f === key;
+      return {
+        label, count: counts[key], onClick: () => this.setState({ filter: key }),
+        style: { display: 'flex', alignItems: 'center', gap: '7px', padding: '8px 13px', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', color: active ? '#fff' : 'var(--ink2,#6f6b65)', background: active ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)', border: '1px solid ' + (active ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)') },
+        countStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600, padding: '1px 6px', borderRadius: '20px', background: active ? 'rgba(255,255,255,0.22)' : 'var(--canvas,#f3f1ee)', color: active ? '#fff' : 'var(--ink3,#9a958d)' },
+      };
+    };
+    const filters = [
+      mkFilter('attention', 'Needs attention'),
+      mkFilter('all', 'All athletes'),
+      mkFilter('Cycling', 'Cycling'),
+      mkFilter('Running', 'Running'),
+      mkFilter('Triathlon', 'Triathlon'),
+    ];
+
+    const vBase = { fontFamily: "'JetBrains Mono',monospace", fontSize: '29px', fontWeight: 600, letterSpacing: '-0.02em', lineHeight: '1' };
+    const summary = [
+      { label: 'Active athletes', dot: '#1b1a18', value: '8', unit: '', sub: '3 tri · 3 bike · 2 run', valStyle: { ...vBase, color: 'var(--ink,#1b1a18)' } },
+      { label: 'Sessions this week', dot: '#3d7fd6', value: '34', unit: '/ 45', sub: '76% completed so far', valStyle: { ...vBase, color: '#3d7fd6' } },
+      { label: 'Need attention', dot: '#e0442e', value: '4', unit: 'athletes', sub: '2 fatigued · 2 behind plan', valStyle: { ...vBase, color: '#e0442e' } },
+      { label: 'Avg compliance', dot: '#2fa66a', value: '84', unit: '%', sub: '+3 pts vs last week', valStyle: { ...vBase, color: '#2fa66a' } },
+    ];
+
+    return {
+      themeVars: this.state.theme === 'day' ? { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--emberLine': 'rgba(13,148,136,0.30)', '--grid': 'rgba(14,24,32,0.06)' } : (isLab ? lab : cockpit),
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(this.state.theme === 'lab'), cockpitBtn: seg(this.state.theme === 'cockpit'), dayBtn: seg(this.state.theme === 'day'),
+      summary, filters, roster: rows,
+    };
+  }
+}
+</script>
+</body>
+</html>

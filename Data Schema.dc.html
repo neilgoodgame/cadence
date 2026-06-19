@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;background:#f3f1ee;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#cfc9c0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#f3f1ee;color:#1b1a18;padding:40px 44px 80px;">
+
+  <!-- HEADER -->
+  <div style="max-width:1320px;margin:0 auto 30px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;">
+    <div>
+      <div style="display:flex;align-items:center;gap:11px;margin-bottom:14px;">
+        <div style="width:26px;height:26px;border-radius:7px;background:#ec4a26;display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+        <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;">Cadence</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a958d;letter-spacing:0.06em;">/ DATA MODEL</span>
+      </div>
+      <h1 style="font-size:34px;font-weight:800;letter-spacing:-0.025em;margin:0;">Schema</h1>
+      <p style="font-size:14px;color:#6f6b65;margin:8px 0 0;max-width:60ch;line-height:1.5;">The entities behind every screen — activities and their 1&nbsp;Hz streams, the planning layer that links designed workouts to what you actually did, athlete config, coaching, and equipment wear.</p>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <div style="background:#fff;border:1px solid #e6e2dc;border-radius:12px;padding:12px 18px;text-align:center;"><div style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:600;">{{ entityCount }}</div><div style="font-size:11px;color:#9a958d;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Entities</div></div>
+      <div style="background:#fff;border:1px solid #e6e2dc;border-radius:12px;padding:12px 18px;text-align:center;"><div style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:600;">{{ relCount }}</div><div style="font-size:11px;color:#9a958d;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Relations</div></div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div style="max-width:1320px;margin:0 auto 18px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:#fff;border:1px solid #e6e2dc;border-radius:12px;padding:11px 18px;">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.08em;color:#9a958d;text-transform:uppercase;">Legend</span>
+    <sc-for list="{{ domainLegend }}" as="d" hint-placeholder-count="4">
+      <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#3d3a36;"><span style="width:10px;height:10px;border-radius:3px;background:{{ d.color }};"></span>{{ d.label }}</div>
+    </sc-for>
+    <div style="width:1px;height:16px;background:#e6e2dc;"></div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#3d3a36;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:1px 5px;border-radius:5px;background:rgba(236,74,38,0.13);color:#ec4a26;">PK</span>primary key</div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#3d3a36;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:1px 5px;border-radius:5px;background:rgba(61,127,214,0.13);color:#3d7fd6;">FK</span>foreign key</div>
+    <div style="width:1px;height:16px;background:#e6e2dc;"></div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#3d3a36;"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="#9a958d" stroke-width="1.6"></line></svg>owns (1:N)</div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#3d3a36;"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="#9a958d" stroke-width="1.6" stroke-dasharray="4 3"></line></svg>references</div>
+  </div>
+
+  <!-- RELATIONSHIP MAP -->
+  <div style="max-width:1320px;margin:0 auto 22px;background:#fff;border:1px solid #e6e2dc;border-radius:16px;padding:10px;overflow-x:auto;">
+    <div style="position:relative;width:1280px;height:{{ canvasH }}px;margin:0 auto;">
+      <svg width="1280" height="{{ canvasH }}" style="position:absolute;inset:0;pointer-events:none;">
+        <sc-for list="{{ edges }}" as="e" hint-placeholder-count="18">
+          <line x1="{{ e.x1 }}" y1="{{ e.y1 }}" x2="{{ e.x2 }}" y2="{{ e.y2 }}" stroke="{{ e.color }}" stroke-width="1.5" stroke-dasharray="{{ e.dash }}" opacity="0.55"></line>
+        </sc-for>
+      </svg>
+      <sc-for list="{{ edgeLabels }}" as="l" hint-placeholder-count="18">
+        <div style="{{ l.style }}">{{ l.card }}</div>
+      </sc-for>
+      <sc-for list="{{ nodes }}" as="n" hint-placeholder-count="16">
+        <div style="{{ n.style }}">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <span style="width:8px;height:8px;border-radius:2px;background:{{ n.color }};flex-shrink:0;"></span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:#1b1a18;white-space:nowrap;">{{ n.id }}</span>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#9a958d;">{{ n.fieldCount }}f</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- DETAIL CARDS BY DOMAIN -->
+  <div style="max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:26px;">
+    <sc-for list="{{ domains }}" as="dom" hint-placeholder-count="4">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:13px;">
+          <span style="width:11px;height:11px;border-radius:3px;background:{{ dom.color }};"></span>
+          <h2 style="font-size:16px;font-weight:800;letter-spacing:-0.01em;margin:0;">{{ dom.label }}</h2>
+          <span style="font-size:13px;color:#9a958d;">{{ dom.note }}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(278px,1fr));gap:14px;align-items:start;">
+          <sc-for list="{{ dom.entities }}" as="ent" hint-placeholder-count="4">
+            <div style="background:#fff;border:1px solid #e6e2dc;border-radius:13px;overflow:hidden;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid #eee9e2;border-top:3px solid {{ ent.color }};">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13.5px;font-weight:700;color:#1b1a18;">{{ ent.id }}</span>
+                <span style="font-size:10.5px;color:#9a958d;">{{ ent.note }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;">
+                <sc-for list="{{ ent.fields }}" as="f" hint-placeholder-count="6">
+                  <div style="{{ f.rowStyle }}">
+                    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                      <sc-if value="{{ f.badge }}" hint-placeholder-val="{{ false }}"><span style="{{ f.badgeStyle }}">{{ f.badge }}</span></sc-if>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:{{ f.weight }};color:#2c2a27;white-space:nowrap;">{{ f.name }}</span>
+                    </div>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#a59f96;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;min-width:0;flex:1;">{{ f.type }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:1500}}">
+class Component extends DCLogic {
+  domainMeta = {
+    core: { label: 'Activity & analysis', color: '#ec4a26', note: 'what you did — and every signal inside it' },
+    identity: { label: 'Athlete & config', color: '#3d7fd6', note: 'profile, thresholds, training zones, coaching' },
+    planning: { label: 'Planning', color: '#2fa66a', note: 'designed workouts, scheduling, matching' },
+    equipment: { label: 'Equipment', color: '#9a6ad0', note: 'bikes, components & shoes with wear tracking' },
+  };
+
+  // entity defs — fields: [name, type, key?('pk'|'fk'), ref?]
+  entities = [
+    { id: 'user', domain: 'identity', note: 'account', fields: [
+      ['id', 'uuid', 'pk'], ['name', 'text'], ['email', 'text'], ['age', 'int'],
+      ['weight', 'kg'], ['ftp', 'watts'], ['critical_run_power', 'watts'], ['threshold_pace', 'sec/km'],
+      ['lthr', 'bpm'], ['max_hr', 'bpm'], ['is_coach', 'bool'] ] },
+    { id: 'zone_set', domain: 'identity', note: '4 per user', fields: [
+      ['id', 'uuid', 'pk'], ['user_id', 'fk', 'fk', 'user'],
+      ['type', 'hr|bike|run|pace'], ['zones', 'json[]'], ['ref_value', 'derived'] ] },
+    { id: 'user_relationship', domain: 'identity', note: 'user → user grant', fields: [
+      ['id', 'uuid', 'pk'], ['owner_user_id', 'fk', 'fk', 'user'], ['grantee_user_id', 'fk', 'fk', 'user'],
+      ['role', 'viewer|coach'], ['status', 'pending|active'],
+      ['compliance', 'done/plan'], ['tsb', 'form'], ['flags', 'int'] ] },
+
+    { id: 'activity', domain: 'core', note: 'hub', fields: [
+      ['id', 'uuid', 'pk'], ['athlete_id', 'fk', 'fk', 'user'], ['sport', 'bike|run|swim|walk'],
+      ['environment', 'outdoor|indoor'], ['has_gps', 'bool'],
+      ['name', 'text'], ['date', 'datetime'], ['source', 'Zwift|Garmin'], ['moving_time', 'sec'],
+      ['distance', 'km'], ['distance_src', 'gps|footpod|trainer'], ['avg_power', 'watts'], ['norm_power', 'watts'], ['intensity', 'IF'],
+      ['tss', 'int'], ['avg_hr', 'bpm'], ['max_hr', 'bpm'], ['ascent', 'm'],
+      ['start_weight', 'kg?'], ['end_weight', 'kg?'], ['fluids', 'ml?'],
+      ['bike_id', 'fk', 'fk', 'bike'], ['shoe_id', 'fk', 'fk', 'shoe'],
+      ['workout_id', 'fk?', 'fk', 'workout'] ] },
+    { id: 'lap', domain: 'core', note: 'splits', fields: [
+      ['id', 'uuid', 'pk'], ['activity_id', 'fk', 'fk', 'activity'], ['index', 'int'],
+      ['duration', 'sec'], ['distance', 'km'], ['avg_hr', 'bpm'], ['avg_power', 'watts'] ] },
+    { id: 'record', domain: 'core', note: '1 Hz stream', fields: [
+      ['activity_id', 'fk', 'fk', 'activity'], ['t', 'sec'], ['hr', 'bpm'], ['power', 'watts'],
+      ['altitude', 'm'], ['distance', 'm'], ['cadence', 'rpm'], ['speed', 'm/s'],
+      ['lr_balance', '%'], ['core_temp', '°C'], ['heat_strain', 'idx'] ] },
+    { id: 'duration_curve', domain: 'core', note: 'PDC · HDC', fields: [
+      ['activity_id', 'fk', 'fk', 'activity'], ['metric', 'power|hr'],
+      ['points', '{dur:best}'], ['extends_to', 'full len'] ] },
+    { id: 'tag', domain: 'core', note: 'manual + auto', fields: [
+      ['id', 'uuid', 'pk'], ['name', 'text'], ['origin', 'manual|auto'], ['color', 'hex'] ] },
+    { id: 'activity_tag', domain: 'core', note: 'join', fields: [
+      ['activity_id', 'fk', 'fk', 'activity'], ['tag_id', 'fk', 'fk', 'tag'] ] },
+    { id: 'best_effort', domain: 'core', note: 'PRs', fields: [
+      ['id', 'uuid', 'pk'], ['athlete_id', 'fk', 'fk', 'user'],
+      ['kind', 'cyc_pwr|run_pace|run_pwr'], ['window', 'dur|dist'], ['value', 'W|time'],
+      ['period', '3m|1y|all'], ['date', 'date'], ['activity_id', 'fk', 'fk', 'activity'] ] },
+
+    { id: 'workout', domain: 'planning', note: 'designed', fields: [
+      ['id', 'uuid', 'pk'], ['name', 'text'], ['sport', 'bike|run'],
+      ['type', 'VO2|Thr|SS|End'], ['duration', 'sec'], ['tss', 'int'] ] },
+    { id: 'workout_step', domain: 'planning', note: 'structure', fields: [
+      ['id', 'uuid', 'pk'], ['workout_id', 'fk', 'fk', 'workout'], ['order', 'int'],
+      ['kind', 'warmup|block|rec|cool'], ['end_type', 'time|distance|manual'],
+      ['duration', 'sec?'], ['distance', 'm?'], ['target_pct', '%ftp'], ['repeat', 'int'] ] },
+    { id: 'scheduled_workout', domain: 'planning', note: 'calendar', fields: [
+      ['id', 'uuid', 'pk'], ['workout_id', 'fk', 'fk', 'workout'],
+      ['athlete_id', 'fk', 'fk', 'user'], ['assigned_by', 'fk', 'fk', 'user'],
+      ['date', 'date'], ['time_of_day', 'AM|MID|PM'], ['status', 'planned|done'],
+      ['activity_id', 'fk?', 'fk', 'activity'] ] },
+
+    { id: 'bike', domain: 'equipment', note: 'garage', fields: [
+      ['id', 'uuid', 'pk'], ['user_id', 'fk', 'fk', 'user'], ['name', 'text'],
+      ['kind', 'road|indoor'], ['groupset', 'text'], ['distance', 'km'], ['hours', 'h'],
+      ['rides', 'int'], ['since', 'date'] ] },
+    { id: 'component', domain: 'equipment', note: 'wear parts', fields: [
+      ['id', 'uuid', 'pk'], ['bike_id', 'fk', 'fk', 'bike'], ['name', 'text'],
+      ['km', 'int'], ['limit_km', 'int'], ['model', 'text'] ] },
+    { id: 'shoe_model', domain: 'equipment', note: 'catalog · brand+line', fields: [
+      ['id', 'uuid', 'pk'], ['manufacturer', 'text'], ['model', 'text'] ] },
+    { id: 'shoe_model_version', domain: 'equipment', note: 'catalog · generation', fields: [
+      ['id', 'uuid', 'pk'], ['shoe_model_id', 'fk', 'fk', 'shoe_model'], ['version', 'text'] ] },
+    { id: 'shoe', domain: 'equipment', note: 'a physical pair', fields: [
+      ['id', 'uuid', 'pk'], ['user_id', 'fk', 'fk', 'user'],
+      ['shoe_model_version_id', 'fk', 'fk', 'shoe_model_version'], ['colourway', 'text'],
+      ['name', 'text · uniq'], ['image', 'url?'], ['role', 'text'], ['km', 'int'], ['limit_km', 'int'], ['since', 'date'] ] },
+  ];
+
+  // graph grid placement [col,row]
+  pos = {
+    user: [0, 1], zone_set: [0, 2], user_relationship: [0, 3],
+    best_effort: [1, 0], activity_tag: [1, 4],
+    lap: [2, 0], duration_curve: [1, 2], activity: [2, 2], record: [2, 4],
+    tag: [1, 3], scheduled_workout: [3, 3], workout: [4, 2], workout_step: [4, 1],
+    bike: [3, 0], component: [4, 0], shoe: [3, 4], shoe_model_version: [4, 3], shoe_model: [4, 4],
+  };
+
+  // edges: [from, to, cardinality, kind('own'|'ref')]
+  rels = [
+    ['user', 'user_relationship', '1:N', 'own'],
+    ['user', 'activity', '1:N', 'own'],
+    ['user', 'zone_set', '1:N', 'own'],
+    ['user', 'best_effort', '1:N', 'own'],
+    ['user', 'bike', '1:N', 'own'],
+    ['user', 'shoe', '1:N', 'own'],
+    ['user', 'scheduled_workout', '1:N', 'own'],
+    ['activity', 'lap', '1:N', 'own'],
+    ['activity', 'record', '1:N', 'own'],
+    ['activity', 'duration_curve', '1:N', 'own'],
+    ['activity', 'activity_tag', '1:N', 'own'],
+    ['tag', 'activity_tag', '1:N', 'own'],
+    ['activity', 'bike', 'N:1', 'ref'],
+    ['activity', 'shoe', 'N:1', 'ref'],
+    ['activity', 'workout', 'N:1', 'ref'],
+    ['best_effort', 'activity', 'N:1', 'ref'],
+    ['workout', 'workout_step', '1:N', 'own'],
+    ['workout', 'scheduled_workout', '1:N', 'own'],
+    ['scheduled_workout', 'activity', '1:1', 'ref'],
+    ['bike', 'component', '1:N', 'own'],
+    ['shoe_model', 'shoe_model_version', '1:N', 'own'],
+    ['shoe_model_version', 'shoe', '1:N', 'own'],
+  ];
+
+  NW = 200; NH = 50; COLW = 250; ROWH = 96; X0 = 40; Y0 = 24;
+  cx(id) { return this.X0 + this.pos[id][0] * this.COLW; }
+  cy(id) { return this.Y0 + this.pos[id][1] * this.ROWH; }
+  center(id) { return { x: this.cx(id) + this.NW / 2, y: this.cy(id) + this.NH / 2 }; }
+
+  renderVals() {
+    const dm = this.domainMeta;
+
+    const nodes = this.entities.map(e => {
+      const x = this.cx(e.id), y = this.cy(e.id), color = dm[e.domain].color;
+      return {
+        id: e.id, color, fieldCount: e.fields.length,
+        style: { position: 'absolute', left: x + 'px', top: y + 'px', width: this.NW + 'px', height: this.NH + 'px', background: '#fff', border: '1px solid #e6e2dc', borderLeft: '3px solid ' + color, borderRadius: '10px', boxShadow: '0 2px 6px rgba(20,17,15,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 13px', zIndex: 2 },
+      };
+    });
+
+    const edges = [], edgeLabels = [];
+    this.rels.forEach(([from, to, card, kind]) => {
+      const a = this.center(from), b = this.center(to);
+      const color = kind === 'ref' ? '#b9b3aa' : '#9a958d';
+      edges.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, color, dash: kind === 'ref' ? '4 3' : '0' });
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      edgeLabels.push({
+        card,
+        style: { position: 'absolute', left: mx + 'px', top: my + 'px', transform: 'translate(-50%,-50%)', fontFamily: "'JetBrains Mono',monospace", fontSize: '9px', fontWeight: 700, color: kind === 'ref' ? '#b1aaa0' : '#7a756d', background: '#fff', border: '1px solid #eee9e2', borderRadius: '5px', padding: '1px 5px', zIndex: 1, letterSpacing: '0.02em' },
+      });
+    });
+
+    const order = ['core', 'identity', 'planning', 'equipment'];
+    const domains = order.map(key => ({
+      label: dm[key].label, color: dm[key].color, note: dm[key].note,
+      entities: this.entities.filter(e => e.domain === key).map(e => ({
+        id: e.id, note: e.note, color: dm[key].color,
+        fields: e.fields.map((f, i) => {
+          const [name, type, key2, ref] = f;
+          const isPk = key2 === 'pk';
+          const isFk = key2 === 'fk';
+          const badge = isPk ? 'PK' : (isFk ? 'FK' : null);
+          return {
+            name, type: ref ? '→ ' + ref : type,
+            badge, weight: isPk ? 700 : 500,
+            badgeStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '8.5px', fontWeight: 700, padding: '1px 4px', borderRadius: '4px', flexShrink: 0, background: isPk ? 'rgba(236,74,38,0.13)' : 'rgba(61,127,214,0.13)', color: isPk ? '#ec4a26' : '#3d7fd6' },
+            rowStyle: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', padding: '6px 13px', borderTop: i === 0 ? 'none' : '1px solid #f4f0ea' },
+          };
+        }),
+      })),
+    }));
+
+    return {
+      entityCount: this.entities.length,
+      relCount: this.rels.length,
+      canvasH: this.Y0 + 5 * this.ROWH + this.NH + 10,
+      domainLegend: order.map(k => ({ label: dm[k].label, color: dm[k].color })),
+      nodes, edges, edgeLabels, domains,
+    };
+  }
+}
+</script>
+</body>
+</html>

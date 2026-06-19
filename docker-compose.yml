@@ -1,0 +1,68 @@
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cadence}
+      POSTGRES_USER: ${POSTGRES_USER:-cadence}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cadence}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cadence}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Override .env's host-side values (meant for native dev against the
+      # ports published below) with the in-network service names, and ensure
+      # tasks actually run on celery-worker instead of inline.
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_TASK_ALWAYS_EAGER: "0"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - jwt_keys:/app/keys
+      - media:/app/media
+    ports:
+      - "8000:8000"
+
+  celery-worker:
+    build: ./backend
+    restart: unless-stopped
+    command: celery -A config worker --loglevel=info
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - jwt_keys:/app/keys
+      - media:/app/media
+
+volumes:
+  postgres_data:
+  jwt_keys:
+  media:

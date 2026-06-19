@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:rgba(140,150,160,0.4);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes nFade{0%{opacity:0;transform:translateY(6px);}100%{opacity:1;transform:translateY(0);}}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- SIDEBAR -->
+  <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 26px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
+      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</a>
+      <a href="Activities.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</a>
+      <a href="Activity Analysis.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>Analysis</a>
+      <a href="Calendar.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</a>
+      <a href="Workout Designer.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</a>
+      <a href="Import.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</a>
+      <a href="Gear.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"></circle><circle cx="8" cy="8" r="2.1"></circle></svg>Gear</a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg>Notifications<span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;background:var(--ember,#ec4a26);color:#fff;border-radius:20px;padding:1px 7px;">{{ unreadCount }}</span></div>
+    </div>
+    <div style="margin-top:auto;padding:16px 16px 20px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div data-screen-label="notifications" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
+      <div>
+        <h1 style="font-size:21px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Notifications</h1>
+        <div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:2px;">{{ headerSub }}</div>
+      </div>
+      <div onClick="{{ markAllRead }}" style="display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9"><polyline points="2,8 6,12 14,4"></polyline></svg>Mark all read</div>
+    </div>
+
+    <div style="padding:22px 32px 64px;max-width:820px;width:100%;">
+      <!-- filter tabs -->
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:10px;padding:4px;margin-bottom:20px;width:fit-content;">
+        <sc-for list="{{ filters }}" as="f" hint-placeholder-count="4">
+          <div onClick="{{ f.onClick }}" style="{{ f.style }}">{{ f.label }}<sc-if value="{{ f.count }}" hint-placeholder-val="{{ false }}"><span style="{{ f.countStyle }}">{{ f.count }}</span></sc-if></div>
+        </sc-for>
+      </div>
+
+      <!-- groups -->
+      <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+        <div style="margin-bottom:26px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.09em;text-transform:uppercase;color:var(--ink3,#9a958d);margin-bottom:11px;">{{ g.label }}</div>
+          <div style="display:flex;flex-direction:column;gap:9px;">
+            <sc-for list="{{ g.items }}" as="n" hint-placeholder-count="4">
+              <div onClick="{{ n.onClick }}" style="{{ n.rowStyle }}">
+                <div style="{{ n.iconWrap }}">{{ n.icon }}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="display:flex;align-items:baseline;gap:8px;">
+                    <span style="flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ n.title }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);flex-shrink:0;white-space:nowrap;">{{ n.time }}</span>
+                  </div>
+                  <div style="font-size:13px;color:var(--ink2,#6f6b65);line-height:1.45;margin-top:3px;">{{ n.body }}</div>
+                  <sc-if value="{{ n.action }}" hint-placeholder-val="{{ false }}">
+                    <a href="{{ n.actionHref }}" style="display:inline-flex;align-items:center;gap:5px;margin-top:9px;font-size:12.5px;font-weight:600;color:var(--ember,#ec4a26);text-decoration:none;">{{ n.action }}<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6,3 11,8 6,13"></polyline></svg></a>
+                  </sc-if>
+                </div>
+                <sc-if value="{{ n.unread }}" hint-placeholder-val="{{ true }}"><span style="width:8px;height:8px;border-radius:50%;background:var(--ember,#ec4a26);flex-shrink:0;margin-top:5px;"></span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+
+      <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+        <div style="text-align:center;padding:60px 20px;color:var(--ink3,#9a958d);">
+          <div style="font-size:14px;font-weight:600;">You're all caught up</div>
+          <div style="font-size:13px;margin-top:4px;">No notifications in this filter.</div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', filter: 'all', read: {}, allRead: false };
+
+  // [id, type, group, title, body, time, action, actionHref]
+  data = [
+    ['n1', 'coach', 'today', 'Mara left a comment', 'On your VO2 intervals · Tuesday AM — "Great power hold on reps 3–4, ease the openers next time."', '14m ago', 'View activity', 'Activity Analysis.dc.html'],
+    ['n2', 'coaching', 'today', 'New workout assigned', 'Mara assigned VO2 Max · 5×5 to Thursday Jun 19, morning.', '1h ago', 'Open calendar', 'Calendar.dc.html'],
+    ['n3', 'achievement', 'today', 'New 5 min power PR', 'You set a best 5-minute power of 351 W on Big Loop in Watopia — up 2.3% on your previous best.', '3h ago', 'See best efforts', 'Activities.dc.html'],
+    ['n4', 'gear', 'week', 'Chain service due', 'Your Canyon Aeroad chain has reached 4,080 km (limit 4,000). Log a replacement to reset wear.', 'Yesterday', 'Open gear', 'Gear.dc.html'],
+    ['n5', 'coaching', 'week', 'Lena can now view your training', 'You granted Dr. Lena Voss Viewer access. They can see activities, analysis and your calendar.', '2 days ago', '', ''],
+    ['n6', 'achievement', 'week', 'Weekly summary ready', 'Last week: 9.2 h · 670 TSS · fitness +5. Your biggest day was Saturday\u2019s group ride.', '3 days ago', 'View dashboard', 'Dashboard.dc.html'],
+    ['n7', 'gear', 'earlier', 'Activity imported', 'Evening Run (16.0 km) synced from Garmin Connect and matched to Tempo Run.', 'Jun 9', 'View activity', 'Activity Analysis.dc.html'],
+    ['n8', 'coaching', 'earlier', 'Tom completed his session', 'Athlete Tom R. finished Sweet Spot 3×12 at 96% compliance.', 'Jun 8', 'Open roster', 'Coach Roster.dc.html'],
+  ];
+
+  typeMeta = {
+    coach: { color: '#c084fc', icon: '\uD83D\uDCAC' },
+    coaching: { color: '#2dd4bf', icon: '\uD83C\uDFCB' },
+    achievement: { color: '#f5b13d', icon: '\u2605' },
+    gear: { color: '#3d7fd6', icon: '\u2699' },
+  };
+  filterDefs = [['all', 'All'], ['coaching', 'Coaching'], ['gear', 'Gear'], ['achievement', 'Achievements']];
+  groupDefs = [['today', 'Today'], ['week', 'Earlier this week'], ['earlier', 'Earlier']];
+
+  isRead(id) { return this.state.allRead || !!this.state.read[id]; }
+  matchFilter(type) {
+    const f = this.state.filter;
+    if (f === 'all') return true;
+    if (f === 'coaching') return type === 'coaching' || type === 'coach';
+    return type === f;
+  }
+  open(id) { this.setState(s => ({ read: { ...s.read, [id]: true } })); }
+  markAllRead() { this.setState({ allRead: true }); }
+
+  rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+
+  renderVals() {
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const t = this.state.theme;
+    const palettes = { lab, cockpit, day };
+    const seg = (a) => ({ flex: 1, textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: a ? 'var(--card,#fff)' : 'transparent', boxShadow: a ? '0 1px 2px rgba(0,0,0,0.18)' : 'none' });
+
+    const unread = this.data.filter(r => !this.isRead(r[0])).length;
+
+    const filters = this.filterDefs.map(([k, label]) => {
+      const active = this.state.filter === k;
+      const cnt = this.data.filter(r => (k === 'all' ? true : (k === 'coaching' ? (r[1] === 'coaching' || r[1] === 'coach') : r[1] === k)) && !this.isRead(r[0])).length;
+      return {
+        label, count: cnt > 0 ? String(cnt) : '',
+        onClick: () => this.setState({ filter: k }),
+        style: { display: 'flex', alignItems: 'center', gap: '7px', padding: '7px 14px', borderRadius: '7px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent', boxShadow: active ? '0 1px 2px rgba(0,0,0,0.18)' : 'none' },
+        countStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '20px', background: active ? this.rgba('#2dd4bf', 0.16) : 'var(--elev,#faf9f7)', color: active ? 'var(--ember,#ec4a26)' : 'var(--ink3,#9a958d)' },
+      };
+    });
+
+    const groups = this.groupDefs.map(([gk, label]) => {
+      const items = this.data.filter(r => r[2] === gk && this.matchFilter(r[1])).map(r => {
+        const [id, type, , title, body, time, action, href] = r;
+        const meta = this.typeMeta[type];
+        const unr = !this.isRead(id);
+        return {
+          title, body, time, action: action || '', actionHref: href || '#', unread: unr,
+          icon: meta.icon,
+          onClick: () => this.open(id),
+          iconWrap: { width: '38px', height: '38px', borderRadius: '10px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '17px', background: this.rgba(meta.color, 0.15), color: meta.color, border: '1px solid ' + this.rgba(meta.color, 0.3) },
+          rowStyle: { display: 'flex', gap: '13px', padding: '15px 17px', borderRadius: '13px', cursor: 'pointer', background: 'var(--card,#fff)', border: '1px solid ' + (unr ? this.rgba(meta.color, 0.32) : 'var(--line,#e6e2dc)') },
+        };
+      });
+      return { label, items };
+    }).filter(g => g.items.length > 0);
+
+    return {
+      themeVars: palettes[t] || lab,
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }),
+      setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(t === 'lab'), cockpitBtn: seg(t === 'cockpit'), dayBtn: seg(t === 'day'),
+      unreadCount: String(unread),
+      headerSub: unread > 0 ? unread + ' unread \u00b7 from your coach, gear & milestones' : 'All caught up \u00b7 from your coach, gear & milestones',
+      markAllRead: () => this.markAllRead(),
+      filters, groups, empty: groups.length === 0,
+    };
+  }
+}
+</script>
+</body>
+</html>

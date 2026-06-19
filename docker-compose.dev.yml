@@ -1,0 +1,28 @@
+services:
+  db:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      DJANGO_DEBUG: "1"
+    volumes:
+      - ./backend:/app
+      - jwt_keys:/app/keys
+      - media:/app/media
+      # Anonymous volume so the bind mount above doesn't shadow the
+      # container's Linux venv with the host's (e.g. macOS) one.
+      - /app/.venv
+
+  celery-worker:
+    command: celery -A config worker --loglevel=info --pool=solo
+    volumes:
+      - ./backend:/app
+      - jwt_keys:/app/keys
+      - media:/app/media
+      - /app/.venv

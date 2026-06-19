@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- SIDEBAR -->
+  <div style="width:240px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 8px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);letter-spacing:0.04em;">API</span>
+    </div>
+    <div style="padding:6px 14px 14px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);letter-spacing:0.04em;padding:8px 8px 6px;">REFERENCE</div>
+      <div style="display:flex;flex-direction:column;gap:1px;overflow-y:auto;">
+        <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="12">
+          <div onClick="{{ g.onClick }}" style="{{ g.style }}">
+            <span style="white-space:nowrap;">{{ g.label }}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);flex-shrink:0;">{{ g.count }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="margin-top:auto;padding:14px;">
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div><div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div data-screen-label="api-reference" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- top bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 34px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
+      <div style="display:flex;align-items:center;gap:13px;">
+        <h1 style="font-size:20px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">{{ groupTitle }}</h1>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);">v1</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);">
+          <span style="width:7px;height:7px;border-radius:50%;background:#2fa66a;"></span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">https://api.cadence.cc</span>
+        </div>
+        <a href="openapi.yaml" download="cadence-openapi.yaml" style="text-decoration:none;display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:9px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 2v8M5 7l3 3 3-3"></path><path d="M3 12v1.5h10V12"></path></svg>OpenAPI 3.1 spec</a>
+      </div>
+    </div>
+
+    <div style="padding:26px 34px 80px;max-width:1080px;width:100%;">
+
+      <!-- ============ GETTING STARTED ============ -->
+      <sc-if value="{{ isGuide }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:20px;">
+          <p style="font-size:15px;line-height:1.6;color:var(--ink2,#6f6b65);margin:0;max-width:66ch;">Two layers of auth: OAuth 2.0 identifies the principal, then an optional scoped JWT grants per-athlete access. Most integrations follow these steps once.</p>
+
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <sc-for list="{{ guideSteps }}" as="s" hint-placeholder-count="6">
+              <div style="display:flex;gap:15px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:13px;padding:18px 20px;">
+                <div style="width:28px;height:28px;border-radius:50%;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;flex-shrink:0;">{{ s.n }}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:14.5px;font-weight:700;color:var(--ink,#1b1a18);">{{ s.title }}</div>
+                  <p style="font-size:13.5px;line-height:1.55;color:var(--ink2,#6f6b65);margin:5px 0 0;max-width:72ch;">{{ s.body }}</p>
+                  <sc-if value="{{ s.hasCode }}" hint-placeholder-val="{{ false }}">
+                    <div style="{{ codeBlockStyle }};margin-top:12px;">
+                      <sc-for list="{{ s.codeLines }}" as="ln" hint-placeholder-count="4">
+                        <div style="white-space:pre;min-height:18px;"><sc-for list="{{ ln }}" as="t" hint-placeholder-count="3"><span style="color:{{ t.c }};">{{ t.t }}</span></sc-for></div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:10px;">Which path is mine?</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <sc-for list="{{ guidePaths }}" as="p" hint-placeholder-count="2">
+                <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-left:3px solid {{ p.color }};border-radius:11px;padding:14px 16px;">
+                  <div style="font-size:13.5px;font-weight:700;color:var(--ink,#1b1a18);">{{ p.label }}</div>
+                  <p style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);margin:4px 0 0;">{{ p.desc }}</p>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ OVERVIEW ============ -->
+      <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:22px;">
+          <p style="font-size:15px;line-height:1.6;color:var(--ink2,#6f6b65);margin:0;max-width:64ch;">A REST API over the same data model that powers the app — activities and their 1&nbsp;Hz streams, designed workouts, scheduling, athlete thresholds &amp; zones, coaching, and gear. JSON over HTTPS, OAuth 2.0, predictable resource URLs.</p>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:13px;padding:18px 20px;">
+              <div style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:9px;">Authentication</div>
+              <p style="font-size:13px;line-height:1.55;color:var(--ink2,#6f6b65);margin:0 0 10px;">OAuth 2.0 authorization code flow. Send the access token as a bearer header on every request.</p>
+              <div style="{{ codeBoxStyle }}"><div style="white-space:pre;"><span style="color:#9a6ad0;">Authorization:</span> Bearer cad_at_9f2a7c…</div></div>
+            </div>
+            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:13px;padding:18px 20px;">
+              <div style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:9px;">Pagination</div>
+              <p style="font-size:13px;line-height:1.55;color:var(--ink2,#6f6b65);margin:0 0 10px;">List endpoints are cursor-paginated. Pass <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ember,#ec4a26);">cursor</span> from <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ember,#ec4a26);">next_cursor</span> and an optional <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ember,#ec4a26);">limit</span> (max 200).</p>
+              <div style="{{ codeBoxStyle }}"><div style="white-space:pre;">GET /v1/activities?limit=50&cursor=act_8KQ2</div></div>
+            </div>
+          </div>
+
+          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:13px;padding:18px 20px;">
+            <div style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:5px;">Query language</div>
+            <p style="font-size:13px;line-height:1.55;color:var(--ink2,#6f6b65);margin:0 0 12px;max-width:70ch;">The <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ember,#ec4a26);">q</span> parameter on <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ember,#ec4a26);">GET /v1/activities</span> accepts the same CQL used by Activities search — field comparisons, AND/OR, and ordering.</p>
+            <div style="{{ codeBoxStyle }}"><div style="white-space:pre;">q=sport = run AND tag ~ race AND distance > 42.2km&sort=-tss</div></div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">Errors</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+              <sc-for list="{{ errorCodes }}" as="e" hint-placeholder-count="4">
+                <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:11px;padding:13px 15px;">
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:{{ e.color }};">{{ e.code }}</div>
+                  <div style="font-size:12px;color:var(--ink2,#6f6b65);margin-top:3px;">{{ e.label }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ============ ENDPOINT GROUP ============ -->
+      <sc-if value="{{ isEndpoints }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:18px;">
+          <p style="font-size:14.5px;line-height:1.55;color:var(--ink2,#6f6b65);margin:0;max-width:64ch;">{{ groupDesc }}</p>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <sc-for list="{{ endpoints }}" as="ep" hint-placeholder-count="5">
+              <div style="background:var(--card,#fff);border:1px solid {{ ep.borderColor }};border-radius:12px;overflow:hidden;">
+                <div onClick="{{ ep.onToggle }}" style="display:flex;align-items:center;gap:13px;padding:14px 16px;cursor:pointer;">
+                  <span style="{{ ep.badgeStyle }}">{{ ep.method }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13.5px;font-weight:600;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ ep.path }}</span>
+                  <span style="font-size:13px;color:var(--ink3,#9a958d);margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;flex-shrink:1;min-width:0;">{{ ep.summary }}</span>
+                  <sc-if value="{{ ep.hasDetail }}" hint-placeholder-val="{{ true }}">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.8" style="{{ ep.chevronStyle }};flex-shrink:0;"><polyline points="4,6 8,10 12,6"></polyline></svg>
+                  </sc-if>
+                </div>
+
+                <sc-if value="{{ ep.open }}" hint-placeholder-val="{{ false }}">
+                  <div style="border-top:1px solid var(--line,#e6e2dc);padding:18px 18px 20px;display:flex;flex-direction:column;gap:18px;background:var(--elev,#faf9f7);">
+                    <p style="font-size:13.5px;line-height:1.55;color:var(--ink2,#6f6b65);margin:0;max-width:70ch;">{{ ep.description }}</p>
+
+                    <sc-if value="{{ ep.hasParams }}" hint-placeholder-val="{{ false }}">
+                      <div>
+                        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.07em;color:var(--ink3,#9a958d);text-transform:uppercase;margin-bottom:9px;">Parameters</div>
+                        <div style="display:flex;flex-direction:column;border:1px solid var(--line,#e6e2dc);border-radius:10px;overflow:hidden;background:var(--card,#fff);">
+                          <sc-for list="{{ ep.params }}" as="p" hint-placeholder-count="3">
+                            <div style="{{ p.rowStyle }}">
+                              <div style="display:flex;align-items:center;gap:8px;width:190px;flex-shrink:0;">
+                                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:var(--ink,#1b1a18);">{{ p.name }}</span>
+                                <sc-if value="{{ p.required }}" hint-placeholder-val="{{ false }}"><span style="font-size:9px;font-weight:700;color:var(--ember,#ec4a26);letter-spacing:0.04em;">REQ</span></sc-if>
+                              </div>
+                              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#3d7fd6;width:96px;flex-shrink:0;">{{ p.type }}</span>
+                              <span style="font-size:12.5px;color:var(--ink2,#6f6b65);flex:1;min-width:0;">{{ p.desc }}</span>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-if>
+
+                    <div style="display:grid;grid-template-columns:{{ ep.exampleCols }};gap:14px;">
+                      <sc-if value="{{ ep.hasRequest }}" hint-placeholder-val="{{ false }}">
+                        <div>
+                          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.07em;color:var(--ink3,#9a958d);text-transform:uppercase;margin-bottom:8px;">Request</div>
+                          <div style="{{ codeBlockStyle }}">
+                            <sc-for list="{{ ep.reqLines }}" as="ln" hint-placeholder-count="6">
+                              <div style="white-space:pre;min-height:18px;"><sc-for list="{{ ln }}" as="t" hint-placeholder-count="3"><span style="color:{{ t.c }};">{{ t.t }}</span></sc-for></div>
+                            </sc-for>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.07em;color:var(--ink3,#9a958d);text-transform:uppercase;">Response</div>
+                          <span style="{{ ep.statusStyle }}">{{ ep.status }}</span>
+                        </div>
+                        <div style="{{ codeBlockStyle }}">
+                          <sc-for list="{{ ep.resLines }}" as="ln" hint-placeholder-count="8">
+                            <div style="white-space:pre;min-height:18px;"><sc-for list="{{ ln }}" as="t" hint-placeholder-count="3"><span style="color:{{ t.c }};">{{ t.t }}</span></sc-for></div>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:1180}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', group: 'overview', open: {} };
+
+  MC = { GET: '#3d7fd6', POST: '#ec4a26', PUT: '#9a6ad0', PATCH: '#f0a02e', DELETE: '#e0442e' };
+
+  groups = [
+    { id: 'guide', label: 'Getting started' },
+    { id: 'overview', label: 'Overview' },
+    { id: 'auth', label: 'Authentication', desc: 'Create accounts, obtain and refresh access tokens via the OAuth 2.0 authorization code flow, mint scoped JWTs, and identify the current athlete.' },
+    { id: 'activities', label: 'Activities', desc: 'The core resource. List with CQL filtering, upload a .fit file, and read or edit a single activity.' },
+    { id: 'streams', label: 'Streams & curves', desc: 'High-resolution data inside an activity — laps, the 1 Hz record stream, and pre-computed power/HR duration curves.' },
+    { id: 'efforts', label: 'Best efforts', desc: 'Personal records across durations (power) and distances (pace), windowed by period.' },
+    { id: 'tags', label: 'Tags', desc: 'Manual and auto-generated labels, and the join that attaches them to activities.' },
+    { id: 'workouts', label: 'Workouts', desc: 'Designed workout templates and their step structure — time-based, distance-based, or manual steps.' },
+    { id: 'calendar', label: 'Scheduling', desc: 'Place designed workouts on the calendar, assign them to athletes, and reconcile against completed activities.' },
+    { id: 'athletes', label: 'Athletes & zones', desc: 'Profile, thresholds (FTP, critical power, threshold pace, LTHR), the four editable zone sets, and the fitness/fatigue/form trend.' },
+    { id: 'sharing', label: 'Sharing', desc: 'Grant another person Viewer (read-only) or Coach (can also assign workouts) access to your training.' },
+    { id: 'tokens', label: 'Access tokens', desc: 'Personal access tokens for scripting against the API as yourself — create, rotate, and revoke.' },
+    { id: 'coaching', label: 'Coaching', desc: 'Roster access for coaches — list athletes and read an athlete’s compliance and form.' },
+    { id: 'gear', label: 'Gear', desc: 'Bikes and their wear components with service history, and shoes resolved through the model → version → pair catalog.' },
+    { id: 'webhooks', label: 'Webhooks', desc: 'Subscribe to events like activity.created, scheduled_workout.matched, and upload_batch.completed.' },
+  ];
+
+  ep(method, path, summary, extra) { return Object.assign({ method, path, summary }, extra || {}); }
+
+  endpointsByGroup = {
+    auth: [
+      this.ep('POST', '/v1/auth/register', 'Create an account', {
+        description: 'Creates a new athlete account with email + password, or links a social identity (Strava, Google, Apple). Returns the new athlete and an initial token pair. Social signups omit password and pass a provider + id_token.',
+        params: [
+          { name: 'name', type: 'string', required: true, desc: 'Display name' },
+          { name: 'email', type: 'string', required: false, desc: 'Email (email/password signup)' },
+          { name: 'password', type: 'string', required: false, desc: 'Min 10 chars (email/password signup)' },
+          { name: 'provider', type: 'enum', required: false, desc: 'strava | google | apple (social signup)' },
+          { name: 'id_token', type: 'string', required: false, desc: 'Provider identity token (social signup)' },
+        ],
+        req: '{\n  "name": "Neil Goodgame",\n  "email": "neil@example.cc",\n  "password": "••••••••••"\n}',
+        status: '201 Created',
+        res: '{\n  "athlete": { "id": "ath_neil", "name": "Neil Goodgame" },\n  "tokens": {\n    "access_token": "cad_at_9f2a7c",\n    "refresh_token": "cad_rt_1be40d",\n    "expires_in": 21600\n  }\n}',
+      }),
+      this.ep('POST', '/v1/auth/jwt', 'Mint a scoped JWT', {
+        description: 'Mints a short-lived RS256 bearer JWT. The sub claim is the authenticated principal (athlete or coach) and is never reassigned, so the audit trail reflects who acted. The athlete_id claim names the athlete whose data the token grants access to — the API authorizes every request by checking that sub may act on athlete_id (sub == athlete_id, or sub is a coach with that athlete on their roster). Defaults to the caller.',
+        params: [
+          { name: 'athlete_id', type: 'string', required: false, desc: 'Athlete whose data to authorize (default: the caller)' },
+          { name: 'scopes', type: 'string[]', required: false, desc: 'Subset of the caller’s scopes (default activities:read)' },
+          { name: 'expires_in', type: 'int', required: false, desc: 'Lifetime in seconds, max 86400 (default 3600)' },
+        ],
+        req: '// Coach minting a token to read an athlete’s data\n{\n  "athlete_id": "ath_neil",\n  "scopes": ["activities:read"],\n  "expires_in": 3600\n}',
+        status: '201 Created',
+        res: '{\n  "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjgwMSJ9\n           .eyJzdWIiOiJjb2FjaF9tYXJhIn0.SflKxw…",\n  "token_type": "Bearer",\n  "expires_in": 3600,\n  "claims": {\n    "iss": "https://api.cadence.cc",\n    "sub": "coach_mara",\n    "athlete_id": "ath_neil",\n    "aud": "cadence-api",\n    "scope": "activities:read",\n    "iat": 1750000000,\n    "exp": 1750003600,\n    "jti": "jwt_4f9c2a"\n  }\n}',
+      }),
+      this.ep('GET', '/.well-known/jwks.json', 'Token signing keys (JWKS)', {
+        description: 'The public JSON Web Key Set used to verify the RS256 signature of tokens issued by /v1/auth/jwt. Cache it and select the key by the token header’s kid.',
+        status: '200 OK',
+        res: '{\n  "keys": [\n    {\n      "kty": "RSA",\n      "use": "sig",\n      "alg": "RS256",\n      "kid": "801",\n      "n": "0vx7agoebGcQSuu…",\n      "e": "AQAB"\n    }\n  ]\n}',
+      }),
+      this.ep('POST', '/oauth/token', 'Exchange code for tokens', {
+        description: 'Exchanges an authorization code (or a refresh token) for an access token. Tokens are scoped to the granting athlete or coach.',
+        params: [
+          { name: 'grant_type', type: 'string', required: true, desc: 'authorization_code | refresh_token' },
+          { name: 'code', type: 'string', required: false, desc: 'The code returned to your redirect URI' },
+          { name: 'refresh_token', type: 'string', required: false, desc: 'Used when refreshing' },
+        ],
+        status: '200 OK',
+        res: '{\n  "access_token": "cad_at_9f2a7c",\n  "refresh_token": "cad_rt_1be40d",\n  "token_type": "Bearer",\n  "expires_in": 21600,\n  "scope": "activities:read activities:write"\n}',
+      }),
+      this.ep('GET', '/v1/me', 'The authenticated athlete', {
+        description: 'Returns the athlete (or coach) tied to the access token.',
+        status: '200 OK',
+        res: '{\n  "id": "ath_neil",\n  "name": "Neil Goodgame",\n  "ftp": 265,\n  "lthr": 155,\n  "role": "athlete"\n}',
+      }),
+    ],
+    activities: [
+      this.ep('GET', '/v1/activities', 'List & query activities', {
+        description: 'Lists activities for the athlete. The q parameter accepts CQL — the same query language as the Activities search bar — for field comparisons, AND/OR, and ordering.',
+        params: [
+          { name: 'q', type: 'string', required: false, desc: 'CQL, e.g. avg_hr > 140 AND sport = run' },
+          { name: 'sort', type: 'string', required: false, desc: 'Field, prefix - for descending (e.g. -tss)' },
+          { name: 'sport', type: 'enum', required: false, desc: 'bike | run | swim | walk' },
+          { name: 'limit', type: 'int', required: false, desc: 'Page size, max 200' },
+          { name: 'cursor', type: 'string', required: false, desc: 'Pagination cursor' },
+        ],
+        req: 'GET /v1/activities\n  ?q=runs tagged race and distance > 10km\n  &sort=-tss&limit=50',
+        status: '200 OK',
+        res: '{\n  "object": "list",\n  "has_more": true,\n  "next_cursor": "act_8KQ2",\n  "data": [\n    {\n      "id": "act_9f2a7c",\n      "sport": "run",\n      "name": "Sunday Long Run",\n      "start_date": "2026-06-06T07:12:00Z",\n      "moving_time": 6510,\n      "distance_km": 23.0,\n      "avg_hr": 138,\n      "tss": 96,\n      "tags": ["Endurance", "Race"],\n      "workout_id": "wkt_long_z2",\n      "shoe_id": "shoe_vf3"\n    }\n  ]\n}',
+      }),
+      this.ep('POST', '/v1/activities', 'Upload a .fit file', {
+        description: 'Uploads an activity file (multipart/form-data). Optional fields capture the pre/post weigh-in, fluids, and the shoe worn. Parsing is asynchronous and may take an unknown amount of time, so this returns 202 Accepted immediately with an upload job and a Location header. Poll GET /v1/uploads/{id} until ready, or subscribe to the activity.created webhook.',
+        params: [
+          { name: 'file', type: 'file', required: true, desc: 'The .fit / .gpx / .tcx file' },
+          { name: 'weight_before_kg', type: 'float', required: false, desc: 'Pre-session body weight' },
+          { name: 'weight_after_kg', type: 'float', required: false, desc: 'Post-session body weight' },
+          { name: 'fluids_ml', type: 'int', required: false, desc: 'Fluids consumed' },
+          { name: 'shoe_id', type: 'string', required: false, desc: 'Shoe worn (run activities)' },
+        ],
+        status: '202 Accepted',
+        res: '// 202 Accepted\n// Location: /v1/uploads/upl_8KQ2a7\n// Retry-After: 2\n{\n  "id": "upl_8KQ2a7",\n  "object": "upload",\n  "status": "queued",\n  "progress": 0,\n  "filename": "2026-06-15-intervals.fit",\n  "activity_id": null,\n  "received_at": "2026-06-15T09:04:11Z",\n  "completed_at": null\n}',
+      }),
+      this.ep('GET', '/v1/uploads/{id}', 'Poll an upload job', {
+        description: 'Returns the status of an asynchronous upload. While status is processing the activity_id is null; once ready it points at the created activity. On failed, an error object explains why. Poll with backoff, honouring the Retry-After header.',
+        status: '200 OK',
+        res: '// while parsing — Retry-After: 3\n{\n  "id": "upl_8KQ2a7",\n  "object": "upload",\n  "status": "processing",\n  "progress": 0.45,\n  "activity_id": null\n}\n\n// once finished\n{\n  "id": "upl_8KQ2a7",\n  "object": "upload",\n  "status": "ready",\n  "progress": 1,\n  "activity_id": "act_new4d1",\n  "completed_at": "2026-06-15T09:04:19Z"\n}',
+      }),
+      this.ep('POST', '/v1/activities/batch', 'Bulk-upload a .zip', {
+        description: 'Uploads a .zip archive of many .fit / .gpx / .tcx files for bulk import — e.g. a full export from another platform. The archive is unpacked server-side and each file becomes its own async Upload job, so this returns 202 Accepted with a batch job and a Location header. Poll GET /v1/uploads/batches/{id}, or subscribe to activity.created (per file) and upload_batch.completed (once).',
+        params: [
+          { name: 'file', type: 'file', required: true, desc: 'A .zip archive (max 500 files, 200 MB)' },
+          { name: 'on_duplicate', type: 'enum', required: false, desc: 'skip (default) | replace' },
+        ],
+        status: '202 Accepted',
+        res: '// 202 Accepted\n// Location: /v1/uploads/batches/bat_3Yc1Qd\n// Retry-After: 5\n{\n  "id": "bat_3Yc1Qd",\n  "object": "upload_batch",\n  "status": "unpacking",\n  "filename": "garmin-export-2026.zip",\n  "progress": 0,\n  "counts": { "total": 124, "ready": 0,\n    "processing": 0, "failed": 0, "duplicate": 0 },\n  "received_at": "2026-06-15T09:10:02Z"\n}',
+      }),
+      this.ep('GET', '/v1/uploads/batches/{id}', 'Poll a bulk-upload batch', {
+        description: 'Returns aggregate progress for a .zip batch and the state of each child upload. status is processing until every file has settled, then completed (some children may still be failed or duplicate — inspect counts and uploads). Poll with backoff, honouring Retry-After.',
+        status: '200 OK',
+        res: '{\n  "id": "bat_3Yc1Qd",\n  "object": "upload_batch",\n  "status": "processing",\n  "progress": 0.42,\n  "counts": { "total": 124, "ready": 50,\n    "processing": 71, "failed": 1, "duplicate": 2 },\n  "uploads": [\n    { "id": "upl_8KQ2a7", "status": "ready",\n      "activity_id": "act_new4d1" },\n    { "id": "upl_1Bf9zP", "status": "failed",\n      "error": { "code": "corrupt_file",\n        "message": "Unreadable FIT header." } }\n  ]\n}',
+      }),
+      this.ep('GET', '/v1/activities/{id}', 'Retrieve an activity', { description: 'Returns the full activity with summary metrics and matched workout.', status: '200 OK', res: '{\n  "id": "act_9f2a7c",\n  "sport": "run",\n  "norm_power": null,\n  "intensity": 0.78,\n  "tss": 96,\n  "workout_id": "wkt_long_z2"\n}' }),
+      this.ep('PATCH', '/v1/activities/{id}', 'Update an activity', {
+        description: 'Edit mutable fields — rename, change sport, or link/unlink a designed workout for matching.',
+        params: [
+          { name: 'name', type: 'string', required: false, desc: 'Display name' },
+          { name: 'workout_id', type: 'string', required: false, desc: 'Link a designed workout (null to clear)' },
+        ],
+        status: '200 OK',
+        res: '{\n  "id": "act_9f2a7c",\n  "name": "Sunday Long Run",\n  "workout_id": "wkt_long_z2"\n}',
+      }),
+      this.ep('DELETE', '/v1/activities/{id}', 'Delete an activity', { description: 'Permanently deletes the activity and its streams.', status: '204 No Content', res: '// empty body' }),
+    ],
+    streams: [
+      this.ep('GET', '/v1/activities/{id}/laps', 'List laps', { description: 'Returns the activity’s splits in order.', status: '200 OK', res: '{\n  "data": [\n    { "index": 1, "duration": 300, "distance_km": 1.02, "avg_hr": 162, "avg_power": 288 }\n  ]\n}' }),
+      this.ep('GET', '/v1/activities/{id}/streams', 'Read the 1 Hz stream', {
+        description: 'Returns parallel arrays sampled at 1 Hz. Request only the channels you need with fields.',
+        params: [
+          { name: 'fields', type: 'string', required: false, desc: 'time,power,heartrate,altitude,cadence…' },
+          { name: 'resolution', type: 'enum', required: false, desc: 'high (1 Hz) | medium | low' },
+        ],
+        req: 'GET /v1/activities/act_9f2a7c/streams\n  ?fields=time,power,heartrate',
+        status: '200 OK',
+        res: '{\n  "object": "streams",\n  "resolution": "high",\n  "fields": {\n    "time":      [0, 1, 2, 3],\n    "power":     [210, 214, 219, 222],\n    "heartrate": [128, 129, 131, 132]\n  }\n}',
+      }),
+      this.ep('GET', '/v1/activities/{id}/curves', 'Duration curves', {
+        description: 'Mean-maximal power and HR curves. When the activity exceeds 60 minutes the curve extends to the full duration; the final point is the whole-activity average.',
+        params: [{ name: 'metric', type: 'enum', required: false, desc: 'power | heartrate' }],
+        status: '200 OK',
+        res: '{\n  "metric": "power",\n  "extends_to": 5449,\n  "points": {\n    "5": 712, "60": 538, "300": 351,\n    "1200": 289, "3600": 259, "5449": 192\n  }\n}',
+      }),
+    ],
+    efforts: [
+      this.ep('GET', '/v1/athletes/{id}/best-efforts', 'List best efforts', {
+        description: 'Personal records by kind and period. Cycling returns peak power by duration; running returns best pace and power by distance.',
+        params: [
+          { name: 'kind', type: 'enum', required: true, desc: 'cycling_power | running_pace | running_power' },
+          { name: 'period', type: 'enum', required: false, desc: '3m | 1y | all (default all)' },
+        ],
+        req: 'GET /v1/athletes/ath_neil/best-efforts\n  ?kind=cycling_power&period=3m',
+        status: '200 OK',
+        res: '{\n  "kind": "cycling_power",\n  "period": "3m",\n  "data": [\n    { "window": "5min", "value": 351, "unit": "watts",\n      "date": "2026-06-07", "activity_id": "act_71a" },\n    { "window": "20min", "value": 289, "unit": "watts",\n      "date": "2026-05-24", "activity_id": "act_4c8" }\n  ]\n}',
+      }),
+    ],
+    tags: [
+      this.ep('GET', '/v1/tags', 'List tags', { description: 'All tags available to the athlete, with origin.', status: '200 OK', res: '{\n  "data": [\n    { "id": "tag_race", "name": "Race", "origin": "manual", "color": "#e0442e" },\n    { "id": "tag_vo2", "name": "VO2 Max", "origin": "auto", "color": "#9a6ad0" }\n  ]\n}' }),
+      this.ep('POST', '/v1/activities/{id}/tags', 'Tag an activity', {
+        description: 'Attaches a tag. Auto-tags applied by workout matching are read-only; manual tags can be added or removed freely.',
+        params: [{ name: 'tag_id', type: 'string', required: false, desc: 'Existing tag' }, { name: 'name', type: 'string', required: false, desc: 'Or create a tag by name' }],
+        status: '201 Created',
+        res: '{\n  "activity_id": "act_9f2a7c",\n  "tag": { "id": "tag_race", "name": "Race", "origin": "manual" }\n}',
+      }),
+      this.ep('DELETE', '/v1/activities/{id}/tags/{tag_id}', 'Remove a tag', { description: 'Detaches a manual tag from the activity.', status: '204 No Content', res: '// empty body' }),
+    ],
+    workouts: [
+      this.ep('GET', '/v1/workouts', 'List designed workouts', { description: 'The athlete’s workout library.', status: '200 OK', res: '{\n  "data": [\n    { "id": "wkt_vo2_5x5", "name": "VO2 Max · 5×5",\n      "sport": "bike", "type": "vo2", "duration": 3300, "tss": 78 }\n  ]\n}' }),
+      this.ep('POST', '/v1/workouts', 'Create a workout', {
+        description: 'Creates a structured workout. Each step declares an end_type of time, distance, or manual (athlete taps lap to advance); duration or distance is set accordingly.',
+        params: [
+          { name: 'name', type: 'string', required: true, desc: 'Workout name' },
+          { name: 'sport', type: 'enum', required: true, desc: 'bike | run' },
+          { name: 'steps[]', type: 'object[]', required: true, desc: 'Ordered steps (see body)' },
+        ],
+        req: '{\n  "name": "Threshold 1km Reps",\n  "sport": "run",\n  "steps": [\n    { "kind": "warmup", "end_type": "time",\n      "duration": 600, "target_pct": 65 },\n    { "kind": "block", "end_type": "distance",\n      "distance": 1000, "target_pct": 100, "repeat": 5 },\n    { "kind": "cool", "end_type": "manual",\n      "target_pct": 55 }\n  ]\n}',
+        status: '201 Created',
+        res: '{\n  "id": "wkt_thr1k",\n  "name": "Threshold 1km Reps",\n  "duration": 4200,\n  "tss": 71\n}',
+      }),
+      this.ep('GET', '/v1/workouts/{id}', 'Retrieve a workout', { description: 'Returns a designed workout with its full ordered step structure.', status: '200 OK', res: '{\n  "id": "wkt_vo2_5x5",\n  "name": "VO2 Max · 5×5",\n  "sport": "bike",\n  "duration": 3300,\n  "tss": 78,\n  "steps": [\n    { "kind": "warmup", "end_type": "time",\n      "duration": 600, "target_pct": 60 },\n    { "kind": "block", "end_type": "time",\n      "duration": 300, "target_pct": 115, "repeat": 5 }\n  ]\n}' }),
+      this.ep('PATCH', '/v1/workouts/{id}', 'Update a workout', {
+        description: 'Rename or re-author the workout. Passing steps replaces the entire step list; duration and TSS are recomputed. Edits do not affect already-completed activities matched to this workout.',
+        params: [
+          { name: 'name', type: 'string', required: false, desc: 'New name' },
+          { name: 'steps[]', type: 'object[]', required: false, desc: 'Replaces the full step list' },
+        ],
+        status: '200 OK',
+        res: '{\n  "id": "wkt_vo2_5x5",\n  "name": "VO2 Max · 6×5",\n  "duration": 3600,\n  "tss": 84\n}',
+      }),
+      this.ep('DELETE', '/v1/workouts/{id}', 'Delete a workout', { description: 'Removes the workout from the library. Scheduled instances are unlinked but completed activities keep their match for history.', status: '204 No Content', res: '// empty body' }),
+      this.ep('GET', '/v1/workouts/{id}/matches', 'List matched activities', {
+        description: 'Returns completed activities matched to this designed workout — automatically (inferred from lap structure) or manually — each with a match confidence and method. Powers the “matched workouts” view in the designer.',
+        params: [{ name: 'method', type: 'enum', required: false, desc: 'auto | manual | all (default all)' }],
+        status: '200 OK',
+        res: '{\n  "data": [\n    { "activity_id": "act_9f2a7c",\n      "name": "VO2 intervals · Tuesday AM",\n      "date": "2026-06-10",\n      "method": "auto",\n      "confidence": 0.94,\n      "compliance": 0.88 }\n  ]\n}',
+      }),
+    ],
+    calendar: [
+      this.ep('GET', '/v1/calendar', 'List planned & completed', {
+        description: 'Returns scheduled workouts and completed activities in a date range.',
+        params: [
+          { name: 'from', type: 'date', required: true, desc: 'Start date (inclusive)' },
+          { name: 'to', type: 'date', required: true, desc: 'End date (inclusive)' },
+          { name: 'athlete_id', type: 'string', required: false, desc: 'Coaches only — defaults to self' },
+        ],
+        status: '200 OK',
+        res: '{\n  "data": [\n    { "id": "sch_88", "date": "2026-06-19",\n      "workout_id": "wkt_vo2_5x5",\n      "status": "planned", "time_of_day": "AM" }\n  ]\n}',
+      }),
+      this.ep('POST', '/v1/scheduled-workouts', 'Schedule a workout', {
+        description: 'Drops a designed workout onto a date. Coaches set athlete_id to assign onto an athlete’s plan; assigned_by is inferred from the token.',
+        params: [
+          { name: 'workout_id', type: 'string', required: true, desc: 'Workout to schedule' },
+          { name: 'athlete_id', type: 'string', required: true, desc: 'Target athlete' },
+          { name: 'date', type: 'date', required: true, desc: 'Calendar date' },
+          { name: 'time_of_day', type: 'enum', required: false, desc: 'AM | MID | PM' },
+        ],
+        req: '{\n  "workout_id": "wkt_vo2_5x5",\n  "athlete_id": "ath_neil",\n  "date": "2026-06-19",\n  "time_of_day": "AM"\n}',
+        status: '201 Created',
+        res: '{\n  "id": "sch_88",\n  "status": "planned",\n  "assigned_by": "coach_mara"\n}',
+      }),
+      this.ep('PATCH', '/v1/scheduled-workouts/{id}', 'Reschedule or match', { description: 'Move to another date, or link the completed activity that fulfilled it.', params: [{ name: 'date', type: 'date', required: false, desc: 'New date' }, { name: 'activity_id', type: 'string', required: false, desc: 'Completed activity to match' }], status: '200 OK', res: '{\n  "id": "sch_88",\n  "status": "completed",\n  "activity_id": "act_9f2a7c"\n}' }),
+    ],
+    athletes: [
+      this.ep('GET', '/v1/athletes/{id}', 'Retrieve an athlete', { description: 'Profile and thresholds.', status: '200 OK', res: '{\n  "id": "ath_neil",\n  "name": "Neil Goodgame",\n  "age": 34,\n  "ftp": 265,\n  "critical_run_power": 285,\n  "threshold_pace": "4:00",\n  "lthr": 155,\n  "max_hr": 186\n}' }),
+      this.ep('PATCH', '/v1/athletes/{id}', 'Update thresholds', {
+        description: 'Updates profile and threshold values. Changing a threshold recomputes every zone set that references it.',
+        params: [
+          { name: 'ftp', type: 'int', required: false, desc: 'Functional threshold power (W)' },
+          { name: 'critical_run_power', type: 'int', required: false, desc: 'Critical running power (W)' },
+          { name: 'threshold_pace', type: 'string', required: false, desc: 'mm:ss per km' },
+          { name: 'lthr', type: 'int', required: false, desc: 'Lactate threshold HR (bpm)' },
+        ],
+        status: '200 OK',
+        res: '{\n  "id": "ath_neil",\n  "ftp": 270,\n  "zones_recomputed": ["bike"]\n}',
+      }),
+      this.ep('GET', '/v1/athletes/{id}/zones', 'List zone sets', { description: 'The four zone sets — heart_rate, bike_power, run_power, pace — with computed boundaries.', status: '200 OK', res: '{\n  "data": [\n    { "type": "bike_power", "reference": 265,\n      "zones": [\n        { "name": "Z2 Endurance", "low_pct": 56, "high_pct": 75 }\n      ]\n    }\n  ]\n}' }),
+      this.ep('PUT', '/v1/athletes/{id}/zones/{type}', 'Replace a zone set', {
+        description: 'Replaces the boundaries for one zone type. Percentages are relative to the type’s reference threshold.',
+        params: [
+          { name: 'type', type: 'enum', required: true, desc: 'heart_rate | bike_power | run_power | pace' },
+          { name: 'zones[]', type: 'object[]', required: true, desc: 'name, low_pct, high_pct' },
+        ],
+        req: '{\n  "zones": [\n    { "name": "Z1 Recovery",  "low_pct": 0,  "high_pct": 55 },\n    { "name": "Z2 Endurance", "low_pct": 56, "high_pct": 75 },\n    { "name": "Z3 Tempo",     "low_pct": 76, "high_pct": 90 }\n  ]\n}',
+        status: '200 OK',
+        res: '{\n  "type": "bike_power",\n  "reference": 265,\n  "updated": true\n}',
+      }),
+      this.ep('GET', '/v1/athletes/{id}/fitness', 'Fitness trend (CTL/ATL/TSB)', {
+        description: 'Returns the daily performance-management series — fitness (CTL), fatigue (ATL), and form (TSB) — that drives the dashboard training-load chart.',
+        params: [
+          { name: 'from', type: 'date', required: false, desc: 'Start date' },
+          { name: 'to', type: 'date', required: false, desc: 'End date' },
+        ],
+        status: '200 OK',
+        res: '{\n  "data": [\n    { "date": "2026-06-14", "ctl": 62,\n      "atl": 71, "tsb": -9 },\n    { "date": "2026-06-15", "ctl": 63,\n      "atl": 68, "tsb": -5 }\n  ]\n}',
+      }),
+    ],
+    sharing: [
+      this.ep('GET', '/v1/shares', 'List people with access', { description: 'Everyone you have granted Viewer or Coach access to your training.', status: '200 OK', res: '{\n  "data": [\n    { "id": "shr_7c1a2b", "name": "Mara Køhl",\n      "handle": "@marakohl", "role": "coach",\n      "status": "active", "since": "2026-01-08" },\n    { "id": "shr_9d3", "name": "Dr. Lena Voss",\n      "handle": "@lenavoss.physio", "role": "viewer",\n      "status": "active", "since": "2026-03-21" }\n  ]\n}' }),
+      this.ep('POST', '/v1/shares', 'Invite someone', {
+        description: 'Grants another person access. A viewer gets read-only access to activities, analysis, workouts, and calendar; a coach can additionally create and assign workouts to you. The invitee is identified by email or handle and starts pending until they accept.',
+        params: [
+          { name: 'invitee', type: 'string', required: true, desc: 'Email address or @handle' },
+          { name: 'role', type: 'enum', required: true, desc: 'viewer | coach' },
+        ],
+        req: '{\n  "invitee": "@lenavoss.physio",\n  "role": "viewer"\n}',
+        status: '201 Created',
+        res: '{\n  "id": "shr_new8",\n  "name": "Lena Voss",\n  "handle": "@lenavoss.physio",\n  "role": "viewer",\n  "status": "pending",\n  "since": "2026-06-15"\n}',
+      }),
+      this.ep('PATCH', '/v1/shares/{id}', 'Change a person’s role', {
+        description: 'Promote a viewer to coach, or demote a coach to viewer.',
+        params: [{ name: 'role', type: 'enum', required: true, desc: 'viewer | coach' }],
+        status: '200 OK',
+        res: '{\n  "id": "shr_9d3",\n  "role": "coach"\n}',
+      }),
+      this.ep('DELETE', '/v1/shares/{id}', 'Revoke access', { description: 'Immediately revokes the person’s access to your data.', status: '204 No Content', res: '// empty body' }),
+    ],
+    tokens: [
+      this.ep('GET', '/v1/auth/tokens', 'List personal access tokens', { description: 'Lists your personal access tokens. Only the prefix is returned — the secret is shown once at creation and never again.', status: '200 OK', res: '{\n  "data": [\n    { "id": "tok_7Qda", "name": "Home server sync",\n      "prefix": "cad_pat_7Qda",\n      "scopes": ["activities:read"],\n      "created": "2026-04-12",\n      "expires_at": "2026-07-11",\n      "last_used": "2026-06-14" }\n  ]\n}' }),
+      this.ep('POST', '/v1/auth/tokens', 'Create a personal access token', {
+        description: 'Creates a long-lived bearer token scoped to your own data (sub is you). The full secret is returned once in this response. Use it as Authorization: Bearer <secret>.',
+        params: [
+          { name: 'name', type: 'string', required: true, desc: 'A label, e.g. “Home server sync”' },
+          { name: 'scopes[]', type: 'string[]', required: true, desc: 'Subset of your scopes' },
+          { name: 'expires_at', type: 'date', required: false, desc: 'Expiry date, or null for no expiry' },
+        ],
+        req: '{\n  "name": "CI pipeline",\n  "scopes": ["activities:read"],\n  "expires_at": "2026-09-13"\n}',
+        status: '201 Created',
+        res: '// secret shown once\n{\n  "id": "tok_M2pK",\n  "name": "CI pipeline",\n  "prefix": "cad_pat_M2pK",\n  "scopes": ["activities:read"],\n  "expires_at": "2026-09-13",\n  "secret": "cad_pat_M2pKx9Lq4Rb7Vn0Zt6wYc3Hs8dF1"\n}',
+      }),
+      this.ep('POST', '/v1/auth/tokens/{id}/rotate', 'Rotate a token', { description: 'Issues a new secret for the same token, keeping its name and scopes, and invalidates the old secret. The new secret is returned once.', status: '200 OK', res: '{\n  "id": "tok_7Qda",\n  "name": "Home server sync",\n  "prefix": "cad_pat_Zx91",\n  "secret": "cad_pat_Zx91Kf2m9XbV3nLpZ0rT8wYc1Hs4"\n}' }),
+      this.ep('DELETE', '/v1/auth/tokens/{id}', 'Revoke a token', { description: 'Permanently revokes the token. Requests using it will 401 immediately.', status: '204 No Content', res: '// empty body' }),
+    ],
+    coaching: [
+      this.ep('GET', '/v1/coach/athletes', 'List roster', { description: 'Athletes linked to the authenticated coach, with compliance and form.', status: '200 OK', res: '{\n  "data": [\n    { "athlete_id": "ath_sofia", "name": "Sofia Greco",\n      "compliance": 0.92, "tsb": -8, "flags": 1 }\n  ]\n}' }),
+      this.ep('GET', '/v1/coach/athletes/{id}', 'Athlete detail', { description: 'A single athlete’s training summary, scoped to the coach relationship.', status: '200 OK', res: '{\n  "athlete_id": "ath_sofia",\n  "ctl": 71, "atl": 79, "tsb": -8,\n  "next_workout": "wkt_vo2_5x5"\n}' }),
+    ],
+    gear: [
+      this.ep('GET', '/v1/gear/bikes', 'List bikes', { description: 'Garage bikes with aggregate distance and component wear.', status: '200 OK', res: '{\n  "data": [\n    { "id": "bike_road", "name": "Tarmac SL7",\n      "distance_km": 9120, "components": 5 }\n  ]\n}' }),
+      this.ep('GET', '/v1/gear/shoes', 'List shoes', { description: 'Run shoes resolved through the catalog. name defaults to the composed manufacturer + model + version + colourway and is unique.', status: '200 OK', res: '{\n  "data": [\n    { "id": "shoe_vf3", "name": "Race Day Flyers",\n      "manufacturer": "Nike", "model": "Vaporfly",\n      "version": "3", "colourway": "Volt / Black",\n      "km": 412, "limit_km": 600, "image": null }\n  ]\n}' }),
+      this.ep('POST', '/v1/gear/shoes', 'Add a pair of shoes', {
+        description: 'Registers a physical pair against a catalog model version. name is optional — it defaults to the composed catalog string and must be unique per athlete. image is an optional URL.',
+        params: [
+          { name: 'shoe_model_version_id', type: 'string', required: true, desc: 'Catalog generation (model + version)' },
+          { name: 'colourway', type: 'string', required: true, desc: 'e.g. Volt / Black' },
+          { name: 'name', type: 'string', required: false, desc: 'Override; unique; defaults to composed' },
+          { name: 'limit_km', type: 'int', required: false, desc: 'Retirement threshold' },
+          { name: 'image', type: 'url', required: false, desc: 'Optional photo of the pair' },
+        ],
+        req: '{\n  "shoe_model_version_id": "smv_vomero18",\n  "colourway": "Red",\n  "name": "Race Day Flyers",\n  "limit_km": 600\n}',
+        status: '201 Created',
+        res: '{\n  "id": "shoe_7c1",\n  "name": "Race Day Flyers",\n  "km": 0,\n  "limit_km": 600\n}',
+      }),
+      this.ep('PATCH', '/v1/gear/shoes/{id}', 'Update a pair of shoes', {
+        description: 'Edit a pair — rename, adjust the retirement limit, set or change the image, correct mileage, or retire it.',
+        params: [
+          { name: 'name', type: 'string', required: false, desc: 'Display name' },
+          { name: 'limit_km', type: 'int', required: false, desc: 'Retirement threshold' },
+          { name: 'km', type: 'int', required: false, desc: 'Correct accumulated distance' },
+          { name: 'image', type: 'url', required: false, desc: 'Photo of the pair (null to clear)' },
+          { name: 'retired', type: 'boolean', required: false, desc: 'Retire / un-retire' },
+        ],
+        status: '200 OK',
+        res: '{\n  "id": "shoe_vf3",\n  "name": "Race Day Flyers",\n  "km": 412,\n  "retired": false\n}',
+      }),
+      this.ep('DELETE', '/v1/gear/shoes/{id}', 'Delete a pair of shoes', { description: 'Removes the shoes. Past activities keep their shoe reference for history.', status: '204 No Content', res: '// empty body' }),
+      this.ep('GET', '/v1/gear/shoe-catalog', 'Search the shoe catalog', {
+        description: 'Type-ahead over the manufacturer → model → version catalog that backs the “add shoes” picker. Returns model versions with their composed display name.',
+        params: [{ name: 'q', type: 'string', required: false, desc: 'Search text across manufacturer and model' }],
+        status: '200 OK',
+        res: '{\n  "data": [\n    { "shoe_model_version_id": "smv_vaporfly3",\n      "manufacturer": "Nike", "model": "Vaporfly",\n      "version": "3",\n      "display_name": "Nike Vaporfly 3" }\n  ]\n}',
+      }),
+      this.ep('POST', '/v1/gear/bikes', 'Add a bike', {
+        description: 'Adds a bike to the garage.',
+        params: [
+          { name: 'name', type: 'string', required: true, desc: 'Bike name' },
+          { name: 'kind', type: 'enum', required: false, desc: 'road | indoor | gravel | tt' },
+          { name: 'groupset', type: 'string', required: false, desc: 'e.g. Shimano Ultegra Di2' },
+          { name: 'distance_km', type: 'int', required: false, desc: 'Starting distance (default 0)' },
+        ],
+        req: '{\n  "name": "Tarmac SL7",\n  "kind": "road",\n  "groupset": "SRAM Force AXS"\n}',
+        status: '201 Created',
+        res: '{\n  "id": "bike_new2",\n  "name": "Tarmac SL7",\n  "distance_km": 0,\n  "components": 0\n}',
+      }),
+      this.ep('GET', '/v1/gear/bikes/{id}', 'Retrieve a bike', { description: 'A bike with its full component list and service status.', status: '200 OK', res: '{\n  "id": "bike_road",\n  "name": "Tarmac SL7",\n  "distance_km": 9120,\n  "components": [\n    { "id": "cmp_chain", "name": "Chain",\n      "km": 4080, "limit_km": 4000,\n      "model": "KMC X11SL" }\n  ]\n}' }),
+      this.ep('PATCH', '/v1/gear/bikes/{id}', 'Update a bike', {
+        description: 'Rename, change type/groupset, or correct accumulated distance.',
+        params: [
+          { name: 'name', type: 'string', required: false, desc: 'Bike name' },
+          { name: 'kind', type: 'enum', required: false, desc: 'road | indoor | gravel | tt' },
+          { name: 'groupset', type: 'string', required: false, desc: 'Groupset' },
+          { name: 'distance_km', type: 'int', required: false, desc: 'Correct total distance' },
+        ],
+        status: '200 OK',
+        res: '{\n  "id": "bike_road",\n  "name": "Tarmac SL7 — winter",\n  "distance_km": 9120\n}',
+      }),
+      this.ep('DELETE', '/v1/gear/bikes/{id}', 'Delete a bike', { description: 'Removes the bike and its components. Past activities keep their reference.', status: '204 No Content', res: '// empty body' }),
+      this.ep('POST', '/v1/gear/bikes/{id}/components', 'Add a component', {
+        description: 'Tracks a wear part on the bike (chain, tyres, cassette, …) with a distance limit so the app can flag service.',
+        params: [
+          { name: 'name', type: 'string', required: true, desc: 'e.g. Chain' },
+          { name: 'limit_km', type: 'int', required: true, desc: 'Service / replace threshold' },
+          { name: 'km', type: 'int', required: false, desc: 'Distance already on the part (default 0)' },
+          { name: 'model', type: 'string', required: false, desc: 'Fitted model' },
+        ],
+        req: '{\n  "name": "Chain",\n  "limit_km": 4000,\n  "model": "KMC X11SL"\n}',
+        status: '201 Created',
+        res: '{\n  "id": "cmp_new5",\n  "name": "Chain",\n  "km": 0,\n  "limit_km": 4000\n}',
+      }),
+      this.ep('PATCH', '/v1/gear/components/{id}', 'Update a component', {
+        description: 'Adjust the limit, correct mileage, or change the fitted model.',
+        params: [
+          { name: 'name', type: 'string', required: false, desc: 'Part name' },
+          { name: 'limit_km', type: 'int', required: false, desc: 'Service threshold' },
+          { name: 'km', type: 'int', required: false, desc: 'Correct mileage' },
+          { name: 'model', type: 'string', required: false, desc: 'Fitted model' },
+        ],
+        status: '200 OK',
+        res: '{\n  "id": "cmp_chain",\n  "limit_km": 4500,\n  "km": 4080\n}',
+      }),
+      this.ep('DELETE', '/v1/gear/components/{id}', 'Remove a component', { description: 'Removes the wear part from the bike.', status: '204 No Content', res: '// empty body' }),
+      this.ep('POST', '/v1/gear/components/{id}/service', 'Log service / replacement', {
+        description: 'Records maintenance on a component. reset zeroes the accumulated distance (e.g. a new chain); otherwise it logs an inspection/clean without resetting. Appears in the bike’s maintenance history.',
+        params: [
+          { name: 'action', type: 'enum', required: false, desc: 'replaced | cleaned | inspected | adjusted' },
+          { name: 'reset', type: 'boolean', required: false, desc: 'Zero the part’s mileage (default true)' },
+          { name: 'note', type: 'string', required: false, desc: 'Free-text note' },
+          { name: 'date', type: 'date', required: false, desc: 'When serviced' },
+        ],
+        req: '{\n  "action": "replaced",\n  "reset": true,\n  "note": "New KMC chain, old one at 4080 km."\n}',
+        status: '201 Created',
+        res: '{\n  "id": "svc_4a1",\n  "component_id": "cmp_chain",\n  "action": "replaced",\n  "reset": true,\n  "date": "2026-06-15"\n}',
+      }),
+    ],
+    webhooks: [
+      this.ep('POST', '/v1/webhooks', 'Create a subscription', {
+        description: 'Registers a callback URL for events. Cadence POSTs a signed payload when the event fires.',
+        params: [
+          { name: 'url', type: 'url', required: true, desc: 'Your HTTPS endpoint' },
+          { name: 'events[]', type: 'string[]', required: true, desc: 'activity.created, scheduled_workout.matched…' },
+        ],
+        req: '{\n  "url": "https://hooks.example.com/cadence",\n  "events": [\n    "activity.created",\n    "scheduled_workout.matched"\n  ]\n}',
+        status: '201 Created',
+        res: '{\n  "id": "whk_4a",\n  "status": "active",\n  "secret": "whsec_9d2…"\n}',
+      }),
+      this.ep('GET', '/v1/webhooks', 'List subscriptions', { description: 'All active webhook subscriptions for the app.', status: '200 OK', res: '{\n  "data": [\n    { "id": "whk_4a", "status": "active",\n      "events": ["activity.created"] }\n  ]\n}' }),
+      this.ep('DELETE', '/v1/webhooks/{id}', 'Delete a subscription', { description: 'Stops delivery and removes the webhook subscription.', status: '204 No Content', res: '// empty body' }),
+    ],
+  };ve",\n      "events": ["activity.created"] }\n  ]\n}' }),
+    ],
+  };
+
+  colorize(code, dark) {
+    const KEY = '#3d7fd6', STR = dark ? '#7bd88f' : '#2c9c5e', NUM = '#c2410c', LIT = '#9a6ad0', PUNC = dark ? '#7e858e' : '#a59f96', WORD = dark ? '#c9cdd3' : '#5a554e', CMT = dark ? '#6b7178' : '#b3ada3';
+    return code.split('\n').map(line => {
+      if (line.trim().startsWith('//')) return [{ t: line, c: CMT }];
+      const toks = [];
+      const re = /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+\.?\d*)|(true|false|null)|([{}\[\],])|(\s+)|([^\s{}\[\],"]+)/g;
+      let m;
+      while ((m = re.exec(line)) !== null) {
+        if (m[1] !== undefined) { if (m[2]) { toks.push({ t: m[1], c: KEY }); toks.push({ t: m[2], c: PUNC }); } else toks.push({ t: m[1], c: STR }); }
+        else if (m[3] !== undefined) toks.push({ t: m[3], c: NUM });
+        else if (m[4] !== undefined) toks.push({ t: m[4], c: LIT });
+        else if (m[5] !== undefined) toks.push({ t: m[5], c: PUNC });
+        else if (m[6] !== undefined) toks.push({ t: m[6], c: WORD });
+        else if (m[7] !== undefined) toks.push({ t: m[7], c: WORD });
+      }
+      if (toks.length === 0) toks.push({ t: ' ', c: PUNC });
+      return toks;
+    });
+  }
+
+  colorizeCli(code, dark, lang) {
+    const CMT = dark ? '#6b7178' : '#b3ada3', STR = dark ? '#7bd88f' : '#2c9c5e', FLAG = '#9a6ad0', METHOD = '#ec4a26', URL = '#3d7fd6', WORD = dark ? '#c9cdd3' : '#5a554e', PUNC = dark ? '#7e858e' : '#a59f96';
+    return code.split('\n').map(line => {
+      if (line.trim().startsWith('#')) return [{ t: line, c: CMT }];
+      const toks = [];
+      const re = /('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|(\bhttps?:\/\/[^\s"']+)|(\b(?:GET|POST|PUT|PATCH|DELETE)\b)|(\s+|\\$)|([^\s]+)/g;
+      let m;
+      while ((m = re.exec(line)) !== null) {
+        if (m[1] !== undefined) toks.push({ t: m[1], c: STR });
+        else if (m[2] !== undefined) toks.push({ t: m[2], c: URL });
+        else if (m[3] !== undefined) toks.push({ t: m[3], c: METHOD });
+        else if (m[4] !== undefined) toks.push({ t: m[4], c: PUNC });
+        else if (m[5] !== undefined) toks.push({ t: m[5], c: /^-/.test(m[5]) ? FLAG : WORD });
+      }
+      if (toks.length === 0) toks.push({ t: ' ', c: PUNC });
+      return toks;
+    });
+  }
+
+  renderVals() {
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--codeBg': '#f7f5f2' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--codeBg': '#0c0d10' };
+    const isLab = this.state.theme === 'lab';
+    const dark = !isLab;
+    const seg = (a) => ({ flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: a ? 'var(--card,#fff)' : 'transparent', boxShadow: a ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+
+    const navGroups = this.groups.map(g => {
+      const active = g.id === this.state.group;
+      const list = this.endpointsByGroup[g.id];
+      return {
+        label: g.label, count: list ? String(list.length) : '',
+        onClick: () => this.setState({ group: g.id }),
+        style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '8px 10px', borderRadius: '8px', fontSize: '13.5px', fontWeight: active ? 600 : 500, cursor: 'pointer', color: active ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', background: active ? 'var(--emberSoft,#fff5f1)' : 'transparent' },
+      };
+    });
+
+    const g = this.groups.find(x => x.id === this.state.group);
+    const isOverview = this.state.group === 'overview';
+    const isGuide = this.state.group === 'guide';
+
+    const guideSteps = [
+      { n: '1', title: 'Register an app', body: 'Create an OAuth app to get a client_id, client_secret, and registered redirect_uri — plus the scopes you may request.', code: null },
+      { n: '2', title: 'Send the user to authorize', body: 'Redirect the athlete (or coach) to the authorize URL. They approve, and Cadence redirects back to your redirect_uri with a one-time code.', lang: 'http', code: 'GET https://api.cadence.cc/oauth/authorize\n  ?client_id=YOUR_ID\n  &redirect_uri=https://you.app/cb\n  &response_type=code\n  &scope=activities:read activities:write' },
+      { n: '3', title: 'Exchange the code for a token', body: 'POST the code to /oauth/token. The access_token authenticates the principal — for your own data you can stop here and use it as the bearer.', lang: 'bash', code: 'curl -X POST https://api.cadence.cc/oauth/token \\\n  -d grant_type=authorization_code \\\n  -d code=THE_CODE \\\n  -d client_id=YOUR_ID \\\n  -d client_secret=YOUR_SECRET' },
+      { n: '4', title: 'Mint a scoped JWT (delegated access)', body: 'Coaches and backends touching another athlete mint a per-athlete JWT. sub stays you; athlete_id is who you act on. Omit athlete_id to act as yourself.', lang: 'bash', code: 'curl -X POST https://api.cadence.cc/v1/auth/jwt \\\n  -H "Authorization: Bearer cad_at_…" \\\n  -H "Content-Type: application/json" \\\n  -d \'{ "athlete_id": "ath_neil", "scopes": ["activities:read"] }\'' },
+      { n: '5', title: 'Call the API', body: 'Send the bearer on every request. The API checks sub may act on athlete_id (self, or coach-on-roster) before returning anything.', lang: 'bash', code: 'curl "https://api.cadence.cc/v1/activities?q=avg_hr>140" \\\n  -H "Authorization: Bearer eyJ…"' },
+      { n: '6', title: 'Refresh & verify', body: 'Swap an expired access token with grant_type=refresh_token. Backends verify a JWT’s RS256 signature against the published JWKS, selecting the key by the token header’s kid.', lang: 'bash', code: 'curl -X POST https://api.cadence.cc/oauth/token \\\n  -d grant_type=refresh_token \\\n  -d refresh_token=cad_rt_…\n\n# verify signatures against:\n# GET https://api.cadence.cc/.well-known/jwks.json' },
+    ].map(s => ({ n: s.n, title: s.title, body: s.body, hasCode: !!s.code, codeLines: s.code ? this.colorizeCli(s.code, dark, s.lang) : [] }));
+
+    const guidePaths = [
+      { label: 'Just your own data', desc: 'A personal script or single-user tool — the OAuth access token from step 3 is all you need.', color: '#3d7fd6' },
+      { label: 'A coach app or backend', desc: 'Acting across multiple athletes — mint a per-athlete JWT (step 4) for each athlete you touch.', color: '#ec4a26' },
+    ];
+    const codeBoxStyle = { fontFamily: "'JetBrains Mono',monospace", fontSize: '12px', color: 'var(--ink2,#6f6b65)', background: 'var(--codeBg,#f7f5f2)', border: '1px solid var(--line,#e6e2dc)', borderRadius: '8px', padding: '9px 11px', overflowX: 'auto' };
+    const codeBlockStyle = { fontFamily: "'JetBrains Mono',monospace", fontSize: '12px', lineHeight: '18px', background: 'var(--codeBg,#f7f5f2)', border: '1px solid var(--line,#e6e2dc)', borderRadius: '10px', padding: '13px 15px', overflowX: 'auto' };
+
+    const list = this.endpointsByGroup[this.state.group] || [];
+    const endpoints = list.map((e, i) => {
+      const key = this.state.group + '_' + i;
+      const open = !!this.state.open[key];
+      const hasDetail = !!(e.res || e.params || e.description);
+      const mc = this.MC[e.method];
+      const hasRequest = !!e.req;
+      const reqLines = hasRequest ? this.colorize(e.req, dark) : [];
+      const resLines = e.res ? this.colorize(e.res, dark) : [];
+      const sc = e.status && e.status.startsWith('2') ? '#2fa66a' : '#3d7fd6';
+      return {
+        method: e.method, path: e.path, summary: e.summary,
+        hasDetail, open,
+        onToggle: () => this.setState(s => ({ open: { ...s.open, [key]: !s.open[key] } })),
+        borderColor: open ? mc : 'var(--line,#e6e2dc)',
+        badgeStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.03em', padding: '4px 8px', borderRadius: '6px', color: '#fff', background: mc, flexShrink: 0, minWidth: '54px', textAlign: 'center' },
+        chevronStyle: { transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s' },
+        description: e.description || '',
+        hasParams: !!(e.params && e.params.length),
+        params: (e.params || []).map((p, j) => ({
+          name: p.name, type: p.type, required: !!p.required, desc: p.desc,
+          rowStyle: { display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 13px', borderTop: j === 0 ? 'none' : '1px solid var(--line,#e6e2dc)' },
+        })),
+        hasRequest, reqLines, resLines,
+        exampleCols: hasRequest ? '1fr 1fr' : '1fr',
+        status: e.status, 
+        statusStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 600, padding: '2px 7px', borderRadius: '5px', color: sc, background: this.state.theme === 'lab' ? (sc === '#2fa66a' ? 'rgba(47,166,106,0.12)' : 'rgba(61,127,214,0.12)') : 'rgba(255,255,255,0.06)' },
+      };
+    });
+
+    return {
+      themeVars: this.state.theme === 'day' ? { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--emberLine': 'rgba(13,148,136,0.30)', '--grid': 'rgba(14,24,32,0.06)' } : (isLab ? lab : cockpit),
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(this.state.theme === 'lab'), cockpitBtn: seg(this.state.theme === 'cockpit'), dayBtn: seg(this.state.theme === 'day'),
+      navGroups,
+      groupTitle: g.label,
+      groupDesc: g.desc || '',
+      isOverview, isGuide, isEndpoints: !isOverview && !isGuide,
+      guideSteps, guidePaths,
+      codeBoxStyle, codeBlockStyle,
+      endpoints,
+      errorCodes: [
+        { code: '400', label: 'Invalid request', color: '#f0a02e' },
+        { code: '401', label: 'Bad credentials', color: '#e0442e' },
+        { code: '404', label: 'Not found', color: '#9a958d' },
+        { code: '429', label: 'Rate limited', color: '#9a6ad0' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

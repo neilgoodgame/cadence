@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Django
+backend/db.sqlite3
+backend/staticfiles/
+backend/media/
+backend/keys/
+
+# Env
+.env
+*.env.local
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node (frontend phase)
+node_modules/
+dist/

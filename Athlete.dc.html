@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- SIDEBAR -->
+  <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 20px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="margin:0 12px 16px;padding:10px 12px;border-radius:11px;background:var(--emberSoft,#fff5f1);border:1px solid rgba(236,74,38,0.22);">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <div style="width:28px;height:28px;border-radius:8px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;">LV</div>
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Lena Voss</div>
+          <div style="font-size:10px;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;color:var(--ember,#ec4a26);font-weight:600;">COACH WORKSPACE</div>
+        </div>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.7"><polyline points="5,3 10,8 5,13"></polyline></svg>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
+      <a href="Coach Roster.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="5.5" cy="6" r="2.4"></circle><circle cx="11.5" cy="6.5" r="1.9"></circle><path d="M1.5 13c0-2.2 1.8-3.6 4-3.6s4 1.4 4 3.6"></path><path d="M10 9.6c1.9 0 3.5 1.2 3.5 3.4"></path></svg>Athletes</a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Team calendar</div>
+      <a href="Workout Designer.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workout library</a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>Reports</div>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7a4 4 0 0 1 8 0c0 4 2 5 2 5H2s2-1 2-5Z"></path><path d="M6.5 13a1.5 1.5 0 0 0 3 0"></path></svg>Messages</div>
+    </div>
+    <div style="margin-top:auto;padding:16px 16px 20px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div><div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div data-screen-label="athlete" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- top bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="width:46px;height:46px;border-radius:13px;background:hsl(12 52% 52%);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;">MK</div>
+        <div>
+          <div style="display:flex;align-items:center;gap:9px;">
+            <a href="Coach Roster.dc.html" style="text-decoration:none;font-size:13px;color:var(--ink3,#9a958d);">Athletes</a>
+            <span style="color:var(--ink3,#9a958d);">/</span>
+            <h1 style="font-size:20px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Mara Kessler</h1>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;padding:3px 9px;border-radius:6px;background:rgba(236,74,38,0.13);color:var(--ember,#ec4a26);">TRIATHLON</span>
+          </div>
+          <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;font-family:'JetBrains Mono',monospace;">FTP 248 W · LTHR 162 · CSS 1:38 /100m · coached since Jan 2025</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7a4 4 0 0 1 8 0c0 4 2 5 2 5H2s2-1 2-5Z"></path><path d="M6.5 13a1.5 1.5 0 0 0 3 0"></path></svg>Message</div>
+        <div onClick="{{ openScheduler }}" style="display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3v10M3 8h10"></path></svg>Assign workout</div>
+      </div>
+    </div>
+
+    <div style="padding:22px 32px 64px;display:flex;flex-direction:column;gap:16px;">
+
+      <!-- TOP: load chart + status -->
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start;">
+        <!-- training load chart -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px 18px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div>
+              <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Training load</div>
+              <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:1px;">Fitness, fatigue & form · last 6 weeks</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;">
+              <div style="display:flex;align-items:center;gap:6px;"><span style="width:13px;height:3px;border-radius:2px;background:#3d7fd6;"></span><span style="font-size:11px;color:var(--ink3,#9a958d);">Fitness</span></div>
+              <div style="display:flex;align-items:center;gap:6px;"><span style="width:13px;height:3px;border-radius:2px;background:#f0a02e;"></span><span style="font-size:11px;color:var(--ink3,#9a958d);">Fatigue</span></div>
+              <div style="display:flex;align-items:center;gap:6px;"><span style="width:13px;height:3px;border-radius:2px;background:var(--ember,#ec4a26);"></span><span style="font-size:11px;color:var(--ink3,#9a958d);">Form</span></div>
+            </div>
+          </div>
+          <div style="position:relative;height:200px;">
+            <svg viewBox="0 0 1000 200" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">
+              <line x1="0" y1="120" x2="1000" y2="120" stroke="var(--line,#e6e2dc)" stroke-width="1" stroke-dasharray="4 4"></line>
+              <polygon points="{{ ctlArea }}" fill="rgba(61,127,214,0.10)"></polygon>
+              <polyline points="{{ ctlLine }}" fill="none" stroke="#3d7fd6" stroke-width="2.5" vector-effect="non-scaling-stroke"></polyline>
+              <polyline points="{{ atlLine }}" fill="none" stroke="#f0a02e" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>
+              <polyline points="{{ tsbLine }}" fill="none" stroke="var(--ember,#ec4a26)" stroke-width="2" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"></polyline>
+            </svg>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);margin-top:6px;">
+            <span>May 2</span><span>May 16</span><span>May 30</span><span>Jun 13</span>
+          </div>
+        </div>
+
+        <!-- current status -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;display:flex;flex-direction:column;gap:16px;">
+          <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Current status</div>
+          <sc-for list="{{ status }}" as="st" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div><div style="font-size:13px;color:var(--ink2,#6f6b65);">{{ st.label }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:1px;">{{ st.sub }}</div></div>
+              <div style="text-align:right;"><span style="{{ st.valStyle }}">{{ st.value }}</span></div>
+            </div>
+          </sc-for>
+          <div style="padding:12px 14px;border-radius:10px;background:var(--emberSoft,#fff5f1);border:1px solid rgba(236,74,38,0.18);">
+            <div style="font-size:12px;font-weight:700;color:var(--ember,#ec4a26);margin-bottom:3px;">Coach note</div>
+            <div style="font-size:12px;color:var(--ink2,#6f6b65);line-height:1.45;">Form trending down into the build block — hold VO2 volume, watch sleep. Race in 4 weeks.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- THIS WEEK PLAN -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">This week's plan</div>
+            <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:1px;">Jun 9 – 15 · {{ weekDone }} of {{ weekTotal }} sessions done · {{ weekCompliance }} compliant</div>
+          </div>
+          <div onClick="{{ openScheduler }}" style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ember,#ec4a26);cursor:pointer;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3v10M3 8h10"></path></svg>Add session</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
+          <sc-for list="{{ week }}" as="d" hint-placeholder-count="7">
+            <div style="{{ d.colStyle }}">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.05em;color:var(--ink3,#9a958d);">{{ d.dow }}</span>
+                <span style="{{ d.numStyle }}">{{ d.num }}</span>
+              </div>
+              <sc-for list="{{ d.items }}" as="it" hint-placeholder-count="0">
+                <div style="{{ it.cardStyle }}">
+                  <div style="display:flex;align-items:center;gap:5px;"><span style="width:6px;height:6px;border-radius:2px;background:{{ it.color }};flex-shrink:0;"></span><span style="font-size:11px;font-weight:600;color:{{ it.titleColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ it.title }}</span></div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:3px;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink3,#9a958d);">{{ it.meta }}</span><span style="{{ it.badgeStyle }}">{{ it.badge }}</span></div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- RECENT ACTIVITIES -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px 8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Recent activities</div>
+          <span style="font-size:13px;font-weight:600;color:var(--ember,#ec4a26);cursor:pointer;">View all →</span>
+        </div>
+        <div style="display:grid;grid-template-columns:38px 1fr 132px 96px 96px 132px;gap:14px;padding:9px 0;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);">
+          <span></span><span>Activity</span><span>When</span><span>Load</span><span>Key</span><span style="text-align:right;">vs Plan</span>
+        </div>
+        <sc-for list="{{ activities }}" as="ac" hint-placeholder-count="6">
+          <a href="Workout Designer.dc.html" style="text-decoration:none;display:grid;grid-template-columns:38px 1fr 132px 96px 96px 132px;gap:14px;padding:13px 0;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
+            <div style="{{ ac.iconStyle }}"><span style="width:9px;height:9px;border-radius:3px;background:{{ ac.color }};"></span></div>
+            <div style="min-width:0;"><div style="font-size:13.5px;font-weight:600;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ ac.name }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);">{{ ac.sub }}</div></div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ ac.when }}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink,#1b1a18);font-weight:600;">{{ ac.tss }}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ ac.key }}</span>
+            <div style="display:flex;justify-content:flex-end;"><span style="{{ ac.matchStyle }}">{{ ac.match }}</span></div>
+          </a>
+        </sc-for>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ ASSIGN MODAL ============ -->
+  <sc-if value="{{ modalOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ close }}" style="position:fixed;inset:0;z-index:50;background:rgba(20,17,15,0.42);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:32px;animation:fadeIn 0.14s ease;">
+      <div onClick="{{ stop }}" style="width:760px;max-width:100%;max-height:88vh;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:18px;box-shadow:0 24px 60px rgba(20,17,15,0.28);display:flex;flex-direction:column;overflow:hidden;animation:popIn 0.18s cubic-bezier(0.2,0.8,0.2,1);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line,#e6e2dc);">
+          <div style="display:flex;align-items:center;gap:11px;">
+            <div style="width:34px;height:34px;border-radius:10px;background:hsl(12 52% 52%);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;">MK</div>
+            <div>
+              <div style="font-size:16px;font-weight:800;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Assign to Mara Kessler</div>
+              <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:1px;">Schedule a workout onto her plan</div>
+            </div>
+          </div>
+          <div onClick="{{ close }}" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink3,#9a958d);cursor:pointer;font-size:18px;border:1px solid var(--line,#e6e2dc);">×</div>
+        </div>
+
+        <div style="display:flex;min-height:0;flex:1;">
+          <!-- library -->
+          <div style="width:300px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;min-height:0;">
+            <div style="padding:14px 16px 10px;">
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.7"><circle cx="7" cy="7" r="4.5"></circle><line x1="10.5" y1="10.5" x2="14" y2="14"></line></svg>
+                <span style="font-size:13px;color:var(--ink3,#9a958d);">Search library…</span>
+              </div>
+            </div>
+            <div style="flex:1;overflow-y:auto;padding:0 12px 14px;display:flex;flex-direction:column;gap:6px;">
+              <sc-for list="{{ library }}" as="w" hint-placeholder-count="8">
+                <div onClick="{{ w.onPick }}" style="{{ w.rowStyle }}">
+                  <div style="display:flex;align-items:center;gap:9px;">
+                    <span style="width:8px;height:8px;border-radius:3px;background:{{ w.color }};flex-shrink:0;"></span>
+                    <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">{{ w.name }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding-left:17px;">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);">{{ w.meta }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:0.04em;color:var(--ink3,#9a958d);">{{ w.type }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- details -->
+          <div style="flex:1;min-width:0;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:18px;">
+            <div style="border:1px solid var(--line,#e6e2dc);border-radius:12px;padding:16px 18px;background:var(--elev,#faf9f7);">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:9px;"><span style="width:9px;height:9px;border-radius:3px;background:{{ sel.color }};"></span><span style="font-size:15px;font-weight:700;color:var(--ink,#1b1a18);">{{ sel.name }}</span></div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:3px 8px;border-radius:6px;background:{{ sel.tintBg }};color:{{ sel.color }};">{{ sel.type }}</span>
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:3px;height:54px;margin:14px 0 12px;">
+                <sc-for list="{{ sel.profile }}" as="b" hint-placeholder-count="8"><div style="{{ b.style }}"></div></sc-for>
+              </div>
+              <div style="display:flex;gap:22px;">
+                <div><span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;color:var(--ink,#1b1a18);">{{ sel.dur }}</span><span style="font-size:11px;color:var(--ink3,#9a958d);margin-left:5px;">duration</span></div>
+                <div><span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;color:var(--ember,#ec4a26);">{{ sel.tss }}</span><span style="font-size:11px;color:var(--ink3,#9a958d);margin-left:5px;">TSS</span></div>
+              </div>
+            </div>
+
+            <div>
+              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:10px;">When · June 2026</div>
+              <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:5px;">
+                <sc-for list="{{ dow }}" as="d" hint-placeholder-count="7"><div style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink3,#9a958d);">{{ d }}</div></sc-for>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
+                <sc-for list="{{ miniDays }}" as="m" hint-placeholder-count="35"><div onClick="{{ m.onClick }}" style="{{ m.style }}">{{ m.num }}</div></sc-for>
+              </div>
+            </div>
+
+            <div>
+              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:9px;">Time of day</div>
+              <div style="display:flex;gap:4px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;max-width:280px;">
+                <sc-for list="{{ times }}" as="tm" hint-placeholder-count="3"><div onClick="{{ tm.onClick }}" style="{{ tm.style }}">{{ tm.label }}</div></sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 22px;border-top:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);">
+          <div style="font-size:12px;color:var(--ink3,#9a958d);">{{ summaryText }}</div>
+          <div style="display:flex;gap:9px;">
+            <div onClick="{{ close }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
+            <div onClick="{{ assign }}" style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:9px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg>Assign workout</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:11px;background:var(--ink,#1b1a18);color:var(--card,#fff);font-size:13px;font-weight:600;box-shadow:0 12px 30px rgba(20,17,15,0.3);animation:popIn 0.2s ease;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#2fa66a" stroke-width="2.2"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg>{{ toast }}
+    </div>
+  </sc-if>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:1080}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', modalOpen: false, pickId: 'vo2', day: 17, timeIdx: 0, toast: '' };
+
+  C = { bike: '#3d7fd6', run: '#ec4a26', swim: '#2fa66a' };
+
+  // this week's plan keyed by weekday index (0=Mon)
+  weekPlan = {
+    0: [['bike', 'Z2 Endurance', '1:30', 'done']],
+    1: [['run', 'Threshold 5×5', '1:05', 'done']],
+    2: [['swim', 'CSS 8×100', '0:45', 'done']],
+    3: [['bike', 'Brick + Run', '1:40', 'done']],
+    4: [['run', 'Easy Run', '0:50', 'planned']],
+    5: [['bike', 'VO2 Max 5×5', '0:55', 'planned'], ['swim', 'Recovery', '0:30', 'planned']],
+    6: [['bike', 'Long Ride', '3:00', 'planned']],
+  };
+
+  library = [
+    { id: 'vo2', sport: 'bike', name: 'VO2 Max · 5×5', dur: '0:55', tss: 78, type: 'VO2 MAX', profile: [0.4, 0.92, 0.4, 0.92, 0.4, 0.92, 0.4, 0.92, 0.4, 0.92, 0.32] },
+    { id: 'thr', sport: 'bike', name: 'Threshold 4×8', dur: '1:00', tss: 76, type: 'THRESHOLD', profile: [0.4, 0.76, 0.5, 0.76, 0.5, 0.76, 0.5, 0.76, 0.32] },
+    { id: 'ss', sport: 'bike', name: 'Sweet Spot 3×12', dur: '1:15', tss: 85, type: 'SWEET SPOT', profile: [0.4, 0.7, 0.55, 0.7, 0.55, 0.7, 0.32] },
+    { id: 'css', sport: 'swim', name: 'CSS 8×100', dur: '0:45', tss: 42, type: 'SWIM', profile: [0.4, 0.6, 0.5, 0.6, 0.5, 0.6, 0.5, 0.6, 0.4] },
+    { id: 'long', sport: 'run', name: 'Long Run', dur: '1:40', tss: 95, type: 'ENDURANCE', profile: [0.4, 0.46, 0.5, 0.48, 0.5, 0.48, 0.44, 0.4] },
+    { id: 'tempo', sport: 'run', name: 'Tempo Run', dur: '0:55', tss: 58, type: 'TEMPO', profile: [0.4, 0.66, 0.62, 0.66, 0.62, 0.4] },
+    { id: 'brick', sport: 'bike', name: 'Brick + Run', dur: '1:40', tss: 102, type: 'BRICK', profile: [0.45, 0.6, 0.6, 0.62, 0.6, 0.85, 0.5] },
+    { id: 'rec', sport: 'bike', name: 'Recovery Spin', dur: '0:45', tss: 30, type: 'RECOVERY', profile: [0.34, 0.4, 0.38, 0.4, 0.36, 0.34] },
+  ];
+
+  timeLabels = ['Morning', 'Midday', 'Evening'];
+
+  activities = [
+    { sport: 'bike', name: 'Brick session — bike + 20′ run', sub: 'Indoor · Kickr', when: '6h ago', tss: 102, key: '241 W', match: 'VO2 ✓ 94%', matched: true },
+    { sport: 'swim', name: 'CSS 8×100m', sub: 'Pool · 50m', when: 'Yesterday', tss: 42, key: '1:36 /100', match: 'matched', matched: true },
+    { sport: 'run', name: 'Threshold 5×5′', sub: 'Road · evening', when: '2d ago', tss: 71, key: '4:02 /km', match: 'thr ✓ 88%', matched: true },
+    { sport: 'bike', name: 'Z2 Endurance', sub: 'Outdoor · 48 km', when: '3d ago', tss: 62, key: '198 W', match: 'unstructured', matched: false },
+    { sport: 'run', name: 'Easy shakeout', sub: 'Road · 6 km', when: '4d ago', tss: 28, key: '5:18 /km', match: 'unstructured', matched: false },
+  ];
+
+  rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+
+  openScheduler() { this.setState({ modalOpen: true }); }
+  close() { this.setState({ modalOpen: false }); }
+  stop(e) { e.stopPropagation(); }
+  pick(id) { this.setState({ pickId: id }); }
+
+  assign() {
+    const w = this.library.find(x => x.id === this.state.pickId);
+    const wd = (this.state.day - 9 + 70) % 7; // Jun 9 = Monday(0)
+    if (this.state.day >= 9 && this.state.day <= 15) {
+      if (!this.weekPlan[wd]) this.weekPlan[wd] = [];
+      this.weekPlan[wd].push([w.sport, w.name, w.dur, 'planned']);
+    }
+    this.setState({ modalOpen: false, toast: w.name + ' assigned to Mara · Jun ' + this.state.day });
+    clearTimeout(this._tt);
+    this._tt = setTimeout(() => this.setState({ toast: '' }), 3200);
+  }
+
+  loadCurve(base, amp, phase, n) {
+    const a = [];
+    for (let i = 0; i < n; i++) a.push(base + amp * Math.sin(i / n * Math.PI * 1.4 + phase) + (i / n) * 6);
+    return a;
+  }
+
+  renderVals() {
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)' };
+    const isLab = this.state.theme === 'lab';
+    const seg = (active) => ({ flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent', boxShadow: active ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+
+    // ----- training load chart -----
+    const N = 42;
+    const ctl = this.loadCurve(48, 8, 0.2, N);   // fitness rising
+    const atl = this.loadCurve(52, 18, 1.1, N);  // fatigue more variable
+    const AXmax = 90, H = 200;
+    const toXY = (arr) => arr.map((v, i) => (i / (N - 1) * 1000).toFixed(1) + ',' + ((1 - v / AXmax) * H).toFixed(1));
+    const ctlPts = toXY(ctl), atlPts = toXY(atl);
+    // form (tsb) = ctl - atl, mapped around mid
+    const tsb = ctl.map((v, i) => v - atl[i]);
+    const tsbPts = tsb.map((v, i) => (i / (N - 1) * 1000).toFixed(1) + ',' + (120 - v * 2.2).toFixed(1));
+    const ctlLine = ctlPts.join(' ');
+    const ctlArea = ctlPts.join(' ') + ' 1000,200 0,200';
+    const atlLine = atlPts.join(' ');
+    const tsbLine = tsbPts.join(' ');
+
+    // ----- status -----
+    const statBig = (color) => ({ fontFamily: "'JetBrains Mono',monospace", fontSize: '20px', fontWeight: 600, color });
+    const status = [
+      { label: 'Fitness (CTL)', sub: '6-week trend ↑', value: '61', valStyle: statBig('#3d7fd6') },
+      { label: 'Fatigue (ATL)', sub: 'elevated', value: '68', valStyle: statBig('#f0a02e') },
+      { label: 'Form (TSB)', sub: 'building — fatigued', value: '−7', valStyle: statBig('#e0442e') },
+    ];
+
+    // ----- this week -----
+    const dows = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const nums = [9, 10, 11, 12, 13, 14, 15];
+    let done = 0, total = 0;
+    const week = dows.map((dw, i) => {
+      const raw = this.weekPlan[i] || [];
+      const items = raw.map(it => {
+        const [sport, title, dur, st] = it;
+        const c = this.C[sport];
+        const isDone = st === 'done';
+        if (isDone) done++; total++;
+        return {
+          color: c, title, titleColor: isDone ? 'var(--ink,#1b1a18)' : 'var(--ink2,#6f6b65)',
+          meta: dur,
+          cardStyle: { padding: '6px 8px', borderRadius: '7px', marginBottom: '5px', background: isDone ? this.rgba(c, 0.12) : 'transparent', border: isDone ? '1px solid ' + this.rgba(c, 0.22) : '1px dashed ' + this.rgba(c, 0.5), borderLeft: '3px solid ' + (isDone ? c : this.rgba(c, 0.7)) },
+          badge: isDone ? '✓' : 'plan',
+          badgeStyle: isDone
+            ? { fontFamily: "'JetBrains Mono',monospace", fontSize: '9px', fontWeight: 700, color: '#2fa66a' }
+            : { fontFamily: "'JetBrains Mono',monospace", fontSize: '8px', fontWeight: 600, color: c, opacity: 0.8 },
+        };
+      });
+      const isToday = nums[i] === 13;
+      return {
+        dow: dw, num: nums[i], items,
+        colStyle: { background: 'var(--elev,#faf9f7)', border: isToday ? '1.5px solid var(--ember,#ec4a26)' : '1px solid var(--line,#e6e2dc)', borderRadius: '10px', padding: '10px', minHeight: '108px' },
+        numStyle: isToday
+          ? { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 700, color: '#fff', background: 'var(--ember,#ec4a26)', borderRadius: '10px', padding: '1px 6px' }
+          : { fontFamily: "'JetBrains Mono',monospace", fontSize: '12px', fontWeight: 600, color: 'var(--ink2,#6f6b65)' },
+      };
+    });
+
+    // ----- activities -----
+    const activities = this.activities.map(a => {
+      const c = this.C[a.sport];
+      return {
+        color: c,
+        iconStyle: { width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: this.rgba(c, 0.13) },
+        name: a.name, sub: a.sub, when: a.when, tss: a.tss, key: a.key, match: a.match,
+        matchStyle: a.matched
+          ? { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600, padding: '4px 9px', borderRadius: '6px', color: '#2fa66a', background: 'rgba(47,166,106,0.13)', whiteSpace: 'nowrap' }
+          : { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 500, color: 'var(--ink3,#9a958d)', whiteSpace: 'nowrap' },
+      };
+    });
+
+    // ----- modal -----
+    const sel = this.library.find(x => x.id === this.state.pickId) || this.library[0];
+    const selColor = this.C[sel.sport];
+    const library = this.library.map(w => {
+      const c = this.C[w.sport]; const active = w.id === this.state.pickId;
+      return {
+        color: c, name: w.name, type: w.type, meta: w.dur + ' · ' + w.tss + ' TSS',
+        onPick: () => this.pick(w.id),
+        rowStyle: { padding: '10px 11px', borderRadius: '10px', cursor: 'pointer', border: '1px solid ' + (active ? this.rgba(c, 0.55) : 'var(--line,#e6e2dc)'), background: active ? this.rgba(c, 0.1) : 'var(--card,#fff)' },
+      };
+    });
+    const selProfile = sel.profile.map(h => ({ style: { flex: 1, height: (h * 100) + '%', background: selColor, opacity: 0.82, borderRadius: '2px 2px 0 0' } }));
+    const miniDays = [];
+    for (let i = 1; i <= 35; i++) {
+      if (i <= 30) {
+        const num = i, isSel = num === this.state.day, isToday = num === 13;
+        miniDays.push({ num, onClick: () => this.setState({ day: num }), style: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '32px', borderRadius: '8px', fontFamily: "'JetBrains Mono',monospace", fontSize: '12px', cursor: 'pointer', fontWeight: isSel ? 700 : 500, background: isSel ? 'var(--ember,#ec4a26)' : 'transparent', color: isSel ? '#fff' : 'var(--ink2,#6f6b65)', border: !isSel && isToday ? '1px solid var(--ember,#ec4a26)' : '1px solid transparent' } });
+      } else miniDays.push({ num: '', onClick: () => {}, style: { height: '32px' } });
+    }
+    const times = this.timeLabels.map((label, i) => ({ label, onClick: () => this.setState({ timeIdx: i }), style: { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: this.state.timeIdx === i ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: this.state.timeIdx === i ? 'var(--card,#fff)' : 'transparent', boxShadow: this.state.timeIdx === i ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' } }));
+    const dowName = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][(this.state.day - 1) % 7];
+
+    return {
+      themeVars: this.state.theme === 'day' ? { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--emberLine': 'rgba(13,148,136,0.30)', '--grid': 'rgba(14,24,32,0.06)' } : (isLab ? lab : cockpit),
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(this.state.theme === 'lab'), cockpitBtn: seg(this.state.theme === 'cockpit'), dayBtn: seg(this.state.theme === 'day'),
+      ctlLine, ctlArea, atlLine, tsbLine,
+      status, week, activities,
+      weekDone: done, weekTotal: total, weekCompliance: Math.round(done / total * 100) + '%',
+      // modal
+      modalOpen: this.state.modalOpen,
+      openScheduler: () => this.openScheduler(),
+      close: () => this.close(), stop: (e) => this.stop(e), assign: () => this.assign(),
+      library,
+      sel: { name: sel.name, color: selColor, tintBg: this.rgba(selColor, 0.13), type: sel.type, dur: sel.dur, tss: sel.tss, profile: selProfile },
+      dow: ['M', 'T', 'W', 'T', 'F', 'S', 'S'], miniDays, times,
+      summaryText: 'Assigns ' + sel.name + ' to Mara · ' + dowName + ', Jun ' + this.state.day + ' · ' + this.timeLabels[this.state.timeIdx],
+      toast: this.state.toast,
+    };
+  }
+}
+</script>
+</body>
+</html>

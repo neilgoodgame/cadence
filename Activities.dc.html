@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  .zexp{overflow:hidden;transition:max-height 0.26s ease, opacity 0.2s ease;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- SIDEBAR -->
+  <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 26px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
+      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</div>
+      <a href="Activity Analysis.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>Analysis</a>
+      <a href="Calendar.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</a>
+      <a href="Workout Designer.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</a>
+      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</a>
+      <a href="Gear.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"></circle><circle cx="8" cy="8" r="2.1"></circle><line x1="8" y1="2" x2="8" y2="3.9"></line><line x1="8" y1="12.1" x2="8" y2="14"></line><line x1="2" y1="8" x2="3.9" y2="8"></line><line x1="12.1" y1="8" x2="14" y2="8"></line></svg>Gear</a>
+    </div>
+    <div style="margin-top:auto;padding:16px 16px 20px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div><div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div data-screen-label="activities" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- top bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
+      <div>
+        <h1 style="font-size:21px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Activities</h1>
+        <div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:2px;">{{ countLabel }}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <sc-if value="{{ isActivities }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ toggleAllZones }}" style="display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">{{ expandAllLabel }}</div>
+          <div style="display:flex;gap:2px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+            <sc-for list="{{ sports }}" as="sp" hint-placeholder-count="4">
+              <div onClick="{{ sp.onClick }}" style="{{ sp.style }}">{{ sp.label }}</div>
+            </sc-for>
+          </div>
+          <div onClick="{{ toggleMatched }}" style="{{ matchedBtn }}"><svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M8 11a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1"></path><path d="M12 9a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1"></path></svg>Matched only</div>
+        </sc-if>
+        <sc-if value="{{ isBest }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:2px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+            <sc-for list="{{ beSports }}" as="b" hint-placeholder-count="2">
+              <div onClick="{{ b.onClick }}" style="{{ b.style }}">{{ b.label }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <a href="Notifications.dc.html" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg><span style="position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--ember,#ec4a26);border:1.5px solid var(--card,#fff);"></span></a><dc-import name="Preferences" hint-size="218px,46px"></dc-import>
+      </div>
+    </div>
+
+    <div style="padding:20px 32px 64px;display:flex;flex-direction:column;gap:14px;">
+
+      <!-- TABS -->
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--line,#e6e2dc);">
+        <div onClick="{{ tabActivitiesClick }}" style="{{ tabActivities }}">Activities</div>
+        <div onClick="{{ tabBestClick }}" style="{{ tabBest }}">Best efforts</div>
+      </div>
+
+      <sc-if value="{{ isActivities }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+      <!-- ADVANCED SEARCH -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:13px 16px;">
+        <div style="display:flex;align-items:center;gap:11px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.8" style="flex-shrink:0;"><circle cx="7" cy="7" r="4.5"></circle><line x1="10.5" y1="10.5" x2="14" y2="14"></line></svg>
+          <input value="{{ query }}" onInput="{{ onQuery }}" placeholder="Search activities — e.g. runs tagged race and distance > 10km ordered by tss" style="flex:1;min-width:0;border:none;background:transparent;outline:none;font-size:14px;font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);"/>
+          <sc-if value="{{ queryActive }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ clearQuery }}" style="flex-shrink:0;width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line,#e6e2dc);color:var(--ink3,#9a958d);font-size:15px;cursor:pointer;">×</div>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ queryEmpty }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:11px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Try</span>
+            <sc-for list="{{ queryExamples }}" as="e" hint-placeholder-count="4">
+              <div onClick="{{ e.onClick }}" style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink2,#6f6b65);background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);border-radius:7px;padding:4px 9px;cursor:pointer;">{{ e.label }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ queryActive }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:11px;padding-top:11px;border-top:1px solid var(--line,#e6e2dc);">
+            <sc-if value="{{ queryHasError }}" hint-placeholder-val="{{ false }}">
+              <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:#e0442e;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="5" x2="8" y2="9"></line><line x1="8" y1="11.4" x2="8" y2="11.5"></line></svg>{{ queryError }}</span>
+            </sc-if>
+            <sc-if value="{{ queryHasChips }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ queryChips }}" as="c" hint-placeholder-count="2">
+                <sc-if value="{{ c.isChip }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink,#1b1a18);background:var(--emberSoft,#fff5f1);border:1px solid rgba(236,74,38,0.25);border-radius:7px;padding:3px 9px;">{{ c.text }}</span></sc-if>
+                <sc-if value="{{ c.isJoin }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);">{{ c.text }}</span></sc-if>
+              </sc-for>
+              <sc-if value="{{ queryHasOrder }}" hint-placeholder-val="{{ false }}">
+                <span style="display:inline-flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:#3d7fd6;background:rgba(61,127,214,0.1);border:1px solid rgba(61,127,214,0.25);border-radius:7px;padding:3px 9px;">{{ queryOrder }}</span>
+              </sc-if>
+              <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);">{{ queryCount }} matched</span>
+            </sc-if>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- TAG FILTER BAR -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:14px 18px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px;">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.08em;color:var(--ink3,#9a958d);">FILTER BY TAG</span>
+          <sc-if value="{{ activeTag }}" hint-placeholder-val="{{ false }}">
+            <span onClick="{{ clearTag }}" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--ember,#ec4a26);cursor:pointer;">clear ×</span>
+          </sc-if>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;">
+          <sc-for list="{{ tagFilters }}" as="t" hint-placeholder-count="10">
+            <div onClick="{{ t.onClick }}" style="{{ t.style }}"><sc-if value="{{ t.dotStyle }}" hint-placeholder-val="{{ false }}"><span style="{{ t.dotStyle }}"></span></sc-if><sc-if value="{{ t.auto }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 11a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1"></path><path d="M12 9a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1"></path></svg></sc-if>{{ t.label }}<span style="{{ t.countStyle }}">{{ t.count }}</span></div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- SORT BAR -->
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:0 2px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Sort by</span>
+        <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;flex-wrap:wrap;">
+          <sc-for list="{{ sortBy }}" as="s" hint-placeholder-count="7">
+            <div onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.label }}<sc-if value="{{ s.active }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;">{{ s.arrow }}</span></sc-if></div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ sortDisabledByQuery }}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:11.5px;color:var(--ink3,#9a958d);">overridden by query <span style="font-family:'JetBrains Mono',monospace;color:#3d7fd6;">{{ queryOrder }}</span></span>
+        </sc-if>
+      </div>
+
+      <!-- ACTIVITY CARDS -->
+      <sc-for list="{{ activities }}" as="a" hint-placeholder-count="8">
+        <div style="{{ a.cardStyle }}">
+          <!-- header -->
+          <div style="display:flex;align-items:flex-start;gap:18px;padding:18px 22px;">
+            <div style="width:118px;flex-shrink:0;">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ a.date }}</div>
+              <div style="{{ a.sportPill }}">{{ a.sportLabel }}</div>
+            </div>
+            <a href="Activity Analysis.dc.html" style="text-decoration:none;flex:1;min-width:0;">
+              <div style="display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap;">
+                <span style="font-size:17px;font-weight:700;letter-spacing:-0.01em;line-height:1.3;color:var(--ink,#1b1a18);">{{ a.name }}</span>
+                <sc-if value="{{ a.matched }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:4px;margin-top:3px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;padding:2px 7px;border-radius:20px;background:rgba(47,166,106,0.13);color:#2fa66a;white-space:nowrap;"><svg width="9" height="9" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 11a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1"></path><path d="M12 9a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1"></path></svg>{{ a.matched }}</span></sc-if>
+                <sc-if value="{{ a.indoor }}" hint-placeholder-val="{{ false }}"><span style="{{ a.indoorBadgeStyle }}"><svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 14h12M3 14V7l5-4 5 4v7M6.5 14v-3.5h3V14"></path></svg>INDOOR</span></sc-if>
+              </div>
+              <div style="{{ a.insightStyle }}">{{ a.insight }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink3,#9a958d);margin-top:5px;">{{ a.metric }}</div>
+              <sc-if value="{{ a.hasTags }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
+                  <sc-for list="{{ a.tags }}" as="tg" hint-placeholder-count="2">
+                    <div onClick="{{ tg.onClick }}" style="{{ tg.style }}"><sc-if value="{{ tg.auto }}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 11a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1"></path><path d="M12 9a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1"></path></svg></sc-if><sc-if value="{{ tg.dotStyle }}" hint-placeholder-val="{{ false }}"><span style="{{ tg.dotStyle }}"></span></sc-if>{{ tg.label }}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </a>
+            <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:9px;">
+              <div style="display:flex;align-items:center;gap:14px;font-size:13px;color:var(--ink3,#9a958d);">
+                <span>HR avg <b style="font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--ink,#1b1a18);">{{ a.hrAvg }}</b></span>
+                <span>Max <b style="font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--ink,#1b1a18);">{{ a.hrMax }}</b></span>
+              </div>
+              <span style="{{ a.tssStyle }}">{{ a.tssLabel }}</span>
+            </div>
+          </div>
+          <!-- zones toggle -->
+          <div onClick="{{ a.onToggle }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 22px;border-top:1px solid var(--line,#e6e2dc);cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="2" style="{{ a.chevronStyle }}"><polyline points="5,3 11,8 5,13"></polyline></svg>
+              <span style="font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);">{{ a.zonesLabel }}</span>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink3,#9a958d);">{{ a.zonesSummary }}</span>
+          </div>
+          <!-- zones expanded -->
+          <sc-if value="{{ a.expanded }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:4px 22px 20px;">
+              <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px;background:var(--canvas,#f3f1ee);">
+                <sc-for list="{{ a.segs }}" as="s" hint-placeholder-count="3">
+                  <div style="{{ s.style }}"></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:12px;">
+                <sc-for list="{{ a.legend }}" as="z" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:7px;font-size:13px;"><span style="width:10px;height:10px;border-radius:3px;background:{{ z.color }};"></span><span style="color:var(--ink2,#6f6b65);font-weight:600;">{{ z.label }}</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink3,#9a958d);">{{ z.pct }}</span></div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:48px;text-align:center;color:var(--ink3,#9a958d);font-size:14px;">No activities match this filter.</div>
+      </sc-if>
+
+      <!-- legend -->
+      <div style="display:flex;align-items:center;gap:18px;font-size:12px;color:var(--ink3,#9a958d);padding:2px 4px;">
+        <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:3px;background:#2fa66a;"></span>Manual tag</div>
+        <div style="display:flex;align-items:center;gap:6px;"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="#2fa66a" stroke-width="2"><path d="M8 11a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1"></path><path d="M12 9a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1"></path></svg>Auto-tagged from matched workout</div>
+      </div>
+      </div>
+      </sc-if>
+
+      <!-- ============ BEST EFFORTS ============ -->
+      <sc-if value="{{ isBest }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <!-- CYCLING -->
+        <sc-if value="{{ beIsBike }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <!-- curve -->
+            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px 16px;">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;">
+                <div>
+                  <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Mean-maximal power</div>
+                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:1px;">Best average power held for each duration</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:16px;">
+                  <div style="display:flex;align-items:center;gap:7px;"><span style="width:14px;height:3px;border-radius:2px;background:var(--ember,#ec4a26);"></span><span style="font-size:12px;color:var(--ink3,#9a958d);">All-time</span></div>
+                  <div style="display:flex;align-items:center;gap:7px;"><span style="width:14px;height:0;border-top:2px dashed var(--ink3,#9a958d);"></span><span style="font-size:12px;color:var(--ink3,#9a958d);">Last 90 days</span></div>
+                </div>
+              </div>
+              <div style="position:relative;height:210px;">
+                <svg viewBox="0 0 1000 200" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">
+                  <polygon points="{{ pdcArea }}" fill="var(--emberSoft,#fff5f1)"></polygon>
+                  <polyline points="{{ pdc90 }}" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></polyline>
+                  <polyline points="{{ pdcLine }}" fill="none" stroke="var(--ember,#ec4a26)" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+                </svg>
+              </div>
+              <div style="position:relative;height:16px;margin-top:6px;">
+                <sc-for list="{{ pdcTicks }}" as="t" hint-placeholder-count="6">
+                  <span style="{{ t.style }}"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);">{{ t.label }}</span></span>
+                </sc-for>
+              </div>
+            </div>
+            <!-- peak cards -->
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;">
+              <sc-for list="{{ cyclingPeaks }}" as="p" hint-placeholder-count="5">
+                <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:16px 18px;">
+                  <div style="{{ p.tagStyle }}">{{ p.tag }}</div>
+                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:3px;">{{ p.dur }}</div>
+                  <div style="display:flex;align-items:baseline;gap:4px;margin-top:12px;"><span style="font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">{{ p.watts }}</span><span style="font-size:12px;color:var(--ink3,#9a958d);">w</span></div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ p.wkg }} w/kg</span><sc-if value="{{ p.prBadge }}" hint-placeholder-val="{{ false }}"><span style="{{ p.prStyle }}">{{ p.prBadge }}</span></sc-if></div>
+                  <div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:6px;font-family:'JetBrains Mono',monospace;">{{ p.date }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <!-- table -->
+            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
+              <div style="display:grid;grid-template-columns:96px 1fr 78px 78px 110px 56px;gap:14px;padding:12px 22px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);">
+                <span>Duration</span><span>Peak power</span><span>W/kg</span><span>% FTP</span><span>Date</span><span></span>
+              </div>
+              <sc-for list="{{ cyclingBests }}" as="b" hint-placeholder-count="10">
+                <div style="display:grid;grid-template-columns:96px 1fr 78px 78px 110px 56px;gap:14px;padding:12px 22px;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ b.dur }}</span>
+                  <span style="display:flex;align-items:center;gap:12px;"><span style="width:150px;height:8px;border-radius:4px;background:var(--canvas,#f3f1ee);overflow:hidden;flex-shrink:0;"><span style="{{ b.barStyle }}"></span></span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ b.watts }} <span style="color:var(--ink3,#9a958d);font-weight:400;">w</span></span></span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);">{{ b.wkg }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);">{{ b.pct }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ b.date }}</span>
+                  <span style="text-align:right;"><sc-if value="{{ b.prBadge }}" hint-placeholder-val="{{ false }}"><span style="{{ b.prStyle }}">{{ b.prBadge }}</span></sc-if></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- RUNNING -->
+        <sc-if value="{{ beIsRun }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:14px;">
+
+            <!-- running power (only when a power source is available) -->
+            <sc-if value="{{ runPowerAvailable }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:11px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px;">
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--ink3,#9a958d);">RUNNING POWER</div>
+                  <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;"><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-weight:600;"><span style="width:6px;height:6px;border-radius:50%;background:var(--ember,#ec4a26);"></span>{{ runPowerSource }}</span><span>rCP {{ rCP }}w</span></div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;">
+                  <sc-for list="{{ runningPower }}" as="p" hint-placeholder-count="6">
+                    <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:14px 16px;">
+                      <div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ p.dur }}</span><sc-if value="{{ p.prBadge }}" hint-placeholder-val="{{ false }}"><span style="{{ p.prStyle }}">{{ p.prBadge }}</span></sc-if></div>
+                      <div style="display:flex;align-items:baseline;gap:3px;margin-top:11px;"><span style="font-family:'JetBrains Mono',monospace;font-size:23px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">{{ p.watts }}</span><span style="font-size:11px;color:var(--ink3,#9a958d);">w</span></div>
+                      <div style="height:7px;border-radius:4px;background:var(--canvas,#f3f1ee);overflow:hidden;margin-top:9px;"><span style="{{ p.barStyle }}"></span></div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:9px;"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink2,#6f6b65);">{{ p.wkg }} w/kg</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);">{{ p.date }}</span></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--ink3,#9a958d);padding:4px 2px 0;">BEST TIMES BY DISTANCE</div>
+            </sc-if>
+
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+              <sc-for list="{{ runningPeaks }}" as="p" hint-placeholder-count="4">
+                <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:16px 18px;">
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:0.05em;color:var(--ember,#ec4a26);">{{ p.dist }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);margin-top:12px;">{{ p.time }}</div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ p.pace }}</span><sc-if value="{{ p.prBadge }}" hint-placeholder-val="{{ false }}"><span style="{{ p.prStyle }}">{{ p.prBadge }}</span></sc-if></div>
+                  <div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:6px;font-family:'JetBrains Mono',monospace;">{{ p.date }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
+              <div style="display:grid;grid-template-columns:140px 1fr 130px 120px 56px;gap:14px;padding:12px 22px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);">
+                <span>Distance</span><span>Best time</span><span>Avg pace</span><span>Date</span><span></span>
+              </div>
+              <sc-for list="{{ runningBests }}" as="r" hint-placeholder-count="8">
+                <div style="display:grid;grid-template-columns:140px 1fr 130px 120px 56px;gap:14px;padding:13px 22px;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
+                  <span style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);">{{ r.dist }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;color:var(--ink,#1b1a18);">{{ r.time }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);">{{ r.pace }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ r.date }}</span>
+                  <span style="text-align:right;"><sc-if value="{{ r.prBadge }}" hint-placeholder-val="{{ false }}"><span style="{{ r.prStyle }}">{{ r.prBadge }}</span></sc-if></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900},&quot;weight&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:72,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', sport: 'all', activeTag: null, matchedOnly: false, expanded: {}, tab: 'activities', beSport: 'bike', query: '', sortKey: 'date', sortDir: 'desc' };
+
+  sortAccess = { date: a => -a._idx, tss: a => a.tss, distance: a => a.distanceKm, duration: a => a.durationMin, hr: a => a.hrAvg, power: a => a.powerW, pace: a => a.paceSec };
+  applySort(list) {
+    const get = this.sortAccess[this.state.sortKey] || this.sortAccess.date;
+    const dir = this.state.sortDir === 'asc' ? 1 : -1;
+    return [...list].sort((a, b) => {
+      let va = get(a), vb = get(b);
+      va = va == null ? -Infinity : va; vb = vb == null ? -Infinity : vb;
+      if (va < vb) return -1 * dir; if (va > vb) return 1 * dir; return 0;
+    });
+  }
+  setSort(k) { this.setState(s => s.sortKey === k ? { sortDir: s.sortDir === 'asc' ? 'desc' : 'asc' } : { sortKey: k, sortDir: k === 'date' ? 'desc' : 'desc' }); }
+
+  tagColors = { 'Recovery': '#8b95a1', 'Endurance': '#3d7fd6', 'Long Ride': '#3d7fd6', 'Long Run': '#3d7fd6', 'Tempo': '#2fa66a', 'Sweet Spot': '#2fa66a', 'Threshold': '#f0a02e', 'VO2 Max': '#e0442e', 'Race': '#ec4a26', 'Key session': '#ec4a26', 'Group ride': '#3d7fd6', 'Brick': '#9a6ad0', 'Swim set': '#2fa66a', 'Felt strong': '#2fa66a', 'Felt flat': '#f0a02e', 'Hot day': '#f0823a' };
+
+  zoneColors = ['#7fcfa6', '#3d7fd6', '#f0a02e', '#e0442e', '#a52f22'];
+
+  autoFor(wk) {
+    if (!wk) return [];
+    if (/VO2/i.test(wk)) return ['VO2 Max'];
+    if (/Threshold/i.test(wk)) return ['Threshold'];
+    if (/Sweet Spot/i.test(wk)) return ['Sweet Spot'];
+    if (/Long Ride/i.test(wk)) return ['Long Ride'];
+    if (/Long Run/i.test(wk)) return ['Long Run'];
+    if (/Tempo/i.test(wk)) return ['Tempo'];
+    if (/Recovery/i.test(wk)) return ['Recovery'];
+    if (/Endurance|Z2/i.test(wk)) return ['Endurance'];
+    if (/Brick/i.test(wk)) return ['Brick'];
+    if (/CSS|Swim/i.test(wk)) return ['Swim set'];
+    return [];
+  }
+
+  C = { bike: '#3d7fd6', run: '#ec4a26', swim: '#2fa66a' };
+
+  // id, sport, name, date, hrAvg, hrMax, tss, tone, insight, metric, zones[z1..z5], zonesLabel, manualTags, matchedWorkout
+  data = [
+    { id: 'a1', sport: 'bike', name: 'Free ride · Big Loop · Zwift', date: 'Thu 12 Jun', hrAvg: 124, hrMax: 139, tss: 89, tone: 'warn', insight: '🌡 66% humidity · sweat 1.46 L/hr · 2.0% dehydration', metric: '90.5 min · 43.1 km · 191 W · 21°C · 66% RH', zones: [2, 60, 28, 8, 2], zonesLabel: 'HR zones (humidity-elevated)', manualTags: ['Tempo', 'Key session'], matchedWorkout: null },
+    { id: 'a2', sport: 'bike', name: 'VO2 intervals · Tuesday AM', date: 'Tue 10 Jun', hrAvg: 148, hrMax: 171, tss: 102, tone: 'good', insight: '✓ Matched VO2 Max 5×5 · 94% compliant · 241 W avg · 5 of 5 reps hit', metric: '1:02:11 · 28.4 km · 241 W · 22°C · 54% RH', zones: [2, 18, 22, 36, 22], zonesLabel: 'HR zones', manualTags: [], matchedWorkout: 'VO2 Max 5×5' },
+    { id: 'a3', sport: 'run', name: 'Threshold 5×5′', date: 'Mon 9 Jun', hrAvg: 162, hrMax: 174, tss: 71, tone: 'good', insight: '✓ Matched Threshold 5×5 · 88% · 4:02 /km at 162 bpm', metric: '1:05:02 · 13.0 km · 4:02 /km · 19°C · 60% RH', zones: [3, 20, 30, 38, 9], zonesLabel: 'HR zones', manualTags: [], matchedWorkout: 'Threshold 5×5' },
+    { id: 'a4', sport: 'swim', name: 'CSS 8×100m', date: 'Sun 8 Jun', hrAvg: 140, hrMax: 158, tss: 42, tone: 'good', insight: '✓ Matched CSS 8×100 · 1:36 /100m · consistent splits', metric: '0:45:00 · 2.0 km · 1:36 /100m · pool 50m', zones: [8, 40, 34, 18, 0], zonesLabel: 'HR zones', manualTags: [], matchedWorkout: 'CSS 8×100' },
+    { id: 'a5', sport: 'bike', name: 'Sweet Spot 3×12', date: 'Sat 7 Jun', hrAvg: 150, hrMax: 168, tss: 85, tone: 'good', insight: '✓ Matched Sweet Spot 3×12 · felt strong · 231 W · 90 rpm', metric: '1:15:20 · 35.0 km · 231 W · 20°C · 48% RH', zones: [3, 30, 40, 25, 2], zonesLabel: 'HR zones', manualTags: ['Felt strong'], matchedWorkout: 'Sweet Spot 3×12' },
+    { id: 'a6', sport: 'run', name: 'Sunday Long Run', date: 'Fri 6 Jun', hrAvg: 138, hrMax: 152, tss: 96, tone: 'good', insight: '✓ 92% in Z2 · 5:01 /km at 138 bpm · sweat 1.10 L/hr · 2.4% dehydration', metric: '1:48:30 · 23.0 km · 5:01 /km · 18°C · 55% RH', zones: [5, 74, 18, 3, 0], zonesLabel: 'HR zones', manualTags: ['Race'], matchedWorkout: 'Long Run' },
+    { id: 'a7', sport: 'bike', name: 'Recovery Spin', date: 'Thu 5 Jun', hrAvg: 112, hrMax: 128, tss: 30, tone: 'good', insight: '✓ Matched Recovery Spin · easy · 142 W · low strain', metric: '0:45:00 · 20.0 km · 142 W · 21°C', zones: [42, 54, 4, 0, 0], zonesLabel: 'HR zones', manualTags: [], matchedWorkout: 'Recovery Spin' },
+    { id: 'a8', sport: 'bike', name: 'Endurance Z2', date: 'Wed 4 Jun', hrAvg: 132, hrMax: 150, tss: 110, tone: 'good', insight: '✓ Matched Endurance Ride · 198 W steady · 132 bpm', metric: '2:00:00 · 55.0 km · 198 W · 19°C · 52% RH', zones: [8, 70, 20, 2, 0], zonesLabel: 'HR zones', manualTags: [], matchedWorkout: 'Endurance Ride' },
+    { id: 'a9', sport: 'run', name: 'Treadmill shakeout', date: 'Tue 3 Jun', indoor: true, hrAvg: 120, hrMax: 134, tss: 24, tone: 'good', insight: 'Easy · 5:30 /km · 120 bpm · treadmill · no GPS', metric: '0:35:00 · 6.0 km · 5:30 /km', zones: [30, 64, 6, 0, 0], zonesLabel: 'HR zones', manualTags: ['Recovery'], matchedWorkout: null },
+    { id: 'a10', sport: 'bike', name: 'Saturday Group Ride', date: 'Sun 1 Jun', hrAvg: 142, hrMax: 178, tss: 156, tone: 'warn', insight: '🌡 Hot day 31°C · attacking surges · sweat 1.60 L/hr · 3.1% dehydration', metric: '2:34:00 · 78.0 km · 214 W · 31°C · 38% RH', zones: [6, 40, 30, 18, 6], zonesLabel: 'HR zones (heat-affected)', manualTags: ['Group ride', 'Hot day', 'Race'], matchedWorkout: null },
+    { id: 'a11', sport: 'run', name: 'Tempo Run', date: 'Fri 30 May', hrAvg: 156, hrMax: 168, tss: 58, tone: 'good', insight: '✓ Matched Tempo Run · 4:12 /km · 156 bpm · negative split', metric: '0:55:00 · 11.0 km · 4:12 /km · 17°C', zones: [4, 24, 46, 24, 2], zonesLabel: 'HR zones', manualTags: [], matchedWorkout: 'Tempo Run' },
+    { id: 'a12', sport: 'swim', name: 'Open Water · lake', date: 'Thu 29 May', hrAvg: 138, hrMax: 150, tss: 44, tone: 'warn', insight: 'Felt flat · 1:42 /100m · choppy water · sighting off', metric: '0:50:00 · 2.4 km · 1:42 /100m · open water', zones: [10, 50, 32, 8, 0], zonesLabel: 'HR zones', manualTags: ['Felt flat'], matchedWorkout: null },
+  ];
+
+  rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+  tagColor(name) { return this.tagColors[name] || '#6f8bb0'; }
+
+  weight = 72;
+  athleteWeight() { return this.props.weight ?? this.weight; }
+  effortColors = { 'Sprint': '#9a6ad0', 'Anaerobic': '#e0442e', 'VO2 Max': '#e0442e', 'Threshold': '#f0a02e', 'Tempo': '#2fa66a', 'Endurance': '#3d7fd6' };
+  effortColor(t) { return this.effortColors[t] || '#3d7fd6'; }
+
+  // [label, durationSec, watts, energy-system tag, date, isPR]
+  cycPower = [
+    ['5 sec', 5, 1182, 'Sprint', 'Apr 12', false],
+    ['15 sec', 15, 905, 'Sprint', 'Apr 12', false],
+    ['30 sec', 30, 712, 'Anaerobic', 'May 3', false],
+    ['1 min', 60, 538, 'Anaerobic', 'Jun 10', true],
+    ['2 min', 120, 432, 'VO2 Max', 'Jun 10', true],
+    ['5 min', 300, 351, 'VO2 Max', 'Jun 7', true],
+    ['10 min', 600, 318, 'Threshold', 'May 24', false],
+    ['20 min', 1200, 289, 'Threshold', 'May 24', false],
+    ['30 min', 1800, 276, 'Tempo', 'Apr 28', false],
+    ['60 min', 3600, 259, 'Endurance', 'Apr 28', false],
+  ];
+  cycPeakKeys = ['5 sec', '1 min', '5 min', '20 min', '60 min'];
+
+  // [label, meters, time, date, isPR]
+  runTimes = [
+    ['400 m', 400, '1:08', 'May 30', false],
+    ['1 km', 1000, '3:12', 'May 30', false],
+    ['1 mile', 1609, '5:18', 'Apr 19', false],
+    ['5 km', 5000, '18:42', 'Jun 9', true],
+    ['10 km', 10000, '39:05', 'May 18', false],
+    ['10 mile', 16093, '1:04:30', 'Apr 6', false],
+    ['Half', 21097, '1:27:40', 'Mar 23', true],
+    ['Marathon', 42195, '3:05:20', 'Oct 2025', false],
+  ];
+  runPeakKeys = ['5 km', '10 km', 'Half', 'Marathon'];
+
+  // running power — present only when a power source (Stryd / watch) recorded it
+  runPowerAvailable = true;
+  runPowerSource = 'Stryd';
+  rCP = 285;
+  // [label, durationSec, watts, date, isPR]
+  runPower = [
+    ['1 min', 60, 412, 'Jun 9', false],
+    ['5 min', 300, 348, 'Jun 9', true],
+    ['10 min', 600, 322, 'May 18', false],
+    ['20 min', 1200, 301, 'May 18', true],
+    ['30 min', 1800, 292, 'May 30', false],
+    ['60 min', 3600, 278, 'May 4', false],
+  ];
+
+  parseT(t) { const p = t.split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; }
+  fmtPace(sec) { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return m + ':' + String(s).padStart(2, '0'); }
+
+  setTag(name) { this.setState(s => ({ activeTag: s.activeTag === name ? null : name })); }
+  toggleExpand(id) { this.setState(s => ({ expanded: { ...s.expanded, [id]: !s.expanded[id] } })); }
+
+  parseMetric(m) {
+    const out = { distanceKm: null, durationMin: null, powerW: null, paceSec: null };
+    let mm;
+    if ((mm = m.match(/([\d.]+)\s*km/))) out.distanceKm = parseFloat(mm[1]);
+    if ((mm = m.match(/([\d.]+)\s*W\b/))) out.powerW = parseFloat(mm[1]);
+    if ((mm = m.match(/([\d.]+)\s*min\b/))) out.durationMin = parseFloat(mm[1]);
+    else if ((mm = m.match(/(\d+):(\d{2}):(\d{2})/))) out.durationMin = (+mm[1]) * 60 + (+mm[2]) + (+mm[3]) / 60;
+    if ((mm = m.match(/(\d+):(\d{2})\s*\/km/))) out.paceSec = (+mm[1]) * 60 + (+mm[2]);
+    return out;
+  }
+
+  records() {
+    return this.data.map((d, i) => {
+      const autoTags = this.autoFor(d.matchedWorkout);
+      const allTags = [...autoTags, ...d.manualTags];
+      const pm = this.parseMetric(d.metric);
+      const indoor = d.indoor != null ? d.indoor : /\b(zwift|treadmill|trainer|indoor|turbo|kickr)\b/i.test(d.name);
+      const environment = indoor ? 'indoor' : 'outdoor';
+      return { ...d, _idx: i, autoTags, allTags, indoor, environment, hasGps: !indoor,
+        distanceKm: pm.distanceKm, durationMin: pm.durationMin, powerW: pm.powerW, paceSec: pm.paceSec,
+        tagsLower: allTags.map(t => t.toLowerCase()), nameLower: d.name.toLowerCase() };
+    });
+  }
+
+  // ===== query language (CQL) =====
+  qFields = {
+    hr: { get: a => a.hrAvg, num: true, label: 'avg HR', unit: 'bpm' },
+    maxhr: { get: a => a.hrMax, num: true, label: 'max HR', unit: 'bpm' },
+    tss: { get: a => a.tss, num: true, label: 'TSS', unit: '' },
+    distance: { get: a => a.distanceKm, num: true, label: 'distance', unit: 'km' },
+    duration: { get: a => a.durationMin, num: true, label: 'duration', unit: 'min' },
+    power: { get: a => a.powerW, num: true, label: 'power', unit: 'W' },
+    pace: { get: a => a.paceSec, num: true, label: 'pace', unit: '/km' },
+    sport: { get: a => a.sport, num: false, label: 'sport' },
+    environment: { get: a => a.environment, num: false, label: 'environment' },
+    name: { get: a => a.nameLower, num: false, label: 'name' },
+    tag: { get: a => a.tagsLower, num: false, multi: true, label: 'tag' },
+  };
+  qFieldAlias = { hr: 'hr', bpm: 'hr', heartrate: 'hr', heart: 'hr', avghr: 'hr', hravg: 'hr',
+    maxhr: 'maxhr', hrmax: 'maxhr',
+    tss: 'tss', load: 'tss', stress: 'tss',
+    distance: 'distance', dist: 'distance', km: 'distance', kms: 'distance',
+    duration: 'duration', time: 'duration', mins: 'duration', minutes: 'duration',
+    power: 'power', watts: 'power', watt: 'power', np: 'power',
+    pace: 'pace',
+    sport: 'sport', type: 'sport', discipline: 'sport',
+    name: 'name', title: 'name',
+    environment: 'environment', env: 'environment',
+    tag: 'tag' };
+  qEnvVal = { indoor: 'indoor', indoors: 'indoor', treadmill: 'indoor', trainer: 'indoor', turbo: 'indoor', outdoor: 'outdoor', outdoors: 'outdoor', outside: 'outdoor' };
+  qSportVal = { run: 'run', runs: 'run', running: 'run', ride: 'bike', rides: 'bike', bike: 'bike', bikes: 'bike', biking: 'bike', cycling: 'bike', cycle: 'bike', swim: 'swim', swims: 'swim', swimming: 'swim' };
+  qUnitField = { bpm: 'hr', km: 'distance', kms: 'distance', w: 'power', watt: 'power', watts: 'power', tss: 'tss', min: 'duration', mins: 'duration', minute: 'duration', minutes: 'duration' };
+  qStop = new Set(['show', 'all', 'me', 'my', 'the', 'that', 'those', 'this', 'are', 'a', 'an', 'find', 'get', 'give', 'list', 'where', 'with', 'please', 'workout', 'workouts', 'activity', 'activities', 'session', 'sessions', 'of', 'i', 'have', 'had', 'did', 'for', 'to', 'it', 'then', 'only', 'any', 'longer', 'shorter']);
+
+  qNormalize(raw) {
+    let s = ' ' + raw.toLowerCase().replace(/[,;]/g, ' ') + ' ';
+    s = s.replace(/average heart rate|avg heart rate|average hr|avg hr|heart rate|heartrate/g, ' hr ');
+    s = s.replace(/max(imum)? heart rate|max hr/g, ' maxhr ');
+    s = s.replace(/training load/g, ' tss ');
+    s = s.replace(/order(ed)? by|sort(ed)? by/g, ' orderby ');
+    s = s.replace(/tagged as|tagged|\btags\b|\btag\b|\blabelled\b|\blabeled\b/g, ' tag ');
+    s = s.replace(/greater than or equal to|at least/g, ' >= ');
+    s = s.replace(/less than or equal to|at most/g, ' <= ');
+    s = s.replace(/not equal to|is not|isn't/g, ' != ');
+    s = s.replace(/longer than|greater than|more than|bigger than|\blonger\b|\bover\b|\babove\b|\bgreater\b|\bmore\b/g, ' > ');
+    s = s.replace(/shorter than|less than|fewer than|smaller than|\bshorter\b|\bunder\b|\bbelow\b|\bless\b|\bfewer\b/g, ' < ');
+    s = s.replace(/equal to|equals|\bequal\b|\bis\b/g, ' = ');
+    s = s.replace(/>=|=>/g, ' \u2265 ').replace(/<=|=</g, ' \u2264 ').replace(/!=|<>/g, ' \u2260 ');
+    s = s.replace(/=/g, ' = ').replace(/>/g, ' > ').replace(/</g, ' < ');
+    s = s.replace(/\u2265/g, ' >= ').replace(/\u2264/g, ' <= ').replace(/\u2260/g, ' != ');
+    return s.replace(/\s+/g, ' ').trim();
+  }
+  qTokens(raw) {
+    const norm = this.qNormalize(raw);
+    if (!norm) return [];
+    return norm.split(' ').filter(t => t && !this.qStop.has(t));
+  }
+  qIsOp(t) { return t === '>' || t === '<' || t === '>=' || t === '<=' || t === '=' || t === '!='; }
+  qSingular(w) { return (w.length > 3 && w.endsWith('s')) ? w.slice(0, -1) : w; }
+  qParseValue(v) {
+    if (v == null) return { value: null, field: null };
+    if (/^\d+:\d{2}$/.test(v)) return { value: this.parseT(v), field: 'pace' };
+    const m = v.match(/^([\d.]+)\s*([a-z%\/]*)$/);
+    if (!m) return { value: null, field: null };
+    const unit = m[2].replace(/[^a-z]/g, '');
+    return { value: parseFloat(m[1]), field: this.qUnitField[unit] || null };
+  }
+  qFieldKey(t) { return this.qFieldAlias[t] || (this.qFields[t] ? t : null); }
+
+  qParse(raw) {
+    let toks = this.qTokens(raw);
+    if (toks.length === 0) return { empty: true };
+    let order = null;
+    const oi = toks.indexOf('orderby');
+    if (oi >= 0) {
+      const rest = toks.slice(oi + 1); toks = toks.slice(0, oi);
+      const fldWord = rest[0]; const f = this.qFieldKey(fldWord);
+      let dir = 'desc';
+      if (rest.some(w => /^asc/.test(w))) dir = 'asc';
+      if (rest.some(w => /^desc/.test(w))) dir = 'desc';
+      if (f) order = { field: f, dir };
+      else if (fldWord) return { error: 'Unknown sort field \u201c' + fldWord + '\u201d', order: null };
+    }
+    this._toks = toks; this._pos = 0;
+    let ast = null;
+    try { ast = this.qOr(); } catch (e) { return { error: e.message, order }; }
+    if (!ast && !order) return { error: 'Could not understand the query' };
+    return { ast, order };
+  }
+  qPeek() { return this._toks[this._pos]; }
+  qNext() { return this._toks[this._pos++]; }
+  qOr() { let left = this.qAnd(); while (this.qPeek() === 'or') { this.qNext(); const r = this.qAnd(); left = left ? { type: 'or', left, right: r } : r; } return left; }
+  qAnd() {
+    let left = this.qPrimary();
+    while (this.qPeek() && this.qPeek() !== 'or' && this.qPeek() !== ')') {
+      if (this.qPeek() === 'and') this.qNext();
+      const r = this.qPrimary(); if (r === undefined) break;
+      if (!r) continue;
+      left = left ? { type: 'and', left, right: r } : r;
+    }
+    return left;
+  }
+  qPrimary() {
+    let guard = 0;
+    while (guard++ < 60) {
+      const t = this.qPeek();
+      if (t === undefined) return null;
+      if (t === '(') { this.qNext(); const e = this.qOr(); if (this.qPeek() === ')') this.qNext(); return e; }
+      if (t === 'and' || t === 'or' || t === ')') return null;
+      if (this.qSportVal[t]) { this.qNext(); return { type: 'cmp', field: 'sport', op: '=', value: this.qSportVal[t] }; }
+      if (this.qEnvVal[t]) { this.qNext(); return { type: 'cmp', field: 'environment', op: '=', value: this.qEnvVal[t] }; }
+      if (t === 'tag') { this.qNext(); const v = this.qNext(); if (!v) throw new Error('Expected a tag name after \u201ctag\u201d'); return { type: 'cmp', field: 'tag', op: '=', value: this.qSingular(v) }; }
+      if (this.qIsOp(t)) { const op = this.qNext(); const v = this.qNext(); if (v === undefined) throw new Error('Expected a value after \u201c' + op + '\u201d'); const pv = this.qParseValue(v); if (!pv.field) throw new Error('Add a unit (e.g. 140bpm, 10km) so I know which field \u201c' + v + '\u201d means'); return { type: 'cmp', field: pv.field, op, value: pv.value }; }
+      const f = this.qFieldKey(t);
+      if (f) {
+        this.qNext(); let op = '='; if (this.qIsOp(this.qPeek())) op = this.qNext();
+        const v = this.qNext(); if (v === undefined) throw new Error('Expected a value for \u201c' + t + '\u201d');
+        if (this.qFields[f].num) { const pv = this.qParseValue(v); return { type: 'cmp', field: f, op, value: pv.value != null ? pv.value : parseFloat(v) }; }
+        const val = (f === 'sport') ? (this.qSportVal[v] || v) : this.qSingular(v);
+        return { type: 'cmp', field: f, op, value: val };
+      }
+      const pv = this.qParseValue(t);
+      if (pv.field) { this.qNext(); return { type: 'cmp', field: pv.field, op: '=', value: pv.value }; }
+      this.qNext(); // unknown filler — skip
+    }
+    return null;
+  }
+  qEval(ast, a) {
+    if (!ast) return true;
+    if (ast.type === 'and') return this.qEval(ast.left, a) && this.qEval(ast.right, a);
+    if (ast.type === 'or') return this.qEval(ast.left, a) || this.qEval(ast.right, a);
+    const c = ast; const f = this.qFields[c.field]; if (!f) return false;
+    if (c.field === 'tag') { const has = a.tagsLower.some(t => t.includes(c.value) || c.value.includes(t)); return c.op === '!=' ? !has : has; }
+    if (c.field === 'sport') return c.op === '!=' ? a.sport !== c.value : a.sport === c.value;
+    if (c.field === 'environment') return c.op === '!=' ? a.environment !== c.value : a.environment === c.value;
+    if (c.field === 'name') { const has = a.nameLower.includes(c.value); return c.op === '!=' ? !has : has; }
+    const v = f.get(a); if (v == null) return false; const x = c.value;
+    switch (c.op) { case '>': return v > x; case '<': return v < x; case '>=': return v >= x; case '<=': return v <= x; case '!=': return v !== x; default: return v === x; }
+  }
+  qChipText(c) {
+    const f = this.qFields[c.field];
+    if (c.field === 'tag') return 'tag ~ ' + c.value;
+    if (c.field === 'sport') return 'sport ' + (c.op === '!=' ? '\u2260' : '=') + ' ' + c.value;
+    if (c.field === 'name') return 'name ~ ' + c.value;
+    let val = c.value; if (c.field === 'pace') val = this.fmtPace(c.value);
+    return f.label + ' ' + c.op + ' ' + val + (f.unit ? ' ' + f.unit : '');
+  }
+  qRun(recs) {
+    const raw = this.state.query || '';
+    if (!raw.trim()) return { active: false, list: recs };
+    const p = this.qParse(raw);
+    if (p.empty) return { active: false, list: recs };
+    if (p.error) return { active: true, error: p.error, list: recs };
+    let list = recs.filter(a => this.qEval(p.ast, a));
+    if (p.order) {
+      const f = this.qFields[p.order.field];
+      if (f) list = [...list].sort((a, b) => {
+        let va = f.get(a), vb = f.get(b);
+        if (f.num) { va = va == null ? -Infinity : va; vb = vb == null ? -Infinity : vb; } else { va = String(va); vb = String(vb); }
+        if (va < vb) return p.order.dir === 'asc' ? -1 : 1;
+        if (va > vb) return p.order.dir === 'asc' ? 1 : -1; return 0;
+      });
+    }
+    const chips = [];
+    const walk = (n) => { if (!n) return; if (n.type === 'and' || n.type === 'or') { walk(n.left); chips.push({ isJoin: true, isChip: false, text: n.type.toUpperCase() }); walk(n.right); } else { chips.push({ isJoin: false, isChip: true, text: this.qChipText(n) }); } };
+    walk(p.ast);
+    let orderLabel = null;
+    if (p.order) { const f = this.qFields[p.order.field]; orderLabel = (p.order.dir === 'desc' ? '\u2193 ' : '\u2191 ') + (f ? f.label : p.order.field); }
+    return { active: true, list, chips, orderLabel, count: list.length };
+  }
+
+  renderVals() {
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)' };
+    const isLab = this.state.theme === 'lab';
+    const goodCol = isLab ? '#5f9e3f' : '#84c45f';
+    const warnCol = isLab ? '#c77d2a' : '#e0a23f';
+    const seg = (active) => ({ textAlign: 'center', padding: '5px 13px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent', boxShadow: active ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+
+    const recs = this.records();
+    const at = this.state.activeTag;
+
+    // ---- tag filter chips ----
+    const tagCount = {}, tagIsAuto = {};
+    recs.forEach(r => {
+      r.autoTags.forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; tagIsAuto[t] = true; });
+      r.manualTags.forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; if (!(t in tagIsAuto)) tagIsAuto[t] = false; });
+    });
+    const tagNames = Object.keys(tagCount).sort((a, b) => tagCount[b] - tagCount[a]);
+    const chipBase = (active, color) => ({ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, padding: '5px 11px', borderRadius: '20px', cursor: 'pointer', color: active ? '#fff' : 'var(--ink2,#6f6b65)', background: active ? (color || 'var(--ember,#ec4a26)') : 'var(--card,#fff)', border: '1px solid ' + (active ? (color || 'var(--ember,#ec4a26)') : 'var(--line,#e6e2dc)') });
+    const countStyle = (active) => ({ fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 600, padding: '0 5px', borderRadius: '20px', background: active ? 'rgba(255,255,255,0.25)' : 'var(--canvas,#f3f1ee)', color: active ? '#fff' : 'var(--ink3,#9a958d)' });
+    const tagFilters = [{ label: 'All', count: recs.length, auto: false, dotStyle: null, onClick: () => this.setState({ activeTag: null }), style: chipBase(at === null), countStyle: countStyle(at === null) }]
+      .concat(tagNames.map(t => {
+        const c = this.tagColor(t), active = at === t, auto = tagIsAuto[t];
+        return { label: t, count: tagCount[t], auto, dotStyle: auto ? null : { width: '6px', height: '6px', borderRadius: '50%', background: c, flexShrink: 0 }, onClick: () => this.setTag(t), style: chipBase(active, c), countStyle: countStyle(active) };
+      }));
+
+    // ---- filter ----
+    let list = recs;
+    if (this.state.sport !== 'all') list = list.filter(r => r.sport === this.state.sport);
+    if (this.state.matchedOnly) list = list.filter(r => r.matchedWorkout);
+    if (at) list = list.filter(r => r.allTags.includes(at));
+
+    const q = this.qRun(list);
+    list = q.list;
+    const querySorted = !!q.orderLabel;
+    if (!querySorted) list = this.applySort(list);
+
+    const rowTag = (name, auto) => {
+      const c = this.tagColor(name);
+      return { label: name, auto, dotStyle: auto ? null : { width: '6px', height: '6px', borderRadius: '50%', background: c, flexShrink: 0 }, onClick: () => this.setTag(name),
+        style: auto
+          ? { display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 600, padding: '3px 9px', borderRadius: '20px', cursor: 'pointer', color: c, background: this.rgba(c, 0.1), border: '1px dashed ' + this.rgba(c, 0.45) }
+          : { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 600, padding: '3px 9px', borderRadius: '20px', cursor: 'pointer', color: 'var(--ink2,#6f6b65)', background: this.rgba(c, 0.1), border: '1px solid ' + this.rgba(c, 0.28) } };
+    };
+
+    const zoneNames = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
+    const activities = list.map(r => {
+      const c = this.C[r.sport];
+      const expanded = !!this.state.expanded[r.id];
+      const tags = [...r.autoTags.map(t => rowTag(t, true)), ...r.manualTags.map(t => rowTag(t, false))];
+      // zone segments + legend (nonzero)
+      const segs = [], legend = [];
+      r.zones.forEach((p, i) => {
+        if (p > 0) {
+          segs.push({ style: { width: p + '%', background: this.zoneColors[i], borderRadius: i === 0 ? '7px 0 0 7px' : '0' } });
+          legend.push({ label: zoneNames[i], pct: p + '%', color: this.zoneColors[i], _p: p, _i: i });
+        }
+      });
+      const top = [...legend].sort((a, b) => b._p - a._p).slice(0, 2).sort((a, b) => a._i - b._i);
+      const zonesSummary = top.map(z => z.label + ' ' + z.pct).join('  ·  ');
+      const approx = r.sport !== 'bike';
+      return {
+        cardStyle: { background: 'var(--card,#fff)', border: '1px solid var(--line,#e6e2dc)', borderRadius: '14px', overflow: 'hidden' },
+        date: r.date, sportLabel: r.sport === 'bike' ? 'Bike' : r.sport === 'run' ? 'Run' : 'Swim',
+        sportPill: { display: 'inline-flex', alignItems: 'center', marginTop: '8px', fontSize: '12px', fontWeight: 700, padding: '3px 12px', borderRadius: '20px', color: c, background: this.rgba(c, 0.13), border: '1px solid ' + this.rgba(c, 0.28) },
+        name: r.name, matched: r.matchedWorkout || null,
+        indoor: r.indoor,
+        indoorBadgeStyle: { display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '3px', fontFamily: "'JetBrains Mono',monospace", fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.04em', padding: '2px 8px', borderRadius: '20px', color: 'var(--ink2,#6f6b65)', background: 'var(--elev,#faf9f7)', border: '1px solid var(--line,#e6e2dc)' },
+        insight: r.insight,
+        insightStyle: { fontSize: '13.5px', fontWeight: 500, lineHeight: '1.45', marginTop: '6px', color: r.tone === 'good' ? goodCol : warnCol },
+        metric: r.metric,
+        hasTags: tags.length > 0, tags,
+        hrAvg: r.hrAvg, hrMax: r.hrMax,
+        tssLabel: (approx ? '~TSS ' : 'TSS ') + r.tss,
+        tssStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '12px', fontWeight: 700, padding: '4px 11px', borderRadius: '20px', color: approx ? '#3d7fd6' : (isLab ? '#b5701c' : '#e0a23f'), background: approx ? this.rgba('#3d7fd6', 0.12) : this.rgba('#f0a02e', 0.16), border: '1px solid ' + (approx ? this.rgba('#3d7fd6', 0.3) : this.rgba('#f0a02e', 0.32)) },
+        onToggle: () => this.toggleExpand(r.id),
+        chevronStyle: { transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' },
+        zonesLabel: r.zonesLabel, zonesSummary, expanded, segs, legend,
+      };
+    });
+
+    const sports = [{ key: 'all', label: 'All' }, { key: 'bike', label: 'Ride' }, { key: 'run', label: 'Run' }, { key: 'swim', label: 'Swim' }]
+      .map(s => ({ label: s.label, onClick: () => this.setState({ sport: s.key }), style: seg(this.state.sport === s.key) }));
+
+    const matchedBtn = { display: 'flex', alignItems: 'center', gap: '7px', padding: '7px 13px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', color: this.state.matchedOnly ? '#fff' : 'var(--ink2,#6f6b65)', background: this.state.matchedOnly ? '#2fa66a' : 'var(--card,#fff)', border: '1px solid ' + (this.state.matchedOnly ? '#2fa66a' : 'var(--line,#e6e2dc)') };
+
+    const allExpanded = list.length > 0 && list.every(r => this.state.expanded[r.id]);
+
+    // ---- best efforts ----
+    const isActivities = this.state.tab === 'activities';
+    const isBest = this.state.tab === 'best';
+    const beIsBike = this.state.beSport === 'bike';
+    const beIsRun = this.state.beSport === 'run';
+    const tabStyle = (on) => ({ padding: '12px 2px', marginRight: '26px', fontSize: '15px', fontWeight: 700, letterSpacing: '-0.01em', cursor: 'pointer', whiteSpace: 'nowrap', color: on ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', borderBottom: on ? '2px solid var(--ember,#ec4a26)' : '2px solid transparent', marginBottom: '-1px' });
+    const wt = this.athleteWeight();
+    const prStyle = { fontFamily: "'JetBrains Mono',monospace", fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', background: this.rgba('#ec4a26', 0.14), color: 'var(--ember,#ec4a26)', letterSpacing: '0.04em' };
+    const maxW = Math.max(...this.cycPower.map(r => r[2]));
+    const cyclingBests = this.cycPower.map(r => {
+      const [dur, sec, w, tag, date, pr] = r; const c = this.effortColor(tag);
+      return { dur, tag, watts: w, wkg: (w / wt).toFixed(1), pct: Math.round(w / 265 * 100) + '%', date, prBadge: pr ? 'PR' : null, prStyle,
+        barStyle: { height: '100%', width: Math.round(w / maxW * 100) + '%', background: c, borderRadius: '4px' } };
+    });
+    const cyclingPeaks = this.cycPower.filter(r => this.cycPeakKeys.includes(r[0])).map(r => {
+      const [dur, sec, w, tag, date, pr] = r; const c = this.effortColor(tag);
+      return { dur, tag, watts: w, wkg: (w / wt).toFixed(1), date, prBadge: pr ? 'PR' : null, prStyle,
+        tagStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 600, letterSpacing: '0.05em', color: c } };
+    });
+    const lo = 220, hi = 1230, HH = 200, WW = 1000;
+    const lnMin = Math.log(5), lnMax = Math.log(3600);
+    const xOf = (sec) => ((Math.log(sec) - lnMin) / (lnMax - lnMin)) * WW;
+    const yOf = (w) => (1 - (w - lo) / (hi - lo)) * HH;
+    const cp = this.cycPower.map(r => xOf(r[1]).toFixed(1) + ',' + yOf(r[2]).toFixed(1));
+    const pdcLine = cp.join(' ');
+    const pdcArea = '0,' + HH + ' ' + cp.join(' ') + ' ' + WW + ',' + HH;
+    const pdc90 = this.cycPower.map(r => xOf(r[1]).toFixed(1) + ',' + yOf(r[5] ? r[2] : Math.round(r[2] * 0.94)).toFixed(1)).join(' ');
+    const pdcTicks = [[5, '5s'], [30, '30s'], [60, '1m'], [300, '5m'], [1200, '20m'], [3600, '60m']].map(([s, l]) => ({ label: l, style: { position: 'absolute', left: (xOf(s) / WW * 100) + '%', transform: 'translateX(-50%)' } }));
+    const runningBests = this.runTimes.map(r => {
+      const [dist, m, time, date, pr] = r; const sec = this.parseT(time);
+      return { dist, time, pace: this.fmtPace(sec / (m / 1000)) + ' /km', date, prBadge: pr ? 'PR' : null, prStyle };
+    });
+    const runningPeaks = this.runTimes.filter(r => this.runPeakKeys.includes(r[0])).map(r => {
+      const [dist, m, time, date, pr] = r; const sec = this.parseT(time);
+      return { dist, time, pace: this.fmtPace(sec / (m / 1000)) + ' /km', date, prBadge: pr ? 'PR' : null, prStyle };
+    });
+    const runPowerMax = Math.max(...this.runPower.map(r => r[2]));
+    const runningPower = this.runPower.map(r => {
+      const [dur, sec, w, date, pr] = r;
+      return { dur, watts: w, wkg: (w / wt).toFixed(2), date, prBadge: pr ? 'PR' : null, prStyle,
+        barStyle: { height: '100%', width: Math.round(w / runPowerMax * 100) + '%', background: 'var(--ember,#ec4a26)', borderRadius: '4px' } };
+    });
+    const beSports = [{ k: 'bike', l: 'Cycling' }, { k: 'run', l: 'Running' }].map(o => ({ label: o.l, onClick: () => this.setState({ beSport: o.k }), style: seg(this.state.beSport === o.k) }));
+
+    return {
+      themeVars: this.state.theme === 'day' ? { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--emberLine': 'rgba(13,148,136,0.30)', '--grid': 'rgba(14,24,32,0.06)' } : (isLab ? lab : cockpit),
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(this.state.theme === 'lab'), cockpitBtn: seg(this.state.theme === 'cockpit'), dayBtn: seg(this.state.theme === 'day'),
+      sports, matchedBtn, toggleMatched: () => this.setState(s => ({ matchedOnly: !s.matchedOnly })),
+      tagFilters, activeTag: at, clearTag: () => this.setState({ activeTag: null }),
+      query: this.state.query,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      clearQuery: () => this.setState({ query: '' }),
+      queryActive: !!this.state.query.trim(),
+      queryEmpty: !this.state.query.trim(),
+      queryError: q.error || null,
+      queryHasError: !!q.error,
+      queryChips: q.chips || [],
+      queryHasChips: !q.error && !!(q.chips && q.chips.length),
+      queryOrder: q.orderLabel || null,
+      queryHasOrder: !!q.orderLabel,
+      queryCount: q.count != null ? q.count : 0,
+      queryExamples: ['avg hr > 140', 'runs tagged race ordered by distance', 'bike and tss > 100', 'distance > 20km and pace < 4:30'].map(label => ({ label, onClick: () => this.setState({ query: label }) })),
+      sortBy: [['date', 'Date'], ['tss', 'TSS'], ['distance', 'Distance'], ['duration', 'Duration'], ['hr', 'Avg HR'], ['power', 'Power'], ['pace', 'Pace']].map(([k, label]) => ({ label, active: this.state.sortKey === k && !querySorted, dir: this.state.sortDir, onClick: () => this.setSort(k), style: { display: 'inline-flex', alignItems: 'center', gap: '5px', fontFamily: "'JetBrains Mono',monospace", fontSize: '11.5px', fontWeight: 600, padding: '4px 10px', borderRadius: '7px', cursor: 'pointer', color: (this.state.sortKey === k && !querySorted) ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: (this.state.sortKey === k && !querySorted) ? 'var(--card,#fff)' : 'transparent', border: '1px solid ' + ((this.state.sortKey === k && !querySorted) ? 'var(--line,#e6e2dc)' : 'transparent'), boxShadow: (this.state.sortKey === k && !querySorted) ? '0 1px 2px rgba(0,0,0,0.10)' : 'none' }, arrow: this.state.sortDir === 'asc' ? '\u2191' : '\u2193' })),
+      sortDisabledByQuery: querySorted,
+      activities, isEmpty: activities.length === 0,
+      expandAllLabel: allExpanded ? 'Collapse zones' : 'Expand zones',
+      toggleAllZones: () => { const target = !allExpanded; const m = {}; list.forEach(r => { m[r.id] = target; }); this.setState(s => ({ expanded: { ...s.expanded, ...m } })); },
+      isActivities, isBest, beIsBike, beIsRun, beSports,
+      tabActivities: tabStyle(isActivities), tabBest: tabStyle(isBest),
+      tabActivitiesClick: () => this.setState({ tab: 'activities' }),
+      tabBestClick: () => this.setState({ tab: 'best' }),
+      cyclingBests, cyclingPeaks, runningBests, runningPeaks, pdcLine, pdcArea, pdc90, pdcTicks,
+      runningPower, runPowerAvailable: this.runPowerAvailable, runPowerSource: this.runPowerSource, rCP: this.rCP,
+      countLabel: isBest
+        ? (beIsBike ? 'Cycling · mean-maximal power · all-time bests' : 'Running · personal bests by distance')
+        : (q.active
+          ? (list.length + (list.length === 1 ? ' match' : ' matches') + (q.error ? ' · check syntax' : ' · query active'))
+          : (activities.length + ' of ' + recs.length + ' activities' + (at ? ' · tagged “' + at + '”' : '') + ' · last 30 days')),
+    };
+  }
+}
+</script>
+</body>
+</html>

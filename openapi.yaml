@@ -1,0 +1,2448 @@
+openapi: 3.1.0
+info:
+  title: Cadence API
+  version: "1.0.0"
+  summary: REST API for the Cadence training platform.
+  description: >
+    A REST API over the same data model that powers the Cadence app — activities
+    and their 1 Hz streams, designed workouts, scheduling, athlete thresholds and
+    zones, coaching, and gear. JSON over HTTPS, OAuth 2.0, predictable resource URLs.
+
+
+    ## Authentication
+
+    OAuth 2.0 authorization code flow. Send the access token as a bearer header on
+    every request:
+
+
+    `Authorization: Bearer cad_at_9f2a7c…`
+
+
+    ## Pagination
+
+    List endpoints are cursor-paginated. Pass `cursor` from the previous response's
+    `next_cursor`, plus an optional `limit` (max 200).
+
+
+    ## Query language (CQL)
+
+    The `q` parameter on `GET /v1/activities` accepts the same query language as the
+    Activities search bar — field comparisons (`>` `<` `>=` `<=` `=` `!=`), boolean
+    `AND` / `OR`, and `ORDER BY`. Example:
+    `sport = run AND tag ~ race AND distance > 42.2km`.
+  contact:
+    name: Cadence Developer Platform
+    url: https://developers.cadence.cc
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.cadence.cc
+    description: Production
+
+security:
+  - oauth2: []
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+    description: Obtain and refresh access tokens, and identify the current user.
+  - name: Activities
+    description: The core resource — list with CQL filtering, upload, read, edit.
+  - name: Streams & curves
+    description: Laps, the 1 Hz record stream, and power/HR duration curves.
+  - name: Best efforts
+    description: Personal records across durations (power) and distances (pace).
+  - name: Tags
+    description: Manual and auto-generated labels, and their activity joins.
+  - name: Workouts
+    description: Designed workout templates and their step structure.
+  - name: Scheduling
+    description: Place designed workouts on the calendar and reconcile against activities.
+  - name: Athletes & zones
+    description: Profile, thresholds, the four editable zone sets, and fitness trend.
+  - name: Sharing
+    description: Grant other people Viewer or Coach access to your training.
+  - name: Access tokens
+    description: Personal access tokens for scripting against the API as yourself.
+  - name: Coaching
+    description: Roster access for coaches.
+  - name: Gear
+    description: Bikes with wear components and service history, and shoes via the catalog.
+  - name: Webhooks
+    description: Subscribe to platform events.
+
+paths:
+  /v1/auth/register:
+    post:
+      tags: [Authentication]
+      summary: Create an account
+      operationId: registerAccount
+      security: []
+      description: >
+        Creates a new athlete account with email + password, or links a social
+        identity (Strava, Google, Apple). Returns the new athlete and an initial
+        token pair. Social signups omit `password` and pass a `provider` + `id_token`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, format: password, minLength: 10 }
+                provider:
+                  type: string
+                  enum: [strava, google, apple]
+                  description: For social signup instead of email/password.
+                id_token:
+                  type: string
+                  description: The provider's identity token (social signup).
+      responses:
+        "201":
+          description: Account created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  athlete:
+                    $ref: "#/components/schemas/Athlete"
+                  tokens:
+                    $ref: "#/components/schemas/TokenResponse"
+        "409":
+          description: An account with that email already exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /oauth/token:
+    post:
+      tags: [Authentication]
+      summary: Exchange code for tokens
+      operationId: createToken
+      security: []
+      description: >
+        Exchanges an authorization code (or a refresh token) for an access token.
+        Tokens are scoped to the granting athlete or coach.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [authorization_code, refresh_token]
+                code:
+                  type: string
+                  description: The code returned to your redirect URI.
+                refresh_token:
+                  type: string
+                  description: Used when refreshing.
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+      responses:
+        "200":
+          description: Token issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/auth/jwt:
+    post:
+      tags: [Authentication]
+      summary: Mint a scoped JWT
+      operationId: createJwt
+      description: >
+        Mints a short-lived RS256 bearer JWT. The `sub` claim is the authenticated
+        principal (an athlete, or a coach) and is never reassigned, so the audit
+        trail always reflects who acted. The `athlete_id` claim names the athlete
+        whose data the token grants access to; the API authorizes every request by
+        checking that `sub` may act on `athlete_id` — either `sub == athlete_id`,
+        `sub` is a coach with that athlete on their roster, or `sub` has been granted
+        a share (Viewer or Coach) by that athlete. Viewer grants are read-only. When
+        `athlete_id` is omitted it defaults to `sub`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                athlete_id:
+                  type: string
+                  description: The athlete whose data to authorize. Defaults to the caller.
+                scopes:
+                  type: array
+                  items: { type: string }
+                  description: Subset of the caller's scopes. Defaults to activities:read.
+                expires_in:
+                  type: integer
+                  description: Lifetime in seconds, max 86400.
+                  default: 3600
+                  maximum: 86400
+      responses:
+        "201":
+          description: A signed bearer JWT and its decoded claims.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JwtToken"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /.well-known/jwks.json:
+    get:
+      tags: [Authentication]
+      summary: Token signing keys (JWKS)
+      operationId: getJwks
+      security: []
+      description: >
+        The public JSON Web Key Set used to verify the RS256 signature of tokens
+        issued by `/v1/auth/jwt`. Cache and key off the token header `kid`.
+      responses:
+        "200":
+          description: The active key set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Jwks"
+
+  /v1/me:
+    get:
+      tags: [Authentication]
+      summary: The authenticated user
+      operationId: getMe
+      description: >
+        Returns the user tied to the access token. A user has a single account with
+        their own athlete profile; `is_coach` indicates they also coach others. Use
+        `/v1/me/contexts` to list the athletes they can act on.
+      responses:
+        "200":
+          description: The current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/me/contexts:
+    get:
+      tags: [Authentication]
+      summary: Switchable contexts
+      operationId: getContexts
+      description: >
+        Returns every context the signed-in user can act in — their own training
+        plus each athlete they coach (via an active user_relationship). Powers
+        the account/context switcher. Switching context just changes the
+        `athlete_id` you pass (or mint a JWT for); `sub` stays the signed-in user.
+      responses:
+        "200":
+          description: Self plus coached athletes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  self:
+                    $ref: "#/components/schemas/User"
+                  coaching:
+                    type: array
+                    description: Athletes this user coaches.
+                    items:
+                      $ref: "#/components/schemas/CoachedAthlete"
+                  coached_by:
+                    type: array
+                    description: Users who can view/coach this user.
+                    items:
+                      $ref: "#/components/schemas/Share"
+
+  /v1/activities:
+    get:
+      tags: [Activities]
+      summary: List & query activities
+      operationId: listActivities
+      description: >
+        Lists activities for the athlete. The `q` parameter accepts CQL — the same
+        query language as the Activities search bar — for field comparisons,
+        AND/OR, and ordering.
+      parameters:
+        - name: q
+          in: query
+          description: "CQL filter, e.g. `avg_hr > 140 AND sport = run`."
+          schema: { type: string }
+        - name: sort
+          in: query
+          description: "Field to sort by; prefix with `-` for descending (e.g. `-tss`)."
+          schema: { type: string }
+        - name: sport
+          in: query
+          schema:
+            $ref: "#/components/schemas/Sport"
+        - name: environment
+          in: query
+          description: Filter by outdoor or indoor (treadmill / trainer).
+          schema:
+            type: string
+            enum: [outdoor, indoor]
+        - name: limit
+          in: query
+          description: Page size, max 200.
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of activities.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/List"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Activity"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    post:
+      tags: [Activities]
+      summary: Upload a .fit file
+      operationId: uploadActivity
+      description: >
+        Uploads an activity file (multipart/form-data). Optional fields capture the
+        pre/post weigh-in, fluids, and the shoe worn — the same metadata the Import
+        screen collects.
+
+
+        Parsing is **asynchronous** and may take an unknown amount of time, so this
+        returns `202 Accepted` immediately with an upload job in the `processing`
+        state, plus a `Location` header pointing at the job. Poll
+        `GET /v1/uploads/{id}` until `status` is `ready` (the body then carries the
+        created `activity_id`) or `failed`, or subscribe to the `activity.created`
+        webhook to be notified without polling. Duplicate files resolve to the
+        existing activity with status `duplicate`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The .fit / .gpx / .tcx file.
+                weight_before_kg:
+                  type: number
+                  format: float
+                weight_after_kg:
+                  type: number
+                  format: float
+                fluids_ml:
+                  type: integer
+                shoe_id:
+                  type: string
+                  description: Shoe worn (run activities).
+      responses:
+        "202":
+          description: Upload accepted and queued for processing.
+          headers:
+            Location:
+              description: URL of the upload job to poll.
+              schema: { type: string, example: /v1/uploads/upl_8KQ2a7 }
+            Retry-After:
+              description: Suggested seconds to wait before the first poll.
+              schema: { type: integer, example: 2 }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: This file has already been uploaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+        "413":
+          description: The file exceeds the maximum upload size.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/activities/batch:
+    post:
+      tags: [Activities]
+      summary: Bulk-upload a .zip of .fit files
+      operationId: uploadActivityBatch
+      description: >
+        Uploads a `.zip` archive containing many `.fit` / `.gpx` / `.tcx` files for
+        bulk import — e.g. a full export from another platform. The archive is
+        unpacked server-side and each file becomes its own asynchronous `Upload`
+        job, so this returns `202 Accepted` with a **batch** job plus a `Location`
+        header. Poll `GET /v1/uploads/batches/{id}` for aggregate progress and the
+        per-file results, or subscribe to the `activity.created` webhook (one event
+        per parsed file) and `upload_batch.completed` (one event when the whole
+        batch settles). Per-file weigh-in / fluids / shoe metadata cannot be set
+        here; edit individual activities afterwards. Files that duplicate existing
+        activities are skipped and counted under `duplicate`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: A .zip archive of activity files (max 500 files, 200 MB).
+                on_duplicate:
+                  type: string
+                  enum: [skip, replace]
+                  default: skip
+                  description: What to do when a file matches an existing activity.
+      responses:
+        "202":
+          description: Archive accepted and being unpacked; files queued individually.
+          headers:
+            Location:
+              description: URL of the batch job to poll.
+              schema: { type: string, example: /v1/uploads/batches/bat_3Yc1Qd }
+            Retry-After:
+              description: Suggested seconds to wait before the first poll.
+              schema: { type: integer, example: 5 }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadBatch"
+        "400":
+          description: The archive could not be read or contained no supported files.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413":
+          description: The archive exceeds the size or file-count limit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/uploads/batches/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Activities]
+      summary: Poll a bulk-upload batch
+      operationId: getUploadBatch
+      description: >
+        Returns aggregate progress for a `.zip` batch and the state of each child
+        upload. `status` is `processing` until every file has settled, then
+        `completed` (some children may still be `failed` or `duplicate` — inspect
+        `counts` and `uploads`). Poll with backoff, honouring `Retry-After`.
+      responses:
+        "200":
+          description: The current state of the batch.
+          headers:
+            Retry-After:
+              description: Present while processing — seconds to wait before polling again.
+              schema: { type: integer, example: 5 }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadBatch"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/uploads/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Activities]
+      summary: Poll an upload job
+      operationId: getUpload
+      description: >
+        Returns the status of an asynchronous upload. While `status` is `processing`
+        the `activity_id` is null; once `ready` it points at the created activity.
+        On `failed` an `error` object explains why. Clients should poll with backoff,
+        honouring the `Retry-After` header.
+      responses:
+        "200":
+          description: The current state of the upload job.
+          headers:
+            Retry-After:
+              description: Present while processing — seconds to wait before polling again.
+              schema: { type: integer, example: 3 }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/activities/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Activities]
+      summary: Retrieve an activity
+      operationId: getActivity
+      responses:
+        "200":
+          description: The activity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Activities]
+      summary: Update an activity
+      operationId: updateActivity
+      description: Edit mutable fields — rename, change sport, or link/unlink a designed workout for matching.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                sport:
+                  $ref: "#/components/schemas/Sport"
+                workout_id:
+                  type: [string, "null"]
+                  description: Link a designed workout, or null to clear.
+                start_weight_kg: { type: [number, "null"] }
+                end_weight_kg: { type: [number, "null"] }
+                fluids_ml: { type: [integer, "null"] }
+      responses:
+        "200":
+          description: The updated activity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Activities]
+      summary: Delete an activity
+      operationId: deleteActivity
+      description: Permanently deletes the activity and its streams.
+      responses:
+        "204":
+          description: Deleted.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/activities/{id}/laps:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Streams & curves]
+      summary: List laps
+      operationId: listLaps
+      description: Returns the activity's splits in order.
+      responses:
+        "200":
+          description: Laps.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Lap"
+
+  /v1/activities/{id}/streams:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Streams & curves]
+      summary: Read the 1 Hz stream
+      operationId: getStreams
+      description: >
+        Returns parallel arrays sampled at 1 Hz. Request only the channels you need
+        with `fields`. Indoor activities (`environment: indoor`) omit the position
+        channels (`latlng`, `altitude` may also be absent); distance comes from a
+        footpod or trainer instead of GPS.
+      parameters:
+        - name: fields
+          in: query
+          description: "Comma-separated channels, e.g. `time,power,heartrate,altitude,cadence`."
+          schema: { type: string }
+        - name: resolution
+          in: query
+          schema:
+            type: string
+            enum: [high, medium, low]
+            default: high
+      responses:
+        "200":
+          description: Stream channels.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Streams"
+
+  /v1/activities/{id}/curves:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Streams & curves]
+      summary: Duration curves
+      operationId: getCurves
+      description: >
+        Mean-maximal power and HR curves. When the activity exceeds 60 minutes the
+        curve extends to the full duration; the final point is the whole-activity average.
+      parameters:
+        - name: metric
+          in: query
+          schema:
+            type: string
+            enum: [power, heartrate]
+            default: power
+      responses:
+        "200":
+          description: A duration curve.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DurationCurve"
+
+  /v1/athletes/{id}/best-efforts:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Best efforts]
+      summary: List best efforts
+      operationId: listBestEfforts
+      description: >
+        Personal records by kind and period. Cycling returns peak power by duration;
+        running returns best pace and power by distance.
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [cycling_power, running_pace, running_power]
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [3m, 1y, all]
+            default: all
+      responses:
+        "200":
+          description: Best efforts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind: { type: string }
+                  period: { type: string }
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BestEffort"
+
+  /v1/tags:
+    get:
+      tags: [Tags]
+      summary: List tags
+      operationId: listTags
+      description: All tags available to the athlete, with origin.
+      responses:
+        "200":
+          description: Tags.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tag"
+
+  /v1/activities/{id}/tags:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Tags]
+      summary: Tag an activity
+      operationId: tagActivity
+      description: >
+        Attaches a tag. Auto-tags applied by workout matching are read-only; manual
+        tags can be added or removed freely.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tag_id:
+                  type: string
+                  description: Attach an existing tag.
+                name:
+                  type: string
+                  description: Or create a tag by name.
+      responses:
+        "201":
+          description: Tag attached.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activity_id: { type: string }
+                  tag:
+                    $ref: "#/components/schemas/Tag"
+
+  /v1/activities/{id}/tags/{tag_id}:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+      - name: tag_id
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Tags]
+      summary: Remove a tag
+      operationId: untagActivity
+      description: Detaches a manual tag from the activity.
+      responses:
+        "204":
+          description: Tag removed.
+
+  /v1/workouts:
+    get:
+      tags: [Workouts]
+      summary: List designed workouts
+      operationId: listWorkouts
+      description: The athlete's workout library.
+      responses:
+        "200":
+          description: Workouts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Workout"
+    post:
+      tags: [Workouts]
+      summary: Create a workout
+      operationId: createWorkout
+      description: >
+        Creates a structured workout. Each step declares an `end_type` of `time`,
+        `distance`, or `manual` (athlete taps lap to advance); `duration` or
+        `distance` is set accordingly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutCreate"
+      responses:
+        "201":
+          description: Workout created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workout"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/workouts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Workouts]
+      summary: Retrieve a workout
+      operationId: getWorkout
+      description: Returns a designed workout with its full ordered step structure.
+      responses:
+        "200":
+          description: The workout.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Workout"
+                  - type: object
+                    properties:
+                      steps:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/WorkoutStep"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Workouts]
+      summary: Update a workout
+      operationId: updateWorkout
+      description: >
+        Rename or re-author the workout. Passing `steps` replaces the entire step
+        list; duration and TSS are recomputed. Edits do not affect already-completed
+        activities matched to this workout.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                steps:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/WorkoutStep"
+      responses:
+        "200":
+          description: The updated workout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workout"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Workouts]
+      summary: Delete a workout
+      operationId: deleteWorkout
+      description: >
+        Removes the workout from the library. Scheduled instances are unlinked but
+        completed activities keep their match for history.
+      responses:
+        "204":
+          description: Deleted.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/workouts/{id}/matches:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Workouts]
+      summary: List matched activities
+      operationId: listWorkoutMatches
+      description: >
+        Returns completed activities matched to this designed workout — automatically
+        (inferred from lap structure) or manually — each with a match confidence and
+        method. Powers the "matched workouts" view in the designer.
+      parameters:
+        - name: method
+          in: query
+          schema:
+            type: string
+            enum: [auto, manual, all]
+            default: all
+      responses:
+        "200":
+          description: Matched activities.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WorkoutMatch"
+
+  /v1/calendar:
+    get:
+      tags: [Scheduling]
+      summary: List planned & completed
+      operationId: getCalendar
+      description: Returns scheduled workouts and completed activities in a date range.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: athlete_id
+          in: query
+          description: Coaches only — defaults to self.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Calendar entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ScheduledWorkout"
+
+  /v1/scheduled-workouts:
+    post:
+      tags: [Scheduling]
+      summary: Schedule a workout
+      operationId: scheduleWorkout
+      description: >
+        Drops a designed workout onto a date. Coaches set `athlete_id` to assign onto
+        an athlete's plan; `assigned_by` is inferred from the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workout_id, athlete_id, date]
+              properties:
+                workout_id: { type: string }
+                athlete_id: { type: string }
+                date: { type: string, format: date }
+                time_of_day:
+                  $ref: "#/components/schemas/TimeOfDay"
+      responses:
+        "201":
+          description: Scheduled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledWorkout"
+
+  /v1/scheduled-workouts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Scheduling]
+      summary: Reschedule or match
+      operationId: updateScheduledWorkout
+      description: Move to another date, or link the completed activity that fulfilled it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date: { type: string, format: date }
+                activity_id:
+                  type: string
+                  description: Completed activity to match.
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledWorkout"
+    delete:
+      tags: [Scheduling]
+      summary: Unschedule a workout
+      operationId: deleteScheduledWorkout
+      responses:
+        "204":
+          description: Removed from the calendar.
+
+  /v1/athletes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Athletes & zones]
+      summary: Retrieve an athlete
+      operationId: getAthlete
+      responses:
+        "200":
+          description: Profile and thresholds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Athlete"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Athletes & zones]
+      summary: Update thresholds
+      operationId: updateAthlete
+      description: >
+        Updates profile and threshold values. Changing a threshold recomputes every
+        zone set that references it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                age: { type: integer }
+                ftp: { type: integer, description: Functional threshold power (W). }
+                critical_run_power: { type: integer, description: Critical running power (W). }
+                threshold_pace: { type: string, description: "mm:ss per km." }
+                lthr: { type: integer, description: Lactate threshold HR (bpm). }
+                max_hr: { type: integer }
+      responses:
+        "200":
+          description: Updated athlete.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Athlete"
+                  - type: object
+                    properties:
+                      zones_recomputed:
+                        type: array
+                        items: { type: string }
+
+  /v1/athletes/{id}/zones:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Athletes & zones]
+      summary: List zone sets
+      operationId: listZones
+      description: The four zone sets — heart_rate, bike_power, run_power, pace — with computed boundaries.
+      responses:
+        "200":
+          description: Zone sets.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ZoneSet"
+
+  /v1/athletes/{id}/zones/{type}:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [heart_rate, bike_power, run_power, pace]
+    put:
+      tags: [Athletes & zones]
+      summary: Replace a zone set
+      operationId: replaceZoneSet
+      description: >
+        Replaces the boundaries for one zone type. Percentages are relative to the
+        type's reference threshold.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [zones]
+              properties:
+                zones:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Zone"
+      responses:
+        "200":
+          description: Zone set replaced.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type: { type: string }
+                  reference: { type: number }
+                  updated: { type: boolean }
+
+  /v1/athletes/{id}/fitness:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Athletes & zones]
+      summary: Fitness trend (CTL/ATL/TSB)
+      operationId: getFitnessTrend
+      description: >
+        Returns the daily performance-management series — fitness (CTL), fatigue
+        (ATL), and form (TSB) — that drives the dashboard training-load chart.
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: A daily fitness series.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FitnessPoint"
+
+  /v1/shares:
+    get:
+      tags: [Sharing]
+      summary: List people with access
+      operationId: listShares
+      description: Everyone you have granted Viewer or Coach access to your training.
+      responses:
+        "200":
+          description: Active and pending shares.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Share"
+    post:
+      tags: [Sharing]
+      summary: Invite someone
+      operationId: createShare
+      description: >
+        Grants another person access to your data. A `viewer` gets read-only access
+        to activities, analysis, workouts, and calendar; a `coach` can additionally
+        create and assign workouts to you. The invitee is identified by email or
+        handle and starts in `pending` until they accept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invitee, role]
+              properties:
+                invitee:
+                  type: string
+                  description: Email address or @handle.
+                role:
+                  $ref: "#/components/schemas/ShareRole"
+      responses:
+        "201":
+          description: Invitation created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Share"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/shares/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Sharing]
+      summary: Change a person's role
+      operationId: updateShare
+      description: Promote a viewer to coach, or demote a coach to viewer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: "#/components/schemas/ShareRole"
+      responses:
+        "200":
+          description: Updated share.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Share"
+    delete:
+      tags: [Sharing]
+      summary: Revoke access
+      operationId: deleteShare
+      description: Immediately revokes the person's access to your data.
+      responses:
+        "204":
+          description: Access revoked.
+
+  /v1/auth/tokens:
+    get:
+      tags: [Access tokens]
+      summary: List personal access tokens
+      operationId: listAccessTokens
+      description: >
+        Lists your personal access tokens. Only the prefix is returned — the secret
+        is shown once at creation and never again.
+      responses:
+        "200":
+          description: Active tokens.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AccessToken"
+    post:
+      tags: [Access tokens]
+      summary: Create a personal access token
+      operationId: createAccessToken
+      description: >
+        Creates a long-lived bearer token scoped to your own data (`sub` is you).
+        The full secret is returned **once** in this response. Use it as
+        `Authorization: Bearer <secret>`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name:
+                  type: string
+                  description: A label to recognise the token, e.g. "Home server sync".
+                scopes:
+                  type: array
+                  items: { type: string }
+                  description: Subset of your scopes (e.g. activities:read).
+                expires_at:
+                  type: [string, "null"]
+                  format: date
+                  description: Expiry date, or null for no expiry.
+      responses:
+        "201":
+          description: Token created — secret shown once.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/AccessToken"
+                  - type: object
+                    properties:
+                      secret:
+                        type: string
+                        description: The full token. Shown only here.
+                        example: cad_pat_7QdaKf2m9XbV3nLpZ0rT8wYc1Hs4
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/auth/tokens/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Access tokens]
+      summary: Revoke a token
+      operationId: revokeAccessToken
+      description: Permanently revokes the token. Requests using it will 401 immediately.
+      responses:
+        "204":
+          description: Token revoked.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/auth/tokens/{id}/rotate:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Access tokens]
+      summary: Rotate a token
+      operationId: rotateAccessToken
+      description: >
+        Issues a new secret for the same token, keeping its name and scopes, and
+        invalidates the old secret. The new secret is returned **once**.
+      responses:
+        "200":
+          description: Rotated — new secret shown once.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/AccessToken"
+                  - type: object
+                    properties:
+                      secret:
+                        type: string
+                        description: The new token. Shown only here.
+                        example: cad_pat_M2pKx9Lq4Rb7Vn0Zt6wYc3Hs8dF1
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/coach/athletes:
+    get:
+      tags: [Coaching]
+      summary: List roster
+      operationId: listRoster
+      description: Athletes linked to the authenticated coach, with compliance and form.
+      responses:
+        "200":
+          description: Roster.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RosterEntry"
+
+  /v1/coach/athletes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Coaching]
+      summary: Athlete detail
+      operationId: getCoachAthlete
+      description: A single athlete's training summary, scoped to the coach relationship.
+      responses:
+        "200":
+          description: Athlete training summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachAthlete"
+
+  /v1/gear/bikes:
+    get:
+      tags: [Gear]
+      summary: List bikes
+      operationId: listBikes
+      description: Garage bikes with aggregate distance and component wear.
+      responses:
+        "200":
+          description: Bikes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Bike"
+    post:
+      tags: [Gear]
+      summary: Add a bike
+      operationId: createBike
+      description: Adds a bike to the garage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                kind: { type: string, enum: [road, indoor, gravel, tt] }
+                groupset: { type: string }
+                distance_km: { type: integer, default: 0 }
+      responses:
+        "201":
+          description: Bike added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bike"
+
+  /v1/gear/shoes:
+    get:
+      tags: [Gear]
+      summary: List shoes
+      operationId: listShoes
+      description: >
+        Run shoes resolved through the catalog. `name` defaults to the composed
+        manufacturer + model + version + colourway and is unique per athlete.
+      responses:
+        "200":
+          description: Shoes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Shoe"
+    post:
+      tags: [Gear]
+      summary: Add a pair of shoes
+      operationId: createShoe
+      description: >
+        Registers a physical pair against a catalog model version. `name` is optional
+        — it defaults to the composed catalog string and must be unique per athlete.
+        `image` is an optional URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shoe_model_version_id, colourway]
+              properties:
+                shoe_model_version_id: { type: string }
+                colourway: { type: string }
+                name:
+                  type: string
+                  description: Override; unique; defaults to the composed name.
+                limit_km: { type: integer }
+                image:
+                  type: [string, "null"]
+                  format: uri
+      responses:
+        "201":
+          description: Shoe registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shoe"
+
+  /v1/gear/shoes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Gear]
+      summary: Update a pair of shoes
+      operationId: updateShoe
+      description: >
+        Edit a pair — rename, adjust the retirement limit, set or change the image,
+        correct mileage, or retire it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                limit_km: { type: integer }
+                km: { type: integer, description: Correct accumulated distance. }
+                image: { type: [string, "null"], format: uri }
+                retired: { type: boolean }
+      responses:
+        "200":
+          description: Updated shoe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shoe"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Gear]
+      summary: Delete a pair of shoes
+      operationId: deleteShoe
+      description: Removes the shoes. Past activities keep their shoe reference for history.
+      responses:
+        "204":
+          description: Deleted.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/gear/shoe-catalog:
+    get:
+      tags: [Gear]
+      summary: Search the shoe catalog
+      operationId: searchShoeCatalog
+      description: >
+        Type-ahead over the manufacturer → model → version catalog that backs the
+        "add shoes" picker. Returns model versions with their composed display name.
+      parameters:
+        - name: q
+          in: query
+          description: Search text across manufacturer and model.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Matching catalog entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ShoeCatalogEntry"
+
+  /v1/gear/bikes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Gear]
+      summary: Retrieve a bike
+      operationId: getBike
+      description: A bike with its full component list and service status.
+      responses:
+        "200":
+          description: The bike.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Bike"
+                  - type: object
+                    properties:
+                      components:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Component"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Gear]
+      summary: Update a bike
+      operationId: updateBike
+      description: Rename, change type/groupset, or correct accumulated distance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                kind: { type: string, enum: [road, indoor, gravel, tt] }
+                groupset: { type: string }
+                distance_km: { type: integer }
+      responses:
+        "200":
+          description: Updated bike.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bike"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Gear]
+      summary: Delete a bike
+      operationId: deleteBike
+      description: Removes the bike and its components. Past activities keep their reference.
+      responses:
+        "204":
+          description: Deleted.
+
+  /v1/gear/bikes/{id}/components:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Gear]
+      summary: Add a component
+      operationId: createComponent
+      description: >
+        Tracks a wear part on the bike (chain, tyres, cassette, …) with a distance
+        limit so the app can flag service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, limit_km]
+              properties:
+                name: { type: string, example: Chain }
+                limit_km: { type: integer, example: 4000 }
+                km: { type: integer, default: 0, description: Distance already on the part. }
+                model: { type: string, example: KMC X11SL }
+      responses:
+        "201":
+          description: Component added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Component"
+
+  /v1/gear/components/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Gear]
+      summary: Update a component
+      operationId: updateComponent
+      description: Adjust the limit, correct mileage, or change the fitted model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                limit_km: { type: integer }
+                km: { type: integer }
+                model: { type: string }
+      responses:
+        "200":
+          description: Updated component.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Component"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Gear]
+      summary: Remove a component
+      operationId: deleteComponent
+      description: Removes the wear part from the bike.
+      responses:
+        "204":
+          description: Removed.
+
+  /v1/gear/components/{id}/service:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Gear]
+      summary: Log service / replacement
+      operationId: serviceComponent
+      description: >
+        Records maintenance on a component. `reset` zeroes the accumulated distance
+        (e.g. a new chain); otherwise it logs an inspection/clean without resetting.
+        Appears in the bike's maintenance history.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [replaced, cleaned, inspected, adjusted]
+                  example: replaced
+                reset:
+                  type: boolean
+                  default: true
+                  description: Zero the part's mileage (true for a replacement).
+                note: { type: string }
+                date: { type: string, format: date }
+      responses:
+        "201":
+          description: Service logged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceRecord"
+
+  /v1/webhooks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Webhooks]
+      summary: Delete a subscription
+      operationId: deleteWebhook
+      description: Stops delivery and removes the webhook subscription.
+      responses:
+        "204":
+          description: Subscription removed.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List subscriptions
+      operationId: listWebhooks
+      description: All active webhook subscriptions for the app.
+      responses:
+        "200":
+          description: Subscriptions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Webhook"
+    post:
+      tags: [Webhooks]
+      summary: Create a subscription
+      operationId: createWebhook
+      description: >
+        Registers a callback URL for events. Cadence POSTs a signed payload when the
+        event fires.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url: { type: string, format: uri }
+                events:
+                  type: array
+                  items:
+                    type: string
+                  example: [activity.created, scheduled_workout.matched]
+      responses:
+        "201":
+          description: Subscription created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://api.cadence.cc/oauth/authorize
+          tokenUrl: https://api.cadence.cc/oauth/token
+          scopes:
+            activities:read: Read activities and streams
+            activities:write: Upload and edit activities
+            workouts:write: Create and edit workouts
+            calendar:write: Schedule workouts
+            coach: Access an athlete roster
+            gear:write: Manage gear
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ActivityId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    AthleteId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: The request was invalid.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              type: invalid_request
+              code: unknown_field
+              message: "Unknown field 'paec' in query."
+              param: q
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: The token's subject may not act on this athlete.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              type: forbidden
+              code: not_on_roster
+              message: "Coach coach_mara has no roster relationship with athlete ath_sofia."
+              param: athlete_id
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Sport:
+      type: string
+      enum: [bike, run, swim, walk]
+    TimeOfDay:
+      type: string
+      enum: [AM, MID, PM]
+
+    List:
+      type: object
+      properties:
+        object: { type: string, const: list }
+        has_more: { type: boolean }
+        next_cursor: { type: [string, "null"] }
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            type: { type: string }
+            code: { type: string }
+            message: { type: string }
+            param: { type: [string, "null"] }
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token: { type: string, example: cad_at_9f2a7c }
+        refresh_token: { type: string, example: cad_rt_1be40d }
+        token_type: { type: string, example: Bearer }
+        expires_in: { type: integer, example: 21600 }
+        scope: { type: string, example: "activities:read activities:write" }
+
+    JwtToken:
+      type: object
+      properties:
+        token:
+          type: string
+          description: The signed RS256 bearer JWT. Send as `Authorization: Bearer <token>`.
+          example: eyJhbGciOiJSUzI1NiIsImtpZCI6Ij8wMSJ9.eyJzdWIiOiJhdGhfbmVpbCJ9.SflKxw…
+        token_type: { type: string, example: Bearer }
+        expires_in: { type: integer, example: 3600 }
+        claims:
+          $ref: "#/components/schemas/JwtClaims"
+
+    JwtClaims:
+      type: object
+      description: >
+        The decoded payload. `sub` is the authenticated principal; the API authorizes
+        every request by checking `sub` may act on `athlete_id`.
+      properties:
+        iss: { type: string, example: https://api.cadence.cc }
+        sub: { type: string, description: The authenticated principal (athlete or coach)., example: coach_mara }
+        athlete_id: { type: string, description: The athlete whose data this token authorizes., example: ath_neil }
+        aud: { type: string, example: cadence-api }
+        scope: { type: string, example: "activities:read activities:write" }
+        iat: { type: integer, example: 1750000000 }
+        exp: { type: integer, example: 1750003600 }
+        jti: { type: string, example: jwt_4f9c2a }
+
+    Jwks:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              kty: { type: string, example: RSA }
+              use: { type: string, example: sig }
+              alg: { type: string, example: RS256 }
+              kid: { type: string, example: "801" }
+              n: { type: string, example: 0vx7agoebGcQSuu… }
+              e: { type: string, example: AQAB }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, example: usr_neil }
+        name: { type: string, example: Neil Goodgame }
+        email: { type: string, example: neil@example.cc }
+        age: { type: integer, example: 34 }
+        weight_kg: { type: number, example: 72 }
+        ftp: { type: integer, example: 265 }
+        critical_run_power: { type: integer, example: 285 }
+        threshold_pace: { type: string, example: "4:00" }
+        lthr: { type: integer, example: 155 }
+        max_hr: { type: integer, example: 186 }
+        is_coach:
+          type: boolean
+          description: Whether this user also coaches other users. A user can train and coach at once.
+          example: true
+
+    Athlete:
+      allOf:
+        - $ref: "#/components/schemas/User"
+      description: Deprecated alias of User, kept for compatibility.
+
+    UserRelationship:
+      type: object
+      description: >
+        A grant from one user (owner) to another (grantee). A viewer can see the
+        owner's activities and analysis; a coach can additionally schedule and
+        assign workouts.
+      properties:
+        id: { type: string, example: rel_88 }
+        owner_user_id: { type: string, example: usr_neil }
+        grantee_user_id: { type: string, example: usr_mara }
+        role: { type: string, enum: [viewer, coach], example: coach }
+        status: { type: string, enum: [pending, active], example: active }
+        compliance: { type: number, example: 0.92 }
+        tsb: { type: integer, example: -8 }
+
+    CoachedAthlete:
+      type: object
+      description: A coaching context — an athlete the signed-in user coaches.
+      properties:
+        relationship_id: { type: string, example: rel_88 }
+        user_id: { type: string, example: usr_sofia }
+        name: { type: string, example: Sofia Greco }
+        role: { type: string, enum: [coach, viewer], example: coach }
+        compliance: { type: number, example: 0.92 }
+        tsb: { type: integer, example: -8 }
+        last_activity_at: { type: string, format: date-time }
+
+    AthleteOld:
+      type: object
+      properties:
+        id: { type: string, example: ath_neil }
+        name: { type: string, example: Neil Goodgame }
+        age: { type: integer, example: 34 }
+        ftp: { type: integer, example: 265 }
+        critical_run_power: { type: integer, example: 285 }
+        threshold_pace: { type: string, example: "4:00" }
+        lthr: { type: integer, example: 155 }
+        max_hr: { type: integer, example: 186 }
+        coach_id: { type: [string, "null"] }
+        role: { type: string, enum: [athlete, coach], example: athlete }
+
+    Activity:
+      type: object
+      properties:
+        id: { type: string, example: act_9f2a7c }
+        athlete_id: { type: string }
+        sport: { $ref: "#/components/schemas/Sport" }
+        environment:
+          type: string
+          enum: [outdoor, indoor]
+          description: >
+            `indoor` for treadmill / trainer sessions, which have no GPS track.
+            Determines whether route and position streams are present.
+          example: outdoor
+        has_gps:
+          type: boolean
+          description: Whether the activity has a GPS position track. Always false when environment is indoor.
+          example: true
+        name: { type: string, example: Sunday Long Run }
+        start_date: { type: string, format: date-time }
+        source: { type: string, example: Garmin }
+        moving_time: { type: integer, description: Seconds, example: 6510 }
+        distance_km: { type: number, example: 23.0 }
+        distance_source:
+          type: string
+          enum: [gps, footpod, trainer, manual]
+          description: How distance was measured. `footpod` / `trainer` for indoor runs and rides.
+          example: gps
+        avg_power: { type: [integer, "null"] }
+        norm_power: { type: [integer, "null"] }
+        intensity: { type: number, description: Intensity factor, example: 0.78 }
+        tss: { type: integer, example: 96 }
+        avg_hr: { type: integer, example: 138 }
+        max_hr: { type: integer }
+        ascent: { type: integer, description: Metres }
+        start_weight_kg:
+          type: [number, "null"]
+          description: Body weight before the session. Defaults to the user's profile weight if unset.
+          example: 72.4
+        end_weight_kg:
+          type: [number, "null"]
+          description: Body weight after the session (for sweat-loss estimates).
+          example: 71.1
+        fluids_ml:
+          type: [integer, "null"]
+          description: Fluids consumed during the session.
+          example: 750
+        tags:
+          type: array
+          items: { type: string }
+          example: [Endurance, Race]
+        workout_id: { type: [string, "null"], example: wkt_long_z2 }
+        bike_id: { type: [string, "null"] }
+        shoe_id: { type: [string, "null"], example: shoe_vf3 }
+
+    UploadBatch:
+      type: object
+      description: >
+        A bulk .zip upload. Created by POST /v1/activities/batch and polled at
+        GET /v1/uploads/batches/{id}. Holds one child Upload per file in the archive.
+      properties:
+        id: { type: string, example: bat_3Yc1Qd }
+        object: { type: string, const: upload_batch }
+        status:
+          type: string
+          enum: [unpacking, processing, completed, failed]
+          description: >
+            `unpacking` reading the archive; `processing` files parsing; `completed`
+            every file settled; `failed` the archive itself was unreadable.
+          example: processing
+        filename: { type: string, example: garmin-export-2026.zip }
+        progress:
+          type: number
+          description: Fraction of files settled, 0–1.
+          example: 0.42
+        counts:
+          type: object
+          description: Tally of child uploads by outcome.
+          properties:
+            total: { type: integer, example: 124 }
+            ready: { type: integer, example: 50 }
+            processing: { type: integer, example: 71 }
+            failed: { type: integer, example: 1 }
+            duplicate: { type: integer, example: 2 }
+        uploads:
+          type: array
+          description: The child upload jobs (paginated for large archives).
+          items:
+            $ref: "#/components/schemas/Upload"
+        received_at: { type: string, format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+
+    Upload:
+      type: object
+      description: >
+        An asynchronous .fit upload job. Created by POST /v1/activities and polled at
+        GET /v1/uploads/{id}.
+      properties:
+        id: { type: string, example: upl_8KQ2a7 }
+        object: { type: string, const: upload }
+        status:
+          type: string
+          enum: [queued, processing, ready, failed, duplicate]
+          description: >
+            `queued` accepted, awaiting a worker; `processing` parsing the file;
+            `ready` parsed and the activity created; `failed` parsing errored;
+            `duplicate` the file matched an existing activity.
+          example: processing
+        progress:
+          type: number
+          description: Fraction parsed, 0–1. Null until processing begins.
+          example: 0.0
+        filename: { type: string, example: 2026-06-15-intervals.fit }
+        activity_id:
+          type: [string, "null"]
+          description: The created (or matched) activity once status is ready or duplicate; otherwise null.
+          example: null
+        error:
+          type: [object, "null"]
+          description: Present only when status is failed.
+          properties:
+            code: { type: string, example: corrupt_file }
+            message: { type: string, example: "Unreadable FIT header at byte 0." }
+        received_at: { type: string, format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+
+    Lap:
+      type: object
+      properties:
+        index: { type: integer, example: 1 }
+        duration: { type: integer, description: Seconds, example: 300 }
+        distance_km: { type: number, example: 1.02 }
+        avg_hr: { type: integer, example: 162 }
+        avg_power: { type: integer, example: 288 }
+
+    Streams:
+      type: object
+      properties:
+        object: { type: string, const: streams }
+        resolution: { type: string, example: high }
+        fields:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: number }
+          example:
+            time: [0, 1, 2, 3]
+            power: [210, 214, 219, 222]
+            heartrate: [128, 129, 131, 132]
+
+    DurationCurve:
+      type: object
+      properties:
+        metric: { type: string, enum: [power, heartrate], example: power }
+        extends_to: { type: integer, description: Seconds; full activity length when over 3600., example: 5449 }
+        points:
+          type: object
+          additionalProperties: { type: number }
+          description: Map of duration-in-seconds to best average value.
+          example: { "5": 712, "60": 538, "300": 351, "1200": 289, "3600": 259, "5449": 192 }
+
+    BestEffort:
+      type: object
+      properties:
+        window: { type: string, description: Duration (power) or distance (run)., example: 5min }
+        value: { type: number, example: 351 }
+        unit: { type: string, example: watts }
+        date: { type: string, format: date }
+        activity_id: { type: string }
+
+    Tag:
+      type: object
+      properties:
+        id: { type: string, example: tag_race }
+        name: { type: string, example: Race }
+        origin: { type: string, enum: [manual, auto], example: manual }
+        color: { type: string, example: "#e0442e" }
+
+    Workout:
+      type: object
+      properties:
+        id: { type: string, example: wkt_vo2_5x5 }
+        name: { type: string, example: "VO2 Max · 5×5" }
+        sport: { type: string, enum: [bike, run] }
+        type: { type: string, example: vo2 }
+        duration: { type: integer, description: Seconds, example: 3300 }
+        tss: { type: integer, example: 78 }
+
+    WorkoutCreate:
+      type: object
+      required: [name, sport, steps]
+      properties:
+        name: { type: string }
+        sport: { type: string, enum: [bike, run] }
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutStep"
+
+    WorkoutStep:
+      type: object
+      required: [kind, end_type]
+      properties:
+        kind: { type: string, enum: [warmup, block, rec, cool] }
+        end_type:
+          type: string
+          enum: [time, distance, manual]
+          description: >
+            How the step ends. `time` requires `duration`; `distance` requires
+            `distance`; `manual` advances when the athlete taps lap.
+        duration: { type: [integer, "null"], description: Seconds; required when end_type is time. }
+        distance: { type: [integer, "null"], description: Metres; required when end_type is distance. }
+        target_pct: { type: number, description: Target as % of threshold. }
+        repeat: { type: integer, default: 1 }
+
+    ScheduledWorkout:
+      type: object
+      properties:
+        id: { type: string, example: sch_88 }
+        workout_id: { type: string }
+        athlete_id: { type: string }
+        assigned_by: { type: [string, "null"], description: Coach who assigned it. }
+        date: { type: string, format: date }
+        time_of_day: { $ref: "#/components/schemas/TimeOfDay" }
+        status: { type: string, enum: [planned, completed, missed], example: planned }
+        activity_id: { type: [string, "null"], description: Completed activity that matched. }
+
+    ZoneSet:
+      type: object
+      properties:
+        type: { type: string, enum: [heart_rate, bike_power, run_power, pace] }
+        reference: { type: number, description: The threshold the zones are computed from. }
+        zones:
+          type: array
+          items:
+            $ref: "#/components/schemas/Zone"
+
+    Zone:
+      type: object
+      required: [name, low_pct, high_pct]
+      properties:
+        name: { type: string, example: Z2 Endurance }
+        low_pct: { type: number, example: 56 }
+        high_pct: { type: number, example: 75 }
+
+    RosterEntry:
+      type: object
+      properties:
+        athlete_id: { type: string, example: ath_sofia }
+        name: { type: string, example: Sofia Greco }
+        compliance: { type: number, description: Completed over planned over the window., example: 0.92 }
+        tsb: { type: integer, description: Training stress balance (form)., example: -8 }
+        flags: { type: integer, example: 1 }
+
+    CoachAthlete:
+      type: object
+      properties:
+        athlete_id: { type: string }
+        ctl: { type: integer, description: Fitness, example: 71 }
+        atl: { type: integer, description: Fatigue, example: 79 }
+        tsb: { type: integer, description: Form, example: -8 }
+        next_workout: { type: [string, "null"] }
+
+    Bike:
+      type: object
+      properties:
+        id: { type: string, example: bike_road }
+        athlete_id: { type: string }
+        name: { type: string, example: Tarmac SL7 }
+        kind: { type: string, enum: [road, indoor, gravel, tt] }
+        groupset: { type: string }
+        distance_km: { type: integer, example: 9120 }
+        hours: { type: number }
+        rides: { type: integer }
+        components: { type: integer, description: Count of tracked wear components., example: 5 }
+
+    Component:
+      type: object
+      properties:
+        id: { type: string }
+        bike_id: { type: string }
+        name: { type: string, example: Chain }
+        km: { type: integer, example: 4080 }
+        limit_km: { type: integer, example: 4000 }
+        model: { type: string, example: KMC X11SL }
+
+    Shoe:
+      type: object
+      properties:
+        id: { type: string, example: shoe_vf3 }
+        athlete_id: { type: string }
+        shoe_model_version_id: { type: string, example: smv_vaporfly3 }
+        manufacturer: { type: string, example: Nike }
+        model: { type: string, example: Vaporfly }
+        version: { type: string, example: "3" }
+        colourway: { type: string, example: "Volt / Black" }
+        name:
+          type: string
+          description: Unique per athlete; defaults to manufacturer + model + version + colourway.
+          example: Race Day Flyers
+        image: { type: [string, "null"], format: uri }
+        role: { type: string, example: Race & threshold }
+        km: { type: integer, example: 412 }
+        limit_km: { type: integer, example: 600 }
+        since: { type: string, format: date }
+
+    ShoeModel:
+      type: object
+      description: Catalog entry — a manufacturer + product line.
+      properties:
+        id: { type: string, example: sm_vaporfly }
+        manufacturer: { type: string, example: Nike }
+        model: { type: string, example: Vaporfly }
+
+    ShoeModelVersion:
+      type: object
+      description: Catalog entry — a generation of a shoe model.
+      properties:
+        id: { type: string, example: smv_vaporfly3 }
+        shoe_model_id: { type: string, example: sm_vaporfly }
+        version: { type: string, example: "3" }
+
+    Webhook:
+      type: object
+      properties:
+        id: { type: string, example: whk_4a }
+        url: { type: string, format: uri }
+        status: { type: string, enum: [active, disabled], example: active }
+        events:
+          type: array
+          items: { type: string }
+          example: [activity.created, scheduled_workout.matched]
+        secret: { type: string, description: Returned once on creation., example: whsec_9d2 }
+
+    WorkoutMatch:
+      type: object
+      description: A completed activity matched to a designed workout.
+      properties:
+        activity_id: { type: string, example: act_9f2a7c }
+        name: { type: string, example: "VO2 intervals · Tuesday AM" }
+        date: { type: string, format: date }
+        method: { type: string, enum: [auto, manual], example: auto }
+        confidence:
+          type: number
+          description: Match confidence 0–1 (auto matches only).
+          example: 0.94
+        compliance:
+          type: number
+          description: How closely the execution hit the planned targets, 0–1.
+          example: 0.88
+
+    FitnessPoint:
+      type: object
+      description: One day of the performance-management series.
+      properties:
+        date: { type: string, format: date }
+        ctl: { type: number, description: Fitness (chronic training load)., example: 62 }
+        atl: { type: number, description: Fatigue (acute training load)., example: 71 }
+        tsb: { type: number, description: Form (training stress balance = CTL − ATL)., example: -9 }
+
+    ShareRole:
+      type: string
+      enum: [viewer, coach]
+      description: >
+        `viewer` — read-only access to activities, analysis, workouts, and calendar.
+        `coach` — everything a viewer can, plus create and assign workouts.
+
+    Share:
+      type: object
+      description: A grant of access to your training data.
+      properties:
+        id: { type: string, example: shr_7c1a2b }
+        name: { type: string, example: Mara Køhl }
+        handle: { type: string, example: "@marakohl" }
+        role: { $ref: "#/components/schemas/ShareRole" }
+        status: { type: string, enum: [pending, active], example: active }
+        since: { type: string, format: date }
+
+    AccessToken:
+      type: object
+      description: >
+        A personal access token. The secret is only ever returned at creation or
+        rotation; listings show the prefix only.
+      properties:
+        id: { type: string, example: tok_7Qda }
+        name: { type: string, example: Home server sync }
+        prefix: { type: string, description: First chars of the secret, for recognition., example: cad_pat_7Qda }
+        scopes:
+          type: array
+          items: { type: string }
+          example: [activities:read]
+        created: { type: string, format: date }
+        expires_at: { type: [string, "null"], format: date, example: "2026-07-11" }
+        last_used: { type: [string, "null"], format: date, example: "2026-06-14" }
+
+    ServiceRecord:
+      type: object
+      description: A maintenance event logged against a component.
+      properties:
+        id: { type: string, example: svc_4a1 }
+        component_id: { type: string, example: cmp_chain }
+        action: { type: string, enum: [replaced, cleaned, inspected, adjusted], example: replaced }
+        reset: { type: boolean, example: true }
+        note: { type: string, example: "New KMC chain, old one at 4080 km." }
+        date: { type: string, format: date }
+
+    ShoeCatalogEntry:
+      type: object
+      description: A catalog model version returned by the shoe picker search.
+      properties:
+        shoe_model_version_id: { type: string, example: smv_vaporfly3 }
+        manufacturer: { type: string, example: Nike }
+        model: { type: string, example: Vaporfly }
+        version: { type: string, example: "3" }
+        display_name: { type: string, example: Nike Vaporfly 3 }
+
+webhooks:
+  activityCreated:
+    post:
+      summary: activity.created
+      description: Sent when a newly uploaded activity finishes processing.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event: { type: string, const: activity.created }
+                created: { type: string, format: date-time }
+                data:
+                  $ref: "#/components/schemas/Activity"
+      responses:
+        "200":
+          description: Return 200 to acknowledge receipt.
+
+  scheduledWorkoutMatched:
+    post:
+      summary: scheduled_workout.matched
+      description: Sent when a completed activity is matched to a planned workout.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event: { type: string, const: scheduled_workout.matched }
+                created: { type: string, format: date-time }
+                data:
+                  $ref: "#/components/schemas/ScheduledWorkout"
+      responses:
+        "200":
+          description: Return 200 to acknowledge receipt.
+
+  uploadBatchCompleted:
+    post:
+      summary: upload_batch.completed
+      description: Sent once when every file in a bulk .zip upload has settled.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event: { type: string, const: upload_batch.completed }
+                created: { type: string, format: date-time }
+                data:
+                  $ref: "#/components/schemas/UploadBatch"
+      responses:
+        "200":
+          description: Return 200 to acknowledge receipt.

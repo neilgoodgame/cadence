@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- ============ SIDEBAR ============ -->
+  <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 26px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
+      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</a>
+      <a href="Activity Analysis.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</a>
+      <a href="Activity Analysis.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>Analysis</a>
+      <a href="Calendar.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</div>
+      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</a>
+      <a href="Gear.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"></circle><circle cx="8" cy="8" r="2.1"></circle><line x1="8" y1="2" x2="8" y2="3.9"></line><line x1="8" y1="12.1" x2="8" y2="14"></line><line x1="2" y1="8" x2="3.9" y2="8"></line><line x1="12.1" y1="8" x2="14" y2="8"></line></svg>Gear</a>
+    </div>
+    <div style="margin-top:auto;padding:16px 16px 20px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div><div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div data-screen-label="workout-designer" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- top bar -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <h1 style="font-size:21px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);white-space:nowrap;">VO2 Max · 5×5</h1>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;padding:3px 9px;border-radius:6px;background:rgba(236,74,38,0.13);color:var(--ember,#ec4a26);">BIKE · STRUCTURED</span>
+        </div>
+        <div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:3px;">5 × 5:00 @ 118% FTP · 3:00 recovery · 55 min · 78 TSS · designed by you</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 2 14 5 5 14 2 14 2 11 11 2Z"></path></svg>Edit structure</div>
+        <div onClick="{{ openExport }}" style="display:flex;align-items:center;gap:7px;padding:8px 15px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 2v8M5 7l3 3 3-3"></path><path d="M3 12v1.5h10V12"></path></svg>Export</div>
+        <div style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Send to calendar</div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 1px 0 3px;"></div>
+        <a href="Notifications.dc.html" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg><span style="position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--ember,#ec4a26);border:1.5px solid var(--card,#fff);"></span></a><dc-import name="Preferences" hint-size="218px,46px"></dc-import>
+      </div>
+    </div>
+
+    <div style="padding:20px 32px 64px;display:grid;grid-template-columns:1fr 330px;gap:16px;align-items:start;">
+
+      <!-- LEFT COLUMN -->
+      <div style="display:flex;flex-direction:column;gap:16px;min-width:0;">
+
+        <!-- LINK BANNER -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:16px 20px;display:flex;align-items:center;gap:16px;">
+          <div style="width:40px;height:40px;border-radius:11px;flex-shrink:0;background:rgba(47,166,106,0.13);display:flex;align-items:center;justify-content:center;">
+            <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="#2fa66a" stroke-width="1.8"><path d="M8 11a3 3 0 0 0 4 0l3-3a3 3 0 0 0-4-4l-1 1"></path><path d="M12 9a3 3 0 0 0-4 0l-3 3a3 3 0 0 0 4 4l1-1"></path></svg>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:9px;">
+              <span style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);">Linked to “Tuesday AM — VO2 intervals”</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(47,166,106,0.14);color:#2fa66a;">{{ matchBadge }}</span>
+            </div>
+            <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;font-family:'JetBrains Mono',monospace;">Jun 10 · 1:02:11 · 28.4 km · matched {{ matchedCount }}/5 work intervals</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+              <div onClick="{{ setAuto }}" style="{{ autoBtn }}">Inferred</div>
+              <div onClick="{{ setManual }}" style="{{ manualBtn }}">Manual</div>
+            </div>
+            <div style="padding:8px 13px;border-radius:8px;border:1px solid var(--line,#e6e2dc);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">View activity</div>
+          </div>
+        </div>
+
+        <!-- CHART CARD -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px 18px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+            <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Planned target vs. actual power</div>
+            <div style="display:flex;align-items:center;gap:16px;">
+              <div style="display:flex;align-items:center;gap:7px;"><span style="width:13px;height:9px;border-radius:2px;background:rgba(236,74,38,0.28);border:1px solid rgba(236,74,38,0.5);"></span><span style="font-size:12px;color:var(--ink3,#9a958d);">Target</span></div>
+              <div style="display:flex;align-items:center;gap:7px;"><span style="width:14px;height:2px;background:var(--ink,#1b1a18);"></span><span style="font-size:12px;color:var(--ink3,#9a958d);">Actual</span></div>
+            </div>
+          </div>
+
+          <!-- plot -->
+          <div style="display:flex;gap:10px;">
+            <!-- y axis -->
+            <div style="width:42px;flex-shrink:0;height:240px;position:relative;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);">
+              <sc-for list="{{ yTicks }}" as="t" hint-placeholder-count="4">
+                <div style="{{ t.style }}">{{ t.label }}</div>
+              </sc-for>
+            </div>
+            <!-- plot area -->
+            <div style="flex:1;min-width:0;">
+              <div style="position:relative;height:240px;background:var(--elev,#faf9f7);border-radius:8px;overflow:hidden;">
+                <!-- FTP line -->
+                <div style="{{ ftpLineStyle }}"></div>
+                <div style="{{ ftpLabelStyle }}">FTP 265W</div>
+                <!-- target blocks -->
+                <div style="position:absolute;inset:0;display:flex;align-items:flex-end;">
+                  <sc-for list="{{ planned }}" as="seg" hint-placeholder-count="12">
+                    <div style="{{ seg.wrapStyle }}">
+                      <div style="{{ seg.barStyle }}"></div>
+                      <sc-if value="{{ seg.repBadge }}" hint-placeholder-val="{{ false }}">
+                        <div style="{{ seg.badgeStyle }}">{{ seg.repBadge }}</div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+                <!-- actual trace -->
+                <svg viewBox="0 0 1000 240" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;">
+                  <polyline points="{{ actualPoints }}" fill="none" stroke="var(--ink,#1b1a18)" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+                </svg>
+              </div>
+              <!-- x axis -->
+              <div style="position:relative;height:16px;margin-top:5px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);">
+                <sc-for list="{{ xTicks }}" as="x" hint-placeholder-count="6">
+                  <span style="{{ x.style }}">{{ x.label }}</span>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <!-- LAP ALIGNMENT STRIP -->
+          <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line,#e6e2dc);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);">Lap alignment</div>
+              <div style="font-size:11px;color:var(--ink3,#9a958d);">{{ alignCaption }}</div>
+            </div>
+            <div style="display:flex;gap:10px;">
+              <div style="width:42px;flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink3,#9a958d);display:flex;flex-direction:column;justify-content:space-between;padding:2px 0;">
+                <span>PLAN</span><span style="margin-top:6px;">LAPS</span>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <!-- planned row -->
+                <div style="display:flex;height:22px;">
+                  <sc-for list="{{ planned }}" as="seg" hint-placeholder-count="12">
+                    <div style="{{ seg.stripStyle }}"><span style="{{ seg.stripLabelStyle }}">{{ seg.stripLabel }}</span></div>
+                  </sc-for>
+                </div>
+                <!-- connector -->
+                <div style="height:8px;"></div>
+                <!-- detected laps row -->
+                <div style="display:flex;height:22px;">
+                  <sc-for list="{{ laps }}" as="lap" hint-placeholder-count="12">
+                    <div style="{{ lap.style }}"><span style="{{ lap.labelStyle }}">{{ lap.label }}</span></div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <sc-if value="{{ isManual }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:12px;display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:9px;background:var(--emberSoft,#fff5f1);border:1px solid rgba(236,74,38,0.2);">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ember,#ec4a26)" stroke-width="1.7"><path d="M5 8h6M8 5v6"></path><circle cx="8" cy="8" r="6.3"></circle></svg>
+                <span style="font-size:12px;color:var(--ink2,#6f6b65);">Drag a lap boundary onto a planned interval to re-assign it. Manual edits override the inferred match and are saved with this workout.</span>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <!-- INTERVAL COMPARISON TABLE -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px 8px;">
+          <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);margin-bottom:6px;">Interval breakdown</div>
+          <div style="display:grid;grid-template-columns:64px 1fr 1fr 1fr 1fr 86px;gap:12px;padding:9px 0;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);">
+            <span>Rep</span><span>Target</span><span>Actual avg</span><span>Δ Power</span><span>Avg HR</span><span style="text-align:right;">Hit</span>
+          </div>
+          <sc-for list="{{ intervals }}" as="iv" hint-placeholder-count="5">
+            <div style="display:grid;grid-template-columns:64px 1fr 1fr 1fr 1fr 86px;gap:12px;padding:12px 0;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
+              <span style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">{{ iv.rep }}</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);">{{ iv.target }}</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ iv.actual }}</span>
+              <span style="{{ iv.deltaStyle }}">{{ iv.delta }}</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);">{{ iv.hr }}</span>
+              <span style="{{ iv.hitStyle }}">{{ iv.hit }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- RIGHT RAIL -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <!-- COMPLIANCE -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:22px;">
+          <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);margin-bottom:18px;">Compliance</div>
+          <div style="display:flex;align-items:center;gap:20px;">
+            <div style="position:relative;width:104px;height:104px;flex-shrink:0;">
+              <svg width="104" height="104" viewBox="0 0 104 104">
+                <circle cx="52" cy="52" r="44" fill="none" stroke="var(--canvas,#f3f1ee)" stroke-width="9"></circle>
+                <circle cx="52" cy="52" r="44" fill="none" stroke="#2fa66a" stroke-width="9" stroke-linecap="round" stroke-dasharray="{{ compDash }}" stroke-dashoffset="{{ compOffset }}" transform="rotate(-90 52 52)"></circle>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:600;color:var(--ink,#1b1a18);line-height:1;">96<span style="font-size:14px;">%</span></span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink3,#9a958d);margin-top:2px;">ON TARGET</span>
+              </div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:11px;">
+              <sc-for list="{{ compRows }}" as="r" hint-placeholder-count="3">
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--ink2,#6f6b65);">{{ r.label }}</span><span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--ink,#1b1a18);">{{ r.value }}</span></div>
+                  <div style="height:5px;border-radius:3px;background:var(--canvas,#f3f1ee);overflow:hidden;"><div style="{{ r.barStyle }}"></div></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <!-- MATCHED WORKOUTS HISTORY -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Matched workouts</div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ matchTotal }}×</span>
+          </div>
+          <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:6px;">Every time you’ve performed this design</div>
+          <sc-for list="{{ history }}" as="h" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:13px;padding:12px 0;border-bottom:1px solid var(--line,#e6e2dc);cursor:pointer;">
+              <div style="{{ h.scoreStyle }}">{{ h.score }}</div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:7px;">
+                  <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ h.date }}</span>
+                  <sc-if value="{{ h.current }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;padding:1px 6px;border-radius:20px;background:rgba(236,74,38,0.13);color:var(--ember,#ec4a26);">THIS ONE</span></sc-if>
+                </div>
+                <div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:1px;font-family:'JetBrains Mono',monospace;">{{ h.detail }}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ h.power }}</div>
+                <div style="display:flex;align-items:center;gap:3px;justify-content:flex-end;margin-top:1px;"><span style="{{ h.trendStyle }}">{{ h.trend }}</span></div>
+              </div>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:13px 0 2px;font-size:13px;font-weight:600;color:var(--ember,#ec4a26);cursor:pointer;">View progression trend
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="8" x2="13" y2="8"></line><polyline points="9,4 13,8 9,12"></polyline></svg>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+  <!-- ============ EXPORT MODAL ============ -->
+  <sc-if value="{{ exportOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeExport }}" style="position:fixed;inset:0;z-index:60;background:rgba(6,8,12,0.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:32px;">
+      <div onClick="{{ stopExport }}" style="width:680px;max-width:100%;max-height:88vh;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,0.45);display:flex;flex-direction:column;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line,#e6e2dc);">
+          <div>
+            <div style="font-size:16px;font-weight:800;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Export workout</div>
+            <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:1px;">VO2 Max · 5×5 · for {{ exportTarget }}</div>
+          </div>
+          <div onClick="{{ closeExport }}" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink3,#9a958d);cursor:pointer;font-size:18px;border:1px solid var(--line,#e6e2dc);">×</div>
+        </div>
+        <div style="padding:18px 22px;display:flex;flex-direction:column;gap:14px;min-height:0;">
+          <div style="display:flex;gap:4px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;width:fit-content;">
+            <div onClick="{{ setFmtZwo }}" style="{{ zwoBtn }}">Zwift · .zwo</div>
+            <div onClick="{{ setFmtTcx }}" style="{{ tcxBtn }}">Garmin · .tcx</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2,#6f6b65);"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.6"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="7.4" x2="8" y2="11"></line><line x1="8" y1="4.8" x2="8" y2="5"></line></svg>{{ exportNote }}</div>
+          <div style="position:relative;background:var(--codeBg,#0c0d10);border:1px solid var(--line,#e6e2dc);border-radius:11px;overflow:auto;max-height:300px;">
+            <pre style="margin:0;padding:15px 17px;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.55;color:var(--ink2,#6f6b65);white-space:pre;">{{ exportPreview }}</pre>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 22px;border-top:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ exportFile }}</span>
+          <div style="display:flex;gap:9px;">
+            <div onClick="{{ doCopy }}" style="display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg>Copy</div>
+            <div onClick="{{ doDownload }}" style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:9px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v8M5 7l3 3 3-3"></path><path d="M3 12v1.5h10V12"></path></svg>Download</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:1180}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', matchMode: 'auto', exportOpen: false, exportFmt: 'zwo' };
+
+  FTP = 265;
+  buildExports() {
+    const ftp = this.FTP;
+    const w = f => Math.round(f * ftp);
+    const zwo = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<workout_file>\n' +
+      '  <author>Cadence</author>\n' +
+      '  <name>VO2 Max \u00b7 5\u00d75</name>\n' +
+      '  <description>5 \u00d7 5 min at VO2 max with 3 min recoveries. Exported from Cadence.</description>\n' +
+      '  <sportType>bike</sportType>\n' +
+      '  <tags/>\n' +
+      '  <workout>\n' +
+      '    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.70"/>\n' +
+      '    <IntervalsT Repeat="5" OnDuration="300" OffDuration="180" OnPower="1.18" OffPower="0.55"/>\n' +
+      '    <Cooldown Duration="300" PowerLow="0.55" PowerHigh="0.45"/>\n' +
+      '  </workout>\n' +
+      '</workout_file>\n';
+    const step = (id, name, secs, intensity, lo, hi) =>
+      '      <Step xsi:type="Step_t">\n' +
+      '        <StepId>' + id + '</StepId>\n' +
+      '        <Name>' + name + '</Name>\n' +
+      '        <Duration xsi:type="Time_t"><Seconds>' + secs + '</Seconds></Duration>\n' +
+      '        <Intensity>' + intensity + '</Intensity>\n' +
+      '        <Target xsi:type="Power_t"><PowerZone xsi:type="CustomPowerZone_t">' +
+      '<Low><Value>' + lo + '</Value></Low><High><Value>' + hi + '</Value></High></PowerZone></Target>\n' +
+      '      </Step>\n';
+    const tcx = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n' +
+      '  <Workouts>\n' +
+      '    <Workout Sport="Biking">\n' +
+      '      <Name>VO2 Max 5x5</Name>\n' +
+      step(1, 'Warm-up', 600, 'Active', w(0.50), w(0.70)) +
+      '      <Step xsi:type="Repeat_t">\n' +
+      '        <StepId>2</StepId>\n' +
+      '        <Repetitions>5</Repetitions>\n' +
+      '        <Child xsi:type="Step_t"><StepId>3</StepId><Name>VO2</Name><Duration xsi:type="Time_t"><Seconds>300</Seconds></Duration><Intensity>Active</Intensity><Target xsi:type="Power_t"><PowerZone xsi:type="CustomPowerZone_t"><Low><Value>' + w(1.13) + '</Value></Low><High><Value>' + w(1.23) + '</Value></High></PowerZone></Target></Child>\n' +
+      '        <Child xsi:type="Step_t"><StepId>4</StepId><Name>Recovery</Name><Duration xsi:type="Time_t"><Seconds>180</Seconds></Duration><Intensity>Resting</Intensity><Target xsi:type="Power_t"><PowerZone xsi:type="CustomPowerZone_t"><Low><Value>' + w(0.45) + '</Value></Low><High><Value>' + w(0.62) + '</Value></High></PowerZone></Target></Child>\n' +
+      '      </Step>\n' +
+      step(5, 'Cool-down', 300, 'Resting', w(0.45), w(0.60)) +
+      '    </Workout>\n' +
+      '  </Workouts>\n' +
+      '</TrainingCenterDatabase>\n';
+    return { zwo, tcx };
+  }
+  download(name, content) {
+    const blob = new Blob([content], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  copyExport(text) { try { navigator.clipboard.writeText(text); } catch (e) {} }
+
+  zoneColor(pct) {
+    if (pct < 56) return '#8a94a6';
+    if (pct < 76) return '#3d7fd6';
+    if (pct < 91) return '#2fa66a';
+    if (pct < 106) return '#f0a02e';
+    if (pct < 121) return '#ec4a26';
+    return '#c4332a';
+  }
+
+  build() {
+    const FTP = 265;
+    const AXIS = 132;            // top of power axis in %FTP
+    const total = 55;           // total minutes
+    const W = (pct) => Math.round(FTP * pct / 100);
+
+    // ----- planned structure -----
+    const defs = [];
+    defs.push({ dur: 10, peak: 70, start: 46, kind: 'up', label: 'Warm-up', strip: 'Warm-up' });
+    const reps = 5;
+    for (let i = 0; i < reps; i++) {
+      defs.push({ dur: 5, peak: 118, kind: 'block', rep: i + 1, strip: 'VO2 ' + (i + 1) });
+      defs.push({ dur: 3, peak: 55, kind: 'block', strip: 'rec' });
+    }
+    defs.push({ dur: 5, peak: 55, end: 45, kind: 'down', label: 'Cool', strip: 'Cool' });
+
+    const planned = defs.map(s => {
+      const col = this.zoneColor(s.peak);
+      const hPct = (s.peak / AXIS) * 100;
+      let clip = 'none';
+      if (s.kind === 'up') { const f = (1 - s.start / s.peak) * 100; clip = 'polygon(0 100%, 0 ' + f.toFixed(1) + '%, 100% 0, 100% 100%)'; }
+      if (s.kind === 'down') { const f = (1 - s.end / s.peak) * 100; clip = 'polygon(0 100%, 0 0, 100% ' + f.toFixed(1) + '%, 100% 100%)'; }
+      const isRec = s.strip === 'rec';
+      const isVO2 = !!s.rep;
+      return {
+        _dur: s.dur,
+        wrapStyle: { position: 'relative', width: (s.dur / total * 100) + '%', height: '100%', display: 'flex', alignItems: 'flex-end', borderRight: '1px solid var(--card,#fff)' },
+        barStyle: { width: '100%', height: hPct.toFixed(1) + '%', background: col, opacity: 0.34, borderTop: '2px solid ' + col, clipPath: clip, WebkitClipPath: clip },
+        repBadge: isVO2 ? String(s.rep) : null,
+        badgeStyle: { position: 'absolute', top: '8px', left: '50%', transform: 'translateX(-50%)', fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 600, color: col },
+        // lap-strip cell
+        stripStyle: { width: (s.dur / total * 100) + '%', borderRight: '2px solid var(--card,#fff)', borderRadius: '4px', background: isRec ? 'var(--canvas,#f3f1ee)' : this.rgba(col, 0.16), display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+        stripLabel: isRec ? '' : (s.rep ? String(s.rep) : s.strip),
+        stripLabelStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '9px', fontWeight: 600, color: isVO2 ? col : 'var(--ink3,#9a958d)', whiteSpace: 'nowrap' },
+      };
+    });
+
+    // ----- detected laps (1:1 with plan, all matched) -----
+    const laps = defs.map((s, i) => {
+      const isRec = s.strip === 'rec';
+      const matched = true;
+      return {
+        style: { width: (s.dur / total * 100) + '%', borderRight: '2px solid var(--card,#fff)', borderRadius: '4px', background: matched ? 'rgba(47,166,106,0.16)' : 'var(--canvas,#f3f1ee)', border: '1px solid ' + (matched ? 'rgba(47,166,106,0.4)' : 'var(--line,#e6e2dc)'), display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+        label: isRec ? '' : '✓',
+        labelStyle: { fontSize: '10px', fontWeight: 700, color: '#2fa66a' },
+      };
+    });
+
+    // ----- actual power trace -----
+    const env = [
+      { dur: 10, from: 46, to: 70 },
+      { dur: 5, from: 121, to: 119 }, { dur: 3, from: 60, to: 52 },
+      { dur: 5, from: 120, to: 118 }, { dur: 3, from: 58, to: 51 },
+      { dur: 5, from: 118, to: 116 }, { dur: 3, from: 57, to: 50 },
+      { dur: 5, from: 116, to: 114 }, { dur: 3, from: 57, to: 50 },
+      { dur: 5, from: 120, to: 117 }, { dur: 3, from: 56, to: 49 },
+      { dur: 5, from: 55, to: 42 },
+    ];
+    let t = 0;
+    const pts = [];
+    env.forEach(seg => {
+      const steps = Math.round(seg.dur / 0.25);
+      for (let k = 0; k <= steps; k++) {
+        const f = k / steps;
+        let v = seg.from + (seg.to - seg.from) * f;
+        v += 2.4 * Math.sin(t * 2.7) + 1.4 * Math.sin(t * 7.3);
+        v = Math.max(34, Math.min(AXIS, v));
+        const x = (t / total) * 1000;
+        const y = (1 - v / AXIS) * 240;
+        pts.push(x.toFixed(1) + ',' + y.toFixed(1));
+        t += 0.25;
+      }
+      t = Math.round(t / 0.25) * 0.25;
+    });
+    const actualPoints = pts.join(' ');
+
+    // ----- axis ticks -----
+    const yVals = [340, 265, 170, 85];
+    const yTicks = yVals.map(v => ({
+      label: v + 'W',
+      style: { position: 'absolute', right: '0', top: ((1 - v / FTP * 100 / AXIS) * 100).toFixed(1) + '%', transform: 'translateY(-50%)' },
+    }));
+    const xTicks = [0, 10, 20, 30, 40, 50].map(m => ({
+      label: m + "'",
+      style: { position: 'absolute', left: (m / total * 100) + '%', transform: 'translateX(-50%)' },
+    }));
+
+    const ftpTop = (1 - 100 / AXIS) * 100;
+    const ftpLineStyle = { position: 'absolute', left: 0, right: 0, top: ftpTop.toFixed(1) + '%', borderTop: '1px dashed var(--ink3,#9a958d)', opacity: 0.55 };
+    const ftpLabelStyle = { position: 'absolute', right: '8px', top: 'calc(' + ftpTop.toFixed(1) + '% - 16px)', fontFamily: "'JetBrains Mono',monospace", fontSize: '9px', color: 'var(--ink3,#9a958d)' };
+
+    // ----- interval comparison -----
+    const targetW = W(118); // 313
+    const actualsPct = [120, 119, 117, 115, 118.5];
+    const hrs = [168, 171, 173, 174, 175];
+    const intervals = actualsPct.map((p, i) => {
+      const aw = Math.round(FTP * p / 100);
+      const d = aw - targetW;
+      const pctOff = Math.abs(d) / targetW;
+      const hit = pctOff <= 0.02;
+      const col = hit ? '#2fa66a' : '#f0a02e';
+      return {
+        rep: '#' + (i + 1),
+        target: targetW + ' W',
+        actual: aw + ' W',
+        delta: (d >= 0 ? '+' : '') + d + ' W',
+        deltaStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '13px', fontWeight: 600, color: d >= 0 ? '#2fa66a' : '#cc7a14' },
+        hr: hrs[i] + ' bpm',
+        hit: hit ? 'On' : 'Under',
+        hitStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600, textAlign: 'right', color: col },
+      };
+    });
+
+    // ----- compliance breakdown -----
+    const bar = (v, c) => ({ height: '100%', width: v + '%', background: c, borderRadius: '3px' });
+    const compRows = [
+      { label: 'Power in zone', value: '96%', barStyle: bar(96, '#2fa66a') },
+      { label: 'Duration held', value: '100%', barStyle: bar(100, '#2fa66a') },
+      { label: 'Cadence target', value: '88%', barStyle: bar(88, '#f0a02e') },
+    ];
+    const R = 44, C = 2 * Math.PI * R;
+    const compDash = C.toFixed(1);
+    const compOffset = (C * (1 - 0.96)).toFixed(1);
+
+    // ----- matched history -----
+    const hraw = [
+      { date: 'Jun 10', score: 96, power: '314 W', detail: 'TSS 79 · 1:02:11', trend: '+6 W', up: true, current: true },
+      { date: 'May 27', score: 92, power: '308 W', detail: 'TSS 77 · 0:58:40', trend: '+7 W', up: true },
+      { date: 'May 13', score: 88, power: '301 W', detail: 'TSS 74 · 0:55:02', trend: '+5 W', up: true },
+      { date: 'Apr 29', score: 84, power: '296 W', detail: 'TSS 72 · 0:54:31', trend: 'first', up: null },
+    ];
+    const history = hraw.map(h => {
+      const sc = h.score >= 95 ? '#2fa66a' : h.score >= 90 ? '#5a9e3f' : '#f0a02e';
+      return {
+        date: h.date, power: h.power, detail: h.detail, current: !!h.current,
+        score: h.score + '%',
+        scoreStyle: { width: '42px', flexShrink: 0, textAlign: 'center', fontFamily: "'JetBrains Mono',monospace", fontSize: '13px', fontWeight: 600, color: sc, background: this.rgba(sc, 0.13), borderRadius: '7px', padding: '6px 0' },
+        trend: h.trend,
+        trendStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600, color: h.up === true ? '#2fa66a' : 'var(--ink3,#9a958d)' },
+      };
+    });
+
+    return { planned, laps, actualPoints, yTicks, xTicks, ftpLineStyle, ftpLabelStyle, intervals, compRows, compDash, compOffset, history };
+  }
+
+  rgba(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  model = this.build();
+
+  renderVals() {
+    this._ex = this.buildExports();
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)' };
+    const isLab = this.state.theme === 'lab';
+    const isManual = this.state.matchMode === 'manual';
+    const seg = (active) => ({ flex: 1, textAlign: 'center', padding: '5px 11px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', whiteSpace: 'nowrap', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent', boxShadow: active ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+
+    return {
+      themeVars: this.state.theme === 'day' ? { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--emberLine': 'rgba(13,148,136,0.30)', '--grid': 'rgba(14,24,32,0.06)' } : (isLab ? lab : cockpit),
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(this.state.theme === 'lab'), cockpitBtn: seg(this.state.theme === 'cockpit'), dayBtn: seg(this.state.theme === 'day'),
+      setAuto: () => this.setState({ matchMode: 'auto' }),
+      setManual: () => this.setState({ matchMode: 'manual' }),
+      openExport: () => this.setState({ exportOpen: true }),
+      closeExport: () => this.setState({ exportOpen: false }),
+      stopExport: (e) => e.stopPropagation(),
+      exportOpen: this.state.exportOpen,
+      setFmtZwo: () => this.setState({ exportFmt: 'zwo' }),
+      setFmtTcx: () => this.setState({ exportFmt: 'tcx' }),
+      zwoBtn: seg(this.state.exportFmt === 'zwo'), tcxBtn: seg(this.state.exportFmt === 'tcx'),
+      exportPreview: this.state.exportFmt === 'zwo' ? this._ex.zwo : this._ex.tcx,
+      exportFile: this.state.exportFmt === 'zwo' ? 'vo2-max-5x5.zwo' : 'vo2-max-5x5.tcx',
+      exportTarget: this.state.exportFmt === 'zwo' ? 'Zwift' : 'Garmin Connect',
+      exportNote: this.state.exportFmt === 'zwo' ? 'Drop the .zwo into Documents/Zwift/Workouts/<id>/ or import via the companion.' : 'Garmin Connect \u2192 Training \u2192 Workouts \u2192 Import, or copy to your device\u2019s NewFiles folder.',
+      doDownload: () => this.download(this.state.exportFmt === 'zwo' ? 'vo2-max-5x5.zwo' : 'vo2-max-5x5.tcx', this.state.exportFmt === 'zwo' ? this._ex.zwo : this._ex.tcx),
+      doCopy: () => this.copyExport(this.state.exportFmt === 'zwo' ? this._ex.zwo : this._ex.tcx),
+      autoBtn: seg(!isManual), manualBtn: seg(isManual),
+      isManual,
+      matchBadge: isManual ? 'MANUAL' : 'AUTO · 94%',
+      matchedCount: 5,
+      alignCaption: isManual ? 'Manual override — drag to re-assign' : 'Inferred from lap boundaries · 94% confidence',
+      matchTotal: 4,
+      ...this.model,
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- ============ SIDEBAR ============ -->
+  <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 26px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;">
+        <div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div>
+      </div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>
+        Dashboard
+      </div>
+      <a href="Activities.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>
+        Activities
+      </a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:pointer;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>
+        Analysis
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>
+        Calendar
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>
+        Workouts
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>
+        Import
+      </div>
+    </div>
+
+    <div style="margin-top:auto;padding:16px 16px 20px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div><div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div data-screen-label="analysis" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+
+    <!-- top bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);"><a href="Activities.dc.html" style="color:var(--ink3,#9a958d);text-decoration:none;">Activities</a> <span style="margin:0 6px;">/</span> <span style="color:var(--ink2,#6f6b65);">Cycling</span> <span style="margin:0 6px;">/</span> <span style="color:var(--ink,#1b1a18);">Big Loop in Watopia</span></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:32px;height:32px;border-radius:8px;border:1px solid var(--line,#e6e2dc);display:flex;align-items:center;justify-content:center;color:var(--ink2,#6f6b65);cursor:pointer;font-size:15px;">‹</div>
+        <div style="width:32px;height:32px;border-radius:8px;border:1px solid var(--line,#e6e2dc);display:flex;align-items:center;justify-content:center;color:var(--ink2,#6f6b65);cursor:pointer;font-size:15px;">›</div>
+        <div style="height:20px;width:1px;background:var(--line,#e6e2dc);margin:0 4px;"></div>
+        <div style="padding:8px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Export</div>
+        <div style="padding:8px 14px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Share</div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 1px 0 3px;"></div>
+        <a href="Notifications.dc.html" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg><span style="position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--ember,#ec4a26);border:1.5px solid var(--card,#fff);"></span></a><dc-import name="Preferences" hint-size="218px,46px"></dc-import>
+      </div>
+    </div>
+
+    <div style="padding:28px 32px 60px;max-width:1320px;width:100%;">
+
+      <!-- header -->
+      <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:24px;">
+        <div style="width:46px;height:46px;border-radius:11px;background:var(--emberSoft,#fff5f1);border:1px solid var(--emberLine,#f6d2c5);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ember,#ec4a26)" stroke-width="1.7"><circle cx="5.5" cy="17.5" r="3.5"></circle><circle cx="18.5" cy="17.5" r="3.5"></circle><path d="M5.5 17.5 L10 8 H14 M12 8 L18.5 17.5 M9 8 H15"></path></svg>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;line-height:1.1;margin:0;color:var(--ink,#1b1a18);">Big Loop in Watopia</h1>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:4px 10px;background:#eef4fc;border:1px solid #cfe0f6;color:#3d7fd6;border-radius:20px;">Virtual Ride</span>
+            <span style="width:1px;height:18px;background:var(--line,#e6e2dc);margin:0 1px;"></span>
+            <sc-for list="{{ tags }}" as="tag" hint-placeholder-count="1">
+              <span style="{{ tag.style }}"><span style="{{ tag.dotStyle }}"></span>{{ tag.label }}<span onClick="{{ tag.onRemove }}" style="{{ tag.xStyle }}">×</span></span>
+            </sc-for>
+            <div style="position:relative;">
+              <div onClick="{{ toggleTagMenu }}" style="{{ addTagStyle }}"><span style="font-size:14px;line-height:1;">+</span>Tag</div>
+              <sc-if value="{{ tagMenuOpen }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ stopTag }}" style="position:absolute;top:32px;left:0;z-index:30;width:270px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:12px;box-shadow:0 14px 36px rgba(20,17,15,0.18);padding:13px;">
+                  <input value="{{ tagDraft }}" onChange="{{ onTagInput }}" onKeyDown="{{ onTagKey }}" placeholder="Create or search tags…" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;font-family:'Hanken Grotesk',sans-serif;color:var(--ink,#1b1a18);outline:none;margin-bottom:12px;" />
+                  <sc-if value="{{ showCreate }}" hint-placeholder-val="{{ false }}">
+                    <div onClick="{{ commitDraft }}" style="display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:8px;background:var(--emberSoft,#fff5f1);border:1px solid rgba(236,74,38,0.2);cursor:pointer;margin-bottom:12px;"><span style="font-size:14px;color:var(--ember,#ec4a26);line-height:1;">+</span><span style="font-size:12px;color:var(--ink2,#6f6b65);">Create</span><span style="font-size:12px;font-weight:700;color:var(--ember,#ec4a26);">{{ tagDraft }}</span></div>
+                  </sc-if>
+                  <sc-for list="{{ tagGroups }}" as="g" hint-placeholder-count="3">
+                    <div style="margin-bottom:11px;">
+                      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;color:var(--ink3,#9a958d);margin-bottom:7px;">{{ g.name }}</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                        <sc-for list="{{ g.items }}" as="s" hint-placeholder-count="4">
+                          <div onClick="{{ s.onClick }}" style="{{ s.style }}"><span style="{{ s.dotStyle }}"></span>{{ s.label }}</div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+          <div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:10px;font-family:'JetBrains Mono',monospace;line-height:1.5;">Thu 11 Jun 2026 · 18:42 &nbsp;·&nbsp; Zwift · Watopia &nbsp;·&nbsp; Wahoo KICKR (ERG) &nbsp;·&nbsp; imported from Zwift</div>
+        </div>
+      </div>
+
+      <!-- metric strip -->
+      <div style="display:flex;flex-wrap:wrap;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:6px 4px;margin-bottom:14px;">
+        <div style="flex:1;min-width:110px;padding:14px 18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">43.08<span style="font-size:13px;color:var(--ink3,#9a958d);font-weight:500;"> km</span></div>
+          <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Distance</div>
+        </div>
+        <div style="width:1px;background:var(--line,#e6e2dc);margin:12px 0;"></div>
+        <div style="flex:1;min-width:110px;padding:14px 18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">1:30:49</div>
+          <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Moving Time</div>
+        </div>
+        <div style="width:1px;background:var(--line,#e6e2dc);margin:12px 0;"></div>
+        <div style="flex:1;min-width:110px;padding:14px 18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">192<span style="font-size:13px;color:var(--ink3,#9a958d);font-weight:500;"> w</span></div>
+          <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Avg Power</div>
+        </div>
+        <div style="width:1px;background:var(--line,#e6e2dc);margin:12px 0;"></div>
+        <div style="flex:1;min-width:110px;padding:14px 18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">198<span style="font-size:13px;color:var(--ink3,#9a958d);font-weight:500;"> w</span></div>
+          <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Norm. Power</div>
+        </div>
+        <div style="width:1px;background:var(--line,#e6e2dc);margin:12px 0;"></div>
+        <div style="flex:1;min-width:90px;padding:14px 18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">0.74</div>
+          <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Intensity</div>
+        </div>
+        <div style="width:1px;background:var(--line,#e6e2dc);margin:12px 0;"></div>
+        <div style="flex:1;min-width:90px;padding:14px 18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;letter-spacing:-0.02em;color:var(--ember,#ec4a26);">79</div>
+          <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">TSS</div>
+        </div>
+        <div style="width:1px;background:var(--line,#e6e2dc);margin:12px 0;"></div>
+        <div style="flex:1;min-width:90px;padding:14px 18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">132<span style="font-size:13px;color:var(--ink3,#9a958d);font-weight:500;"> bpm</span></div>
+          <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Avg HR</div>
+        </div>
+        <div style="width:1px;background:var(--line,#e6e2dc);margin:12px 0;"></div>
+        <div style="flex:1;min-width:90px;padding:14px 18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">658<span style="font-size:13px;color:var(--ink3,#9a958d);font-weight:500;"> m</span></div>
+          <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:3px;">Ascent</div>
+        </div>
+      </div>
+
+      <!-- map + side panel -->
+      <div style="display:grid;grid-template-columns:1.55fr 1fr;gap:14px;margin-bottom:14px;">
+        <!-- map (outdoor / GPS) -->
+        <sc-if value="{{ hasGps }}" hint-placeholder-val="{{ true }}">
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;position:relative;min-height:300px;">
+          <div style="position:absolute;inset:0;background:var(--elev,#faf9f7);background-image:linear-gradient(var(--grid,#ece8e2) 1px,transparent 1px),linear-gradient(90deg,var(--grid,#ece8e2) 1px,transparent 1px);background-size:34px 34px;"></div>
+          <svg viewBox="0 0 600 320" preserveAspectRatio="xMidYMid meet" style="position:absolute;inset:0;width:100%;height:100%;">
+            <defs>
+              <linearGradient id="paceGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#3d7fd6"></stop>
+                <stop offset="0.5" stop-color="#2fa66a"></stop>
+                <stop offset="0.78" stop-color="#f0a02e"></stop>
+                <stop offset="1" stop-color="#e0442e"></stop>
+              </linearGradient>
+            </defs>
+            <polyline points="{{ routePts }}" fill="none" stroke="url(#paceGrad)" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" opacity="0.95"></polyline>
+            <circle cx="{{ routeStartX }}" cy="{{ routeStartY }}" r="7" fill="#2fa66a" stroke="#fff" stroke-width="2.5"></circle>
+            <circle cx="{{ routeEndX }}" cy="{{ routeEndY }}" r="7" fill="var(--ember,#ec4a26)" stroke="#fff" stroke-width="2.5"></circle>
+          </svg>
+          <div style="position:absolute;top:14px;left:14px;display:flex;flex-direction:column;gap:5px;">
+            <div style="width:30px;height:30px;border-radius:8px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink2,#6f6b65);cursor:pointer;">+</div>
+            <div style="width:30px;height:30px;border-radius:8px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);display:flex;align-items:center;justify-content:center;font-size:17px;color:var(--ink2,#6f6b65);cursor:pointer;">−</div>
+          </div>
+          <div style="position:absolute;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:6px 11px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">
+            <span style="width:9px;height:9px;border-radius:50%;background:#f0a02e;"></span>22.0° · Watopia
+          </div>
+          <div style="position:absolute;bottom:14px;left:14px;display:flex;align-items:center;gap:9px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:7px 11px;">
+            <span style="font-size:11px;color:var(--ink3,#9a958d);font-weight:600;">Slower</span>
+            <div style="width:90px;height:7px;border-radius:4px;background:linear-gradient(90deg,#3d7fd6,#2fa66a,#f0a02e,#e0442e);"></div>
+            <span style="font-size:11px;color:var(--ink3,#9a958d);font-weight:600;">Faster</span>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- indoor (no GPS) -->
+        <sc-if value="{{ noGps }}" hint-placeholder-val="{{ false }}">
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;position:relative;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;">
+          <div style="position:absolute;inset:0;background:var(--elev,#faf9f7);background-image:linear-gradient(var(--grid,#ece8e2) 1px,transparent 1px),linear-gradient(90deg,var(--grid,#ece8e2) 1px,transparent 1px);background-size:34px 34px;opacity:0.5;"></div>
+          <div style="position:relative;width:58px;height:58px;border-radius:16px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);display:flex;align-items:center;justify-content:center;margin-bottom:16px;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink2,#6f6b65)" stroke-width="1.7"><path d="M3 20h18M4 20V10l8-5 8 5v10M9 20v-5h6v5"></path></svg>
+          </div>
+          <div style="position:relative;font-size:15px;font-weight:700;color:var(--ink,#1b1a18);">Indoor activity · no GPS</div>
+          <div style="position:relative;font-size:13px;color:var(--ink3,#9a958d);margin-top:5px;max-width:34ch;line-height:1.5;">This treadmill session has no route to map. Distance is measured from the {{ indoorDistanceSrc }}.</div>
+          <div style="position:relative;display:flex;align-items:center;gap:7px;margin-top:16px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">
+            <span style="width:9px;height:9px;border-radius:50%;background:#8b95a1;"></span>Treadmill · indoor
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- side analytics -->
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <!-- training effect -->
+          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px 20px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:var(--ink3,#9a958d);margin-bottom:14px;">TRAINING EFFECT</div>
+            <div style="display:flex;gap:24px;">
+              <div style="flex:1;">
+                <div style="display:flex;align-items:baseline;gap:6px;"><span style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;color:var(--ink,#1b1a18);">3.4</span><span style="font-size:12px;color:#2fa66a;font-weight:600;">Improving</span></div>
+                <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Aerobic</div>
+                <div style="height:5px;border-radius:3px;background:var(--canvas,#f3f1ee);margin-top:10px;overflow:hidden;"><div style="width:68%;height:100%;background:#2fa66a;"></div></div>
+              </div>
+              <div style="flex:1;">
+                <div style="display:flex;align-items:baseline;gap:6px;"><span style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;color:var(--ink,#1b1a18);">1.2</span><span style="font-size:12px;color:var(--ink3,#9a958d);font-weight:600;">Minor</span></div>
+                <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Anaerobic</div>
+                <div style="height:5px;border-radius:3px;background:var(--canvas,#f3f1ee);margin-top:10px;overflow:hidden;"><div style="width:24%;height:100%;background:#f0a02e;"></div></div>
+              </div>
+            </div>
+          </div>
+          <!-- time in zone -->
+          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px 20px;flex:1;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:var(--ink3,#9a958d);">TIME IN POWER ZONES</div>
+              <div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">FTP 265w</div>
+            </div>
+            <div style="display:flex;height:32px;border-radius:7px;overflow:hidden;margin-bottom:16px;">
+              <div style="width:8%;background:#8b95a1;"></div>
+              <div style="width:46%;background:#3d7fd6;"></div>
+              <div style="width:24%;background:#2fa66a;"></div>
+              <div style="width:16%;background:#f0a02e;"></div>
+              <div style="width:6%;background:#e0442e;"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px;">
+              <div style="display:flex;align-items:center;gap:10px;font-size:13px;"><span style="width:9px;height:9px;border-radius:3px;background:#8b95a1;"></span><span style="flex:1;color:var(--ink2,#6f6b65);">Z1 · Recovery</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">7:16</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink3,#9a958d);width:38px;text-align:right;">8%</span></div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:13px;"><span style="width:9px;height:9px;border-radius:3px;background:#3d7fd6;"></span><span style="flex:1;color:var(--ink2,#6f6b65);">Z2 · Endurance</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">41:46</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink3,#9a958d);width:38px;text-align:right;">46%</span></div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:13px;"><span style="width:9px;height:9px;border-radius:3px;background:#2fa66a;"></span><span style="flex:1;color:var(--ink2,#6f6b65);">Z3 · Tempo</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">21:47</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink3,#9a958d);width:38px;text-align:right;">24%</span></div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:13px;"><span style="width:9px;height:9px;border-radius:3px;background:#f0a02e;"></span><span style="flex:1;color:var(--ink2,#6f6b65);">Z4 · Threshold</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">14:31</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink3,#9a958d);width:38px;text-align:right;">16%</span></div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:13px;"><span style="width:9px;height:9px;border-radius:3px;background:#e0442e;"></span><span style="flex:1;color:var(--ink2,#6f6b65);">Z5 · VO2 Max</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">5:27</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink3,#9a958d);width:38px;text-align:right;">6%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ STREAM CHART ============ -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px 20px 14px;margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="display:flex;gap:6px;">
+            <div onClick="{{ pickPower }}" style="{{ chipPower }}">Power</div>
+            <div onClick="{{ pickHr }}" style="{{ chipHr }}">Heart Rate</div>
+            <div onClick="{{ pickCadence }}" style="{{ chipCadence }}">Cadence</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;"><span style="width:18px;height:8px;border-radius:2px;background:var(--elev,#eee);border:1px solid var(--line,#e6e2dc);"></span>Elevation</div>
+        </div>
+
+        <div onMouseMove="{{ onMove }}" onMouseLeave="{{ onLeave }}" style="position:relative;height:230px;cursor:crosshair;">
+          <svg viewBox="0 0 1000 240" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">
+            <polyline points="{{ elevTop }}" fill="none" stroke="none"></polyline>
+            <polygon points="{{ elevArea }}" fill="var(--grid,#ece8e2)" opacity="0.85"></polygon>
+            <line x1="0" y1="60" x2="1000" y2="60" stroke="var(--line,#e6e2dc)" stroke-width="1" stroke-dasharray="3 5"></line>
+            <line x1="0" y1="120" x2="1000" y2="120" stroke="var(--line,#e6e2dc)" stroke-width="1" stroke-dasharray="3 5"></line>
+            <line x1="0" y1="180" x2="1000" y2="180" stroke="var(--line,#e6e2dc)" stroke-width="1" stroke-dasharray="3 5"></line>
+            <polyline points="{{ activePts }}" fill="none" stroke="{{ activeColor }}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+            <line x1="{{ crossX }}" y1="0" x2="{{ crossX }}" y2="240" stroke="var(--ink2,#6f6b65)" stroke-width="1" vector-effect="non-scaling-stroke" style="display:{{ hoverDisplay }};"></line>
+          </svg>
+          <!-- hover tooltip -->
+          <div style="position:absolute;top:0;left:{{ hoverLeft }};transform:translateX(-50%);display:{{ hoverDisplay }};pointer-events:none;background:var(--ink,#1b1a18);color:var(--canvas,#fff);border-radius:9px;padding:9px 12px;min-width:120px;box-shadow:0 6px 20px rgba(0,0,0,0.18);">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);margin-bottom:6px;">{{ hoverKm }} km</div>
+            <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;margin-bottom:3px;"><span style="color:#ff8a6e;">Power</span><span style="font-family:'JetBrains Mono',monospace;font-weight:600;">{{ hoverPower }} w</span></div>
+            <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;margin-bottom:3px;"><span style="color:#ff7a6a;">HR</span><span style="font-family:'JetBrains Mono',monospace;font-weight:600;">{{ hoverHr }} bpm</span></div>
+            <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;margin-bottom:3px;"><span style="color:#7ab0ee;">Cadence</span><span style="font-family:'JetBrains Mono',monospace;font-weight:600;">{{ hoverCad }} rpm</span></div>
+            <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;"><span style="color:#aaa;">Elev</span><span style="font-family:'JetBrains Mono',monospace;font-weight:600;">{{ hoverElev }} m</span></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);padding:8px 2px 0;border-top:1px solid var(--line,#e6e2dc);margin-top:6px;">
+          <span>0 km</span><span>10 km</span><span>20 km</span><span>30 km</span><span>43 km</span>
+        </div>
+      </div>
+
+      <!-- ============ TABS ============ -->
+      <div style="display:flex;gap:4px;border-bottom:1px solid var(--line,#e6e2dc);margin-bottom:22px;">
+        <div onClick="{{ tabStatsClick }}" style="{{ tabStats }}">Stats</div>
+        <div onClick="{{ tabLapsClick }}" style="{{ tabLaps }}">Laps</div>
+        <div onClick="{{ tabZonesClick }}" style="{{ tabZones }}">Zones</div>
+        <div onClick="{{ tabCurvesClick }}" style="{{ tabCurves }}">Curves</div>
+      </div>
+
+      <!-- STATS PANEL -->
+      <sc-if value="{{ isStats }}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:var(--ember,#ec4a26);margin-bottom:18px;">POWER</div>
+          <div style="display:flex;flex-direction:column;gap:15px;">
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">412<span style="font-size:12px;color:var(--ink3,#9a958d);"> w</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Max Power</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">{{ avgWkg }}<span style="font-size:12px;color:var(--ink3,#9a958d);"> w/kg</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Avg Watts/kg</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">1,043<span style="font-size:12px;color:var(--ink3,#9a958d);"> kJ</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Work</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">51<span style="color:var(--ink3,#9a958d);">/</span>49<span style="font-size:12px;color:var(--ink3,#9a958d);"> %</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">L/R Balance</div></div>
+          </div>
+        </div>
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#e0442e;margin-bottom:18px;">HEART RATE</div>
+          <div style="display:flex;flex-direction:column;gap:15px;">
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">158<span style="font-size:12px;color:var(--ink3,#9a958d);"> bpm</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Max HR</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">141<span style="font-size:12px;color:var(--ink3,#9a958d);"> bpm</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Best 20 min</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">56</div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">TRIMP</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">43<span style="font-size:12px;color:var(--ink3,#9a958d);"> %</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">HR Reserve Avg</div></div>
+          </div>
+        </div>
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#3d7fd6;margin-bottom:18px;">SPEED · CADENCE</div>
+          <div style="display:flex;flex-direction:column;gap:15px;">
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">28.5<span style="font-size:12px;color:var(--ink3,#9a958d);"> km/h</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Avg Speed</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">52.1<span style="font-size:12px;color:var(--ink3,#9a958d);"> km/h</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Max Speed</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">89<span style="font-size:12px;color:var(--ink3,#9a958d);"> rpm</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Avg Cadence</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">104<span style="font-size:12px;color:var(--ink3,#9a958d);"> rpm</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Max Cadence</div></div>
+          </div>
+        </div>
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#2fa66a;margin-bottom:18px;">ELEVATION · ENERGY</div>
+          <div style="display:flex;flex-direction:column;gap:15px;">
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">590<span style="font-size:12px;color:var(--ink3,#9a958d);"> m</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Total Descent</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">12<span style="color:var(--ink3,#9a958d);">–</span>384<span style="font-size:12px;color:var(--ink3,#9a958d);"> m</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Elev Range</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">1,042<span style="font-size:12px;color:var(--ink3,#9a958d);"> kcal</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Calories</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">1:31:20</div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Elapsed Time</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- HYDRATION -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px 22px;margin-top:14px;display:flex;align-items:center;gap:28px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:9px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#3d7fd6" stroke-width="1.6"><path d="M8 1.5s4.5 4.6 4.5 7.8A4.5 4.5 0 0 1 8 14a4.5 4.5 0 0 1-4.5-4.7C3.5 6.1 8 1.5 8 1.5Z"></path></svg><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#3d7fd6;">HYDRATION</span></div>
+        <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">{{ sweatRate }}<span style="font-size:12px;color:var(--ink3,#9a958d);"> ml/h</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Sweat rate</div></div>
+        <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:{{ weightLossColor }};">{{ weightLossPct }}<span style="font-size:12px;color:var(--ink3,#9a958d);"> %</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Body weight lost</div></div>
+        <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">{{ startWeight }}<span style="color:var(--ink3,#9a958d);">→</span>{{ endWeight }}<span style="font-size:12px;color:var(--ink3,#9a958d);"> kg</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Start → end weight</div></div>
+        <div><div style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;color:var(--ink,#1b1a18);">{{ fluids }}<span style="font-size:12px;color:var(--ink3,#9a958d);"> ml</span></div><div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Fluids consumed</div></div>
+        <div style="flex:1;min-width:120px;font-size:12px;color:var(--ink3,#9a958d);line-height:1.45;text-align:right;">{{ hydrationNote }}</div>
+      </div>
+      </sc-if>
+
+      <!-- LAPS PANEL -->
+      <sc-if value="{{ isLaps }}">
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
+        <div style="display:grid;grid-template-columns:50px 1fr 90px 90px 1.1fr 80px;gap:12px;padding:13px 22px;border-bottom:1px solid var(--line,#e6e2dc);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);font-weight:600;">
+          <span>Lap</span><span>Distance</span><span>Time</span><span>Speed</span><span>Avg Power</span><span style="text-align:right;">Avg HR</span>
+        </div>
+        <sc-for list="{{ laps }}" as="lap" hint-placeholder-count="9">
+          <div style="display:grid;grid-template-columns:50px 1fr 90px 90px 1.1fr 80px;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink,#1b1a18);">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:var(--canvas,#f3f1ee);font-weight:600;font-size:12px;">{{ lap.idx }}</span>
+            <span>{{ lap.dist }} <span style="color:var(--ink3,#9a958d);">km</span></span>
+            <span>{{ lap.time }}</span>
+            <span>{{ lap.speed }} <span style="color:var(--ink3,#9a958d);">km/h</span></span>
+            <span style="display:flex;align-items:center;gap:10px;"><span style="width:90px;height:8px;border-radius:4px;background:var(--canvas,#f3f1ee);overflow:hidden;display:inline-block;"><span style="display:block;height:100%;width:{{ lap.barPct }};background:var(--ember,#ec4a26);"></span></span>{{ lap.power }} <span style="color:var(--ink3,#9a958d);">w</span></span>
+            <span style="text-align:right;">{{ lap.hr }} <span style="color:var(--ink3,#9a958d);">bpm</span></span>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <!-- ZONES PANEL -->
+      <sc-if value="{{ isZones }}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:var(--ink3,#9a958d);margin-bottom:18px;">POWER ZONES</div>
+          <sc-for list="{{ powerZones }}" as="z" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+              <span style="width:10px;height:10px;border-radius:3px;background:{{ z.color }};flex-shrink:0;"></span>
+              <div style="width:120px;flex-shrink:0;"><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ z.label }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ z.range }}</div></div>
+              <div style="flex:1;height:18px;border-radius:5px;background:var(--canvas,#f3f1ee);overflow:hidden;"><div style="height:100%;width:{{ z.barPct }};background:{{ z.color }};border-radius:5px;"></div></div>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink,#1b1a18);width:54px;text-align:right;">{{ z.time }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:var(--ink3,#9a958d);margin-bottom:18px;">HEART RATE ZONES</div>
+          <sc-for list="{{ hrZones }}" as="z" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+              <span style="width:10px;height:10px;border-radius:3px;background:{{ z.color }};flex-shrink:0;"></span>
+              <div style="width:120px;flex-shrink:0;"><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ z.label }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ z.range }}</div></div>
+              <div style="flex:1;height:18px;border-radius:5px;background:var(--canvas,#f3f1ee);overflow:hidden;"><div style="height:100%;width:{{ z.barPct }};background:{{ z.color }};border-radius:5px;"></div></div>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink,#1b1a18);width:54px;text-align:right;">{{ z.time }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="grid-column:span 2;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:var(--ink3,#9a958d);">HEAT STRAIN INDEX <span style="color:var(--ink2,#6f6b65);">· HRM-Pro</span></div>
+            <div style="font-size:12px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">Peak 60s 4.8 · 142 HSI·min</div>
+          </div>
+          <div style="display:flex;height:30px;border-radius:7px;overflow:hidden;margin-bottom:14px;">
+            <div style="width:62%;background:#34c98a;"></div><div style="width:30%;background:#f5c842;"></div><div style="width:8%;background:#f0823a;"></div>
+          </div>
+          <div style="display:flex;gap:28px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;"><span style="width:9px;height:9px;border-radius:3px;background:#34c98a;"></span><span style="color:var(--ink2,#6f6b65);">No Strain</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">62%</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;"><span style="width:9px;height:9px;border-radius:3px;background:#f5c842;"></span><span style="color:var(--ink2,#6f6b65);">Moderate</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">30%</span></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;"><span style="width:9px;height:9px;border-radius:3px;background:#f0823a;"></span><span style="color:var(--ink2,#6f6b65);">High</span><span style="font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">8%</span></div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- CURVES PANEL -->
+      <sc-if value="{{ isCurves }}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:var(--ember,#ec4a26);">POWER DURATION CURVE</div>
+            <div style="font-size:12px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">best avg watts</div>
+          </div>
+          <div style="position:relative;height:180px;">
+            <sc-if value="{{ curveExtended }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;top:0;bottom:0;left:{{ extLeft }};width:{{ extWidth }};background:repeating-linear-gradient(135deg,rgba(236,74,38,0.05),rgba(236,74,38,0.05) 5px,transparent 5px,transparent 10px);border-left:1px dashed rgba(236,74,38,0.45);pointer-events:none;"></div>
+              <div style="position:absolute;top:4px;left:{{ pdcSixtyPct }};transform:translateX(6px);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.04em;color:var(--ember,#ec4a26);opacity:0.8;pointer-events:none;">BEYOND 1H</div>
+            </sc-if>
+            <svg viewBox="0 0 600 200" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">
+              <polygon points="{{ pdcArea }}" fill="var(--emberSoft,#fff5f1)"></polygon>
+              <polyline points="{{ pdcLine }}" fill="none" stroke="var(--ember,#ec4a26)" stroke-width="2.5" vector-effect="non-scaling-stroke"></polyline>
+            </svg>
+            <sc-if value="{{ curveExtended }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;left:{{ pdcEndLeft }};top:{{ pdcEndTop }};transform:translate(-50%,-50%);width:9px;height:9px;border-radius:50%;background:var(--ember,#ec4a26);border:2px solid var(--card,#fff);box-shadow:0 0 0 1px rgba(236,74,38,0.4);pointer-events:none;"></div>
+              <div style="position:absolute;left:{{ pdcEndLeft }};top:{{ pdcEndTop }};transform:translate(-100%,-130%);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--ember,#ec4a26);pointer-events:none;">{{ pdcEndLabel }}</div>
+            </sc-if>
+          </div>
+          <div style="position:relative;height:14px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);margin-top:8px;"><sc-for list="{{ curveTicks }}" as="t" hint-placeholder-count="6"><span style="{{ t.style }}">{{ t.label }}</span></sc-for></div>
+          <sc-if value="{{ curveExtended }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:9px;line-height:1.4;">Extended to full ride length <span style="font-family:'JetBrains Mono',monospace;color:var(--ink2,#6f6b65);">{{ fullDurLabel }}</span> — the endpoint is your whole-ride average.</div>
+          </sc-if>
+        </div>
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:#e0442e;">HEART RATE DURATION CURVE</div>
+            <div style="font-size:12px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">best avg bpm</div>
+          </div>
+          <div style="position:relative;height:180px;">
+            <sc-if value="{{ curveExtended }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;top:0;bottom:0;left:{{ extLeft }};width:{{ extWidth }};background:repeating-linear-gradient(135deg,rgba(224,68,46,0.05),rgba(224,68,46,0.05) 5px,transparent 5px,transparent 10px);border-left:1px dashed rgba(224,68,46,0.45);pointer-events:none;"></div>
+              <div style="position:absolute;top:4px;left:{{ hdcSixtyPct }};transform:translateX(6px);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.04em;color:#e0442e;opacity:0.8;pointer-events:none;">BEYOND 1H</div>
+            </sc-if>
+            <svg viewBox="0 0 600 200" preserveAspectRatio="none" style="width:100%;height:100%;display:block;">
+              <polygon points="{{ hdcArea }}" fill="#fbeae8"></polygon>
+              <polyline points="{{ hdcLine }}" fill="none" stroke="#e0442e" stroke-width="2.5" vector-effect="non-scaling-stroke"></polyline>
+            </svg>
+            <sc-if value="{{ curveExtended }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;left:{{ hdcEndLeft }};top:{{ hdcEndTop }};transform:translate(-50%,-50%);width:9px;height:9px;border-radius:50%;background:#e0442e;border:2px solid var(--card,#fff);box-shadow:0 0 0 1px rgba(224,68,46,0.4);pointer-events:none;"></div>
+              <div style="position:absolute;left:{{ hdcEndLeft }};top:{{ hdcEndTop }};transform:translate(-100%,-130%);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:#e0442e;pointer-events:none;">{{ hdcEndLabel }}</div>
+            </sc-if>
+          </div>
+          <div style="position:relative;height:14px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);margin-top:8px;"><sc-for list="{{ curveTicks }}" as="t" hint-placeholder-count="6"><span style="{{ t.style }}">{{ t.label }}</span></sc-for></div>
+          <sc-if value="{{ curveExtended }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:9px;line-height:1.4;">Extended to full ride length <span style="font-family:'JetBrains Mono',monospace;color:var(--ink2,#6f6b65);">{{ fullDurLabel }}</span> — the endpoint is your whole-ride average.</div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- COMMENTS -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;margin-top:14px;">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:16px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--ember,#ec4a26)" stroke-width="1.7"><path d="M14 7.5a5.5 5.5 0 0 1-7.9 4.9L2.5 13.5l1.1-3.4A5.5 5.5 0 1 1 14 7.5Z"></path></svg>
+          <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Comments</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ commentCount }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px;margin-bottom:20px;">
+          <sc-for list="{{ comments }}" as="c" hint-placeholder-count="2">
+            <div style="display:flex;gap:12px;">
+              <div style="{{ c.avatarStyle }}">{{ c.initials }}</div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:13.5px;font-weight:700;color:var(--ink,#1b1a18);">{{ c.author }}</span>
+                  <span style="{{ c.badgeStyle }}">{{ c.roleLabel }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);margin-left:auto;">{{ c.time }}</span>
+                </div>
+                <div style="font-size:13.5px;color:var(--ink2,#6f6b65);line-height:1.5;margin-top:4px;">{{ c.text }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:16px;">
+          <div style="display:flex;align-items:flex-start;gap:10px;">
+            <textarea value="{{ commentDraft }}" onInput="{{ onCommentInput }}" placeholder="Add a comment…" style="flex:1;min-width:0;resize:none;height:42px;box-sizing:border-box;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:11px 13px;background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-size:13.5px;outline:none;"></textarea>
+            <div onClick="{{ postComment }}" style="{{ postBtnStyle }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8h10M8 4l4 4-4 4"></path></svg>Post</div>
+          </div>
+          <div onClick="{{ toggleAuthor }}" style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:var(--ink3,#9a958d);cursor:pointer;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"></path><polyline points="13.5 2 13.5 4.6 10.9 4.6"></polyline></svg>{{ authorLabel }}</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;indoor&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;weight&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:72,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;},&quot;startWeight&quot;:{&quot;editor&quot;:&quot;float&quot;,&quot;default&quot;:72,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;},&quot;endWeight&quot;:{&quot;editor&quot;:&quot;float&quot;,&quot;default&quot;:71.1,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;},&quot;fluids&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:750,&quot;min&quot;:0,&quot;max&quot;:3000,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', tab: 'stats', stream: 'power', hover: null, tags: ['Tempo', 'Key session'], tagMenuOpen: false, tagDraft: '', commentDraft: '', asCoach: true, comments: [
+    { id: 'c1', author: 'Mara Køhl', role: 'coach', time: '2h ago', text: 'Great power hold on reps 3–4 — your VO2 numbers are trending up nicely. Ease the openers next time so you hit the main set fresher.' },
+    { id: 'c2', author: 'Neil Goodgame', role: 'athlete', time: '1h ago', text: 'Thanks — legs felt good. The last rep was a stretch but held it. Will dial back the warm-up.' },
+  ] };
+
+  tagColors = { 'Recovery': '#8b95a1', 'Endurance': '#3d7fd6', 'Long Ride': '#3d7fd6', 'Long Run': '#3d7fd6', 'Tempo': '#2fa66a', 'Sweet Spot': '#2fa66a', 'Threshold': '#f0a02e', 'VO2 Max': '#e0442e', 'Race': '#ec4a26', 'Key session': '#ec4a26', 'Group ride': '#3d7fd6', 'Brick': '#9a6ad0', 'Commute': '#8b95a1', 'Indoor': '#7e858e', 'Travel': '#8b95a1', 'Felt strong': '#2fa66a', 'Felt flat': '#f0a02e', 'Hot day': '#f0823a', 'Sick': '#e0442e' };
+
+  tagGroups = [
+    { name: 'INTENSITY', tags: ['Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Recovery'] },
+    { name: 'SESSION TYPE', tags: ['Long Ride', 'Long Run', 'Race', 'Key session', 'Group ride', 'Brick', 'Commute', 'Indoor', 'Travel'] },
+    { name: 'HOW IT FELT', tags: ['Felt strong', 'Felt flat', 'Hot day', 'Sick'] },
+  ];
+
+  tagColor(name) { return this.tagColors[name] || '#6f8bb0'; }
+  tagRgba(name, a) { const c = this.tagColor(name); const n = parseInt(c.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+  toggleTagMenu() { this.setState(s => ({ tagMenuOpen: !s.tagMenuOpen })); }
+  addTag(name) { name = (name || '').trim(); if (!name) return; this.setState(s => (s.tags.includes(name) ? { tagDraft: '' } : { tags: [...s.tags, name], tagDraft: '' })); }
+  removeTag(name) { this.setState(s => ({ tags: s.tags.filter(t => t !== name) })); }
+  onTagInput(e) { this.setState({ tagDraft: e.target.value }); }
+  onTagKey(e) { if (e.key === 'Enter') { e.preventDefault(); this.addTag(this.state.tagDraft); } }
+
+  onCommentInput(e) { this.setState({ commentDraft: e.target.value }); }
+  postComment() {
+    const text = this.state.commentDraft.trim(); if (!text) return;
+    const asCoach = this.state.asCoach;
+    const c = { id: 'c' + Date.now(), author: asCoach ? 'Mara Køhl' : 'Neil Goodgame', role: asCoach ? 'coach' : 'athlete', time: 'just now', text };
+    this.setState(s => ({ comments: [...s.comments, c], commentDraft: '' }));
+  }
+  toggleAuthor() { this.setState(s => ({ asCoach: !s.asCoach })); }
+
+  mulberry32(seed) {
+    return function () {
+      let t = (seed += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  buildModel() {
+    const rnd = this.mulberry32(7);
+    const N = 200;
+    const totalKm = 43.08;
+    const samples = [];
+    for (let i = 0; i < N; i++) {
+      const f = i / (N - 1);
+      let elev = 30 + 320 * Math.sin(Math.PI * f) + 55 * Math.sin(f * 8 + 1) + (rnd() - 0.5) * 14;
+      if (elev < 8) elev = 8;
+      let p = 185 + 34 * Math.sin(f * 21);
+      if (rnd() > 0.82) p += 80 * rnd();
+      p += Math.cos(Math.PI * f) * 16 + (rnd() - 0.5) * 38;
+      if (p < 55) p = 55;
+      if (p > 415) p = 415;
+      let hr = 116 + (p - 185) * 0.17 + 11 * Math.sin(f * 4) + (rnd() - 0.5) * 6;
+      if (hr < 100) hr = 100;
+      if (hr > 160) hr = 160;
+      let cad = 88 + 7 * Math.sin(f * 17) + (rnd() - 0.5) * 6;
+      if (cad < 60) cad = 60;
+      const speed = 21 + (p - 185) * 0.05 + 9 * Math.max(0, -Math.cos(Math.PI * f));
+      samples.push({
+        km: +(f * totalKm).toFixed(2),
+        elev: Math.round(elev),
+        power: Math.round(p),
+        hr: Math.round(hr),
+        cad: Math.round(cad),
+        speed: +speed.toFixed(1),
+      });
+    }
+
+    const W = 1000, H = 240;
+    const emin = Math.min(...samples.map(s => s.elev));
+    const emax = Math.max(...samples.map(s => s.elev));
+    const xAt = i => +((i / (N - 1)) * W).toFixed(1);
+    const yElev = e => +(H - ((e - emin) / (emax - emin || 1)) * H * 0.5 - 3).toFixed(1);
+    const yScale = (v, lo, hi) => +(H * 0.97 - ((v - lo) / (hi - lo)) * H * 0.9).toFixed(1);
+
+    const elevPts = samples.map((s, i) => xAt(i) + ',' + yElev(s.elev));
+    const elevArea = '0,' + H + ' ' + elevPts.join(' ') + ' ' + W + ',' + H;
+    const powerPts = samples.map((s, i) => xAt(i) + ',' + yScale(s.power, 40, 415)).join(' ');
+    const hrPts = samples.map((s, i) => xAt(i) + ',' + yScale(s.hr, 95, 165)).join(' ');
+    const cadPts = samples.map((s, i) => xAt(i) + ',' + yScale(s.cad, 55, 115)).join(' ');
+
+    // route loop
+    const rpts = [];
+    let sx = 0, sy = 0, ex = 0, ey = 0;
+    const RN = 90;
+    for (let i = 0; i <= RN; i++) {
+      const a = (i / RN) * Math.PI * 2;
+      const r = 96 + 26 * Math.sin(a * 3 + 0.5) + 16 * Math.sin(a * 7);
+      const x = +(300 + r * Math.cos(a) * 1.55).toFixed(1);
+      const y = +(160 + r * Math.sin(a) * 0.92).toFixed(1);
+      rpts.push(x + ',' + y);
+      if (i === 0) { sx = x; sy = y; }
+      if (i === RN) { ex = x; ey = y; }
+    }
+
+    // laps (9)
+    const laps = [];
+    const per = Math.floor(N / 9);
+    for (let l = 0; l < 9; l++) {
+      const seg = samples.slice(l * per, l === 8 ? N : (l + 1) * per);
+      const avg = k => seg.reduce((a, s) => a + s[k], 0) / seg.length;
+      const dist = +(seg[seg.length - 1].km - seg[0].km).toFixed(2);
+      const sp = +avg('speed').toFixed(1);
+      const secs = Math.round((dist / sp) * 3600);
+      const pw = Math.round(avg('power'));
+      laps.push({
+        idx: l + 1,
+        dist: dist.toFixed(2),
+        time: Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'),
+        speed: sp.toFixed(1),
+        power: pw,
+        hr: Math.round(avg('hr')),
+        barPct: Math.round((pw / 280) * 100) + '%',
+      });
+    }
+
+    const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    const powerZones = [
+      { label: 'Recovery', range: '< 146 w', color: '#8b95a1', pct: 8, time: fmt(436) },
+      { label: 'Endurance', range: '146–199 w', color: '#3d7fd6', pct: 46, time: fmt(2506) },
+      { label: 'Tempo', range: '199–239 w', color: '#2fa66a', pct: 24, time: fmt(1307) },
+      { label: 'Threshold', range: '239–278 w', color: '#f0a02e', pct: 16, time: fmt(871) },
+      { label: 'VO2 Max', range: '> 278 w', color: '#e0442e', pct: 6, time: fmt(327) },
+    ].map(z => ({ ...z, barPct: z.pct + '%' }));
+    const hrZones = [
+      { label: 'Z1 Recovery', range: '< 106 bpm', color: '#8b95a1', pct: 5, time: fmt(272) },
+      { label: 'Z2 Endurance', range: '106–128 bpm', color: '#3d7fd6', pct: 40, time: fmt(2179) },
+      { label: 'Z3 Tempo', range: '129–146 bpm', color: '#2fa66a', pct: 30, time: fmt(1634) },
+      { label: 'Z4 Threshold', range: '147–163 bpm', color: '#f0a02e', pct: 18, time: fmt(980) },
+      { label: 'Z5 VO2 Max', range: '> 164 bpm', color: '#e0442e', pct: 7, time: fmt(381) },
+    ].map(z => ({ ...z, barPct: z.pct + '%' }));
+
+    // duration curves — extend to full activity length when it exceeds 60 min
+    const totalSec = 5449; // 1:30:49 moving time
+    const curveMax = Math.max(3600, totalSec);
+    const lnMin = Math.log(5), lnMax = Math.log(curveMax);
+    const xOf = (s) => +(((Math.log(s) - lnMin) / (lnMax - lnMin)) * 600).toFixed(1);
+    const fmtDur = (s) => {
+      if (s < 60) return s + 's';
+      if (s < 3600) return Math.round(s / 60) + 'm';
+      const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+      return m ? h + 'h' + String(m).padStart(2, '0') : h + 'h';
+    };
+    const baseDurs = [5, 15, 30, 60, 120, 300, 600, 1200, 1800, 2700, 3600];
+    const pdcVals = [680, 545, 432, 388, 322, 286, 248, 228, 212, 205, 196];
+    const hdcVals = [165, 162, 158, 155, 150, 146, 141, 137, 134, 132, 130];
+    const pDurs = baseDurs.slice(), pVals = pdcVals.slice();
+    const hDurs = baseDurs.slice(), hVals = hdcVals.slice();
+    if (totalSec > 3600) {
+      pDurs.push(totalSec); pVals.push(192); // whole-ride average power = best effort at full duration
+      hDurs.push(totalSec); hVals.push(128); // whole-ride average HR
+    }
+    const extended = totalSec > 3600;
+    const yOf = (v, lo, hi) => +(190 - ((v - lo) / (hi - lo)) * 175).toFixed(1);
+    const buildCurve = (durs, vals, lo, hi) => {
+      const line = durs.map((d, i) => xOf(d) + ',' + yOf(vals[i], lo, hi));
+      const endX = xOf(durs[durs.length - 1]), endY = yOf(vals[vals.length - 1], lo, hi);
+      return { line: line.join(' '), area: '0,200 ' + line.join(' ') + ' 600,200', endX, endY };
+    };
+    const pdc = buildCurve(pDurs, pVals, 180, 700);
+    const hdc = buildCurve(hDurs, hVals, 95, 170);
+    const xSixty = xOf(3600);
+    pdc.sixtyX = xSixty; hdc.sixtyX = xSixty;
+    pdc.extended = extended; hdc.extended = extended;
+    pdc.endLabel = Math.round(pVals[pVals.length - 1]) + 'w'; hdc.endLabel = Math.round(hVals[hVals.length - 1]) + 'bpm';
+    const tickDurs = [5, 60, 300, 1200];
+    tickDurs.push(extended ? totalSec : 3600);
+    const curveTicks = tickDurs.map((d, i) => ({
+      label: fmtDur(d),
+      style: { position: 'absolute', left: (xOf(d) / 600 * 100) + '%', transform: i === 0 ? 'translateX(0)' : (i === tickDurs.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)'), whiteSpace: 'nowrap', color: (extended && d === totalSec) ? 'var(--ember,#ec4a26)' : 'var(--ink3,#9a958d)', fontWeight: (extended && d === totalSec) ? 700 : 400 },
+    }));
+    const fullDurLabel = fmtDur(totalSec);
+
+    return {
+      N, samples, elevArea, powerPts, hrPts, cadPts,
+      routePts: rpts.join(' '), sx, sy, ex, ey,
+      laps, powerZones, hrZones, pdc, hdc, curveTicks, fullDurLabel, extended,
+    };
+  }
+
+  model = this.buildModel();
+
+  renderVals() {
+    const t = this.state.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--emberLine': 'rgba(45,212,191,0.34)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--emberLine': 'rgba(192,132,252,0.34)', '--grid': '#22262d' };
+    const themeVars = t === 'lab' ? lab : cockpit;
+    const isLab = t === 'lab';
+
+    const segActive = { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--card,#fff)', boxShadow: '0 1px 2px rgba(0,0,0,0.14)' };
+    const segIdle = { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink3,#9a958d)', background: 'transparent' };
+
+    const chip = on => ({ padding: '7px 13px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', border: '1px solid ' + (on ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), color: on ? '#fff' : 'var(--ink2,#6f6b65)', background: on ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)' });
+
+    const tabStyle = on => ({ padding: '11px 18px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', color: on ? 'var(--ember,#ec4a26)' : 'var(--ink3,#9a958d)', borderBottom: on ? '2px solid var(--ember,#ec4a26)' : '2px solid transparent', marginBottom: '-1px' });
+
+    const sm = this.state.stream;
+    const seriesMap = {
+      power: { pts: this.model.powerPts, color: 'var(--ember,#ec4a26)' },
+      hr: { pts: this.model.hrPts, color: '#e0442e' },
+      cadence: { pts: this.model.cadPts, color: '#3d7fd6' },
+    };
+    const active = seriesMap[sm];
+
+    const h = this.state.hover;
+    const hv = h != null ? this.model.samples[h] : null;
+    const frac = h != null ? h / (this.model.N - 1) : 0;
+
+    // ----- tags -----
+    const tagChip = (name) => {
+      const c = this.tagColor(name);
+      return {
+        label: name,
+        style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, padding: '4px 7px 4px 10px', borderRadius: '20px', background: this.tagRgba(name, 0.1), border: '1px solid ' + this.tagRgba(name, 0.3), color: 'var(--ink2,#6f6b65)' },
+        dotStyle: { width: '6px', height: '6px', borderRadius: '50%', background: c, flexShrink: 0 },
+        xStyle: { marginLeft: '1px', fontSize: '14px', lineHeight: '1', fontWeight: 700, color: 'var(--ink3,#9a958d)', cursor: 'pointer' },
+        onRemove: () => this.removeTag(name),
+      };
+    };
+    const tags = this.state.tags.map(tagChip);
+    const applied = this.state.tags;
+    const draft = this.state.tagDraft.trim();
+    const tagGroups = this.tagGroups.map(g => ({
+      name: g.name,
+      items: g.tags
+        .filter(t => !applied.includes(t))
+        .filter(t => !draft || t.toLowerCase().includes(draft.toLowerCase()))
+        .map(t => ({
+          label: t,
+          onClick: () => this.addTag(t),
+          style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 500, padding: '5px 10px', borderRadius: '20px', cursor: 'pointer', background: 'var(--canvas,#f3f1ee)', border: '1px solid var(--line,#e6e2dc)', color: 'var(--ink2,#6f6b65)' },
+          dotStyle: { width: '6px', height: '6px', borderRadius: '50%', background: this.tagColor(t), flexShrink: 0 },
+        })),
+    })).filter(g => g.items.length > 0);
+    const knownLower = Object.keys(this.tagColors).concat(this.tagGroups.flatMap(g => g.tags)).map(s => s.toLowerCase());
+    const showCreate = draft.length > 0 && !applied.some(t => t.toLowerCase() === draft.toLowerCase()) && !knownLower.includes(draft.toLowerCase());
+
+    return {
+      tags,
+      comments: this.state.comments.map(c => ({
+        author: c.author, time: c.time, text: c.text,
+        roleLabel: c.role === 'coach' ? 'Coach' : 'Athlete',
+        initials: c.author.split(' ').map(w => w[0]).slice(0, 2).join(''),
+        avatarStyle: { width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: '#fff', background: c.role === 'coach' ? '#c084fc' : '#2dd4bf' },
+        badgeStyle: { fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '1px 7px', borderRadius: '20px', color: c.role === 'coach' ? '#c084fc' : 'var(--ember,#2dd4bf)', background: c.role === 'coach' ? 'rgba(192,132,252,0.14)' : 'var(--emberSoft,#fff5f1)' },
+      })),
+      commentCount: String(this.state.comments.length),
+      commentDraft: this.state.commentDraft,
+      onCommentInput: (e) => this.onCommentInput(e),
+      postComment: () => this.postComment(),
+      canPost: !!this.state.commentDraft.trim(),
+      postBtnStyle: { display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap', cursor: this.state.commentDraft.trim() ? 'pointer' : 'not-allowed', background: this.state.commentDraft.trim() ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)', color: this.state.commentDraft.trim() ? '#fff' : 'var(--ink3,#9a958d)' },
+      authorLabel: this.state.asCoach ? 'Posting as Mara (coach)' : 'Posting as Neil (you)',
+      toggleAuthor: () => this.toggleAuthor(),
+      tagMenuOpen: this.state.tagMenuOpen,
+      tagDraft: this.state.tagDraft,
+      tagGroups,
+      showCreate,
+      toggleTagMenu: () => this.toggleTagMenu(),
+      stopTag: (e) => e.stopPropagation(),
+      onTagInput: (e) => this.onTagInput(e),
+      onTagKey: (e) => this.onTagKey(e),
+      commitDraft: () => this.addTag(this.state.tagDraft),
+      addTagStyle: { display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 600, padding: '4px 11px', borderRadius: '20px', cursor: 'pointer', color: this.state.tagMenuOpen ? 'var(--ember,#ec4a26)' : 'var(--ink3,#9a958d)', border: '1px dashed ' + (this.state.tagMenuOpen ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), background: this.state.tagMenuOpen ? 'var(--emberSoft,#fff5f1)' : 'transparent' },
+      themeVars,
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: this.state.theme === 'lab' ? segActive : segIdle,
+      cockpitBtn: this.state.theme === 'cockpit' ? segActive : segIdle, dayBtn: this.state.theme === 'day' ? segActive : segIdle,
+
+      routePts: this.model.routePts,
+      routeStartX: this.model.sx, routeStartY: this.model.sy,
+      routeEndX: this.model.ex, routeEndY: this.model.ey,
+      hasGps: !(this.props.indoor ?? false),
+      noGps: (this.props.indoor ?? false),
+      avgWkg: (187 / (this.props.weight ?? 72)).toFixed(1),
+      ...(() => {
+        const sw = this.props.startWeight ?? this.props.weight ?? 72;
+        const ew = this.props.endWeight ?? 71.1;
+        const fl = this.props.fluids ?? 750;
+        const hrs = 5480 / 3600; // elapsed 1:31:20
+        const lossMl = (sw - ew) * 1000 + fl;
+        const rate = Math.round(lossMl / hrs);
+        const pct = ((sw - ew) / sw * 100);
+        const pctStr = pct.toFixed(1);
+        const color = pct >= 3 ? '#e0442e' : (pct >= 2 ? '#f0a02e' : '#2fa66a');
+        const note = pct >= 3 ? 'Significant fluid deficit — aim to drink more next time.' : (pct >= 2 ? 'Mild dehydration — within range for a hard session.' : 'Well hydrated through the session.');
+        return { sweatRate: rate.toLocaleString(), weightLossPct: pctStr, weightLossColor: color, startWeight: sw.toFixed(1), endWeight: ew.toFixed(1), fluids: fl.toLocaleString(), hydrationNote: note };
+      })(),
+      indoorDistanceSrc: 'Treadmill belt · footpod cadence',
+
+      elevArea: this.model.elevArea,
+      activePts: active.pts,
+      activeColor: active.color,
+      pickPower: () => this.setState({ stream: 'power' }),
+      pickHr: () => this.setState({ stream: 'hr' }),
+      pickCadence: () => this.setState({ stream: 'cadence' }),
+      chipPower: chip(sm === 'power'),
+      chipHr: chip(sm === 'hr'),
+      chipCadence: chip(sm === 'cadence'),
+
+      onMove: (e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        let f = (e.clientX - r.left) / r.width;
+        let idx = Math.round(f * (this.model.N - 1));
+        idx = Math.max(0, Math.min(this.model.N - 1, idx));
+        this.setState({ hover: idx });
+      },
+      onLeave: () => this.setState({ hover: null }),
+      hoverDisplay: hv ? 'block' : 'none',
+      hoverLeft: (frac * 100) + '%',
+      crossX: +(frac * 1000).toFixed(1),
+      hoverKm: hv ? hv.km.toFixed(1) : '',
+      hoverPower: hv ? hv.power : '',
+      hoverHr: hv ? hv.hr : '',
+      hoverCad: hv ? hv.cad : '',
+      hoverElev: hv ? hv.elev : '',
+
+      tabStatsClick: () => this.setState({ tab: 'stats' }),
+      tabLapsClick: () => this.setState({ tab: 'laps' }),
+      tabZonesClick: () => this.setState({ tab: 'zones' }),
+      tabCurvesClick: () => this.setState({ tab: 'curves' }),
+      tabStats: tabStyle(this.state.tab === 'stats'),
+      tabLaps: tabStyle(this.state.tab === 'laps'),
+      tabZones: tabStyle(this.state.tab === 'zones'),
+      tabCurves: tabStyle(this.state.tab === 'curves'),
+      isStats: this.state.tab === 'stats',
+      isLaps: this.state.tab === 'laps',
+      isZones: this.state.tab === 'zones',
+      isCurves: this.state.tab === 'curves',
+
+      laps: this.model.laps,
+      powerZones: this.model.powerZones,
+      hrZones: this.model.hrZones,
+      pdcLine: this.model.pdc.line,
+      pdcArea: this.model.pdc.area,
+      hdcLine: this.model.hdc.line,
+      hdcArea: this.model.hdc.area,
+      curveTicks: this.model.curveTicks,
+      curveExtended: this.model.extended,
+      fullDurLabel: this.model.fullDurLabel,
+      pdcSixtyPct: (this.model.pdc.sixtyX / 600 * 100).toFixed(1) + '%',
+      hdcSixtyPct: (this.model.hdc.sixtyX / 600 * 100).toFixed(1) + '%',
+      extLeft: (this.model.pdc.sixtyX / 600 * 100).toFixed(1) + '%',
+      extWidth: ((600 - this.model.pdc.sixtyX) / 600 * 100).toFixed(1) + '%',
+      pdcEndLeft: (this.model.pdc.endX / 600 * 100).toFixed(1) + '%',
+      pdcEndTop: (this.model.pdc.endY / 200 * 100).toFixed(1) + '%',
+      hdcEndLeft: (this.model.hdc.endX / 600 * 100).toFixed(1) + '%',
+      hdcEndTop: (this.model.hdc.endY / 200 * 100).toFixed(1) + '%',
+      pdcEndLabel: this.model.pdc.endLabel,
+      hdcEndLabel: this.model.hdc.endLabel,
+    };
+  }
+}
+</script>
+</body>
+</html>
