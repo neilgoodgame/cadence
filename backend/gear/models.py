@@ -89,12 +89,10 @@ class Shoe(PrefixedIDModel):
     id_prefix = "shoe"
 
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="shoes")
-    shoe_model_version = models.ForeignKey(
-        ShoeModelVersion, on_delete=models.PROTECT, related_name="shoes"
-    )
+    shoe_model_version = models.ForeignKey(ShoeModelVersion, on_delete=models.PROTECT, related_name="shoes")
     colourway = models.CharField(max_length=150, blank=True, default="")
     name = models.CharField(max_length=200)
-    image = models.URLField(null=True, blank=True)
+    image = models.URLField(null=True, blank=True)  # noqa: DJ001 -- API contract treats absent image as null, not ""
     role = models.CharField(max_length=150, blank=True, default="")
     km = models.IntegerField(default=0)
     limit_km = models.IntegerField(default=0)

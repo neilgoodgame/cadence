@@ -10,7 +10,17 @@ class UploadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Upload
-        fields = ["id", "object", "status", "progress", "filename", "activity_id", "error", "received_at", "completed_at"]
+        fields = [
+            "id",
+            "object",
+            "status",
+            "progress",
+            "filename",
+            "activity_id",
+            "error",
+            "received_at",
+            "completed_at",
+        ]
 
     def get_object(self, obj):
         return "upload"

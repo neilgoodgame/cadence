@@ -49,9 +49,7 @@ class AthleteDetailView(APIView):
         serializer.save()
 
         recomputed = zone_types_affected_by(serializer.validated_data.keys())
-        existing = set(
-            ZoneSet.objects.filter(athlete=athlete, type__in=recomputed).values_list("type", flat=True)
-        )
+        existing = set(ZoneSet.objects.filter(athlete=athlete, type__in=recomputed).values_list("type", flat=True))
 
         data = UserSerializer(athlete).data
         data["zones_recomputed"] = [zt for zt in recomputed if zt in existing]
@@ -90,9 +88,7 @@ class BestEffortListView(APIView):
 
         kind = request.query_params.get("kind")
         if kind not in dict(BestEffort.KIND_CHOICES):
-            raise ValidationError(
-                {"kind": "Must be one of cycling_power, running_pace, running_power."}
-            )
+            raise ValidationError({"kind": "Must be one of cycling_power, running_pace, running_power."})
 
         period = request.query_params.get("period", "all")
         if period not in ("3m", "1y", "all"):

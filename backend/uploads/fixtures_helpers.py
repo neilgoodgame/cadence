@@ -54,7 +54,7 @@ def build_tcx(start, sport="Biking", duration_s=300, power=200, hr=140, distance
         f"<AverageHeartRateBpm><Value>{hr}</Value></AverageHeartRateBpm>"
         f"<Track>{body}</Track>"
         "</Lap></Activity></Activities></TrainingCenterDatabase>"
-    ).encode("utf-8")
+    ).encode()
 
 
 def build_zip(named_contents):

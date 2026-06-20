@@ -1,5 +1,5 @@
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -14,7 +14,7 @@ from .helpers import FIXTURES_DIR, _fit_msg
 
 class GpxParserTests(SimpleTestCase):
     def test_parses_track_points_and_hr_extension(self):
-        start = datetime(2026, 6, 1, 8, 0, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 6, 1, 8, 0, 0, tzinfo=UTC)
         content = build_gpx(start, sport="running", duration_s=10, hr=150)
         with tempfile.NamedTemporaryFile(suffix=".gpx") as f:
             f.write(content)
@@ -30,7 +30,7 @@ class GpxParserTests(SimpleTestCase):
 
 class TcxParserTests(SimpleTestCase):
     def test_parses_trackpoints_power_and_laps(self):
-        start = datetime(2026, 6, 1, 8, 0, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 6, 1, 8, 0, 0, tzinfo=UTC)
         content = build_tcx(start, sport="Biking", duration_s=10, power=200, hr=140, distance_m=50)
         with tempfile.NamedTemporaryFile(suffix=".tcx") as f:
             f.write(content)

@@ -28,7 +28,7 @@ class CadenceCursorPagination(CursorPagination):
     def _extract_cursor_param(self, url):
         if not url:
             return None
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import parse_qs, urlparse
 
         query = parse_qs(urlparse(url).query)
         values = query.get(self.cursor_query_param)

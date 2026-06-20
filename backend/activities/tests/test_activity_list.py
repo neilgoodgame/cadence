@@ -90,9 +90,7 @@ class ActivityListViewTests(TestCase):
         _make_activity(self.athlete, name="Low", tss=10)
         _make_activity(self.athlete, name="High", tss=90)
 
-        response = _bearer_client(self.athlete).get(
-            "/v1/activities?q=order%20by%20tss%20desc&sort=tss"
-        )
+        response = _bearer_client(self.athlete).get("/v1/activities?q=order%20by%20tss%20desc&sort=tss")
         names = [a["name"] for a in response.json()["data"]]
         self.assertEqual(names, ["High", "Low"])
 
@@ -116,7 +114,10 @@ class ActivityListViewTests(TestCase):
 
     def test_viewer_can_list(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         _make_activity(self.athlete)
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])

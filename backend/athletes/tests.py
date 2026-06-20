@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, date, datetime, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -45,37 +45,37 @@ class AthleteDetailViewTests(TestCase):
 
     def test_active_viewer_can_read_via_delegated_jwt(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
         response = client.get(f"/v1/athletes/{self.athlete.id}")
         self.assertEqual(response.status_code, 200)
 
     def test_self_can_update_thresholds(self):
-        response = _bearer_client(self.athlete).patch(
-            f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json"
-        )
+        response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["ftp"], 280)
         self.athlete.refresh_from_db()
         self.assertEqual(self.athlete.ftp, 280)
 
     def test_update_with_no_existing_zone_set_reports_no_recompute(self):
-        response = _bearer_client(self.athlete).patch(
-            f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json"
-        )
+        response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
         self.assertEqual(response.json()["zones_recomputed"], [])
 
     def test_update_with_existing_zone_set_reports_recompute(self):
         ZoneSet.objects.create(athlete=self.athlete, type="bike_power", zones=DEFAULT_ZONES)
-        response = _bearer_client(self.athlete).patch(
-            f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json"
-        )
+        response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
         self.assertEqual(response.json()["zones_recomputed"], ["bike_power"])
 
     def test_viewer_cannot_write(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
         response = client.patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 999}, format="json")
@@ -83,7 +83,10 @@ class AthleteDetailViewTests(TestCase):
 
     def test_coach_can_write(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         client = _delegated_client(self.outsider, self.athlete, scopes=["calendar:write"])
         response = client.patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 300}, format="json")
@@ -145,12 +148,13 @@ class ZoneSetViewTests(TestCase):
 
     def test_viewer_cannot_replace(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
-        response = client.put(
-            f"/v1/athletes/{self.athlete.id}/zones/bike_power", {"zones": []}, format="json"
-        )
+        response = client.put(f"/v1/athletes/{self.athlete.id}/zones/bike_power", {"zones": []}, format="json")
         self.assertEqual(response.status_code, 403)
 
 
@@ -195,9 +199,7 @@ class BestEffortListViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_list_all_period_returns_everything(self):
-        response = _bearer_client(self.athlete).get(
-            f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power"
-        )
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power")
         body = response.json()
         self.assertEqual(body["kind"], "cycling_power")
         self.assertEqual(body["period"], "all")
@@ -216,9 +218,7 @@ class BestEffortListViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_outsider_forbidden(self):
-        response = _bearer_client(self.outsider).get(
-            f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power"
-        )
+        response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power")
         self.assertEqual(response.status_code, 403)
 
 
@@ -232,7 +232,7 @@ class FitnessListViewTests(TestCase):
             athlete=self.athlete,
             sport="bike",
             name="Day 1",
-            start_date=datetime(2026, 1, 1, 10, 0, tzinfo=dt_timezone.utc),
+            start_date=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
             moving_time=3600,
             distance_km=30,
             tss=100,
@@ -241,7 +241,7 @@ class FitnessListViewTests(TestCase):
             athlete=self.athlete,
             sport="bike",
             name="Day 2",
-            start_date=datetime(2026, 1, 2, 10, 0, tzinfo=dt_timezone.utc),
+            start_date=datetime(2026, 1, 2, 10, 0, tzinfo=UTC),
             moving_time=1800,
             distance_km=15,
             tss=50,

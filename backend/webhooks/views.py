@@ -18,9 +18,7 @@ class WebhookListCreateView(APIView):
         data = serializer.validated_data
 
         secret = generate_secret()
-        webhook = Webhook.objects.create(
-            owner=request.user, url=data["url"], events=data["events"], secret=secret
-        )
+        webhook = Webhook.objects.create(owner=request.user, url=data["url"], events=data["events"], secret=secret)
         payload = WebhookSerializer(webhook).data
         payload["secret"] = secret
         return Response(payload, status=201)

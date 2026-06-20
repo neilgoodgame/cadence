@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -16,13 +16,11 @@ class ActivityUploadViewTests(TestCase):
         self.outsider = User.objects.create_user(email="outsider@example.cc", password="x", name="Outsider")
 
     def test_upload_gpx_returns_202_then_ready_on_poll(self):
-        start = datetime(2026, 6, 1, 8, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 6, 1, 8, 0, tzinfo=UTC)
         content = build_gpx(start, sport="running", duration_s=30, hr=150)
         client = _bearer_client(self.athlete)
 
-        response = client.post(
-            "/v1/activities", {"file": SimpleUploadedFile("run.gpx", content)}, format="multipart"
-        )
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("run.gpx", content)}, format="multipart")
         self.assertEqual(response.status_code, 202)
         body = response.json()
         self.assertEqual(body["object"], "upload")
@@ -42,19 +40,15 @@ class ActivityUploadViewTests(TestCase):
         self.assertEqual(Record.objects.filter(activity=activity).count(), 30)
 
     def test_duplicate_upload_returns_409_referencing_existing_activity(self):
-        start = datetime(2026, 6, 2, 8, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 6, 2, 8, 0, tzinfo=UTC)
         content = build_gpx(start, duration_s=20)
         client = _bearer_client(self.athlete)
 
-        first = client.post(
-            "/v1/activities", {"file": SimpleUploadedFile("a.gpx", content)}, format="multipart"
-        )
+        first = client.post("/v1/activities", {"file": SimpleUploadedFile("a.gpx", content)}, format="multipart")
         first_upload_id = first.json()["id"]
         activity_id = client.get(f"/v1/uploads/{first_upload_id}").json()["activity_id"]
 
-        second = client.post(
-            "/v1/activities", {"file": SimpleUploadedFile("a.gpx", content)}, format="multipart"
-        )
+        second = client.post("/v1/activities", {"file": SimpleUploadedFile("a.gpx", content)}, format="multipart")
         self.assertEqual(second.status_code, 409)
         body = second.json()
         self.assertEqual(body["status"], "duplicate")
@@ -72,23 +66,19 @@ class ActivityUploadViewTests(TestCase):
 
     def test_outsider_cannot_upload_for_another_athlete(self):
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
-        content = build_gpx(datetime(2026, 6, 3, 8, 0, tzinfo=timezone.utc), duration_s=10)
-        response = client.post(
-            "/v1/activities", {"file": SimpleUploadedFile("x.gpx", content)}, format="multipart"
-        )
+        content = build_gpx(datetime(2026, 6, 3, 8, 0, tzinfo=UTC), duration_s=10)
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("x.gpx", content)}, format="multipart")
         self.assertEqual(response.status_code, 403)
 
 
 class HrBasedTssIngestionTests(TestCase):
     def test_gpx_run_without_power_uses_hr_zone_fallback(self):
         athlete = User.objects.create_user(email="hr@example.cc", password="x", name="HR Athlete", lthr=160)
-        start = datetime(2026, 6, 13, 6, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 6, 13, 6, 0, tzinfo=UTC)
         content = build_gpx(start, sport="running", duration_s=600, hr=160)
         client = _bearer_client(athlete)
 
-        response = client.post(
-            "/v1/activities", {"file": SimpleUploadedFile("run.gpx", content)}, format="multipart"
-        )
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("run.gpx", content)}, format="multipart")
         upload_id = response.json()["id"]
         poll = client.get(f"/v1/uploads/{upload_id}").json()
         activity = Activity.objects.get(pk=poll["activity_id"])
@@ -103,13 +93,11 @@ class HrBasedTssIngestionTests(TestCase):
 class TcxPowerIngestionTests(TestCase):
     def test_tcx_ride_computes_np_tss_and_best_effort(self):
         athlete = User.objects.create_user(email="power@example.cc", password="x", name="Power Athlete", ftp=200)
-        start = datetime(2026, 6, 14, 7, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 6, 14, 7, 0, tzinfo=UTC)
         content = build_tcx(start, sport="Biking", duration_s=300, power=200, hr=140, distance_m=1500)
         client = _bearer_client(athlete)
 
-        response = client.post(
-            "/v1/activities", {"file": SimpleUploadedFile("ride.tcx", content)}, format="multipart"
-        )
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("ride.tcx", content)}, format="multipart")
         upload_id = response.json()["id"]
         poll = client.get(f"/v1/uploads/{upload_id}").json()
         activity = Activity.objects.get(pk=poll["activity_id"])
@@ -139,9 +127,7 @@ class RealFitIngestionTests(TestCase):
     def _upload_fixture(self, name):
         content = (FIXTURES_DIR / name).read_bytes()
         client = _bearer_client(self.athlete)
-        response = client.post(
-            "/v1/activities", {"file": SimpleUploadedFile(name, content)}, format="multipart"
-        )
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile(name, content)}, format="multipart")
         self.assertEqual(response.status_code, 202)
         upload_id = response.json()["id"]
         poll = client.get(f"/v1/uploads/{upload_id}").json()

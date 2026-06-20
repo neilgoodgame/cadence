@@ -70,7 +70,7 @@ def _total_ascent(samples):
     if len(altitudes) < 2:
         return None
     gain = 0.0
-    for prev, curr in zip(altitudes, altitudes[1:]):
+    for prev, curr in zip(altitudes, altitudes[1:], strict=False):
         if curr > prev:
             gain += curr - prev
     return round(gain)

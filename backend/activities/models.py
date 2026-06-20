@@ -50,9 +50,7 @@ class Activity(PrefixedIDModel):
     fluids_ml = models.IntegerField(null=True, blank=True)
     avg_air_temp = models.FloatField(null=True, blank=True)
     avg_humidity = models.IntegerField(null=True, blank=True)
-    workout = models.ForeignKey(
-        Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities"
-    )
+    workout = models.ForeignKey(Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     bike = models.ForeignKey(Bike, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     shoe = models.ForeignKey(Shoe, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     tags = models.ManyToManyField("Tag", through="ActivityTag", related_name="activities", blank=True)

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from django.test import TestCase
 
@@ -19,7 +19,7 @@ class BestEffortUpsertTests(TestCase):
             athlete=self.athlete,
             sport="bike",
             name=f"Ride {suffix}",
-            start_date=datetime(2026, 6, 10, 7, 0, tzinfo=timezone.utc),
+            start_date=datetime(2026, 6, 10, 7, 0, tzinfo=UTC),
         )
 
     def test_improves_then_holds_then_improves_again(self):
@@ -54,7 +54,7 @@ class WorkoutMatchingTests(TestCase):
             athlete=self.athlete,
             sport="run",
             name="Morning run",
-            start_date=datetime(2026, 6, 11, 6, 30, tzinfo=timezone.utc),
+            start_date=datetime(2026, 6, 11, 6, 30, tzinfo=UTC),
         )
         attempt_workout_match(activity, self.athlete)
 
@@ -75,7 +75,7 @@ class WorkoutMatchingTests(TestCase):
             athlete=self.athlete,
             sport="bike",
             name="Easy ride",
-            start_date=datetime(2026, 6, 12, 6, 30, tzinfo=timezone.utc),
+            start_date=datetime(2026, 6, 12, 6, 30, tzinfo=UTC),
         )
         attempt_workout_match(activity, self.athlete)
 

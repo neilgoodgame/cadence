@@ -34,7 +34,7 @@ def _field_key(token):
 
 
 def parse_t(value):
-    """"M:SS" or "H:MM:SS" -> total seconds, mirroring the JS reference's parseT."""
+    """ "M:SS" or "H:MM:SS" -> total seconds, mirroring the JS reference's parseT."""
     parts = [int(p) for p in value.split(":")]
     if len(parts) == 3:
         return parts[0] * 3600 + parts[1] * 60 + parts[2]
@@ -120,9 +120,7 @@ class _Parser:
                     raise CQLParseError(f'Expected a value after "{op}"')
                 value, field = _parse_value(v)
                 if not field:
-                    raise CQLParseError(
-                        f'Add a unit (e.g. 140bpm, 10km) so I know which field "{v}" means'
-                    )
+                    raise CQLParseError(f'Add a unit (e.g. 140bpm, 10km) so I know which field "{v}" means')
                 return {"type": "cmp", "field": field, "op": op, "value": value}
             f = _field_key(t)
             if f:

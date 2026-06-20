@@ -178,11 +178,7 @@ class AccessTokenRotateView(APIView):
 
 class ShareListCreateView(APIView):
     def get(self, request):
-        shares = (
-            UserRelationship.objects.filter(owner=request.user)
-            .select_related("grantee")
-            .order_by("-created")
-        )
+        shares = UserRelationship.objects.filter(owner=request.user).select_related("grantee").order_by("-created")
         data = [_share_payload(rel) for rel in shares]
         return Response({"data": ShareSerializer(data, many=True).data})
 
@@ -208,7 +204,13 @@ class ShareListCreateView(APIView):
             )
         if grantee.id == request.user.id:
             raise ValidationError(
-                {"error": {"type": "invalid_request_error", "param": "invitee", "message": "You cannot invite yourself."}}
+                {
+                    "error": {
+                        "type": "invalid_request_error",
+                        "param": "invitee",
+                        "message": "You cannot invite yourself.",
+                    }
+                }
             )
 
         relationship, created = UserRelationship.objects.get_or_create(
@@ -257,9 +259,7 @@ class RosterListView(APIView):
 
 class CoachAthleteDetailView(APIView):
     def get(self, request, id):
-        get_object_or_404(
-            UserRelationship, owner_id=id, grantee=request.user, status=UserRelationship.STATUS_ACTIVE
-        )
+        get_object_or_404(UserRelationship, owner_id=id, grantee=request.user, status=UserRelationship.STATUS_ACTIVE)
         today = timezone.now().date()
         series = compute_fitness_series(id, today, today)
         point = series[0] if series else {"ctl": 0, "atl": 0, "tsb": 0}

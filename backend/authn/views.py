@@ -23,9 +23,20 @@ class CreateJwtView(APIView):
 
         if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
             raise ValidationError(
-                {"error": {"type": "invalid_request_error", "param": "scopes", "message": "scopes must be an array of strings."}}
+                {
+                    "error": {
+                        "type": "invalid_request_error",
+                        "param": "scopes",
+                        "message": "scopes must be an array of strings.",
+                    }
+                }
             )
-        if not isinstance(expires_in, int) or isinstance(expires_in, bool) or expires_in <= 0 or expires_in > MAX_EXPIRES_IN:
+        if (
+            not isinstance(expires_in, int)
+            or isinstance(expires_in, bool)
+            or expires_in <= 0
+            or expires_in > MAX_EXPIRES_IN
+        ):
             raise ValidationError(
                 {
                     "error": {
@@ -39,7 +50,13 @@ class CreateJwtView(APIView):
         caller_scopes = get_request_scopes(request)
         if caller_scopes and not set(scopes).issubset(caller_scopes):
             raise ValidationError(
-                {"error": {"type": "invalid_request_error", "param": "scopes", "message": "scopes must be a subset of the caller's own scopes."}}
+                {
+                    "error": {
+                        "type": "invalid_request_error",
+                        "param": "scopes",
+                        "message": "scopes must be a subset of the caller's own scopes.",
+                    }
+                }
             )
 
         if athlete_id != sub:

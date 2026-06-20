@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -16,7 +16,7 @@ class ActivityBatchUploadViewTests(TestCase):
         self.outsider = User.objects.create_user(email="outsider@example.cc", password="x", name="Outsider")
 
     def test_batch_upload_processes_all_files(self):
-        start = datetime(2026, 6, 4, 7, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 6, 4, 7, 0, tzinfo=UTC)
         zip_bytes = build_zip(
             {
                 "ride1.tcx": build_tcx(start, duration_s=30, power=180),
@@ -36,14 +36,12 @@ class ActivityBatchUploadViewTests(TestCase):
         poll = client.get(f"/v1/uploads/batches/{batch_id}")
         poll_body = poll.json()
         self.assertEqual(poll_body["status"], "completed")
-        self.assertEqual(
-            poll_body["counts"], {"total": 2, "ready": 2, "processing": 0, "failed": 0, "duplicate": 0}
-        )
+        self.assertEqual(poll_body["counts"], {"total": 2, "ready": 2, "processing": 0, "failed": 0, "duplicate": 0})
         self.assertEqual(poll_body["progress"], 1.0)
         self.assertEqual(Activity.objects.filter(athlete=self.athlete).count(), 2)
 
     def test_duplicate_file_within_batch_is_skipped(self):
-        start = datetime(2026, 6, 5, 7, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 6, 5, 7, 0, tzinfo=UTC)
         content = build_tcx(start, duration_s=20, power=150)
         zip_bytes = build_zip({"a.tcx": content, "b.tcx": content})
         client = _bearer_client(self.athlete)
@@ -65,7 +63,7 @@ class ActivityBatchUploadViewTests(TestCase):
         self.assertEqual(statuses["b.tcx"], "duplicate")
 
     def test_on_duplicate_replace_recreates_activity(self):
-        start = datetime(2026, 6, 6, 7, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 6, 6, 7, 0, tzinfo=UTC)
         content = build_tcx(start, duration_s=20, power=160)
         client = _bearer_client(self.athlete)
 
@@ -116,7 +114,7 @@ class ActivityBatchUploadViewTests(TestCase):
 
     def test_outsider_cannot_batch_upload(self):
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
-        zip_bytes = build_zip({"a.tcx": build_tcx(datetime(2026, 6, 7, 7, 0, tzinfo=timezone.utc), duration_s=5)})
+        zip_bytes = build_zip({"a.tcx": build_tcx(datetime(2026, 6, 7, 7, 0, tzinfo=UTC), duration_s=5)})
         response = client.post(
             "/v1/activities/batch", {"file": SimpleUploadedFile("x.zip", zip_bytes)}, format="multipart"
         )
@@ -129,7 +127,7 @@ class UploadPollingPermissionTests(TestCase):
         self.outsider = User.objects.create_user(email="outsider@example.cc", password="x", name="Outsider")
 
     def test_outsider_cannot_poll_upload(self):
-        content = build_gpx(datetime(2026, 6, 8, 7, 0, tzinfo=timezone.utc), duration_s=5)
+        content = build_gpx(datetime(2026, 6, 8, 7, 0, tzinfo=UTC), duration_s=5)
         client = _bearer_client(self.athlete)
         upload_id = client.post(
             "/v1/activities", {"file": SimpleUploadedFile("a.gpx", content)}, format="multipart"
@@ -140,7 +138,7 @@ class UploadPollingPermissionTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_outsider_cannot_poll_batch(self):
-        zip_bytes = build_zip({"a.tcx": build_tcx(datetime(2026, 6, 9, 7, 0, tzinfo=timezone.utc), duration_s=5)})
+        zip_bytes = build_zip({"a.tcx": build_tcx(datetime(2026, 6, 9, 7, 0, tzinfo=UTC), duration_s=5)})
         client = _bearer_client(self.athlete)
         batch_id = client.post(
             "/v1/activities/batch", {"file": SimpleUploadedFile("z.zip", zip_bytes)}, format="multipart"

@@ -90,12 +90,12 @@ class UserRelationship(models.Model):
             models.UniqueConstraint(fields=["owner", "grantee"], name="unique_owner_grantee"),
         ]
 
+    def __str__(self):
+        return f"{self.owner_id} -> {self.grantee_id} ({self.role})"
+
     def save(self, *args, **kwargs):
         if not self.id:
             from core.models import generate_id
 
             self.id = generate_id("rel")
         super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.owner_id} -> {self.grantee_id} ({self.role})"

@@ -229,9 +229,7 @@ class StreamsView(APIView):
         fields_payload = {}
         for channel in channels:
             if channel == "latlng":
-                fields_payload["latlng"] = [
-                    [r.lat, r.lng] for r in records if r.lat is not None and r.lng is not None
-                ]
+                fields_payload["latlng"] = [[r.lat, r.lng] for r in records if r.lat is not None and r.lng is not None]
             else:
                 fields_payload[channel] = [getattr(r, SCALAR_STREAM_FIELDS[channel]) for r in records]
 

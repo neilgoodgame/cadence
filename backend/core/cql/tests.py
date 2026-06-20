@@ -105,9 +105,7 @@ class ParseTests(SimpleTestCase):
         result = parse("running and indoor")
         self.assertEqual(result.ast["type"], "and")
         self.assertEqual(result.ast["left"], {"type": "cmp", "field": "sport", "op": "=", "value": "run"})
-        self.assertEqual(
-            result.ast["right"], {"type": "cmp", "field": "environment", "op": "=", "value": "indoor"}
-        )
+        self.assertEqual(result.ast["right"], {"type": "cmp", "field": "environment", "op": "=", "value": "indoor"})
 
     def test_implicit_and_without_keyword(self):
         result = parse("running indoor")

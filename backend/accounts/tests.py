@@ -163,15 +163,11 @@ class AccessTokenTests(TestCase):
 class ShareViewTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(email="owner@example.cc", password="x", name="Owner")
-        self.friend = User.objects.create_user(
-            email="friend@example.cc", password="x", name="Friend", handle="@friend"
-        )
+        self.friend = User.objects.create_user(email="friend@example.cc", password="x", name="Friend", handle="@friend")
         self.client = _bearer_client(self.owner)
 
     def test_invite_by_email_creates_pending_viewer_share(self):
-        response = self.client.post(
-            "/v1/shares", {"invitee": "friend@example.cc", "role": "viewer"}, format="json"
-        )
+        response = self.client.post("/v1/shares", {"invitee": "friend@example.cc", "role": "viewer"}, format="json")
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body["name"], "Friend")
@@ -185,27 +181,24 @@ class ShareViewTests(TestCase):
         self.assertEqual(response.json()["role"], "coach")
 
     def test_invite_unknown_invitee_is_rejected(self):
-        response = self.client.post(
-            "/v1/shares", {"invitee": "nobody@example.cc", "role": "viewer"}, format="json"
-        )
+        response = self.client.post("/v1/shares", {"invitee": "nobody@example.cc", "role": "viewer"}, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_invite_self_is_rejected(self):
-        response = self.client.post(
-            "/v1/shares", {"invitee": "owner@example.cc", "role": "viewer"}, format="json"
-        )
+        response = self.client.post("/v1/shares", {"invitee": "owner@example.cc", "role": "viewer"}, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_duplicate_invite_conflicts(self):
         UserRelationship.objects.create(owner=self.owner, grantee=self.friend, role=UserRelationship.ROLE_VIEWER)
-        response = self.client.post(
-            "/v1/shares", {"invitee": "friend@example.cc", "role": "coach"}, format="json"
-        )
+        response = self.client.post("/v1/shares", {"invitee": "friend@example.cc", "role": "coach"}, format="json")
         self.assertEqual(response.status_code, 409)
 
     def test_list_shares(self):
         UserRelationship.objects.create(
-            owner=self.owner, grantee=self.friend, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.owner,
+            grantee=self.friend,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         response = self.client.get("/v1/shares")
         self.assertEqual(response.status_code, 200)
@@ -241,11 +234,17 @@ class CoachViewTests(TestCase):
 
     def test_roster_lists_active_relationships_only(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         pending_athlete = User.objects.create_user(email="pending@example.cc", password="x", name="Pending")
         UserRelationship.objects.create(
-            owner=pending_athlete, grantee=self.coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_PENDING
+            owner=pending_athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_PENDING,
         )
 
         response = self.client.get("/v1/coach/athletes")
@@ -260,7 +259,10 @@ class CoachViewTests(TestCase):
 
     def test_coach_athlete_detail_returns_summary(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         response = self.client.get(f"/v1/coach/athletes/{self.athlete.id}")
         self.assertEqual(response.status_code, 200)

@@ -39,9 +39,7 @@ class CalendarView(APIView):
         athlete_id = request.query_params.get("athlete_id") or default_athlete_id
         _require_read(request, athlete_id)
 
-        entries = ScheduledWorkout.objects.filter(
-            athlete_id=athlete_id, date__gte=date_from, date__lte=date_to
-        )
+        entries = ScheduledWorkout.objects.filter(athlete_id=athlete_id, date__gte=date_from, date__lte=date_to)
         return Response({"data": ScheduledWorkoutSerializer(entries, many=True).data})
 
 

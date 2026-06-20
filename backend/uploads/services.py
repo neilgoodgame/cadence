@@ -78,9 +78,7 @@ def create_activity_upload(request, athlete_id):
         upload.save(update_fields=["status", "activity", "completed_at"])
         return upload, 409
 
-    upload.stored_path = default_storage.save(
-        f"uploads/{athlete_id}/{upload.id}_{file_obj.name}", file_obj
-    )
+    upload.stored_path = default_storage.save(f"uploads/{athlete_id}/{upload.id}_{file_obj.name}", file_obj)
     upload.save(update_fields=["stored_path"])
     process_upload_task.delay(upload.id)
     return upload, 202
@@ -131,9 +129,7 @@ def create_activity_batch_upload(request, athlete_id):
         if existing and on_duplicate == "replace" and existing.activity_id:
             existing.activity.delete()
 
-        upload.stored_path = default_storage.save(
-            f"uploads/{athlete_id}/{upload.id}_{short_name}", io.BytesIO(content)
-        )
+        upload.stored_path = default_storage.save(f"uploads/{athlete_id}/{upload.id}_{short_name}", io.BytesIO(content))
         upload.save(update_fields=["stored_path"])
         process_upload_task.delay(upload.id)
 

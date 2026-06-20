@@ -116,7 +116,10 @@ class ActivityDetailViewTests(TestCase):
 
     def test_viewer_cannot_patch(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         activity = _make_activity(self.athlete)
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
@@ -125,7 +128,10 @@ class ActivityDetailViewTests(TestCase):
 
     def test_coach_can_patch(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         activity = _make_activity(self.athlete)
         client = _delegated_client(self.outsider, self.athlete, scopes=["coach"])

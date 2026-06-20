@@ -20,7 +20,7 @@ THRESHOLD_FIELD_BY_ZONE_TYPE = {
 
 
 def _mmss_to_seconds(value):
-    """"mm:ss" per km -> total seconds. Returns None if unset or malformed.
+    """ "mm:ss" per km -> total seconds. Returns None if unset or malformed.
 
     A local parser rather than core.cql.parse_t, so this app doesn't depend
     on the query-language package for an unrelated mm:ss format.
@@ -58,8 +58,4 @@ def zone_types_affected_by(changed_fields):
     """Given the athlete profile fields that changed in an update, returns the
     zone types whose reference threshold depends on one of them.
     """
-    return [
-        zone_type
-        for zone_type, field in THRESHOLD_FIELD_BY_ZONE_TYPE.items()
-        if field in changed_fields
-    ]
+    return [zone_type for zone_type, field in THRESHOLD_FIELD_BY_ZONE_TYPE.items() if field in changed_fields]

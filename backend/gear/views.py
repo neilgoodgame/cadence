@@ -219,11 +219,11 @@ class ShoeDetailView(APIView):
 class ShoeCatalogView(APIView):
     def get(self, request):
         q = request.query_params.get("q", "").strip()
-        versions = ShoeModelVersion.objects.select_related("shoe_model").order_by("shoe_model__manufacturer", "shoe_model__model")
+        versions = ShoeModelVersion.objects.select_related("shoe_model").order_by(
+            "shoe_model__manufacturer", "shoe_model__model"
+        )
         if q:
-            versions = versions.filter(
-                Q(shoe_model__manufacturer__icontains=q) | Q(shoe_model__model__icontains=q)
-            )
+            versions = versions.filter(Q(shoe_model__manufacturer__icontains=q) | Q(shoe_model__model__icontains=q))
 
         data = [
             {

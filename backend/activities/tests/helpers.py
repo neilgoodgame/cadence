@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from rest_framework.test import APIClient
 
@@ -27,7 +27,7 @@ def _make_activity(athlete, **kwargs):
         "sport": "run",
         "environment": "outdoor",
         "name": "Morning Run",
-        "start_date": datetime(2026, 1, 1, 7, 0, tzinfo=timezone.utc),
+        "start_date": datetime(2026, 1, 1, 7, 0, tzinfo=UTC),
         "moving_time": 1800,
         "distance_km": 5.0,
         "tss": 50,

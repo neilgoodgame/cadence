@@ -69,9 +69,7 @@ class WorkoutViewTests(TestCase):
         return payload
 
     def test_create_workout_with_steps(self):
-        response = _bearer_client(self.athlete).post(
-            "/v1/workouts", self._create_payload(), format="json"
-        )
+        response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["name"], "VO2 Max 5x5")
@@ -95,25 +93,19 @@ class WorkoutViewTests(TestCase):
         self.assertEqual(data["tss"], 33)
 
     def test_create_allows_empty_steps(self):
-        response = _bearer_client(self.athlete).post(
-            "/v1/workouts", self._create_payload(steps=[]), format="json"
-        )
+        response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(steps=[]), format="json")
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["duration"], 0)
         self.assertEqual(data["tss"], 0)
 
     def test_time_step_missing_duration_is_rejected(self):
-        payload = self._create_payload(
-            steps=[{"kind": "block", "end_type": "time", "target_pct": 100, "repeat": 1}]
-        )
+        payload = self._create_payload(steps=[{"kind": "block", "end_type": "time", "target_pct": 100, "repeat": 1}])
         response = _bearer_client(self.athlete).post("/v1/workouts", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_distance_step_missing_distance_is_rejected(self):
-        payload = self._create_payload(
-            steps=[{"kind": "block", "end_type": "distance", "repeat": 1}]
-        )
+        payload = self._create_payload(steps=[{"kind": "block", "end_type": "distance", "repeat": 1}])
         response = _bearer_client(self.athlete).post("/v1/workouts", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
@@ -131,9 +123,7 @@ class WorkoutViewTests(TestCase):
         self.assertNotIn("steps", data[0])
 
     def test_get_detail_returns_ordered_steps(self):
-        create_response = _bearer_client(self.athlete).post(
-            "/v1/workouts", self._create_payload(), format="json"
-        )
+        create_response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         workout_id = create_response.json()["id"]
 
         response = _bearer_client(self.athlete).get(f"/v1/workouts/{workout_id}")
@@ -146,14 +136,10 @@ class WorkoutViewTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_patch_name_only_leaves_steps_untouched(self):
-        create_response = _bearer_client(self.athlete).post(
-            "/v1/workouts", self._create_payload(), format="json"
-        )
+        create_response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         workout_id = create_response.json()["id"]
 
-        response = _bearer_client(self.athlete).patch(
-            f"/v1/workouts/{workout_id}", {"name": "Renamed"}, format="json"
-        )
+        response = _bearer_client(self.athlete).patch(f"/v1/workouts/{workout_id}", {"name": "Renamed"}, format="json")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["name"], "Renamed")
@@ -163,15 +149,11 @@ class WorkoutViewTests(TestCase):
         self.assertEqual(len(detail["steps"]), 3)
 
     def test_patch_steps_replaces_list_and_recomputes(self):
-        create_response = _bearer_client(self.athlete).post(
-            "/v1/workouts", self._create_payload(), format="json"
-        )
+        create_response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         workout_id = create_response.json()["id"]
 
         new_steps = [{"kind": "block", "end_type": "time", "duration": 300, "target_pct": 100, "repeat": 4}]
-        response = _bearer_client(self.athlete).patch(
-            f"/v1/workouts/{workout_id}", {"steps": new_steps}, format="json"
-        )
+        response = _bearer_client(self.athlete).patch(f"/v1/workouts/{workout_id}", {"steps": new_steps}, format="json")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertNotIn("steps", data)
@@ -182,9 +164,7 @@ class WorkoutViewTests(TestCase):
         self.assertEqual(len(detail["steps"]), 1)
 
     def test_delete_cascades_steps(self):
-        create_response = _bearer_client(self.athlete).post(
-            "/v1/workouts", self._create_payload(), format="json"
-        )
+        create_response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         workout_id = create_response.json()["id"]
 
         response = _bearer_client(self.athlete).delete(f"/v1/workouts/{workout_id}")
@@ -193,9 +173,7 @@ class WorkoutViewTests(TestCase):
         self.assertFalse(WorkoutStep.objects.filter(workout_id=workout_id).exists())
 
     def test_outsider_without_relationship_cannot_list(self):
-        response = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"]).get(
-            "/v1/workouts"
-        )
+        response = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"]).get("/v1/workouts")
         self.assertEqual(response.status_code, 403)
 
     def test_outsider_without_relationship_cannot_create(self):
@@ -205,9 +183,7 @@ class WorkoutViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_outsider_cannot_get_another_athletes_workout_by_id(self):
-        create_response = _bearer_client(self.athlete).post(
-            "/v1/workouts", self._create_payload(), format="json"
-        )
+        create_response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         workout_id = create_response.json()["id"]
 
         response = _bearer_client(self.outsider).get(f"/v1/workouts/{workout_id}")
@@ -220,9 +196,7 @@ class WorkoutViewTests(TestCase):
             role=UserRelationship.ROLE_VIEWER,
             status=UserRelationship.STATUS_ACTIVE,
         )
-        create_response = _bearer_client(self.athlete).post(
-            "/v1/workouts", self._create_payload(), format="json"
-        )
+        create_response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         workout_id = create_response.json()["id"]
 
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
@@ -245,9 +219,7 @@ class WorkoutViewTests(TestCase):
         create_response = client.post("/v1/workouts", self._create_payload(), format="json")
         self.assertEqual(create_response.status_code, 403)
 
-        existing = _bearer_client(self.athlete).post(
-            "/v1/workouts", self._create_payload(), format="json"
-        )
+        existing = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         workout_id = existing.json()["id"]
 
         patch_response = client.patch(f"/v1/workouts/{workout_id}", {"name": "Hacked"}, format="json")

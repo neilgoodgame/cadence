@@ -17,13 +17,9 @@ class WorkoutStepSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         end_type = attrs.get("end_type")
         if end_type == "time" and not attrs.get("duration"):
-            raise serializers.ValidationError(
-                {"duration": "duration is required when end_type is 'time'."}
-            )
+            raise serializers.ValidationError({"duration": "duration is required when end_type is 'time'."})
         if end_type == "distance" and not attrs.get("distance"):
-            raise serializers.ValidationError(
-                {"distance": "distance is required when end_type is 'distance'."}
-            )
+            raise serializers.ValidationError({"distance": "distance is required when end_type is 'distance'."})
         return attrs
 
 
