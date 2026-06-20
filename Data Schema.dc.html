@@ -141,6 +141,7 @@ class Component extends DCLogic {
       ['distance', 'km'], ['distance_src', 'gps|footpod|trainer'], ['avg_power', 'watts'], ['norm_power', 'watts'], ['intensity', 'IF'],
       ['tss', 'int'], ['avg_hr', 'bpm'], ['max_hr', 'bpm'], ['ascent', 'm'],
       ['start_weight', 'kg?'], ['end_weight', 'kg?'], ['fluids', 'ml?'],
+      ['avg_air_temp', '°C? ◦'], ['avg_humidity', '%? ◦'],
       ['bike_id', 'fk', 'fk', 'bike'], ['shoe_id', 'fk', 'fk', 'shoe'],
       ['workout_id', 'fk?', 'fk', 'workout'] ] },
     { id: 'lap', domain: 'core', note: 'splits', fields: [
@@ -149,7 +150,8 @@ class Component extends DCLogic {
     { id: 'record', domain: 'core', note: '1 Hz stream', fields: [
       ['activity_id', 'fk', 'fk', 'activity'], ['t', 'sec'], ['hr', 'bpm'], ['power', 'watts'],
       ['altitude', 'm'], ['distance', 'm'], ['cadence', 'rpm'], ['speed', 'm/s'],
-      ['lr_balance', '%'], ['core_temp', '°C'], ['heat_strain', 'idx'] ] },
+      ['lr_balance', '%'], ['core_temp', '°C'], ['skin_temp', '°C'], ['heat_strain', 'idx'],
+      ['air_temp', '°C'], ['humidity', '%'] ] },
     { id: 'duration_curve', domain: 'core', note: 'PDC · HDC', fields: [
       ['activity_id', 'fk', 'fk', 'activity'], ['metric', 'power|hr'],
       ['points', '{dur:best}'], ['extends_to', 'full len'] ] },

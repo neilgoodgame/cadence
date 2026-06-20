@@ -48,6 +48,8 @@ class Activity(PrefixedIDModel):
     start_weight_kg = models.FloatField(null=True, blank=True)
     end_weight_kg = models.FloatField(null=True, blank=True)
     fluids_ml = models.IntegerField(null=True, blank=True)
+    avg_air_temp = models.FloatField(null=True, blank=True)
+    avg_humidity = models.IntegerField(null=True, blank=True)
     workout = models.ForeignKey(
         Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities"
     )
@@ -140,6 +142,11 @@ class Record(models.Model):
     lng = models.FloatField(null=True, blank=True)
     speed = models.FloatField(null=True, blank=True)
     distance_km = models.FloatField(null=True, blank=True)
+    air_temp = models.FloatField(null=True, blank=True)
+    humidity = models.IntegerField(null=True, blank=True)
+    skin_temp = models.FloatField(null=True, blank=True)
+    core_temp = models.FloatField(null=True, blank=True)
+    heat_strain = models.FloatField(null=True, blank=True)
 
     class Meta:
         constraints = [

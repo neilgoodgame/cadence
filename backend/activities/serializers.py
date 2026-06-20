@@ -30,6 +30,8 @@ class ActivitySerializer(serializers.ModelSerializer):
             "start_weight_kg",
             "end_weight_kg",
             "fluids_ml",
+            "avg_air_temp",
+            "avg_humidity",
             "tags",
             "workout_id",
             "bike_id",
@@ -47,6 +49,8 @@ class ActivityUpdateSerializer(serializers.Serializer):
     start_weight_kg = serializers.FloatField(required=False, allow_null=True)
     end_weight_kg = serializers.FloatField(required=False, allow_null=True)
     fluids_ml = serializers.IntegerField(required=False, allow_null=True)
+    avg_air_temp = serializers.FloatField(required=False, allow_null=True)
+    avg_humidity = serializers.IntegerField(required=False, allow_null=True)
 
 
 class LapSerializer(serializers.ModelSerializer):

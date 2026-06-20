@@ -311,6 +311,11 @@ def ingest_upload(upload):
                 lng=s.get("lng"),
                 speed=s.get("speed"),
                 distance_km=s.get("distance_km"),
+                air_temp=s.get("air_temp"),
+                humidity=s.get("humidity"),
+                skin_temp=s.get("skin_temp"),
+                core_temp=s.get("core_temp"),
+                heat_strain=s.get("heat_strain"),
             )
             for s in samples
         ],
@@ -348,7 +353,21 @@ def ingest_upload(upload):
     elif norm_power and activity.sport == "run" and athlete.critical_run_power:
         activity.intensity = round(norm_power / athlete.critical_run_power, 3)
     activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
-    activity.save(update_fields=["avg_power", "norm_power", "avg_hr", "max_hr", "intensity", "tss"])
+
+    update_fields = ["avg_power", "norm_power", "avg_hr", "max_hr", "intensity", "tss"]
+    if activity.sport == "run":
+        air_temp_series = [s.get("air_temp") for s in samples]
+        humidity_series = [s.get("humidity") for s in samples]
+        if any(v is not None for v in air_temp_series):
+            avg_air_temp = _mean(air_temp_series)
+            activity.avg_air_temp = round(avg_air_temp, 1) if avg_air_temp is not None else None
+            update_fields.append("avg_air_temp")
+        if any(v is not None for v in humidity_series):
+            avg_humidity = _mean(humidity_series)
+            activity.avg_humidity = round(avg_humidity) if avg_humidity is not None else None
+            update_fields.append("avg_humidity")
+
+    activity.save(update_fields=update_fields)
 
     _write_duration_curves(activity, power_series, hr_series)
     update_best_efforts(activity, athlete, power_series, laps)

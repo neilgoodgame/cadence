@@ -65,6 +65,13 @@ def parse_fit(path):
                 "cadence": message.get_value("cadence"),
                 "power": power,
                 "speed": speed,
+                # Stryd footpod developer fields: ambient temperature/humidity.
+                "air_temp": message.get_value("Stryd Temperature"),
+                "humidity": message.get_value("Stryd Humidity"),
+                # CORE body-temperature sensor developer fields.
+                "core_temp": message.get_value("core_temperature"),
+                "skin_temp": message.get_value("skin_temperature"),
+                "heat_strain": message.get_value("heat_strain_index"),
             }
         )
 

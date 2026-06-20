@@ -30,6 +30,11 @@ SCALAR_STREAM_FIELDS = {
     "altitude": "altitude",
     "distance": "distance_km",
     "speed": "speed",
+    "air_temp": "air_temp",
+    "humidity": "humidity",
+    "core_temp": "core_temp",
+    "skin_temp": "skin_temp",
+    "heat_strain": "heat_strain",
 }
 STREAM_CHANNELS = set(SCALAR_STREAM_FIELDS) | {"latlng"}
 STREAM_RESOLUTION_STEP = {"high": 1, "medium": 5, "low": 15}
@@ -164,6 +169,15 @@ class ActivityDetailView(APIView):
         if "fluids_ml" in data:
             activity.fluids_ml = data["fluids_ml"]
             update_fields.append("fluids_ml")
+        if "avg_air_temp" in data or "avg_humidity" in data:
+            stryd_computed = activity.sport == "run" and activity.records.filter(air_temp__isnull=False).exists()
+            if not stryd_computed:
+                if "avg_air_temp" in data:
+                    activity.avg_air_temp = data["avg_air_temp"]
+                    update_fields.append("avg_air_temp")
+                if "avg_humidity" in data:
+                    activity.avg_humidity = data["avg_humidity"]
+                    update_fields.append("avg_humidity")
 
         if update_fields:
             activity.save(update_fields=update_fields)
