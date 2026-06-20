@@ -8,7 +8,9 @@ from ..processing import compute_duration_curve, compute_normalized_power, compu
 
 class ComputeNormalizedPowerTests(SimpleTestCase):
     def test_constant_power_equals_average(self):
-        self.assertAlmostEqual(compute_normalized_power([200] * 100), 200, places=3)
+        result = compute_normalized_power([200] * 100)
+        assert result is not None
+        self.assertAlmostEqual(result, 200, places=3)
 
     def test_short_series_falls_back_to_plain_mean(self):
         self.assertEqual(compute_normalized_power([100, 200, 300]), 200)

@@ -32,7 +32,7 @@ class UploadBatch(PrefixedIDModel):
     class Meta:
         ordering = ["-received_at"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.filename
 
 
@@ -67,5 +67,5 @@ class Upload(PrefixedIDModel):
     class Meta:
         ordering = ["-received_at"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.filename

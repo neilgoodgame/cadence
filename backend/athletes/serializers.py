@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from accounts.models import User
 
+from .models import ZoneSet
 from .zones import reference_for
 
 
@@ -23,7 +24,7 @@ class ZoneSetSerializer(serializers.Serializer):
     reference = serializers.SerializerMethodField()
     zones = ZoneSerializer(many=True)
 
-    def get_reference(self, obj):
+    def get_reference(self, obj: ZoneSet) -> int | None:
         return reference_for(obj.athlete, obj.type)
 
 

@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -16,20 +17,20 @@ from .serializers import (
 )
 
 
-def _require_read(request, athlete_id):
+def _require_read(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_read(sub, athlete_id):
         raise PermissionDenied("You do not have access to that athlete's data.")
 
 
-def _require_write(request, athlete_id):
+def _require_write(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_write(sub, athlete_id):
         raise PermissionDenied("You do not have write access to that athlete's data.")
 
 
 class CalendarView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         date_from = request.query_params.get("from")
         date_to = request.query_params.get("to")
         if not date_from or not date_to:
@@ -44,7 +45,7 @@ class CalendarView(APIView):
 
 
 class ScheduledWorkoutListCreateView(APIView):
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         serializer = ScheduleWorkoutCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -66,7 +67,7 @@ class ScheduledWorkoutListCreateView(APIView):
 
 
 class ScheduledWorkoutDetailView(APIView):
-    def patch(self, request, id):
+    def patch(self, request: Request, id: str) -> Response:
         scheduled = get_object_or_404(ScheduledWorkout, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, scheduled.athlete_id):
@@ -90,7 +91,7 @@ class ScheduledWorkoutDetailView(APIView):
             scheduled.save(update_fields=update_fields)
         return Response(ScheduledWorkoutSerializer(scheduled).data)
 
-    def delete(self, request, id):
+    def delete(self, request: Request, id: str) -> Response:
         scheduled = get_object_or_404(ScheduledWorkout, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, scheduled.athlete_id):

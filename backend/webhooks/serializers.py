@@ -13,7 +13,7 @@ class WebhookCreateSerializer(serializers.Serializer):
     url = serializers.URLField()
     events = serializers.ListField(child=serializers.CharField())
 
-    def validate_events(self, value):
+    def validate_events(self, value: list[str]) -> list[str]:
         if not value:
             raise serializers.ValidationError("At least one event is required.")
         unknown = [e for e in value if e not in Webhook.EVENT_CHOICES]

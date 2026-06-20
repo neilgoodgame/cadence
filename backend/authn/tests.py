@@ -1,3 +1,5 @@
+import datetime
+
 from django.test import Client, TestCase
 from django.utils import timezone
 from oauth2_provider.models import get_application_model, get_grant_model
@@ -179,7 +181,7 @@ class OAuthTokenEndpointTests(TestCase):
             user=self.user,
             application=self.application,
             code="test-authorization-code",
-            expires=timezone.now() + timezone.timedelta(minutes=5),
+            expires=timezone.now() + datetime.timedelta(minutes=5),
             redirect_uri="https://example.cc/callback",
             scope=scope,
         )

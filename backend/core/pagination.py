@@ -1,3 +1,5 @@
+from typing import Any
+
 from rest_framework.pagination import CursorPagination
 from rest_framework.response import Response
 
@@ -12,9 +14,9 @@ class CadenceCursorPagination(CursorPagination):
     max_page_size = 200
     page_size_query_param = "limit"
     cursor_query_param = "cursor"
-    ordering = "-id"
+    ordering: str | tuple[str, ...] = "-id"
 
-    def get_paginated_response(self, data):
+    def get_paginated_response(self, data: Any) -> Response:
         next_cursor = self._extract_cursor_param(self.get_next_link())
         return Response(
             {
@@ -25,7 +27,7 @@ class CadenceCursorPagination(CursorPagination):
             }
         )
 
-    def _extract_cursor_param(self, url):
+    def _extract_cursor_param(self, url: str | None) -> str | None:
         if not url:
             return None
         from urllib.parse import parse_qs, urlparse

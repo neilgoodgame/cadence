@@ -1,5 +1,8 @@
+from typing import Any
+
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -20,29 +23,29 @@ from .serializers import (
 MATCH_METHODS = ("auto", "manual", "all")
 
 
-def _closeness(actual, planned):
+def _closeness(actual: float, planned: float) -> float | None:
     if not planned:
         return None
     return round(max(0.0, min(1.0, 1 - abs(actual - planned) / planned)), 2)
 
 
-def _is_auto_matched(activity):
+def _is_auto_matched(activity: Activity) -> bool:
     return activity.tags.filter(name="Auto-matched", origin="auto").exists()
 
 
-def _require_read(request, athlete_id):
+def _require_read(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_read(sub, athlete_id):
         raise PermissionDenied("You do not have access to that athlete's data.")
 
 
-def _require_write(request, athlete_id):
+def _require_write(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_write(sub, athlete_id):
         raise PermissionDenied("You do not have write access to that athlete's data.")
 
 
-def _replace_steps(workout, steps_data):
+def _replace_steps(workout: Workout, steps_data: list[dict[str, Any]]) -> None:
     workout.steps.all().delete()
     WorkoutStep.objects.bulk_create(
         [
@@ -66,13 +69,13 @@ def _replace_steps(workout, steps_data):
 
 
 class WorkoutListView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         sub, athlete_id = get_effective_athlete_id(request)
         _require_read(request, athlete_id)
         workouts = Workout.objects.filter(created_by_id=athlete_id)
         return Response({"data": WorkoutSerializer(workouts, many=True).data})
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         sub, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
 
@@ -90,14 +93,14 @@ class WorkoutListView(APIView):
 
 
 class WorkoutDetailView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         sub, _ = get_effective_athlete_id(request)
         workout = get_object_or_404(Workout, pk=id)
         if not user_may_read(sub, workout.created_by_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
         return Response(WorkoutDetailSerializer(workout).data)
 
-    def patch(self, request, id):
+    def patch(self, request: Request, id: str) -> Response:
         sub, _ = get_effective_athlete_id(request)
         workout = get_object_or_404(Workout, pk=id)
         if not user_may_write(sub, workout.created_by_id):
@@ -115,7 +118,7 @@ class WorkoutDetailView(APIView):
 
         return Response(WorkoutSerializer(workout).data)
 
-    def delete(self, request, id):
+    def delete(self, request: Request, id: str) -> Response:
         sub, _ = get_effective_athlete_id(request)
         workout = get_object_or_404(Workout, pk=id)
         if not user_may_write(sub, workout.created_by_id):
@@ -125,7 +128,7 @@ class WorkoutDetailView(APIView):
 
 
 class WorkoutMatchListView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         sub, _ = get_effective_athlete_id(request)
         workout = get_object_or_404(Workout, pk=id)
         if not user_may_read(sub, workout.created_by_id):

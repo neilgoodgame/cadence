@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from typing import Any
 
 import requests
 from celery import shared_task
@@ -11,7 +12,7 @@ DELIVERY_TIMEOUT_SECONDS = 5
 MAX_ATTEMPTS = 6
 
 
-def sign_payload(secret, raw_body):
+def sign_payload(secret: str, raw_body: bytes) -> str:
     return hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
 
 
@@ -21,8 +22,8 @@ def sign_payload(secret, raw_body):
     retry_backoff=True,
     retry_backoff_max=600,
     max_retries=MAX_ATTEMPTS - 1,
-)
-def deliver_webhook(self, delivery_id):
+)  # type: ignore[untyped-decorator]
+def deliver_webhook(self: Any, delivery_id: str) -> None:
     delivery = WebhookDelivery.objects.select_related("webhook").get(pk=delivery_id)
     webhook = delivery.webhook
     raw_body = json.dumps(delivery.payload).encode("utf-8")

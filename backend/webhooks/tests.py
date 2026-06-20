@@ -167,7 +167,9 @@ class FireEventTests(TestCase):
 
         self.assertEqual(mock_delay.call_count, 1)
         self.assertEqual(WebhookDelivery.objects.count(), 1)
-        self.assertEqual(WebhookDelivery.objects.first().event, "activity.created")
+        delivery = WebhookDelivery.objects.first()
+        assert delivery is not None
+        self.assertEqual(delivery.event, "activity.created")
 
     @patch("webhooks.events.deliver_webhook.delay")
     def test_skips_disabled_webhooks(self, mock_delay):

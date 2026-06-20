@@ -1,3 +1,5 @@
+from typing import Any
+
 from rest_framework import serializers
 
 from .models import Activity, BestEffort, DurationCurve, Lap, Tag
@@ -38,7 +40,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "shoe_id",
         ]
 
-    def get_tags(self, obj):
+    def get_tags(self, obj: Activity) -> list[str]:
         return list(obj.tags.order_by("name").values_list("name", flat=True))
 
 
@@ -84,7 +86,7 @@ class TagAttachSerializer(serializers.Serializer):
     tag_id = serializers.CharField(required=False)
     name = serializers.CharField(required=False)
 
-    def validate(self, attrs):
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         if not attrs.get("tag_id") and not attrs.get("name"):
             raise serializers.ValidationError("Provide either tag_id or name.")
         return attrs

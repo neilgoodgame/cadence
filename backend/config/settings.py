@@ -7,18 +7,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR.parent / ".env")
 
 
-def env(key, default=None):
+def env(key: str, default: str | None = None) -> str | None:
     return os.environ.get(key, default)
 
 
-def env_bool(key, default=False):
+def env_bool(key: str, default: bool = False) -> bool:
     val = os.environ.get(key)
     if val is None:
         return default
     return val.lower() in ("1", "true", "yes", "on")
 
 
-def env_list(key, default=""):
+def env_list(key: str, default: str = "") -> list[str]:
     val = os.environ.get(key, default)
     return [item.strip() for item in val.split(",") if item.strip()]
 

@@ -1,13 +1,16 @@
+from collections.abc import Callable
+
 from django.db.models import Q
 
 from core.exceptions import CQLParseError
 
 from .fields import FIELD_SPECS
+from .parser import CQLNode
 
 _NUMERIC_LOOKUPS = {"=": "exact", "!=": "exact", ">": "gt", "<": "lt", ">=": "gte", "<=": "lte"}
 
 
-def compile_ast_to_q(ast, field_map, tag_filter=None):
+def compile_ast_to_q(ast: CQLNode | None, field_map: dict[str, str], tag_filter: Callable[[str], Q] | None = None) -> Q:
     """Compiles a CQL AST (see parser.parse) into a Django Q object.
 
     field_map maps CQL field keys (hr, distance, sport, ...) to the ORM
@@ -56,7 +59,7 @@ def compile_ast_to_q(ast, field_map, tag_filter=None):
     return ~q if op == "!=" else q
 
 
-def resolve_order_by(order, field_map):
+def resolve_order_by(order: dict[str, str] | None, field_map: dict[str, str]) -> str | None:
     if order is None:
         return None
     orm_field = field_map.get(order["field"])

@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -28,26 +29,26 @@ from .serializers import (
 )
 
 
-def _require_read(request, athlete_id):
+def _require_read(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_read(sub, athlete_id):
         raise PermissionDenied("You do not have access to that athlete's data.")
 
 
-def _require_write(request, athlete_id):
+def _require_write(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_write(sub, athlete_id):
         raise PermissionDenied("You do not have write access to that athlete's data.")
 
 
 class BikeListCreateView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_read(request, athlete_id)
         bikes = Bike.objects.filter(athlete_id=athlete_id).order_by("-id")
         return Response({"data": BikeSerializer(bikes, many=True).data})
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
 
@@ -58,14 +59,14 @@ class BikeListCreateView(APIView):
 
 
 class BikeDetailView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         bike = get_object_or_404(Bike, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_read(sub, bike.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
         return Response(BikeDetailSerializer(bike).data)
 
-    def patch(self, request, id):
+    def patch(self, request: Request, id: str) -> Response:
         bike = get_object_or_404(Bike, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, bike.athlete_id):
@@ -76,7 +77,7 @@ class BikeDetailView(APIView):
         serializer.save()
         return Response(BikeSerializer(bike).data)
 
-    def delete(self, request, id):
+    def delete(self, request: Request, id: str) -> Response:
         bike = get_object_or_404(Bike, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, bike.athlete_id):
@@ -86,7 +87,7 @@ class BikeDetailView(APIView):
 
 
 class ComponentListCreateView(APIView):
-    def post(self, request, id):
+    def post(self, request: Request, id: str) -> Response:
         bike = get_object_or_404(Bike, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, bike.athlete_id):
@@ -99,7 +100,7 @@ class ComponentListCreateView(APIView):
 
 
 class ComponentDetailView(APIView):
-    def patch(self, request, id):
+    def patch(self, request: Request, id: str) -> Response:
         component = get_object_or_404(Component, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, component.bike.athlete_id):
@@ -110,7 +111,7 @@ class ComponentDetailView(APIView):
         serializer.save()
         return Response(ComponentSerializer(component).data)
 
-    def delete(self, request, id):
+    def delete(self, request: Request, id: str) -> Response:
         component = get_object_or_404(Component, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, component.bike.athlete_id):
@@ -120,7 +121,7 @@ class ComponentDetailView(APIView):
 
 
 class ComponentServiceView(APIView):
-    def post(self, request, id):
+    def post(self, request: Request, id: str) -> Response:
         component = get_object_or_404(Component, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, component.bike.athlete_id):
@@ -147,7 +148,7 @@ class ComponentServiceView(APIView):
 
 
 class ShoeListCreateView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_read(request, athlete_id)
         shoes = (
@@ -157,7 +158,7 @@ class ShoeListCreateView(APIView):
         )
         return Response({"data": ShoeSerializer(shoes, many=True).data})
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
 
@@ -189,7 +190,7 @@ class ShoeListCreateView(APIView):
 
 
 class ShoeDetailView(APIView):
-    def patch(self, request, id):
+    def patch(self, request: Request, id: str) -> Response:
         shoe = get_object_or_404(
             Shoe.objects.select_related("shoe_model_version", "shoe_model_version__shoe_model"), pk=id
         )
@@ -207,7 +208,7 @@ class ShoeDetailView(APIView):
         serializer.save()
         return Response(ShoeSerializer(shoe).data)
 
-    def delete(self, request, id):
+    def delete(self, request: Request, id: str) -> Response:
         shoe = get_object_or_404(Shoe, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, shoe.athlete_id):
@@ -217,7 +218,7 @@ class ShoeDetailView(APIView):
 
 
 class ShoeCatalogView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         q = request.query_params.get("q", "").strip()
         versions = ShoeModelVersion.objects.select_related("shoe_model").order_by(
             "shoe_model__manufacturer", "shoe_model__model"

@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from django.utils import timezone
 
@@ -10,7 +11,7 @@ from .tasks import deliver_webhook
 logger = logging.getLogger(__name__)
 
 
-def fire_event(event, athlete_id, data):
+def fire_event(event: str, athlete_id: str, data: Any) -> None:
     """Enqueues a delivery for every active subscription that wants `event` and
     can see `athlete_id`'s data. Never lets a delivery problem bubble up to the
     caller — under CELERY_TASK_ALWAYS_EAGER (tests, or a broker hiccup in prod)

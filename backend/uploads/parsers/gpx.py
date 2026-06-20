@@ -1,7 +1,9 @@
 import math
+from typing import Any
 
 import gpxpy
 
+from .types import Lap, ParsedActivity, Sample
 from .utils import ensure_utc
 
 SPORT_TYPE_MAP = {
@@ -18,7 +20,7 @@ SPORT_TYPE_MAP = {
 }
 
 
-def _haversine_km(lat1, lon1, lat2, lon2):
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     r = 6371.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = math.radians(lat2 - lat1)
@@ -27,18 +29,21 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return 2 * r * math.asin(math.sqrt(a))
 
 
-def _extension_value(point, local_name):
+def _extension_value(point: Any, local_name: str) -> str | None:
     for ext in point.extensions:
         for el in ext.iter():
             tag = el.tag.split("}")[-1] if "}" in el.tag else el.tag
             if tag.lower() == local_name.lower() and el.text:
-                return el.text
+                return str(el.text)
     return None
 
 
-def parse_gpx(path):
+def parse_gpx(path: str) -> ParsedActivity:
     with open(path, "rb") as f:
-        gpx = gpxpy.parse(f)
+        # gpxpy's stub declares IO[str], but parser.py handles bytes at
+        # runtime (decodes via isinstance(text, bytes) before parsing) -
+        # binary mode here sidesteps locale-dependent default-encoding bugs.
+        gpx = gpxpy.parse(f)  # type: ignore[type-var]
 
     sport = "bike"
     for track in gpx.tracks:
@@ -55,7 +60,9 @@ def parse_gpx(path):
         raise ValueError("GPX file contains no track points.")
 
     start_time = ensure_utc(points[0].time)
-    samples = []
+    if start_time is None:
+        raise ValueError("GPX file's first track point has no timestamp.")
+    samples: list[Sample] = []
     cumulative_km = 0.0
     prev = None
     for point in points:
@@ -78,7 +85,7 @@ def parse_gpx(path):
         )
         prev = point
 
-    laps = []
+    laps: list[Lap] = []
     lap_index = 1
     for track in gpx.tracks:
         for segment in track.segments:

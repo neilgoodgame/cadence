@@ -80,6 +80,7 @@ class ParseTests(SimpleTestCase):
 
     def test_bare_value_with_unit_infers_field(self):
         result = parse("over 140bpm")
+        assert result.ast is not None
         self.assertEqual(result.ast["field"], "hr")
         self.assertEqual(result.ast["op"], ">")
         self.assertEqual(result.ast["value"], 140.0)
@@ -98,21 +99,25 @@ class ParseTests(SimpleTestCase):
 
     def test_tag_synonym_phrases_normalize_too(self):
         result = parse("tagged as long-run")
+        assert result.ast is not None
         self.assertEqual(result.ast["field"], "tag")
         self.assertEqual(result.ast["value"], "long-run")
 
     def test_and_chaining(self):
         result = parse("running and indoor")
+        assert result.ast is not None
         self.assertEqual(result.ast["type"], "and")
         self.assertEqual(result.ast["left"], {"type": "cmp", "field": "sport", "op": "=", "value": "run"})
         self.assertEqual(result.ast["right"], {"type": "cmp", "field": "environment", "op": "=", "value": "indoor"})
 
     def test_implicit_and_without_keyword(self):
         result = parse("running indoor")
+        assert result.ast is not None
         self.assertEqual(result.ast["type"], "and")
 
     def test_or_binds_looser_than_and(self):
         result = parse("running and indoor or swimming")
+        assert result.ast is not None
         self.assertEqual(result.ast["type"], "or")
         self.assertEqual(result.ast["left"]["type"], "and")
         self.assertEqual(result.ast["right"], {"type": "cmp", "field": "sport", "op": "=", "value": "swim"})
@@ -121,11 +126,13 @@ class ParseTests(SimpleTestCase):
         # Parens must be space-separated from neighboring words - see the
         # tokenizer quirk test documenting why "(indoor" glued together fails.
         result = parse("running and ( indoor or outdoor )")
+        assert result.ast is not None
         self.assertEqual(result.ast["type"], "and")
         self.assertEqual(result.ast["right"]["type"], "or")
 
     def test_pace_value_parses_as_seconds(self):
         result = parse("pace < 5:30")
+        assert result.ast is not None
         self.assertEqual(result.ast["field"], "pace")
         self.assertEqual(result.ast["value"], 5 * 60 + 30)
 
@@ -135,6 +142,7 @@ class ParseTests(SimpleTestCase):
 
     def test_natural_language_comparison_phrase(self):
         result = parse("hr greater than 140bpm")
+        assert result.ast is not None
         self.assertEqual(result.ast["op"], ">")
         self.assertEqual(result.ast["value"], 140.0)
 

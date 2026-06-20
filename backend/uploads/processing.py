@@ -1,14 +1,19 @@
+from collections.abc import Sequence
 from datetime import timedelta
 
 from django.core.files.storage import default_storage
 
+from accounts.models import User
 from activities.models import Activity, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
 from athletes.zones import get_or_create_zone_set, reference_for
 from scheduling.models import ScheduledWorkout
 from scheduling.serializers import ScheduledWorkoutSerializer
 from webhooks.events import fire_event
 
+from .models import Upload
 from .parsers import parse_file
+from .parsers.types import Lap as LapDict
+from .parsers.types import Sample
 
 POWER_CURVE_DURATIONS = [5, 15, 30, 60, 300, 600, 1200, 3600]
 HR_CURVE_DURATIONS = [60, 300, 600, 1200, 3600]
@@ -34,65 +39,67 @@ SPORT_LABELS = {"bike": "Bike", "run": "Run", "swim": "Swim", "walk": "Walk"}
 
 
 class UploadProcessingError(Exception):
-    def __init__(self, code, message):
+    def __init__(self, code: str, message: str) -> None:
         self.code = code
         self.message = message
         super().__init__(message)
 
 
-def _mean(values):
+def _mean(values: Sequence[float | None]) -> float | None:
     filtered = [v for v in values if v is not None]
     return sum(filtered) / len(filtered) if filtered else None
 
 
-def _max(values):
+def _max(values: Sequence[float | None]) -> float | None:
     filtered = [v for v in values if v is not None]
     return max(filtered) if filtered else None
 
 
-def _moving_time(samples):
+def _moving_time(samples: Sequence[Sample]) -> int:
     if not samples:
         return 0
-    return samples[-1]["t"] - samples[0]["t"] + 1
+    return int(samples[-1]["t"] - samples[0]["t"] + 1)
 
 
-def _total_distance_km(samples, laps):
-    cumulative = [s.get("distance_km") for s in samples if s.get("distance_km") is not None]
+def _total_distance_km(samples: Sequence[Sample], laps: Sequence[LapDict]) -> float:
+    raw_distances = [s.get("distance_km") for s in samples]
+    cumulative = [d for d in raw_distances if d is not None]
     if cumulative:
-        return round(cumulative[-1], 3)
+        return float(round(cumulative[-1], 3))
     if laps:
-        return round(sum(lap["distance_km"] for lap in laps), 3)
+        return float(round(sum(lap["distance_km"] for lap in laps), 3))
     return 0.0
 
 
-def _total_ascent(samples):
-    altitudes = [s.get("altitude") for s in samples if s.get("altitude") is not None]
+def _total_ascent(samples: Sequence[Sample]) -> int | None:
+    raw_altitudes = [s.get("altitude") for s in samples]
+    altitudes = [a for a in raw_altitudes if a is not None]
     if len(altitudes) < 2:
         return None
     gain = 0.0
     for prev, curr in zip(altitudes, altitudes[1:], strict=False):
         if curr > prev:
             gain += curr - prev
-    return round(gain)
+    return int(round(gain))
 
 
-def compute_normalized_power(power_series, window=30):
+def compute_normalized_power(power_series: Sequence[float | None], window: int = 30) -> float | None:
     values = [p if p is not None else 0 for p in power_series]
     if not values:
         return None
     if len(values) < window:
         return sum(values) / len(values)
-    rolling = []
+    rolling: list[float] = []
     window_sum = sum(values[:window])
     rolling.append(window_sum / window)
     for i in range(window, len(values)):
         window_sum += values[i] - values[i - window]
         rolling.append(window_sum / window)
     mean_fourth = sum(r**4 for r in rolling) / len(rolling)
-    return mean_fourth**0.25
+    return float(mean_fourth**0.25)
 
 
-def _sliding_window_best_avg(values, window):
+def _sliding_window_best_avg(values: Sequence[float], window: int) -> float | None:
     n = len(values)
     if window > n or window <= 0:
         return None
@@ -106,9 +113,9 @@ def _sliding_window_best_avg(values, window):
     return best
 
 
-def compute_duration_curve(series, durations):
+def compute_duration_curve(series: Sequence[float | None], durations: Sequence[int]) -> dict[str, float]:
     values = [v if v is not None else 0 for v in series]
-    points = {}
+    points: dict[str, float] = {}
     for duration in durations:
         best = _sliding_window_best_avg(values, duration)
         if best is not None:
@@ -116,7 +123,7 @@ def compute_duration_curve(series, durations):
     return points
 
 
-def compute_time_in_zone_seconds(athlete, heartrate_series):
+def compute_time_in_zone_seconds(athlete: User, heartrate_series: Sequence[float | None]) -> dict[str, int] | None:
     zone_set = get_or_create_zone_set(athlete, "heart_rate")
     threshold = reference_for(athlete, "heart_rate")
     if not threshold:
@@ -133,14 +140,14 @@ def compute_time_in_zone_seconds(athlete, heartrate_series):
     return seconds_per_zone
 
 
-def _power_based_tss(norm_power, threshold_power, moving_time_seconds):
+def _power_based_tss(norm_power: float | None, threshold_power: int | None, moving_time_seconds: int) -> int | None:
     if not norm_power or not threshold_power:
         return None
     intensity = norm_power / threshold_power
     return round((moving_time_seconds * norm_power * intensity) / (threshold_power * 3600) * 100)
 
 
-def _hr_based_tss(athlete, heartrate_series, moving_time_seconds):
+def _hr_based_tss(athlete: User, heartrate_series: Sequence[float | None], moving_time_seconds: int) -> int:
     """Coarse hrTSS fallback when no power-based threshold is set: each HR
     zone is weighted by its %-of-threshold midpoint, since we have no LTHR-
     relative intensity-factor equivalent without a power meter.
@@ -157,7 +164,9 @@ def _hr_based_tss(athlete, heartrate_series, moving_time_seconds):
     return round(tss)
 
 
-def compute_tss(activity, athlete, norm_power, heartrate_series):
+def compute_tss(
+    activity: Activity, athlete: User, norm_power: float | None, heartrate_series: Sequence[float | None]
+) -> int:
     threshold_power = None
     if activity.sport == "bike":
         threshold_power = athlete.ftp
@@ -170,7 +179,9 @@ def compute_tss(activity, athlete, norm_power, heartrate_series):
     return _hr_based_tss(athlete, heartrate_series, activity.moving_time)
 
 
-def _write_duration_curves(activity, power_series, hr_series):
+def _write_duration_curves(
+    activity: Activity, power_series: Sequence[float | None], hr_series: Sequence[float | None]
+) -> None:
     n = len(power_series)
     if any(p is not None for p in power_series):
         points = compute_duration_curve(power_series, POWER_CURVE_DURATIONS)
@@ -186,12 +197,16 @@ def _write_duration_curves(activity, power_series, hr_series):
             )
 
 
-def _update_power_best_efforts(activity, athlete, kind, power_series):
+def _update_power_best_efforts(
+    activity: Activity, athlete: User, kind: str, power_series: Sequence[float | None]
+) -> None:
     values = [p if p is not None else 0 for p in power_series]
     for window_label, seconds in POWER_BEST_EFFORT_WINDOWS:
         if seconds > len(values):
             continue
         best_avg = _sliding_window_best_avg(values, seconds)
+        if best_avg is None:
+            continue
         existing = BestEffort.objects.filter(athlete=athlete, kind=kind, window=window_label).first()
         if existing is None or best_avg > existing.value:
             BestEffort.objects.update_or_create(
@@ -207,7 +222,7 @@ def _update_power_best_efforts(activity, athlete, kind, power_series):
             )
 
 
-def _update_pace_best_efforts(activity, athlete, laps):
+def _update_pace_best_efforts(activity: Activity, athlete: User, laps: Sequence[LapDict]) -> None:
     """v1: matches only against existing lap boundaries (e.g. auto-laps at 1km
     splits), not a continuous best-distance scan over raw samples.
     """
@@ -233,7 +248,9 @@ def _update_pace_best_efforts(activity, athlete, laps):
                 )
 
 
-def update_best_efforts(activity, athlete, power_series, laps):
+def update_best_efforts(
+    activity: Activity, athlete: User, power_series: Sequence[float | None], laps: Sequence[LapDict]
+) -> None:
     if activity.sport == "bike" and athlete.ftp:
         _update_power_best_efforts(activity, athlete, "cycling_power", power_series)
     elif activity.sport == "run":
@@ -242,7 +259,7 @@ def update_best_efforts(activity, athlete, power_series, laps):
         _update_pace_best_efforts(activity, athlete, laps)
 
 
-def attempt_workout_match(activity, athlete):
+def attempt_workout_match(activity: Activity, athlete: User) -> None:
     candidate = (
         ScheduledWorkout.objects.filter(
             athlete=athlete,
@@ -266,7 +283,7 @@ def attempt_workout_match(activity, athlete):
     fire_event("scheduled_workout.matched", athlete.id, ScheduledWorkoutSerializer(candidate).data)
 
 
-def ingest_upload(upload):
+def ingest_upload(upload: Upload) -> Activity:
     try:
         parsed = parse_file(default_storage.path(upload.stored_path), upload.filename)
     except Exception as exc:

@@ -53,12 +53,14 @@ class Activity(PrefixedIDModel):
     workout = models.ForeignKey(Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     bike = models.ForeignKey(Bike, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     shoe = models.ForeignKey(Shoe, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
-    tags = models.ManyToManyField("Tag", through="ActivityTag", related_name="activities", blank=True)
+    tags: "models.ManyToManyField[Tag, ActivityTag]" = models.ManyToManyField(
+        "Tag", through="ActivityTag", related_name="activities", blank=True
+    )
 
     class Meta:
         ordering = ["-start_date"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 
@@ -76,7 +78,7 @@ class Lap(models.Model):
     class Meta:
         ordering = ["index"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.activity_id} lap {self.index}"
 
 
@@ -98,7 +100,7 @@ class Tag(PrefixedIDModel):
             models.UniqueConstraint(fields=["athlete", "name"], name="unique_athlete_tag_name"),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 
@@ -113,7 +115,7 @@ class ActivityTag(models.Model):
             models.UniqueConstraint(fields=["activity", "tag"], name="unique_activity_tag"),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.activity_id} -> {self.tag_id}"
 
 
@@ -152,7 +154,7 @@ class Record(models.Model):
         ]
         ordering = ["t"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.activity_id} @ {self.t}s"
 
 
@@ -175,7 +177,7 @@ class DurationCurve(models.Model):
             models.UniqueConstraint(fields=["activity", "metric"], name="unique_activity_curve_metric"),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.activity_id} {self.metric} curve"
 
 
@@ -206,5 +208,5 @@ class BestEffort(models.Model):
         ]
         ordering = ["kind", "window"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.athlete_id} {self.kind} {self.window}"

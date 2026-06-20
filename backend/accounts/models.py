@@ -1,3 +1,5 @@
+from typing import Any
+
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
@@ -5,8 +7,8 @@ from django.db import models
 from core.models import PrefixedIDModel
 
 
-class UserManager(BaseUserManager):
-    def create_user(self, email, password=None, **extra_fields):
+class UserManager(BaseUserManager["User"]):
+    def create_user(self, email: str, password: str | None = None, **extra_fields: Any) -> "User":
         if not email:
             raise ValueError("Users must have an email address")
         email = self.normalize_email(email)
@@ -15,7 +17,7 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, password=None, **extra_fields):
+    def create_superuser(self, email: str, password: str | None = None, **extra_fields: Any) -> "User":
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
@@ -48,7 +50,7 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["name"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.email
 
 
@@ -65,7 +67,7 @@ class PersonalAccessToken(PrefixedIDModel):
     expires_at = models.DateField(null=True, blank=True)
     last_used = models.DateField(null=True, blank=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.prefix}…)"
 
 
@@ -90,10 +92,10 @@ class UserRelationship(models.Model):
             models.UniqueConstraint(fields=["owner", "grantee"], name="unique_owner_grantee"),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.owner_id} -> {self.grantee_id} ({self.role})"
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
         if not self.id:
             from core.models import generate_id
 

@@ -1,3 +1,5 @@
+from typing import Any
+
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
@@ -12,13 +14,13 @@ class ConflictError(APIException):
 class CQLParseError(Exception):
     """Raised by core.cql when a `q` filter string is malformed."""
 
-    def __init__(self, message, param="q"):
+    def __init__(self, message: str, param: str = "q"):
         self.message = message
         self.param = param
         super().__init__(message)
 
 
-def _error_envelope(error_type, code, message, param=None):
+def _error_envelope(error_type: str, code: str, message: str, param: str | None = None) -> dict[str, Any]:
     return {
         "error": {
             "type": error_type,
@@ -29,7 +31,7 @@ def _error_envelope(error_type, code, message, param=None):
     }
 
 
-def cadence_exception_handler(exc, context):
+def cadence_exception_handler(exc: Exception, context: dict[str, Any]) -> Response | None:
     if isinstance(exc, CQLParseError):
         return Response(
             _error_envelope("invalid_request_error", "invalid_query", exc.message, exc.param),

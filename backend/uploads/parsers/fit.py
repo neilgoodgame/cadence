@@ -1,5 +1,6 @@
 from fitparse import FitFile
 
+from .types import ParsedActivity, Sample
 from .utils import ensure_utc
 
 SPORT_MAP = {
@@ -13,11 +14,11 @@ SPORT_MAP = {
 SEMICIRCLE_TO_DEGREES = 180 / (2**31)
 
 
-def _semicircles_to_degrees(value):
+def _semicircles_to_degrees(value: float | None) -> float | None:
     return value * SEMICIRCLE_TO_DEGREES if value is not None else None
 
 
-def parse_fit(path):
+def parse_fit(path: str) -> ParsedActivity:
     fit_file = FitFile(path)
 
     sport = "bike"
@@ -32,7 +33,9 @@ def parse_fit(path):
         raise ValueError("FIT file contains no record messages.")
 
     start_time = ensure_utc(records[0].get_value("timestamp"))
-    samples = []
+    if start_time is None:
+        raise ValueError("FIT file's first record message has no timestamp.")
+    samples: list[Sample] = []
     has_gps = False
     for message in records:
         timestamp = ensure_utc(message.get_value("timestamp"))

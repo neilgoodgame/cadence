@@ -1,10 +1,13 @@
 import hashlib
 import io
 import zipfile
+from typing import Any
 
 from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import UploadedFile
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
+from rest_framework.request import Request
 
 from gear.models import Shoe
 
@@ -16,11 +19,11 @@ MAX_BATCH_FILES = 500
 MAX_BATCH_BYTES = 200 * 1024 * 1024
 
 
-def _extension(filename):
+def _extension(filename: str) -> str:
     return "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
 
-def _hash_fileobj(file_obj):
+def _hash_fileobj(file_obj: UploadedFile) -> str:
     file_obj.seek(0)
     digest = hashlib.sha256()
     for chunk in file_obj.chunks():
@@ -29,7 +32,7 @@ def _hash_fileobj(file_obj):
     return digest.hexdigest()
 
 
-def _existing_ready_upload(athlete_id, file_hash):
+def _existing_ready_upload(athlete_id: str, file_hash: str) -> Upload | None:
     return (
         Upload.objects.filter(athlete_id=athlete_id, file_hash=file_hash, status="ready")
         .exclude(activity__isnull=True)
@@ -38,15 +41,15 @@ def _existing_ready_upload(athlete_id, file_hash):
     )
 
 
-def _to_float(value):
+def _to_float(value: Any) -> float | None:
     return float(value) if value not in (None, "") else None
 
 
-def _to_int(value):
+def _to_int(value: Any) -> int | None:
     return int(value) if value not in (None, "") else None
 
 
-def create_activity_upload(request, athlete_id):
+def create_activity_upload(request: Request, athlete_id: str) -> tuple[Upload, int]:
     file_obj = request.FILES.get("file")
     if not file_obj:
         raise ValidationError({"file": "This field is required."})
@@ -84,7 +87,7 @@ def create_activity_upload(request, athlete_id):
     return upload, 202
 
 
-def create_activity_batch_upload(request, athlete_id):
+def create_activity_batch_upload(request: Request, athlete_id: str) -> tuple[UploadBatch, int]:
     archive = request.FILES.get("file")
     if not archive:
         raise ValidationError({"file": "This field is required."})
@@ -126,7 +129,7 @@ def create_activity_batch_upload(request, athlete_id):
             upload.save(update_fields=["status", "activity", "completed_at"])
             continue
 
-        if existing and on_duplicate == "replace" and existing.activity_id:
+        if existing and on_duplicate == "replace" and existing.activity is not None:
             existing.activity.delete()
 
         upload.stored_path = default_storage.save(f"uploads/{athlete_id}/{upload.id}_{short_name}", io.BytesIO(content))

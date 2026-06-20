@@ -37,5 +37,5 @@ class ScheduledWorkout(PrefixedIDModel):
     class Meta:
         ordering = ["date"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.workout_id} on {self.date}"

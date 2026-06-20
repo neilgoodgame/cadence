@@ -4,6 +4,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -22,25 +23,25 @@ from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for, zone_types
 BEST_EFFORT_PERIOD_DAYS = {"3m": 90, "1y": 365}
 
 
-def _require_read(request, athlete_id):
+def _require_read(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_read(sub, athlete_id):
         raise PermissionDenied("You do not have access to that athlete's data.")
 
 
-def _require_write(request, athlete_id):
+def _require_write(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_write(sub, athlete_id):
         raise PermissionDenied("You do not have write access to that athlete's data.")
 
 
 class AthleteDetailView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         _require_read(request, id)
         athlete = get_object_or_404(User, pk=id)
         return Response(UserSerializer(athlete).data)
 
-    def patch(self, request, id):
+    def patch(self, request: Request, id: str) -> Response:
         _require_write(request, id)
         athlete = get_object_or_404(User, pk=id)
 
@@ -57,7 +58,7 @@ class AthleteDetailView(APIView):
 
 
 class ZoneSetListView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         _require_read(request, id)
         athlete = get_object_or_404(User, pk=id)
         zone_sets = [get_or_create_zone_set(athlete, zone_type) for zone_type in ZONE_TYPES]
@@ -65,7 +66,7 @@ class ZoneSetListView(APIView):
 
 
 class ZoneSetDetailView(APIView):
-    def put(self, request, id, type):
+    def put(self, request: Request, id: str, type: str) -> Response:
         if type not in ZONE_TYPES:
             raise ValidationError(
                 {"error": {"type": "invalid_request_error", "param": "type", "message": "Unknown zone type."}}
@@ -83,7 +84,7 @@ class ZoneSetDetailView(APIView):
 
 
 class BestEffortListView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         _require_read(request, id)
 
         kind = request.query_params.get("kind")
@@ -103,17 +104,17 @@ class BestEffortListView(APIView):
 
 
 class FitnessListView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         _require_read(request, id)
 
         to_param = request.query_params.get("to")
         to_date = parse_date(to_param) if to_param else timezone.now().date()
-        if to_param and to_date is None:
+        if to_date is None:
             raise ValidationError({"to": "Must be a date in YYYY-MM-DD format."})
 
         from_param = request.query_params.get("from")
         from_date = parse_date(from_param) if from_param else to_date - timedelta(days=DEFAULT_FITNESS_WINDOW_DAYS)
-        if from_param and from_date is None:
+        if from_date is None:
             raise ValidationError({"from": "Must be a date in YYYY-MM-DD format."})
 
         if from_date > to_date:

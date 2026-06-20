@@ -1,6 +1,9 @@
+from typing import Any
+
 from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -52,17 +55,17 @@ ACTIVITY_FIELD_MAP = {
 }
 
 
-def _tag_filter(value):
+def _tag_filter(value: str) -> Q:
     return Q(Exists(ActivityTag.objects.filter(activity=OuterRef("pk"), tag__name__iexact=value)))
 
 
-def _require_read(request, athlete_id):
+def _require_read(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_read(sub, athlete_id):
         raise PermissionDenied("You do not have access to that athlete's data.")
 
 
-def _require_write(request, athlete_id):
+def _require_write(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_write(sub, athlete_id):
         raise PermissionDenied("You do not have write access to that athlete's data.")
@@ -73,7 +76,7 @@ class ActivityCursorPagination(CadenceCursorPagination):
 
 
 class ActivityListView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_read(request, athlete_id)
 
@@ -116,7 +119,7 @@ class ActivityListView(APIView):
         page = paginator.paginate_queryset(qs, request, view=self)
         return paginator.get_paginated_response(ActivitySerializer(page, many=True).data)
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
 
@@ -129,14 +132,14 @@ class ActivityListView(APIView):
 
 
 class ActivityDetailView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_read(sub, activity.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
         return Response(ActivitySerializer(activity).data)
 
-    def patch(self, request, id):
+    def patch(self, request: Request, id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, activity.athlete_id):
@@ -183,7 +186,7 @@ class ActivityDetailView(APIView):
             activity.save(update_fields=update_fields)
         return Response(ActivitySerializer(activity).data)
 
-    def delete(self, request, id):
+    def delete(self, request: Request, id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, activity.athlete_id):
@@ -193,7 +196,7 @@ class ActivityDetailView(APIView):
 
 
 class LapListView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_read(sub, activity.athlete_id):
@@ -202,7 +205,7 @@ class LapListView(APIView):
 
 
 class StreamsView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_read(sub, activity.athlete_id):
@@ -226,7 +229,7 @@ class StreamsView(APIView):
         if step > 1:
             records = records[::step]
 
-        fields_payload = {}
+        fields_payload: dict[str, list[Any]] = {}
         for channel in channels:
             if channel == "latlng":
                 fields_payload["latlng"] = [[r.lat, r.lng] for r in records if r.lat is not None and r.lng is not None]
@@ -237,7 +240,7 @@ class StreamsView(APIView):
 
 
 class CurvesView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_read(sub, activity.athlete_id):
@@ -254,7 +257,7 @@ class CurvesView(APIView):
 
 
 class TagListView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_read(request, athlete_id)
         tags = Tag.objects.filter(athlete_id=athlete_id).order_by("name")
@@ -262,7 +265,7 @@ class TagListView(APIView):
 
 
 class ActivityTagView(APIView):
-    def post(self, request, id):
+    def post(self, request: Request, id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, activity.athlete_id):
@@ -284,7 +287,7 @@ class ActivityTagView(APIView):
 
 
 class ActivityUntagView(APIView):
-    def delete(self, request, id, tag_id):
+    def delete(self, request: Request, id: str, tag_id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, activity.athlete_id):
