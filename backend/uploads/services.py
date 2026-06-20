@@ -6,6 +6,8 @@ from django.core.files.storage import default_storage
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from gear.models import Shoe
+
 from .models import Upload, UploadBatch
 from .tasks import process_upload as process_upload_task
 
@@ -52,6 +54,10 @@ def create_activity_upload(request, athlete_id):
     if _extension(file_obj.name) not in SUPPORTED_EXTENSIONS:
         raise ValidationError({"file": f"Unsupported file type '{_extension(file_obj.name)}'."})
 
+    shoe_id = request.data.get("shoe_id") or None
+    if shoe_id and not Shoe.objects.filter(pk=shoe_id, athlete_id=athlete_id).exists():
+        raise ValidationError({"shoe_id": f"Unknown shoe '{shoe_id}'."})
+
     file_hash = _hash_fileobj(file_obj)
     existing = _existing_ready_upload(athlete_id, file_hash)
 
@@ -62,7 +68,7 @@ def create_activity_upload(request, athlete_id):
         weight_before_kg=_to_float(request.data.get("weight_before_kg")),
         weight_after_kg=_to_float(request.data.get("weight_after_kg")),
         fluids_ml=_to_int(request.data.get("fluids_ml")),
-        shoe_id=request.data.get("shoe_id") or None,
+        shoe_id=shoe_id,
     )
 
     if existing:
