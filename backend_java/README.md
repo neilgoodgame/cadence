@@ -161,8 +161,29 @@ the context automatically.
 
 ## Running the tests
 
-Pure-function calculators and the CQL tokenizer/parser/compiler get plain JUnit 5 unit
-tests with no Spring context at all:
+Every test is tagged `unit` or `integration` (see `support/IntegrationTest.java`):
+extending that base class is the only way to get a Spring context/database in a test, and
+`@Tag("integration")` on it is `@Inherited`, so any subclass is tagged automatically — the
+same property the Python backend's `conftest.py` gets from auto-detecting
+`TestCase`/`TransactionTestCase` subclasses, just via inheritance instead of reflection.
+Pure-function calculators and the CQL tokenizer/parser/compiler need no base class at all
+and land in the unit bucket by not extending it.
+
+Unit tests need no external services at all:
+
+```bash
+./gradlew unitTest
+```
+
+Integration tests need Docker — Testcontainers starts a real Postgres/TimescaleDB
+container per run (same image as `docker-compose.yml`) and every Flyway migration applies
+against it for real, so this also catches migration errors no unit test ever could:
+
+```bash
+./gradlew integrationTest
+```
+
+Or run everything:
 
 ```bash
 ./gradlew test
