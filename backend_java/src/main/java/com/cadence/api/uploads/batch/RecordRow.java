@@ -23,6 +23,11 @@ public class RecordRow {
 	private Double lng;
 	private Double speed;
 	private Double distanceKm;
+	private Double airTemp;
+	private Integer humidity;
+	private Double coreTemp;
+	private Double skinTemp;
+	private Double heatStrain;
 
 	public String getActivityId() {
 		return activityId;
@@ -110,5 +115,45 @@ public class RecordRow {
 
 	public void setDistanceKm(Double distanceKm) {
 		this.distanceKm = distanceKm;
+	}
+
+	public Double getAirTemp() {
+		return airTemp;
+	}
+
+	public void setAirTemp(Double airTemp) {
+		this.airTemp = airTemp;
+	}
+
+	public Integer getHumidity() {
+		return humidity;
+	}
+
+	public void setHumidity(Integer humidity) {
+		this.humidity = humidity;
+	}
+
+	public Double getCoreTemp() {
+		return coreTemp;
+	}
+
+	public void setCoreTemp(Double coreTemp) {
+		this.coreTemp = coreTemp;
+	}
+
+	public Double getSkinTemp() {
+		return skinTemp;
+	}
+
+	public void setSkinTemp(Double skinTemp) {
+		this.skinTemp = skinTemp;
+	}
+
+	public Double getHeatStrain() {
+		return heatStrain;
+	}
+
+	public void setHeatStrain(Double heatStrain) {
+		this.heatStrain = heatStrain;
 	}
 }

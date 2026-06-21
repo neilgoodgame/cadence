@@ -96,8 +96,10 @@ public class UploadJobConfig {
 	public JdbcBatchItemWriter<RecordRow> recordItemWriter(DataSource dataSource) {
 		return new JdbcBatchItemWriterBuilder<RecordRow>()
 				.dataSource(dataSource)
-				.sql("INSERT INTO record (activity_id, ts, t, power, heartrate, cadence, altitude, lat, lng, speed, distance_km) "
-						+ "VALUES (:activityId, :ts, :t, :power, :heartrate, :cadence, :altitude, :lat, :lng, :speed, :distanceKm)")
+				.sql("INSERT INTO record (activity_id, ts, t, power, heartrate, cadence, altitude, lat, lng, speed, distance_km, "
+						+ "air_temp, humidity, core_temp, skin_temp, heat_strain) "
+						+ "VALUES (:activityId, :ts, :t, :power, :heartrate, :cadence, :altitude, :lat, :lng, :speed, :distanceKm, "
+						+ ":airTemp, :humidity, :coreTemp, :skinTemp, :heatStrain)")
 				.beanMapped()
 				.build();
 	}

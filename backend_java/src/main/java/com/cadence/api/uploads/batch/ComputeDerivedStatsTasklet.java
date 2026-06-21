@@ -80,12 +80,33 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 		}
 		activity.setTss(tss);
 
+		// Stryd-derived, run only (matches the Python backend - a bike's ambient readings
+		// aren't meaningful the same way, and PATCH lets athletes set these manually for
+		// activities with no sensor data instead).
+		if (activity.getSport() == Sport.RUN) {
+			List<Double> airTempSeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::airTemp).toList();
+			List<Integer> humiditySeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::humidity).toList();
+			if (airTempSeries.stream().anyMatch(Objects::nonNull)) {
+				Double avgAirTemp = meanDouble(airTempSeries);
+				activity.setAvgAirTemp(avgAirTemp != null ? round1(avgAirTemp) : null);
+			}
+			if (humiditySeries.stream().anyMatch(Objects::nonNull)) {
+				Double avgHumidity = mean(humiditySeries);
+				activity.setAvgHumidity(avgHumidity != null ? (int) Math.round(avgHumidity) : null);
+			}
+		}
+
 		activityRepository.save(activity);
 		return RepeatStatus.FINISHED;
 	}
 
 	private Double mean(List<Integer> values) {
 		OptionalDouble avg = values.stream().filter(Objects::nonNull).mapToInt(Integer::intValue).average();
+		return avg.isPresent() ? avg.getAsDouble() : null;
+	}
+
+	private Double meanDouble(List<Double> values) {
+		OptionalDouble avg = values.stream().filter(Objects::nonNull).mapToDouble(Double::doubleValue).average();
 		return avg.isPresent() ? avg.getAsDouble() : null;
 	}
 
@@ -96,5 +117,9 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 
 	private double round3(double v) {
 		return Math.round(v * 1000) / 1000.0;
+	}
+
+	private double round1(double v) {
+		return Math.round(v * 10) / 10.0;
 	}
 }

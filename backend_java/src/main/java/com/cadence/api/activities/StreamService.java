@@ -14,7 +14,8 @@ import org.springframework.stereotype.Service;
 public class StreamService {
 
 	private static final Set<String> SCALAR_FIELDS = Set.of(
-			"time", "power", "heartrate", "cadence", "altitude", "distance", "speed");
+			"time", "power", "heartrate", "cadence", "altitude", "distance", "speed",
+			"air_temp", "humidity", "core_temp", "skin_temp", "heat_strain");
 
 	private final RecordRepository recordRepository;
 
@@ -71,6 +72,11 @@ public class StreamService {
 			case "altitude" -> records.stream().map(Record::getAltitude).toList();
 			case "distance" -> records.stream().map(Record::getDistanceKm).toList();
 			case "speed" -> records.stream().map(Record::getSpeed).toList();
+			case "air_temp" -> records.stream().map(Record::getAirTemp).toList();
+			case "humidity" -> records.stream().map(Record::getHumidity).toList();
+			case "core_temp" -> records.stream().map(Record::getCoreTemp).toList();
+			case "skin_temp" -> records.stream().map(Record::getSkinTemp).toList();
+			case "heat_strain" -> records.stream().map(Record::getHeatStrain).toList();
 			default -> List.of();
 		};
 	}

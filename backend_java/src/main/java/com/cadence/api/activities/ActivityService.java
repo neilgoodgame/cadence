@@ -22,14 +22,16 @@ public class ActivityService {
 
 	private final ActivityRepository activityRepository;
 	private final ActivityTagRepository activityTagRepository;
+	private final RecordRepository recordRepository;
 	private final ActivityCursorPagination pagination;
 	private final WorkoutService workoutService;
 	private final ActivityFieldMap fieldMap = new ActivityFieldMap();
 
 	public ActivityService(ActivityRepository activityRepository, ActivityTagRepository activityTagRepository,
-			ActivityCursorPagination pagination, WorkoutService workoutService) {
+			RecordRepository recordRepository, ActivityCursorPagination pagination, WorkoutService workoutService) {
 		this.activityRepository = activityRepository;
 		this.activityTagRepository = activityTagRepository;
+		this.recordRepository = recordRepository;
 		this.pagination = pagination;
 		this.workoutService = workoutService;
 	}
@@ -46,7 +48,8 @@ public class ActivityService {
 				activity.getMovingTime(), activity.getDistanceKm(), activity.getDistanceSource(),
 				activity.getAvgPower(), activity.getNormPower(), activity.getIntensity(), activity.getTss(),
 				activity.getAvgHr(), activity.getMaxHr(), activity.getAscent(),
-				activity.getStartWeightKg(), activity.getEndWeightKg(), activity.getFluidsMl(), tags,
+				activity.getStartWeightKg(), activity.getEndWeightKg(), activity.getFluidsMl(),
+				activity.getAvgAirTemp(), activity.getAvgHumidity(), tags,
 				activity.getWorkout() != null ? activity.getWorkout().getId() : null,
 				activity.getBike() != null ? activity.getBike().getId() : null,
 				activity.getShoe() != null ? activity.getShoe().getId() : null);
@@ -110,6 +113,18 @@ public class ActivityService {
 		}
 		if (body.containsKey("fluids_ml")) {
 			activity.setFluidsMl(toInteger(body.get("fluids_ml")));
+		}
+		if (body.containsKey("avg_air_temp") || body.containsKey("avg_humidity")) {
+			boolean strydComputed = activity.getSport() == Sport.RUN
+					&& recordRepository.existsByIdActivityIdAndAirTempIsNotNull(activity.getId());
+			if (!strydComputed) {
+				if (body.containsKey("avg_air_temp")) {
+					activity.setAvgAirTemp(toDouble(body.get("avg_air_temp")));
+				}
+				if (body.containsKey("avg_humidity")) {
+					activity.setAvgHumidity(toInteger(body.get("avg_humidity")));
+				}
+			}
 		}
 		return activityRepository.save(activity);
 	}

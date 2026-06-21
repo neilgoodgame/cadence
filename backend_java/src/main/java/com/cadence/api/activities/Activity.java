@@ -77,6 +77,13 @@ public class Activity extends PrefixedIdEntity {
 	@Column(name = "fluids_ml")
 	private Integer fluidsMl;
 
+	/** Stryd-derived (run only) or manually set via PATCH for activities with no sensor data - see ActivityService.updateActivity. */
+	@Column(name = "avg_air_temp")
+	private Double avgAirTemp;
+
+	@Column(name = "avg_humidity")
+	private Integer avgHumidity;
+
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "workout_id")
 	private Workout workout;
@@ -252,6 +259,22 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setFluidsMl(Integer fluidsMl) {
 		this.fluidsMl = fluidsMl;
+	}
+
+	public Double getAvgAirTemp() {
+		return avgAirTemp;
+	}
+
+	public void setAvgAirTemp(Double avgAirTemp) {
+		this.avgAirTemp = avgAirTemp;
+	}
+
+	public Integer getAvgHumidity() {
+		return avgHumidity;
+	}
+
+	public void setAvgHumidity(Integer avgHumidity) {
+		this.avgHumidity = avgHumidity;
 	}
 
 	public Workout getWorkout() {

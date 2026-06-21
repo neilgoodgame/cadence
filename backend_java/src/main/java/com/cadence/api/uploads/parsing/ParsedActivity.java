@@ -17,10 +17,16 @@ public record ParsedActivity(
 		List<Sample> samples,
 		List<LapSummary> laps) {
 
-	/** One 1 Hz record. {@code t} is the offset in seconds from {@link #startDate}. */
+	/**
+	 * One 1 Hz record. {@code t} is the offset in seconds from {@link #startDate}.
+	 * {@code airTemp}/{@code humidity} come from a Stryd footpod's developer fields;
+	 * {@code coreTemp}/{@code skinTemp}/{@code heatStrain} from a CORE body-temperature
+	 * sensor's - both are FIT-only (no GPX/TCX equivalent), so always null from those parsers.
+	 */
 	public record Sample(
 			int t, Double lat, Double lng, Double altitude, Double distanceKm,
-			Integer heartrate, Integer cadence, Integer power, Double speed) {
+			Integer heartrate, Integer cadence, Integer power, Double speed,
+			Double airTemp, Integer humidity, Double coreTemp, Double skinTemp, Double heatStrain) {
 	}
 
 	public record LapSummary(int index, int duration, double distanceKm, Integer avgHr, Integer avgPower) {

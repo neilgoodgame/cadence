@@ -36,6 +36,22 @@ public class Record {
 	@Column(name = "distance_km")
 	private Double distanceKm;
 
+	/** Stryd footpod developer fields - FIT-only, null from GPX/TCX. */
+	@Column(name = "air_temp")
+	private Double airTemp;
+
+	private Integer humidity;
+
+	/** CORE body-temperature sensor developer fields - FIT-only, null from GPX/TCX. */
+	@Column(name = "core_temp")
+	private Double coreTemp;
+
+	@Column(name = "skin_temp")
+	private Double skinTemp;
+
+	@Column(name = "heat_strain")
+	private Double heatStrain;
+
 	public RecordId getId() {
 		return id;
 	}
@@ -122,5 +138,45 @@ public class Record {
 
 	public void setDistanceKm(Double distanceKm) {
 		this.distanceKm = distanceKm;
+	}
+
+	public Double getAirTemp() {
+		return airTemp;
+	}
+
+	public void setAirTemp(Double airTemp) {
+		this.airTemp = airTemp;
+	}
+
+	public Integer getHumidity() {
+		return humidity;
+	}
+
+	public void setHumidity(Integer humidity) {
+		this.humidity = humidity;
+	}
+
+	public Double getCoreTemp() {
+		return coreTemp;
+	}
+
+	public void setCoreTemp(Double coreTemp) {
+		this.coreTemp = coreTemp;
+	}
+
+	public Double getSkinTemp() {
+		return skinTemp;
+	}
+
+	public void setSkinTemp(Double skinTemp) {
+		this.skinTemp = skinTemp;
+	}
+
+	public Double getHeatStrain() {
+		return heatStrain;
+	}
+
+	public void setHeatStrain(Double heatStrain) {
+		this.heatStrain = heatStrain;
 	}
 }

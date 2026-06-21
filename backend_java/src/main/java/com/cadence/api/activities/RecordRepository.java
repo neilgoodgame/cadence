@@ -11,4 +11,6 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 	List<Record> findByActivityIdOrderByT(@Param("activityId") String activityId);
 
 	long countByIdActivityId(String activityId);
+
+	boolean existsByIdActivityIdAndAirTempIsNotNull(String activityId);
 }

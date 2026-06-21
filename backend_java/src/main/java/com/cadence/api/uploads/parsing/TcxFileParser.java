@@ -112,7 +112,9 @@ public final class TcxFileParser {
 					}
 
 					int t = (int) (time.getEpochSecond() - startDate.getEpochSecond());
-					samples.add(new ParsedActivity.Sample(t, lat, lng, altitude, cumulativeKm, heartrate, cadence, power, null));
+					samples.add(new ParsedActivity.Sample(
+							t, lat, lng, altitude, cumulativeKm, heartrate, cadence, power, null,
+							null, null, null, null, null));
 				}
 			}
 

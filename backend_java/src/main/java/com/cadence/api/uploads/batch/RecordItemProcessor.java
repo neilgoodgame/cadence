@@ -27,6 +27,11 @@ public class RecordItemProcessor implements ItemProcessor<ParsedActivity.Sample,
 		row.setLng(sample.lng());
 		row.setSpeed(sample.speed());
 		row.setDistanceKm(sample.distanceKm());
+		row.setAirTemp(sample.airTemp());
+		row.setHumidity(sample.humidity());
+		row.setCoreTemp(sample.coreTemp());
+		row.setSkinTemp(sample.skinTemp());
+		row.setHeatStrain(sample.heatStrain());
 		return row;
 	}
 }

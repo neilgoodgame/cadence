@@ -56,8 +56,17 @@ public final class FitFileParser {
 			Double speed = firstNonNull(r.getEnhancedSpeed(), r.getSpeed());
 			Integer heartrate = r.getHeartRate() != null ? r.getHeartRate().intValue() : null;
 			Integer cadence = r.getCadence() != null ? r.getCadence().intValue() : null;
-			Integer power = r.getPower() != null ? r.getPower() : developerPower(r);
-			samples.add(new ParsedActivity.Sample(t, lat, lng, altitude, distanceKm, heartrate, cadence, power, speed));
+			Integer power = r.getPower() != null ? r.getPower() : developerFieldAsInteger(r, "Power");
+			// Stryd footpod developer fields: ambient temperature/humidity.
+			Double airTemp = developerFieldAsDouble(r, "Stryd Temperature");
+			Integer humidity = developerFieldAsInteger(r, "Stryd Humidity");
+			// CORE body-temperature sensor developer fields.
+			Double coreTemp = developerFieldAsDouble(r, "core_temperature");
+			Double skinTemp = developerFieldAsDouble(r, "skin_temperature");
+			Double heatStrain = developerFieldAsDouble(r, "heat_strain_index");
+			samples.add(new ParsedActivity.Sample(
+					t, lat, lng, altitude, distanceKm, heartrate, cadence, power, speed,
+					airTemp, humidity, coreTemp, skinTemp, heatStrain));
 		}
 
 		List<ParsedActivity.LapSummary> lapSummaries = new ArrayList<>(laps.size());
@@ -97,17 +106,23 @@ public final class FitFileParser {
 	}
 
 	/**
-	 * Third-party run-power meters (e.g. Stryd) write power as a developer field named
-	 * {@code "Power"} rather than the FIT spec's standard {@code power} field, which is
-	 * historically cycling-only - native run-power devices don't necessarily populate it.
+	 * Looks up a developer field by name (e.g. third-party run-power meters write power as a
+	 * field named {@code "Power"} rather than the FIT spec's standard {@code power} field, which
+	 * is historically cycling-only; Stryd/CORE sensors write ambient and body temperature
+	 * readings the spec has no native field for at all).
 	 */
-	private static Integer developerPower(RecordMesg r) {
+	private static Double developerFieldAsDouble(RecordMesg r, String fieldName) {
 		for (DeveloperField field : r.getDeveloperFields()) {
-			if ("Power".equals(field.getName()) && field.getValue() instanceof Number value) {
-				return value.intValue();
+			if (fieldName.equals(field.getName()) && field.getValue() instanceof Number value) {
+				return value.doubleValue();
 			}
 		}
 		return null;
+	}
+
+	private static Integer developerFieldAsInteger(RecordMesg r, String fieldName) {
+		Double value = developerFieldAsDouble(r, fieldName);
+		return value != null ? value.intValue() : null;
 	}
 
 	private static Sport mapSport(com.garmin.fit.Sport fitSport) {
