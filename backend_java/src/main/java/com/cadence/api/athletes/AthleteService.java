@@ -20,7 +20,7 @@ public class AthleteService {
 		this.zoneService = zoneService;
 	}
 
-	/** Applies the patch and returns the zone types whose reference threshold field changed. */
+	/** Applies the patch and returns the zone types to report as recomputed - see {@link ZoneService#recomputedZoneTypes}. */
 	@Transactional
 	public List<ZoneType> updateProfile(User athlete, AthleteUpdateRequest request) {
 		Set<String> changed = new HashSet<>();
@@ -53,6 +53,6 @@ public class AthleteService {
 			changed.add("maxHr");
 		}
 		userRepository.save(athlete);
-		return zoneService.zoneTypesAffectedBy(changed);
+		return zoneService.recomputedZoneTypes(athlete, changed);
 	}
 }
