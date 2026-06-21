@@ -63,6 +63,30 @@ tasks.withType<Test> {
 	useJUnitPlatform()
 }
 
+// Mirrors the Python backend's pytest -m unit / pytest -m integration split: `test` (the
+// default, unfiltered) runs everything, same as plain `pytest -q`; these two give the same
+// explicit opt-in subsets. See IntegrationTest.java for how the "integration" tag is applied.
+tasks.register<Test>("unitTest") {
+	group = "verification"
+	description = "Runs tests with no @Tag(\"integration\") - no external services required."
+	testClassesDirs = sourceSets.test.get().output.classesDirs
+	classpath = sourceSets.test.get().runtimeClasspath
+	useJUnitPlatform {
+		excludeTags("integration")
+	}
+}
+
+tasks.register<Test>("integrationTest") {
+	group = "verification"
+	description = "Runs tests tagged @Tag(\"integration\") - needs Docker (Testcontainers starts a real Postgres/TimescaleDB)."
+	testClassesDirs = sourceSets.test.get().output.classesDirs
+	classpath = sourceSets.test.get().runtimeClasspath
+	useJUnitPlatform {
+		includeTags("integration")
+	}
+	shouldRunAfter("test", "unitTest")
+}
+
 tasks.withType<JavaCompile> {
 	options.compilerArgs.add("-parameters")
 }

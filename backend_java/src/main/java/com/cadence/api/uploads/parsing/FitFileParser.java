@@ -4,6 +4,7 @@ import com.cadence.api.activities.DistanceSource;
 import com.cadence.api.activities.Environment;
 import com.cadence.api.common.domain.Sport;
 import com.garmin.fit.Decode;
+import com.garmin.fit.DeveloperField;
 import com.garmin.fit.LapMesg;
 import com.garmin.fit.LapMesgListener;
 import com.garmin.fit.MesgBroadcaster;
@@ -55,7 +56,8 @@ public final class FitFileParser {
 			Double speed = firstNonNull(r.getEnhancedSpeed(), r.getSpeed());
 			Integer heartrate = r.getHeartRate() != null ? r.getHeartRate().intValue() : null;
 			Integer cadence = r.getCadence() != null ? r.getCadence().intValue() : null;
-			samples.add(new ParsedActivity.Sample(t, lat, lng, altitude, distanceKm, heartrate, cadence, r.getPower(), speed));
+			Integer power = r.getPower() != null ? r.getPower() : developerPower(r);
+			samples.add(new ParsedActivity.Sample(t, lat, lng, altitude, distanceKm, heartrate, cadence, power, speed));
 		}
 
 		List<ParsedActivity.LapSummary> lapSummaries = new ArrayList<>(laps.size());
@@ -90,6 +92,20 @@ public final class FitFileParser {
 		}
 		if (fallback != null) {
 			return fallback.doubleValue();
+		}
+		return null;
+	}
+
+	/**
+	 * Third-party run-power meters (e.g. Stryd) write power as a developer field named
+	 * {@code "Power"} rather than the FIT spec's standard {@code power} field, which is
+	 * historically cycling-only - native run-power devices don't necessarily populate it.
+	 */
+	private static Integer developerPower(RecordMesg r) {
+		for (DeveloperField field : r.getDeveloperFields()) {
+			if ("Power".equals(field.getName()) && field.getValue() instanceof Number value) {
+				return value.intValue();
+			}
 		}
 		return null;
 	}
