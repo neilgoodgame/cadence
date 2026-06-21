@@ -1,0 +1,74 @@
+name: Tests
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/tests.yml"
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: cadence
+          POSTGRES_USER: cadence
+          POSTGRES_PASSWORD: cadence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cadence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --locked
+
+      # Mirrors entrypoint.sh's one-time keypair generation -- tests that mint
+      # or verify JWTs (JWKS, /v1/auth/jwt) need real key files on disk.
+      - name: Generate JWT signing keys
+        working-directory: backend
+        run: |
+          mkdir -p keys
+          openssl genrsa -out keys/jwt_private.pem 2048
+          openssl rsa -in keys/jwt_private.pem -pubout -out keys/jwt_public.pem
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+          POSTGRES_DB: cadence
+          POSTGRES_USER: cadence
+          POSTGRES_PASSWORD: cadence
+          REDIS_URL: redis://localhost:6379/0
+        run: uv run pytest -q
