@@ -1,8 +1,17 @@
-import { Outlet } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ThemeToggle } from "./ThemeToggle";
 
-const NAV_ITEMS = ["Dashboard", "Activities", "Calendar", "Workouts", "Gear", "Preferences"];
+// Only screens with a real route get a link; the rest are later stages and stay inert
+// labels rather than linking to a route that doesn't exist yet.
+const NAV_ITEMS = [
+  { label: "Dashboard", path: "/" },
+  { label: "Activities", path: "/activities" },
+  { label: "Calendar", path: null },
+  { label: "Workouts", path: null },
+  { label: "Gear", path: null },
+  { label: "Preferences", path: null },
+];
 
 export function AppShell() {
   const { user, logout } = useAuth();
@@ -25,20 +34,33 @@ export function AppShell() {
         </div>
 
         <nav style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
-          {NAV_ITEMS.map((item) => (
-            <div
-              key={item}
-              style={{
-                padding: "9px 12px",
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 600,
-                color: "var(--ink2)",
-              }}
-            >
-              {item}
-            </div>
-          ))}
+          {NAV_ITEMS.map((item) =>
+            item.path ? (
+              <NavLink
+                key={item.label}
+                to={item.path}
+                end={item.path === "/"}
+                style={({ isActive }) => ({
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  color: isActive ? "var(--ink)" : "var(--ink2)",
+                  background: isActive ? "var(--elev)" : "transparent",
+                })}
+              >
+                {item.label}
+              </NavLink>
+            ) : (
+              <div
+                key={item.label}
+                style={{ padding: "9px 12px", borderRadius: 8, fontSize: 14, fontWeight: 600, color: "var(--ink3)" }}
+              >
+                {item.label}
+              </div>
+            ),
+          )}
         </nav>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

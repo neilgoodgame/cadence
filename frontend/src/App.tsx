@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { RequireAuth } from "./auth/RequireAuth";
 import { AppShell } from "./layout/AppShell";
+import { ActivitiesScreen } from "./screens/ActivitiesScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 
@@ -18,6 +19,7 @@ export function App() {
             <Route element={<RequireAuth />}>
               <Route element={<AppShell />}>
                 <Route path="/" element={<DashboardScreen />} />
+                <Route path="/activities" element={<ActivitiesScreen />} />
               </Route>
             </Route>
           </Routes>
