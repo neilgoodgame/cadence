@@ -1,0 +1,29 @@
+version: 2
+
+updates:
+  # Python backend (backend/pyproject.toml + uv.lock - Dependabot's "pip" ecosystem
+  # understands uv.lock alongside requirements.txt/pyproject.toml).
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  # Java backend (backend_java/build.gradle.kts).
+  - package-ecosystem: "gradle"
+    directory: "/backend_java"
+    schedule:
+      interval: "weekly"
+    groups:
+      java-dependencies:
+        patterns:
+          - "*"
+
+  # Keep the Actions themselves (checkout, setup-java, setup-uv, codeql-action, ...) current.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
