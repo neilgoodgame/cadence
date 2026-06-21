@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { label: "Calendar", path: null },
   { label: "Workouts", path: null },
   { label: "Gear", path: null },
-  { label: "Preferences", path: null },
+  { label: "Preferences", path: "/preferences" },
 ];
 
 export function AppShell() {
