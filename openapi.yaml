@@ -119,6 +119,45 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /v1/auth/login:
+    post:
+      tags: [Authentication]
+      summary: Sign in with email + password
+      operationId: login
+      security: []
+      description: >
+        Authenticates an existing email/password account and returns the athlete and
+        a fresh token pair. There is no separate session step - this issues real
+        bearer tokens directly, the same way `/v1/auth/register` does for a brand-new
+        account. Social-linked accounts (no password set) cannot use this endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  athlete:
+                    $ref: "#/components/schemas/Athlete"
+                  tokens:
+                    $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Invalid email or password.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /oauth/token:
     post:
       tags: [Authentication]
