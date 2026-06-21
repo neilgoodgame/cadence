@@ -99,6 +99,33 @@ class FitParserMockedTests(SimpleTestCase):
         self.assertEqual(len(result["laps"]), 1)
         self.assertEqual(result["laps"][0]["avg_power"], 202)
 
+    @patch("uploads.parsers.fit.FitFile")
+    def test_lap_avg_power_falls_back_to_sample_average_when_lap_message_omits_it(self, mock_fitfile_cls):
+        # Third-party run-power meters (e.g. Stryd) write power as a record-level developer
+        # field but never fill in the lap message's own avg_power summary field - only a
+        # native power meter does that. Confirms the fallback computes it from samples instead.
+        start = datetime(2026, 6, 1, 8, 0, 0)
+        records = [
+            _fit_msg(timestamp=start, heart_rate=140, power=200),
+            _fit_msg(timestamp=start + timedelta(seconds=1), heart_rate=141, power=206),
+        ]
+        laps = [_fit_msg(start_time=start, total_elapsed_time=2, total_distance=5.0, avg_heart_rate=140)]
+        sessions = [_fit_msg(sport="running")]
+
+        instance = MagicMock()
+        instance.get_messages.side_effect = lambda name: {
+            "record": records,
+            "lap": laps,
+            "session": sessions,
+            "field_description": [],
+        }[name]
+        mock_fitfile_cls.return_value = instance
+
+        result = parse_fit("/fake/path.fit")
+
+        self.assertEqual(len(result["laps"]), 1)
+        self.assertEqual(result["laps"][0]["avg_power"], 203)
+
 
 class ParseFileDispatchTests(SimpleTestCase):
     def test_unsupported_extension_raises(self):
@@ -141,6 +168,15 @@ class RealFitFixtureParserTests(SimpleTestCase):
         self.assertTrue(all(s["core_temp"] is None for s in result["samples"]))
         self.assertTrue(all(s["skin_temp"] is None for s in result["samples"]))
         self.assertTrue(all(s["heat_strain"] is None for s in result["samples"]))
+
+    def test_running_outdoor_marathon_laps_get_avg_power_from_stryd_samples(self):
+        # This device (Stryd-equipped run) never fills in the lap message's own avg_power
+        # field - confirmed directly against the fixture's raw lap messages, all None -
+        # so every one of these must come from the sample-average fallback, not the lap
+        # message itself.
+        result = parse_fit(str(FIXTURES_DIR / "running_outdoor_marathon.fit"))
+        self.assertEqual(len(result["laps"]), 5)
+        self.assertTrue(all(lap["avg_power"] is not None for lap in result["laps"]))
 
     def test_running_treadmill_falls_back_to_stryd_power_field(self):
         result = parse_fit(str(FIXTURES_DIR / "running_treadmill.fit"))
