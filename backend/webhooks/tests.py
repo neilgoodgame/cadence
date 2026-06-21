@@ -142,7 +142,7 @@ class WebhookDeliveryTaskTests(TestCase):
         delivery = self._make_delivery()
 
         with patch("webhooks.tasks.requests.post", side_effect=requests.ConnectionError("boom")):
-            with self.assertRaises(Exception):
+            with self.assertRaises(requests.RequestException):
                 deliver_webhook.delay(delivery.id).get()
 
         delivery.refresh_from_db()
@@ -158,9 +158,7 @@ class FireEventTests(TestCase):
 
     @patch("webhooks.events.deliver_webhook.delay")
     def test_dispatches_only_to_subscribed_event(self, mock_delay):
-        Webhook.objects.create(
-            owner=self.athlete, url="https://example.cc/a", events=["activity.created"], secret="s1"
-        )
+        Webhook.objects.create(owner=self.athlete, url="https://example.cc/a", events=["activity.created"], secret="s1")
         Webhook.objects.create(
             owner=self.athlete, url="https://example.cc/b", events=["upload_batch.completed"], secret="s2"
         )
@@ -169,7 +167,9 @@ class FireEventTests(TestCase):
 
         self.assertEqual(mock_delay.call_count, 1)
         self.assertEqual(WebhookDelivery.objects.count(), 1)
-        self.assertEqual(WebhookDelivery.objects.first().event, "activity.created")
+        delivery = WebhookDelivery.objects.first()
+        assert delivery is not None
+        self.assertEqual(delivery.event, "activity.created")
 
     @patch("webhooks.events.deliver_webhook.delay")
     def test_skips_disabled_webhooks(self, mock_delay):
@@ -185,9 +185,7 @@ class FireEventTests(TestCase):
 
     @patch("webhooks.events.deliver_webhook.delay")
     def test_respects_athlete_visibility(self, mock_delay):
-        Webhook.objects.create(
-            owner=self.coach, url="https://example.cc/a", events=["activity.created"], secret="s1"
-        )
+        Webhook.objects.create(owner=self.coach, url="https://example.cc/a", events=["activity.created"], secret="s1")
 
         fire_event("activity.created", self.athlete.id, {"id": "act_1"})
         mock_delay.assert_not_called()
@@ -203,9 +201,7 @@ class FireEventTests(TestCase):
 
     @patch("webhooks.events.deliver_webhook.delay")
     def test_envelope_shape(self, mock_delay):
-        Webhook.objects.create(
-            owner=self.athlete, url="https://example.cc/a", events=["activity.created"], secret="s1"
-        )
+        Webhook.objects.create(owner=self.athlete, url="https://example.cc/a", events=["activity.created"], secret="s1")
         fire_event("activity.created", self.athlete.id, {"id": "act_1"})
 
         delivery = WebhookDelivery.objects.get()

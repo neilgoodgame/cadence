@@ -6,7 +6,7 @@ it's imported as plain support code, never collected as a test module itself.
 
 import io
 import zipfile
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 GPX_HEADER = (
     '<?xml version="1.0" encoding="UTF-8"?>'
@@ -15,7 +15,14 @@ GPX_HEADER = (
 )
 
 
-def build_gpx(start, sport="running", duration_s=60, hr=150, lat0=37.0, lon0=-122.0):
+def build_gpx(
+    start: datetime,
+    sport: str = "running",
+    duration_s: int = 60,
+    hr: int = 150,
+    lat0: float = 37.0,
+    lon0: float = -122.0,
+) -> bytes:
     parts = [GPX_HEADER, f"<trk><type>{sport}</type><trkseg>"]
     for i in range(duration_s):
         t = start + timedelta(seconds=i)
@@ -30,7 +37,14 @@ def build_gpx(start, sport="running", duration_s=60, hr=150, lat0=37.0, lon0=-12
     return "".join(parts).encode("utf-8")
 
 
-def build_tcx(start, sport="Biking", duration_s=300, power=200, hr=140, distance_m=1500):
+def build_tcx(
+    start: datetime,
+    sport: str = "Biking",
+    duration_s: int = 300,
+    power: int = 200,
+    hr: int = 140,
+    distance_m: int = 1500,
+) -> bytes:
     points = []
     for i in range(duration_s):
         t = start + timedelta(seconds=i)
@@ -54,10 +68,10 @@ def build_tcx(start, sport="Biking", duration_s=300, power=200, hr=140, distance
         f"<AverageHeartRateBpm><Value>{hr}</Value></AverageHeartRateBpm>"
         f"<Track>{body}</Track>"
         "</Lap></Activity></Activities></TrainingCenterDatabase>"
-    ).encode("utf-8")
+    ).encode()
 
 
-def build_zip(named_contents):
+def build_zip(named_contents: dict[str, bytes]) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         for name, content in named_contents.items():

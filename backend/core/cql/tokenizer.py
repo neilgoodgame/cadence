@@ -21,7 +21,7 @@ _PHRASE_REPLACEMENTS = [
 ]
 
 
-def normalize(raw):
+def normalize(raw: str) -> str:
     s = " " + raw.lower().replace(",", " ").replace(";", " ") + " "
     for pattern, replacement in _PHRASE_REPLACEMENTS:
         s = re.sub(pattern, replacement, s)
@@ -39,7 +39,7 @@ def normalize(raw):
     return re.sub(r"\s+", " ", s).strip()
 
 
-def tokenize(raw):
+def tokenize(raw: str) -> list[str]:
     norm = normalize(raw)
     if not norm:
         return []

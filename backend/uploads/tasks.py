@@ -1,3 +1,5 @@
+from typing import Any
+
 from celery import shared_task
 from django.utils import timezone
 
@@ -9,8 +11,8 @@ from .processing import UploadProcessingError, ingest_upload
 from .serializers import UploadBatchSerializer
 
 
-@shared_task(bind=True, max_retries=3)
-def process_upload(self, upload_id):
+@shared_task(bind=True, max_retries=3)  # type: ignore[untyped-decorator]
+def process_upload(self: Any, upload_id: str) -> None:
     upload = Upload.objects.select_related("athlete").get(pk=upload_id)
     upload.status = "processing"
     upload.save(update_fields=["status"])
@@ -35,7 +37,7 @@ def process_upload(self, upload_id):
         _maybe_finalize_batch(upload.batch_id)
 
 
-def _maybe_finalize_batch(batch_id):
+def _maybe_finalize_batch(batch_id: str) -> None:
     batch = UploadBatch.objects.get(pk=batch_id)
     if batch.uploads.filter(status__in=["queued", "processing"]).exists():
         return

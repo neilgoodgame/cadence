@@ -1,9 +1,12 @@
 import re
+from typing import Any
 
 from core.exceptions import CQLParseError
 
 from .fields import ENVIRONMENT_VALUES, FIELD_ALIASES, FIELD_SPECS, SPORT_VALUES, UNIT_FIELDS
 from .tokenizer import tokenize
+
+CQLNode = dict[str, Any]
 
 _OPERATORS = {">", "<", ">=", "<=", "=", "!="}
 _VALUE_RE = re.compile(r"^([\d.]+)\s*([a-z%/]*)$")
@@ -13,35 +16,42 @@ _GUARD_LIMIT = 60
 
 
 class ParseResult:
-    def __init__(self, ast=None, order=None, empty=False):
+    def __init__(
+        self,
+        ast: CQLNode | None = None,
+        order: dict[str, str] | None = None,
+        empty: bool = False,
+    ):
         self.ast = ast
         self.order = order
         self.empty = empty
 
 
-def _is_op(token):
+def _is_op(token: str | None) -> bool:
     return token in _OPERATORS
 
 
-def _singular(word):
+def _singular(word: str) -> str:
     if len(word) > 3 and word.endswith("s"):
         return word[:-1]
     return word
 
 
-def _field_key(token):
+def _field_key(token: str | None) -> str | None:
+    if token is None:
+        return None
     return FIELD_ALIASES.get(token) or (token if token in FIELD_SPECS else None)
 
 
-def parse_t(value):
-    """"M:SS" or "H:MM:SS" -> total seconds, mirroring the JS reference's parseT."""
+def parse_t(value: str) -> int:
+    """ "M:SS" or "H:MM:SS" -> total seconds, mirroring the JS reference's parseT."""
     parts = [int(p) for p in value.split(":")]
     if len(parts) == 3:
         return parts[0] * 3600 + parts[1] * 60 + parts[2]
     return parts[0] * 60 + parts[1]
 
 
-def _parse_value(v):
+def _parse_value(v: str | None) -> tuple[float | int | None, str | None]:
     """Bare value with an optional unit suffix -> (numeric_value, inferred_field)."""
     if v is None:
         return None, None
@@ -55,19 +65,19 @@ def _parse_value(v):
 
 
 class _Parser:
-    def __init__(self, tokens):
+    def __init__(self, tokens: list[str]):
         self._toks = tokens
         self._pos = 0
 
-    def _peek(self):
+    def _peek(self) -> str | None:
         return self._toks[self._pos] if self._pos < len(self._toks) else None
 
-    def _next(self):
+    def _next(self) -> str | None:
         t = self._peek()
         self._pos += 1
         return t
 
-    def parse_or(self):
+    def parse_or(self) -> CQLNode | None:
         left = self.parse_and()
         while self._peek() == "or":
             self._next()
@@ -75,7 +85,7 @@ class _Parser:
             left = {"type": "or", "left": left, "right": right} if left else right
         return left
 
-    def parse_and(self):
+    def parse_and(self) -> CQLNode | None:
         left = self.parse_primary()
         while self._peek() is not None and self._peek() not in ("or", ")"):
             if self._peek() == "and":
@@ -86,7 +96,7 @@ class _Parser:
             left = {"type": "and", "left": left, "right": right} if left else right
         return left
 
-    def parse_primary(self):
+    def parse_primary(self) -> CQLNode | None:
         guard = 0
         while guard < _GUARD_LIMIT:
             guard += 1
@@ -120,9 +130,7 @@ class _Parser:
                     raise CQLParseError(f'Expected a value after "{op}"')
                 value, field = _parse_value(v)
                 if not field:
-                    raise CQLParseError(
-                        f'Add a unit (e.g. 140bpm, 10km) so I know which field "{v}" means'
-                    )
+                    raise CQLParseError(f'Add a unit (e.g. 140bpm, 10km) so I know which field "{v}" means')
                 return {"type": "cmp", "field": field, "op": op, "value": value}
             f = _field_key(t)
             if f:
@@ -141,8 +149,8 @@ class _Parser:
                         "op": op,
                         "value": value if value is not None else float(v),
                     }
-                value = SPORT_VALUES.get(v, v) if f == "sport" else _singular(v)
-                return {"type": "cmp", "field": f, "op": op, "value": value}
+                text_value = SPORT_VALUES.get(v, v) if f == "sport" else _singular(v)
+                return {"type": "cmp", "field": f, "op": op, "value": text_value}
             value, field = _parse_value(t)
             if field:
                 self._next()
@@ -151,7 +159,7 @@ class _Parser:
         return None
 
 
-def parse(raw):
+def parse(raw: str) -> ParseResult:
     tokens = tokenize(raw)
     if not tokens:
         return ParseResult(empty=True)

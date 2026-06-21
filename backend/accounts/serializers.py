@@ -1,3 +1,6 @@
+from datetime import date
+from typing import Any
+
 from rest_framework import serializers
 
 from .models import PersonalAccessToken, User, UserRelationship
@@ -28,7 +31,7 @@ class RegisterSerializer(serializers.Serializer):
     provider = serializers.ChoiceField(choices=["strava", "google", "apple"], required=False)
     id_token = serializers.CharField(required=False)
 
-    def validate(self, attrs):
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         if attrs.get("provider"):
             if not attrs.get("id_token"):
                 raise serializers.ValidationError("id_token is required for social signup.")
@@ -88,7 +91,7 @@ class AccessTokenSerializer(serializers.ModelSerializer):
         model = PersonalAccessToken
         fields = ["id", "name", "prefix", "scopes", "created", "expires_at", "last_used"]
 
-    def get_created(self, obj):
+    def get_created(self, obj: PersonalAccessToken) -> date:
         return obj.created.date()
 
 

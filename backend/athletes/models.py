@@ -25,5 +25,5 @@ class ZoneSet(models.Model):
             models.UniqueConstraint(fields=["athlete", "type"], name="unique_athlete_zone_type"),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.athlete_id} {self.type}"

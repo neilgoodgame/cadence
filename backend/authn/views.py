@@ -1,6 +1,7 @@
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -15,7 +16,7 @@ DEFAULT_EXPIRES_IN = 3600
 
 
 class CreateJwtView(APIView):
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         sub, _ = get_effective_athlete_id(request)
         athlete_id = request.data.get("athlete_id") or sub
         scopes = request.data.get("scopes") or DEFAULT_JWT_SCOPES
@@ -23,9 +24,20 @@ class CreateJwtView(APIView):
 
         if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
             raise ValidationError(
-                {"error": {"type": "invalid_request_error", "param": "scopes", "message": "scopes must be an array of strings."}}
+                {
+                    "error": {
+                        "type": "invalid_request_error",
+                        "param": "scopes",
+                        "message": "scopes must be an array of strings.",
+                    }
+                }
             )
-        if not isinstance(expires_in, int) or isinstance(expires_in, bool) or expires_in <= 0 or expires_in > MAX_EXPIRES_IN:
+        if (
+            not isinstance(expires_in, int)
+            or isinstance(expires_in, bool)
+            or expires_in <= 0
+            or expires_in > MAX_EXPIRES_IN
+        ):
             raise ValidationError(
                 {
                     "error": {
@@ -39,7 +51,13 @@ class CreateJwtView(APIView):
         caller_scopes = get_request_scopes(request)
         if caller_scopes and not set(scopes).issubset(caller_scopes):
             raise ValidationError(
-                {"error": {"type": "invalid_request_error", "param": "scopes", "message": "scopes must be a subset of the caller's own scopes."}}
+                {
+                    "error": {
+                        "type": "invalid_request_error",
+                        "param": "scopes",
+                        "message": "scopes must be a subset of the caller's own scopes.",
+                    }
+                }
             )
 
         if athlete_id != sub:
@@ -64,5 +82,5 @@ class JwksView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         return Response(get_jwks())

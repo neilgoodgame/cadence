@@ -22,7 +22,7 @@ class Webhook(PrefixedIDModel):
     secret = models.CharField(max_length=64)
     created = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.url} ({self.status})"
 
 
@@ -43,5 +43,5 @@ class WebhookDelivery(models.Model):
     last_error = models.TextField(blank=True, default="")
     created = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.webhook_id} {self.event} ({self.status})"

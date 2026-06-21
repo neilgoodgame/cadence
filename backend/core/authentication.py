@@ -1,9 +1,11 @@
 import hmac
+from typing import Any
 
 import jwt as pyjwt
 from django.utils import timezone
 from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
+from rest_framework.request import Request
 
 
 class JWTAuthentication(BaseAuthentication):
@@ -14,7 +16,7 @@ class JWTAuthentication(BaseAuthentication):
     through to the other configured authentication classes untouched.
     """
 
-    def authenticate(self, request):
+    def authenticate(self, request: Request) -> tuple[Any, Any] | None:
         auth = get_authorization_header(request).split()
         if len(auth) != 2 or auth[0].lower() != b"bearer":
             return None
@@ -45,7 +47,7 @@ class JWTAuthentication(BaseAuthentication):
 
 
 class PersonalAccessTokenAuthentication(BaseAuthentication):
-    def authenticate(self, request):
+    def authenticate(self, request: Request) -> tuple[Any, Any] | None:
         from accounts.tokens import PREFIX, hash_secret, visible_prefix
 
         auth = get_authorization_header(request).split()

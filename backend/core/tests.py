@@ -23,9 +23,7 @@ class DerivedMetricsTests(TestCase):
         self.today = date(2026, 1, 28)
 
     def _schedule(self, day, status):
-        return ScheduledWorkout.objects.create(
-            workout=self.workout, athlete=self.athlete, date=day, status=status
-        )
+        return ScheduledWorkout.objects.create(workout=self.workout, athlete=self.athlete, date=day, status=status)
 
     def test_compliance_with_no_scheduled_workouts_is_zero(self):
         self.assertEqual(compute_compliance(self.athlete.id, as_of=self.today), 0.0)

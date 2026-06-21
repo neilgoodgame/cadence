@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;background:#0b0f14;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:rgba(140,150,160,0.4);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:radial-gradient(120% 80% at 90% -10%, rgba(150,42,108,0.18), transparent 48%), radial-gradient(95% 80% at -8% 108%, rgba(18,134,122,0.20), transparent 52%), #0b0f14;color:#e6eef0;font-family:'Hanken Grotesk',sans-serif;padding:36px 40px 90px;">
+
+  <!-- HEADER -->
+  <div style="max-width:1180px;margin:0 auto 26px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;">
+    <div>
+      <div style="display:flex;align-items:center;gap:11px;margin-bottom:14px;">
+        <div style="width:26px;height:26px;border-radius:7px;background:#2dd4bf;display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#06231f;"></div></div>
+        <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;">Cadence</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5c6b78;letter-spacing:0.06em;">/ DATA DICTIONARY</span>
+      </div>
+      <h1 style="font-size:32px;font-weight:800;letter-spacing:-0.025em;margin:0;">Data dictionary &amp; constraints</h1>
+      <p style="font-size:14px;color:#93a3b0;margin:8px 0 0;max-width:74ch;line-height:1.55;">The DB-level spec behind the ER diagram — every column's type, nullability, default, and domain, plus per-table invariants and which values are <em>derived</em> rather than stored. Framework-agnostic: hand this to your ORM to generate models &amp; migrations.</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div style="background:rgba(15,24,33,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 18px;text-align:center;"><div style="font-family:'JetBrains Mono',monospace;font-size:23px;font-weight:600;color:#2dd4bf;">{{ tableCount }}</div><div style="font-size:11px;color:#5c6b78;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Tables</div></div>
+      <div style="background:rgba(15,24,33,0.6);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 18px;text-align:center;"><div style="font-family:'JetBrains Mono',monospace;font-size:23px;font-weight:600;color:#2dd4bf;">{{ columnCount }}</div><div style="font-size:11px;color:#5c6b78;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;">Columns</div></div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div style="max-width:1180px;margin:0 auto 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:rgba(15,24,33,0.5);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:11px 18px;">
+    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.08em;color:#5c6b78;text-transform:uppercase;">Keys</span>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#c2cdd4;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;background:rgba(45,212,191,0.16);color:#2dd4bf;">PK</span>primary key</div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#c2cdd4;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;background:rgba(61,127,214,0.18);color:#6ea8e8;">FK</span>foreign key</div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#c2cdd4;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;background:rgba(245,177,61,0.18);color:#f5b13d;">UQ</span>unique</div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#c2cdd4;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:1px 6px;border-radius:5px;background:rgba(192,132,252,0.18);color:#c084fc;">DERIVED</span>computed, not stored</div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#c2cdd4;"><span style="color:#5c6b78;font-family:'JetBrains Mono',monospace;font-size:13px;">NULL</span>nullable</div>
+  </div>
+
+  <!-- TABLES -->
+  <div style="max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px;">
+    <sc-for list="{{ tables }}" as="t" hint-placeholder-count="8">
+      <div style="background:rgba(15,24,33,0.55);border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:11px;padding:15px 20px;border-bottom:1px solid rgba(255,255,255,0.08);border-top:3px solid {{ t.color }};">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#eaf2f4;">{{ t.name }}</span>
+          <span style="font-size:12.5px;color:#5c6b78;">{{ t.note }}</span>
+          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:#5c6b78;">{{ t.colLabel }}</span>
+        </div>
+        <!-- column header -->
+        <div style="display:grid;grid-template-columns:188px 150px 70px 1fr;gap:14px;padding:9px 20px;background:rgba(0,0,0,0.18);font-family:'JetBrains Mono',monospace;font-size:9.5px;text-transform:uppercase;letter-spacing:0.06em;color:#5c6b78;">
+          <span>Column</span><span>Type</span><span>Null</span><span>Default · notes</span>
+        </div>
+        <sc-for list="{{ t.cols }}" as="c" hint-placeholder-count="6">
+          <div style="{{ c.rowStyle }}">
+            <div style="display:flex;align-items:center;gap:7px;min-width:0;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;color:#dbe6e9;">{{ c.name }}</span>
+              <sc-for list="{{ c.badges }}" as="b" hint-placeholder-count="0"><span style="{{ b.style }}">{{ b.label }}</span></sc-for>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#6ea8e8;">{{ c.type }}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:{{ c.nullColor }};">{{ c.nullMark }}</span>
+            <span style="font-size:12px;color:#93a3b0;line-height:1.4;">{{ c.notes }}</span>
+          </div>
+        </sc-for>
+        <!-- invariants -->
+        <sc-if value="{{ t.hasInvariants }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:12px 20px 16px;border-top:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.12);">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:0.07em;text-transform:uppercase;color:#5c6b78;margin-bottom:8px;">Invariants</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <sc-for list="{{ t.invariants }}" as="inv" hint-placeholder-count="0">
+                <div style="display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:#c2cdd4;line-height:1.45;"><span style="color:#2dd4bf;margin-top:1px;flex-shrink:0;">▸</span>{{ inv }}</div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1260,&quot;height&quot;:1400}}">
+class Component extends DCLogic {
+  // col: [name, type, null(bool), keys[], default/notes]
+  // keys: 'pk'|'fk'|'uq'|'derived'
+  C = { identity: '#3d7fd6', core: '#2dd4bf', planning: '#f5b13d', equipment: '#c084fc' };
+
+  tables = [
+    { name: 'user', domain: 'identity', note: 'account · athlete + optional coach', cols: [
+      ['id', 'uuid', false, ['pk'], 'gen_random_uuid()'],
+      ['name', 'text', false, [], ''],
+      ['email', 'citext', false, ['uq'], 'unique, lowercased'],
+      ['age', 'int', true, [], ''],
+      ['weight_kg', 'numeric(5,1)', true, [], 'seeds activity.start_weight_kg'],
+      ['ftp', 'int', true, [], 'watts'],
+      ['critical_run_power', 'int', true, [], 'watts'],
+      ['threshold_pace_s', 'int', true, [], 'seconds per km'],
+      ['lthr', 'int', true, [], 'bpm'],
+      ['max_hr', 'int', true, [], 'bpm'],
+      ['is_coach', 'bool', false, [], 'false · gates coaching features'],
+      ['created_at', 'timestamptz', false, [], 'now()'],
+    ], invariants: [
+      'email is unique, case-insensitive (citext or lower() unique index).',
+      'A user is always an athlete; is_coach only adds the ability to be a grantee with role=coach.',
+    ]},
+    { name: 'user_relationship', domain: 'identity', note: 'owner → grantee access grant', cols: [
+      ['id', 'uuid', false, ['pk'], 'gen_random_uuid()'],
+      ['owner_user_id', 'uuid', false, ['fk'], '→ user.id · whose data is shared'],
+      ['grantee_user_id', 'uuid', false, ['fk'], '→ user.id · who gets access'],
+      ['role', 'enum', false, [], "viewer | coach · default 'viewer'"],
+      ['status', 'enum', false, [], "pending | active · default 'pending'"],
+      ['created_at', 'timestamptz', false, [], 'now()'],
+      ['accepted_at', 'timestamptz', true, [], 'set when status→active'],
+    ], invariants: [
+      'UNIQUE (owner_user_id, grantee_user_id) — one grant per direction per pair.',
+      'CHECK owner_user_id <> grantee_user_id — no self-grants.',
+      'role=coach requires grantee.is_coach = true (enforce in app or trigger).',
+      'viewer → read activities & analysis; coach → also schedule/assign workouts.',
+    ]},
+    { name: 'zone_set', domain: 'identity', note: '4 per user', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['user_id', 'uuid', false, ['fk'], '→ user.id'],
+      ['type', 'enum', false, [], 'heart_rate | bike_power | run_power | pace'],
+      ['zones', 'jsonb', false, [], 'ordered [{name, low_pct, high_pct}]'],
+      ['ref_value', 'numeric', false, ['derived'], 'from user threshold for type'],
+    ], invariants: [
+      'UNIQUE (user_id, type) — one set per zone type per user.',
+      'ref_value is derived: LTHR / FTP / critical_run_power / threshold_pace by type.',
+      'Boundaries stored as % of ref_value; absolute values computed on read.',
+    ]},
+
+    { name: 'activity', domain: 'core', note: 'the hub', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['user_id', 'uuid', false, ['fk'], '→ user.id'],
+      ['sport', 'enum', false, [], 'bike | run | swim | walk'],
+      ['environment', 'enum', false, [], "outdoor | indoor · default 'outdoor'"],
+      ['has_gps', 'bool', false, ['derived'], 'false when environment=indoor'],
+      ['name', 'text', false, [], ''],
+      ['start_at', 'timestamptz', false, [], ''],
+      ['source', 'text', true, [], 'Zwift | Garmin | manual'],
+      ['moving_time_s', 'int', false, [], 'seconds'],
+      ['distance_km', 'numeric', true, [], ''],
+      ['distance_source', 'enum', true, [], 'gps | footpod | trainer | manual'],
+      ['avg_power', 'int', true, [], 'watts'],
+      ['norm_power', 'int', true, [], 'watts'],
+      ['intensity', 'numeric', true, ['derived'], 'IF = NP / FTP'],
+      ['tss', 'int', true, ['derived'], 'from NP, IF, duration, FTP'],
+      ['avg_hr', 'int', true, [], 'bpm'],
+      ['max_hr', 'int', true, [], 'bpm'],
+      ['ascent_m', 'int', true, [], ''],
+      ['start_weight_kg', 'numeric(5,1)', true, [], 'defaults to user.weight_kg'],
+      ['end_weight_kg', 'numeric(5,1)', true, [], ''],
+      ['fluids_ml', 'int', true, [], ''],
+      ['avg_air_temp', 'numeric(4,1)', true, [], '°C · computed, run only'],
+      ['avg_humidity', 'int', true, [], '% RH · computed, run only'],
+      ['bike_id', 'uuid', true, ['fk'], '→ bike.id'],
+      ['shoe_id', 'uuid', true, ['fk'], '→ shoe.id'],
+      ['workout_id', 'uuid', true, ['fk'], '→ workout.id · matched plan'],
+    ], invariants: [
+      'has_gps is derived from environment (indoor ⇒ false); not user-set.',
+      'intensity & tss are derived — recompute when FTP or streams change, don’t trust client writes.',
+      'start_weight_kg defaults to user.weight_kg at creation if omitted.',
+      'sweat_rate & % weight lost are computed (start_weight − end_weight + fluids) — never stored.',
+      'avg_air_temp & avg_humidity are computed from the record stream — run only, null unless Stryd environmental data is present.',
+      'bike_id valid only when sport=bike; shoe_id only when sport=run (app-level check).',
+    ]},
+    { name: 'lap', domain: 'core', note: 'splits', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['activity_id', 'uuid', false, ['fk'], '→ activity.id · ON DELETE CASCADE'],
+      ['idx', 'int', false, [], 'order within activity'],
+      ['duration_s', 'int', false, [], ''],
+      ['distance_km', 'numeric', true, [], ''],
+      ['avg_hr', 'int', true, [], ''],
+      ['avg_power', 'int', true, [], ''],
+    ], invariants: ['UNIQUE (activity_id, idx).', 'CASCADE delete with the activity.'] },
+    { name: 'record', domain: 'core', note: '1 Hz stream', cols: [
+      ['activity_id', 'uuid', false, ['fk'], '→ activity.id · CASCADE'],
+      ['t', 'int', false, [], 'seconds from start'],
+      ['hr', 'int', true, [], ''],
+      ['power', 'int', true, [], ''],
+      ['altitude', 'numeric', true, [], ''],
+      ['latlng', 'point', true, [], 'null for indoor'],
+      ['cadence', 'int', true, [], ''],
+      ['core_temp', 'numeric', true, [], '°C · from CORE sensor'],
+      ['skin_temp', 'numeric', true, [], '°C · from CORE sensor'],
+      ['heat_strain', 'numeric', true, [], 'index · from CORE sensor'],
+      ['air_temp', 'numeric', true, [], '°C · from Stryd (run)'],
+      ['humidity', 'int', true, [], '% RH · from Stryd (run)'],
+    ], invariants: [
+      'PRIMARY KEY (activity_id, t) — composite, no surrogate id.',
+      'Consider a time-series/columnar store; latlng absent when has_gps=false.',
+      'air_temp/humidity present only when a Stryd footpod supplied environmental data.',
+    ]},
+    { name: 'tag', domain: 'core', note: 'manual + auto labels', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['user_id', 'uuid', false, ['fk'], '→ user.id'],
+      ['name', 'text', false, ['uq'], ''],
+      ['origin', 'enum', false, [], 'manual | auto'],
+      ['color', 'text', true, [], 'hex'],
+    ], invariants: ['UNIQUE (user_id, lower(name)).', 'auto tags are system-managed (workout match) and read-only to users.'] },
+    { name: 'activity_tag', domain: 'core', note: 'join', cols: [
+      ['activity_id', 'uuid', false, ['fk'], '→ activity.id · CASCADE'],
+      ['tag_id', 'uuid', false, ['fk'], '→ tag.id · CASCADE'],
+    ], invariants: ['PRIMARY KEY (activity_id, tag_id) — composite join, no surrogate.'] },
+    { name: 'best_effort', domain: 'core', note: 'PRs (materialized)', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['user_id', 'uuid', false, ['fk'], '→ user.id'],
+      ['kind', 'enum', false, [], 'cycling_power | running_pace | running_power'],
+      ['window', 'text', false, [], 'duration or distance key'],
+      ['value', 'numeric', false, ['derived'], 'recomputed from activities'],
+      ['activity_id', 'uuid', true, ['fk'], '→ activity.id · source'],
+      ['achieved_on', 'date', false, [], ''],
+    ], invariants: ['UNIQUE (user_id, kind, window, period).', 'Derived/materialized — rebuild on new or deleted activities.'] },
+
+    { name: 'workout', domain: 'planning', note: 'designed template', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['user_id', 'uuid', false, ['fk'], '→ user.id · author'],
+      ['name', 'text', false, [], ''],
+      ['sport', 'enum', false, [], 'bike | run'],
+      ['type', 'text', true, [], 'vo2 | threshold | …'],
+      ['duration_s', 'int', false, ['derived'], 'sum of steps'],
+      ['tss', 'int', true, ['derived'], 'from steps + thresholds'],
+    ], invariants: ['duration_s & tss derived from steps — recompute on step edits.'] },
+    { name: 'workout_step', domain: 'planning', note: 'ordered structure', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['workout_id', 'uuid', false, ['fk'], '→ workout.id · CASCADE'],
+      ['idx', 'int', false, [], 'order'],
+      ['kind', 'enum', false, [], 'warmup | block | rec | cool'],
+      ['end_type', 'enum', false, [], 'time | distance | manual'],
+      ['duration_s', 'int', true, [], 'required when end_type=time'],
+      ['distance_m', 'int', true, [], 'required when end_type=distance'],
+      ['target_pct', 'numeric', true, [], '% of threshold'],
+      ['repeat', 'int', false, [], 'default 1'],
+    ], invariants: [
+      'UNIQUE (workout_id, idx).',
+      'CHECK: end_type=time ⇒ duration_s NOT NULL; end_type=distance ⇒ distance_m NOT NULL; manual ⇒ both null.',
+    ]},
+    { name: 'scheduled_workout', domain: 'planning', note: 'calendar entry', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['workout_id', 'uuid', false, ['fk'], '→ workout.id'],
+      ['user_id', 'uuid', false, ['fk'], '→ user.id · the athlete'],
+      ['assigned_by', 'uuid', true, ['fk'], '→ user.id · coach, if assigned'],
+      ['date', 'date', false, [], ''],
+      ['time_of_day', 'enum', true, [], 'AM | MID | PM'],
+      ['status', 'enum', false, [], "planned | completed | missed · default 'planned'"],
+      ['activity_id', 'uuid', true, ['fk'], '→ activity.id · the match'],
+    ], invariants: [
+      'assigned_by must have an active coach user_relationship over user_id.',
+      'status=completed ⇒ activity_id NOT NULL.',
+    ]},
+
+    { name: 'bike', domain: 'equipment', note: 'garage', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['user_id', 'uuid', false, ['fk'], '→ user.id'],
+      ['name', 'text', false, [], ''],
+      ['kind', 'enum', true, [], 'road | indoor | gravel | tt'],
+      ['groupset', 'text', true, [], ''],
+      ['distance_km', 'numeric', false, ['derived'], 'rolled up from activities'],
+    ], invariants: ['distance_km derived from matched activities.'] },
+    { name: 'component', domain: 'equipment', note: 'wear part', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['bike_id', 'uuid', false, ['fk'], '→ bike.id · CASCADE'],
+      ['name', 'text', false, [], 'Chain, Tyre, …'],
+      ['km', 'int', false, [], 'accumulated; reset on service'],
+      ['limit_km', 'int', false, [], 'service threshold'],
+      ['model', 'text', true, [], ''],
+    ], invariants: ['service "due" when km ≥ limit_km (computed, not stored).'] },
+    { name: 'service_record', domain: 'equipment', note: 'maintenance log', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['component_id', 'uuid', false, ['fk'], '→ component.id · CASCADE'],
+      ['action', 'enum', false, [], 'replaced | cleaned | inspected | adjusted'],
+      ['reset', 'bool', false, [], 'true zeroes component.km'],
+      ['note', 'text', true, [], ''],
+      ['date', 'date', false, [], ''],
+    ], invariants: ['reset=true ⇒ set component.km = 0 in same transaction.'] },
+    { name: 'shoe_model', domain: 'equipment', note: 'catalog · brand+line', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['manufacturer', 'text', false, ['uq'], ''],
+      ['model', 'text', false, ['uq'], ''],
+    ], invariants: ['UNIQUE (manufacturer, model). Shared catalog, not per-user.'] },
+    { name: 'shoe_model_version', domain: 'equipment', note: 'catalog · generation', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['shoe_model_id', 'uuid', false, ['fk'], '→ shoe_model.id'],
+      ['version', 'text', false, ['uq'], ''],
+    ], invariants: ['UNIQUE (shoe_model_id, version).'] },
+    { name: 'shoe', domain: 'equipment', note: 'a physical pair', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['user_id', 'uuid', false, ['fk'], '→ user.id'],
+      ['shoe_model_version_id', 'uuid', false, ['fk'], '→ shoe_model_version.id'],
+      ['name', 'text', false, ['uq'], 'defaults to composed name'],
+      ['colourway', 'text', false, [], ''],
+      ['image_url', 'text', true, [], 'optional photo'],
+      ['km', 'int', false, ['derived'], 'rolled up from activities'],
+      ['limit_km', 'int', true, [], 'retirement threshold'],
+      ['retired', 'bool', false, [], 'default false'],
+    ], invariants: [
+      'UNIQUE (user_id, lower(name)) — name unique per user.',
+      'name defaults to manufacturer + model + version + colourway when omitted.',
+      'km derived from activities referencing this shoe.',
+    ]},
+  ];
+
+  rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+
+  renderVals() {
+    const badgeColors = { pk: ['rgba(45,212,191,0.16)', '#2dd4bf'], fk: ['rgba(61,127,214,0.18)', '#6ea8e8'], uq: ['rgba(245,177,61,0.18)', '#f5b13d'], derived: ['rgba(192,132,252,0.18)', '#c084fc'] };
+    const badgeLabel = { pk: 'PK', fk: 'FK', uq: 'UQ', derived: 'DERIVED' };
+    let columnCount = 0;
+    const tables = this.tables.map(t => {
+      columnCount += t.cols.length;
+      const color = this.C[t.domain];
+      return {
+        name: t.name, note: t.note, color,
+        colLabel: t.cols.length + ' cols',
+        cols: t.cols.map((c, i) => {
+          const [name, type, nullable, keys, notes] = c;
+          return {
+            name, type, notes: notes || '\u2014',
+            nullMark: nullable ? 'NULL' : 'NOT NULL',
+            nullColor: nullable ? '#5c6b78' : '#7fae8a',
+            badges: (keys || []).map(k => ({ label: badgeLabel[k], style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '8.5px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', flexShrink: 0, background: badgeColors[k][0], color: badgeColors[k][1] } })),
+            rowStyle: { display: 'grid', gridTemplateColumns: '188px 150px 70px 1fr', gap: '14px', alignItems: 'center', padding: '8px 20px', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.05)' },
+          };
+        }),
+        hasInvariants: !!(t.invariants && t.invariants.length),
+        invariants: t.invariants || [],
+      };
+    });
+    return { tables, tableCount: this.tables.length, columnCount };
+  }
+}
+</script>
+</body>
+</html>

@@ -102,10 +102,10 @@ class ShoeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "athlete_id", "since"]
 
-    def get_manufacturer(self, obj):
+    def get_manufacturer(self, obj: Shoe) -> str:
         return obj.shoe_model_version.shoe_model.manufacturer
 
-    def get_model(self, obj):
+    def get_model(self, obj: Shoe) -> str:
         return obj.shoe_model_version.shoe_model.model
 
 

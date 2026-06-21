@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -48,7 +48,10 @@ class ScheduledWorkoutCreateTests(TestCase):
 
     def test_coach_can_assign_onto_athlete_plan(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         client = _delegated_client(self.coach, self.athlete, scopes=["coach"])
         response = client.post(
@@ -77,7 +80,10 @@ class ScheduledWorkoutCreateTests(TestCase):
 
     def test_viewer_cannot_schedule(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
         response = client.post(
@@ -119,7 +125,7 @@ class ScheduledWorkoutDetailTests(TestCase):
             athlete=self.athlete,
             sport="bike",
             name="Long ride",
-            start_date=datetime(2026, 6, 20, 8, 0, tzinfo=timezone.utc),
+            start_date=datetime(2026, 6, 20, 8, 0, tzinfo=UTC),
         )
         response = _bearer_client(self.athlete).patch(
             f"/v1/scheduled-workouts/{self.scheduled.id}", {"activity_id": activity.id}, format="json"
@@ -132,7 +138,7 @@ class ScheduledWorkoutDetailTests(TestCase):
     def test_link_activity_belonging_to_someone_else_404(self):
         other = User.objects.create_user(email="other@example.cc", password="x", name="Other")
         foreign_activity = Activity.objects.create(
-            athlete=other, sport="bike", name="Not mine", start_date=datetime(2026, 6, 20, 8, 0, tzinfo=timezone.utc)
+            athlete=other, sport="bike", name="Not mine", start_date=datetime(2026, 6, 20, 8, 0, tzinfo=UTC)
         )
         response = _bearer_client(self.athlete).patch(
             f"/v1/scheduled-workouts/{self.scheduled.id}", {"activity_id": foreign_activity.id}, format="json"
@@ -141,9 +147,7 @@ class ScheduledWorkoutDetailTests(TestCase):
 
     def test_outsider_cannot_patch(self):
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
-        response = client.patch(
-            f"/v1/scheduled-workouts/{self.scheduled.id}", {"date": "2026-06-25"}, format="json"
-        )
+        response = client.patch(f"/v1/scheduled-workouts/{self.scheduled.id}", {"date": "2026-06-25"}, format="json")
         self.assertEqual(response.status_code, 403)
 
     def test_delete_unschedules(self):
@@ -180,7 +184,10 @@ class CalendarViewTests(TestCase):
 
     def test_coach_can_view_athletes_calendar_via_query_param(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         ScheduledWorkout.objects.create(workout=self.workout, athlete=self.athlete, date=date(2026, 6, 10))
 
@@ -198,7 +205,10 @@ class CalendarViewTests(TestCase):
 
     def test_delegated_jwt_defaults_to_claimed_athlete(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         ScheduledWorkout.objects.create(workout=self.workout, athlete=self.athlete, date=date(2026, 6, 10))
         client = _delegated_client(self.coach, self.athlete, scopes=["coach"])

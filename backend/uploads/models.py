@@ -32,7 +32,7 @@ class UploadBatch(PrefixedIDModel):
     class Meta:
         ordering = ["-received_at"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.filename
 
 
@@ -48,17 +48,13 @@ class Upload(PrefixedIDModel):
     ]
 
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="uploads")
-    batch = models.ForeignKey(
-        UploadBatch, null=True, blank=True, on_delete=models.CASCADE, related_name="uploads"
-    )
+    batch = models.ForeignKey(UploadBatch, null=True, blank=True, on_delete=models.CASCADE, related_name="uploads")
     filename = models.CharField(max_length=255)
     file_hash = models.CharField(max_length=64, db_index=True)
     stored_path = models.CharField(max_length=255, blank=True, default="")
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
     progress = models.FloatField(default=0.0)
-    activity = models.ForeignKey(
-        Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="uploads"
-    )
+    activity = models.ForeignKey(Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="uploads")
     error_code = models.CharField(max_length=100, blank=True, default="")
     error_message = models.CharField(max_length=500, blank=True, default="")
     weight_before_kg = models.FloatField(null=True, blank=True)
@@ -71,5 +67,5 @@ class Upload(PrefixedIDModel):
     class Meta:
         ordering = ["-received_at"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.filename

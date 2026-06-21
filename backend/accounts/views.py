@@ -1,13 +1,16 @@
+from typing import Any
+
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authn.oauth_utils import issue_token_pair
-from core.auth_context import get_request_scopes
+from core.auth_context import authenticated_user, get_request_scopes
 from core.derived import compute_compliance, compute_fitness_series, compute_flags, compute_tsb
 from core.exceptions import ConflictError
 
@@ -27,7 +30,7 @@ from .serializers import (
 from .tokens import generate_secret, hash_secret, visible_prefix
 
 
-def _share_payload(relationship):
+def _share_payload(relationship: UserRelationship) -> dict[str, Any]:
     return {
         "id": relationship.id,
         "name": relationship.grantee.name,
@@ -42,7 +45,7 @@ class RegisterView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -74,13 +77,13 @@ class RegisterView(APIView):
 
 
 class MeView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         return Response(UserSerializer(request.user).data)
 
 
 class ContextsView(APIView):
-    def get(self, request):
-        user = request.user
+    def get(self, request: Request) -> Response:
+        user = authenticated_user(request)
 
         coaching_qs = UserRelationship.objects.filter(
             grantee=user, status=UserRelationship.STATUS_ACTIVE
@@ -121,11 +124,11 @@ class ContextsView(APIView):
 
 
 class AccessTokenListCreateView(APIView):
-    def get(self, request):
-        tokens = PersonalAccessToken.objects.filter(user=request.user).order_by("-created")
+    def get(self, request: Request) -> Response:
+        tokens = PersonalAccessToken.objects.filter(user=authenticated_user(request)).order_by("-created")
         return Response({"data": AccessTokenSerializer(tokens, many=True).data})
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         serializer = CreateAccessTokenSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -145,7 +148,7 @@ class AccessTokenListCreateView(APIView):
 
         secret = generate_secret()
         pat = PersonalAccessToken.objects.create(
-            user=request.user,
+            user=authenticated_user(request),
             name=data["name"],
             prefix=visible_prefix(secret),
             hashed_secret=hash_secret(secret),
@@ -158,15 +161,15 @@ class AccessTokenListCreateView(APIView):
 
 
 class AccessTokenDetailView(APIView):
-    def delete(self, request, id):
-        pat = get_object_or_404(PersonalAccessToken, pk=id, user=request.user)
+    def delete(self, request: Request, id: str) -> Response:
+        pat = get_object_or_404(PersonalAccessToken, pk=id, user=authenticated_user(request))
         pat.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class AccessTokenRotateView(APIView):
-    def post(self, request, id):
-        pat = get_object_or_404(PersonalAccessToken, pk=id, user=request.user)
+    def post(self, request: Request, id: str) -> Response:
+        pat = get_object_or_404(PersonalAccessToken, pk=id, user=authenticated_user(request))
         secret = generate_secret()
         pat.prefix = visible_prefix(secret)
         pat.hashed_secret = hash_secret(secret)
@@ -177,20 +180,21 @@ class AccessTokenRotateView(APIView):
 
 
 class ShareListCreateView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         shares = (
-            UserRelationship.objects.filter(owner=request.user)
+            UserRelationship.objects.filter(owner=authenticated_user(request))
             .select_related("grantee")
             .order_by("-created")
         )
         data = [_share_payload(rel) for rel in shares]
         return Response({"data": ShareSerializer(data, many=True).data})
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         serializer = CreateShareSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         invitee = serializer.validated_data["invitee"]
         role = serializer.validated_data["role"]
+        owner = authenticated_user(request)
 
         if invitee.startswith("@"):
             grantee = User.objects.filter(handle__iexact=invitee).first()
@@ -206,13 +210,19 @@ class ShareListCreateView(APIView):
                     }
                 }
             )
-        if grantee.id == request.user.id:
+        if grantee.id == owner.id:
             raise ValidationError(
-                {"error": {"type": "invalid_request_error", "param": "invitee", "message": "You cannot invite yourself."}}
+                {
+                    "error": {
+                        "type": "invalid_request_error",
+                        "param": "invitee",
+                        "message": "You cannot invite yourself.",
+                    }
+                }
             )
 
         relationship, created = UserRelationship.objects.get_or_create(
-            owner=request.user,
+            owner=owner,
             grantee=grantee,
             defaults={"role": role, "status": UserRelationship.STATUS_PENDING},
         )
@@ -223,24 +233,24 @@ class ShareListCreateView(APIView):
 
 
 class ShareDetailView(APIView):
-    def patch(self, request, id):
-        relationship = get_object_or_404(UserRelationship, pk=id, owner=request.user)
+    def patch(self, request: Request, id: str) -> Response:
+        relationship = get_object_or_404(UserRelationship, pk=id, owner=authenticated_user(request))
         serializer = UpdateShareSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         relationship.role = serializer.validated_data["role"]
         relationship.save(update_fields=["role"])
         return Response(ShareSerializer(_share_payload(relationship)).data)
 
-    def delete(self, request, id):
-        relationship = get_object_or_404(UserRelationship, pk=id, owner=request.user)
+    def delete(self, request: Request, id: str) -> Response:
+        relationship = get_object_or_404(UserRelationship, pk=id, owner=authenticated_user(request))
         relationship.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class RosterListView(APIView):
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         relationships = UserRelationship.objects.filter(
-            grantee=request.user, status=UserRelationship.STATUS_ACTIVE
+            grantee=authenticated_user(request), status=UserRelationship.STATUS_ACTIVE
         ).select_related("owner")
         data = [
             {
@@ -256,9 +266,12 @@ class RosterListView(APIView):
 
 
 class CoachAthleteDetailView(APIView):
-    def get(self, request, id):
+    def get(self, request: Request, id: str) -> Response:
         get_object_or_404(
-            UserRelationship, owner_id=id, grantee=request.user, status=UserRelationship.STATUS_ACTIVE
+            UserRelationship,
+            owner_id=id,
+            grantee=authenticated_user(request),
+            status=UserRelationship.STATUS_ACTIVE,
         )
         today = timezone.now().date()
         series = compute_fitness_series(id, today, today)

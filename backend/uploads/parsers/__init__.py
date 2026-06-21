@@ -1,13 +1,16 @@
 from .fit import parse_fit
 from .gpx import parse_gpx
 from .tcx import parse_tcx
+from .types import ParsedActivity
+
+__all__ = ["ParsedActivity", "UnsupportedFileType", "parse_file"]
 
 
 class UnsupportedFileType(Exception):
     pass
 
 
-def parse_file(path, filename):
+def parse_file(path: str, filename: str) -> ParsedActivity:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext == "fit":
         return parse_fit(path)

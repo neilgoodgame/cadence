@@ -1,4 +1,5 @@
 from django.urls import path
+
 from uploads.views import ActivityBatchUploadView
 
 from .views import (

@@ -24,7 +24,7 @@ class Bike(PrefixedIDModel):
     hours = models.FloatField(default=0)
     rides = models.IntegerField(default=0)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 
@@ -37,7 +37,7 @@ class Component(PrefixedIDModel):
     limit_km = models.IntegerField()
     model = models.CharField(max_length=150, blank=True, default="")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.bike_id})"
 
 
@@ -57,7 +57,7 @@ class ServiceRecord(PrefixedIDModel):
     note = models.CharField(max_length=500, blank=True, default="")
     date = models.DateField()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.component_id} {self.action} {self.date}"
 
 
@@ -69,7 +69,7 @@ class ShoeModel(PrefixedIDModel):
     manufacturer = models.CharField(max_length=150)
     model = models.CharField(max_length=150)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.manufacturer} {self.model}"
 
 
@@ -81,7 +81,7 @@ class ShoeModelVersion(PrefixedIDModel):
     shoe_model = models.ForeignKey(ShoeModel, on_delete=models.CASCADE, related_name="versions")
     version = models.CharField(max_length=50)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.shoe_model} {self.version}"
 
 
@@ -89,12 +89,10 @@ class Shoe(PrefixedIDModel):
     id_prefix = "shoe"
 
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="shoes")
-    shoe_model_version = models.ForeignKey(
-        ShoeModelVersion, on_delete=models.PROTECT, related_name="shoes"
-    )
+    shoe_model_version = models.ForeignKey(ShoeModelVersion, on_delete=models.PROTECT, related_name="shoes")
     colourway = models.CharField(max_length=150, blank=True, default="")
     name = models.CharField(max_length=200)
-    image = models.URLField(null=True, blank=True)
+    image = models.URLField(null=True, blank=True)  # noqa: DJ001 -- API contract treats absent image as null, not ""
     role = models.CharField(max_length=150, blank=True, default="")
     km = models.IntegerField(default=0)
     limit_km = models.IntegerField(default=0)
@@ -107,5 +105,5 @@ class Shoe(PrefixedIDModel):
             models.UniqueConstraint(fields=["athlete", "name"], name="unique_athlete_shoe_name"),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name

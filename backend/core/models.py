@@ -1,4 +1,5 @@
 import secrets
+from typing import Any, ClassVar
 
 from django.db import models
 
@@ -17,14 +18,14 @@ class PrefixedIDModel(models.Model):
     DurationCurve, WorkoutStep, Zone) use a plain BigAutoField instead.
     """
 
-    id_prefix = None
+    id_prefix: ClassVar[str] = ""
 
     id = models.CharField(primary_key=True, max_length=40, editable=False)
 
     class Meta:
         abstract = True
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
         if not self.id:
             self.id = generate_id(self.id_prefix)
         super().save(*args, **kwargs)

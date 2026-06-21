@@ -1,3 +1,5 @@
+from typing import Any
+
 from rest_framework import serializers
 
 from .models import Workout, WorkoutStep
@@ -14,16 +16,12 @@ class WorkoutStepSerializer(serializers.ModelSerializer):
             "repeat": {"required": False, "default": 1},
         }
 
-    def validate(self, attrs):
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         end_type = attrs.get("end_type")
         if end_type == "time" and not attrs.get("duration"):
-            raise serializers.ValidationError(
-                {"duration": "duration is required when end_type is 'time'."}
-            )
+            raise serializers.ValidationError({"duration": "duration is required when end_type is 'time'."})
         if end_type == "distance" and not attrs.get("distance"):
-            raise serializers.ValidationError(
-                {"distance": "distance is required when end_type is 'distance'."}
-            )
+            raise serializers.ValidationError({"distance": "distance is required when end_type is 'distance'."})
         return attrs
 
 

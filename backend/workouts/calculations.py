@@ -1,4 +1,7 @@
-def compute_duration_and_tss(steps):
+from typing import Any
+
+
+def compute_duration_and_tss(steps: list[dict[str, Any]]) -> tuple[int, int]:
     """Recompute a workout's total duration (seconds) and TSS from its step list.
 
     `steps` is a list of dicts with keys `end_type`/`duration`/`target_pct`/`repeat`.

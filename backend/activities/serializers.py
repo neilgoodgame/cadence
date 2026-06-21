@@ -1,3 +1,5 @@
+from typing import Any
+
 from rest_framework import serializers
 
 from .models import Activity, BestEffort, DurationCurve, Lap, Tag
@@ -30,13 +32,15 @@ class ActivitySerializer(serializers.ModelSerializer):
             "start_weight_kg",
             "end_weight_kg",
             "fluids_ml",
+            "avg_air_temp",
+            "avg_humidity",
             "tags",
             "workout_id",
             "bike_id",
             "shoe_id",
         ]
 
-    def get_tags(self, obj):
+    def get_tags(self, obj: Activity) -> list[str]:
         return list(obj.tags.order_by("name").values_list("name", flat=True))
 
 
@@ -47,6 +51,8 @@ class ActivityUpdateSerializer(serializers.Serializer):
     start_weight_kg = serializers.FloatField(required=False, allow_null=True)
     end_weight_kg = serializers.FloatField(required=False, allow_null=True)
     fluids_ml = serializers.IntegerField(required=False, allow_null=True)
+    avg_air_temp = serializers.FloatField(required=False, allow_null=True)
+    avg_humidity = serializers.IntegerField(required=False, allow_null=True)
 
 
 class LapSerializer(serializers.ModelSerializer):
@@ -80,7 +86,7 @@ class TagAttachSerializer(serializers.Serializer):
     tag_id = serializers.CharField(required=False)
     name = serializers.CharField(required=False)
 
-    def validate(self, attrs):
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         if not attrs.get("tag_id") and not attrs.get("name"):
             raise serializers.ValidationError("Provide either tag_id or name.")
         return attrs

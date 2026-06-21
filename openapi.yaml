@@ -526,7 +526,12 @@ paths:
       tags: [Activities]
       summary: Update an activity
       operationId: updateActivity
-      description: Edit mutable fields — rename, change sport, or link/unlink a designed workout for matching.
+      description: >
+        Edit mutable fields — rename, change sport, or link/unlink a designed
+        workout for matching. For activities without sensor-derived environmental
+        data (rides, or runs without a Stryd) avg_air_temp and avg_humidity may be
+        set manually here; for runs that carry Stryd stream data they are computed
+        and read-only.
       requestBody:
         required: true
         content:
@@ -543,6 +548,18 @@ paths:
                 start_weight_kg: { type: [number, "null"] }
                 end_weight_kg: { type: [number, "null"] }
                 fluids_ml: { type: [integer, "null"] }
+                avg_air_temp:
+                  type: [number, "null"]
+                  description: >
+                    Manually set the average air temperature (°C). Ignored (read-only)
+                    for runs that already have computed values from Stryd stream data.
+                  example: 24.0
+                avg_humidity:
+                  type: [integer, "null"]
+                  description: >
+                    Manually set the average relative humidity (% RH). Ignored for runs
+                    with computed Stryd values.
+                  example: 60
       responses:
         "200":
           description: The updated activity.
@@ -2023,6 +2040,18 @@ components:
           type: [integer, "null"]
           description: Fluids consumed during the session.
           example: 750
+        avg_air_temp:
+          type: [number, "null"]
+          description: >
+            Mean air temperature (°C) computed from the record stream. Run only;
+            null unless a Stryd footpod supplied environmental data.
+          example: 21.5
+        avg_humidity:
+          type: [integer, "null"]
+          description: >
+            Mean relative humidity (% RH) computed from the record stream. Run only;
+            null unless Stryd environmental data is present.
+          example: 57
         tags:
           type: array
           items: { type: string }
@@ -2121,10 +2150,18 @@ components:
           additionalProperties:
             type: array
             items: { type: number }
+          description: >
+            Channels present depend on the device. Runs recorded with a Stryd
+            footpod can include air_temp (°C) and humidity (% RH); a CORE sensor
+            adds core_temp and skin_temp (°C) plus heat_strain.
           example:
             time: [0, 1, 2, 3]
             power: [210, 214, 219, 222]
             heartrate: [128, 129, 131, 132]
+            core_temp: [37.6, 37.6, 37.7, 37.7]
+            skin_temp: [33.1, 33.2, 33.2, 33.3]
+            air_temp: [21.4, 21.4, 21.5, 21.6]
+            humidity: [58, 58, 57, 57]
 
     DurationCurve:
       type: object

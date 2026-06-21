@@ -1,4 +1,5 @@
 import datetime
+from typing import TYPE_CHECKING, Any, cast
 
 from django.conf import settings
 from django.utils import timezone
@@ -6,12 +7,15 @@ from oauth2_provider.models import get_access_token_model, get_application_model
 
 from authn.token_generators import generate_access_token, generate_refresh_token
 
+if TYPE_CHECKING:
+    from accounts.models import User
+
 ALL_SCOPES = "activities:read activities:write workouts:write calendar:write coach gear:write"
 
 FIRST_PARTY_APPLICATION_NAME = "cadence-first-party"
 
 
-def _first_party_application():
+def _first_party_application() -> Any:
     Application = get_application_model()
     application, _ = Application.objects.get_or_create(
         name=FIRST_PARTY_APPLICATION_NAME,
@@ -23,7 +27,7 @@ def _first_party_application():
     return application
 
 
-def issue_token_pair(user, scope=ALL_SCOPES):
+def issue_token_pair(user: "User", scope: str = ALL_SCOPES) -> tuple[Any, Any]:
     """Issues an OAuth2 access/refresh token pair directly against a shared
     first-party Application, bypassing the redirect-based authorization-code
     dance — there's no frontend yet to perform it. Used at registration time.
@@ -32,7 +36,8 @@ def issue_token_pair(user, scope=ALL_SCOPES):
     RefreshToken = get_refresh_token_model()
     application = _first_party_application()
 
-    expires = timezone.now() + datetime.timedelta(seconds=settings.OAUTH2_PROVIDER["ACCESS_TOKEN_EXPIRE_SECONDS"])
+    expires_seconds = cast(int, settings.OAUTH2_PROVIDER["ACCESS_TOKEN_EXPIRE_SECONDS"])
+    expires = timezone.now() + datetime.timedelta(seconds=expires_seconds)
     access_token = AccessToken.objects.create(
         user=user,
         application=application,

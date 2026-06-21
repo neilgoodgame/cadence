@@ -78,9 +78,7 @@ class BikeViewTests(TestCase):
 
     def test_patch_bike(self):
         bike = Bike.objects.create(athlete=self.athlete, name="Tarmac", distance_km=100)
-        response = _bearer_client(self.athlete).patch(
-            f"/v1/gear/bikes/{bike.id}", {"distance_km": 500}, format="json"
-        )
+        response = _bearer_client(self.athlete).patch(f"/v1/gear/bikes/{bike.id}", {"distance_km": 500}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["distance_km"], 500)
         bike.refresh_from_db()
@@ -103,7 +101,10 @@ class BikeViewTests(TestCase):
 
     def test_viewer_cannot_write_bike(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         bike = Bike.objects.create(athlete=self.athlete, name="Tarmac")
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
@@ -116,7 +117,10 @@ class BikeViewTests(TestCase):
 
     def test_viewer_can_read_bike(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         bike = Bike.objects.create(athlete=self.athlete, name="Tarmac")
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
@@ -125,7 +129,10 @@ class BikeViewTests(TestCase):
 
     def test_coach_can_write_bike(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         bike = Bike.objects.create(athlete=self.athlete, name="Tarmac")
         client = _delegated_client(self.outsider, self.athlete, scopes=["coach"])
@@ -136,7 +143,10 @@ class BikeViewTests(TestCase):
 
     def test_coach_can_create_bike_for_athlete(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         client = _delegated_client(self.outsider, self.athlete, scopes=["coach"])
         response = client.post("/v1/gear/bikes", {"name": "Coach added bike"}, format="json")
@@ -178,9 +188,7 @@ class ComponentViewTests(TestCase):
 
     def test_patch_component(self):
         component = Component.objects.create(bike=self.bike, name="Chain", limit_km=4000, km=100)
-        response = _bearer_client(self.athlete).patch(
-            f"/v1/gear/components/{component.id}", {"km": 200}, format="json"
-        )
+        response = _bearer_client(self.athlete).patch(f"/v1/gear/components/{component.id}", {"km": 200}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["km"], 200)
 
@@ -249,7 +257,9 @@ class ComponentViewTests(TestCase):
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
         self.assertEqual(client.patch(f"/v1/gear/components/{component.id}", {"km": 1}, format="json").status_code, 403)
         self.assertEqual(
-            client.post(f"/v1/gear/components/{component.id}/service", {"action": "cleaned"}, format="json").status_code,
+            client.post(
+                f"/v1/gear/components/{component.id}/service", {"action": "cleaned"}, format="json"
+            ).status_code,
             403,
         )
 
@@ -334,9 +344,7 @@ class ShoeViewTests(TestCase):
         shoe = Shoe.objects.create(
             athlete=self.athlete, shoe_model_version=self.version, colourway="Black", name="Trainers"
         )
-        response = _bearer_client(self.athlete).patch(
-            f"/v1/gear/shoes/{shoe.id}", {"retired": True}, format="json"
-        )
+        response = _bearer_client(self.athlete).patch(f"/v1/gear/shoes/{shoe.id}", {"retired": True}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("retired", response.json())
 
@@ -399,7 +407,10 @@ class ShoeViewTests(TestCase):
 
     def test_viewer_cannot_write_shoe(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         shoe = Shoe.objects.create(
             athlete=self.athlete, shoe_model_version=self.version, colourway="Black", name="Trainers"
@@ -410,7 +421,10 @@ class ShoeViewTests(TestCase):
 
     def test_coach_can_write_shoe(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.outsider, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.outsider,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         shoe = Shoe.objects.create(
             athlete=self.athlete, shoe_model_version=self.version, colourway="Black", name="Trainers"

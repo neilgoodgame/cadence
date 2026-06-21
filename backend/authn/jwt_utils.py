@@ -1,22 +1,25 @@
 import base64
 import time
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, cast
 
 import jwt
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from django.conf import settings
 
 
-def _load_private_key():
+def _load_private_key() -> bytes:
     return Path(settings.JWT_PRIVATE_KEY_PATH).read_bytes()
 
 
-def _load_public_key():
+def _load_public_key() -> bytes:
     return Path(settings.JWT_PUBLIC_KEY_PATH).read_bytes()
 
 
-def mint_jwt(sub, athlete_id, scopes, expires_in):
+def mint_jwt(sub: str, athlete_id: str, scopes: Sequence[str], expires_in: int) -> tuple[str, dict[str, Any]]:
     now = int(time.time())
     claims = {
         "iss": settings.JWT_ISSUER,
@@ -37,24 +40,29 @@ def mint_jwt(sub, athlete_id, scopes, expires_in):
     return token, claims
 
 
-def decode_jwt(token):
-    return jwt.decode(
-        token,
-        _load_public_key(),
-        algorithms=["RS256"],
-        audience=settings.JWT_AUDIENCE,
-        issuer=settings.JWT_ISSUER,
+def decode_jwt(token: str) -> dict[str, Any]:
+    return cast(
+        dict[str, Any],
+        jwt.decode(
+            token,
+            _load_public_key(),
+            algorithms=["RS256"],
+            audience=settings.JWT_AUDIENCE,
+            issuer=settings.JWT_ISSUER,
+        ),
     )
 
 
-def _b64url_uint(value):
+def _b64url_uint(value: int) -> str:
     length = (value.bit_length() + 7) // 8
     raw = value.to_bytes(length, "big")
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
-def get_jwks():
+def get_jwks() -> dict[str, Any]:
     public_key = serialization.load_pem_public_key(_load_public_key())
+    if not isinstance(public_key, RSAPublicKey):
+        raise TypeError("JWT_PUBLIC_KEY_PATH must contain an RSA public key (this deployment is RS256-only)")
     numbers = public_key.public_numbers()
     return {
         "keys": [

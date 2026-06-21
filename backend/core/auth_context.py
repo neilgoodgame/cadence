@@ -1,4 +1,12 @@
-def get_effective_athlete_id(request):
+from typing import TYPE_CHECKING, cast
+
+from rest_framework.request import Request
+
+if TYPE_CHECKING:
+    from accounts.models import User
+
+
+def get_effective_athlete_id(request: Request) -> tuple[str, str]:
     """Returns (sub, athlete_id) for the authenticated request.
 
     JWTs can name a different athlete_id than the signed-in principal (delegation).
@@ -9,10 +17,11 @@ def get_effective_athlete_id(request):
         sub = claims["sub"]
         athlete_id = claims.get("athlete_id") or sub
         return sub, athlete_id
-    return request.user.id, request.user.id
+    # Permission classes (IsAuthenticated) guarantee request.user isn't AnonymousUser here.
+    return cast(str, request.user.id), cast(str, request.user.id)
 
 
-def get_request_scopes(request):
+def get_request_scopes(request: Request) -> set[str]:
     auth = request.auth
     if isinstance(auth, dict):
         return set(auth.get("scope", "").split())
@@ -23,3 +32,14 @@ def get_request_scopes(request):
     if scope is not None:
         return set(scope.split())
     return set()
+
+
+def authenticated_user(request: Request) -> "User":
+    """request.user narrowed to the concrete User model.
+
+    Permission classes (IsAuthenticated, the project-wide default) guarantee
+    request.user isn't AnonymousUser by the time a view body runs; the stubs
+    can't see that, so call sites that pass request.user into a queryset
+    filter or model field use this instead of a bare cast at every call site.
+    """
+    return cast("User", request.user)

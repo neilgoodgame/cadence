@@ -1,3 +1,5 @@
+import datetime
+
 from django.test import Client, TestCase
 from django.utils import timezone
 from oauth2_provider.models import get_application_model, get_grant_model
@@ -58,14 +60,15 @@ class CreateJwtViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_outsider_cannot_mint_jwt_for_athlete_without_relationship(self):
-        response = _bearer_client(self.outsider).post(
-            "/v1/auth/jwt", {"athlete_id": self.athlete.id}, format="json"
-        )
+        response = _bearer_client(self.outsider).post("/v1/auth/jwt", {"athlete_id": self.athlete.id}, format="json")
         self.assertEqual(response.status_code, 403)
 
     def test_active_viewer_can_mint_read_only_jwt(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.coach, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         response = _bearer_client(self.coach).post(
             "/v1/auth/jwt", {"athlete_id": self.athlete.id, "scopes": ["activities:read"]}, format="json"
@@ -74,7 +77,10 @@ class CreateJwtViewTests(TestCase):
 
     def test_active_viewer_cannot_mint_write_jwt(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.coach, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         response = _bearer_client(self.coach).post(
             "/v1/auth/jwt", {"athlete_id": self.athlete.id, "scopes": ["calendar:write"]}, format="json"
@@ -83,7 +89,10 @@ class CreateJwtViewTests(TestCase):
 
     def test_active_coach_can_mint_write_jwt(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         response = _bearer_client(self.coach).post(
             "/v1/auth/jwt", {"athlete_id": self.athlete.id, "scopes": ["calendar:write"]}, format="json"
@@ -94,11 +103,12 @@ class CreateJwtViewTests(TestCase):
 
     def test_pending_relationship_does_not_grant_access(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_PENDING
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_PENDING,
         )
-        response = _bearer_client(self.coach).post(
-            "/v1/auth/jwt", {"athlete_id": self.athlete.id}, format="json"
-        )
+        response = _bearer_client(self.coach).post("/v1/auth/jwt", {"athlete_id": self.athlete.id}, format="json")
         self.assertEqual(response.status_code, 403)
 
 
@@ -119,21 +129,30 @@ class DelegationPermissionMatrixTests(TestCase):
 
     def test_active_viewer_may_read_not_write(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.other, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.other,
+            role=UserRelationship.ROLE_VIEWER,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         self.assertTrue(user_may_read(self.other.id, self.athlete.id))
         self.assertFalse(user_may_write(self.other.id, self.athlete.id))
 
     def test_active_coach_may_read_and_write(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.other, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+            owner=self.athlete,
+            grantee=self.other,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
         )
         self.assertTrue(user_may_read(self.other.id, self.athlete.id))
         self.assertTrue(user_may_write(self.other.id, self.athlete.id))
 
     def test_pending_coach_may_neither_read_nor_write(self):
         UserRelationship.objects.create(
-            owner=self.athlete, grantee=self.other, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_PENDING
+            owner=self.athlete,
+            grantee=self.other,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_PENDING,
         )
         self.assertFalse(user_may_read(self.other.id, self.athlete.id))
         self.assertFalse(user_may_write(self.other.id, self.athlete.id))
@@ -162,7 +181,7 @@ class OAuthTokenEndpointTests(TestCase):
             user=self.user,
             application=self.application,
             code="test-authorization-code",
-            expires=timezone.now() + timezone.timedelta(minutes=5),
+            expires=timezone.now() + datetime.timedelta(minutes=5),
             redirect_uri="https://example.cc/callback",
             scope=scope,
         )
@@ -187,16 +206,20 @@ class OAuthTokenEndpointTests(TestCase):
 
     def test_refresh_token_grant_rotates_and_reissues_prefixed_tokens(self):
         self._create_grant()
-        issued = Client().post(
-            "/oauth/token",
-            {
-                "grant_type": "authorization_code",
-                "code": "test-authorization-code",
-                "redirect_uri": "https://example.cc/callback",
-                "client_id": "test-client-id",
-                "client_secret": "test-client-secret",
-            },
-        ).json()
+        issued = (
+            Client()
+            .post(
+                "/oauth/token",
+                {
+                    "grant_type": "authorization_code",
+                    "code": "test-authorization-code",
+                    "redirect_uri": "https://example.cc/callback",
+                    "client_id": "test-client-id",
+                    "client_secret": "test-client-secret",
+                },
+            )
+            .json()
+        )
 
         response = Client().post(
             "/oauth/token",

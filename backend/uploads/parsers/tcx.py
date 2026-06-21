@@ -1,7 +1,9 @@
 from datetime import datetime
 
 from lxml import etree
+from lxml.etree import _Element
 
+from .types import Lap, ParsedActivity, Sample
 from .utils import ensure_utc
 
 SPORT_MAP = {
@@ -11,24 +13,24 @@ SPORT_MAP = {
 }
 
 
-def _find(node, name):
+def _find(node: _Element, name: str) -> _Element | None:
     return node.find(f".//{{*}}{name}")
 
 
-def _text(node, name):
+def _text(node: _Element | None, name: str) -> str | None:
     if node is None:
         return None
     found = _find(node, name)
     return found.text if found is not None else None
 
 
-def _parse_time(value):
+def _parse_time(value: str | None) -> datetime | None:
     if value is None:
         return None
     return ensure_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
 
 
-def parse_tcx(path):
+def parse_tcx(path: str) -> ParsedActivity:
     tree = etree.parse(path)
     root = tree.getroot()
 
@@ -39,8 +41,8 @@ def parse_tcx(path):
     sport = SPORT_MAP.get((activity_el.get("Sport") or "").lower(), "bike")
 
     lap_els = activity_el.findall("{*}Lap")
-    laps = []
-    samples = []
+    laps: list[Lap] = []
+    samples: list[Sample] = []
     start_time = None
 
     for index, lap_el in enumerate(lap_els, start=1):
@@ -58,8 +60,10 @@ def parse_tcx(path):
             if t_time is None or start_time is None:
                 continue
             position = _find(tp, "Position")
-            lat = float(_text(position, "LatitudeDegrees")) if _text(position, "LatitudeDegrees") else None
-            lng = float(_text(position, "LongitudeDegrees")) if _text(position, "LongitudeDegrees") else None
+            lat_raw = _text(position, "LatitudeDegrees")
+            lng_raw = _text(position, "LongitudeDegrees")
+            lat = float(lat_raw) if lat_raw else None
+            lng = float(lng_raw) if lng_raw else None
 
             altitude_raw = _text(tp, "AltitudeMeters")
             distance_m_raw = _text(tp, "DistanceMeters")

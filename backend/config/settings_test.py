@@ -1,4 +1,5 @@
 import tempfile
+from pathlib import Path
 
 from .settings import *  # noqa: F401,F403
 
@@ -7,4 +8,4 @@ CELERY_TASK_EAGER_PROPAGATES = True
 
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
-MEDIA_ROOT = tempfile.mkdtemp(prefix="cadence-test-media-")
+MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="cadence-test-media-"))

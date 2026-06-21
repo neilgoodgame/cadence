@@ -26,7 +26,7 @@ class Workout(PrefixedIDModel):
     duration = models.IntegerField(default=0)
     tss = models.IntegerField(default=0)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 
@@ -60,5 +60,5 @@ class WorkoutStep(models.Model):
     class Meta:
         ordering = ["order"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.workout_id} step {self.order} ({self.kind})"
