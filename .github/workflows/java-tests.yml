@@ -2,13 +2,7 @@ name: Java Tests
 
 on:
   push:
-    paths:
-      - "backend_java/**"
-      - ".github/workflows/java-tests.yml"
   pull_request:
-    paths:
-      - "backend_java/**"
-      - ".github/workflows/java-tests.yml"
 
 jobs:
   unit:
@@ -16,7 +10,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # See lint.yml's "Check for backend changes" step for why this is a step-level
+      # filter rather than a `paths:` trigger filter: unit and integration are required
+      # status checks, and they need to report on every PR -- even ones that touch
+      # neither backend/ nor backend_java/ (e.g. this CI config itself) -- or GitHub
+      # leaves them permanently "Expected -- waiting for status to be reported".
+      - name: Check for backend_java changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend_java:
+              - "backend_java/**"
+              - ".github/workflows/java-tests.yml"
+
       - name: Set up Java
+        if: steps.filter.outputs.backend_java == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -24,6 +33,7 @@ jobs:
           cache: gradle
 
       - name: Run unit tests
+        if: steps.filter.outputs.backend_java == 'true'
         working-directory: backend_java
         run: ./gradlew unitTest --no-daemon
 
@@ -32,7 +42,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check for backend_java changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend_java:
+              - "backend_java/**"
+              - ".github/workflows/java-tests.yml"
+
       - name: Set up Java
+        if: steps.filter.outputs.backend_java == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -42,6 +62,7 @@ jobs:
       # Mirrors entrypoint.sh's one-time keypair generation -- IntegrationTest boots the
       # full Spring context, and JwtKeys reads these files eagerly at startup.
       - name: Generate JWT signing keys
+        if: steps.filter.outputs.backend_java == 'true'
         working-directory: backend_java
         run: |
           mkdir -p keys
@@ -54,5 +75,6 @@ jobs:
       # starts its own Postgres/TimescaleDB via Testcontainers against the runner's
       # already-running Docker daemon, the same way it does locally.
       - name: Run integration tests
+        if: steps.filter.outputs.backend_java == 'true'
         working-directory: backend_java
         run: ./gradlew integrationTest --no-daemon

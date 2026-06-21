@@ -1,0 +1,52 @@
+name: Frontend
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # See lint.yml's "Check for backend changes" step for why this is a step-level
+      # filter rather than a `paths:` trigger filter: frontend is a required status
+      # check, and it needs to report on every PR -- even ones that touch neither
+      # backend/ nor backend_java/ -- or GitHub leaves it permanently
+      # "Expected -- waiting for status to be reported".
+      - name: Check for frontend changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - "frontend/**"
+              - ".github/workflows/frontend.yml"
+
+      - uses: actions/setup-node@v4
+        if: steps.filter.outputs.frontend == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: steps.filter.outputs.frontend == 'true'
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type check
+        if: steps.filter.outputs.frontend == 'true'
+        working-directory: frontend
+        run: npx tsc -b
+
+      - name: Lint
+        if: steps.filter.outputs.frontend == 'true'
+        working-directory: frontend
+        run: npx eslint .
+
+      - name: Build
+        if: steps.filter.outputs.frontend == 'true'
+        working-directory: frontend
+        run: npm run build
