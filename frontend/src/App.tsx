@@ -6,6 +6,7 @@ import { AppShell } from "./layout/AppShell";
 import { ActivitiesScreen } from "./screens/ActivitiesScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { LoginScreen } from "./screens/LoginScreen";
+import { PreferencesScreen } from "./screens/PreferencesScreen";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +21,7 @@ export function App() {
               <Route element={<AppShell />}>
                 <Route path="/" element={<DashboardScreen />} />
                 <Route path="/activities" element={<ActivitiesScreen />} />
+                <Route path="/preferences" element={<PreferencesScreen />} />
               </Route>
             </Route>
           </Routes>

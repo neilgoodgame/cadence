@@ -12,6 +12,8 @@ interface AuthContextValue {
   register: (name: string, email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Updates the cached profile after an edit (e.g. PATCH /v1/athletes/{id}) without a full reload. */
+  setUser: (athlete: Athlete) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -82,8 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [applyAuthResponse]);
 
   const value = useMemo(
-    () => ({ user, isLoading, register, login, logout }),
-    [user, isLoading, register, login, logout],
+    () => ({ user, isLoading, register, login, logout, setUser }),
+    [user, isLoading, register, login, logout, setUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
