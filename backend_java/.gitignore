@@ -1,0 +1,9 @@
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+keys/
+media/
+.idea/
+*.iml
+out/
+HELP.md
