@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import overload
 
 from dotenv import load_dotenv
 
@@ -7,6 +8,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR.parent / ".env")
 
 
+@overload
+def env(key: str, default: str) -> str: ...
+@overload
+def env(key: str, default: None = None) -> str | None: ...
 def env(key: str, default: str | None = None) -> str | None:
     return os.environ.get(key, default)
 
