@@ -152,8 +152,10 @@ export interface Lap {
   index: number;
   duration: number;
   distance_km: number;
-  avg_hr: number;
-  avg_power: number;
+  // openapi.yaml declares both as plain integers, but a real lap with no HR strap or no
+  // power meter returns null for the corresponding field - confirmed against live data.
+  avg_hr: number | null;
+  avg_power: number | null;
 }
 
 export interface StreamsResponse {
