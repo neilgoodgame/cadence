@@ -17,6 +17,14 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
 
+  servlet:
+    multipart:
+      # Must be >= cadence.uploads.max-upload-bytes below - otherwise Tomcat's multipart
+      # layer rejects large-but-legitimate files before they ever reach UploadIngestService's
+      # own size check, with a generic framework error instead of our typed 413 response.
+      max-file-size: 200MB
+      max-request-size: 200MB
+
   jpa:
     hibernate:
       ddl-auto: validate

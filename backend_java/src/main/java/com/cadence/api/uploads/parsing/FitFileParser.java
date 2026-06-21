@@ -50,11 +50,9 @@ public final class FitFileParser {
 			int t = (int) ((r.getTimestamp().getDate().getTime() - startMillis) / 1000);
 			Double lat = r.getPositionLat() != null ? semicirclesToDegrees(r.getPositionLat()) : null;
 			Double lng = r.getPositionLong() != null ? semicirclesToDegrees(r.getPositionLong()) : null;
-			Double altitude = r.getEnhancedAltitude() != null ? r.getEnhancedAltitude().doubleValue()
-					: (r.getAltitude() != null ? r.getAltitude().doubleValue() : null);
+			Double altitude = firstNonNull(r.getEnhancedAltitude(), r.getAltitude());
 			Double distanceKm = r.getDistance() != null ? r.getDistance() / 1000.0 : null;
-			Double speed = r.getEnhancedSpeed() != null ? r.getEnhancedSpeed().doubleValue()
-					: (r.getSpeed() != null ? r.getSpeed().doubleValue() : null);
+			Double speed = firstNonNull(r.getEnhancedSpeed(), r.getSpeed());
 			Integer heartrate = r.getHeartRate() != null ? r.getHeartRate().intValue() : null;
 			Integer cadence = r.getCadence() != null ? r.getCadence().intValue() : null;
 			samples.add(new ParsedActivity.Sample(t, lat, lng, altitude, distanceKm, heartrate, cadence, r.getPower(), speed));
@@ -77,6 +75,23 @@ public final class FitFileParser {
 
 	private static double semicirclesToDegrees(int semicircles) {
 		return semicircles * (180.0 / Math.pow(2, 31));
+	}
+
+	/**
+	 * Deliberately not a nested ternary ({@code a != null ? a.doubleValue() : (b != null ? ... : null)}):
+	 * chaining ternaries that mix a primitive-typed true-branch with a boxed-typed false-branch
+	 * forces the compiler to unbox the false branch to unify the expression's type, throwing an
+	 * NPE exactly when both inputs are null - which a treadmill run's missing altitude/speed
+	 * fields hit immediately.
+	 */
+	private static Double firstNonNull(Float preferred, Float fallback) {
+		if (preferred != null) {
+			return preferred.doubleValue();
+		}
+		if (fallback != null) {
+			return fallback.doubleValue();
+		}
+		return null;
 	}
 
 	private static Sport mapSport(com.garmin.fit.Sport fitSport) {
