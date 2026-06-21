@@ -64,6 +64,19 @@ public class ZoneService {
 		};
 	}
 
+	/**
+	 * Given the athlete profile fields that just changed, returns the zone types to report as
+	 * "recomputed" - restricted to ones that already have a {@code ZoneSet} row for this
+	 * athlete. A zone type with no row yet has nothing to recompute: it gets created fresh
+	 * (with default boundaries) on first access regardless, already reading the new threshold
+	 * live via {@link #referenceFor}, so reporting it here would overstate what changed.
+	 */
+	public List<ZoneType> recomputedZoneTypes(User athlete, Set<String> changedFields) {
+		return zoneTypesAffectedBy(changedFields).stream()
+				.filter(type -> zoneSetRepository.existsByAthleteIdAndType(athlete.getId(), type))
+				.toList();
+	}
+
 	/** Given the athlete profile fields that changed, returns the zone types whose reference threshold depends on one of them. */
 	public List<ZoneType> zoneTypesAffectedBy(Set<String> changedFields) {
 		List<ZoneType> affected = new ArrayList<>();
