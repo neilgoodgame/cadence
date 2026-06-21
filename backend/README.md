@@ -124,8 +124,19 @@ uv run python manage.py runserver
 
 ## Running the tests
 
-Tests need a real Postgres/TimescaleDB connection (no SQLite fallback), so bring up
-just the `db` service first:
+Every test is auto-tagged `unit` or `integration` (see `conftest.py`): a
+`django.test.TestCase`/`TransactionTestCase` subclass (or anything using the `django_db`
+fixture) needs a real Postgres connection and is `integration`; a `SimpleTestCase`
+subclass or plain function with no DB access is `unit`.
+
+Unit tests need no external services at all:
+
+```bash
+uv run pytest -m unit -q
+```
+
+Integration tests need a real Postgres/TimescaleDB connection (no SQLite fallback), so
+bring up the `db` service first:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
@@ -134,8 +145,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
 Then, from `backend/`:
 
 ```bash
-uv run pytest -q
+uv run pytest -m integration -q
 ```
+
+Or run everything (`uv run pytest -q`) once `db` is up.
 
 Test settings (`config/settings_test.py`) force `CELERY_TASK_ALWAYS_EAGER = True`, so
 upload/webhook flows run synchronously in-process — no Redis or worker needed for tests.

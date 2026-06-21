@@ -11,7 +11,27 @@ on:
       - ".github/workflows/tests.yml"
 
 jobs:
-  pytest:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --locked
+
+      - name: Run unit tests
+        working-directory: backend
+        run: uv run pytest -m unit -q
+
+  integration:
     runs-on: ubuntu-latest
 
     services:
@@ -25,16 +45,6 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U cadence"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -62,7 +72,7 @@ jobs:
           openssl genrsa -out keys/jwt_private.pem 2048
           openssl rsa -in keys/jwt_private.pem -pubout -out keys/jwt_public.pem
 
-      - name: Run tests
+      - name: Run integration tests
         working-directory: backend
         env:
           POSTGRES_HOST: localhost
@@ -70,5 +80,4 @@ jobs:
           POSTGRES_DB: cadence
           POSTGRES_USER: cadence
           POSTGRES_PASSWORD: cadence
-          REDIS_URL: redis://localhost:6379/0
-        run: uv run pytest -q
+        run: uv run pytest -m integration -q
