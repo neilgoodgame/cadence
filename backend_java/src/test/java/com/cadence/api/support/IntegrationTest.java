@@ -4,8 +4,6 @@ import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -21,14 +19,25 @@ import org.testcontainers.utility.DockerImageName;
  * database has no way to get one without going through this class, so it can't end up
  * un-tagged by mistake. See {@code build.gradle.kts}'s {@code unitTest}/{@code integrationTest}
  * tasks for how the tag is used to split test runs.
+ *
+ * <p>Deliberately not {@code @Testcontainers}/{@code @Container}: that pair starts and stops a
+ * container per test class, and since this field is {@code static} on a shared base class, two
+ * sibling test classes each managing "their" lifecycle on the *same* static container instance
+ * race each other - whichever class's tests finish first stops the container out from under any
+ * class that runs after it (surfaced as {@code HikariPool - Connection is not available}). This
+ * is Testcontainers' own documented "singleton container" pattern instead: start it once, never
+ * stop it explicitly, and let the Ryuk reaper container clean it up when the whole JVM/test run
+ * ends.
  */
 @Tag("integration")
-@Testcontainers
 @SpringBootTest
 public abstract class IntegrationTest {
 
-	@Container
 	@ServiceConnection
 	static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
 			DockerImageName.parse("timescale/timescaledb:latest-pg16").asCompatibleSubstituteFor("postgres"));
+
+	static {
+		POSTGRES.start();
+	}
 }

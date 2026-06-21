@@ -43,7 +43,13 @@ public class StreamService {
 		for (String field : requestedFields) {
 			if ("latlng".equals(field)) {
 				if (activity.isHasGps()) {
-					fields.put("latlng", sampled.stream().map(r -> List.of(r.getLat(), r.getLng())).toList());
+					// Drop points with no position fix entirely (a brief GPS dropout mid-activity is
+					// common) rather than including a null pair - List.of() throws on a null element,
+					// and a [null, null] entry would be a worse contract surprise than a shorter array.
+					fields.put("latlng", sampled.stream()
+							.filter(r -> r.getLat() != null && r.getLng() != null)
+							.map(r -> List.of(r.getLat(), r.getLng()))
+							.toList());
 				}
 				continue;
 			}
