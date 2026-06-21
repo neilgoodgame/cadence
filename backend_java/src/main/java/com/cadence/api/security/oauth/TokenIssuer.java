@@ -15,14 +15,15 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.stereotype.Component;
 
 /**
- * Issues an initial OAuth2 token pair at account registration, bypassing the
- * authorization-code redirect dance entirely - there is no frontend yet to perform it.
- * Builds a fully-formed {@link OAuth2Authorization} directly (a supported usage of
- * {@link OAuth2AuthorizationService}) and reuses {@link CadenceTokenGenerator}'s token
- * format so registration and the real {@code /oauth/token} endpoint can never drift.
+ * Issues an OAuth2 token pair for a given user, bypassing the authorization-code redirect
+ * dance entirely - used by both registration (a brand-new user) and {@code /v1/auth/login}
+ * (an existing one re-authenticating with email+password), neither of which has a browser
+ * flow to perform. Builds a fully-formed {@link OAuth2Authorization} directly (a supported
+ * usage of {@link OAuth2AuthorizationService}) and reuses {@link CadenceTokenGenerator}'s
+ * token format so these paths and the real {@code /oauth/token} endpoint can never drift.
  */
 @Component
-public class RegistrationTokenIssuer {
+public class TokenIssuer {
 
 	public static final Set<String> ALL_SCOPES = Set.of(
 			"activities:read", "activities:write", "workouts:write", "calendar:write", "coach", "gear:write");
@@ -33,7 +34,7 @@ public class RegistrationTokenIssuer {
 	private final RegisteredClientRepository registeredClientRepository;
 	private final OAuth2AuthorizationService authorizationService;
 
-	public RegistrationTokenIssuer(RegisteredClientRepository registeredClientRepository,
+	public TokenIssuer(RegisteredClientRepository registeredClientRepository,
 			OAuth2AuthorizationService authorizationService) {
 		this.registeredClientRepository = registeredClientRepository;
 		this.authorizationService = authorizationService;
@@ -42,7 +43,7 @@ public class RegistrationTokenIssuer {
 	public record TokenPair(String accessToken, String refreshToken, int expiresIn, String scope) {
 	}
 
-	public TokenPair issueInitialTokenPair(User user) {
+	public TokenPair issueTokenPair(User user) {
 		RegisteredClient client = registeredClientRepository.findByClientId(FirstPartyClientConfig.CLIENT_ID);
 		Instant now = Instant.now();
 

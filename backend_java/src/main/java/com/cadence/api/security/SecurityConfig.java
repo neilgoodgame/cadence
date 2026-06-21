@@ -78,7 +78,7 @@ public class SecurityConfig {
 				.authenticationManager(formLoginAuthenticationManager)
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(
-								"/v1/auth/register", "/.well-known/jwks.json", "/healthz",
+								"/v1/auth/register", "/v1/auth/login", "/.well-known/jwks.json", "/healthz",
 								"/login", "/login/**",
 								"/schema/**", "/swagger-ui/**", "/swagger-ui.html")
 						.permitAll()
