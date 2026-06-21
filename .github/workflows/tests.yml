@@ -2,13 +2,7 @@ name: Tests
 
 on:
   push:
-    paths:
-      - "backend/**"
-      - ".github/workflows/tests.yml"
   pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/tests.yml"
 
 jobs:
   unit:
@@ -16,7 +10,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # See lint.yml's "Check for backend changes" step for why this is a
+      # step-level filter rather than a `paths:` trigger filter: unit and
+      # integration are required status checks, and they need to report on
+      # every PR -- even ones that touch neither backend/ nor backend_java/
+      # (e.g. this CI config itself) -- or GitHub leaves them permanently
+      # "Expected -- waiting for status to be reported".
+      - name: Check for backend changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - "backend/**"
+              - ".github/workflows/tests.yml"
+
       - name: Install uv
+        if: steps.filter.outputs.backend == 'true'
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -24,10 +34,12 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend
         run: uv sync --locked
 
       - name: Run unit tests
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend
         run: uv run pytest -m unit -q
 
@@ -52,7 +64,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check for backend changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - "backend/**"
+              - ".github/workflows/tests.yml"
+
       - name: Install uv
+        if: steps.filter.outputs.backend == 'true'
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -60,12 +82,14 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend
         run: uv sync --locked
 
       # Mirrors entrypoint.sh's one-time keypair generation -- tests that mint
       # or verify JWTs (JWKS, /v1/auth/jwt) need real key files on disk.
       - name: Generate JWT signing keys
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend
         run: |
           mkdir -p keys
@@ -73,6 +97,7 @@ jobs:
           openssl rsa -in keys/jwt_private.pem -pubout -out keys/jwt_public.pem
 
       - name: Run integration tests
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend
         env:
           POSTGRES_HOST: localhost
