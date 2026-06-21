@@ -2,13 +2,7 @@ name: Lint
 
 on:
   push:
-    paths:
-      - "backend/**"
-      - ".github/workflows/lint.yml"
   pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/lint.yml"
 
 jobs:
   ruff:
@@ -16,7 +10,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Required status checks must report on every PR, even ones that don't
+      # touch backend/ (e.g. the Java backend) -- so the workflow always
+      # triggers, and this step-level filter no-ops the rest of the job
+      # (still a "success", just nothing to do) instead of relying on a
+      # `paths:` trigger filter, which would leave the check permanently
+      # "Expected -- waiting to be reported" on unrelated PRs.
+      - name: Check for backend changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - "backend/**"
+              - ".github/workflows/lint.yml"
+
       - name: Install uv
+        if: steps.filter.outputs.backend == 'true'
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -24,13 +34,16 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend
         run: uv sync --locked
 
       - name: ruff check
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend
         run: uv run ruff check .
 
       - name: ruff format --check
+        if: steps.filter.outputs.backend == 'true'
         working-directory: backend
         run: uv run ruff format --check .
