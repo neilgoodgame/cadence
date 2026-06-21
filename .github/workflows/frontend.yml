@@ -46,6 +46,11 @@ jobs:
         working-directory: frontend
         run: npx eslint .
 
+      - name: Test
+        if: steps.filter.outputs.frontend == 'true'
+        working-directory: frontend
+        run: npm test
+
       - name: Build
         if: steps.filter.outputs.frontend == 'true'
         working-directory: frontend
