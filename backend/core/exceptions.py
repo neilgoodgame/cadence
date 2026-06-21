@@ -11,6 +11,18 @@ class ConflictError(APIException):
     default_code = "conflict"
 
 
+class InvalidCredentialsError(APIException):
+    """A plain 401, not rest_framework.exceptions.AuthenticationFailed: DRF downgrades
+    AuthenticationFailed to 403 on a view with no authentication_classes (no authenticator
+    to advertise a WWW-Authenticate header), which is exactly the case for a public
+    login endpoint - see rest_framework.views.exception_handler.
+    """
+
+    status_code = 401
+    default_detail = "Invalid email or password."
+    default_code = "unauthorized"
+
+
 class CQLParseError(Exception):
     """Raised by core.cql when a `q` filter string is malformed."""
 

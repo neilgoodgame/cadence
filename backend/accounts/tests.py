@@ -64,6 +64,40 @@ class RegisterViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class LoginViewTests(TestCase):
+    def test_login_with_correct_credentials_returns_token_pair(self):
+        User.objects.create_user(email="neil@example.cc", password="s3cret-pass", name="Neil")
+        response = APIClient().post(
+            "/v1/auth/login", {"email": "neil@example.cc", "password": "s3cret-pass"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["athlete"]["email"], "neil@example.cc")
+        self.assertTrue(body["tokens"]["access_token"].startswith("cad_at_"))
+        self.assertTrue(body["tokens"]["refresh_token"].startswith("cad_rt_"))
+
+    def test_login_with_wrong_password_is_unauthorized(self):
+        User.objects.create_user(email="neil@example.cc", password="s3cret-pass", name="Neil")
+        response = APIClient().post(
+            "/v1/auth/login", {"email": "neil@example.cc", "password": "wrong-pass"}, format="json"
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["error"]["type"], "authentication_error")
+
+    def test_login_with_unknown_email_is_unauthorized(self):
+        response = APIClient().post(
+            "/v1/auth/login", {"email": "nobody@example.cc", "password": "whatever-pass"}, format="json"
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_login_for_social_only_account_is_unauthorized(self):
+        User.objects.create_user(email="social@example.cc", name="Social Signup")
+        response = APIClient().post(
+            "/v1/auth/login", {"email": "social@example.cc", "password": "anything-at-all"}, format="json"
+        )
+        self.assertEqual(response.status_code, 401)
+
+
 class MeViewTests(TestCase):
     def test_requires_authentication(self):
         response = APIClient().get("/v1/me")

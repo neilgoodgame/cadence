@@ -40,6 +40,11 @@ class RegisterSerializer(serializers.Serializer):
         return attrs
 
 
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+
 class CoachedAthleteSerializer(serializers.Serializer):
     relationship_id = serializers.CharField()
     user_id = serializers.CharField()

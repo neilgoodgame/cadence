@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from authn.oauth_utils import issue_token_pair
 from core.auth_context import authenticated_user, get_request_scopes
 from core.derived import compute_compliance, compute_fitness_series, compute_flags, compute_tsb
-from core.exceptions import ConflictError
+from core.exceptions import ConflictError, InvalidCredentialsError
 
 from .models import PersonalAccessToken, User, UserRelationship
 from .serializers import (
@@ -21,6 +21,7 @@ from .serializers import (
     CoachedAthleteSerializer,
     CreateAccessTokenSerializer,
     CreateShareSerializer,
+    LoginSerializer,
     RegisterSerializer,
     RosterEntrySerializer,
     ShareSerializer,
@@ -28,6 +29,20 @@ from .serializers import (
     UserSerializer,
 )
 from .tokens import generate_secret, hash_secret, visible_prefix
+
+
+def _athlete_with_tokens(user: User) -> dict[str, Any]:
+    access_token, refresh_token = issue_token_pair(user)
+    return {
+        "athlete": UserSerializer(user).data,
+        "tokens": {
+            "access_token": access_token.token,
+            "refresh_token": refresh_token.token,
+            "token_type": "Bearer",
+            "expires_in": int((access_token.expires - timezone.now()).total_seconds()),
+            "scope": access_token.scope,
+        },
+    }
 
 
 def _share_payload(relationship: UserRelationship) -> dict[str, Any]:
@@ -59,21 +74,23 @@ class RegisterView(APIView):
             raise ConflictError("An account with that email already exists.")
 
         user = User.objects.create_user(email=data["email"], password=data["password"], name=data["name"])
-        access_token, refresh_token = issue_token_pair(user)
+        return Response(_athlete_with_tokens(user), status=status.HTTP_201_CREATED)
 
-        return Response(
-            {
-                "athlete": UserSerializer(user).data,
-                "tokens": {
-                    "access_token": access_token.token,
-                    "refresh_token": refresh_token.token,
-                    "token_type": "Bearer",
-                    "expires_in": int((access_token.expires - timezone.now()).total_seconds()),
-                    "scope": access_token.scope,
-                },
-            },
-            status=status.HTTP_201_CREATED,
-        )
+
+class LoginView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request: Request) -> Response:
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        user = User.objects.filter(email__iexact=data["email"]).first()
+        if user is None or not user.check_password(data["password"]):
+            raise InvalidCredentialsError()
+
+        return Response(_athlete_with_tokens(user), status=status.HTTP_200_OK)
 
 
 class MeView(APIView):
