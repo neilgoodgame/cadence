@@ -121,9 +121,7 @@ def parse_fit(path: str) -> ParsedActivity:
             if lap_start is not None:
                 lap_start_t = int((lap_start - start_time).total_seconds())
                 lap_end_t = lap_start_t + duration
-                powers = [
-                    s["power"] for s in samples if lap_start_t <= s["t"] < lap_end_t and s["power"] is not None
-                ]
+                powers = [s["power"] for s in samples if lap_start_t <= s["t"] < lap_end_t and s["power"] is not None]
                 if powers:
                     avg_power = round(sum(powers) / len(powers))
         laps.append(
