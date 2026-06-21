@@ -83,6 +83,7 @@ class FitParserMockedTests(SimpleTestCase):
             "record": records,
             "lap": laps,
             "session": sessions,
+            "field_description": [],
         }[name]
         mock_fitfile_cls.return_value = instance
 
@@ -156,3 +157,28 @@ class RealFitFixtureParserTests(SimpleTestCase):
         self.assertTrue(any(s["core_temp"] is not None for s in result["samples"]))
         self.assertTrue(any(s["skin_temp"] is not None for s in result["samples"]))
         self.assertTrue(any(s["heat_strain"] is not None for s in result["samples"]))
+
+
+class DeveloperFieldScaleTests(SimpleTestCase):
+    """cycling_with_scaled_core_sensor_fields.fit is recorded on a device that actually
+    declares a developer field scale (skin_temperature: 100, heat_strain_index: 10) - most
+    devices don't, which is exactly why this regressed silently: fitparse==1.2.0 never reads
+    a developer field's declared scale/offset from the file's own field_description messages,
+    so the unscaled fixtures (cycling_indoor.fit etc.) couldn't have caught it.
+    """
+
+    def test_skin_temperature_scale_is_applied(self):
+        result = parse_fit(str(FIXTURES_DIR / "cycling_with_scaled_core_sensor_fields.fit"))
+        skin_temps = [s["skin_temp"] for s in result["samples"] if s["skin_temp"] is not None]
+        self.assertTrue(skin_temps)
+        # A raw, unscaled value would be in the thousands (e.g. 3446 instead of 34.46).
+        self.assertTrue(all(20 <= t <= 45 for t in skin_temps), skin_temps[:5])
+
+    def test_heat_strain_index_scale_is_applied(self):
+        result = parse_fit(str(FIXTURES_DIR / "cycling_with_scaled_core_sensor_fields.fit"))
+        heat_strains = [s["heat_strain"] for s in result["samples"] if s["heat_strain"]]
+        self.assertTrue(heat_strains)
+        # An unscaled value is always a whole number (the raw encoded integer); a correctly
+        # scaled one is a multiple of 0.1, so at least one non-integer value confirms the
+        # division by the declared scale (10) actually happened.
+        self.assertTrue(any(v % 1 != 0 for v in heat_strains), heat_strains[:10])
