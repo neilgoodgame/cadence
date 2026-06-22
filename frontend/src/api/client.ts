@@ -32,18 +32,24 @@ async function parseErrorBody(response: Response): Promise<ApiErrorBody> {
 }
 
 async function rawFetch(path: string, options: RequestOptions, token: string | null): Promise<Response> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = {};
+  // A FormData body needs the browser to set its own multipart/form-data boundary header -
+  // setting Content-Type ourselves (or JSON.stringify-ing a FormData object) breaks the request.
+  if (!isFormData) {
+    headers["Content-Type"] = "application/json";
+  }
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
   return fetch(`${BASE_URL}${path}`, {
     method: options.method ?? "GET",
     headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body: isFormData ? (options.body as FormData) : options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 }
 
-export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function fetchWithRefresh(path: string, options: RequestOptions): Promise<Response> {
   let response = await rawFetch(path, options, options.anonymous ? null : accessToken);
 
   if (response.status === 401 && !options.anonymous && refreshHandler) {
@@ -52,6 +58,11 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
       response = await rawFetch(path, options, newToken);
     }
   }
+  return response;
+}
+
+export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await fetchWithRefresh(path, options);
 
   if (!response.ok) {
     throw new ApiError(response.status, await parseErrorBody(response));
@@ -60,6 +71,23 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     return undefined as T;
   }
   return (await response.json()) as T;
+}
+
+/** Like apiFetch, but also surfaces the Retry-After header - needed for polling an async
+ * upload job, which is the only thing that currently needs anything beyond the parsed body. */
+export async function apiFetchWithHeaders<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ data: T; retryAfterSeconds: number | null }> {
+  const response = await fetchWithRefresh(path, options);
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorBody(response));
+  }
+  const retryAfterHeader = response.headers.get("Retry-After");
+  const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : null;
+  const data = response.status === 204 ? (undefined as T) : ((await response.json()) as T);
+  return { data, retryAfterSeconds };
 }
 
 export async function apiFetchForm<T>(path: string, form: Record<string, string>): Promise<T> {

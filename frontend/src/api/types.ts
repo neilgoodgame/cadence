@@ -227,3 +227,47 @@ export interface AccessToken {
 export interface AccessTokenWithSecret extends AccessToken {
   secret: string;
 }
+
+export type UploadStatus = "queued" | "processing" | "ready" | "failed" | "duplicate";
+
+export interface Upload {
+  id: string;
+  object: "upload";
+  status: UploadStatus;
+  progress: number | null;
+  filename: string;
+  activity_id: string | null;
+  error: { code: string; message: string } | null;
+  received_at: string;
+  completed_at: string | null;
+}
+
+export type UploadBatchStatus = "unpacking" | "processing" | "completed" | "failed";
+
+export interface UploadBatch {
+  id: string;
+  object: "upload_batch";
+  status: UploadBatchStatus;
+  filename: string;
+  progress: number;
+  counts: { total: number; ready: number; processing: number; failed: number; duplicate: number };
+  uploads: Upload[];
+  received_at: string;
+  completed_at: string | null;
+}
+
+export interface Shoe {
+  id: string;
+  athlete_id: string;
+  shoe_model_version_id: string;
+  manufacturer: string;
+  model: string;
+  version: string;
+  colourway: string;
+  name: string;
+  image: string | null;
+  role: string;
+  km: number;
+  limit_km: number;
+  since: string;
+}
