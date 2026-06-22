@@ -354,3 +354,18 @@ export interface WorkoutMatch {
   confidence: number | null;
   compliance: number | null;
 }
+
+export type TimeOfDay = "AM" | "MID" | "PM";
+export type ScheduledWorkoutStatus = "planned" | "completed" | "missed";
+
+export interface ScheduledWorkout {
+  id: string;
+  workout_id: string;
+  athlete_id: string;
+  assigned_by: string | null;
+  date: string;
+  // Python returns "" when unset; Java returns null - confirmed against both live.
+  time_of_day: TimeOfDay | "" | null;
+  status: ScheduledWorkoutStatus;
+  activity_id: string | null;
+}
