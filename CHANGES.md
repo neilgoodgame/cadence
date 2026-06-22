@@ -133,3 +133,38 @@ both backends.
    model on both backends, no migration needed - just wiring up the existing column).
 3. Frontend: once available, wire a "Retired shoes" view into the existing UI link, and
    add a `role` input to the add/edit shoe form.
+
+---
+
+# Changelog — Calendar doesn't actually include unscheduled completed activities
+
+Found building the frontend's Calendar screen. `GET /v1/calendar`'s own description says
+"Returns scheduled workouts and completed activities in a date range," but
+`CalendarView.get()` (`backend/scheduling/views.py`) only ever queries `ScheduledWorkout` -
+an activity that was uploaded without ever being scheduled or matched never appears on the
+calendar, regardless of date. There's also no way to work around this from the frontend:
+`GET /v1/activities` has no date-range query parameter, and CQL (the `q` filter it does
+support) has no date field at all (`backend/core/cql/fields.py`'s recognized fields are
+`hr/maxhr/tss/distance/duration/power/pace/sport/environment/name/tag`).
+
+This needs a real design decision, not a one-line fix: `ScheduledWorkout.workout_id` is
+documented as always present (non-nullable), so an unscheduled activity can't just be
+returned as a `ScheduledWorkout` with a null `workout_id` without a schema change. Two
+reasonable directions:
+1. Make `workout_id` nullable on `ScheduledWorkout` and have `GET /v1/calendar` synthesize
+   an entry (no backing DB row) for each unscheduled completed activity in range.
+2. Add a separate field to the calendar response (e.g. `unplanned_activities: Activity[]`)
+   rather than overloading `ScheduledWorkout`'s shape.
+
+The frontend's V1 Calendar screen only shows what the endpoint actually returns today -
+scheduled workouts, planned or completed-via-match. A ride that was never planned won't
+show up until this is fixed.
+
+## Suggested implementation steps for Claude Code
+1. Decide between the two directions above (or another) - this is a schema/contract design
+   call, not just a query fix.
+2. API (`openapi.yaml`): update the `ScheduledWorkout` schema or `GET /v1/calendar`
+   response shape accordingly.
+3. Python/Java: implement the chosen shape in `CalendarView`/`CalendarController`.
+4. Frontend: once available, render the additional entries on the Calendar screen
+   alongside scheduled workouts.
