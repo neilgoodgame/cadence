@@ -10,6 +10,7 @@ import { GearScreen } from "./screens/GearScreen";
 import { ImportScreen } from "./screens/ImportScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { PreferencesScreen } from "./screens/PreferencesScreen";
+import { WorkoutDesignerScreen } from "./screens/WorkoutDesignerScreen";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ export function App() {
                 <Route path="/activities/:id" element={<ActivityAnalysisScreen />} />
                 <Route path="/gear" element={<GearScreen />} />
                 <Route path="/import" element={<ImportScreen />} />
+                <Route path="/workouts" element={<WorkoutDesignerScreen />} />
                 <Route path="/preferences" element={<PreferencesScreen />} />
               </Route>
             </Route>
