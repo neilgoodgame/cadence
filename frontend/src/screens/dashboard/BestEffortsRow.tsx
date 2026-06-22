@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listBestEfforts } from "../../api/athletes";
 import { Card } from "../../components/Card";
+import { formatPace } from "../../lib/format";
 import type { BestEffortKind, BestEffortPeriod } from "../../api/types";
 
 const METRICS: { kind: BestEffortKind; label: string }[] = [
@@ -73,10 +74,18 @@ export function BestEffortsRow({ athleteId }: { athleteId: string }) {
               }}
             >
               <div style={{ fontSize: 11, color: "var(--ink3)", marginBottom: 6 }}>{effort.window}</div>
-              <div className="mono" style={{ fontSize: 20, fontWeight: 600 }}>
-                {effort.value}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--ink2)" }}>{effort.unit}</div>
+              {kind === "running_pace" ? (
+                <div className="mono" style={{ fontSize: 20, fontWeight: 600 }}>
+                  {formatPace(effort.value)}
+                </div>
+              ) : (
+                <>
+                  <div className="mono" style={{ fontSize: 20, fontWeight: 600 }}>
+                    {effort.value}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--ink2)" }}>{effort.unit}</div>
+                </>
+              )}
             </div>
           ))
         ) : (

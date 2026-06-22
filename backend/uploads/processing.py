@@ -32,7 +32,9 @@ PACE_BEST_EFFORT_DISTANCES_KM = [
     ("5km", 5.0),
     ("10km", 10.0),
     ("half_marathon", 21.0975),
+    ("30km", 30.0),
     ("marathon", 42.195),
+    ("50km", 50.0),
 ]
 
 SPORT_LABELS = {"bike": "Bike", "run": "Run", "swim": "Swim", "walk": "Walk"}
@@ -110,6 +112,42 @@ def _sliding_window_best_avg(values: Sequence[float], window: int) -> float | No
         avg = window_sum / window
         if avg > best:
             best = avg
+    return best
+
+
+def _best_pace_seconds_per_km(distance_km_series: Sequence[float | None], target_km: float) -> float | None:
+    """The fastest pace over any contiguous span of the activity covering at least
+    target_km - a classic minimum-window two-pointer scan, not a variant of
+    _sliding_window_best_avg: a fixed *distance* target needs a variable-length *time*
+    window, the opposite shape of a fixed-duration best-effort.
+    """
+    # Forward-fill: a None sample (e.g. a brief GPS dropout) means "no new distance
+    # recorded yet," not "reset to zero" - the same convention _total_distance_km relies on.
+    cumulative: list[float] = []
+    last = 0.0
+    for d in distance_km_series:
+        if d is not None:
+            last = d
+        cumulative.append(last)
+
+    n = len(cumulative)
+    best: float | None = None
+    left = 0
+    right = 0
+    while left < n:
+        if right < left:
+            right = left
+        while right < n and cumulative[right] - cumulative[left] < target_km:
+            right += 1
+        if right >= n:
+            break
+        duration = right - left
+        actual_distance = cumulative[right] - cumulative[left]
+        if duration > 0 and actual_distance > 0:
+            pace = duration / actual_distance
+            if best is None or pace < best:
+                best = pace
+        left += 1
     return best
 
 
@@ -231,41 +269,38 @@ def _update_power_best_efforts(
             )
 
 
-def _update_pace_best_efforts(activity: Activity, athlete: User, laps: Sequence[LapDict]) -> None:
-    """v1: matches only against existing lap boundaries (e.g. auto-laps at 1km
-    splits), not a continuous best-distance scan over raw samples.
-    """
+def _update_pace_best_efforts(activity: Activity, athlete: User, distance_km_series: Sequence[float | None]) -> None:
     for label, target_km in PACE_BEST_EFFORT_DISTANCES_KM:
-        for lap in laps:
-            if lap["distance_km"] <= 0 or lap["duration"] <= 0:
-                continue
-            if abs(lap["distance_km"] - target_km) / target_km > 0.03:
-                continue
-            pace_sec_per_km = lap["duration"] / lap["distance_km"]
-            existing = BestEffort.objects.filter(athlete=athlete, kind="running_pace", window=label).first()
-            if existing is None or pace_sec_per_km < existing.value:
-                BestEffort.objects.update_or_create(
-                    athlete=athlete,
-                    kind="running_pace",
-                    window=label,
-                    defaults={
-                        "value": round(pace_sec_per_km, 1),
-                        "unit": "sec_per_km",
-                        "date": activity.start_date.date(),
-                        "activity": activity,
-                    },
-                )
+        pace_sec_per_km = _best_pace_seconds_per_km(distance_km_series, target_km)
+        if pace_sec_per_km is None:
+            continue
+        existing = BestEffort.objects.filter(athlete=athlete, kind="running_pace", window=label).first()
+        if existing is None or pace_sec_per_km < existing.value:
+            BestEffort.objects.update_or_create(
+                athlete=athlete,
+                kind="running_pace",
+                window=label,
+                defaults={
+                    "value": round(pace_sec_per_km, 1),
+                    "unit": "sec_per_km",
+                    "date": activity.start_date.date(),
+                    "activity": activity,
+                },
+            )
 
 
 def update_best_efforts(
-    activity: Activity, athlete: User, power_series: Sequence[float | None], laps: Sequence[LapDict]
+    activity: Activity,
+    athlete: User,
+    power_series: Sequence[float | None],
+    distance_km_series: Sequence[float | None],
 ) -> None:
     if activity.sport == "bike" and athlete.ftp:
         _update_power_best_efforts(activity, athlete, "cycling_power", power_series)
     elif activity.sport == "run":
         if athlete.critical_run_power and any(p for p in power_series):
             _update_power_best_efforts(activity, athlete, "running_power", power_series)
-        _update_pace_best_efforts(activity, athlete, laps)
+        _update_pace_best_efforts(activity, athlete, distance_km_series)
 
 
 def attempt_workout_match(activity: Activity, athlete: User) -> None:
@@ -396,7 +431,8 @@ def ingest_upload(upload: Upload) -> Activity:
     activity.save(update_fields=update_fields)
 
     _write_duration_curves(activity, power_series, hr_series)
-    update_best_efforts(activity, athlete, power_series, laps)
+    distance_km_series = [s.get("distance_km") for s in samples]
+    update_best_efforts(activity, athlete, power_series, distance_km_series)
     attempt_workout_match(activity, athlete)
 
     return activity

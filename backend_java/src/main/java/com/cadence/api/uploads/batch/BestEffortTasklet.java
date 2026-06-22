@@ -7,6 +7,7 @@ import com.cadence.api.activities.BestEffortKind;
 import com.cadence.api.activities.BestEffortRepository;
 import com.cadence.api.activities.BestEffortWindows;
 import com.cadence.api.activities.calc.DurationCurveCalculator;
+import com.cadence.api.activities.calc.PaceBestEffortCalculator;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.uploads.parsing.ParsedActivity;
@@ -43,7 +44,6 @@ public class BestEffortTasklet implements Tasklet {
 				.orElseThrow(() -> new NotFoundException("No such activity."));
 		User athlete = activity.getAthlete();
 		List<Integer> powerSeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::power).toList();
-		List<ParsedActivity.LapSummary> laps = context.getParsed().laps();
 
 		if (activity.getSport() == Sport.BIKE && athlete.getFtp() != null) {
 			updatePowerBestEfforts(activity, athlete, BestEffortKind.CYCLING_POWER, powerSeries);
@@ -52,7 +52,9 @@ public class BestEffortTasklet implements Tasklet {
 			if (athlete.getCriticalRunPower() != null && powerSeries.stream().anyMatch(Objects::nonNull)) {
 				updatePowerBestEfforts(activity, athlete, BestEffortKind.RUNNING_POWER, powerSeries);
 			}
-			updatePaceBestEfforts(activity, athlete, laps);
+			List<Double> distanceKmSeries =
+					context.getParsed().samples().stream().map(ParsedActivity.Sample::distanceKm).toList();
+			updatePaceBestEfforts(activity, athlete, distanceKmSeries);
 		}
 		return RepeatStatus.FINISHED;
 	}
@@ -81,30 +83,24 @@ public class BestEffortTasklet implements Tasklet {
 		}
 	}
 
-	/** v1: matches only against existing lap boundaries (e.g. auto-laps at 1 km splits), not a continuous best-distance scan over raw samples. */
-	private void updatePaceBestEfforts(Activity activity, User athlete, List<ParsedActivity.LapSummary> laps) {
+	private void updatePaceBestEfforts(Activity activity, User athlete, List<Double> distanceKmSeries) {
 		for (BestEffortWindows.PaceDistance distance : BestEffortWindows.PACE_BEST_EFFORT_DISTANCES_KM) {
-			for (ParsedActivity.LapSummary lap : laps) {
-				if (lap.distanceKm() <= 0 || lap.duration() <= 0) {
-					continue;
-				}
-				if (Math.abs(lap.distanceKm() - distance.km()) / distance.km() > 0.03) {
-					continue;
-				}
-				double paceSecPerKm = lap.duration() / lap.distanceKm();
-				var existing = bestEffortRepository.findByAthleteIdAndKindAndWindow(
-						athlete.getId(), BestEffortKind.RUNNING_PACE, distance.label());
-				if (existing.isEmpty() || paceSecPerKm < existing.get().getValue()) {
-					BestEffort effort = existing.orElseGet(BestEffort::new);
-					effort.setAthlete(athlete);
-					effort.setKind(BestEffortKind.RUNNING_PACE);
-					effort.setWindow(distance.label());
-					effort.setValue(round1(paceSecPerKm));
-					effort.setUnit("sec_per_km");
-					effort.setDate(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
-					effort.setActivity(activity);
-					bestEffortRepository.save(effort);
-				}
+			Double paceSecPerKm = PaceBestEffortCalculator.bestPaceSecondsPerKm(distanceKmSeries, distance.km());
+			if (paceSecPerKm == null) {
+				continue;
+			}
+			var existing = bestEffortRepository.findByAthleteIdAndKindAndWindow(
+					athlete.getId(), BestEffortKind.RUNNING_PACE, distance.label());
+			if (existing.isEmpty() || paceSecPerKm < existing.get().getValue()) {
+				BestEffort effort = existing.orElseGet(BestEffort::new);
+				effort.setAthlete(athlete);
+				effort.setKind(BestEffortKind.RUNNING_PACE);
+				effort.setWindow(distance.label());
+				effort.setValue(round1(paceSecPerKm));
+				effort.setUnit("sec_per_km");
+				effort.setDate(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
+				effort.setActivity(activity);
+				bestEffortRepository.save(effort);
 			}
 		}
 	}
