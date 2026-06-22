@@ -10,7 +10,7 @@ class ScheduledWorkoutSerializer(serializers.ModelSerializer):
             "id",
             "workout_id",
             "athlete_id",
-            "assigned_by_id",
+            "assigned_by",
             "date",
             "time_of_day",
             "status",
