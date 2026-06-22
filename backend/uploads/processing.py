@@ -120,6 +120,15 @@ def compute_duration_curve(series: Sequence[float | None], durations: Sequence[i
         best = _sliding_window_best_avg(values, duration)
         if best is not None:
             points[str(duration)] = round(best, 1)
+    # The contract documents that a curve extends to the full activity length when it
+    # exceeds the longest standard window (the API's `extends_to` field already reflects
+    # this), with the final point being the whole-activity average - a "window == the
+    # whole series" sliding window has exactly one position, so this is just its one value.
+    n = len(values)
+    if durations and n > max(durations):
+        whole_activity_avg = _sliding_window_best_avg(values, n)
+        if whole_activity_avg is not None:
+            points[str(n)] = round(whole_activity_avg, 1)
     return points
 
 

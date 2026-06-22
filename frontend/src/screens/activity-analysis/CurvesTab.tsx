@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { max, min } from "d3-array";
 import { scaleLinear, scaleLog } from "d3-scale";
-import { line } from "d3-shape";
+import { curveMonotoneX, line } from "d3-shape";
 import { getCurves } from "../../api/activities";
 
 const WIDTH = 420;
@@ -50,9 +50,15 @@ function DurationCurveChart({
       .domain([(min(points, (p) => p.value) ?? 0) * 0.9, (max(points, (p) => p.value) ?? 1) * 1.05])
       .range([innerHeight, 0]);
 
+    // curveMonotoneX rather than the default linear interpolation: smooths the line between
+    // the handful of windows actually computed (a duration curve is inherently sparse on a
+    // log x-axis) without overshooting past data points the way a basis/cardinal spline
+    // could - important here since the curve is monotonically decreasing by construction
+    // (a longer best-average window can never beat a shorter one).
     const curveLine = line<{ seconds: number; value: number }>()
       .x((p) => x(p.seconds))
-      .y((p) => y(p.value));
+      .y((p) => y(p.value))
+      .curve(curveMonotoneX);
 
     const ticks = TICK_SECONDS.filter((t) => t >= minSeconds && t <= maxSeconds);
     const last = points.at(-1)!;

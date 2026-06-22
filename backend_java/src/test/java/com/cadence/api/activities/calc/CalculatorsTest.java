@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import com.cadence.api.athletes.Zone;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -52,6 +53,25 @@ class CalculatorsTest {
 		Map<Integer, Double> points = DurationCurveCalculator.compute(series, List.of(5, 60, 300));
 		assertThat(points).containsOnlyKeys(5);
 		assertThat(points.get(5)).isEqualTo(100.0);
+	}
+
+	@Test
+	void durationCurveExtendsToFullSeriesWhenLongerThanTheStandardWindows() {
+		// An activity over an hour: the curve should add one more point at the full
+		// length, valued as the whole-activity average - exactly what extendsTo on the
+		// resulting DurationCurve entity documents happening.
+		List<Integer> series = new ArrayList<>(Collections.nCopies(3600, 200));
+		series.addAll(Collections.nCopies(1800, 100));
+		Map<Integer, Double> points = DurationCurveCalculator.compute(series, List.of(5, 60, 3600));
+		assertThat(points).containsKey(5400);
+		assertThat(points.get(5400)).isCloseTo((200.0 * 3600 + 100.0 * 1800) / 5400, within(0.1));
+	}
+
+	@Test
+	void durationCurveDoesNotExtendWhenSeriesIsNoLongerThanTheStandardWindows() {
+		List<Integer> series = Collections.nCopies(3600, 100);
+		Map<Integer, Double> points = DurationCurveCalculator.compute(series, List.of(5, 60, 3600));
+		assertThat(points).containsOnlyKeys(5, 60, 3600);
 	}
 
 	@Test

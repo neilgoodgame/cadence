@@ -37,6 +37,18 @@ public final class DurationCurveCalculator {
 				points.put(duration, round1(best));
 			}
 		}
+		// The contract documents that a curve extends to the full activity length when it
+		// exceeds the longest standard window (the API's extendsTo field already reflects
+		// this), with the final point being the whole-activity average - a "window == the
+		// whole series" sliding window has exactly one position, so this is just its one value.
+		int n = series.size();
+		int longestStandardWindow = durations.stream().mapToInt(Integer::intValue).max().orElse(0);
+		if (n > longestStandardWindow) {
+			Double wholeActivityAvg = bestAverage(series, n);
+			if (wholeActivityAvg != null) {
+				points.put(n, round1(wholeActivityAvg));
+			}
+		}
 		return points;
 	}
 
