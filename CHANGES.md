@@ -97,3 +97,39 @@ a migration.
   (owner, or a Viewer/Coach share) can read comments, but only the owner and their Coaches can
   post - confirm against how `PermissionService`/`mayRead`/`mayWrite` already model
   owner/Viewer/Coach access elsewhere before inventing a new rule.
+
+---
+
+# Changelog — Gear: retired shoes can't be listed, Shoe.role can't be set
+
+Found building the frontend's Gear screen. Two small, unrelated gaps in the same area -
+listed together since both are quick API additions, not new resources.
+
+## 1. No way to list retired shoes
+`GET /v1/gear/shoes` filters to `retired=False` server-side (confirmed in the Python
+view), and there's no separate endpoint or query param for the retired ones. Retiring a
+pair (`PATCH /v1/gear/shoes/{id}` with `retired: true`) makes it permanently unlistable
+through the documented API even though the row still exists - the design prototype's
+"Retired shoes →" link has nothing to call.
+
+Suggested fix: add an optional `retired` query param to `GET /v1/gear/shoes`
+(`true`/`false`/omitted-for-active-only, matching today's default) on both backends.
+
+## 2. `Shoe.role` has no field to set it
+`Shoe.role` is in the response schema (e.g. "Race & threshold") but neither
+`ShoeCreate` (`POST /v1/gear/shoes`) nor `ShoeUpdate` (`PATCH /v1/gear/shoes/{id}`)
+accepts a `role` field - confirmed against `openapi.yaml`. Every shoe gets `role: ""`
+forever via the documented API; there's no way to populate the value the response
+schema already promises.
+
+Suggested fix: add `role` (optional string) to both `ShoeCreate` and `ShoeUpdate` on
+both backends.
+
+## Suggested implementation steps for Claude Code
+1. API (`openapi.yaml`): add the `retired` query param to `GET /v1/gear/shoes`; add
+   `role` to `ShoeCreate`/`ShoeUpdate`.
+2. Python/Java: thread the `retired` filter through the shoes list view/controller; add
+   `role` to the create/update serializers/DTOs (it's already a plain stored field on the
+   model on both backends, no migration needed - just wiring up the existing column).
+3. Frontend: once available, wire a "Retired shoes" view into the existing UI link, and
+   add a `role` input to the add/edit shoe form.
