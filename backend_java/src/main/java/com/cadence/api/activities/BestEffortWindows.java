@@ -29,7 +29,9 @@ public final class BestEffortWindows {
 			new PaceDistance("5km", 5.0),
 			new PaceDistance("10km", 10.0),
 			new PaceDistance("half_marathon", 21.0975),
-			new PaceDistance("marathon", 42.195));
+			new PaceDistance("30km", 30.0),
+			new PaceDistance("marathon", 42.195),
+			new PaceDistance("50km", 50.0));
 
 	private BestEffortWindows() {
 	}

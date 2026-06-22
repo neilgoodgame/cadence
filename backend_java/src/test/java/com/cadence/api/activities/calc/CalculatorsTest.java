@@ -75,6 +75,43 @@ class CalculatorsTest {
 	}
 
 	@Test
+	void bestPaceConstantPaceReturnsThatPace() {
+		// 1 km every 300 seconds, 10 km total -> 300 sec/km throughout.
+		List<Double> series = new ArrayList<>();
+		for (int i = 0; i <= 3000; i++) {
+			series.add(i / 300.0);
+		}
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(series, 1.0)).isCloseTo(300.0, within(0.1));
+	}
+
+	@Test
+	void bestPaceFindsTheGenuinelyFastestWindowNotTheFirstOne() {
+		// 0, 0.5, 1.5, 2.5, 3.0 km at t=0..4. The fastest 1km split is the single second
+		// from t=1 to t=2 (exactly 1.0 km in 1 second), not the first qualifying window
+		// found (t=0 to t=2, 1.5km in 2 seconds).
+		List<Double> series = List.of(0.0, 0.5, 1.5, 2.5, 3.0);
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(series, 1.0)).isCloseTo(1.0, within(0.001));
+	}
+
+	@Test
+	void bestPaceReturnsNullWhenTargetDistanceIsNeverReached() {
+		List<Double> series = new ArrayList<>();
+		for (int i = 0; i <= 600; i++) {
+			series.add(i / 300.0); // 2 km total
+		}
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(series, 5.0)).isNull();
+	}
+
+	@Test
+	void bestPaceForwardFillsGapsInsteadOfTreatingThemAsAReset() {
+		// A null sample (brief GPS dropout) should read as "distance unchanged," not zero -
+		// same convention the activity's total distance already relies on. The full 2.0 km
+		// span (index 0 to 4) takes 4 seconds, so the pace is 4 / 2.0 = 2.0 sec/km.
+		List<Double> series = Arrays.asList(0.0, 0.5, null, null, 2.0);
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(series, 2.0)).isCloseTo(2.0, within(0.001));
+	}
+
+	@Test
 	void powerBasedTssAtThresholdForOneHourIsOneHundred() {
 		Integer tss = TssCalculator.powerBased(200.0, 200, 3600);
 		assertThat(tss).isEqualTo(100);
