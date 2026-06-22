@@ -954,7 +954,11 @@ paths:
       tags: [Scheduling]
       summary: List planned & completed
       operationId: getCalendar
-      description: Returns scheduled workouts and completed activities in a date range.
+      description: >
+        Returns scheduled workouts and completed activities in a date range.
+        `unplanned_activities` covers completed activities in range that were never
+        scheduled or matched to a designed workout - `data` only ever contains
+        `ScheduledWorkout` rows.
       parameters:
         - name: from
           in: query
@@ -980,6 +984,11 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/ScheduledWorkout"
+                  unplanned_activities:
+                    type: array
+                    description: Completed activities in range with no scheduled-workout match.
+                    items:
+                      $ref: "#/components/schemas/Activity"
 
   /v1/scheduled-workouts:
     post:

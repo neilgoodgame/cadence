@@ -182,6 +182,35 @@ class CalendarViewTests(TestCase):
         dates = [e["date"] for e in response.json()["data"]]
         self.assertEqual(dates, ["2026-06-10", "2026-06-20"])
 
+    def test_unplanned_activity_in_range_is_returned(self):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Spontaneous ride", start_date=datetime(2026, 6, 15, 8, tzinfo=UTC)
+        )
+        response = _bearer_client(self.athlete).get("/v1/calendar?from=2026-06-01&to=2026-06-30")
+        self.assertEqual(response.status_code, 200)
+        ids = [a["id"] for a in response.json()["unplanned_activities"]]
+        self.assertEqual(ids, [activity.id])
+        self.assertEqual(response.json()["data"], [])
+
+    def test_matched_activity_is_not_in_unplanned_activities(self):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Planned ride", start_date=datetime(2026, 6, 15, 8, tzinfo=UTC)
+        )
+        ScheduledWorkout.objects.create(
+            workout=self.workout, athlete=self.athlete, date=date(2026, 6, 15), activity=activity, status="completed"
+        )
+        response = _bearer_client(self.athlete).get("/v1/calendar?from=2026-06-01&to=2026-06-30")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["unplanned_activities"], [])
+        self.assertEqual(len(response.json()["data"]), 1)
+
+    def test_unplanned_activity_outside_range_is_excluded(self):
+        Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Out of range", start_date=datetime(2026, 7, 1, 8, tzinfo=UTC)
+        )
+        response = _bearer_client(self.athlete).get("/v1/calendar?from=2026-06-01&to=2026-06-30")
+        self.assertEqual(response.json()["unplanned_activities"], [])
+
     def test_coach_can_view_athletes_calendar_via_query_param(self):
         UserRelationship.objects.create(
             owner=self.athlete,

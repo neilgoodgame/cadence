@@ -369,3 +369,10 @@ export interface ScheduledWorkout {
   status: ScheduledWorkoutStatus;
   activity_id: string | null;
 }
+
+/** data only ever contains ScheduledWorkout rows - unplanned_activities covers completed
+ * activities in range that were never scheduled or matched to a designed workout. */
+export interface CalendarResponse {
+  data: ScheduledWorkout[];
+  unplanned_activities: Activity[];
+}

@@ -1,10 +1,10 @@
 import { apiFetch } from "./client";
-import type { DataList, ScheduledWorkout, TimeOfDay } from "./types";
+import type { CalendarResponse, ScheduledWorkout, TimeOfDay } from "./types";
 
-export function getCalendar(from: string, to: string, athleteId?: string): Promise<DataList<ScheduledWorkout>> {
+export function getCalendar(from: string, to: string, athleteId?: string): Promise<CalendarResponse> {
   const params = new URLSearchParams({ from, to });
   if (athleteId) params.set("athlete_id", athleteId);
-  return apiFetch<DataList<ScheduledWorkout>>(`/v1/calendar?${params.toString()}`);
+  return apiFetch<CalendarResponse>(`/v1/calendar?${params.toString()}`);
 }
 
 export interface ScheduleWorkoutInput {
