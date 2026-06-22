@@ -39,9 +39,13 @@ function DurationCurveChart({
     const innerWidth = WIDTH - MARGIN.left - MARGIN.right;
     const innerHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
 
-    const x = scaleLog()
-      .domain([5, max(points, (p) => p.seconds) ?? 3600])
-      .range([0, innerWidth]);
+    // Domain bounds come from the actual data, not a hardcoded "every curve starts at 5s" -
+    // the backend computes a shorter window list for heartrate (starts at 60s; HR lags
+    // effort too much for a 5/15/30s peak to mean anything) than power (starts at 5s), so a
+    // fixed [5, ...] domain would draw HR's axis starting well before its first real point.
+    const minSeconds = min(points, (p) => p.seconds) ?? 5;
+    const maxSeconds = max(points, (p) => p.seconds) ?? 3600;
+    const x = scaleLog().domain([minSeconds, maxSeconds]).range([0, innerWidth]);
     const y = scaleLinear()
       .domain([(min(points, (p) => p.value) ?? 0) * 0.9, (max(points, (p) => p.value) ?? 1) * 1.05])
       .range([innerHeight, 0]);
@@ -50,7 +54,7 @@ function DurationCurveChart({
       .x((p) => x(p.seconds))
       .y((p) => y(p.value));
 
-    const ticks = TICK_SECONDS.filter((t) => t <= x.domain()[1]);
+    const ticks = TICK_SECONDS.filter((t) => t >= minSeconds && t <= maxSeconds);
     const last = points.at(-1)!;
     const extendsBeyondHour = last.seconds > 3600;
 
