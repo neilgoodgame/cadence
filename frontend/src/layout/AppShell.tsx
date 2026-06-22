@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { label: "Import", path: "/import" },
   { label: "Calendar", path: null },
   { label: "Workouts", path: null },
-  { label: "Gear", path: null },
+  { label: "Gear", path: "/gear" },
   { label: "Preferences", path: "/preferences" },
 ];
 

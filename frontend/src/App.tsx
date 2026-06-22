@@ -6,6 +6,7 @@ import { AppShell } from "./layout/AppShell";
 import { ActivitiesScreen } from "./screens/ActivitiesScreen";
 import { ActivityAnalysisScreen } from "./screens/ActivityAnalysisScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
+import { GearScreen } from "./screens/GearScreen";
 import { ImportScreen } from "./screens/ImportScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { PreferencesScreen } from "./screens/PreferencesScreen";
@@ -24,6 +25,7 @@ export function App() {
                 <Route path="/" element={<DashboardScreen />} />
                 <Route path="/activities" element={<ActivitiesScreen />} />
                 <Route path="/activities/:id" element={<ActivityAnalysisScreen />} />
+                <Route path="/gear" element={<GearScreen />} />
                 <Route path="/import" element={<ImportScreen />} />
                 <Route path="/preferences" element={<PreferencesScreen />} />
               </Route>
