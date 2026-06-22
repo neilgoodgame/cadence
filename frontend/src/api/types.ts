@@ -317,3 +317,55 @@ export interface Shoe {
   limit_km: number;
   since: string;
 }
+
+export type WorkoutSport = "bike" | "run";
+export type StepKind = "warmup" | "block" | "rec" | "cool";
+export type StepEndType = "time" | "distance" | "manual";
+
+export interface WorkoutStep {
+  kind: StepKind;
+  end_type: StepEndType;
+  duration: number | null;
+  distance: number | null;
+  target_pct: number;
+  repeat: number;
+}
+
+export interface Workout {
+  id: string;
+  name: string;
+  sport: WorkoutSport;
+  type: string;
+  duration: number;
+  tss: number;
+}
+
+export interface WorkoutDetail extends Workout {
+  steps: WorkoutStep[];
+}
+
+export type WorkoutMatchMethod = "auto" | "manual";
+
+export interface WorkoutMatch {
+  activity_id: string;
+  name: string;
+  date: string;
+  method: WorkoutMatchMethod;
+  confidence: number | null;
+  compliance: number | null;
+}
+
+export type TimeOfDay = "AM" | "MID" | "PM";
+export type ScheduledWorkoutStatus = "planned" | "completed" | "missed";
+
+export interface ScheduledWorkout {
+  id: string;
+  workout_id: string;
+  athlete_id: string;
+  assigned_by: string | null;
+  date: string;
+  // Python returns "" when unset; Java returns null - confirmed against both live.
+  time_of_day: TimeOfDay | "" | null;
+  status: ScheduledWorkoutStatus;
+  activity_id: string | null;
+}

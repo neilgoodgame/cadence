@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { label: "Dashboard", path: "/" },
   { label: "Activities", path: "/activities" },
   { label: "Import", path: "/import" },
-  { label: "Calendar", path: null },
+  { label: "Calendar", path: "/calendar" },
   { label: "Workouts", path: null },
   { label: "Gear", path: "/gear" },
   { label: "Preferences", path: "/preferences" },
