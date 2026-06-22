@@ -43,7 +43,7 @@ class ScheduledWorkoutCreateTests(TestCase):
         body = response.json()
         self.assertEqual(body["workout_id"], self.workout.id)
         self.assertEqual(body["athlete_id"], self.athlete.id)
-        self.assertIsNone(body["assigned_by_id"])
+        self.assertIsNone(body["assigned_by"])
         self.assertEqual(body["status"], "planned")
 
     def test_coach_can_assign_onto_athlete_plan(self):
@@ -66,7 +66,7 @@ class ScheduledWorkoutCreateTests(TestCase):
         )
         self.assertEqual(response.status_code, 201)
         body = response.json()
-        self.assertEqual(body["assigned_by_id"], self.coach.id)
+        self.assertEqual(body["assigned_by"], self.coach.id)
         self.assertEqual(body["time_of_day"], "AM")
 
     def test_outsider_without_relationship_forbidden(self):
