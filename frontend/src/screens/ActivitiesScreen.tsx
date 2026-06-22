@@ -37,7 +37,11 @@ export function ActivitiesScreen() {
   const q = useMemo(() => {
     const clauses = [];
     if (searchInput.trim()) clauses.push(searchInput.trim());
-    if (selectedTag) clauses.push(`tag ~ ${selectedTag}`);
+    // CQL's tag clause is a special grammar rule (parser.py) that takes exactly the bare
+    // word right after "tag" as the value - no operator at all, not even "=". A query like
+    // "tag ~ x" or "tag = x" doesn't error, it just silently fails to match anything, which
+    // is exactly the bug this comment is here to stop someone from reintroducing.
+    if (selectedTag) clauses.push(`tag ${selectedTag}`);
     return clauses.join(" AND ") || undefined;
   }, [searchInput, selectedTag]);
 
