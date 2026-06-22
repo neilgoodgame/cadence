@@ -110,13 +110,27 @@ def parse_fit(path: str) -> ParsedActivity:
 
     laps = []
     for index, message in enumerate(fit_file.get_messages("lap"), start=1):
+        duration = int(message.get_value("total_elapsed_time") or 0)
+        avg_power = message.get_value("avg_power")
+        if avg_power is None:
+            # Third-party run-power meters (e.g. Stryd) don't fill in the lap message's
+            # own avg_power summary field - only a native power meter does. Fall back to
+            # averaging the already Stryd-fallback-applied per-sample power (see `power`
+            # above) over the lap's time window instead of reporting it as simply missing.
+            lap_start = ensure_utc(message.get_value("start_time"))
+            if lap_start is not None:
+                lap_start_t = int((lap_start - start_time).total_seconds())
+                lap_end_t = lap_start_t + duration
+                powers = [s["power"] for s in samples if lap_start_t <= s["t"] < lap_end_t and s["power"] is not None]
+                if powers:
+                    avg_power = round(sum(powers) / len(powers))
         laps.append(
             {
                 "index": index,
-                "duration": int(message.get_value("total_elapsed_time") or 0),
+                "duration": duration,
                 "distance_km": (message.get_value("total_distance") or 0) / 1000,
                 "avg_hr": message.get_value("avg_heart_rate"),
-                "avg_power": message.get_value("avg_power"),
+                "avg_power": avg_power,
             }
         )
 

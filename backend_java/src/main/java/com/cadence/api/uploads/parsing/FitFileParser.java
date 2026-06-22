@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalDouble;
 
 /** Parses Garmin's binary .fit format via the official Garmin FIT Java SDK ({@code com.garmin:fit}). */
 public final class FitFileParser {
@@ -75,7 +76,21 @@ public final class FitFileParser {
 			int duration = lap.getTotalElapsedTime() != null ? Math.round(lap.getTotalElapsedTime()) : 0;
 			double distanceKm = lap.getTotalDistance() != null ? lap.getTotalDistance() / 1000.0 : 0.0;
 			Integer avgHr = lap.getAvgHeartRate() != null ? lap.getAvgHeartRate().intValue() : null;
-			lapSummaries.add(new ParsedActivity.LapSummary(index++, duration, distanceKm, avgHr, lap.getAvgPower()));
+			Integer avgPower = lap.getAvgPower();
+			if (avgPower == null && lap.getStartTime() != null) {
+				// Third-party run-power meters (e.g. Stryd) don't fill in the lap message's own
+				// avg_power summary field - only a native power meter does. Fall back to
+				// averaging the already Stryd-fallback-applied per-sample power (see `power`
+				// above) over the lap's time window instead of reporting it as simply missing.
+				int lapStartT = (int) ((lap.getStartTime().getDate().getTime() - startMillis) / 1000);
+				int lapEndT = lapStartT + duration;
+				OptionalDouble mean = samples.stream()
+						.filter(s -> s.t() >= lapStartT && s.t() < lapEndT && s.power() != null)
+						.mapToInt(ParsedActivity.Sample::power)
+						.average();
+				avgPower = mean.isPresent() ? (int) Math.round(mean.getAsDouble()) : null;
+			}
+			lapSummaries.add(new ParsedActivity.LapSummary(index++, duration, distanceKm, avgHr, avgPower));
 		}
 
 		Environment environment = hasGps ? Environment.OUTDOOR : Environment.INDOOR;
