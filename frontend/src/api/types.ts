@@ -227,3 +227,65 @@ export interface AccessToken {
 export interface AccessTokenWithSecret extends AccessToken {
   secret: string;
 }
+
+export type BikeKind = "road" | "indoor" | "gravel" | "tt";
+
+export interface Bike {
+  id: string;
+  athlete_id: string;
+  name: string;
+  kind: BikeKind;
+  groupset: string;
+  distance_km: number;
+  hours: number;
+  rides: number;
+  components: number;
+}
+
+export interface Component {
+  id: string;
+  bike_id: string;
+  name: string;
+  km: number;
+  limit_km: number;
+  model: string;
+}
+
+export interface BikeDetail extends Omit<Bike, "components"> {
+  components: Component[];
+}
+
+export type ServiceAction = "replaced" | "cleaned" | "inspected" | "adjusted";
+
+export interface ServiceRecord {
+  id: string;
+  component_id: string;
+  action: ServiceAction;
+  reset: boolean;
+  note: string;
+  date: string;
+}
+
+export interface ShoeCatalogEntry {
+  shoe_model_version_id: string;
+  manufacturer: string;
+  model: string;
+  version: string;
+  display_name: string;
+}
+
+export interface Shoe {
+  id: string;
+  athlete_id: string;
+  shoe_model_version_id: string;
+  manufacturer: string;
+  model: string;
+  version: string;
+  colourway: string;
+  name: string;
+  image: string | null;
+  role: string;
+  km: number;
+  limit_km: number;
+  since: string;
+}
