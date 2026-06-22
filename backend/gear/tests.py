@@ -52,6 +52,18 @@ class BikeViewTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["distance_km"], 0)
 
+    def test_create_response_includes_components_count(self):
+        response = _bearer_client(self.athlete).post("/v1/gear/bikes", {"name": "Stumpjumper"}, format="json")
+        self.assertEqual(response.json()["components"], 0)
+
+    def test_list_includes_components_count(self):
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac")
+        Component.objects.create(bike=bike, name="Chain", limit_km=4000)
+        Component.objects.create(bike=bike, name="Cassette", limit_km=6000)
+
+        response = _bearer_client(self.athlete).get("/v1/gear/bikes")
+        self.assertEqual(response.json()["data"][0]["components"], 2)
+
     def test_list_scoped_to_effective_athlete(self):
         Bike.objects.create(athlete=self.athlete, name="Tarmac")
         Bike.objects.create(athlete=self.other_athlete, name="Roubaix")

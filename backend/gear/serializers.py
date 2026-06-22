@@ -28,17 +28,19 @@ class ComponentUpdateSerializer(serializers.ModelSerializer):
 
 
 class BikeSerializer(serializers.ModelSerializer):
+    components = serializers.IntegerField(source="components.count", read_only=True)
+
     class Meta:
         model = Bike
-        fields = ["id", "athlete_id", "name", "kind", "groupset", "distance_km", "hours", "rides"]
-        read_only_fields = ["id", "athlete_id", "hours", "rides"]
+        fields = ["id", "athlete_id", "name", "kind", "groupset", "distance_km", "hours", "rides", "components"]
+        read_only_fields = ["id", "athlete_id", "hours", "rides", "components"]
 
 
 class BikeDetailSerializer(BikeSerializer):
     components = ComponentSerializer(many=True, read_only=True)
 
     class Meta(BikeSerializer.Meta):
-        fields = BikeSerializer.Meta.fields + ["components"]
+        fields = BikeSerializer.Meta.fields
 
 
 class BikeCreateSerializer(serializers.ModelSerializer):

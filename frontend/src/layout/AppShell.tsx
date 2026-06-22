@@ -7,6 +7,7 @@ import { ThemeToggle } from "./ThemeToggle";
 const NAV_ITEMS = [
   { label: "Dashboard", path: "/" },
   { label: "Activities", path: "/activities" },
+  { label: "Import", path: "/import" },
   { label: "Calendar", path: null },
   { label: "Workouts", path: null },
   { label: "Gear", path: "/gear" },
