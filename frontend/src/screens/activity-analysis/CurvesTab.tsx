@@ -61,10 +61,11 @@ function DurationCurveChart({
       .curve(curveMonotoneX);
 
     const ticks = TICK_SECONDS.filter((t) => t >= minSeconds && t <= maxSeconds);
+    const yTicks = y.ticks(4);
     const last = points.at(-1)!;
     const extendsBeyondHour = last.seconds > 3600;
 
-    return { points, innerWidth, innerHeight, x, y, curveLine, ticks, last, extendsBeyondHour };
+    return { points, innerWidth, innerHeight, x, y, curveLine, ticks, yTicks, last, extendsBeyondHour };
   }, [data]);
 
   if (!chart) {
@@ -80,6 +81,14 @@ function DurationCurveChart({
 
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={`${label} duration curve`}>
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+          {chart.yTicks.map((t) => (
+            <g key={t}>
+              <line x1={0} x2={chart.innerWidth} y1={chart.y(t)} y2={chart.y(t)} stroke="var(--line)" strokeDasharray="3,3" />
+              <text x={-8} y={chart.y(t)} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="var(--ink3)">
+                {t}
+              </text>
+            </g>
+          ))}
           {chart.ticks.map((t) => (
             <text key={t} x={chart.x(t)} y={chart.innerHeight + 16} textAnchor="middle" fontSize={10} fill="var(--ink3)">
               {TICK_LABELS[TICK_SECONDS.indexOf(t)]}
