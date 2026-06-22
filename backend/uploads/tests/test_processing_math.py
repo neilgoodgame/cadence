@@ -30,6 +30,19 @@ class ComputeDurationCurveTests(SimpleTestCase):
         self.assertIn("5", points)
         self.assertNotIn("20", points)
 
+    def test_extends_to_full_series_when_longer_than_the_standard_windows(self):
+        # An activity over an hour: the curve should add one more point at the full
+        # length, valued as the whole-activity average - exactly what the API's
+        # extends_to field on the resulting DurationCurve documents happening.
+        series = [200] * 3600 + [100] * 1800  # 1h at 200, then 30 more min at 100
+        points = compute_duration_curve(series, [5, 60, 3600])
+        self.assertIn("5400", points)
+        self.assertAlmostEqual(points["5400"], (200 * 3600 + 100 * 1800) / 5400, places=1)
+
+    def test_does_not_extend_when_series_is_no_longer_than_the_standard_windows(self):
+        points = compute_duration_curve([100] * 3600, [5, 60, 3600])
+        self.assertEqual(set(points), {"5", "60", "3600"})
+
 
 class ComputeTssTests(TestCase):
     def test_power_based_tss_one_hour_at_ftp_equals_100(self):
