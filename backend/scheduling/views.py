@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from activities.models import Activity
+from activities.serializers import ActivitySerializer
 from core.auth_context import get_effective_athlete_id
 from core.permissions import user_may_read, user_may_write
 from workouts.models import Workout
@@ -41,7 +42,18 @@ class CalendarView(APIView):
         _require_read(request, athlete_id)
 
         entries = ScheduledWorkout.objects.filter(athlete_id=athlete_id, date__gte=date_from, date__lte=date_to)
-        return Response({"data": ScheduledWorkoutSerializer(entries, many=True).data})
+        unplanned = Activity.objects.filter(
+            athlete_id=athlete_id,
+            start_date__date__gte=date_from,
+            start_date__date__lte=date_to,
+            scheduled_workout_matches__isnull=True,
+        )
+        return Response(
+            {
+                "data": ScheduledWorkoutSerializer(entries, many=True).data,
+                "unplanned_activities": ActivitySerializer(unplanned, many=True).data,
+            }
+        )
 
 
 class ScheduledWorkoutListCreateView(APIView):

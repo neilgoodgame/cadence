@@ -19,5 +19,9 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	@Query("select max(a.startDate) from Activity a where a.athlete.id = :athleteId")
 	Optional<Instant> findLatestStartDate(@Param("athleteId") String athleteId);
 
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.startDate >= :start and a.startDate < :end "
+			+ "and not exists (select 1 from ScheduledWorkout sw where sw.activity = a)")
+	List<Activity> findUnplannedInRange(@Param("athleteId") String athleteId, @Param("start") Instant start, @Param("end") Instant end);
+
 	List<Activity> findByWorkoutId(String workoutId);
 }

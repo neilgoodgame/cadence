@@ -7,7 +7,9 @@ import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutRepository;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +32,14 @@ public class SchedulingService {
 
 	public List<ScheduledWorkout> getCalendar(String athleteId, LocalDate from, LocalDate to) {
 		return scheduledWorkoutRepository.findByAthleteIdAndDateBetweenOrderByDate(athleteId, from, to);
+	}
+
+	/** Completed activities in range never scheduled or matched to a designed workout -
+	 * GET /v1/calendar's data field only ever contains ScheduledWorkout rows. */
+	public List<Activity> getUnplannedActivities(String athleteId, LocalDate from, LocalDate to) {
+		Instant start = from.atStartOfDay(ZoneOffset.UTC).toInstant();
+		Instant end = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+		return activityRepository.findUnplannedInRange(athleteId, start, end);
 	}
 
 	@Transactional

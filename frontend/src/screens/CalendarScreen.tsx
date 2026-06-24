@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { getCalendar, unscheduleWorkout } from "../api/scheduling";
 import { listWorkouts } from "../api/workouts";
-import type { ScheduledWorkout } from "../api/types";
+import type { Activity, ScheduledWorkout } from "../api/types";
 import { dateKey, derivedStatus, monthGridDays } from "../lib/calendar";
 import { sportColor } from "../lib/sportColors";
 import { ScheduleModal } from "./calendar/ScheduleModal";
@@ -42,6 +43,17 @@ export function CalendarScreen() {
       const list = map.get(entry.date) ?? [];
       list.push(entry);
       map.set(entry.date, list);
+    }
+    return map;
+  }, [calendarData]);
+
+  const unplannedByDate = useMemo(() => {
+    const map = new Map<string, Activity[]>();
+    for (const activity of calendarData?.unplanned_activities ?? []) {
+      const key = dateKey(new Date(activity.start_date));
+      const list = map.get(key) ?? [];
+      list.push(activity);
+      map.set(key, list);
     }
     return map;
   }, [calendarData]);
@@ -147,6 +159,28 @@ export function CalendarScreen() {
                   >
                     {workout?.name ?? entry.workout_id}
                   </div>
+                );
+              })}
+              {(unplannedByDate.get(key) ?? []).map((activity) => {
+                const color = sportColor(activity.sport);
+                return (
+                  <Link
+                    key={activity.id}
+                    to={`/activities/${activity.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      fontSize: 11,
+                      padding: "3px 6px",
+                      borderRadius: 6,
+                      borderLeft: `3px solid ${color}`,
+                      background: `${color}22`,
+                      color: "var(--ink)",
+                      textDecoration: "none",
+                      display: "block",
+                    }}
+                  >
+                    {activity.name}
+                  </Link>
                 );
               })}
             </div>
