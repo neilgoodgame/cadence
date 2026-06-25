@@ -16,7 +16,7 @@ jobs:
       # backend/ nor backend_java/ -- or GitHub leaves it permanently
       # "Expected -- waiting for status to be reported".
       - name: Check for frontend changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
