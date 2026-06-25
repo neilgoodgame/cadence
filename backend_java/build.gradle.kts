@@ -42,14 +42,17 @@ dependencies {
 	runtimeOnly("org.postgresql:postgresql")
 
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
-	implementation("com.garmin:fit:21.176.0")
+	implementation("com.garmin:fit:21.205.0")
 
 	implementation("org.mapstruct:mapstruct:$mapstructVersion")
 	annotationProcessor("org.mapstruct:mapstruct-processor:$mapstructVersion")
 
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 
-	testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))
+	// Pinned to the latest 1.x release: testcontainers-bom 2.x exists, but the
+	// junit-jupiter/postgresql modules below haven't been published under 2.x
+	// yet, so resolving against the 2.x BOM fails outright.
+	testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.batch:spring-batch-test")
 	testImplementation("org.springframework.security:spring-security-test")
