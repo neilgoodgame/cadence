@@ -49,7 +49,10 @@ dependencies {
 
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 
-	testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
+	// Pinned to the latest 1.x release: testcontainers-bom 2.x exists, but the
+	// junit-jupiter/postgresql modules below haven't been published under 2.x
+	// yet, so resolving against the 2.x BOM fails outright.
+	testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.batch:spring-batch-test")
 	testImplementation("org.springframework.security:spring-security-test")
