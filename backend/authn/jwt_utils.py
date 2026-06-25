@@ -3,7 +3,7 @@ import time
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import jwt
 from cryptography.hazmat.primitives import serialization
@@ -41,15 +41,12 @@ def mint_jwt(sub: str, athlete_id: str, scopes: Sequence[str], expires_in: int) 
 
 
 def decode_jwt(token: str) -> dict[str, Any]:
-    return cast(
-        dict[str, Any],
-        jwt.decode(
-            token,
-            _load_public_key(),
-            algorithms=["RS256"],
-            audience=settings.JWT_AUDIENCE,
-            issuer=settings.JWT_ISSUER,
-        ),
+    return jwt.decode(
+        token,
+        _load_public_key(),
+        algorithms=["RS256"],
+        audience=settings.JWT_AUDIENCE,
+        issuer=settings.JWT_ISSUER,
     )
 
 
