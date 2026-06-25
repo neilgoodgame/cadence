@@ -49,7 +49,9 @@ public class ActivityService {
 				activity.getAvgPower(), activity.getNormPower(), activity.getIntensity(), activity.getTss(),
 				activity.getAvgHr(), activity.getMaxHr(), activity.getAscent(),
 				activity.getStartWeightKg(), activity.getEndWeightKg(), activity.getFluidsMl(),
-				activity.getAvgAirTemp(), activity.getAvgHumidity(), tags,
+				activity.getAvgAirTemp(), activity.getAvgHumidity(),
+				activity.getAerobicTrainingEffect(), activity.getAnaerobicTrainingEffect(), activity.getTrainingEffectLabel(),
+				tags,
 				activity.getWorkout() != null ? activity.getWorkout().getId() : null,
 				activity.getBike() != null ? activity.getBike().getId() : null,
 				activity.getShoe() != null ? activity.getShoe().getId() : null);

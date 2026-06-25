@@ -226,6 +226,28 @@ def compute_tss(
     return _hr_based_tss(athlete, heartrate_series, activity.moving_time)
 
 
+def training_effect_label(aerobic_training_effect: float | None) -> str:
+    """Maps Garmin's 0.0-5.0 aerobic training effect to its benefit label.
+
+    Per Garmin's documented scale: 0.0-0.9 No Benefit, 1.0-1.9 Minor Benefit,
+    2.0-2.9 Maintaining, 3.0-3.9 Improving, 4.0-4.9 Highly Improving, 5.0
+    Overreaching.
+    """
+    if aerobic_training_effect is None:
+        return ""
+    if aerobic_training_effect < 1.0:
+        return "No Benefit"
+    if aerobic_training_effect < 2.0:
+        return "Minor Benefit"
+    if aerobic_training_effect < 3.0:
+        return "Maintaining"
+    if aerobic_training_effect < 4.0:
+        return "Improving"
+    if aerobic_training_effect < 5.0:
+        return "Highly Improving"
+    return "Overreaching"
+
+
 def _write_duration_curves(
     activity: Activity, power_series: Sequence[float | None], hr_series: Sequence[float | None]
 ) -> None:
@@ -427,6 +449,14 @@ def ingest_upload(upload: Upload) -> Activity:
             avg_humidity = _mean(humidity_series)
             activity.avg_humidity = round(avg_humidity) if avg_humidity is not None else None
             update_fields.append("avg_humidity")
+
+    aerobic_te = parsed.get("aerobic_training_effect")
+    anaerobic_te = parsed.get("anaerobic_training_effect")
+    if aerobic_te is not None or anaerobic_te is not None:
+        activity.aerobic_training_effect = aerobic_te
+        activity.anaerobic_training_effect = anaerobic_te
+        activity.training_effect_label = training_effect_label(aerobic_te)
+        update_fields.extend(["aerobic_training_effect", "anaerobic_training_effect", "training_effect_label"])
 
     activity.save(update_fields=update_fields)
 

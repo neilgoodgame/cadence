@@ -52,10 +52,17 @@ def parse_fit(path: str) -> ParsedActivity:
     dev_field_scales = _developer_field_scales(fit_file)
 
     sport = "bike"
+    aerobic_training_effect = None
+    anaerobic_training_effect = None
     for message in fit_file.get_messages("session"):
         raw_sport = message.get_value("sport")
         if raw_sport:
             sport = SPORT_MAP.get(str(raw_sport).lower(), "bike")
+        # Garmin's Firstbeat-derived training load, 0.0-5.0. Standard FIT
+        # session fields (not developer fields) - only present on Garmin
+        # devices that run that analytics.
+        aerobic_training_effect = message.get_value("total_training_effect")
+        anaerobic_training_effect = message.get_value("total_anaerobic_training_effect")
         break
 
     records = list(fit_file.get_messages("record"))
@@ -143,4 +150,6 @@ def parse_fit(path: str) -> ParsedActivity:
         "samples": samples,
         "laps": laps,
         "distance_source": "gps" if has_gps else "trainer",
+        "aerobic_training_effect": aerobic_training_effect,
+        "anaerobic_training_effect": anaerobic_training_effect,
     }

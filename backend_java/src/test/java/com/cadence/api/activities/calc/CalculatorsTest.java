@@ -138,4 +138,24 @@ class CalculatorsTest {
 		Map<String, Integer> result = TssCalculator.secondsPerZone(hrSeries, zones, 200.0);
 		assertThat(result).containsEntry("Z1", 2).containsEntry("Z2", 1);
 	}
+
+	@Test
+	void trainingEffectLabelNullReturnsEmptyString() {
+		assertThat(TrainingEffectLabel.of(null)).isEmpty();
+	}
+
+	@Test
+	void trainingEffectLabelMapsGarminsDocumentedScale() {
+		assertThat(TrainingEffectLabel.of(0.0)).isEqualTo("No Benefit");
+		assertThat(TrainingEffectLabel.of(0.9)).isEqualTo("No Benefit");
+		assertThat(TrainingEffectLabel.of(1.0)).isEqualTo("Minor Benefit");
+		assertThat(TrainingEffectLabel.of(1.9)).isEqualTo("Minor Benefit");
+		assertThat(TrainingEffectLabel.of(2.0)).isEqualTo("Maintaining");
+		assertThat(TrainingEffectLabel.of(2.9)).isEqualTo("Maintaining");
+		assertThat(TrainingEffectLabel.of(3.0)).isEqualTo("Improving");
+		assertThat(TrainingEffectLabel.of(3.9)).isEqualTo("Improving");
+		assertThat(TrainingEffectLabel.of(4.0)).isEqualTo("Highly Improving");
+		assertThat(TrainingEffectLabel.of(4.9)).isEqualTo("Highly Improving");
+		assertThat(TrainingEffectLabel.of(5.0)).isEqualTo("Overreaching");
+	}
 }

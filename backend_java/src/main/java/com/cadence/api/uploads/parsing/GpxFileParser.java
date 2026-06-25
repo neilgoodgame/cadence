@@ -105,7 +105,7 @@ public final class GpxFileParser {
 			throw new IllegalArgumentException("No timestamped trackpoints found in GPX file.");
 		}
 
-		return new ParsedActivity(sport, Environment.OUTDOOR, true, startDate, "gpx", DistanceSource.GPS, samples, laps);
+		return new ParsedActivity(sport, Environment.OUTDOOR, true, startDate, "gpx", DistanceSource.GPS, samples, laps, null, null);
 	}
 
 	private static Double parseAttr(Element element, String name) {

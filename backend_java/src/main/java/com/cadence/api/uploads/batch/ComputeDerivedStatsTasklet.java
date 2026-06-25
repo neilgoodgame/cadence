@@ -3,6 +3,7 @@ package com.cadence.api.uploads.batch;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.calc.NormalizedPowerCalculator;
+import com.cadence.api.activities.calc.TrainingEffectLabel;
 import com.cadence.api.activities.calc.TssCalculator;
 import com.cadence.api.athletes.Zone;
 import com.cadence.api.athletes.ZoneService;
@@ -94,6 +95,14 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 				Double avgHumidity = mean(humiditySeries);
 				activity.setAvgHumidity(avgHumidity != null ? (int) Math.round(avgHumidity) : null);
 			}
+		}
+
+		Double aerobicTrainingEffect = context.getParsed().aerobicTrainingEffect();
+		Double anaerobicTrainingEffect = context.getParsed().anaerobicTrainingEffect();
+		if (aerobicTrainingEffect != null || anaerobicTrainingEffect != null) {
+			activity.setAerobicTrainingEffect(aerobicTrainingEffect);
+			activity.setAnaerobicTrainingEffect(anaerobicTrainingEffect);
+			activity.setTrainingEffectLabel(TrainingEffectLabel.of(aerobicTrainingEffect));
 		}
 
 		activityRepository.save(activity);
