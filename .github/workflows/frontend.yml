@@ -8,7 +8,7 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # See lint.yml's "Check for backend changes" step for why this is a step-level
       # filter rather than a `paths:` trigger filter: frontend is a required status
