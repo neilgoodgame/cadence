@@ -2,6 +2,8 @@ package com.cadence.api.users;
 
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.common.error.UnauthorizedException;
+import com.cadence.api.users.dto.LoginRequest;
 import com.cadence.api.users.dto.RegisterRequest;
 import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -42,5 +44,18 @@ public class UserService {
 
 	public User getById(String id) {
 		return userRepository.findById(id).orElseThrow(() -> new NotFoundException("No such user."));
+	}
+
+	/**
+	 * A social-only account (no password ever set) has a null {@code password}, and
+	 * {@link PasswordEncoder#matches} throws on a null encoded value rather than just
+	 * returning false - check for it explicitly instead of letting that surface as a 500.
+	 */
+	public User authenticate(LoginRequest request) {
+		User user = userRepository.findByEmailIgnoreCase(request.email()).orElse(null);
+		if (user == null || user.getPassword() == null || !passwordEncoder.matches(request.password(), user.getPassword())) {
+			throw new UnauthorizedException("Invalid email or password.");
+		}
+		return user;
 	}
 }

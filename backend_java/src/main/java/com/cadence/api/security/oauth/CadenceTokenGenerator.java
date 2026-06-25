@@ -13,8 +13,8 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
 /**
  * Replaces Spring Authorization Server's default base64url opaque tokens with the
  * contract's {@code cad_at_}/{@code cad_rt_} prefixed format, so tokens issued through
- * the real {@code /oauth/token} endpoint and through {@link RegistrationTokenIssuer}'s
- * direct-issuance bypass are indistinguishable on the wire.
+ * the real {@code /oauth/token} endpoint and through {@link TokenIssuer}'s direct-issuance
+ * bypass are indistinguishable on the wire.
  */
 public class CadenceTokenGenerator implements OAuth2TokenGenerator<OAuth2Token> {
 
