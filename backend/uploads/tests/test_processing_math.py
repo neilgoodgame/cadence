@@ -3,7 +3,13 @@ from django.test import SimpleTestCase, TestCase
 from accounts.models import User
 from activities.models import Activity
 
-from ..processing import _best_pace_seconds_per_km, compute_duration_curve, compute_normalized_power, compute_tss
+from ..processing import (
+    _best_pace_seconds_per_km,
+    compute_duration_curve,
+    compute_normalized_power,
+    compute_tss,
+    training_effect_label,
+)
 
 
 class ComputeNormalizedPowerTests(SimpleTestCase):
@@ -83,3 +89,25 @@ class ComputeTssTests(TestCase):
         # All samples sit at exactly 100% of LTHR -> Z4 Threshold (91-105%),
         # whose midpoint is 98% -> a full hour there is 98 hrTSS exactly.
         self.assertEqual(tss, 98)
+
+
+class TrainingEffectLabelTests(SimpleTestCase):
+    def test_none_returns_empty_string(self):
+        self.assertEqual(training_effect_label(None), "")
+
+    def test_boundaries_map_to_garmins_documented_scale(self):
+        cases = [
+            (0.0, "No Benefit"),
+            (0.9, "No Benefit"),
+            (1.0, "Minor Benefit"),
+            (1.9, "Minor Benefit"),
+            (2.0, "Maintaining"),
+            (2.9, "Maintaining"),
+            (3.0, "Improving"),
+            (3.9, "Improving"),
+            (4.0, "Highly Improving"),
+            (4.9, "Highly Improving"),
+            (5.0, "Overreaching"),
+        ]
+        for value, label in cases:
+            self.assertEqual(training_effect_label(value), label, f"value={value}")

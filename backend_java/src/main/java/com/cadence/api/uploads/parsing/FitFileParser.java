@@ -43,6 +43,19 @@ public final class FitFileParser {
 		}
 
 		Sport sport = sessions.isEmpty() ? Sport.BIKE : mapSport(sessions.get(0).getSport());
+		// Garmin's Firstbeat-derived training load, 0.0-5.0. Standard FIT session fields (not
+		// developer fields) - only present on Garmin devices that run that analytics.
+		Double aerobicTrainingEffect = null;
+		Double anaerobicTrainingEffect = null;
+		if (!sessions.isEmpty()) {
+			SessionMesg session = sessions.get(0);
+			if (session.getTotalTrainingEffect() != null) {
+				aerobicTrainingEffect = session.getTotalTrainingEffect().doubleValue();
+			}
+			if (session.getTotalAnaerobicTrainingEffect() != null) {
+				anaerobicTrainingEffect = session.getTotalAnaerobicTrainingEffect().doubleValue();
+			}
+		}
 		long startMillis = records.get(0).getTimestamp().getDate().getTime();
 		Instant startDate = Instant.ofEpochMilli(startMillis);
 		boolean hasGps = records.stream().anyMatch(r -> r.getPositionLat() != null && r.getPositionLong() != null);
@@ -96,7 +109,9 @@ public final class FitFileParser {
 		Environment environment = hasGps ? Environment.OUTDOOR : Environment.INDOOR;
 		DistanceSource distanceSource = hasGps ? DistanceSource.GPS : DistanceSource.TRAINER;
 
-		return new ParsedActivity(sport, environment, hasGps, startDate, "fit", distanceSource, samples, lapSummaries);
+		return new ParsedActivity(
+				sport, environment, hasGps, startDate, "fit", distanceSource, samples, lapSummaries,
+				aerobicTrainingEffect, anaerobicTrainingEffect);
 	}
 
 	private static double semicirclesToDegrees(int semicircles) {

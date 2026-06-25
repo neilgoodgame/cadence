@@ -163,6 +163,9 @@ class Component extends DCLogic {
       ['fluids_ml', 'int', true, [], ''],
       ['avg_air_temp', 'numeric(4,1)', true, [], '°C · computed, run only'],
       ['avg_humidity', 'int', true, [], '% RH · computed, run only'],
+      ['aerobic_training_effect', 'numeric(2,1)', true, ['derived'], '0.0–5.0 · Garmin Firstbeat, FIT session only'],
+      ['anaerobic_training_effect', 'numeric(2,1)', true, ['derived'], '0.0–5.0 · Garmin Firstbeat, FIT session only'],
+      ['training_effect_label', 'text', true, ['derived'], 'e.g. Improving | Overreaching · from aerobic_training_effect'],
       ['bike_id', 'uuid', true, ['fk'], '→ bike.id'],
       ['shoe_id', 'uuid', true, ['fk'], '→ shoe.id'],
       ['workout_id', 'uuid', true, ['fk'], '→ workout.id · matched plan'],
@@ -172,6 +175,7 @@ class Component extends DCLogic {
       'start_weight_kg defaults to user.weight_kg at creation if omitted.',
       'sweat_rate & % weight lost are computed (start_weight − end_weight + fluids) — never stored.',
       'avg_air_temp & avg_humidity are computed from the record stream — run only, null unless Stryd environmental data is present.',
+      'aerobic/anaerobic_training_effect & training_effect_label come from a FIT session message only — null for GPX/TCX uploads or devices that don’t compute them; never user-set.',
       'bike_id valid only when sport=bike; shoe_id only when sport=run (app-level check).',
     ]},
     { name: 'lap', domain: 'core', note: 'splits', cols: [

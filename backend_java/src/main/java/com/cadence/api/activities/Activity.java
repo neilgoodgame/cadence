@@ -84,6 +84,16 @@ public class Activity extends PrefixedIdEntity {
 	@Column(name = "avg_humidity")
 	private Integer avgHumidity;
 
+	/** Garmin's Firstbeat-derived training load, from a FIT session message (no GPX/TCX equivalent). Device-computed, never user-settable. */
+	@Column(name = "aerobic_training_effect")
+	private Double aerobicTrainingEffect;
+
+	@Column(name = "anaerobic_training_effect")
+	private Double anaerobicTrainingEffect;
+
+	@Column(name = "training_effect_label", nullable = false)
+	private String trainingEffectLabel = "";
+
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "workout_id")
 	private Workout workout;
@@ -275,6 +285,30 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setAvgHumidity(Integer avgHumidity) {
 		this.avgHumidity = avgHumidity;
+	}
+
+	public Double getAerobicTrainingEffect() {
+		return aerobicTrainingEffect;
+	}
+
+	public void setAerobicTrainingEffect(Double aerobicTrainingEffect) {
+		this.aerobicTrainingEffect = aerobicTrainingEffect;
+	}
+
+	public Double getAnaerobicTrainingEffect() {
+		return anaerobicTrainingEffect;
+	}
+
+	public void setAnaerobicTrainingEffect(Double anaerobicTrainingEffect) {
+		this.anaerobicTrainingEffect = anaerobicTrainingEffect;
+	}
+
+	public String getTrainingEffectLabel() {
+		return trainingEffectLabel;
+	}
+
+	public void setTrainingEffectLabel(String trainingEffectLabel) {
+		this.trainingEffectLabel = trainingEffectLabel;
 	}
 
 	public Workout getWorkout() {

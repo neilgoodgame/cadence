@@ -15,7 +15,11 @@ public record ParsedActivity(
 		String source,
 		DistanceSource distanceSource,
 		List<Sample> samples,
-		List<LapSummary> laps) {
+		List<LapSummary> laps,
+		// Garmin's Firstbeat-derived training load, from a FIT session message - FIT-only
+		// (no GPX/TCX equivalent), so always null from those parsers.
+		Double aerobicTrainingEffect,
+		Double anaerobicTrainingEffect) {
 
 	/**
 	 * One 1 Hz record. {@code t} is the offset in seconds from {@link #startDate}.

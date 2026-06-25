@@ -2100,6 +2100,23 @@ components:
             Mean relative humidity (% RH) computed from the record stream. Run only;
             null unless Stryd environmental data is present.
           example: 57
+        aerobic_training_effect:
+          type: [number, "null"]
+          description: >
+            Garmin's Firstbeat-derived aerobic training load, 0.0-5.0. Read-only;
+            from the FIT session message (no GPX/TCX equivalent), so null for
+            activities not uploaded as .fit or from devices that don't compute it.
+          example: 4.2
+        anaerobic_training_effect:
+          type: [number, "null"]
+          description: Garmin's Firstbeat-derived anaerobic training load, 0.0-5.0. Same source/availability as aerobic_training_effect.
+          example: 0.0
+        training_effect_label:
+          type: string
+          description: >
+            Benefit label derived from aerobic_training_effect (e.g. "Improving",
+            "Overreaching"). Empty string when aerobic_training_effect is null.
+          example: Highly Improving
         tags:
           type: array
           items: { type: string }

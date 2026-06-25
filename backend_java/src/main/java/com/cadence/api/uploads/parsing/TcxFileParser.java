@@ -132,7 +132,7 @@ public final class TcxFileParser {
 
 		Environment environment = anyGps ? Environment.OUTDOOR : Environment.INDOOR;
 		DistanceSource distanceSource = anyGps ? DistanceSource.GPS : DistanceSource.TRAINER;
-		return new ParsedActivity(sport, environment, anyGps, startDate, "tcx", distanceSource, samples, laps);
+		return new ParsedActivity(sport, environment, anyGps, startDate, "tcx", distanceSource, samples, laps, null, null);
 	}
 
 	private static Sport mapSport(String value) {

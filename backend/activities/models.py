@@ -50,6 +50,11 @@ class Activity(PrefixedIDModel):
     fluids_ml = models.IntegerField(null=True, blank=True)
     avg_air_temp = models.FloatField(null=True, blank=True)
     avg_humidity = models.IntegerField(null=True, blank=True)
+    # Garmin's Firstbeat-derived training load metrics, from a FIT session
+    # message (no GPX/TCX equivalent). Device-computed, never user-settable.
+    aerobic_training_effect = models.FloatField(null=True, blank=True)
+    anaerobic_training_effect = models.FloatField(null=True, blank=True)
+    training_effect_label = models.CharField(max_length=20, blank=True, default="")
     workout = models.ForeignKey(Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     bike = models.ForeignKey(Bike, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     shoe = models.ForeignKey(Shoe, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
