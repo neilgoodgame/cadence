@@ -155,6 +155,20 @@ class RealFitIngestionTests(TestCase):
         self.assertIsNone(activity.avg_air_temp)
         self.assertIsNone(activity.avg_humidity)
 
+    def test_cycling_indoor_derives_garmin_training_effect(self):
+        activity = self._upload_fixture("cycling_indoor.fit")
+        self.assertAlmostEqual(activity.aerobic_training_effect, 4.2, places=1)
+        self.assertAlmostEqual(activity.anaerobic_training_effect, 0.0, places=1)
+        self.assertEqual(activity.training_effect_label, "Highly Improving")
+
+    def test_training_effect_is_exposed_on_the_api_response(self):
+        activity = self._upload_fixture("cycling_indoor.fit")
+        response = _bearer_client(self.athlete).get(f"/v1/activities/{activity.id}")
+        body = response.json()
+        self.assertAlmostEqual(body["aerobic_training_effect"], 4.2, places=1)
+        self.assertAlmostEqual(body["anaerobic_training_effect"], 0.0, places=1)
+        self.assertEqual(body["training_effect_label"], "Highly Improving")
+
     def test_running_outdoor_marathon_derives_avg_air_temp_and_humidity_from_stryd(self):
         activity = self._upload_fixture("running_outdoor_marathon.fit")
         self.assertTrue(Record.objects.filter(activity=activity, air_temp__isnull=False).exists())
@@ -162,6 +176,11 @@ class RealFitIngestionTests(TestCase):
         self.assertFalse(Record.objects.filter(activity=activity, core_temp__isnull=False).exists())
         self.assertAlmostEqual(activity.avg_air_temp, 17.9, places=1)
         self.assertEqual(activity.avg_humidity, 58)
+
+    def test_running_outdoor_marathon_training_effect_at_the_overreaching_boundary(self):
+        activity = self._upload_fixture("running_outdoor_marathon.fit")
+        self.assertAlmostEqual(activity.aerobic_training_effect, 5.0, places=1)
+        self.assertEqual(activity.training_effect_label, "Overreaching")
 
     def test_running_treadmill_ingests_with_stryd_power(self):
         activity = self._upload_fixture("running_treadmill.fit")

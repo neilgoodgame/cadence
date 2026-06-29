@@ -33,12 +33,19 @@ Semantics:
 ## Suggested implementation steps for Claude Code
 1. DB migration: add the five nullable columns above (`record`: air_temp, humidity,
    skin_temp; `activity`: avg_air_temp, avg_humidity).
-2. Ingest: when parsing a `.fit`/`.tcx`, map Stryd env channels → record.air_temp/humidity,
-   CORE channels → record.core_temp/skin_temp/heat_strain.
+2. Ingest: when parsing a `.fit`, map Stryd env channels → record.air_temp/humidity,
+   CORE channels → record.core_temp/skin_temp/heat_strain. Stryd/CORE data is
+   FIT-only — Garmin Connect's TCX export doesn't carry these third-party developer
+   fields (no documented extension schema for them), and GPX has no equivalent at
+   all, so `.gpx`/`.tcx` uploads simply never populate these channels.
 3. Derivation: on activity finalize, if run + Stryd channels present, compute
    activity.avg_air_temp / avg_humidity from the stream; else leave for manual entry.
 4. API: expose the read fields; allow manual write on PATCH only when not computed.
 5. Types/ORM: regenerate from the updated `openapi.yaml` / entity definitions.
+
+## Status
+Implemented in both `backend/` and `backend_java/` (FIT ingestion, derivation, API,
+and PATCH semantics). GPX/TCX intentionally do not populate these fields — see step 2.
 
 ---
 
@@ -62,9 +69,12 @@ as an incremental migration + API/type update, same as the change above. Source 
   fall back to a simpler avg-HR-duration formula and revisit once #4 lands.
 
 ## 3. Training Effect (aerobic / anaerobic)
-Flagged, not scoped: this is Garmin's proprietary EPOC-based model, not a small formula or a
-missing field. Needs real design work (what model to approximate, what data it needs) before
-it's an implementation task. Lower priority than #1/#2/#4.
+~~Flagged, not scoped: assumed this was Garmin's proprietary EPOC-based model, needing real
+design work to approximate.~~ Turned out not to need any modeling: Garmin's watch (via
+Firstbeat) already computes it and writes the result directly into the FIT session message
+(`total_training_effect`/`total_anaerobic_training_effect`) — a precomputed field read, same
+shape as #1, not a derivation like #2. **Implemented** — see the "Garmin training effect"
+changelog below.
 
 ## 4. `resting_hr` on `User`
 New nullable integer field, identical shape to the existing `lthr`/`max_hr` fields
@@ -80,7 +90,9 @@ New nullable integer field, identical shape to the existing `lthr`/`max_hr` fiel
 4. API: expose `avg_lr_balance`/`trimp` as read-only `Activity` fields; expose `resting_hr` as a
    normal writable `User`/`PATCH /v1/athletes/{id}` field, mirroring `lthr`.
 5. Types/ORM: regenerate from the updated `openapi.yaml` / entity definitions.
-6. Training Effect: design first, implement later - not part of this migration.
+6. ~~Training Effect: design first, implement later - not part of this migration.~~ Done
+   separately — see the "Garmin training effect" changelog below; turned out to be a
+   precomputed-field read, not a design task.
 
 ---
 
@@ -133,3 +145,28 @@ both backends.
    model on both backends, no migration needed - just wiring up the existing column).
 3. Frontend: once available, wire a "Retired shoes" view into the existing UI link, and
    add a `role` input to the add/edit shoe form.
+
+---
+
+# Changelog — Garmin training effect
+
+New `activity` fields, sourced from a FIT file's `session` message (standard FIT
+fields, not developer fields — FIT-only, no GPX/TCX equivalent):
+- `aerobic_training_effect` — numeric(2,1), 0.0–5.0, nullable
+- `anaerobic_training_effect` — numeric(2,1), 0.0–5.0, nullable
+- `training_effect_label` — text, derived from `aerobic_training_effect` per
+  Garmin's documented benefit scale (0.0–0.9 No Benefit, 1.0–1.9 Minor Benefit,
+  2.0–2.9 Maintaining, 3.0–3.9 Improving, 4.0–4.9 Highly Improving, 5.0
+  Overreaching). Empty string when `aerobic_training_effect` is null.
+
+All three are device-computed and read-only — never writable via
+`PATCH /v1/activities/{id}`, unlike `avg_air_temp`/`avg_humidity` above.
+
+## Status
+Implemented in both `backend/` and `backend_java/` (FIT session-message extraction,
+label derivation, API). Modeled after the equivalent extraction in
+[fit-analyser](https://github.com/neilgoodgame/fit-analyser)'s `get_session_meta()` —
+that project's reverse-engineered "primary benefit" enum (undocumented FIT field 188)
+was deliberately left out here since it has no accessor in Garmin's own FIT SDK and
+no verifiable spec; `training_effect_label`'s value-based fallback covers the same
+need without relying on an unofficial field.
