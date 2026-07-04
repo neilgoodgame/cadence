@@ -450,31 +450,35 @@ class ShoeViewTests(TestCase):
 class ShoeCatalogViewTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")
-        nike = ShoeModel.objects.create(manufacturer="Nike", model="Vaporfly")
-        adidas = ShoeModel.objects.create(manufacturer="Adidas", model="Adios Pro")
-        ShoeModelVersion.objects.create(shoe_model=nike, version="3")
-        ShoeModelVersion.objects.create(shoe_model=adidas, version="4")
+        # Use names not in the seed catalog so counts are deterministic regardless of migration data.
+        acme = ShoeModel.objects.create(manufacturer="AcmeSport", model="CloudZephyr")
+        beta = ShoeModel.objects.create(manufacturer="BetaRun", model="TurboStride")
+        ShoeModelVersion.objects.create(shoe_model=acme, version="3")
+        ShoeModelVersion.objects.create(shoe_model=beta, version="4")
 
     def test_empty_query_returns_everything(self):
         response = _bearer_client(self.athlete).get("/v1/gear/shoe-catalog")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()["data"]), 2)
+        # Seed migration may add entries; check our test entries are present rather than asserting exact count.
+        manufacturers = {entry["manufacturer"] for entry in response.json()["data"]}
+        self.assertIn("AcmeSport", manufacturers)
+        self.assertIn("BetaRun", manufacturers)
 
     def test_matches_by_manufacturer_case_insensitive(self):
-        response = _bearer_client(self.athlete).get("/v1/gear/shoe-catalog?q=nike")
+        response = _bearer_client(self.athlete).get("/v1/gear/shoe-catalog?q=acmesport")
         data = response.json()["data"]
         self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["manufacturer"], "Nike")
-        self.assertEqual(data[0]["display_name"], "Nike Vaporfly 3")
+        self.assertEqual(data[0]["manufacturer"], "AcmeSport")
+        self.assertEqual(data[0]["display_name"], "AcmeSport CloudZephyr 3")
 
     def test_matches_by_model_case_insensitive(self):
-        response = _bearer_client(self.athlete).get("/v1/gear/shoe-catalog?q=ADIOS")
+        response = _bearer_client(self.athlete).get("/v1/gear/shoe-catalog?q=TURBOSTRIDE")
         data = response.json()["data"]
         self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["manufacturer"], "Adidas")
+        self.assertEqual(data[0]["manufacturer"], "BetaRun")
 
     def test_no_match_returns_empty(self):
-        response = _bearer_client(self.athlete).get("/v1/gear/shoe-catalog?q=brooks")
+        response = _bearer_client(self.athlete).get("/v1/gear/shoe-catalog?q=zzznomatchzzz")
         self.assertEqual(response.json()["data"], [])
 
     def test_unauthenticated_request_rejected(self):
