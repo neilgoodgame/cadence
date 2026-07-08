@@ -22,7 +22,7 @@ export function StatRow({ activity }: { activity: Activity }) {
       <Stat label="Moving time" value={formatDuration(activity.moving_time)} />
       <Stat label="Avg power" value={activity.avg_power} unit="w" />
       <Stat label="Norm. power" value={activity.norm_power} unit="w" />
-      <Stat label="Intensity" value={activity.intensity.toFixed(2)} />
+      <Stat label="Intensity" value={activity.intensity ? activity.intensity.toFixed(2) : null} />
       <Stat label="TSS" value={activity.tss} />
       <Stat label="Avg HR" value={activity.avg_hr} unit="bpm" />
       <Stat label="Ascent" value={activity.ascent} unit="m" />
