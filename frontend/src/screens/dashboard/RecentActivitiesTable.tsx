@@ -45,7 +45,7 @@ export function RecentActivitiesTable({ activities }: { activities: Activity[] }
             <td className="mono" style={{ color: "var(--ember)" }}>
               {activity.tss}
             </td>
-            <td className="mono">{activity.intensity.toFixed(2)}</td>
+            <td className="mono">{activity.intensity ? activity.intensity.toFixed(2) : "-"}</td>
             <td className="mono">{activity.avg_power ? `${activity.avg_power} w` : `${activity.avg_hr} bpm`}</td>
           </tr>
         ))}
