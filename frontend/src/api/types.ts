@@ -107,11 +107,11 @@ export interface Activity {
   distance_source: DistanceSource;
   avg_power: number | null;
   norm_power: number | null;
-  intensity: number;
+  intensity: number | null;
   tss: number;
-  avg_hr: number;
-  max_hr: number;
-  ascent: number;
+  avg_hr: number | null;
+  max_hr: number | null;
+  ascent: number | null;
   start_weight_kg: number | null;
   end_weight_kg: number | null;
   fluids_ml: number | null;

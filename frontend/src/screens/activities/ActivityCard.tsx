@@ -65,7 +65,7 @@ export function ActivityCard({ activity, hrZones }: { activity: Activity; hrZone
 
         <div style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: 4 }}>
           <div className="mono" style={{ fontSize: 13, color: "var(--ink2)" }}>
-            {activity.avg_hr} bpm
+            {activity.avg_hr != null ? `${activity.avg_hr} bpm` : "—"}
           </div>
           <div className="mono" style={{ fontSize: 13, color: "var(--ember)" }}>
             TSS {activity.tss}
