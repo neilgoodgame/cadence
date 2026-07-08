@@ -46,7 +46,7 @@ export function RecentActivitiesTable({ activities }: { activities: Activity[] }
               {activity.tss}
             </td>
             <td className="mono">{activity.intensity ? activity.intensity.toFixed(2) : "-"}</td>
-            <td className="mono">{activity.avg_power ? `${activity.avg_power} w` : `${activity.avg_hr} bpm`}</td>
+            <td className="mono">{activity.avg_power ? `${activity.avg_power} w` : activity.avg_hr != null ? `${activity.avg_hr} bpm` : "—"}</td>
           </tr>
         ))}
       </tbody>
