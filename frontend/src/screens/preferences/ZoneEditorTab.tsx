@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listZones, replaceZoneSet } from "../../api/athletes";
 import type { Zone, ZoneSet, ZoneType } from "../../api/types";
+import { HrZoneGenerator } from "./HrZoneGenerator";
 
 const UNIT_BY_TYPE: Record<ZoneType, string> = {
   heart_rate: "bpm",
@@ -27,7 +28,8 @@ function ZoneEditorForm({ athleteId, type, zoneSet }: { athleteId: string; type:
   return (
     <div>
       <div style={{ fontSize: 13, color: "var(--ink3)", marginBottom: 16 }}>
-        Reference threshold: <span className="mono">{zoneSet.reference}</span> {unit}
+        Reference threshold: <span className="mono">{zoneSet.reference ?? "not set"}</span>{" "}
+        {zoneSet.reference != null && unit}
       </div>
 
       <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
@@ -68,8 +70,14 @@ function ZoneEditorForm({ athleteId, type, zoneSet }: { athleteId: string; type:
                 />
               </td>
               <td className="mono" style={{ padding: "8px 0", color: "var(--ink2)" }}>
-                {Math.round((zone.low_pct / 100) * zoneSet.reference)}–
-                {Math.round((zone.high_pct / 100) * zoneSet.reference)} {unit}
+                {zoneSet.reference != null ? (
+                  <>
+                    {Math.round((zone.low_pct / 100) * zoneSet.reference)}–
+                    {Math.round((zone.high_pct / 100) * zoneSet.reference)} {unit}
+                  </>
+                ) : (
+                  "—"
+                )}
               </td>
             </tr>
           ))}
@@ -100,12 +108,19 @@ function ZoneEditorForm({ athleteId, type, zoneSet }: { athleteId: string; type:
 /** Keyed by type so switching tabs (or the initial fetch resolving) mounts a fresh form
  * with its own local draft state, rather than syncing an effect's setState into it. */
 export function ZoneEditorTab({ athleteId, type }: { athleteId: string; type: ZoneType }) {
-  const { data } = useQuery({ queryKey: ["zones", athleteId], queryFn: () => listZones(athleteId) });
+  const { data, dataUpdatedAt } = useQuery({ queryKey: ["zones", athleteId], queryFn: () => listZones(athleteId) });
   const zoneSet = data?.data.find((z) => z.type === type);
 
-  if (!zoneSet) {
-    return <div style={{ color: "var(--ink3)", fontSize: 13 }}>Loading…</div>;
-  }
-
-  return <ZoneEditorForm key={type} athleteId={athleteId} type={type} zoneSet={zoneSet} />;
+  return (
+    <div>
+      {type === "heart_rate" && <HrZoneGenerator athleteId={athleteId} />}
+      {zoneSet ? (
+        // dataUpdatedAt in the key remounts the draft when a refetch lands (e.g. after the
+        // generator applies new zones), so the form doesn't keep showing the stale set.
+        <ZoneEditorForm key={`${type}-${dataUpdatedAt}`} athleteId={athleteId} type={type} zoneSet={zoneSet} />
+      ) : (
+        <div style={{ color: "var(--ink3)", fontSize: 13 }}>Loading…</div>
+      )}
+    </div>
+  );
 }

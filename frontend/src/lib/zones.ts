@@ -14,6 +14,11 @@ export interface ZoneTime {
  * reference threshold itself works (there's no upper limit on effort).
  */
 export function bucketIntoZones(samples: (number | null)[], zoneSet: ZoneSet, secondsPerSample = 1): ZoneTime[] {
+  // Without a reference threshold the % bands can't be resolved - report zero time everywhere.
+  if (zoneSet.reference == null) {
+    return zoneSet.zones.map((zone) => ({ name: zone.name, seconds: 0, fraction: 0 }));
+  }
+
   const counts = zoneSet.zones.map(() => 0);
   let total = 0;
 

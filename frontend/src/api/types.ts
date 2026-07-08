@@ -204,13 +204,14 @@ export interface Zone {
 
 export interface ZoneSet {
   type: ZoneType;
-  reference: number;
+  /** Null until the athlete sets the underlying threshold (LTHR, FTP, threshold pace). */
+  reference: number | null;
   zones: Zone[];
 }
 
 export interface ZoneSetUpdateResponse {
   type: ZoneType;
-  reference: number;
+  reference: number | null;
   updated: boolean;
 }
 
