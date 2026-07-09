@@ -103,3 +103,13 @@ export function deleteShoe(id: string): Promise<void> {
 export function searchShoeCatalog(q: string): Promise<DataList<ShoeCatalogEntry>> {
   return apiFetch<DataList<ShoeCatalogEntry>>(`/v1/gear/shoe-catalog?q=${encodeURIComponent(q)}`);
 }
+
+export interface ShoeCatalogCreateInput {
+  manufacturer: string;
+  model: string;
+  version?: string;
+}
+
+export function createShoeCatalogEntry(input: ShoeCatalogCreateInput): Promise<ShoeCatalogEntry> {
+  return apiFetch<ShoeCatalogEntry>("/v1/gear/shoe-catalog", { method: "POST", body: input });
+}

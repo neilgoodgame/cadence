@@ -11,7 +11,7 @@ from core.auth_context import get_effective_athlete_id
 from core.exceptions import ConflictError
 from core.permissions import user_may_read, user_may_write
 
-from .models import Bike, Component, ServiceRecord, Shoe, ShoeModelVersion
+from .models import Bike, Component, ServiceRecord, Shoe, ShoeModel, ShoeModelVersion
 from .serializers import (
     BikeCreateSerializer,
     BikeDetailSerializer,
@@ -24,9 +24,17 @@ from .serializers import (
     ServiceRecordSerializer,
     ShoeCatalogEntrySerializer,
     ShoeCreateSerializer,
+    ShoeModelCreateSerializer,
     ShoeSerializer,
     ShoeUpdateSerializer,
 )
+
+
+def _display_name(manufacturer: str, model: str, version: str) -> str:
+    parts = [manufacturer, model]
+    if version:
+        parts.append(version)
+    return " ".join(parts)
 
 
 def _require_read(request: Request, athlete_id: str) -> None:
@@ -232,8 +240,30 @@ class ShoeCatalogView(APIView):
                 "manufacturer": version.shoe_model.manufacturer,
                 "model": version.shoe_model.model,
                 "version": version.version,
-                "display_name": f"{version.shoe_model.manufacturer} {version.shoe_model.model} {version.version}",
+                "display_name": _display_name(version.shoe_model.manufacturer, version.shoe_model.model, version.version),
             }
             for version in versions
         ]
         return Response({"data": ShoeCatalogEntrySerializer(data, many=True).data})
+
+    def post(self, request: Request) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        serializer = ShoeModelCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        shoe_model = ShoeModel.objects.create(
+            manufacturer=data["manufacturer"],
+            model=data["model"],
+            created_by_id=sub,
+        )
+        version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version=data["version"])
+
+        entry = {
+            "shoe_model_version_id": version.id,
+            "manufacturer": shoe_model.manufacturer,
+            "model": shoe_model.model,
+            "version": version.version,
+            "display_name": _display_name(shoe_model.manufacturer, shoe_model.model, version.version),
+        }
+        return Response(ShoeCatalogEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
