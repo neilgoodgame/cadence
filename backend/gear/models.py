@@ -68,6 +68,13 @@ class ShoeModel(PrefixedIDModel):
 
     manufacturer = models.CharField(max_length=150)
     model = models.CharField(max_length=150)
+    created_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_shoe_models",
+    )
 
     def __str__(self) -> str:
         return f"{self.manufacturer} {self.model}"
@@ -79,7 +86,7 @@ class ShoeModelVersion(PrefixedIDModel):
     id_prefix = "smv"
 
     shoe_model = models.ForeignKey(ShoeModel, on_delete=models.CASCADE, related_name="versions")
-    version = models.CharField(max_length=50)
+    version = models.CharField(max_length=50, blank=True, default="")
 
     def __str__(self) -> str:
         return f"{self.shoe_model} {self.version}"

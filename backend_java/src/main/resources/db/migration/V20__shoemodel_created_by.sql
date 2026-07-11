@@ -1,0 +1,2 @@
+ALTER TABLE shoe_model
+    ADD COLUMN created_by VARCHAR(40) REFERENCES users (id) ON DELETE SET NULL;

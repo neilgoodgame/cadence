@@ -132,3 +132,9 @@ class ShoeCatalogEntrySerializer(serializers.Serializer):
     model = serializers.CharField()
     version = serializers.CharField()
     display_name = serializers.CharField()
+
+
+class ShoeModelCreateSerializer(serializers.Serializer):
+    manufacturer = serializers.CharField(max_length=150)
+    model = serializers.CharField(max_length=150)
+    version = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
