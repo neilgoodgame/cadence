@@ -240,7 +240,9 @@ class ShoeCatalogView(APIView):
                 "manufacturer": version.shoe_model.manufacturer,
                 "model": version.shoe_model.model,
                 "version": version.version,
-                "display_name": _display_name(version.shoe_model.manufacturer, version.shoe_model.model, version.version),
+                "display_name": _display_name(
+                    version.shoe_model.manufacturer, version.shoe_model.model, version.version
+                ),
             }
             for version in versions
         ]
