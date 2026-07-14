@@ -117,6 +117,11 @@ export interface Activity {
   fluids_ml: number | null;
   avg_air_temp: number | null;
   avg_humidity: number | null;
+  /** Garmin device-computed 0.0-5.0 loads; null unless the upload was a .fit with them. */
+  aerobic_training_effect: number | null;
+  anaerobic_training_effect: number | null;
+  /** Benefit label derived from aerobic_training_effect; empty string when that is null. */
+  training_effect_label: string;
   tags: string[];
   workout_id: string | null;
   bike_id: string | null;
