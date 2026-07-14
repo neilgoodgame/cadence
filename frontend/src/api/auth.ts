@@ -17,10 +17,19 @@ export function login(email: string, password: string): Promise<AuthResponse> {
   });
 }
 
+// The token endpoint authenticates the OAuth client via client_secret_post (see the
+// /oauth/token contract and FirstPartyClientConfig in backend_java). A browser bundle
+// can't keep a real secret, so this only works because the first-party "secret" is a
+// dev-grade shared value, not a credential worth protecting.
+const OAUTH_CLIENT_ID = import.meta.env.VITE_OAUTH_CLIENT_ID ?? "cadence-first-party";
+const OAUTH_CLIENT_SECRET = import.meta.env.VITE_OAUTH_CLIENT_SECRET ?? "dev-only-secret-change-me";
+
 export function refreshTokens(refreshToken: string): Promise<TokenResponse> {
   return apiFetchForm<TokenResponse>("/oauth/token", {
     grant_type: "refresh_token",
     refresh_token: refreshToken,
+    client_id: OAUTH_CLIENT_ID,
+    client_secret: OAUTH_CLIENT_SECRET,
   });
 }
 
