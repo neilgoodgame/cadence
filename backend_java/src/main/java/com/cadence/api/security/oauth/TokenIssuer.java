@@ -1,10 +1,14 @@
 package com.cadence.api.security.oauth;
 
 import com.cadence.api.users.User;
+import java.security.Principal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.security.oauth2.core.OAuth2RefreshToken;
@@ -52,11 +56,18 @@ public class TokenIssuer {
 		OAuth2RefreshToken refreshToken = new OAuth2RefreshToken(
 				CadenceTokenGenerator.randomToken("cad_rt_"), now, now.plus(REFRESH_TOKEN_TTL));
 
+		// The refresh_token grant requires the authenticated principal to be stored as an
+		// attribute (OAuth2RefreshTokenAuthenticationProvider reads it to mint the new pair);
+		// principalName alone is not enough - without this, every refresh of a login-issued
+		// token fails with "principal cannot be null".
+		Authentication principal = UsernamePasswordAuthenticationToken.authenticated(user.getEmail(), null, List.of());
+
 		OAuth2Authorization authorization = OAuth2Authorization.withRegisteredClient(client)
 				.id(UUID.randomUUID().toString())
 				.principalName(user.getEmail())
 				.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
 				.authorizedScopes(ALL_SCOPES)
+				.attribute(Principal.class.getName(), principal)
 				.token(accessToken)
 				.token(refreshToken)
 				.build();
