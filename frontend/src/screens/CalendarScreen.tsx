@@ -33,6 +33,27 @@ function workoutStatsLine(workout: Workout): string {
 
 const entryStatsStyle = { fontSize: 10, color: "var(--ink3)", marginTop: 1 } as const;
 
+// Unset (Python sends "", Java sends null) sinks below timed entries.
+const TIME_OF_DAY_ORDER: Record<string, number> = { AM: 0, MID: 1, PM: 2 };
+
+function timeOfDayRank(entry: ScheduledWorkout): number {
+  return TIME_OF_DAY_ORDER[entry.time_of_day ?? ""] ?? 3;
+}
+
+function TimeOfDayBadge({ entry }: { entry: ScheduledWorkout }) {
+  if (!entry.time_of_day) {
+    return null;
+  }
+  return (
+    <span
+      className="mono"
+      style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", color: "var(--ink3)", border: "1px solid var(--line)", borderRadius: 4, padding: "0 3px", marginRight: 5, verticalAlign: "1px" }}
+    >
+      {entry.time_of_day}
+    </span>
+  );
+}
+
 interface WeekTotals {
   plannedTss: number;
   plannedSecs: number;
@@ -93,6 +114,9 @@ export function CalendarScreen() {
       const list = map.get(entry.date) ?? [];
       list.push(entry);
       map.set(entry.date, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => timeOfDayRank(a) - timeOfDayRank(b));
     }
     return map;
   }, [calendarData]);
@@ -248,6 +272,7 @@ export function CalendarScreen() {
                             display: "block",
                           }}
                         >
+                          <TimeOfDayBadge entry={entry} />
                           {workout?.name ?? entry.workout_id}
                           {activity && (
                             <div className="mono" style={entryStatsStyle}>
@@ -278,6 +303,7 @@ export function CalendarScreen() {
                           color: status === "missed" ? "#e0442e" : isCompleted ? "var(--ink)" : "var(--ink2)",
                         }}
                       >
+                        <TimeOfDayBadge entry={entry} />
                         {workout?.name ?? entry.workout_id}
                         {workout && (
                           <div className="mono" style={entryStatsStyle}>
