@@ -26,6 +26,15 @@ export function StatRow({ activity }: { activity: Activity }) {
       <Stat label="TSS" value={activity.tss} />
       <Stat label="Avg HR" value={activity.avg_hr} unit="bpm" />
       <Stat label="Ascent" value={activity.ascent} unit="m" />
+      <Stat
+        label="Aerobic TE"
+        value={activity.aerobic_training_effect != null ? activity.aerobic_training_effect.toFixed(1) : null}
+        unit={activity.training_effect_label || undefined}
+      />
+      <Stat
+        label="Anaerobic TE"
+        value={activity.anaerobic_training_effect != null ? activity.anaerobic_training_effect.toFixed(1) : null}
+      />
     </div>
   );
 }
