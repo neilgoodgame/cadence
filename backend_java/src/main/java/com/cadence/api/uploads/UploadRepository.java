@@ -3,6 +3,8 @@ package com.cadence.api.uploads;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface UploadRepository extends JpaRepository<Upload, String> {
 
@@ -10,7 +12,8 @@ public interface UploadRepository extends JpaRepository<Upload, String> {
 	Optional<Upload> findFirstByAthleteIdAndFileHashAndStatusAndActivityIsNotNullOrderByReceivedAtDesc(
 			String athleteId, String fileHash, UploadStatus status);
 
-	List<Upload> findByBatchId(String batchId);
+	@Query("SELECT u FROM Upload u LEFT JOIN FETCH u.activity WHERE u.batch.id = :batchId")
+	List<Upload> findByBatchIdWithActivity(@Param("batchId") String batchId);
 
 	long countByBatchIdAndStatusIn(String batchId, List<UploadStatus> statuses);
 }

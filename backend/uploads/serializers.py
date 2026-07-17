@@ -9,6 +9,7 @@ from .models import Upload, UploadBatch
 class UploadSerializer(serializers.ModelSerializer):
     object = serializers.SerializerMethodField()
     error = serializers.SerializerMethodField()
+    activity_sport = serializers.SerializerMethodField()
 
     class Meta:
         model = Upload
@@ -19,6 +20,7 @@ class UploadSerializer(serializers.ModelSerializer):
             "progress",
             "filename",
             "activity_id",
+            "activity_sport",
             "error",
             "received_at",
             "completed_at",
@@ -31,6 +33,9 @@ class UploadSerializer(serializers.ModelSerializer):
         if obj.status != "failed":
             return None
         return {"code": obj.error_code, "message": obj.error_message}
+
+    def get_activity_sport(self, obj: Upload) -> str | None:
+        return obj.activity.sport if obj.activity_id and obj.activity else None
 
 
 class UploadBatchSerializer(serializers.ModelSerializer):
@@ -67,4 +72,4 @@ class UploadBatchSerializer(serializers.ModelSerializer):
         return round(settled / counts["total"], 2)
 
     def get_uploads(self, obj: UploadBatch) -> Any:
-        return UploadSerializer(obj.uploads.all(), many=True).data
+        return UploadSerializer(obj.uploads.select_related("activity"), many=True).data

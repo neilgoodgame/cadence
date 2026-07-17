@@ -294,6 +294,7 @@ export interface Upload {
   progress: number | null;
   filename: string;
   activity_id: string | null;
+  activity_sport: Sport | null;
   error: { code: string; message: string } | null;
   received_at: string;
   completed_at: string | null;

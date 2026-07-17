@@ -79,7 +79,9 @@ export function ImportScreen() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 560 }}>
-      <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>Import an activity</h1>
+      <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
+        {isZip ? "Import activities" : "Import an activity"}
+      </h1>
 
       <div
         onDragOver={(e) => {

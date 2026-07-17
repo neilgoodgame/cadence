@@ -14,10 +14,12 @@ public class UploadMapper {
 		UploadError error = upload.getStatus() == UploadStatus.FAILED
 				? new UploadError(upload.getErrorCode(), upload.getErrorMessage())
 				: null;
+		var activity = upload.getActivity();
 		return new UploadResponse(
 				upload.getId(), upload.getStatus(), upload.getProgress(), upload.getFilename(),
-				upload.getActivity() != null ? upload.getActivity().getId() : null, error,
-				upload.getReceivedAt(), upload.getCompletedAt());
+				activity != null ? activity.getId() : null,
+				activity != null ? activity.getSport() : null,
+				error, upload.getReceivedAt(), upload.getCompletedAt());
 	}
 
 	public UploadBatchResponse toResponse(UploadBatch batch, List<Upload> children) {
