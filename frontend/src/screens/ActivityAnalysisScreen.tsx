@@ -8,6 +8,7 @@ import { Header } from "./activity-analysis/Header";
 import { HydrationBlock } from "./activity-analysis/HydrationBlock";
 import { LapsTab } from "./activity-analysis/LapsTab";
 import { MultisportLegs } from "./activity-analysis/MultisportLegs";
+import { MultisportStreamChart } from "./activity-analysis/MultisportStreamChart";
 import { RouteMap } from "./activity-analysis/RouteMap";
 import { StatRow } from "./activity-analysis/StatRow";
 import { StreamChart } from "./activity-analysis/StreamChart";
@@ -53,7 +54,11 @@ export function ActivityAnalysisScreen() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20 }}>
         <div>
-          <StreamChart activity={activity} />
+          {activity.sport === "multisport" ? (
+            <MultisportStreamChart activity={activity} />
+          ) : (
+            <StreamChart activity={activity} />
+          )}
         </div>
         <RouteMap activity={activity} />
       </div>
