@@ -12,6 +12,7 @@ from webhooks.events import fire_event
 
 from .models import Upload
 from .parsers import parse_file
+from .parsers.fit import NoActivityDataError
 from .parsers.types import Lap as LapDict
 from .parsers.types import Sample
 
@@ -365,6 +366,8 @@ def ingest_upload(upload: Upload) -> Activity:
     """
     try:
         parsed_activities = parse_file(default_storage.path(upload.stored_path), upload.filename)
+    except NoActivityDataError as exc:
+        raise UploadProcessingError("no_activity_data", str(exc)) from exc
     except Exception as exc:
         raise UploadProcessingError("corrupt_file", str(exc)) from exc
 

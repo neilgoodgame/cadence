@@ -14,6 +14,7 @@ import com.cadence.api.uploads.UploadProcessingException;
 import com.cadence.api.uploads.UploadRepository;
 import com.cadence.api.uploads.UploadStatus;
 import com.cadence.api.uploads.parsing.FileParserDispatcher;
+import com.cadence.api.uploads.parsing.NoActivityDataException;
 import com.cadence.api.uploads.parsing.ParsedActivity;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -71,6 +72,9 @@ public class ParseFileTasklet implements Tasklet {
 		Path path = Path.of(properties.uploads().mediaRoot(), upload.getStoredPath());
 		try (InputStream in = Files.newInputStream(path)) {
 			parsedActivities = FileParserDispatcher.parse(in, upload.getFilename());
+		}
+		catch (NoActivityDataException e) {
+			throw new UploadProcessingException("no_activity_data", e.getMessage());
 		}
 		catch (Exception e) {
 			throw new UploadProcessingException("corrupt_file", e.getMessage());

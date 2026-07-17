@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 public enum UploadStatus {
-	QUEUED, PROCESSING, READY, FAILED, DUPLICATE;
+	QUEUED, PROCESSING, READY, FAILED, DUPLICATE, SKIPPED;
 
 	@JsonValue
 	public String wireValue() {

@@ -5,6 +5,13 @@ from fitparse import FitFile
 from .types import ParsedActivity, Sample
 from .utils import ensure_utc
 
+
+class NoActivityDataError(ValueError):
+    """A structurally valid FIT file with no record messages. Garmin account exports mix
+    these metadata stubs (device info, timestamp correlation) in with real activities, so
+    batch imports treat them as skippable rather than failed."""
+
+
 SPORT_MAP = {
     "running": "run",
     "cycling": "bike",
@@ -120,7 +127,7 @@ def parse_fit(path: str) -> list[ParsedActivity]:
 
     records = list(fit_file.get_messages("record"))
     if not records:
-        raise ValueError("FIT file contains no record messages.")
+        raise NoActivityDataError("FIT file contains no record messages.")
     laps = list(fit_file.get_messages("lap"))
 
     ordered = sorted((s for s in sessions if s["start_time"] is not None), key=lambda s: s["start_time"])

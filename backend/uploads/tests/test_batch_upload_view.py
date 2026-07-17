@@ -8,6 +8,7 @@ from accounts.models import User
 from activities.models import Activity
 
 from ..fixtures_helpers import build_gpx, build_tcx, build_zip
+from ..processing import UploadProcessingError
 from .helpers import _bearer_client, _delegated_client
 
 
@@ -37,7 +38,9 @@ class ActivityBatchUploadViewTests(TestCase):
         poll = client.get(f"/v1/uploads/batches/{batch_id}")
         poll_body = poll.json()
         self.assertEqual(poll_body["status"], "completed")
-        self.assertEqual(poll_body["counts"], {"total": 2, "ready": 2, "processing": 0, "failed": 0, "duplicate": 0})
+        self.assertEqual(
+            poll_body["counts"], {"total": 2, "ready": 2, "processing": 0, "failed": 0, "duplicate": 0, "skipped": 0}
+        )
         self.assertEqual(poll_body["progress"], 1.0)
         self.assertEqual(Activity.objects.filter(athlete=self.athlete).count(), 2)
 
@@ -93,6 +96,43 @@ class ActivityBatchUploadViewTests(TestCase):
         self.assertTrue(Activity.objects.filter(pk=new_activity_id).exists())
         self.assertEqual(Activity.objects.filter(athlete=self.athlete).count(), 1)
 
+    def test_no_activity_data_file_is_skipped_in_batch(self):
+        zip_bytes = build_zip({"stub.tcx": build_tcx(datetime(2026, 6, 5, 10, 0, tzinfo=UTC), duration_s=20)})
+        client = _bearer_client(self.athlete)
+
+        with patch(
+            "uploads.tasks.ingest_upload",
+            side_effect=UploadProcessingError("no_activity_data", "FIT file contains no record messages."),
+        ):
+            response = client.post(
+                "/v1/activities/batch", {"file": SimpleUploadedFile("stubs.zip", zip_bytes)}, format="multipart"
+            )
+
+        batch_id = response.json()["id"]
+        poll = client.get(f"/v1/uploads/batches/{batch_id}").json()
+        self.assertEqual(poll["status"], "completed")
+        self.assertEqual(
+            poll["counts"], {"total": 1, "ready": 0, "processing": 0, "failed": 0, "duplicate": 0, "skipped": 1}
+        )
+        self.assertEqual(poll["uploads"][0]["status"], "skipped")
+        self.assertIsNone(poll["uploads"][0]["error"])
+
+    def test_no_activity_data_single_upload_still_fails(self):
+        content = build_gpx(datetime(2026, 6, 5, 11, 0, tzinfo=UTC), duration_s=20)
+        client = _bearer_client(self.athlete)
+
+        with patch(
+            "uploads.tasks.ingest_upload",
+            side_effect=UploadProcessingError("no_activity_data", "FIT file contains no record messages."),
+        ):
+            response = client.post(
+                "/v1/activities", {"file": SimpleUploadedFile("stub.gpx", content)}, format="multipart"
+            )
+
+        upload = client.get(f"/v1/uploads/{response.json()['id']}").json()
+        self.assertEqual(upload["status"], "failed")
+        self.assertEqual(upload["error"]["code"], "no_activity_data")
+
     def test_all_duplicates_batch_completes_and_fires_webhook(self):
         start = datetime(2026, 6, 5, 9, 0, tzinfo=UTC)
         content = build_tcx(start, duration_s=20, power=150)
@@ -112,7 +152,9 @@ class ActivityBatchUploadViewTests(TestCase):
 
         body = response.json()
         self.assertEqual(body["status"], "completed")
-        self.assertEqual(body["counts"], {"total": 1, "ready": 0, "processing": 0, "failed": 0, "duplicate": 1})
+        self.assertEqual(
+            body["counts"], {"total": 1, "ready": 0, "processing": 0, "failed": 0, "duplicate": 1, "skipped": 0}
+        )
         events = [call.args[0] for call in mock_fire.call_args_list]
         self.assertIn("upload_batch.completed", events)
 

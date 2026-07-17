@@ -20,6 +20,7 @@ export function BatchStatus({ initial }: { initial: { data: UploadBatch; retryAf
         <span>{batch.counts.processing} processing</span>
         {batch.counts.failed > 0 && <span style={{ color: "#e0442e" }}>{batch.counts.failed} failed</span>}
         {batch.counts.duplicate > 0 && <span>{batch.counts.duplicate} duplicate</span>}
+        {batch.counts.skipped > 0 && <span>{batch.counts.skipped} skipped</span>}
         <span>of {batch.counts.total}</span>
       </div>
 
@@ -36,6 +37,7 @@ export function BatchStatus({ initial }: { initial: { data: UploadBatch; retryAf
                 </Link>
               )}
               {upload.status === "duplicate" && <span style={{ color: "var(--ink3)" }}>Duplicate</span>}
+              {upload.status === "skipped" && <span style={{ color: "var(--ink3)" }}>Skipped — no activity data</span>}
               {upload.status === "failed" && (
                 <span style={{ color: "#e0442e" }}>{upload.error?.message ?? "Failed"}</span>
               )}

@@ -444,7 +444,9 @@ paths:
         per parsed file) and `upload_batch.completed` (one event when the whole
         batch settles). Per-file weigh-in / fluids / shoe metadata cannot be set
         here; edit individual activities afterwards. Files that duplicate existing
-        activities are skipped and counted under `duplicate`.
+        activities are skipped and counted under `duplicate`; valid FIT files with
+        no activity data (e.g. the metadata stubs Garmin account exports mix in
+        with real activities) are counted under `skipped`.
       requestBody:
         required: true
         content:
@@ -2210,6 +2212,7 @@ components:
             processing: { type: integer, example: 71 }
             failed: { type: integer, example: 1 }
             duplicate: { type: integer, example: 2 }
+            skipped: { type: integer, example: 0 }
         uploads:
           type: array
           description: The child upload jobs (paginated for large archives).
@@ -2228,11 +2231,13 @@ components:
         object: { type: string, const: upload }
         status:
           type: string
-          enum: [queued, processing, ready, failed, duplicate]
+          enum: [queued, processing, ready, failed, duplicate, skipped]
           description: >
             `queued` accepted, awaiting a worker; `processing` parsing the file;
             `ready` parsed and the activity created; `failed` parsing errored;
-            `duplicate` the file matched an existing activity.
+            `duplicate` the file matched an existing activity; `skipped` (batch
+            imports only) the file was valid but held no activity data, e.g. the
+            metadata stubs Garmin account exports mix in with real activities.
           example: processing
         progress:
           type: number

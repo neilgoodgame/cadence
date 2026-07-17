@@ -20,9 +20,15 @@ def process_upload(self: Any, upload_id: str) -> None:
     try:
         activity = ingest_upload(upload)
     except UploadProcessingError as exc:
-        upload.status = "failed"
-        upload.error_code = exc.code
-        upload.error_message = exc.message
+        # Garmin account exports mix metadata-stub FITs (no activity data) in with real
+        # activities; failing them would drown a bulk import in errors, so batch children
+        # are skipped instead. A deliberate single-file upload still fails loudly.
+        if exc.code == "no_activity_data" and upload.batch_id:
+            upload.status = "skipped"
+        else:
+            upload.status = "failed"
+            upload.error_code = exc.code
+            upload.error_message = exc.message
         upload.completed_at = timezone.now()
         upload.save(update_fields=["status", "error_code", "error_message", "completed_at"])
     else:

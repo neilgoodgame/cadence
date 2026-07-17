@@ -294,7 +294,7 @@ export interface ShoeCatalogEntry {
   display_name: string;
 }
 
-export type UploadStatus = "queued" | "processing" | "ready" | "failed" | "duplicate";
+export type UploadStatus = "queued" | "processing" | "ready" | "failed" | "duplicate" | "skipped";
 
 export interface Upload {
   id: string;
@@ -316,7 +316,7 @@ export interface UploadBatch {
   status: UploadBatchStatus;
   filename: string;
   progress: number;
-  counts: { total: number; ready: number; processing: number; failed: number; duplicate: number };
+  counts: { total: number; ready: number; processing: number; failed: number; duplicate: number; skipped: number };
   uploads: Upload[];
   received_at: string;
   completed_at: string | null;

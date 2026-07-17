@@ -40,7 +40,7 @@ class JsonObjectDiscriminatorTest {
 	@Test
 	void uploadBatchResponseIncludesObjectDiscriminator() throws Exception {
 		var response = new UploadBatchResponse(
-				"bat_1", UploadBatchStatus.COMPLETED, "f.zip", 1.0, new UploadBatchCounts(1, 1, 0, 0, 0),
+				"bat_1", UploadBatchStatus.COMPLETED, "f.zip", 1.0, new UploadBatchCounts(1, 1, 0, 0, 0, 0),
 				List.of(), Instant.now(), Instant.now());
 		Map<String, Object> json = mapper.convertValue(response, Map.class);
 		assertThat(json).containsEntry("object", "upload_batch");

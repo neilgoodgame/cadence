@@ -56,7 +56,7 @@ public final class FitFileParser {
 		String device = deviceName(fileIds.isEmpty() ? null : fileIds.get(0));
 
 		if (records.isEmpty()) {
-			throw new IllegalArgumentException("No record messages found in FIT file.");
+			throw new NoActivityDataException("No record messages found in FIT file.");
 		}
 
 		List<SessionMesg> ordered = sessions.stream()
