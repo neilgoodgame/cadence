@@ -14,7 +14,13 @@ def _daily_tss(athlete_id: str, start_date: date, end_date: date) -> dict[date, 
     from activities.models import Activity
 
     rows = (
-        Activity.objects.filter(athlete_id=athlete_id, start_date__date__range=(start_date, end_date))
+        # Multisport children are excluded: the parent already carries the sum of its
+        # legs' TSS, so counting both would double the training load.
+        Activity.objects.filter(
+            athlete_id=athlete_id,
+            start_date__date__range=(start_date, end_date),
+            parent_activity__isnull=True,
+        )
         .values("start_date__date")
         .annotate(total_tss=Sum("tss"))
     )

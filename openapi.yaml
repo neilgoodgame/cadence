@@ -1904,7 +1904,12 @@ components:
   schemas:
     Sport:
       type: string
-      enum: [bike, run, swim, walk]
+      enum: [bike, run, swim, walk, multisport, transition]
+      description: >
+        `multisport` and `transition` only occur on activities created by importing
+        a multisport FIT file (e.g. a duathlon): the parent activity spanning the
+        whole session is `multisport`, and the changeover legs between sports are
+        `transition`. Workouts cannot be designed with either.
     TimeOfDay:
       type: string
       enum: [AM, MID, PM]
@@ -2124,6 +2129,20 @@ components:
         workout_id: { type: [string, "null"], example: wkt_long_z2 }
         bike_id: { type: [string, "null"] }
         shoe_id: { type: [string, "null"], example: shoe_vf3 }
+        parent_activity_id:
+          type: [string, "null"]
+          description: >
+            Set on each leg of a multisport activity, pointing at the parent
+            `multisport` activity it belongs to. Null everywhere else. Legs are
+            excluded from activity lists, calendar unplanned activities, and
+            fitness aggregation — reach them via the parent's child_activity_ids.
+        child_activity_ids:
+          type: array
+          items: { type: string }
+          description: >
+            For a `multisport` activity, the ids of its per-leg child activities
+            (including transitions) in start order. Empty for every other sport.
+          example: []
 
     UploadBatch:
       type: object

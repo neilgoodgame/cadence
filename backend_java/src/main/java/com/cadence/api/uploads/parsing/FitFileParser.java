@@ -9,20 +9,27 @@ import com.garmin.fit.LapMesg;
 import com.garmin.fit.LapMesgListener;
 import com.garmin.fit.MesgBroadcaster;
 import com.garmin.fit.RecordMesg;
-import com.garmin.fit.RecordMesgListener;
 import com.garmin.fit.SessionMesg;
 import com.garmin.fit.SessionMesgListener;
+import com.garmin.fit.RecordMesgListener;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.OptionalDouble;
 
 /** Parses Garmin's binary .fit format via the official Garmin FIT Java SDK ({@code com.garmin:fit}). */
 public final class FitFileParser {
 
-	public static ParsedActivity parse(InputStream inputStream) throws IOException {
+	/**
+	 * Returns one activity for a normal file. A multisport file (more than one non-transition
+	 * sport session, e.g. a duathlon's run + transition + ride) returns the parent first - sport
+	 * {@code MULTISPORT}, spanning every record in the file - followed by one child per session
+	 * (transitions included) with its slice of the records and laps.
+	 */
+	public static List<ParsedActivity> parse(InputStream inputStream) throws IOException {
 		List<RecordMesg> records = new ArrayList<>();
 		List<LapMesg> laps = new ArrayList<>();
 		List<SessionMesg> sessions = new ArrayList<>();
@@ -42,23 +49,85 @@ public final class FitFileParser {
 			throw new IllegalArgumentException("No record messages found in FIT file.");
 		}
 
-		Sport sport = sessions.isEmpty() ? Sport.BIKE : mapSport(sessions.get(0).getSport());
-		// Garmin's Firstbeat-derived training load, 0.0-5.0. Standard FIT session fields (not
-		// developer fields) - only present on Garmin devices that run that analytics.
-		Double aerobicTrainingEffect = null;
-		Double anaerobicTrainingEffect = null;
-		if (!sessions.isEmpty()) {
-			SessionMesg session = sessions.get(0);
-			if (session.getTotalTrainingEffect() != null) {
-				aerobicTrainingEffect = session.getTotalTrainingEffect().doubleValue();
-			}
-			if (session.getTotalAnaerobicTrainingEffect() != null) {
-				anaerobicTrainingEffect = session.getTotalAnaerobicTrainingEffect().doubleValue();
+		List<SessionMesg> ordered = sessions.stream()
+				.filter(s -> s.getStartTime() != null)
+				.sorted(Comparator.comparing(s -> s.getStartTime().getDate()))
+				.toList();
+		long sportSessionCount = ordered.stream().filter(s -> mapSport(s.getSport()) != Sport.TRANSITION).count();
+		if (sportSessionCount <= 1) {
+			Sport sport = sessions.isEmpty() ? Sport.BIKE : mapSport(sessions.get(0).getSport());
+			return List.of(buildActivity(records, laps, sport, trainingEffects(sessions.isEmpty() ? null : sessions.get(0))));
+		}
+
+		// Multisport. Sessions partition the record stream into chained windows: each session's
+		// window runs from its start_time to the next session's start_time (start_time has only
+		// whole-second resolution while total_elapsed_time is ms-resolution and overhangs, so
+		// deriving each window's end from the session's own elapsed time would drop or
+		// double-assign boundary records). The last window is open-ended.
+		List<ParsedActivity> result = new ArrayList<>(ordered.size() + 1);
+		// TE accumulates over the whole session on the device, so the last non-transition
+		// session carries the total for the parent.
+		SessionMesg lastSport = null;
+		for (SessionMesg session : ordered) {
+			if (mapSport(session.getSport()) != Sport.TRANSITION) {
+				lastSport = session;
 			}
 		}
+		result.add(buildActivity(records, laps, Sport.MULTISPORT, trainingEffects(lastSport)));
+
+		for (int i = 0; i < ordered.size(); i++) {
+			SessionMesg session = ordered.get(i);
+			long windowStart = session.getStartTime().getDate().getTime();
+			long windowEnd = i + 1 < ordered.size() ? ordered.get(i + 1).getStartTime().getDate().getTime() : Long.MAX_VALUE;
+
+			List<RecordMesg> sliceRecords = records.stream()
+					.filter(r -> inWindow(r.getTimestamp().getDate().getTime(), windowStart, windowEnd))
+					.toList();
+			if (sliceRecords.isEmpty()) {
+				continue;
+			}
+			List<LapMesg> sliceLaps = laps.stream()
+					.filter(l -> l.getStartTime() != null && inWindow(l.getStartTime().getDate().getTime(), windowStart, windowEnd))
+					.toList();
+			result.add(buildActivity(sliceRecords, sliceLaps, mapSport(session.getSport()), trainingEffects(session)));
+		}
+		return result;
+	}
+
+	private static boolean inWindow(long millis, long start, long end) {
+		return millis >= start && millis < end;
+	}
+
+	private static Double[] trainingEffects(SessionMesg session) {
+		// Garmin's Firstbeat-derived training load, 0.0-5.0. Standard FIT session fields (not
+		// developer fields) - only present on Garmin devices that run that analytics.
+		Double aerobic = null;
+		Double anaerobic = null;
+		if (session != null) {
+			if (session.getTotalTrainingEffect() != null) {
+				aerobic = session.getTotalTrainingEffect().doubleValue();
+			}
+			if (session.getTotalAnaerobicTrainingEffect() != null) {
+				anaerobic = session.getTotalAnaerobicTrainingEffect().doubleValue();
+			}
+		}
+		return new Double[] { aerobic, anaerobic };
+	}
+
+	private static ParsedActivity buildActivity(List<RecordMesg> records, List<LapMesg> laps, Sport sport, Double[] trainingEffects) {
 		long startMillis = records.get(0).getTimestamp().getDate().getTime();
 		Instant startDate = Instant.ofEpochMilli(startMillis);
 		boolean hasGps = records.stream().anyMatch(r -> r.getPositionLat() != null && r.getPositionLong() != null);
+
+		// The file's distance stream is cumulative from the very first record; a multisport
+		// leg's slice starts mid-stream, so re-base on the slice's first reading.
+		Double distanceBaseKm = null;
+		for (RecordMesg r : records) {
+			if (r.getDistance() != null) {
+				distanceBaseKm = r.getDistance() / 1000.0;
+				break;
+			}
+		}
 
 		List<ParsedActivity.Sample> samples = new ArrayList<>(records.size());
 		for (RecordMesg r : records) {
@@ -66,7 +135,7 @@ public final class FitFileParser {
 			Double lat = r.getPositionLat() != null ? semicirclesToDegrees(r.getPositionLat()) : null;
 			Double lng = r.getPositionLong() != null ? semicirclesToDegrees(r.getPositionLong()) : null;
 			Double altitude = firstNonNull(r.getEnhancedAltitude(), r.getAltitude());
-			Double distanceKm = r.getDistance() != null ? r.getDistance() / 1000.0 : null;
+			Double distanceKm = r.getDistance() != null ? Math.max(0.0, r.getDistance() / 1000.0 - distanceBaseKm) : null;
 			Double speed = firstNonNull(r.getEnhancedSpeed(), r.getSpeed());
 			Integer heartrate = r.getHeartRate() != null ? r.getHeartRate().intValue() : null;
 			Integer cadence = r.getCadence() != null ? r.getCadence().intValue() : null;
@@ -111,7 +180,7 @@ public final class FitFileParser {
 
 		return new ParsedActivity(
 				sport, environment, hasGps, startDate, "fit", distanceSource, samples, lapSummaries,
-				aerobicTrainingEffect, anaerobicTrainingEffect);
+				trainingEffects[0], trainingEffects[1]);
 	}
 
 	private static double semicirclesToDegrees(int semicircles) {
@@ -164,6 +233,9 @@ public final class FitFileParser {
 		}
 		if (fitSport == com.garmin.fit.Sport.WALKING) {
 			return Sport.WALK;
+		}
+		if (fitSport == com.garmin.fit.Sport.TRANSITION) {
+			return Sport.TRANSITION;
 		}
 		return Sport.BIKE;
 	}

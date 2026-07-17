@@ -2,7 +2,9 @@ import { useMemo } from "react";
 import type { Activity, Sport } from "../../api/types";
 import { sportColor, sportLabel } from "../../lib/sportColors";
 
-const SPORTS: Sport[] = ["bike", "run", "swim", "walk"];
+// Transition never shows up here: legs of a multisport activity are excluded from the
+// activities list, so only the parent (sport "multisport") reaches the dashboard.
+const SPORTS: Sport[] = ["bike", "run", "swim", "walk", "multisport"];
 const WEEKS = 8;
 
 function weekStart(date: Date): string {
@@ -22,7 +24,7 @@ export function WeeklyVolumeChart({ activities }: { activities: Activity[] }) {
       const d = new Date(today);
       d.setDate(d.getDate() - i * 7);
       const key = weekStart(d);
-      buckets.set(key, { bike: 0, run: 0, swim: 0, walk: 0 });
+      buckets.set(key, { bike: 0, run: 0, swim: 0, walk: 0, multisport: 0, transition: 0 });
     }
     for (const activity of activities) {
       const key = weekStart(new Date(activity.start_date));

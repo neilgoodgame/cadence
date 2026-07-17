@@ -22,7 +22,10 @@ class FitFileParserTest {
 		// message itself.
 		try (InputStream in = getClass().getClassLoader().getResourceAsStream("fit-fixtures/running_outdoor_marathon.fit")) {
 			assertThat(in).isNotNull();
-			ParsedActivity result = FitFileParser.parse(in);
+			var parsed = FitFileParser.parse(in);
+
+			assertThat(parsed).hasSize(1);
+			ParsedActivity result = parsed.get(0);
 
 			assertThat(result.laps()).hasSize(5);
 			assertThat(result.laps()).allSatisfy(lap -> assertThat(lap.avgPower()).isNotNull());

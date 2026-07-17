@@ -40,21 +40,25 @@ public class BestEffortTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
-		Activity activity = activityRepository.findById(context.getActivityId())
-				.orElseThrow(() -> new NotFoundException("No such activity."));
-		User athlete = activity.getAthlete();
-		List<Integer> powerSeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::power).toList();
+		// Only bike/run activities produce best efforts, so a multisport parent (and any
+		// transition leg) falls through both branches; each bike/run leg contributes its own.
+		for (UploadJobContext.Segment segment : context.getSegments()) {
+			Activity activity = activityRepository.findById(segment.activityId())
+					.orElseThrow(() -> new NotFoundException("No such activity."));
+			User athlete = activity.getAthlete();
+			List<Integer> powerSeries = segment.parsed().samples().stream().map(ParsedActivity.Sample::power).toList();
 
-		if (activity.getSport() == Sport.BIKE && athlete.getFtp() != null) {
-			updatePowerBestEfforts(activity, athlete, BestEffortKind.CYCLING_POWER, powerSeries);
-		}
-		else if (activity.getSport() == Sport.RUN) {
-			if (athlete.getCriticalRunPower() != null && powerSeries.stream().anyMatch(Objects::nonNull)) {
-				updatePowerBestEfforts(activity, athlete, BestEffortKind.RUNNING_POWER, powerSeries);
+			if (activity.getSport() == Sport.BIKE && athlete.getFtp() != null) {
+				updatePowerBestEfforts(activity, athlete, BestEffortKind.CYCLING_POWER, powerSeries);
 			}
-			List<Double> distanceKmSeries =
-					context.getParsed().samples().stream().map(ParsedActivity.Sample::distanceKm).toList();
-			updatePaceBestEfforts(activity, athlete, distanceKmSeries);
+			else if (activity.getSport() == Sport.RUN) {
+				if (athlete.getCriticalRunPower() != null && powerSeries.stream().anyMatch(Objects::nonNull)) {
+					updatePowerBestEfforts(activity, athlete, BestEffortKind.RUNNING_POWER, powerSeries);
+				}
+				List<Double> distanceKmSeries =
+						segment.parsed().samples().stream().map(ParsedActivity.Sample::distanceKm).toList();
+				updatePaceBestEfforts(activity, athlete, distanceKmSeries);
+			}
 		}
 		return RepeatStatus.FINISHED;
 	}

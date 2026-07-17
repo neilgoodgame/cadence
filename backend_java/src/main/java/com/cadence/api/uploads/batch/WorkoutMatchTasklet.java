@@ -51,14 +51,23 @@ public class WorkoutMatchTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
-		Activity activity = activityRepository.findById(context.getActivityId())
+		// Matching is per-sport, so a multisport parent never matches (no designed workout has
+		// sport 'multisport') but its bike/run legs can each complete their own scheduled workout.
+		for (UploadJobContext.Segment segment : context.getSegments()) {
+			matchSegment(segment.activityId());
+		}
+		return RepeatStatus.FINISHED;
+	}
+
+	private void matchSegment(String activityId) {
+		Activity activity = activityRepository.findById(activityId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
 		User athlete = activity.getAthlete();
 		LocalDate date = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
 
 		List<ScheduledWorkout> candidates = scheduledWorkoutRepository.findMatchCandidates(athlete.getId(), date, activity.getSport());
 		if (candidates.isEmpty()) {
-			return RepeatStatus.FINISHED;
+			return;
 		}
 		ScheduledWorkout candidate = candidates.get(0);
 		candidate.setActivity(activity);
@@ -82,6 +91,5 @@ public class WorkoutMatchTasklet implements Tasklet {
 			activityTagRepository.save(link);
 		}
 		eventPublisher.publishEvent(new ScheduledWorkoutMatchedEvent(candidate.getId(), athlete.getId()));
-		return RepeatStatus.FINISHED;
 	}
 }

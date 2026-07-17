@@ -1,6 +1,8 @@
 package com.cadence.api.uploads.batch;
 
 import com.cadence.api.uploads.parsing.ParsedActivity;
+import java.util.ArrayList;
+import java.util.List;
 import javax.sql.DataSource;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
@@ -69,10 +71,11 @@ public class UploadJobConfig {
 
 	@Bean
 	public Step loadRecordsStep(JobRepository jobRepository, PlatformTransactionManager tm,
-			ItemReader<ParsedActivity.Sample> recordItemReader, ItemProcessor<ParsedActivity.Sample, RecordRow> recordItemProcessor,
+			ItemReader<RecordItemProcessor.SegmentSample> recordItemReader,
+			ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor,
 			ItemWriter<RecordRow> recordItemWriter) {
 		return new StepBuilder("loadRecordsStep", jobRepository)
-				.<ParsedActivity.Sample, RecordRow>chunk(1000)
+				.<RecordItemProcessor.SegmentSample, RecordRow>chunk(1000)
 				.reader(recordItemReader)
 				.processor(recordItemProcessor)
 				.writer(recordItemWriter)
@@ -82,14 +85,20 @@ public class UploadJobConfig {
 
 	@Bean
 	@StepScope
-	public ItemReader<ParsedActivity.Sample> recordItemReader(UploadJobContext context) {
-		return new ListItemReader<>(context.getParsed().samples());
+	public ItemReader<RecordItemProcessor.SegmentSample> recordItemReader(UploadJobContext context) {
+		List<RecordItemProcessor.SegmentSample> items = new ArrayList<>();
+		for (UploadJobContext.Segment segment : context.getSegments()) {
+			for (ParsedActivity.Sample sample : segment.parsed().samples()) {
+				items.add(new RecordItemProcessor.SegmentSample(segment.activityId(), segment.parsed().startDate(), sample));
+			}
+		}
+		return new ListItemReader<>(items);
 	}
 
 	@Bean
 	@StepScope
-	public ItemProcessor<ParsedActivity.Sample, RecordRow> recordItemProcessor(UploadJobContext context) {
-		return new RecordItemProcessor(context.getActivityId(), context.getParsed().startDate());
+	public ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor() {
+		return new RecordItemProcessor();
 	}
 
 	@Bean

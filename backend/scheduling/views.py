@@ -42,11 +42,14 @@ class CalendarView(APIView):
         _require_read(request, athlete_id)
 
         entries = ScheduledWorkout.objects.filter(athlete_id=athlete_id, date__gte=date_from, date__lte=date_to)
+        # Multisport legs are excluded: the calendar shows the parent activity once,
+        # not each leg (which may also have matched its own scheduled workout).
         unplanned = Activity.objects.filter(
             athlete_id=athlete_id,
             start_date__date__gte=date_from,
             start_date__date__lte=date_to,
             scheduled_workout_matches__isnull=True,
+            parent_activity__isnull=True,
         )
         return Response(
             {

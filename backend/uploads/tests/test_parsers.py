@@ -87,7 +87,7 @@ class FitParserMockedTests(SimpleTestCase):
         }[name]
         mock_fitfile_cls.return_value = instance
 
-        result = parse_fit("/fake/path.fit")
+        (result,) = parse_fit("/fake/path.fit")
 
         self.assertEqual(result["sport"], "bike")
         self.assertTrue(result["has_gps"])
@@ -121,7 +121,7 @@ class FitParserMockedTests(SimpleTestCase):
         }[name]
         mock_fitfile_cls.return_value = instance
 
-        result = parse_fit("/fake/path.fit")
+        (result,) = parse_fit("/fake/path.fit")
 
         self.assertEqual(len(result["laps"]), 1)
         self.assertEqual(result["laps"][0]["avg_power"], 203)
@@ -137,7 +137,7 @@ class RealFitFixtureParserTests(SimpleTestCase):
     """Real-world FIT files (Garmin + Stryd run-power dev field), not synthetic ones."""
 
     def test_cycling_indoor_has_native_power_field(self):
-        result = parse_fit(str(FIXTURES_DIR / "cycling_indoor.fit"))
+        (result,) = parse_fit(str(FIXTURES_DIR / "cycling_indoor.fit"))
         self.assertEqual(result["sport"], "bike")
         self.assertEqual(result["environment"], "indoor")
         self.assertFalse(result["has_gps"])
@@ -146,7 +146,7 @@ class RealFitFixtureParserTests(SimpleTestCase):
         self.assertTrue(all(s["power"] is not None for s in result["samples"]))
 
     def test_cycling_indoor_has_core_sensor_fields_but_no_stryd(self):
-        result = parse_fit(str(FIXTURES_DIR / "cycling_indoor.fit"))
+        (result,) = parse_fit(str(FIXTURES_DIR / "cycling_indoor.fit"))
         self.assertTrue(any(s["core_temp"] is not None for s in result["samples"]))
         self.assertTrue(any(s["skin_temp"] is not None for s in result["samples"]))
         self.assertTrue(any(s["heat_strain"] is not None for s in result["samples"]))
@@ -154,7 +154,7 @@ class RealFitFixtureParserTests(SimpleTestCase):
         self.assertTrue(all(s["humidity"] is None for s in result["samples"]))
 
     def test_running_outdoor_marathon_falls_back_to_stryd_power_field(self):
-        result = parse_fit(str(FIXTURES_DIR / "running_outdoor_marathon.fit"))
+        (result,) = parse_fit(str(FIXTURES_DIR / "running_outdoor_marathon.fit"))
         self.assertEqual(result["sport"], "run")
         self.assertEqual(result["environment"], "outdoor")
         self.assertTrue(result["has_gps"])
@@ -162,7 +162,7 @@ class RealFitFixtureParserTests(SimpleTestCase):
         self.assertTrue(all(s["power"] is not None for s in result["samples"]))
 
     def test_running_outdoor_marathon_has_stryd_env_fields_but_no_core(self):
-        result = parse_fit(str(FIXTURES_DIR / "running_outdoor_marathon.fit"))
+        (result,) = parse_fit(str(FIXTURES_DIR / "running_outdoor_marathon.fit"))
         self.assertTrue(all(s["air_temp"] is not None for s in result["samples"]))
         self.assertTrue(all(s["humidity"] is not None for s in result["samples"]))
         self.assertTrue(all(s["core_temp"] is None for s in result["samples"]))
@@ -174,12 +174,12 @@ class RealFitFixtureParserTests(SimpleTestCase):
         # field - confirmed directly against the fixture's raw lap messages, all None -
         # so every one of these must come from the sample-average fallback, not the lap
         # message itself.
-        result = parse_fit(str(FIXTURES_DIR / "running_outdoor_marathon.fit"))
+        (result,) = parse_fit(str(FIXTURES_DIR / "running_outdoor_marathon.fit"))
         self.assertEqual(len(result["laps"]), 5)
         self.assertTrue(all(lap["avg_power"] is not None for lap in result["laps"]))
 
     def test_running_treadmill_falls_back_to_stryd_power_field(self):
-        result = parse_fit(str(FIXTURES_DIR / "running_treadmill.fit"))
+        (result,) = parse_fit(str(FIXTURES_DIR / "running_treadmill.fit"))
         self.assertEqual(result["sport"], "run")
         self.assertEqual(result["environment"], "indoor")
         self.assertFalse(result["has_gps"])
@@ -187,12 +187,46 @@ class RealFitFixtureParserTests(SimpleTestCase):
         self.assertTrue(all(s["power"] is not None for s in result["samples"]))
 
     def test_running_treadmill_has_both_stryd_and_core_fields(self):
-        result = parse_fit(str(FIXTURES_DIR / "running_treadmill.fit"))
+        (result,) = parse_fit(str(FIXTURES_DIR / "running_treadmill.fit"))
         self.assertTrue(all(s["air_temp"] is not None for s in result["samples"]))
         self.assertTrue(all(s["humidity"] is not None for s in result["samples"]))
         self.assertTrue(any(s["core_temp"] is not None for s in result["samples"]))
         self.assertTrue(any(s["skin_temp"] is not None for s in result["samples"]))
         self.assertTrue(any(s["heat_strain"] is not None for s in result["samples"]))
+
+
+class MultisportFitFixtureTests(SimpleTestCase):
+    """Real multisport file: an outdoor run, a transition, and an indoor ride recorded
+    as one session on the device. The parser returns the parent (whole file, sport
+    "multisport") first, then one child per session in start order.
+    """
+
+    def test_returns_parent_then_one_child_per_session(self):
+        parsed = parse_fit(str(FIXTURES_DIR / "multisport.fit"))
+        self.assertEqual([p["sport"] for p in parsed], ["multisport", "run", "transition", "bike"])
+
+    def test_children_partition_the_parent_record_stream(self):
+        parent, *children = parse_fit(str(FIXTURES_DIR / "multisport.fit"))
+        self.assertEqual(len(parent["samples"]), sum(len(c["samples"]) for c in children))
+
+    def test_child_time_and_distance_are_rebased_to_the_leg(self):
+        _parent, run, _transition, bike = parse_fit(str(FIXTURES_DIR / "multisport.fit"))
+        self.assertEqual(run["samples"][0]["t"], 0)
+        self.assertEqual(bike["samples"][0]["t"], 0)
+        # The file's distance stream is cumulative across the whole session; each leg's
+        # slice must restart near zero and end at the leg's own distance, not the total's.
+        run_distances = [s["distance_km"] for s in run["samples"] if s["distance_km"] is not None]
+        bike_distances = [s["distance_km"] for s in bike["samples"] if s["distance_km"] is not None]
+        self.assertLess(run_distances[0], 0.1)
+        self.assertLess(bike_distances[0], 0.1)
+        self.assertAlmostEqual(run_distances[-1], 16.1, delta=0.2)
+        self.assertAlmostEqual(bike_distances[-1], 30.2, delta=0.2)
+
+    def test_leg_environments_follow_their_own_gps(self):
+        parent, run, _transition, bike = parse_fit(str(FIXTURES_DIR / "multisport.fit"))
+        self.assertEqual(run["environment"], "outdoor")
+        self.assertEqual(bike["environment"], "indoor")
+        self.assertEqual(parent["environment"], "outdoor")
 
 
 class DeveloperFieldScaleTests(SimpleTestCase):
@@ -204,14 +238,14 @@ class DeveloperFieldScaleTests(SimpleTestCase):
     """
 
     def test_skin_temperature_scale_is_applied(self):
-        result = parse_fit(str(FIXTURES_DIR / "cycling_with_scaled_core_sensor_fields.fit"))
+        (result,) = parse_fit(str(FIXTURES_DIR / "cycling_with_scaled_core_sensor_fields.fit"))
         skin_temps = [s["skin_temp"] for s in result["samples"] if s["skin_temp"] is not None]
         self.assertTrue(skin_temps)
         # A raw, unscaled value would be in the thousands (e.g. 3446 instead of 34.46).
         self.assertTrue(all(20 <= t <= 45 for t in skin_temps), skin_temps[:5])
 
     def test_heat_strain_index_scale_is_applied(self):
-        result = parse_fit(str(FIXTURES_DIR / "cycling_with_scaled_core_sensor_fields.fit"))
+        (result,) = parse_fit(str(FIXTURES_DIR / "cycling_with_scaled_core_sensor_fields.fit"))
         heat_strains = [s["heat_strain"] for s in result["samples"] if s["heat_strain"]]
         self.assertTrue(heat_strains)
         # An unscaled value is always a whole number (the raw encoded integer); a correctly

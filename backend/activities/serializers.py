@@ -7,6 +7,7 @@ from .models import Activity, BestEffort, DurationCurve, Lap, Tag
 
 class ActivitySerializer(serializers.ModelSerializer):
     tags = serializers.SerializerMethodField()
+    child_activity_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
@@ -41,10 +42,17 @@ class ActivitySerializer(serializers.ModelSerializer):
             "workout_id",
             "bike_id",
             "shoe_id",
+            "parent_activity_id",
+            "child_activity_ids",
         ]
 
     def get_tags(self, obj: Activity) -> list[str]:
         return list(obj.tags.order_by("name").values_list("name", flat=True))
+
+    def get_child_activity_ids(self, obj: Activity) -> list[str]:
+        if obj.sport != "multisport":
+            return []
+        return list(obj.child_activities.order_by("start_date").values_list("id", flat=True))
 
 
 class ActivityUpdateSerializer(serializers.Serializer):

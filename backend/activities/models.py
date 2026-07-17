@@ -14,6 +14,11 @@ class Activity(PrefixedIDModel):
         ("run", "Run"),
         ("swim", "Swim"),
         ("walk", "Walk"),
+        # Only created by multisport FIT imports: the parent spans the whole file
+        # ("multisport") and each leg, transitions included, is a child activity
+        # linked via parent_activity.
+        ("multisport", "Multisport"),
+        ("transition", "Transition"),
     ]
     ENVIRONMENT_CHOICES = [
         ("outdoor", "Outdoor"),
@@ -58,6 +63,10 @@ class Activity(PrefixedIDModel):
     workout = models.ForeignKey(Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     bike = models.ForeignKey(Bike, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     shoe = models.ForeignKey(Shoe, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
+    # Set on the per-leg children of a multisport activity; null everywhere else.
+    parent_activity = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.CASCADE, related_name="child_activities"
+    )
     tags: "models.ManyToManyField[Tag, ActivityTag]" = models.ManyToManyField(
         "Tag", through="ActivityTag", related_name="activities", blank=True
     )

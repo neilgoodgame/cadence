@@ -39,7 +39,9 @@ public class FinalizeUploadTasklet implements Tasklet {
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
 		Upload upload = uploadRepository.findById(context.getUploadId())
 				.orElseThrow(() -> new NotFoundException("No such upload."));
-		Activity activity = activityRepository.findById(context.getActivityId())
+		// A multisport upload resolves to its parent activity; webhook consumers see one
+		// activity per upload and can discover the legs through child_activity_ids.
+		Activity activity = activityRepository.findById(context.getPrimaryActivityId())
 				.orElseThrow(() -> new NotFoundException("No such activity."));
 		upload.setStatus(UploadStatus.READY);
 		upload.setActivity(activity);

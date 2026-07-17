@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getActivity } from "../api/activities";
 import { useAuth } from "../auth/AuthContext";
@@ -7,6 +7,7 @@ import { CurvesTab } from "./activity-analysis/CurvesTab";
 import { Header } from "./activity-analysis/Header";
 import { HydrationBlock } from "./activity-analysis/HydrationBlock";
 import { LapsTab } from "./activity-analysis/LapsTab";
+import { MultisportLegs } from "./activity-analysis/MultisportLegs";
 import { RouteMap } from "./activity-analysis/RouteMap";
 import { StatRow } from "./activity-analysis/StatRow";
 import { StreamChart } from "./activity-analysis/StreamChart";
@@ -36,8 +37,19 @@ export function ActivityAnalysisScreen() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {activity.parent_activity_id && (
+        <div style={{ fontSize: 13, color: "var(--ink2)" }}>
+          This is one leg of a multisport session ·{" "}
+          <Link to={`/activities/${activity.parent_activity_id}`} style={{ color: "var(--ember)", fontWeight: 600 }}>
+            View full session
+          </Link>
+        </div>
+      )}
+
       <Header activity={activity} />
       <StatRow activity={activity} />
+
+      {activity.sport === "multisport" && <MultisportLegs activity={activity} />}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20 }}>
         <div>

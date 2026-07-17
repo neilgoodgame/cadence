@@ -37,7 +37,14 @@ PACE_BEST_EFFORT_DISTANCES_KM = [
     ("50km", 50.0),
 ]
 
-SPORT_LABELS = {"bike": "Bike", "run": "Run", "swim": "Swim", "walk": "Walk"}
+SPORT_LABELS = {
+    "bike": "Bike",
+    "run": "Run",
+    "swim": "Swim",
+    "walk": "Walk",
+    "multisport": "Multisport",
+    "transition": "Transition",
+}
 
 
 class UploadProcessingError(Exception):
@@ -350,34 +357,69 @@ def attempt_workout_match(activity: Activity, athlete: User) -> None:
 
 
 def ingest_upload(upload: Upload) -> Activity:
+    """Creates the activity (or activities) for an upload and runs the full derived-data
+    pipeline. A multisport FIT file arrives from the parser parent-first; the parent is
+    ingested without TSS/curves/best-efforts/workout-matching (its stream mixes sports),
+    each leg is ingested in full and linked via parent_activity, and the parent's TSS is
+    then set to the sum of its legs'. Returns the parent (or the sole activity).
+    """
     try:
-        parsed = parse_file(default_storage.path(upload.stored_path), upload.filename)
+        parsed_activities = parse_file(default_storage.path(upload.stored_path), upload.filename)
     except Exception as exc:
         raise UploadProcessingError("corrupt_file", str(exc)) from exc
 
-    samples = parsed["samples"]
-    if not samples:
+    if not parsed_activities or not parsed_activities[0]["samples"]:
         raise UploadProcessingError("empty_file", "No samples found in file.")
 
     athlete = upload.athlete
+    multisport = parsed_activities[0]["sport"] == "multisport"
+
+    primary = _ingest_activity(upload, parsed_activities[0], athlete, parent=None, multisport=multisport)
+    if multisport:
+        children = [
+            _ingest_activity(upload, parsed, athlete, parent=primary, multisport=True)
+            for parsed in parsed_activities[1:]
+        ]
+        # The parent's training load is the sum of its legs' - computing TSS over the
+        # mixed-sport stream directly would need a single threshold that doesn't exist.
+        primary.tss = sum(child.tss or 0 for child in children)
+        primary.save(update_fields=["tss"])
+    return primary
+
+
+def _ingest_activity(
+    upload: Upload, parsed: dict, athlete: User, parent: Activity | None, multisport: bool
+) -> Activity:
+    samples = parsed["samples"]
     laps = parsed.get("laps", [])
+    sport = parsed["sport"]
+    is_multisport_parent = multisport and parent is None
+
+    if multisport:
+        # The shoe travels with the run/walk legs; the parent spans sports it wasn't worn for.
+        wears_shoe = parent is not None and sport in ("run", "walk")
+    else:
+        wears_shoe = True
 
     activity = Activity.objects.create(
         athlete=athlete,
-        sport=parsed["sport"],
+        sport=sport,
         environment=parsed["environment"],
         has_gps=parsed["has_gps"],
-        name=f"{SPORT_LABELS.get(parsed['sport'], 'Activity')} on {parsed['start_date']:%Y-%m-%d}",
+        name=f"{SPORT_LABELS.get(sport, 'Activity')} on {parsed['start_date']:%Y-%m-%d}",
         start_date=parsed["start_date"],
         source=parsed.get("source", ""),
         moving_time=_moving_time(samples),
         distance_km=_total_distance_km(samples, laps),
         distance_source=parsed.get("distance_source", "gps" if parsed["has_gps"] else "manual"),
         ascent=_total_ascent(samples),
-        start_weight_kg=upload.weight_before_kg,
-        end_weight_kg=upload.weight_after_kg,
-        fluids_ml=upload.fluids_ml,
-        shoe_id=upload.shoe_id,
+        parent_activity=parent,
+        # Upload-level metadata describes the session as a whole, so it lives on the
+        # parent (or sole) activity rather than being duplicated onto each leg.
+        start_weight_kg=upload.weight_before_kg if parent is None else None,
+        end_weight_kg=upload.weight_after_kg if parent is None else None,
+        fluids_ml=upload.fluids_ml if parent is None else None,
+        shoe_id=upload.shoe_id if wears_shoe else None,
     )
 
     Record.objects.bulk_create(
@@ -435,7 +477,9 @@ def ingest_upload(upload: Upload) -> Activity:
         activity.intensity = round(norm_power / athlete.ftp, 3)
     elif norm_power and activity.sport == "run" and athlete.critical_run_power:
         activity.intensity = round(norm_power / athlete.critical_run_power, 3)
-    activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
+    if not is_multisport_parent:
+        # The multisport parent's TSS is set by the caller as the sum of its legs'.
+        activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
 
     update_fields = ["avg_power", "norm_power", "avg_hr", "max_hr", "intensity", "tss"]
     if activity.sport == "run":
@@ -460,9 +504,12 @@ def ingest_upload(upload: Upload) -> Activity:
 
     activity.save(update_fields=update_fields)
 
-    _write_duration_curves(activity, power_series, hr_series)
-    distance_km_series = [s.get("distance_km") for s in samples]
-    update_best_efforts(activity, athlete, power_series, distance_km_series)
-    attempt_workout_match(activity, athlete)
+    if not is_multisport_parent:
+        # Duration curves and best efforts compare like-for-like within a sport, and no
+        # multisport workouts exist to match - the parent's legs handle all three instead.
+        _write_duration_curves(activity, power_series, hr_series)
+        distance_km_series = [s.get("distance_km") for s in samples]
+        update_best_efforts(activity, athlete, power_series, distance_km_series)
+        attempt_workout_match(activity, athlete)
 
     return activity
