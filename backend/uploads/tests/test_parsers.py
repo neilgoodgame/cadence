@@ -84,6 +84,7 @@ class FitParserMockedTests(SimpleTestCase):
             "lap": laps,
             "session": sessions,
             "field_description": [],
+            "file_id": [],
         }[name]
         mock_fitfile_cls.return_value = instance
 
@@ -118,6 +119,7 @@ class FitParserMockedTests(SimpleTestCase):
             "lap": laps,
             "session": sessions,
             "field_description": [],
+            "file_id": [],
         }[name]
         mock_fitfile_cls.return_value = instance
 
@@ -186,6 +188,16 @@ class RealFitFixtureParserTests(SimpleTestCase):
         self.assertEqual(len(result["samples"]), 5299)
         self.assertTrue(all(s["power"] is not None for s in result["samples"]))
 
+    def test_device_from_file_id_manufacturer(self):
+        (result,) = parse_fit(str(FIXTURES_DIR / "cycling_indoor.fit"))
+        self.assertEqual(result["device"], "Garmin")
+
+    def test_device_skips_zwift_garbage_product_name(self):
+        # Zwift's file_id carries a product_name of garbage bytes - here a bare "&" -
+        # which must not be appended to the manufacturer.
+        (result,) = parse_fit(str(FIXTURES_DIR / "cycling_with_scaled_core_sensor_fields.fit"))
+        self.assertEqual(result["device"], "Zwift")
+
     def test_running_treadmill_has_both_stryd_and_core_fields(self):
         (result,) = parse_fit(str(FIXTURES_DIR / "running_treadmill.fit"))
         self.assertTrue(all(s["air_temp"] is not None for s in result["samples"]))
@@ -227,6 +239,12 @@ class MultisportFitFixtureTests(SimpleTestCase):
         self.assertEqual(run["environment"], "outdoor")
         self.assertEqual(bike["environment"], "indoor")
         self.assertEqual(parent["environment"], "outdoor")
+
+    def test_device_shared_by_parent_and_every_leg(self):
+        # file_id describes the recording device for the whole file, so the parent and
+        # each leg carry the same device.
+        parsed = parse_fit(str(FIXTURES_DIR / "multisport.fit"))
+        self.assertEqual([p["device"] for p in parsed], ["Garmin"] * 4)
 
 
 class DeveloperFieldScaleTests(SimpleTestCase):

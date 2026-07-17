@@ -103,6 +103,9 @@ export interface Activity {
   name: string;
   start_date: string;
   source: string;
+  /** Recording device from the file's metadata (FIT file_id), e.g. "Zwift" or
+   * "Garmin Edge 830"; empty when the format doesn't carry it (GPX/TCX). */
+  device: string;
   moving_time: number;
   distance_km: number;
   distance_source: DistanceSource;
@@ -131,6 +134,10 @@ export interface Activity {
   parent_activity_id: string | null;
   /** For a multisport activity, its per-leg children (transitions included) in start order. */
   child_activity_ids: string[];
+  /** Set on a duplicate recording, pointing at the primary that counts for training load. */
+  primary_activity_id: string | null;
+  /** Duplicate recordings linked to this activity; empty unless it is a primary. */
+  duplicate_activity_ids: string[];
 }
 
 export interface AthleteUpdate {
@@ -151,6 +158,8 @@ export interface ActivityUpdate {
   name?: string;
   sport?: Sport;
   workout_id?: string | null;
+  /** Mark this activity as a duplicate of the given primary, or null to unlink. */
+  primary_activity_id?: string | null;
   start_weight_kg?: number | null;
   end_weight_kg?: number | null;
   fluids_ml?: number | null;
@@ -285,7 +294,7 @@ export interface ShoeCatalogEntry {
   display_name: string;
 }
 
-export type UploadStatus = "queued" | "processing" | "ready" | "failed" | "duplicate";
+export type UploadStatus = "queued" | "processing" | "ready" | "failed" | "duplicate" | "skipped";
 
 export interface Upload {
   id: string;
@@ -308,7 +317,7 @@ export interface UploadBatch {
   status: UploadBatchStatus;
   filename: string;
   progress: number;
-  counts: { total: number; ready: number; processing: number; failed: number; duplicate: number };
+  counts: { total: number; ready: number; processing: number; failed: number; duplicate: number; skipped: number };
   uploads: Upload[];
   received_at: string;
   completed_at: string | null;

@@ -4,6 +4,7 @@ import com.cadence.api.uploads.parsing.ParsedActivity;
 import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
+import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -27,15 +28,23 @@ public class UploadJobConfig {
 	public Job processUploadJob(JobRepository jobRepository, UploadJobExecutionListener listener,
 			Step parseFileStep, Step loadRecordsStep, Step computeDerivedStatsStep, Step durationCurveStep,
 			Step bestEffortStep, Step workoutMatchStep, Step finalizeUploadStep) {
+		// A batch child holding a metadata-stub FIT (no activity data) is settled as skipped
+		// inside parseFileStep, which then exits NO_ACTIVITY_DATA; that routes straight to a
+		// clean COMPLETED end so Spring Batch never logs it as a failure. The explicit FAILED
+		// transition is load-bearing: with any explicit transition present, the on("*") branch
+		// would otherwise match a failed parse too and run the rest of the job on it.
 		return new JobBuilder("processUploadJob", jobRepository)
 				.listener(listener)
 				.start(parseFileStep)
-				.next(loadRecordsStep)
+				.on(ParseFileTasklet.EXIT_NO_ACTIVITY_DATA).end()
+				.from(parseFileStep).on(ExitStatus.FAILED.getExitCode()).fail()
+				.from(parseFileStep).on("*").to(loadRecordsStep)
 				.next(computeDerivedStatsStep)
 				.next(durationCurveStep)
 				.next(bestEffortStep)
 				.next(workoutMatchStep)
 				.next(finalizeUploadStep)
+				.end()
 				.build();
 	}
 

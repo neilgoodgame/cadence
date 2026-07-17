@@ -45,10 +45,15 @@ public class ActivityService {
 		List<String> childIds = activity.getSport() == Sport.MULTISPORT
 				? activityRepository.findChildIds(activity.getId())
 				: List.of();
+		// A duplicate can never itself be a primary (chains are rejected on update),
+		// so skip the lookup for anything already linked to a primary.
+		List<String> duplicateIds = activity.getPrimaryActivity() == null
+				? activityRepository.findDuplicateIds(activity.getId())
+				: List.of();
 		return new ActivityResponse(
 				activity.getId(), activity.getAthlete().getId(), activity.getSport(), activity.getEnvironment(),
 				activity.isHasGps(), activity.getName(), activity.getStartDate(), activity.getSource(),
-				activity.getMovingTime(), activity.getDistanceKm(), activity.getDistanceSource(),
+				activity.getDevice(), activity.getMovingTime(), activity.getDistanceKm(), activity.getDistanceSource(),
 				activity.getAvgPower(), activity.getNormPower(), activity.getIntensity(), activity.getTss(),
 				activity.getAvgHr(), activity.getMaxHr(), activity.getAscent(),
 				activity.getStartWeightKg(), activity.getEndWeightKg(), activity.getFluidsMl(),
@@ -59,16 +64,20 @@ public class ActivityService {
 				activity.getBike() != null ? activity.getBike().getId() : null,
 				activity.getShoe() != null ? activity.getShoe().getId() : null,
 				activity.getParentActivity() != null ? activity.getParentActivity().getId() : null,
-				childIds);
+				childIds,
+				activity.getPrimaryActivity() != null ? activity.getPrimaryActivity().getId() : null,
+				duplicateIds);
 	}
 
 	public CursorPage<ActivityResponse> list(String athleteId, String q, Sport sportFilter, Environment environmentFilter,
 			String cursor, int limit) {
 		// Multisport children are reachable via their parent's child_activity_ids, not the list -
-		// showing legs alongside the parent would present the same session twice.
+		// showing legs alongside the parent would present the same session twice. Duplicate
+		// recordings are likewise reachable only via their primary's duplicate_activity_ids.
 		Specification<Activity> spec = (root, query, cb) -> cb.and(
 				cb.equal(root.get("athlete").get("id"), athleteId),
-				cb.isNull(root.get("parentActivity")));
+				cb.isNull(root.get("parentActivity")),
+				cb.isNull(root.get("primaryActivity")));
 		Sort.Order primaryOrder = Sort.Order.desc("startDate");
 
 		if (q != null && !q.isBlank()) {
@@ -116,6 +125,10 @@ public class ActivityService {
 			Object value = body.get("workout_id");
 			activity.setWorkout(value == null ? null : workoutService.getWorkout((String) value));
 		}
+		if (body.containsKey("primary_activity_id")) {
+			Object value = body.get("primary_activity_id");
+			activity.setPrimaryActivity(value == null ? null : resolvePrimaryActivity(activity, (String) value));
+		}
 		if (body.containsKey("start_weight_kg")) {
 			activity.setStartWeightKg(toDouble(body.get("start_weight_kg")));
 		}
@@ -143,6 +156,37 @@ public class ActivityService {
 	@Transactional
 	public void deleteActivity(String id) {
 		activityRepository.deleteById(id);
+	}
+
+	/**
+	 * Validates marking {@code activity} as a duplicate of {@code primaryId}: same athlete,
+	 * no self-links, no chains (neither side may already be a duplicate or have duplicates
+	 * pointing the other way), and multisport parents/legs stay out entirely - their
+	 * training load is already handled by the parent/child relationship.
+	 */
+	private Activity resolvePrimaryActivity(Activity activity, String primaryId) {
+		if (primaryId.equals(activity.getId())) {
+			throw new ValidationException("An activity cannot be a duplicate of itself.");
+		}
+		Activity primary = getActivity(primaryId);
+		if (!primary.getAthlete().getId().equals(activity.getAthlete().getId())) {
+			throw new ValidationException("The primary activity must belong to the same athlete.");
+		}
+		if (primary.getPrimaryActivity() != null) {
+			throw new ValidationException("The chosen primary is itself a duplicate of another activity.");
+		}
+		if (activityRepository.existsByPrimaryActivityId(activity.getId())) {
+			throw new ValidationException("This activity has duplicates of its own; re-link those first.");
+		}
+		if (isMultisportLinked(activity) || isMultisportLinked(primary)) {
+			throw new ValidationException("Multisport sessions and their legs cannot be linked as duplicates.");
+		}
+		return primary;
+	}
+
+	private boolean isMultisportLinked(Activity activity) {
+		return activity.getSport() == Sport.MULTISPORT || activity.getSport() == Sport.TRANSITION
+				|| activity.getParentActivity() != null;
 	}
 
 	private Double toDouble(Object value) {

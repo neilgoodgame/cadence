@@ -5,8 +5,12 @@ import com.cadence.api.activities.Environment;
 import com.cadence.api.common.domain.Sport;
 import com.garmin.fit.Decode;
 import com.garmin.fit.DeveloperField;
+import com.garmin.fit.FileIdMesg;
+import com.garmin.fit.FileIdMesgListener;
+import com.garmin.fit.GarminProduct;
 import com.garmin.fit.LapMesg;
 import com.garmin.fit.LapMesgListener;
+import com.garmin.fit.Manufacturer;
 import com.garmin.fit.MesgBroadcaster;
 import com.garmin.fit.RecordMesg;
 import com.garmin.fit.SessionMesg;
@@ -18,6 +22,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.OptionalDouble;
 
 /** Parses Garmin's binary .fit format via the official Garmin FIT Java SDK ({@code com.garmin:fit}). */
@@ -33,20 +38,25 @@ public final class FitFileParser {
 		List<RecordMesg> records = new ArrayList<>();
 		List<LapMesg> laps = new ArrayList<>();
 		List<SessionMesg> sessions = new ArrayList<>();
+		List<FileIdMesg> fileIds = new ArrayList<>();
 
 		RecordMesgListener recordListener = records::add;
 		LapMesgListener lapListener = laps::add;
 		SessionMesgListener sessionListener = sessions::add;
+		FileIdMesgListener fileIdListener = fileIds::add;
 
 		Decode decode = new Decode();
 		MesgBroadcaster broadcaster = new MesgBroadcaster(decode);
 		broadcaster.addListener(recordListener);
 		broadcaster.addListener(lapListener);
 		broadcaster.addListener(sessionListener);
+		broadcaster.addListener(fileIdListener);
 		broadcaster.run(inputStream);
 
+		String device = deviceName(fileIds.isEmpty() ? null : fileIds.get(0));
+
 		if (records.isEmpty()) {
-			throw new IllegalArgumentException("No record messages found in FIT file.");
+			throw new NoActivityDataException("No record messages found in FIT file.");
 		}
 
 		List<SessionMesg> ordered = sessions.stream()
@@ -56,7 +66,7 @@ public final class FitFileParser {
 		long sportSessionCount = ordered.stream().filter(s -> mapSport(s.getSport()) != Sport.TRANSITION).count();
 		if (sportSessionCount <= 1) {
 			Sport sport = sessions.isEmpty() ? Sport.BIKE : mapSport(sessions.get(0).getSport());
-			return List.of(buildActivity(records, laps, sport, trainingEffects(sessions.isEmpty() ? null : sessions.get(0))));
+			return List.of(buildActivity(records, laps, sport, trainingEffects(sessions.isEmpty() ? null : sessions.get(0)), device));
 		}
 
 		// Multisport. Sessions partition the record stream into chained windows: each session's
@@ -73,7 +83,7 @@ public final class FitFileParser {
 				lastSport = session;
 			}
 		}
-		result.add(buildActivity(records, laps, Sport.MULTISPORT, trainingEffects(lastSport)));
+		result.add(buildActivity(records, laps, Sport.MULTISPORT, trainingEffects(lastSport), device));
 
 		for (int i = 0; i < ordered.size(); i++) {
 			SessionMesg session = ordered.get(i);
@@ -89,7 +99,7 @@ public final class FitFileParser {
 			List<LapMesg> sliceLaps = laps.stream()
 					.filter(l -> l.getStartTime() != null && inWindow(l.getStartTime().getDate().getTime(), windowStart, windowEnd))
 					.toList();
-			result.add(buildActivity(sliceRecords, sliceLaps, mapSport(session.getSport()), trainingEffects(session)));
+			result.add(buildActivity(sliceRecords, sliceLaps, mapSport(session.getSport()), trainingEffects(session), device));
 		}
 		return result;
 	}
@@ -114,7 +124,51 @@ public final class FitFileParser {
 		return new Double[] { aerobic, anaerobic };
 	}
 
-	private static ParsedActivity buildActivity(List<RecordMesg> records, List<LapMesg> laps, Sport sport, Double[] trainingEffects) {
+	/**
+	 * Human-readable recording device from the file_id message, e.g. "Zwift" or
+	 * "Garmin Epix Gen2". Only names the SDK's profile resolves to enum strings are used;
+	 * Zwift writes a product_name of garbage bytes (sometimes ASCII garbage like "&"), so
+	 * product names are only kept when printable ASCII containing at least one letter.
+	 */
+	private static String deviceName(FileIdMesg fileId) {
+		if (fileId == null || fileId.getManufacturer() == null) {
+			return "";
+		}
+		String manufacturer = Manufacturer.getStringFromValue(fileId.getManufacturer());
+		if (manufacturer.isEmpty()) {
+			return "";
+		}
+		String product = null;
+		if (fileId.getManufacturer() == Manufacturer.GARMIN && fileId.getGarminProduct() != null) {
+			String name = GarminProduct.getStringFromValue(fileId.getGarminProduct());
+			product = name.isEmpty() ? null : name;
+		} else if (looksLikeProductName(fileId.getProductName())) {
+			product = fileId.getProductName();
+		}
+		return product != null ? titleCase(manufacturer) + " " + titleCase(product) : titleCase(manufacturer);
+	}
+
+	private static boolean looksLikeProductName(String value) {
+		return value != null && !value.isEmpty()
+				&& value.chars().allMatch(c -> c >= 0x20 && c < 0x7f)
+				&& value.chars().anyMatch(Character::isLetter);
+	}
+
+	private static String titleCase(String enumName) {
+		StringBuilder result = new StringBuilder(enumName.length());
+		for (String word : enumName.toLowerCase(Locale.ROOT).split("[_ ]+")) {
+			if (word.isEmpty()) {
+				continue;
+			}
+			if (result.length() > 0) {
+				result.append(' ');
+			}
+			result.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+		}
+		return result.toString();
+	}
+
+	private static ParsedActivity buildActivity(List<RecordMesg> records, List<LapMesg> laps, Sport sport, Double[] trainingEffects, String device) {
 		long startMillis = records.get(0).getTimestamp().getDate().getTime();
 		Instant startDate = Instant.ofEpochMilli(startMillis);
 		boolean hasGps = records.stream().anyMatch(r -> r.getPositionLat() != null && r.getPositionLong() != null);
@@ -179,7 +233,7 @@ public final class FitFileParser {
 		DistanceSource distanceSource = hasGps ? DistanceSource.GPS : DistanceSource.TRAINER;
 
 		return new ParsedActivity(
-				sport, environment, hasGps, startDate, "fit", distanceSource, samples, lapSummaries,
+				sport, environment, hasGps, startDate, "fit", device, distanceSource, samples, lapSummaries,
 				trainingEffects[0], trainingEffects[1]);
 	}
 

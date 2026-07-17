@@ -40,6 +40,11 @@ public class Activity extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private String source = "";
 
+	// Recording device from the file's metadata (FIT file_id), e.g. "Zwift" or
+	// "Garmin Epix Gen2". Empty when the format doesn't carry it (GPX/TCX).
+	@Column(nullable = false)
+	private String device = "";
+
 	@Column(name = "moving_time", nullable = false)
 	private int movingTime;
 
@@ -111,6 +116,15 @@ public class Activity extends PrefixedIdEntity {
 	@JoinColumn(name = "parent_activity_id")
 	private Activity parentActivity;
 
+	/**
+	 * Set on a duplicate recording of another activity (the "primary"); null everywhere else.
+	 * Only the primary counts toward training load. DB sets this null when the primary is
+	 * deleted - a duplicate is a full activity, not a dependent like a multisport leg.
+	 */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "primary_activity_id")
+	private Activity primaryActivity;
+
 	@Override
 	protected String idPrefix() {
 		return "act";
@@ -170,6 +184,14 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setSource(String source) {
 		this.source = source;
+	}
+
+	public String getDevice() {
+		return device;
+	}
+
+	public void setDevice(String device) {
+		this.device = device;
 	}
 
 	public int getMovingTime() {
@@ -346,5 +368,13 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setParentActivity(Activity parentActivity) {
 		this.parentActivity = parentActivity;
+	}
+
+	public Activity getPrimaryActivity() {
+		return primaryActivity;
+	}
+
+	public void setPrimaryActivity(Activity primaryActivity) {
+		this.primaryActivity = primaryActivity;
 	}
 }

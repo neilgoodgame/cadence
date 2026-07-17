@@ -40,6 +40,9 @@ class Activity(PrefixedIDModel):
     name = models.CharField(max_length=200)
     start_date = models.DateTimeField()
     source = models.CharField(max_length=100, blank=True, default="")
+    # Recording device from the file's metadata (FIT file_id), e.g. "Zwift" or
+    # "Garmin Edge 830". Empty when the format doesn't carry it (GPX/TCX).
+    device = models.CharField(max_length=100, blank=True, default="")
     moving_time = models.IntegerField(default=0)
     distance_km = models.FloatField(default=0)
     distance_source = models.CharField(max_length=10, choices=DISTANCE_SOURCE_CHOICES, default="gps")
@@ -66,6 +69,12 @@ class Activity(PrefixedIDModel):
     # Set on the per-leg children of a multisport activity; null everywhere else.
     parent_activity = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.CASCADE, related_name="child_activities"
+    )
+    # Set on a duplicate recording of another activity (the "primary"); null everywhere
+    # else. Only the primary counts toward training load. SET_NULL on delete: a duplicate
+    # is a full activity in its own right, not a dependent like a multisport leg.
+    primary_activity = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="duplicate_activities"
     )
     tags: "models.ManyToManyField[Tag, ActivityTag]" = models.ManyToManyField(
         "Tag", through="ActivityTag", related_name="activities", blank=True

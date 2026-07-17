@@ -45,6 +45,7 @@ class Upload(PrefixedIDModel):
         ("ready", "Ready"),
         ("failed", "Failed"),
         ("duplicate", "Duplicate"),
+        ("skipped", "Skipped"),
     ]
 
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="uploads")
