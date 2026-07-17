@@ -71,6 +71,28 @@ def _developer_value(message, field_name: str, scales: dict[str, tuple[float | N
     return raw_value
 
 
+def _device_name(fit_file: FitFile) -> str:
+    """Human-readable recording device from the file_id message, e.g. "Zwift" or
+    "Garmin Edge 830". fitparse resolves known manufacturer/product enums to strings
+    and leaves unknown ones as ints; only string values are usable as names. Zwift
+    writes a product_name of garbage bytes (sometimes ASCII garbage like "&"), so
+    product names are only kept when printable ASCII containing at least one letter.
+    """
+    file_id = next(iter(fit_file.get_messages("file_id")), None)
+    if file_id is None:
+        return ""
+    manufacturer = file_id.get_value("manufacturer")
+    if not isinstance(manufacturer, str):
+        return ""
+    device = manufacturer.replace("_", " ").title()
+    product = file_id.get_value("garmin_product")
+    if not isinstance(product, str):
+        product = file_id.get_value("product_name")
+    if isinstance(product, str) and product.isascii() and product.isprintable() and any(c.isalpha() for c in product):
+        device = f"{device} {product.replace('_', ' ').title()}"
+    return device
+
+
 def _session_meta(message) -> dict:
     raw_sport = str(message.get_value("sport") or "").lower()
     return {
@@ -92,6 +114,7 @@ def parse_fit(path: str) -> list[ParsedActivity]:
     """
     fit_file = FitFile(path)
     dev_field_scales = _developer_field_scales(fit_file)
+    device = _device_name(fit_file)
 
     sessions = [_session_meta(m) for m in fit_file.get_messages("session")]
 
@@ -105,7 +128,7 @@ def parse_fit(path: str) -> list[ParsedActivity]:
     if len(sport_sessions) <= 1:
         sport = sessions[0]["sport"] if sessions else "bike"
         te = sessions[0] if sessions else {}
-        return [_build_activity(records, laps, sport, te, dev_field_scales)]
+        return [_build_activity(records, laps, sport, te, dev_field_scales, device)]
 
     # Multisport. Sessions partition the record stream into chained windows: each session's
     # window runs from its start_time to the next session's start_time (start_time has only
@@ -115,7 +138,7 @@ def parse_fit(path: str) -> list[ParsedActivity]:
     #
     # TE accumulates over the whole session on the device, so the last non-transition
     # session carries the total for the parent.
-    result = [_build_activity(records, laps, "multisport", sport_sessions[-1], dev_field_scales)]
+    result = [_build_activity(records, laps, "multisport", sport_sessions[-1], dev_field_scales, device)]
     for i, session in enumerate(ordered):
         window_start = session["start_time"]
         window_end = ordered[i + 1]["start_time"] if i + 1 < len(ordered) else None
@@ -132,11 +155,13 @@ def parse_fit(path: str) -> list[ParsedActivity]:
         if not slice_records:
             continue
         slice_laps = [lap for lap in laps if in_window(lap)]
-        result.append(_build_activity(slice_records, slice_laps, session["sport"], session, dev_field_scales))
+        result.append(_build_activity(slice_records, slice_laps, session["sport"], session, dev_field_scales, device))
     return result
 
 
-def _build_activity(records, laps, sport: str, session_meta: dict, dev_field_scales: dict) -> ParsedActivity:
+def _build_activity(
+    records, laps, sport: str, session_meta: dict, dev_field_scales: dict, device: str
+) -> ParsedActivity:
     start_time = ensure_utc(records[0].get_value("timestamp"))
     if start_time is None:
         raise ValueError("FIT file's first record message has no timestamp.")
@@ -220,6 +245,7 @@ def _build_activity(records, laps, sport: str, session_meta: dict, dev_field_sca
         "has_gps": has_gps,
         "start_date": start_time,
         "source": "fit",
+        "device": device,
         "samples": samples,
         "laps": lap_summaries,
         "distance_source": "gps" if has_gps else "trainer",

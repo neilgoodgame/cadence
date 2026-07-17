@@ -45,6 +45,7 @@ export function Header({ activity }: { activity: Activity }) {
         </span>
         <span style={{ fontSize: 13, color: "var(--ink3)" }}>
           {formatDateTime(activity.start_date)} · {activity.source}
+          {activity.device && ` · ${activity.device}`}
         </span>
       </div>
 

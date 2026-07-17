@@ -53,7 +53,7 @@ public class ActivityService {
 		return new ActivityResponse(
 				activity.getId(), activity.getAthlete().getId(), activity.getSport(), activity.getEnvironment(),
 				activity.isHasGps(), activity.getName(), activity.getStartDate(), activity.getSource(),
-				activity.getMovingTime(), activity.getDistanceKm(), activity.getDistanceSource(),
+				activity.getDevice(), activity.getMovingTime(), activity.getDistanceKm(), activity.getDistanceSource(),
 				activity.getAvgPower(), activity.getNormPower(), activity.getIntensity(), activity.getTss(),
 				activity.getAvgHr(), activity.getMaxHr(), activity.getAscent(),
 				activity.getStartWeightKg(), activity.getEndWeightKg(), activity.getFluidsMl(),

@@ -8,7 +8,7 @@ import java.util.List;
 
 public record ActivityResponse(
 		String id, String athleteId, Sport sport, Environment environment, boolean hasGps, String name,
-		Instant startDate, String source, int movingTime, double distanceKm, DistanceSource distanceSource,
+		Instant startDate, String source, String device, int movingTime, double distanceKm, DistanceSource distanceSource,
 		Integer avgPower, Integer normPower, Double intensity, int tss, Integer avgHr, Integer maxHr, Integer ascent,
 		Double startWeightKg, Double endWeightKg, Integer fluidsMl, Double avgAirTemp, Integer avgHumidity,
 		Double aerobicTrainingEffect, Double anaerobicTrainingEffect, String trainingEffectLabel,

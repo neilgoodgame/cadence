@@ -103,6 +103,9 @@ export interface Activity {
   name: string;
   start_date: string;
   source: string;
+  /** Recording device from the file's metadata (FIT file_id), e.g. "Zwift" or
+   * "Garmin Edge 830"; empty when the format doesn't carry it (GPX/TCX). */
+  device: string;
   moving_time: number;
   distance_km: number;
   distance_source: DistanceSource;

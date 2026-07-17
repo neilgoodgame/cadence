@@ -40,6 +40,9 @@ class Activity(PrefixedIDModel):
     name = models.CharField(max_length=200)
     start_date = models.DateTimeField()
     source = models.CharField(max_length=100, blank=True, default="")
+    # Recording device from the file's metadata (FIT file_id), e.g. "Zwift" or
+    # "Garmin Edge 830". Empty when the format doesn't carry it (GPX/TCX).
+    device = models.CharField(max_length=100, blank=True, default="")
     moving_time = models.IntegerField(default=0)
     distance_km = models.FloatField(default=0)
     distance_source = models.CharField(max_length=10, choices=DISTANCE_SOURCE_CHOICES, default="gps")

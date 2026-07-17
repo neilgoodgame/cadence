@@ -13,6 +13,9 @@ public record ParsedActivity(
 		boolean hasGps,
 		Instant startDate,
 		String source,
+		// Recording device from the file's metadata (FIT file_id), e.g. "Zwift" or
+		// "Garmin Edge 830". FIT-only (no GPX/TCX equivalent), so "" from those parsers.
+		String device,
 		DistanceSource distanceSource,
 		List<Sample> samples,
 		List<LapSummary> laps,

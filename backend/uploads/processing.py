@@ -409,6 +409,7 @@ def _ingest_activity(
         name=f"{SPORT_LABELS.get(sport, 'Activity')} on {parsed['start_date']:%Y-%m-%d}",
         start_date=parsed["start_date"],
         source=parsed.get("source", ""),
+        device=parsed.get("device", ""),
         moving_time=_moving_time(samples),
         distance_km=_total_distance_km(samples, laps),
         distance_source=parsed.get("distance_source", "gps" if parsed["has_gps"] else "manual"),

@@ -21,6 +21,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "name",
             "start_date",
             "source",
+            "device",
             "moving_time",
             "distance_km",
             "distance_source",

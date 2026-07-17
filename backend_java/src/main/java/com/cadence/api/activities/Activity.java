@@ -40,6 +40,11 @@ public class Activity extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private String source = "";
 
+	// Recording device from the file's metadata (FIT file_id), e.g. "Zwift" or
+	// "Garmin Epix Gen2". Empty when the format doesn't carry it (GPX/TCX).
+	@Column(nullable = false)
+	private String device = "";
+
 	@Column(name = "moving_time", nullable = false)
 	private int movingTime;
 
@@ -179,6 +184,14 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setSource(String source) {
 		this.source = source;
+	}
+
+	public String getDevice() {
+		return device;
+	}
+
+	public void setDevice(String device) {
+		this.device = device;
 	}
 
 	public int getMovingTime() {

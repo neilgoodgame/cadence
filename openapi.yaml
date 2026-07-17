@@ -2078,6 +2078,14 @@ components:
         name: { type: string, example: Sunday Long Run }
         start_date: { type: string, format: date-time }
         source: { type: string, example: Garmin }
+        device:
+          type: string
+          description: >
+            Recording device from the uploaded file's metadata (the FIT `file_id`
+            manufacturer/product), e.g. `Zwift` or `Garmin Edge 830`. Captured at
+            import; empty when the format doesn't carry it (GPX/TCX) or the
+            manufacturer is unknown.
+          example: Zwift
         moving_time: { type: integer, description: Seconds, example: 6510 }
         distance_km: { type: number, example: 23.0 }
         distance_source:

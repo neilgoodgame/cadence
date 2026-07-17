@@ -174,7 +174,7 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
                   {dup ? dup.name : id}
                 </Link>
                 <span style={{ fontSize: 12, color: "var(--ink3)" }}>
-                  {dup ? `${dup.source || "unknown source"} · ${formatDuration(dup.moving_time)}` : ""}
+                  {dup ? `${dup.device || dup.source || "unknown source"} · ${formatDuration(dup.moving_time)}` : ""}
                 </span>
                 <button style={buttonStyle} disabled={busy} onClick={() => makePrimary(id)}>
                   Make primary
@@ -202,7 +202,8 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
                 {candidate.name}
               </Link>
               <span style={{ fontSize: 12, color: "var(--ink3)" }}>
-                {candidate.source || "unknown source"} · {formatDuration(candidate.moving_time)} · TSS {candidate.tss}
+                {candidate.device || candidate.source || "unknown source"} · {formatDuration(candidate.moving_time)} ·
+                TSS {candidate.tss}
               </span>
               <button style={buttonStyle} disabled={busy} onClick={() => linkDuplicate(candidate.id)}>
                 Link as duplicate

@@ -95,6 +95,7 @@ public class ParseFileTasklet implements Tasklet {
 					+ DATE_FORMAT.format(parsed.startDate().atZone(ZoneOffset.UTC)));
 			activity.setStartDate(parsed.startDate());
 			activity.setSource(parsed.source() != null ? parsed.source() : "");
+			activity.setDevice(parsed.device() != null ? parsed.device() : "");
 			activity.setMovingTime(UploadCalculations.movingTime(parsed.samples()));
 			activity.setDistanceKm(UploadCalculations.totalDistanceKm(parsed.samples(), parsed.laps()));
 			activity.setDistanceSource(parsed.distanceSource() != null

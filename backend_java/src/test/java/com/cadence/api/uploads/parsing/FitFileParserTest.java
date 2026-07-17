@@ -31,4 +31,16 @@ class FitFileParserTest {
 			assertThat(result.laps()).allSatisfy(lap -> assertThat(lap.avgPower()).isNotNull());
 		}
 	}
+
+	@Test
+	void deviceComesFromFileIdManufacturerAndGarminProduct() throws IOException {
+		try (InputStream in = getClass().getClassLoader().getResourceAsStream("fit-fixtures/running_outdoor_marathon.fit")) {
+			assertThat(in).isNotNull();
+			var parsed = FitFileParser.parse(in);
+
+			// file_id: manufacturer garmin (1), garmin_product 3943 - the SDK's profile
+			// resolves both to enum names, title-cased into a display string.
+			assertThat(parsed.get(0).device()).isEqualTo("Garmin Epix Gen2");
+		}
+	}
 }
