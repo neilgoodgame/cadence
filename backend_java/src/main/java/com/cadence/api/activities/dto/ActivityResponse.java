@@ -15,5 +15,8 @@ public record ActivityResponse(
 		List<String> tags, String workoutId, String bikeId, String shoeId,
 		// Multisport linkage: children carry parentActivityId, the parent lists childActivityIds
 		// in start-date order (empty for every non-multisport activity).
-		String parentActivityId, List<String> childActivityIds) {
+		String parentActivityId, List<String> childActivityIds,
+		// Duplicate-recording linkage: a duplicate carries primaryActivityId, the primary lists
+		// duplicateActivityIds in start-date order (empty everywhere else).
+		String primaryActivityId, List<String> duplicateActivityIds) {
 }

@@ -8,6 +8,7 @@ from .models import Activity, BestEffort, DurationCurve, Lap, Tag
 class ActivitySerializer(serializers.ModelSerializer):
     tags = serializers.SerializerMethodField()
     child_activity_ids = serializers.SerializerMethodField()
+    duplicate_activity_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
@@ -44,6 +45,8 @@ class ActivitySerializer(serializers.ModelSerializer):
             "shoe_id",
             "parent_activity_id",
             "child_activity_ids",
+            "primary_activity_id",
+            "duplicate_activity_ids",
         ]
 
     def get_tags(self, obj: Activity) -> list[str]:
@@ -54,11 +57,19 @@ class ActivitySerializer(serializers.ModelSerializer):
             return []
         return list(obj.child_activities.order_by("start_date").values_list("id", flat=True))
 
+    def get_duplicate_activity_ids(self, obj: Activity) -> list[str]:
+        # A duplicate can never itself be a primary (chains are rejected on update),
+        # so skip the lookup for anything already linked to a primary.
+        if obj.primary_activity_id:
+            return []
+        return list(obj.duplicate_activities.order_by("start_date").values_list("id", flat=True))
+
 
 class ActivityUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
     sport = serializers.ChoiceField(choices=Activity.SPORT_CHOICES, required=False)
     workout_id = serializers.CharField(required=False, allow_null=True)
+    primary_activity_id = serializers.CharField(required=False, allow_null=True)
     start_weight_kg = serializers.FloatField(required=False, allow_null=True)
     end_weight_kg = serializers.FloatField(required=False, allow_null=True)
     fluids_ml = serializers.IntegerField(required=False, allow_null=True)

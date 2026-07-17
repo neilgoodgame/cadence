@@ -111,6 +111,15 @@ public class Activity extends PrefixedIdEntity {
 	@JoinColumn(name = "parent_activity_id")
 	private Activity parentActivity;
 
+	/**
+	 * Set on a duplicate recording of another activity (the "primary"); null everywhere else.
+	 * Only the primary counts toward training load. DB sets this null when the primary is
+	 * deleted - a duplicate is a full activity, not a dependent like a multisport leg.
+	 */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "primary_activity_id")
+	private Activity primaryActivity;
+
 	@Override
 	protected String idPrefix() {
 		return "act";
@@ -346,5 +355,13 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setParentActivity(Activity parentActivity) {
 		this.parentActivity = parentActivity;
+	}
+
+	public Activity getPrimaryActivity() {
+		return primaryActivity;
+	}
+
+	public void setPrimaryActivity(Activity primaryActivity) {
+		this.primaryActivity = primaryActivity;
 	}
 }

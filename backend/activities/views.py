@@ -71,6 +71,29 @@ def _require_write(request: Request, athlete_id: str) -> None:
         raise PermissionDenied("You do not have write access to that athlete's data.")
 
 
+def _is_multisport_linked(activity: Activity) -> bool:
+    return activity.sport in ("multisport", "transition") or activity.parent_activity_id is not None
+
+
+def _resolve_primary_activity(activity: Activity, primary_id: str) -> Activity:
+    """Validates marking `activity` as a duplicate of `primary_id`: same athlete, no
+    self-links, no chains (neither side may already be a duplicate or have duplicates
+    pointing the other way), and multisport parents/legs stay out entirely - their
+    training load is already handled by the parent/child relationship."""
+    if primary_id == activity.pk:
+        raise ValidationError({"primary_activity_id": "An activity cannot be a duplicate of itself."})
+    primary = get_object_or_404(Activity, pk=primary_id, athlete_id=activity.athlete_id)
+    if primary.primary_activity_id is not None:
+        raise ValidationError({"primary_activity_id": "The chosen primary is itself a duplicate of another activity."})
+    if activity.duplicate_activities.exists():
+        raise ValidationError({"primary_activity_id": "This activity has duplicates of its own; re-link those first."})
+    if _is_multisport_linked(activity) or _is_multisport_linked(primary):
+        raise ValidationError(
+            {"primary_activity_id": "Multisport sessions and their legs cannot be linked as duplicates."}
+        )
+    return primary
+
+
 class ActivityCursorPagination(CadenceCursorPagination):
     ordering = ("-start_date", "-id")
 
@@ -82,7 +105,9 @@ class ActivityListView(APIView):
 
         # Multisport children are reachable via their parent's child_activity_ids, not the
         # list - showing legs alongside the parent would present the same session twice.
-        qs = Activity.objects.filter(athlete_id=athlete_id, parent_activity__isnull=True)
+        # Duplicate recordings are likewise reachable only via their primary's
+        # duplicate_activity_ids.
+        qs = Activity.objects.filter(athlete_id=athlete_id, parent_activity__isnull=True, primary_activity__isnull=True)
 
         order_field = None
         q = request.query_params.get("q")
@@ -165,6 +190,10 @@ class ActivityDetailView(APIView):
             else:
                 activity.workout = get_object_or_404(Workout, pk=workout_id, created_by_id=activity.athlete_id)
             update_fields.append("workout")
+        if "primary_activity_id" in data:
+            primary_id = data["primary_activity_id"]
+            activity.primary_activity = None if primary_id is None else _resolve_primary_activity(activity, primary_id)
+            update_fields.append("primary_activity")
         if "start_weight_kg" in data:
             activity.start_weight_kg = data["start_weight_kg"]
             update_fields.append("start_weight_kg")

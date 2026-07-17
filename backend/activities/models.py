@@ -67,6 +67,12 @@ class Activity(PrefixedIDModel):
     parent_activity = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.CASCADE, related_name="child_activities"
     )
+    # Set on a duplicate recording of another activity (the "primary"); null everywhere
+    # else. Only the primary counts toward training load. SET_NULL on delete: a duplicate
+    # is a full activity in its own right, not a dependent like a multisport leg.
+    primary_activity = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="duplicate_activities"
+    )
     tags: "models.ManyToManyField[Tag, ActivityTag]" = models.ManyToManyField(
         "Tag", through="ActivityTag", related_name="activities", blank=True
     )
