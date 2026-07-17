@@ -15,7 +15,7 @@ from .models import Upload, UploadBatch
 from .tasks import process_upload as process_upload_task
 
 SUPPORTED_EXTENSIONS = {".fit", ".gpx", ".tcx"}
-MAX_BATCH_FILES = 500
+MAX_BATCH_FILES = 10000
 MAX_BATCH_BYTES = 200 * 1024 * 1024
 
 

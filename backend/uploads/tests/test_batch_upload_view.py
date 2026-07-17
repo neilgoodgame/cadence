@@ -106,7 +106,7 @@ class ActivityBatchUploadViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_batch_file_count_limit(self):
-        zip_bytes = build_zip({f"f{i}.gpx": b"" for i in range(501)})
+        zip_bytes = build_zip({f"f{i}.gpx": b"" for i in range(10001)})
         response = _bearer_client(self.athlete).post(
             "/v1/activities/batch", {"file": SimpleUploadedFile("toomany.zip", zip_bytes)}, format="multipart"
         )

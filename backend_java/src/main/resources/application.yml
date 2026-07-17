@@ -58,7 +58,7 @@ cadence:
   uploads:
     media-root: ${MEDIA_ROOT:media}
     max-upload-bytes: 209715200
-    max-batch-files: 500
+    max-batch-files: 10000
   oauth:
     first-party-client-secret: ${OAUTH_FIRST_PARTY_CLIENT_SECRET:dev-only-secret-change-me}
 
