@@ -42,7 +42,9 @@ export function BatchStatus({ initial }: { initial: { data: UploadBatch; retryAf
 
       {batch.status === "completed" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {batch.uploads.map((upload) => (
+          {/* Skipped metadata stubs can outnumber real files a thousand to one in a Garmin
+              account export; the summary count covers them, so keep them out of the list. */}
+          {batch.uploads.filter((upload) => upload.status !== "skipped").map((upload) => (
             <div key={upload.id} style={{ display: "flex", gap: 10, fontSize: 13, alignItems: "center" }}>
               <span className="mono" style={{ color: "var(--ink2)", flex: 1 }}>
                 {upload.filename}
@@ -53,7 +55,6 @@ export function BatchStatus({ initial }: { initial: { data: UploadBatch; retryAf
                 </Link>
               )}
               {upload.status === "duplicate" && <span style={{ color: "var(--ink3)" }}>Duplicate</span>}
-              {upload.status === "skipped" && <span style={{ color: "var(--ink3)" }}>Skipped — no activity data</span>}
               {upload.status === "failed" && (
                 <span style={{ color: "#e0442e" }}>{upload.error?.message ?? "Failed"}</span>
               )}
