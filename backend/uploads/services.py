@@ -16,7 +16,7 @@ from .tasks import _maybe_finalize_batch
 from .tasks import process_upload as process_upload_task
 
 SUPPORTED_EXTENSIONS = {".fit", ".gpx", ".tcx"}
-MAX_BATCH_FILES = 10000
+MAX_BATCH_FILES = 50000
 MAX_BATCH_BYTES = 200 * 1024 * 1024
 
 
