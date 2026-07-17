@@ -444,7 +444,9 @@ paths:
         per parsed file) and `upload_batch.completed` (one event when the whole
         batch settles). Per-file weigh-in / fluids / shoe metadata cannot be set
         here; edit individual activities afterwards. Files that duplicate existing
-        activities are skipped and counted under `duplicate`.
+        activities are skipped and counted under `duplicate`; valid FIT files with
+        no activity data (e.g. the metadata stubs Garmin account exports mix in
+        with real activities) are counted under `skipped`.
       requestBody:
         required: true
         content:
@@ -456,7 +458,7 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: A .zip archive of activity files (max 500 files, 200 MB).
+                  description: A .zip archive of activity files (max 50000 files, 200 MB).
                 on_duplicate:
                   type: string
                   enum: [skip, replace]
@@ -570,7 +572,9 @@ paths:
         workout for matching. For activities without sensor-derived environmental
         data (rides, or runs without a Stryd) avg_air_temp and avg_humidity may be
         set manually here; for runs that carry Stryd stream data they are computed
-        and read-only.
+        and read-only. Set primary_activity_id to mark this activity as a
+        duplicate recording of another (or null to unlink); duplicates drop out
+        of lists, the calendar, and training load until unlinked.
       requestBody:
         required: true
         content:
@@ -584,6 +588,15 @@ paths:
                 workout_id:
                   type: [string, "null"]
                   description: Link a designed workout, or null to clear.
+                primary_activity_id:
+                  type: [string, "null"]
+                  description: >
+                    Mark this activity as a duplicate recording of the given
+                    primary activity, or null to unlink. Rejected (400) when the
+                    target is itself a duplicate, when this activity has
+                    duplicates of its own, on self-links, and for multisport
+                    parents or legs; 404 when the target belongs to another
+                    athlete.
                 start_weight_kg: { type: [number, "null"] }
                 end_weight_kg: { type: [number, "null"] }
                 fluids_ml: { type: [integer, "null"] }
@@ -2067,6 +2080,14 @@ components:
         name: { type: string, example: Sunday Long Run }
         start_date: { type: string, format: date-time }
         source: { type: string, example: Garmin }
+        device:
+          type: string
+          description: >
+            Recording device from the uploaded file's metadata (the FIT `file_id`
+            manufacturer/product), e.g. `Zwift` or `Garmin Edge 830`. Captured at
+            import; empty when the format doesn't carry it (GPX/TCX) or the
+            manufacturer is unknown.
+          example: Zwift
         moving_time: { type: integer, description: Seconds, example: 6510 }
         distance_km: { type: number, example: 23.0 }
         distance_source:
@@ -2143,6 +2164,24 @@ components:
             For a `multisport` activity, the ids of its per-leg child activities
             (including transitions) in start order. Empty for every other sport.
           example: []
+        primary_activity_id:
+          type: [string, "null"]
+          description: >
+            Set on a duplicate recording of another activity (e.g. the same ride
+            captured by both Zwift and a head unit), pointing at the designated
+            primary. Null everywhere else. Duplicates are excluded from activity
+            lists, calendar unplanned activities, and fitness aggregation — only
+            the primary counts toward training load. Set or clear it via
+            PATCH /v1/activities/{id}; the primary must belong to the same
+            athlete, must not itself be a duplicate, and multisport parents/legs
+            cannot take part.
+        duplicate_activity_ids:
+          type: array
+          items: { type: string }
+          description: >
+            The ids of duplicate recordings linked to this activity, in start
+            order. Empty unless this activity is the primary of a duplicate group.
+          example: []
 
     UploadBatch:
       type: object
@@ -2173,6 +2212,7 @@ components:
             processing: { type: integer, example: 71 }
             failed: { type: integer, example: 1 }
             duplicate: { type: integer, example: 2 }
+            skipped: { type: integer, example: 0 }
         uploads:
           type: array
           description: The child upload jobs (paginated for large archives).
@@ -2191,11 +2231,13 @@ components:
         object: { type: string, const: upload }
         status:
           type: string
-          enum: [queued, processing, ready, failed, duplicate]
+          enum: [queued, processing, ready, failed, duplicate, skipped]
           description: >
             `queued` accepted, awaiting a worker; `processing` parsing the file;
             `ready` parsed and the activity created; `failed` parsing errored;
-            `duplicate` the file matched an existing activity.
+            `duplicate` the file matched an existing activity; `skipped` (batch
+            imports only) the file was valid but held no activity data, e.g. the
+            metadata stubs Garmin account exports mix in with real activities.
           example: processing
         progress:
           type: number

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getActivity } from "../api/activities";
 import { useAuth } from "../auth/AuthContext";
 import { CurvesTab } from "./activity-analysis/CurvesTab";
+import { DuplicateBanner, DuplicatesCard } from "./activity-analysis/DuplicatesCard";
 import { Header } from "./activity-analysis/Header";
 import { HydrationBlock } from "./activity-analysis/HydrationBlock";
 import { LapsTab } from "./activity-analysis/LapsTab";
@@ -46,11 +47,19 @@ export function ActivityAnalysisScreen() {
           </Link>
         </div>
       )}
+      {activity.primary_activity_id && <DuplicateBanner activity={activity} />}
 
       <Header activity={activity} />
       <StatRow activity={activity} />
 
       {activity.sport === "multisport" && <MultisportLegs activity={activity} />}
+
+      {/* Any standalone activity can head a duplicate group; multisport sessions,
+          their legs, and duplicates themselves cannot. */}
+      {activity.sport !== "multisport" &&
+        activity.sport !== "transition" &&
+        !activity.parent_activity_id &&
+        !activity.primary_activity_id && <DuplicatesCard activity={activity} />}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20 }}>
         <div>

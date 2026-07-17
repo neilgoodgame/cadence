@@ -47,7 +47,7 @@ class UploadBatchSerializer(serializers.ModelSerializer):
         return "upload_batch"
 
     def _counts(self, obj: UploadBatch) -> dict[str, int]:
-        counts = {"total": 0, "ready": 0, "processing": 0, "failed": 0, "duplicate": 0}
+        counts = {"total": 0, "ready": 0, "processing": 0, "failed": 0, "duplicate": 0, "skipped": 0}
         for row in obj.uploads.values("status").annotate(n=Count("id")):
             counts["total"] += row["n"]
             if row["status"] == "queued":

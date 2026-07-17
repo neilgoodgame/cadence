@@ -26,21 +26,23 @@ public class UploadMapper {
 		int processing = 0;
 		int failed = 0;
 		int duplicate = 0;
+		int skipped = 0;
 		for (Upload child : children) {
 			switch (child.getStatus()) {
 				case READY -> ready++;
 				case QUEUED, PROCESSING -> processing++;
 				case FAILED -> failed++;
 				case DUPLICATE -> duplicate++;
+				case SKIPPED -> skipped++;
 			}
 		}
-		int settled = ready + failed + duplicate;
+		int settled = ready + failed + duplicate + skipped;
 		double progress = total == 0 ? 0.0 : (double) settled / total;
 
 		List<UploadResponse> uploads = children.stream().map(this::toResponse).toList();
 		return new UploadBatchResponse(
 				batch.getId(), batch.getStatus(), batch.getFilename(), progress,
-				new UploadBatchCounts(total, ready, processing, failed, duplicate),
+				new UploadBatchCounts(total, ready, processing, failed, duplicate, skipped),
 				uploads, batch.getReceivedAt(), batch.getCompletedAt());
 	}
 }
