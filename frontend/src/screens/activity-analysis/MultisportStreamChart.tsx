@@ -58,6 +58,10 @@ export function MultisportStreamChart({ activity }: { activity: Activity }) {
     })),
   });
 
+  // useQueries returns new arrays every render, so memoize on stable keys derived
+  // from what actually matters: which children loaded and when their streams updated.
+  const childIdsKey = children.map((c) => c?.id).join();
+  const streamsKey = streamQueries.map((q) => q.dataUpdatedAt).join();
   const legs: Leg[] | null = useMemo(() => {
     if (children.some((c) => !c) || streamQueries.some((q) => !q.data)) return null;
     return children.map((child, i) => {
@@ -74,9 +78,8 @@ export function MultisportStreamChart({ activity }: { activity: Activity }) {
         })),
       };
     });
-    // streamQueries/childQueries are new arrays every render; their data is what matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [children.map((c) => c?.id).join(), streamQueries.map((q) => q.dataUpdatedAt).join()]);
+  }, [childIdsKey, streamsKey]);
 
   const layout = useMemo(() => {
     if (!legs) return null;
