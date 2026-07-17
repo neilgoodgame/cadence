@@ -14,6 +14,22 @@ export function BatchStatus({ initial }: { initial: { data: UploadBatch; retryAf
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1, height: 6, borderRadius: 4, background: "var(--elev)", overflow: "hidden" }}>
+          <div
+            style={{
+              height: "100%",
+              width: `${batch.progress * 100}%`,
+              background: "var(--ember)",
+              transition: "width 300ms ease",
+            }}
+          />
+        </div>
+        <span className="mono" style={{ fontSize: 12, color: "var(--ink2)", minWidth: 36, textAlign: "right" }}>
+          {Math.round(batch.progress * 100)}%
+        </span>
+      </div>
+
       <div style={{ display: "flex", gap: 16, fontSize: 13, color: "var(--ink2)" }}>
         <span className="mono">{batch.filename}</span>
         <span>{batch.counts.ready} ready</span>
