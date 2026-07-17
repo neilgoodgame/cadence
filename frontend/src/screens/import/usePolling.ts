@@ -20,9 +20,18 @@ export function usePolling<T>(
     let cancelled = false;
     const delayMs = (result.retryAfterSeconds ?? 2) * 1000;
     const timer = setTimeout(async () => {
-      const next = await poll(getId(result.data));
-      if (!cancelled) {
-        setResult(next);
+      try {
+        const next = await poll(getId(result.data));
+        if (!cancelled) {
+          setResult(next);
+        }
+      } catch {
+        // A transient failure (network hiccup, backend saturated mid-batch) must not
+        // end polling: re-set the same result under a fresh identity so the effect
+        // re-runs and schedules the next attempt.
+        if (!cancelled) {
+          setResult({ ...result });
+        }
       }
     }, delayMs);
     return () => {

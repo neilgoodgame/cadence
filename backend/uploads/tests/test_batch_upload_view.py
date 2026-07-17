@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -91,6 +92,29 @@ class ActivityBatchUploadViewTests(TestCase):
         self.assertFalse(Activity.objects.filter(pk=original_activity_id).exists())
         self.assertTrue(Activity.objects.filter(pk=new_activity_id).exists())
         self.assertEqual(Activity.objects.filter(athlete=self.athlete).count(), 1)
+
+    def test_all_duplicates_batch_completes_and_fires_webhook(self):
+        start = datetime(2026, 6, 5, 9, 0, tzinfo=UTC)
+        content = build_tcx(start, duration_s=20, power=150)
+        client = _bearer_client(self.athlete)
+        client.post(
+            "/v1/activities/batch",
+            {"file": SimpleUploadedFile("first.zip", build_zip({"ride.tcx": content}))},
+            format="multipart",
+        )
+
+        with patch("uploads.tasks.fire_event") as mock_fire:
+            response = client.post(
+                "/v1/activities/batch",
+                {"file": SimpleUploadedFile("again.zip", build_zip({"ride.tcx": content})), "on_duplicate": "skip"},
+                format="multipart",
+            )
+
+        body = response.json()
+        self.assertEqual(body["status"], "completed")
+        self.assertEqual(body["counts"], {"total": 1, "ready": 0, "processing": 0, "failed": 0, "duplicate": 1})
+        events = [call.args[0] for call in mock_fire.call_args_list]
+        self.assertIn("upload_batch.completed", events)
 
     def test_bad_zip_returns_400(self):
         response = _bearer_client(self.athlete).post(

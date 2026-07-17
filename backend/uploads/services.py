@@ -12,6 +12,7 @@ from rest_framework.request import Request
 from gear.models import Shoe
 
 from .models import Upload, UploadBatch
+from .tasks import _maybe_finalize_batch
 from .tasks import process_upload as process_upload_task
 
 SUPPORTED_EXTENSIONS = {".fit", ".gpx", ".tcx"}
@@ -136,9 +137,10 @@ def create_activity_batch_upload(request: Request, athlete_id: str) -> tuple[Upl
         upload.save(update_fields=["stored_path"])
         process_upload_task.delay(upload.id)
 
-    if not batch.uploads.filter(status__in=["queued", "processing"]).exists():
-        batch.status = "completed"
-        batch.completed_at = timezone.now()
-        batch.save(update_fields=["status", "completed_at"])
+    # A batch whose files all settled at staging (e.g. every one a duplicate) queued no
+    # tasks, so no task completion will ever finalize it. Use the shared finalizer so the
+    # upload_batch.completed webhook fires for this path too.
+    _maybe_finalize_batch(batch.id)
+    batch.refresh_from_db()
 
     return batch, 202

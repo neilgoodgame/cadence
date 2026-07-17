@@ -5,6 +5,7 @@ import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.gear.Shoe;
 import com.cadence.api.gear.ShoeRepository;
+import com.cadence.api.uploads.batch.UploadBatchFinalizer;
 import com.cadence.api.uploads.batch.UploadJobLauncher;
 import com.cadence.api.users.User;
 import java.io.IOException;
@@ -28,16 +29,18 @@ public class UploadService {
 	private final ShoeRepository shoeRepository;
 	private final UploadIngestService ingestService;
 	private final UploadJobLauncher jobLauncher;
+	private final UploadBatchFinalizer batchFinalizer;
 	private final CadenceProperties properties;
 
 	public UploadService(UploadRepository uploadRepository, UploadBatchRepository uploadBatchRepository,
 			ShoeRepository shoeRepository, UploadIngestService ingestService, UploadJobLauncher jobLauncher,
-			CadenceProperties properties) {
+			UploadBatchFinalizer batchFinalizer, CadenceProperties properties) {
 		this.uploadRepository = uploadRepository;
 		this.uploadBatchRepository = uploadBatchRepository;
 		this.shoeRepository = shoeRepository;
 		this.ingestService = ingestService;
 		this.jobLauncher = jobLauncher;
+		this.batchFinalizer = batchFinalizer;
 		this.properties = properties;
 	}
 
@@ -73,7 +76,11 @@ public class UploadService {
 				jobLauncher.launch(upload.getId());
 			}
 		}
-		return batch;
+		// A batch whose files all settled at staging (e.g. every one a duplicate) launched
+		// no jobs, so no job completion will ever finalize it - settle it here. No-ops when
+		// jobs are still pending; harmless if the async jobs already finished and settled it.
+		batchFinalizer.maybeFinalize(batch.getId());
+		return uploadBatchRepository.findById(batch.getId()).orElse(batch);
 	}
 
 	// Plain save (not @Transactional) - this is a self-invoked private call, so a Spring AOP
