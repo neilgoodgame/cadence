@@ -43,12 +43,36 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
-		Activity activity = activityRepository.findById(context.getActivityId())
-				.orElseThrow(() -> new NotFoundException("No such activity."));
-		User athlete = activity.getAthlete();
+		// A multisport parent's TSS is the sum of its legs' (no single threshold applies across
+		// sports), so the legs must be computed first; the parent is the first segment.
+		Activity parent = null;
+		int childTssSum = 0;
+		for (UploadJobContext.Segment segment : context.getSegments()) {
+			Activity activity = activityRepository.findById(segment.activityId())
+					.orElseThrow(() -> new NotFoundException("No such activity."));
+			boolean isMultisportParent = activity.getSport() == Sport.MULTISPORT;
+			applySeriesStats(activity, segment.parsed());
+			if (isMultisportParent) {
+				parent = activity;
+			}
+			else {
+				int tss = computeTss(activity, segment.parsed());
+				activity.setTss(tss);
+				childTssSum += tss;
+			}
+			activityRepository.save(activity);
+		}
+		if (parent != null) {
+			parent.setTss(childTssSum);
+			activityRepository.save(parent);
+		}
+		return RepeatStatus.FINISHED;
+	}
 
-		List<Integer> powerSeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::power).toList();
-		List<Integer> hrSeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::heartrate).toList();
+	private void applySeriesStats(Activity activity, ParsedActivity parsed) {
+		User athlete = activity.getAthlete();
+		List<Integer> powerSeries = parsed.samples().stream().map(ParsedActivity.Sample::power).toList();
+		List<Integer> hrSeries = parsed.samples().stream().map(ParsedActivity.Sample::heartrate).toList();
 
 		Double normPower = powerSeries.stream().anyMatch(Objects::nonNull) ? NormalizedPowerCalculator.compute(powerSeries) : null;
 		Double avgPower = mean(powerSeries);
@@ -67,26 +91,12 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 			activity.setIntensity(round3(normPower / athlete.getCriticalRunPower()));
 		}
 
-		Integer thresholdPower = switch (activity.getSport()) {
-			case BIKE -> athlete.getFtp();
-			case RUN -> athlete.getCriticalRunPower();
-			default -> null;
-		};
-		Integer tss = TssCalculator.powerBased(normPower, thresholdPower, activity.getMovingTime());
-		if (tss == null) {
-			List<Zone> zones = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE).getZones();
-			Double threshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
-			Map<String, Integer> secondsPerZone = TssCalculator.secondsPerZone(hrSeries, zones, threshold);
-			tss = TssCalculator.hrBased(secondsPerZone, zones);
-		}
-		activity.setTss(tss);
-
 		// Stryd-derived, run only (matches the Python backend - a bike's ambient readings
 		// aren't meaningful the same way, and PATCH lets athletes set these manually for
 		// activities with no sensor data instead).
 		if (activity.getSport() == Sport.RUN) {
-			List<Double> airTempSeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::airTemp).toList();
-			List<Integer> humiditySeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::humidity).toList();
+			List<Double> airTempSeries = parsed.samples().stream().map(ParsedActivity.Sample::airTemp).toList();
+			List<Integer> humiditySeries = parsed.samples().stream().map(ParsedActivity.Sample::humidity).toList();
 			if (airTempSeries.stream().anyMatch(Objects::nonNull)) {
 				Double avgAirTemp = meanDouble(airTempSeries);
 				activity.setAvgAirTemp(avgAirTemp != null ? round1(avgAirTemp) : null);
@@ -97,16 +107,34 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 			}
 		}
 
-		Double aerobicTrainingEffect = context.getParsed().aerobicTrainingEffect();
-		Double anaerobicTrainingEffect = context.getParsed().anaerobicTrainingEffect();
+		Double aerobicTrainingEffect = parsed.aerobicTrainingEffect();
+		Double anaerobicTrainingEffect = parsed.anaerobicTrainingEffect();
 		if (aerobicTrainingEffect != null || anaerobicTrainingEffect != null) {
 			activity.setAerobicTrainingEffect(aerobicTrainingEffect);
 			activity.setAnaerobicTrainingEffect(anaerobicTrainingEffect);
 			activity.setTrainingEffectLabel(TrainingEffectLabel.of(aerobicTrainingEffect));
 		}
+	}
 
-		activityRepository.save(activity);
-		return RepeatStatus.FINISHED;
+	private int computeTss(Activity activity, ParsedActivity parsed) {
+		User athlete = activity.getAthlete();
+		Integer normPower = activity.getNormPower();
+		List<Integer> hrSeries = parsed.samples().stream().map(ParsedActivity.Sample::heartrate).toList();
+
+		Integer thresholdPower = switch (activity.getSport()) {
+			case BIKE -> athlete.getFtp();
+			case RUN -> athlete.getCriticalRunPower();
+			default -> null;
+		};
+		Integer tss = TssCalculator.powerBased(normPower != null ? normPower.doubleValue() : null, thresholdPower,
+				activity.getMovingTime());
+		if (tss == null) {
+			List<Zone> zones = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE).getZones();
+			Double threshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
+			Map<String, Integer> secondsPerZone = TssCalculator.secondsPerZone(hrSeries, zones, threshold);
+			tss = TssCalculator.hrBased(secondsPerZone, zones);
+		}
+		return tss;
 	}
 
 	private Double mean(List<Integer> values) {

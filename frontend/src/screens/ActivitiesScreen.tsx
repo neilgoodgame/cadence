@@ -12,6 +12,7 @@ const SPORT_FILTERS: { value: Sport | "all"; label: string }[] = [
   { value: "bike", label: "Ride" },
   { value: "run", label: "Run" },
   { value: "swim", label: "Swim" },
+  { value: "multisport", label: "Multisport" },
 ];
 
 function chipButton(active: boolean): React.CSSProperties {

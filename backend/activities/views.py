@@ -80,7 +80,9 @@ class ActivityListView(APIView):
         _, athlete_id = get_effective_athlete_id(request)
         _require_read(request, athlete_id)
 
-        qs = Activity.objects.filter(athlete_id=athlete_id)
+        # Multisport children are reachable via their parent's child_activity_ids, not the
+        # list - showing legs alongside the parent would present the same session twice.
+        qs = Activity.objects.filter(athlete_id=athlete_id, parent_activity__isnull=True)
 
         order_field = None
         q = request.query_params.get("q")

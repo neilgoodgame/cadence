@@ -6,6 +6,7 @@ import com.cadence.api.activities.DistanceSource;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.common.config.CadenceProperties;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.uploads.Upload;
 import com.cadence.api.uploads.UploadCalculations;
@@ -19,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.format.DateTimeFormatter;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
@@ -32,11 +34,13 @@ import org.springframework.transaction.annotation.Transactional;
 @StepScope
 public class ParseFileTasklet implements Tasklet {
 
-	private static final Map<com.cadence.api.common.domain.Sport, String> SPORT_LABELS = Map.of(
-			com.cadence.api.common.domain.Sport.BIKE, "Bike",
-			com.cadence.api.common.domain.Sport.RUN, "Run",
-			com.cadence.api.common.domain.Sport.SWIM, "Swim",
-			com.cadence.api.common.domain.Sport.WALK, "Walk");
+	private static final Map<Sport, String> SPORT_LABELS = Map.of(
+			Sport.BIKE, "Bike",
+			Sport.RUN, "Run",
+			Sport.SWIM, "Swim",
+			Sport.WALK, "Walk",
+			Sport.MULTISPORT, "Multisport",
+			Sport.TRANSITION, "Transition");
 	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
 	private final UploadJobContext context;
@@ -63,52 +67,72 @@ public class ParseFileTasklet implements Tasklet {
 		upload.setProgress(0.0);
 		uploadRepository.save(upload);
 
-		ParsedActivity parsed;
+		List<ParsedActivity> parsedActivities;
 		Path path = Path.of(properties.uploads().mediaRoot(), upload.getStoredPath());
 		try (InputStream in = Files.newInputStream(path)) {
-			parsed = FileParserDispatcher.parse(in, upload.getFilename());
+			parsedActivities = FileParserDispatcher.parse(in, upload.getFilename());
 		}
 		catch (Exception e) {
 			throw new UploadProcessingException("corrupt_file", e.getMessage());
 		}
-		if (parsed.samples().isEmpty()) {
+		if (parsedActivities.get(0).samples().isEmpty()) {
 			throw new UploadProcessingException("empty_file", "No samples found in file.");
 		}
 
-		Activity activity = new Activity();
-		activity.setAthlete(upload.getAthlete());
-		activity.setSport(parsed.sport());
-		activity.setEnvironment(parsed.environment());
-		activity.setHasGps(parsed.hasGps());
-		activity.setName(SPORT_LABELS.getOrDefault(parsed.sport(), "Activity") + " on "
-				+ DATE_FORMAT.format(parsed.startDate().atZone(ZoneOffset.UTC)));
-		activity.setStartDate(parsed.startDate());
-		activity.setSource(parsed.source() != null ? parsed.source() : "");
-		activity.setMovingTime(UploadCalculations.movingTime(parsed.samples()));
-		activity.setDistanceKm(UploadCalculations.totalDistanceKm(parsed.samples(), parsed.laps()));
-		activity.setDistanceSource(parsed.distanceSource() != null
-				? parsed.distanceSource()
-				: (parsed.hasGps() ? DistanceSource.GPS : DistanceSource.MANUAL));
-		activity.setAscent(UploadCalculations.totalAscent(parsed.samples()));
-		activity.setStartWeightKg(upload.getWeightBeforeKg());
-		activity.setEndWeightKg(upload.getWeightAfterKg());
-		activity.setFluidsMl(upload.getFluidsMl());
-		activity.setShoe(upload.getShoe());
-		activityRepository.save(activity);
+		// A multisport file arrives parent-first; every leg links back to the parent. The
+		// parent carries the upload's weight/fluids while the shoe goes to the run/walk legs
+		// it was actually worn for (a single-activity upload keeps all of them, as before).
+		boolean multisport = parsedActivities.size() > 1;
+		Activity parent = null;
+		for (ParsedActivity parsed : parsedActivities) {
+			boolean isChild = multisport && parent != null;
+			Activity activity = new Activity();
+			activity.setAthlete(upload.getAthlete());
+			activity.setSport(parsed.sport());
+			activity.setEnvironment(parsed.environment());
+			activity.setHasGps(parsed.hasGps());
+			activity.setName(SPORT_LABELS.getOrDefault(parsed.sport(), "Activity") + " on "
+					+ DATE_FORMAT.format(parsed.startDate().atZone(ZoneOffset.UTC)));
+			activity.setStartDate(parsed.startDate());
+			activity.setSource(parsed.source() != null ? parsed.source() : "");
+			activity.setMovingTime(UploadCalculations.movingTime(parsed.samples()));
+			activity.setDistanceKm(UploadCalculations.totalDistanceKm(parsed.samples(), parsed.laps()));
+			activity.setDistanceSource(parsed.distanceSource() != null
+					? parsed.distanceSource()
+					: (parsed.hasGps() ? DistanceSource.GPS : DistanceSource.MANUAL));
+			activity.setAscent(UploadCalculations.totalAscent(parsed.samples()));
+			if (isChild) {
+				activity.setParentActivity(parent);
+			}
+			else {
+				activity.setStartWeightKg(upload.getWeightBeforeKg());
+				activity.setEndWeightKg(upload.getWeightAfterKg());
+				activity.setFluidsMl(upload.getFluidsMl());
+			}
+			boolean wearsShoe = multisport
+					? (isChild && (parsed.sport() == Sport.RUN || parsed.sport() == Sport.WALK))
+					: true;
+			if (wearsShoe) {
+				activity.setShoe(upload.getShoe());
+			}
+			activityRepository.save(activity);
+			if (multisport && parent == null) {
+				parent = activity;
+			}
 
-		for (ParsedActivity.LapSummary lapSummary : parsed.laps()) {
-			Lap lap = new Lap();
-			lap.setActivity(activity);
-			lap.setIndex(lapSummary.index());
-			lap.setDuration(lapSummary.duration());
-			lap.setDistanceKm(lapSummary.distanceKm());
-			lap.setAvgHr(lapSummary.avgHr());
-			lap.setAvgPower(lapSummary.avgPower());
-			lapRepository.save(lap);
+			for (ParsedActivity.LapSummary lapSummary : parsed.laps()) {
+				Lap lap = new Lap();
+				lap.setActivity(activity);
+				lap.setIndex(lapSummary.index());
+				lap.setDuration(lapSummary.duration());
+				lap.setDistanceKm(lapSummary.distanceKm());
+				lap.setAvgHr(lapSummary.avgHr());
+				lap.setAvgPower(lapSummary.avgPower());
+				lapRepository.save(lap);
+			}
+
+			context.addSegment(parsed, activity.getId());
 		}
-
-		context.setParsed(parsed);
-		context.setActivityId(activity.getId());
 		return RepeatStatus.FINISHED;
 	}
 }

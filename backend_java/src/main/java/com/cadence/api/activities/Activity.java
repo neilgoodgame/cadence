@@ -106,6 +106,11 @@ public class Activity extends PrefixedIdEntity {
 	@JoinColumn(name = "shoe_id")
 	private Shoe shoe;
 
+	/** Set on the per-leg children of a multisport activity; null everywhere else. DB cascades child deletion. */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "parent_activity_id")
+	private Activity parentActivity;
+
 	@Override
 	protected String idPrefix() {
 		return "act";
@@ -333,5 +338,13 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setShoe(Shoe shoe) {
 		this.shoe = shoe;
+	}
+
+	public Activity getParentActivity() {
+		return parentActivity;
+	}
+
+	public void setParentActivity(Activity parentActivity) {
+		this.parentActivity = parentActivity;
 	}
 }

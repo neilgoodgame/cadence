@@ -1,23 +1,25 @@
 package com.cadence.api.uploads.batch;
 
 import com.cadence.api.uploads.parsing.ParsedActivity;
+import java.time.Instant;
 import org.springframework.batch.infrastructure.item.ItemProcessor;
 
-public class RecordItemProcessor implements ItemProcessor<ParsedActivity.Sample, RecordRow> {
+public class RecordItemProcessor implements ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> {
 
-	private final String activityId;
-	private final java.time.Instant startDate;
-
-	public RecordItemProcessor(String activityId, java.time.Instant startDate) {
-		this.activityId = activityId;
-		this.startDate = startDate;
+	/**
+	 * A sample pre-bound to the activity it belongs to. A multisport upload loads records for
+	 * several activities in one step (the parent's full stream plus each leg's slice), so the
+	 * binding travels with the item rather than living in the processor.
+	 */
+	public record SegmentSample(String activityId, Instant startDate, ParsedActivity.Sample sample) {
 	}
 
 	@Override
-	public RecordRow process(ParsedActivity.Sample sample) {
+	public RecordRow process(SegmentSample item) {
+		ParsedActivity.Sample sample = item.sample();
 		RecordRow row = new RecordRow();
-		row.setActivityId(activityId);
-		row.setTs(java.sql.Timestamp.from(startDate.plusSeconds(sample.t())));
+		row.setActivityId(item.activityId());
+		row.setTs(java.sql.Timestamp.from(item.startDate().plusSeconds(sample.t())));
 		row.setT(sample.t());
 		row.setPower(sample.power());
 		row.setHeartrate(sample.heartrate());

@@ -42,6 +42,9 @@ public class ActivityService {
 
 	public ActivityResponse toResponse(Activity activity) {
 		List<String> tags = activityTagRepository.findTagNamesByActivityId(activity.getId());
+		List<String> childIds = activity.getSport() == Sport.MULTISPORT
+				? activityRepository.findChildIds(activity.getId())
+				: List.of();
 		return new ActivityResponse(
 				activity.getId(), activity.getAthlete().getId(), activity.getSport(), activity.getEnvironment(),
 				activity.isHasGps(), activity.getName(), activity.getStartDate(), activity.getSource(),
@@ -54,12 +57,18 @@ public class ActivityService {
 				tags,
 				activity.getWorkout() != null ? activity.getWorkout().getId() : null,
 				activity.getBike() != null ? activity.getBike().getId() : null,
-				activity.getShoe() != null ? activity.getShoe().getId() : null);
+				activity.getShoe() != null ? activity.getShoe().getId() : null,
+				activity.getParentActivity() != null ? activity.getParentActivity().getId() : null,
+				childIds);
 	}
 
 	public CursorPage<ActivityResponse> list(String athleteId, String q, Sport sportFilter, Environment environmentFilter,
 			String cursor, int limit) {
-		Specification<Activity> spec = (root, query, cb) -> cb.equal(root.get("athlete").get("id"), athleteId);
+		// Multisport children are reachable via their parent's child_activity_ids, not the list -
+		// showing legs alongside the parent would present the same session twice.
+		Specification<Activity> spec = (root, query, cb) -> cb.and(
+				cb.equal(root.get("athlete").get("id"), athleteId),
+				cb.isNull(root.get("parentActivity")));
 		Sort.Order primaryOrder = Sort.Order.desc("startDate");
 
 		if (q != null && !q.isBlank()) {

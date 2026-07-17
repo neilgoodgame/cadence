@@ -74,7 +74,8 @@ export class ApiError extends Error {
   }
 }
 
-export type Sport = "bike" | "run" | "swim" | "walk";
+/** multisport/transition only occur on activities imported from a multisport FIT file. */
+export type Sport = "bike" | "run" | "swim" | "walk" | "multisport" | "transition";
 export type Environment = "outdoor" | "indoor";
 export type DistanceSource = "gps" | "footpod" | "trainer" | "manual";
 export type ZoneType = "heart_rate" | "bike_power" | "run_power" | "pace";
@@ -126,6 +127,10 @@ export interface Activity {
   workout_id: string | null;
   bike_id: string | null;
   shoe_id: string | null;
+  /** Set on each leg of a multisport activity, pointing at its parent; null everywhere else. */
+  parent_activity_id: string | null;
+  /** For a multisport activity, its per-leg children (transitions included) in start order. */
+  child_activity_ids: string[];
 }
 
 export interface AthleteUpdate {

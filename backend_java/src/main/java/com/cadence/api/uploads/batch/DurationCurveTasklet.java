@@ -7,6 +7,7 @@ import com.cadence.api.activities.DurationCurve;
 import com.cadence.api.activities.DurationCurveMetric;
 import com.cadence.api.activities.DurationCurveRepository;
 import com.cadence.api.activities.calc.DurationCurveCalculator;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.uploads.parsing.ParsedActivity;
 import java.util.LinkedHashMap;
@@ -39,18 +40,25 @@ public class DurationCurveTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
-		Activity activity = activityRepository.findById(context.getActivityId())
-				.orElseThrow(() -> new NotFoundException("No such activity."));
+		for (UploadJobContext.Segment segment : context.getSegments()) {
+			Activity activity = activityRepository.findById(segment.activityId())
+					.orElseThrow(() -> new NotFoundException("No such activity."));
+			// A multisport parent's stream mixes sports, so a curve over it compares
+			// incomparable efforts - each leg gets its own instead.
+			if (activity.getSport() == Sport.MULTISPORT) {
+				continue;
+			}
 
-		List<Integer> powerSeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::power).toList();
-		List<Integer> hrSeries = context.getParsed().samples().stream().map(ParsedActivity.Sample::heartrate).toList();
-		int n = powerSeries.size();
+			List<Integer> powerSeries = segment.parsed().samples().stream().map(ParsedActivity.Sample::power).toList();
+			List<Integer> hrSeries = segment.parsed().samples().stream().map(ParsedActivity.Sample::heartrate).toList();
+			int n = powerSeries.size();
 
-		if (powerSeries.stream().anyMatch(Objects::nonNull)) {
-			writeCurve(activity, DurationCurveMetric.POWER, powerSeries, BestEffortWindows.POWER_CURVE_DURATIONS, n);
-		}
-		if (hrSeries.stream().anyMatch(Objects::nonNull)) {
-			writeCurve(activity, DurationCurveMetric.HEARTRATE, hrSeries, BestEffortWindows.HR_CURVE_DURATIONS, n);
+			if (powerSeries.stream().anyMatch(Objects::nonNull)) {
+				writeCurve(activity, DurationCurveMetric.POWER, powerSeries, BestEffortWindows.POWER_CURVE_DURATIONS, n);
+			}
+			if (hrSeries.stream().anyMatch(Objects::nonNull)) {
+				writeCurve(activity, DurationCurveMetric.HEARTRATE, hrSeries, BestEffortWindows.HR_CURVE_DURATIONS, n);
+			}
 		}
 		return RepeatStatus.FINISHED;
 	}

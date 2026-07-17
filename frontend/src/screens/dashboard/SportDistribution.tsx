@@ -2,7 +2,9 @@ import { useMemo } from "react";
 import type { Activity, Sport } from "../../api/types";
 import { sportColor, sportLabel } from "../../lib/sportColors";
 
-const SPORTS: Sport[] = ["bike", "run", "swim", "walk"];
+// Transition never shows up here: legs of a multisport activity are excluded from the
+// activities list, so only the parent (sport "multisport") reaches the dashboard.
+const SPORTS: Sport[] = ["bike", "run", "swim", "walk", "multisport"];
 
 export function SportDistribution({ activities }: { activities: Activity[] }) {
   const rows = useMemo(() => {
@@ -11,7 +13,9 @@ export function SportDistribution({ activities }: { activities: Activity[] }) {
       bySport.set(sport, { count: 0, hours: 0 });
     }
     for (const activity of activities) {
-      const entry = bySport.get(activity.sport)!;
+      // Guard rather than assert: a sport missing from SPORTS must not blank the dashboard.
+      const entry = bySport.get(activity.sport);
+      if (!entry) continue;
       entry.count += 1;
       entry.hours += activity.moving_time / 3600;
     }

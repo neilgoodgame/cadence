@@ -1,3 +1,5 @@
+import fitparse.base as _fitparse_base
+import fitparse.records as _fitparse_records
 from fitparse import FitFile
 
 from .types import ParsedActivity, Sample
@@ -9,9 +11,31 @@ SPORT_MAP = {
     "swimming": "swim",
     "walking": "walk",
     "hiking": "walk",
+    "transition": "transition",
 }
 
 SEMICIRCLE_TO_DEGREES = 180 / (2**31)
+
+
+# Multisport FIT files commonly redeclare a developer_data_index partway through
+# the file (each sport segment gets its own definition messages). fitparse's
+# add_dev_data_id() unconditionally clears the field registry for that index on
+# every redeclaration, so a later segment referencing a dev field that wasn't
+# re-declared in *that* segment's definition messages crashes parsing with
+# "No such field N for dev_data_index M". Patch it to merge instead of clobber.
+def _merge_add_dev_data_id(message) -> None:
+    dev_data_index = message.get_raw_value("developer_data_index")
+    application_id = message.get_raw_value("application_id")
+    existing = _fitparse_records.DEV_TYPES.get(dev_data_index)
+    fields = existing["fields"] if existing else {}
+    _fitparse_records.DEV_TYPES[dev_data_index] = {
+        "dev_data_index": dev_data_index,
+        "application_id": application_id,
+        "fields": fields,
+    }
+
+
+_fitparse_base.add_dev_data_id = _merge_add_dev_data_id
 
 
 def _semicircles_to_degrees(value: float | None) -> float | None:
@@ -47,31 +71,80 @@ def _developer_value(message, field_name: str, scales: dict[str, tuple[float | N
     return raw_value
 
 
-def parse_fit(path: str) -> ParsedActivity:
-    fit_file = FitFile(path)
-    dev_field_scales = _developer_field_scales(fit_file)
-
-    sport = "bike"
-    aerobic_training_effect = None
-    anaerobic_training_effect = None
-    for message in fit_file.get_messages("session"):
-        raw_sport = message.get_value("sport")
-        if raw_sport:
-            sport = SPORT_MAP.get(str(raw_sport).lower(), "bike")
+def _session_meta(message) -> dict:
+    raw_sport = str(message.get_value("sport") or "").lower()
+    return {
+        "sport": SPORT_MAP.get(raw_sport, "bike"),
+        "start_time": ensure_utc(message.get_value("start_time")),
         # Garmin's Firstbeat-derived training load, 0.0-5.0. Standard FIT
         # session fields (not developer fields) - only present on Garmin
         # devices that run that analytics.
-        aerobic_training_effect = message.get_value("total_training_effect")
-        anaerobic_training_effect = message.get_value("total_anaerobic_training_effect")
-        break
+        "aerobic_training_effect": message.get_value("total_training_effect"),
+        "anaerobic_training_effect": message.get_value("total_anaerobic_training_effect"),
+    }
+
+
+def parse_fit(path: str) -> list[ParsedActivity]:
+    """One activity for a normal file. A multisport file (more than one non-transition
+    sport session, e.g. a duathlon's run + transition + ride) returns the parent first -
+    sport "multisport", spanning every record in the file - followed by one child per
+    session (transitions included) with its slice of the records and laps.
+    """
+    fit_file = FitFile(path)
+    dev_field_scales = _developer_field_scales(fit_file)
+
+    sessions = [_session_meta(m) for m in fit_file.get_messages("session")]
 
     records = list(fit_file.get_messages("record"))
     if not records:
         raise ValueError("FIT file contains no record messages.")
+    laps = list(fit_file.get_messages("lap"))
 
+    ordered = sorted((s for s in sessions if s["start_time"] is not None), key=lambda s: s["start_time"])
+    sport_sessions = [s for s in ordered if s["sport"] != "transition"]
+    if len(sport_sessions) <= 1:
+        sport = sessions[0]["sport"] if sessions else "bike"
+        te = sessions[0] if sessions else {}
+        return [_build_activity(records, laps, sport, te, dev_field_scales)]
+
+    # Multisport. Sessions partition the record stream into chained windows: each session's
+    # window runs from its start_time to the next session's start_time (start_time has only
+    # whole-second resolution while total_elapsed_time is ms-resolution and overhangs, so
+    # deriving each window's end from the session's own elapsed time would drop or
+    # double-assign boundary records). The last window is open-ended.
+    #
+    # TE accumulates over the whole session on the device, so the last non-transition
+    # session carries the total for the parent.
+    result = [_build_activity(records, laps, "multisport", sport_sessions[-1], dev_field_scales)]
+    for i, session in enumerate(ordered):
+        window_start = session["start_time"]
+        window_end = ordered[i + 1]["start_time"] if i + 1 < len(ordered) else None
+
+        def in_window(message) -> bool:
+            ts = ensure_utc(
+                message.get_value("timestamp") if message.name == "record" else message.get_value("start_time")
+            )
+            if ts is None or ts < window_start:  # noqa: B023 - consumed before the loop advances
+                return False
+            return window_end is None or ts < window_end  # noqa: B023
+
+        slice_records = [r for r in records if in_window(r)]
+        if not slice_records:
+            continue
+        slice_laps = [lap for lap in laps if in_window(lap)]
+        result.append(_build_activity(slice_records, slice_laps, session["sport"], session, dev_field_scales))
+    return result
+
+
+def _build_activity(records, laps, sport: str, session_meta: dict, dev_field_scales: dict) -> ParsedActivity:
     start_time = ensure_utc(records[0].get_value("timestamp"))
     if start_time is None:
         raise ValueError("FIT file's first record message has no timestamp.")
+
+    # The file's distance stream is cumulative from the very first record; a multisport
+    # leg's slice starts mid-stream, so re-base on the slice's first reading.
+    distance_base_m = next((d for d in (m.get_value("distance") for m in records) if d is not None), None)
+
     samples: list[Sample] = []
     has_gps = False
     for message in records:
@@ -100,7 +173,7 @@ def parse_fit(path: str) -> ParsedActivity:
                 "lat": lat,
                 "lng": lng,
                 "altitude": altitude,
-                "distance_km": distance_m / 1000 if distance_m is not None else None,
+                "distance_km": max(0.0, (distance_m - distance_base_m) / 1000) if distance_m is not None else None,
                 "heartrate": message.get_value("heart_rate"),
                 "cadence": message.get_value("cadence"),
                 "power": power,
@@ -115,8 +188,8 @@ def parse_fit(path: str) -> ParsedActivity:
             }
         )
 
-    laps = []
-    for index, message in enumerate(fit_file.get_messages("lap"), start=1):
+    lap_summaries = []
+    for index, message in enumerate(laps, start=1):
         duration = int(message.get_value("total_elapsed_time") or 0)
         avg_power = message.get_value("avg_power")
         if avg_power is None:
@@ -131,7 +204,7 @@ def parse_fit(path: str) -> ParsedActivity:
                 powers = [s["power"] for s in samples if lap_start_t <= s["t"] < lap_end_t and s["power"] is not None]
                 if powers:
                     avg_power = round(sum(powers) / len(powers))
-        laps.append(
+        lap_summaries.append(
             {
                 "index": index,
                 "duration": duration,
@@ -148,8 +221,8 @@ def parse_fit(path: str) -> ParsedActivity:
         "start_date": start_time,
         "source": "fit",
         "samples": samples,
-        "laps": laps,
+        "laps": lap_summaries,
         "distance_source": "gps" if has_gps else "trainer",
-        "aerobic_training_effect": aerobic_training_effect,
-        "anaerobic_training_effect": anaerobic_training_effect,
+        "aerobic_training_effect": session_meta.get("aerobic_training_effect"),
+        "anaerobic_training_effect": session_meta.get("anaerobic_training_effect"),
     }
