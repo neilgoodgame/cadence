@@ -19,10 +19,12 @@ import com.cadence.api.uploads.parsing.ParsedActivity;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
@@ -43,6 +45,9 @@ public class ParseFileTasklet implements Tasklet {
 			Sport.MULTISPORT, "Multisport",
 			Sport.TRANSITION, "Transition");
 	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+	/** Step exit code routing metadata-stub files to the job's clean skip end (see UploadJobConfig). */
+	static final String EXIT_NO_ACTIVITY_DATA = "NO_ACTIVITY_DATA";
 
 	private final UploadJobContext context;
 	private final UploadRepository uploadRepository;
@@ -74,6 +79,18 @@ public class ParseFileTasklet implements Tasklet {
 			parsedActivities = FileParserDispatcher.parse(in, upload.getFilename());
 		}
 		catch (NoActivityDataException e) {
+			// Garmin account exports mix metadata-stub FITs (no activity data) in with real
+			// activities; a bulk import can hit these a thousand times over, so failing the job
+			// for each would flood the logs with error traces. Settle the upload as skipped here
+			// and steer the job to its clean skip end instead of through the failure machinery.
+			// A deliberate single-file upload still fails loudly.
+			if (upload.getBatch() != null) {
+				upload.setStatus(UploadStatus.SKIPPED);
+				upload.setCompletedAt(Instant.now());
+				uploadRepository.save(upload);
+				contribution.setExitStatus(new ExitStatus(EXIT_NO_ACTIVITY_DATA));
+				return RepeatStatus.FINISHED;
+			}
 			throw new UploadProcessingException("no_activity_data", e.getMessage());
 		}
 		catch (Exception e) {

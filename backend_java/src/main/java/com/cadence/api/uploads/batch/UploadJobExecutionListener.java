@@ -41,23 +41,14 @@ public class UploadJobExecutionListener implements JobExecutionListener {
 
 		if (jobExecution.getStatus() == BatchStatus.FAILED) {
 			Throwable cause = jobExecution.getAllFailureExceptions().stream().findFirst().orElse(null);
-			// Garmin account exports mix metadata-stub FITs (no activity data) in with real
-			// activities; failing them would drown a bulk import in errors, so batch children
-			// are skipped instead. A deliberate single-file upload still fails loudly.
-			if (cause instanceof UploadProcessingException upe && "no_activity_data".equals(upe.getCode())
-					&& upload.getBatch() != null) {
-				upload.setStatus(UploadStatus.SKIPPED);
+			upload.setStatus(UploadStatus.FAILED);
+			if (cause instanceof UploadProcessingException upe) {
+				upload.setErrorCode(upe.getCode());
+				upload.setErrorMessage(upe.getMessage());
 			}
 			else {
-				upload.setStatus(UploadStatus.FAILED);
-				if (cause instanceof UploadProcessingException upe) {
-					upload.setErrorCode(upe.getCode());
-					upload.setErrorMessage(upe.getMessage());
-				}
-				else {
-					upload.setErrorCode("corrupt_file");
-					upload.setErrorMessage(cause != null ? cause.getMessage() : "Unknown error.");
-				}
+				upload.setErrorCode("corrupt_file");
+				upload.setErrorMessage(cause != null ? cause.getMessage() : "Unknown error.");
 			}
 			upload.setCompletedAt(Instant.now());
 			uploadRepository.save(upload);
