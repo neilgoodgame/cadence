@@ -9,6 +9,8 @@ const SPORT_LABELS: Record<Sport, string> = {
   run: "Running",
   swim: "Swimming",
   walk: "Walking",
+  multisport: "Multisport",
+  transition: "Transition",
 };
 
 function ProgressBar({ value }: { value: number }) {
