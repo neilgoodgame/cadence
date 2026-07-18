@@ -6,7 +6,7 @@ import { getCalendar, unscheduleWorkout } from "../api/scheduling";
 import { listWorkouts } from "../api/workouts";
 import type { Activity, ScheduledWorkout, Workout } from "../api/types";
 import { dateKey, derivedStatus, monthGridDays } from "../lib/calendar";
-import { formatDuration } from "../lib/format";
+import { formatDuration, formatPace } from "../lib/format";
 import { sportColor } from "../lib/sportColors";
 import { ScheduleModal } from "./calendar/ScheduleModal";
 
@@ -59,6 +59,8 @@ interface WeekTotals {
   plannedSecs: number;
   actualTss: number;
   actualSecs: number;
+  runKm: number;
+  runSecs: number;
 }
 
 function WeekSummaryCell({ totals }: { totals: WeekTotals }) {
@@ -80,6 +82,14 @@ function WeekSummaryCell({ totals }: { totals: WeekTotals }) {
           <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", color: "var(--ink3)" }}>ACTUAL</div>
           <div className="mono" style={{ fontSize: 11, color: "var(--ink)" }}>
             {Math.round(totals.actualTss)} TSS · {formatHours(totals.actualSecs)}
+          </div>
+        </div>
+      )}
+      {totals.runKm > 0 && (
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", color: "var(--ink3)" }}>RUN</div>
+          <div className="mono" style={{ fontSize: 11, color: "var(--ink)" }}>
+            {totals.runKm.toFixed(1)} km · {formatPace(totals.runSecs / totals.runKm)}
           </div>
         </div>
       )}
@@ -153,7 +163,15 @@ export function CalendarScreen() {
   const todayKey = dateKey(today);
 
   function weekTotals(week: Date[]): WeekTotals {
-    const totals: WeekTotals = { plannedTss: 0, plannedSecs: 0, actualTss: 0, actualSecs: 0 };
+    const totals: WeekTotals = { plannedTss: 0, plannedSecs: 0, actualTss: 0, actualSecs: 0, runKm: 0, runSecs: 0 };
+    function addActual(activity: Activity) {
+      totals.actualTss += activity.tss;
+      totals.actualSecs += activity.moving_time;
+      if (activity.sport === "run") {
+        totals.runKm += activity.distance_km;
+        totals.runSecs += activity.moving_time;
+      }
+    }
     for (const day of week) {
       const key = dateKey(day);
       for (const entry of entriesByDate.get(key) ?? []) {
@@ -164,13 +182,11 @@ export function CalendarScreen() {
         }
         const activity = entry.activity_id ? activityById.get(entry.activity_id) : undefined;
         if (activity) {
-          totals.actualTss += activity.tss;
-          totals.actualSecs += activity.moving_time;
+          addActual(activity);
         }
       }
       for (const activity of unplannedByDate.get(key) ?? []) {
-        totals.actualTss += activity.tss;
-        totals.actualSecs += activity.moving_time;
+        addActual(activity);
       }
     }
     return totals;
