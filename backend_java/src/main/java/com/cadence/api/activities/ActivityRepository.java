@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -37,4 +38,10 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	List<String> findDuplicateIds(@Param("primaryId") String primaryId);
 
 	boolean existsByPrimaryActivityId(String primaryActivityId);
+
+	// One bulk statement rather than a derived deleteBy (which would load and delete row by
+	// row); the DB-level cascades on record/lap/etc. clean up the dependents either way.
+	@Modifying
+	@Query("delete from Activity a where a.athlete.id = :athleteId")
+	void deleteAllByAthleteId(@Param("athleteId") String athleteId);
 }

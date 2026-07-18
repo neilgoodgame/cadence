@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { deleteAllActivities } from "../../api/activities";
 import { updateAthlete } from "../../api/athletes";
 import { useAuth } from "../../auth/AuthContext";
 import type { AthleteUpdate } from "../../api/types";
@@ -34,8 +35,57 @@ function Field({
   );
 }
 
+function DeleteAllActivitiesDialog({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: deleteAllActivities,
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      onClose();
+    },
+  });
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "var(--card)", borderRadius: 14, padding: 24, width: 420, display: "flex", flexDirection: "column", gap: 16 }}
+      >
+        <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Remove all activities?</h2>
+        <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0, lineHeight: 1.5 }}>
+          This will permanently remove all existing activities from your account, including their
+          laps, streams, and tags. This cannot be undone. Do you want to proceed?
+        </p>
+        {mutation.isError && (
+          <div style={{ fontSize: 13, color: "#e0442e" }}>Something went wrong - no activities were removed. Please try again.</div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{ border: "1px solid var(--line)", borderRadius: 8, background: "transparent", color: "var(--ink2)", fontSize: 13, fontWeight: 600, padding: "8px 16px" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending}
+            style={{ border: "none", borderRadius: 8, background: "#e0442e", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px" }}
+          >
+            {mutation.isPending ? "Removing…" : "Remove all activities"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProfileTab() {
   const { user, setUser } = useAuth();
+  const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
   const [form, setForm] = useState<AthleteUpdate>({
     name: user?.name ?? "",
     age: user?.age ?? undefined,
@@ -143,6 +193,21 @@ export function ProfileTab() {
           <span style={{ marginLeft: 10, fontSize: 13, color: "#2fa66a" }}>Saved.</span>
         )}
       </div>
+
+      <div style={{ borderTop: "1px solid var(--line)", paddingTop: 20 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 6px", color: "#e0442e" }}>Danger zone</h3>
+        <p style={{ fontSize: 13, color: "var(--ink2)", margin: "0 0 12px" }}>
+          Remove every activity from your account. Uploaded files can be imported again afterwards.
+        </p>
+        <button
+          onClick={() => setConfirmingDeleteAll(true)}
+          style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #e0442e", background: "transparent", color: "#e0442e", fontSize: 13, fontWeight: 700 }}
+        >
+          Remove all activities…
+        </button>
+      </div>
+
+      {confirmingDeleteAll && <DeleteAllActivitiesDialog onClose={() => setConfirmingDeleteAll(false)} />}
     </div>
   );
 }

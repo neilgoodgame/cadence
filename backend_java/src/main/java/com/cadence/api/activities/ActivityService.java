@@ -158,6 +158,11 @@ public class ActivityService {
 		activityRepository.deleteById(id);
 	}
 
+	@Transactional
+	public void deleteAllActivities(String athleteId) {
+		activityRepository.deleteAllByAthleteId(athleteId);
+	}
+
 	/**
 	 * Validates marking {@code activity} as a duplicate of {@code primaryId}: same athlete,
 	 * no self-links, no chains (neither side may already be a duplicate or have duplicates

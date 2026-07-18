@@ -1,8 +1,9 @@
 from django.test import TestCase
 
 from accounts.models import User, UserRelationship
+from uploads.models import Upload
 
-from ..models import ActivityTag, Tag
+from ..models import Activity, ActivityTag, Tag
 from .helpers import _bearer_client, _delegated_client, _make_activity
 
 
@@ -122,3 +123,39 @@ class ActivityListViewTests(TestCase):
         _make_activity(self.athlete)
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
         self.assertEqual(client.get("/v1/activities").status_code, 200)
+
+
+class DeleteAllActivitiesTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")
+        self.other_athlete = User.objects.create_user(email="other@example.cc", password="x", name="Other")
+        self.outsider = User.objects.create_user(email="outsider@example.cc", password="x", name="Outsider")
+
+    def test_delete_all_removes_only_own_activities(self):
+        parent = _make_activity(self.athlete, sport="multisport", name="Brick")
+        _make_activity(self.athlete, sport="run", name="Leg", parent_activity=parent)
+        _make_activity(self.athlete, name="Solo ride", sport="bike")
+        _make_activity(self.other_athlete, name="Not mine")
+
+        response = _bearer_client(self.athlete).delete("/v1/activities")
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Activity.objects.filter(athlete=self.athlete).exists())
+        self.assertEqual(Activity.objects.filter(athlete=self.other_athlete).count(), 1)
+
+    def test_delete_all_unlinks_uploads_so_reimport_is_not_a_duplicate(self):
+        activity = _make_activity(self.athlete)
+        upload = Upload.objects.create(
+            athlete=self.athlete, filename="run.fit", file_hash="a" * 64, status="ready", activity=activity
+        )
+
+        response = _bearer_client(self.athlete).delete("/v1/activities")
+        self.assertEqual(response.status_code, 204)
+        upload.refresh_from_db()
+        self.assertIsNone(upload.activity)
+
+    def test_outsider_without_write_cannot_delete_all(self):
+        _make_activity(self.athlete)
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.delete("/v1/activities")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Activity.objects.filter(athlete=self.athlete).count(), 1)

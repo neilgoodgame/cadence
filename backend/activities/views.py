@@ -157,6 +157,14 @@ class ActivityListView(APIView):
             response["Retry-After"] = "2"
         return response
 
+    def delete(self, request: Request) -> Response:
+        _, athlete_id = get_effective_athlete_id(request)
+        _require_write(request, athlete_id)
+        # Uploads keep their rows (activity FK is SET_NULL), so the same files can be
+        # re-imported afterwards without tripping duplicate detection.
+        Activity.objects.filter(athlete_id=athlete_id).delete()
+        return Response(status=204)
+
 
 class ActivityDetailView(APIView):
     def get(self, request: Request, id: str) -> Response:

@@ -56,6 +56,14 @@ public class ActivityController {
 		return activityService.toResponse(updated);
 	}
 
+	@DeleteMapping("/v1/activities")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteAllActivities() {
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+		activityService.deleteAllActivities(athleteId);
+	}
+
 	@DeleteMapping("/v1/activities/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void deleteActivity(@PathVariable String id) {
