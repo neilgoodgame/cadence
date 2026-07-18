@@ -133,7 +133,7 @@ public class UploadService {
 	}
 
 	public Upload getUpload(String id) {
-		return uploadRepository.findById(id).orElseThrow(() -> new NotFoundException("No such upload."));
+		return uploadRepository.findByIdWithActivity(id).orElseThrow(() -> new NotFoundException("No such upload."));
 	}
 
 	public UploadBatch getUploadBatch(String id) {
