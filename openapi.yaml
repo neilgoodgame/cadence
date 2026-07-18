@@ -2248,6 +2248,11 @@ components:
           type: [string, "null"]
           description: The created (or matched) activity once status is ready or duplicate; otherwise null.
           example: null
+        activity_sport:
+          type: [string, "null"]
+          enum: [bike, run, swim, walk, multisport, transition, null]
+          description: The created activity's sport once activity_id is set; otherwise null.
+          example: null
         error:
           type: [object, "null"]
           description: Present only when status is failed.

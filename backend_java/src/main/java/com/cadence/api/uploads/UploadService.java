@@ -141,6 +141,6 @@ public class UploadService {
 	}
 
 	public List<Upload> getBatchChildren(String batchId) {
-		return uploadRepository.findByBatchId(batchId);
+		return uploadRepository.findByBatchIdWithActivity(batchId);
 	}
 }

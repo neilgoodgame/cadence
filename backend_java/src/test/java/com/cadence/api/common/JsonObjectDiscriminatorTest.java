@@ -32,7 +32,7 @@ class JsonObjectDiscriminatorTest {
 	@Test
 	void uploadResponseIncludesObjectDiscriminator() throws Exception {
 		var response = new UploadResponse(
-				"upl_1", UploadStatus.READY, 1.0, "f.fit", "act_1", null, Instant.now(), Instant.now());
+				"upl_1", UploadStatus.READY, 1.0, "f.fit", "act_1", null, null, Instant.now(), Instant.now());
 		Map<String, Object> json = mapper.convertValue(response, Map.class);
 		assertThat(json).containsEntry("object", "upload");
 	}

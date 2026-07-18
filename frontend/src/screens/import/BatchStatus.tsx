@@ -1,9 +1,28 @@
 import { Link } from "react-router-dom";
 import { getUploadBatch } from "../../api/uploads";
-import type { UploadBatch } from "../../api/types";
+import type { Sport, Upload, UploadBatch } from "../../api/types";
 import { usePolling } from "./usePolling";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed"]);
+
+const SPORT_LABELS: Record<Sport, string> = {
+  bike: "Cycling",
+  run: "Running",
+  swim: "Swimming",
+  walk: "Walking",
+  multisport: "Multisport",
+  transition: "Transition",
+};
+
+function sportBreakdown(uploads: Upload[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const u of uploads) {
+    if (u.status === "ready" && u.activity_sport) {
+      counts[u.activity_sport] = (counts[u.activity_sport] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
 
 export function BatchStatus({ initial }: { initial: { data: UploadBatch; retryAfterSeconds: number | null } }) {
   const batch = usePolling(initial, getUploadBatch, (b) => b.id, (b) => TERMINAL_STATUSES.has(b.status));
@@ -11,6 +30,9 @@ export function BatchStatus({ initial }: { initial: { data: UploadBatch; retryAf
   if (batch.status === "failed") {
     return <div style={{ color: "#e0442e", fontSize: 14 }}>Could not read the archive.</div>;
   }
+
+  const done = batch.status === "completed";
+  const byType = done ? sportBreakdown(batch.uploads) : {};
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -40,7 +62,31 @@ export function BatchStatus({ initial }: { initial: { data: UploadBatch; retryAf
         <span>of {batch.counts.total}</span>
       </div>
 
-      {batch.status === "completed" && (
+      {done && Object.keys(byType).length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "var(--ink2)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
+            Imported by type
+          </div>
+          <div style={{ display: "flex", gap: 16 }}>
+            {Object.entries(byType).map(([sport, n]) => (
+              <div key={sport} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                <span style={{ fontSize: 22, fontWeight: 800 }}>{n}</span>
+                <span style={{ fontSize: 11, color: "var(--ink3)" }}>{SPORT_LABELS[sport as Sport] ?? sport}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {done && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {/* Skipped metadata stubs can outnumber real files a thousand to one in a Garmin
               account export; the summary count covers them, so keep them out of the list. */}
