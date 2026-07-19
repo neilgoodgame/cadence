@@ -428,6 +428,17 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [Activities]
+      summary: Delete all activities
+      operationId: deleteAllActivities
+      description: >
+        Permanently deletes every one of the athlete's activities and their streams.
+        Upload records are kept but unlinked, so the same files can be re-imported
+        later without being flagged as duplicates.
+      responses:
+        "204":
+          description: All activities deleted.
 
   /v1/activities/batch:
     post:

@@ -47,6 +47,10 @@ export function deleteActivity(id: string): Promise<void> {
   return apiFetch<void>(`/v1/activities/${id}`, { method: "DELETE" });
 }
 
+export function deleteAllActivities(): Promise<void> {
+  return apiFetch<void>("/v1/activities", { method: "DELETE" });
+}
+
 export function getLaps(id: string): Promise<DataList<Lap>> {
   return apiFetch<DataList<Lap>>(`/v1/activities/${id}/laps`);
 }
