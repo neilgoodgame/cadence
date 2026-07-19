@@ -15,7 +15,7 @@ from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
 from workouts.models import Workout
 
-from .models import Activity, ActivityTag, DurationCurve, Tag
+from .models import Activity, ActivityTag, DurationCurve, Record, Tag
 from .serializers import (
     ActivitySerializer,
     ActivityUpdateSerializer,
@@ -160,8 +160,12 @@ class ActivityListView(APIView):
     def delete(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
-        # Uploads keep their rows (activity FK is SET_NULL), so the same files can be
-        # re-imported afterwards without tripping duplicate detection.
+        # record is a TimescaleDB hypertable chunked by time, so per-activity cascade
+        # deletes each visit every chunk; clear the records in one set-based statement
+        # first, then let the cascade handle the small per-activity tables. Uploads keep
+        # their rows (activity FK is SET_NULL), so the same files can be re-imported
+        # afterwards without tripping duplicate detection.
+        Record.objects.filter(activity__athlete_id=athlete_id).delete()
         Activity.objects.filter(athlete_id=athlete_id).delete()
         return Response(status=204)
 

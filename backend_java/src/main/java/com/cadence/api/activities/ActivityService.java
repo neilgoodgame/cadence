@@ -160,6 +160,7 @@ public class ActivityService {
 
 	@Transactional
 	public void deleteAllActivities(String athleteId) {
+		recordRepository.deleteByAthleteId(athleteId);
 		activityRepository.deleteAllByAthleteId(athleteId);
 	}
 

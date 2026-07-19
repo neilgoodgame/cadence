@@ -3,7 +3,7 @@ from django.test import TestCase
 from accounts.models import User, UserRelationship
 from uploads.models import Upload
 
-from ..models import Activity, ActivityTag, Tag
+from ..models import Activity, ActivityTag, Record, Tag
 from .helpers import _bearer_client, _delegated_client, _make_activity
 
 
@@ -134,13 +134,17 @@ class DeleteAllActivitiesTests(TestCase):
     def test_delete_all_removes_only_own_activities(self):
         parent = _make_activity(self.athlete, sport="multisport", name="Brick")
         _make_activity(self.athlete, sport="run", name="Leg", parent_activity=parent)
-        _make_activity(self.athlete, name="Solo ride", sport="bike")
-        _make_activity(self.other_athlete, name="Not mine")
+        mine = _make_activity(self.athlete, name="Solo ride", sport="bike")
+        Record.objects.create(activity=mine, t=0, ts=mine.start_date)
+        theirs = _make_activity(self.other_athlete, name="Not mine")
+        Record.objects.create(activity=theirs, t=0, ts=theirs.start_date)
 
         response = _bearer_client(self.athlete).delete("/v1/activities")
         self.assertEqual(response.status_code, 204)
         self.assertFalse(Activity.objects.filter(athlete=self.athlete).exists())
+        self.assertFalse(Record.objects.filter(activity__athlete=self.athlete).exists())
         self.assertEqual(Activity.objects.filter(athlete=self.other_athlete).count(), 1)
+        self.assertEqual(Record.objects.filter(activity__athlete=self.other_athlete).count(), 1)
 
     def test_delete_all_unlinks_uploads_so_reimport_is_not_a_duplicate(self):
         activity = _make_activity(self.athlete)
