@@ -21,6 +21,11 @@ updates:
       java-dependencies:
         patterns:
           - "*"
+    ignore:
+      # Testcontainers 2.x is a breaking major (artifact coordinates changed);
+      # migrate deliberately rather than via an automated bump.
+      - dependency-name: "org.testcontainers:*"
+        update-types: ["version-update:semver-major"]
 
   # Frontend (frontend/package.json).
   - package-ecosystem: "npm"
@@ -31,6 +36,11 @@ updates:
       frontend-dependencies:
         patterns:
           - "*"
+    ignore:
+      # TypeScript 7 is a major; typescript-eslint doesn't support it yet.
+      # Remove this ignore once typescript-eslint declares TS 7 peer support.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # Keep the Actions themselves (checkout, setup-java, setup-uv, codeql-action, ...) current.
   - package-ecosystem: "github-actions"
