@@ -51,22 +51,18 @@ see the tables at the bottom of this document.
 These are the differences worth actually acting on — everything else below is naming or
 schema-tightness noise with no behavioral effect.
 
-- **Python captures per-second environmental/physiological telemetry that Java
-  doesn't.** `record` has `air_temp`, `core_temp`, `heat_strain`, `humidity`, `skin_temp`
-  on the Python side with no Java equivalent; `activity` similarly has `avg_air_temp` /
-  `avg_humidity`. These come from the same Stryd developer fields the Java
-  `FitFileParser` fix earlier only special-cased for `Power` (the Stryd dump in that
-  investigation showed `core_temperature`, `skin_temperature`, `heat_strain_index`,
-  `Stryd Humidity`, `Stryd Temperature` sitting right next to it). **The Java backend
-  has fallen behind Python on this feature** — it was added to Python after the Java
-  port was built, not omitted on purpose. If parity matters here, this is a real gap to
-  close, not a naming issue.
 - **`users.password` is nullable on Java, `NOT NULL` on Python.** Verified this has no
   actual effect — `UserService` always sets a bcrypt hash on registration, so the column
   is just looser than it needs to be, not a functional gap.
 - Everything else (column renames, nullable-vs-not-null on a couple of enum columns,
   `VARCHAR` length differences) is listed in the per-entity tables below for completeness
   but doesn't change behavior.
+
+Previously flagged gap — **now resolved**: `record`'s environmental/physiological
+channels (`air_temp`, `core_temp`, `heat_strain`, `humidity`, `skin_temp`) and
+`activity`'s `avg_air_temp` / `avg_humidity` were originally Python-only. The Java
+backend subsequently gained FIT parser support for the same Stryd/CORE developer fields
+and the matching columns, closing the gap. Both sides are at parity on this feature.
 
 ## Per-entity column comparison
 
@@ -122,11 +118,13 @@ schema-tightness noise with no behavioral effect.
 
 | Column | Java | Python | Note |
 |---|---|---|---|
+| aerobic_training_effect | double precision | double precision | Garmin Firstbeat, FIT-only, read-only |
+| anaerobic_training_effect | double precision | double precision | Garmin Firstbeat, FIT-only, read-only |
 | ascent | integer | integer | |
 | athlete_id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
-| avg_air_temp | — | double precision | **Python only — feature gap, see above** |
+| avg_air_temp | double precision | double precision | Stryd-derived for runs, manually writable otherwise |
 | avg_hr | integer | integer | |
-| avg_humidity | — | integer | **Python only — feature gap, see above** |
+| avg_humidity | integer | integer | same derivation rules as avg_air_temp |
 | avg_power | integer | integer | |
 | bike_id | varchar(40) | varchar(40) | |
 | distance_km | double precision NOT NULL DEFAULT 0 | double precision NOT NULL | |
@@ -141,11 +139,14 @@ schema-tightness noise with no behavioral effect.
 | moving_time | integer NOT NULL DEFAULT 0 | integer NOT NULL | |
 | name | varchar(200) NOT NULL | varchar(200) NOT NULL | |
 | norm_power | integer | integer | |
+| parent_activity_id | varchar(40) | varchar(40) | multisport parent; legs excluded from activity list |
+| primary_activity_id | varchar(40) | varchar(40) | marks this activity as a duplicate of another |
 | shoe_id | varchar(40) | varchar(40) | |
 | source | varchar(100) NOT NULL DEFAULT '' | varchar(100) NOT NULL | |
 | sport | varchar(10) NOT NULL | varchar(10) NOT NULL | |
 | start_date | timestamptz NOT NULL | timestamptz NOT NULL | |
 | start_weight_kg | double precision | double precision | |
+| training_effect_label | varchar(30) NOT NULL DEFAULT '' | varchar(30) NOT NULL | derived from aerobic_training_effect |
 | tss | integer NOT NULL DEFAULT 0 | integer NOT NULL | |
 | workout_id | varchar(40) | varchar(40) | |
 
@@ -197,18 +198,18 @@ schema-tightness noise with no behavioral effect.
 | Column | Java | Python | Note |
 |---|---|---|---|
 | activity_id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
-| air_temp | — | double precision | **Python only — feature gap, see above** |
+| air_temp | double precision | double precision | Stryd temperature channel, FIT-only |
 | altitude | double precision | double precision | |
 | cadence | integer | integer | |
-| core_temp | — | double precision | **Python only — feature gap, see above** |
+| core_temp | double precision | double precision | CORE body temperature sensor, FIT-only |
 | distance_km | double precision | double precision | |
 | heartrate | integer | integer | |
-| heat_strain | — | double precision | **Python only — feature gap, see above** |
-| humidity | — | integer | **Python only — feature gap, see above** |
+| heat_strain | double precision | double precision | CORE heat strain index, FIT-only |
+| humidity | integer | integer | Stryd humidity channel, FIT-only |
 | id | — (composite `activity_id, ts` PK) | bigint surrogate PK | structural — see "Structural differences" |
 | lat / lng | double precision | double precision | |
 | power | integer | integer | |
-| skin_temp | — | double precision | **Python only — feature gap, see above** |
+| skin_temp | double precision | double precision | CORE skin temperature, FIT-only |
 | speed | double precision | double precision | |
 | t | integer NOT NULL | integer NOT NULL | |
 | ts | timestamptz NOT NULL | timestamptz NOT NULL | |
@@ -317,6 +318,7 @@ schema-tightness noise with no behavioral effect.
 | Column | Java | Python | Note |
 |---|---|---|---|
 | activity_id | varchar(40) | varchar(40) | |
+| activity_sport | varchar(10) | varchar(10) | sport of the linked activity, denormalized for the upload response |
 | athlete_id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
 | batch_id | varchar(40) | varchar(40) | |
 | completed_at | timestamptz | timestamptz | |

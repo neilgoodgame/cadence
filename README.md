@@ -14,7 +14,7 @@ Each design file is a self-contained `.dc.html` prototype. Open any of them in a
 ## Tech Stack (intended)
 - **Frontend**: React + TypeScript SPA. Let React own the DOM.
 - **Data visualization**: **D3** for the bespoke charts — PMC (dual-axis fitness/fatigue/form), log-scale power & HR mean-maximal duration curves, time-in-zone bars, hydration trends. In React, use D3 for **scale & shape math only** (`d3-scale`, `d3-shape`, `d3-array` — e.g. `d3.scaleLog()`, `d3.line()`, `d3.area()`) and render the resulting `<path>`/`<rect>` as JSX. Do **not** use `d3.select()` to mutate nodes React controls. Simple sparklines/small bars can stay plain SVG/CSS.
-- **Backend**: REST API — see `openapi.yaml` (OpenAPI 3.1, ~63 operations). JSON over HTTPS, OAuth 2.0 + scoped JWT (delegation via `sub` + `athlete_id`), cursor pagination, a JQL-style `q` query language on `/v1/activities`, async upload jobs with polling + webhooks.
+- **Backend**: REST API — see `openapi.yaml` (OpenAPI 3.1, 65 operations). JSON over HTTPS, OAuth 2.0 + scoped JWT (delegation via `sub` + `athlete_id`), cursor pagination, a JQL-style `q` query language on `/v1/activities`, async upload jobs with polling + webhooks.
 - **Persistence**: normalized relational DB via an ORM. The object/entity layer is documented in the Data Dictionary and ER diagram (`Data Schema.dc.html`). Entities: `user`, `user_relationship`, `zone_set`, `activity`, `lap`, `record` (1 Hz stream), `duration_curve`, `tag`, `activity_tag`, `best_effort`, `workout`, `workout_step`, `scheduled_workout`, `bike`, `component`, `shoe` (+ `shoe_model` → `shoe_model_version` catalog), `webhook`.
 
 ## Key Domain Concepts
@@ -36,7 +36,7 @@ All screens share: a 228px left sidebar (brand + nav + appearance toggle), a sti
 - **Import** — expects a `.fit` (or bulk `.zip`); upload modal with optional fields (start/end weight, fluids, shoe for runs). Async processing.
 - **Gear** — bike garage (component wear bars, service-due alerts, maintenance history), run shoes (manufacturer / model / version / colourway, mileage vs limit, optional image), shoe catalog picker.
 - **Notifications** — grouped feed (Today / This week / Earlier), filter tabs (All / Coaching / Gear / Achievements), unread dots + counts, mark-all-read, deep links.
-- **Preferences** (modal, shared across screens) — Profile (name, age, **weight**, FTP, critical run power, threshold pace, LTHR, max HR), editable zone sets (HR / bike power / run power / pace — recompute from thresholds), **Sharing** (invite a coach; grant others Viewer/Coach), **API tokens** (personal access tokens: create with name/scopes/expiry, show-once secret, rotate, revoke).
+- **Preferences** (modal, shared across screens) — Profile (name, age, **weight**, FTP, critical run power, threshold pace, LTHR, max HR), editable zone sets (HR / bike power / run power / pace — recompute from thresholds), **Sharing** (invite a coach; grant others Viewer/Coach), **API tokens** (personal access tokens: create with name/scopes/expiry, show-once secret, rotate, revoke). **Danger zone** — "Remove all activities" permanently deletes every activity and stream; a confirmation dialog is shown before proceeding. Uploaded files are kept unlinked so they can be re-imported.
 - **Coach Roster / Athlete** — coach's view of their athletes (compliance, form, next workout).
 - **Data Schema** — ER diagram + Data Dictionary (reference, not an app screen).
 - **API Reference** — browsable docs for the REST API (reference, not an app screen).
