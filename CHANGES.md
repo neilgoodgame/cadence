@@ -44,8 +44,7 @@ Semantics:
 5. Types/ORM: regenerate from the updated `openapi.yaml` / entity definitions.
 
 ## Status
-Implemented in both `backend/` and `backend_java/` (FIT ingestion, derivation, API,
-and PATCH semantics). GPX/TCX intentionally do not populate these fields — see step 2.
+**Implemented in both backends** (`backend/` and `backend_java/`) — FIT ingestion, derivation (mean of stream for runs with Stryd data), API exposure, and PATCH semantics (writable on non-Stryd activities, silently ignored on Stryd-derived ones). GPX/TCX intentionally do not populate these fields — see step 2.
 
 ---
 
@@ -79,6 +78,9 @@ changelog below.
 ## 4. `resting_hr` on `User`
 New nullable integer field, identical shape to the existing `lthr`/`max_hr` fields
 (`openapi.yaml` `User` schema, ~line 1983). Needed for HR Reserve % display and a better #2.
+
+## Status
+**Not yet implemented** in either backend. `avg_lr_balance`, `trimp`, and `resting_hr` remain open.
 
 ## Suggested implementation steps for Claude Code
 1. DB migration: add `record.left_right_balance` (nullable numeric), `activity.avg_lr_balance`
@@ -163,10 +165,83 @@ All three are device-computed and read-only — never writable via
 `PATCH /v1/activities/{id}`, unlike `avg_air_temp`/`avg_humidity` above.
 
 ## Status
-Implemented in both `backend/` and `backend_java/` (FIT session-message extraction,
-label derivation, API). Modeled after the equivalent extraction in
+**Implemented in both backends** — FIT session-message extraction,
+label derivation, API exposure. Modeled after the equivalent extraction in
 [fit-analyser](https://github.com/neilgoodgame/fit-analyser)'s `get_session_meta()` —
 that project's reverse-engineered "primary benefit" enum (undocumented FIT field 188)
 was deliberately left out here since it has no accessor in Garmin's own FIT SDK and
 no verifiable spec; `training_effect_label`'s value-based fallback covers the same
 need without relying on an unofficial field.
+
+---
+
+# Changelog — Multisport and duplicate activity linking
+
+New `activity` relationship fields, both nullable FKs back to `activity`:
+- `parent_activity_id` — links a multisport leg to its parent session. Legs are excluded
+  from `GET /v1/activities` list results and are reachable only via the parent's
+  `child_activity_ids` array.
+- `primary_activity_id` — marks this activity as a duplicate recording of another.
+  Duplicates are excluded from list results and reachable only via the primary's
+  `duplicate_activity_ids` array. Chains are rejected (a duplicate cannot itself be a
+  primary, and a primary cannot be marked as a duplicate).
+
+## Status
+**Implemented in both backends.**
+
+---
+
+# Changelog — Upload activity_sport field
+
+New field on the `upload` response:
+- `activity_sport` — the `sport` of the linked activity, denormalized onto the upload
+  row so the upload polling response carries enough information to render the result
+  without a second request.
+
+Null while the upload is in `queued`/`processing` state and until an activity is linked.
+For duplicate uploads (`status: duplicate`) this reflects the sport of the original
+activity.
+
+## Status
+**Implemented in both backends.**
+
+---
+
+# Changelog — Bulk delete all activities
+
+New endpoint:
+- `DELETE /v1/activities` — permanently deletes every activity belonging to the
+  authenticated athlete, including dependent streams (`record`), laps, duration curves,
+  best efforts, and tags. Upload records are kept but unlinked (`activity_id` set to
+  null), so the same files can be re-imported afterwards without being flagged as
+  duplicates. Requires `activities:write` scope.
+
+The `record` table is a TimescaleDB hypertable in ~1,000 time-based chunks; bulk
+deletion through the FK cascade visits every chunk per activity and at scale can exhaust
+Postgres WAL space. Both backends clear the athlete's records in a single set-based
+statement first, so the cascades that follow have nothing to do.
+
+## Status
+**Implemented in both backends.** Frontend: a "Danger zone" section in Preferences →
+Profile shows a "Remove all activities…" button that opens a confirmation dialog before
+invoking this endpoint.
+
+---
+
+# Changelog — Gear: retired shoes and shoe role (open)
+
+Two small gaps found while building the Gear screen. **Not yet implemented.**
+
+## 1. No way to list retired shoes
+`GET /v1/gear/shoes` filters to `retired=false` server-side with no override. Retiring a
+shoe (`PATCH /v1/gear/shoes/{id}` with `retired: true`) makes it permanently unlistable.
+
+Suggested fix: add an optional `retired` boolean query param (omitted = active only,
+`true` = retired only) to `GET /v1/gear/shoes` on both backends and in `openapi.yaml`.
+
+## 2. `Shoe.role` cannot be set
+`Shoe.role` appears in the GET response but neither `POST /v1/gear/shoes` nor
+`PATCH /v1/gear/shoes/{id}` accepts it — every shoe gets `role: ""` forever.
+
+Suggested fix: add optional `role` string to both create and update inputs on both
+backends and in `openapi.yaml`. No migration needed — the column already exists.

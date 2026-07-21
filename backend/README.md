@@ -225,8 +225,8 @@ pre-commit install
 
 There's no separate login endpoint — registering an account returns an access/refresh
 token pair immediately (the toolkit's `authorization_code`/`refresh_token` grants at
-`/oauth/token` are for a real OAuth client app; there's no frontend yet to drive that
-redirect dance). All examples assume the dev stack is up at `http://localhost:8000`.
+`/oauth/token` are for a real OAuth client app). All examples assume the dev stack is up
+at `http://localhost:8000`.
 
 **1. Register** (this *is* the auth step — no separate login call needed):
 
