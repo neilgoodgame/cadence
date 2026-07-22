@@ -204,8 +204,8 @@ export function ImportScreen() {
 
       {error && <div style={{ fontSize: 13, color: "#e0442e" }}>{error}</div>}
 
-      {uploadResult && <UploadStatus initial={uploadResult} />}
-      {batchResult && <BatchStatus initial={batchResult} />}
+      {uploadResult && <UploadStatus key={uploadResult.data.id} initial={uploadResult} />}
+      {batchResult && <BatchStatus key={batchResult.data.id} initial={batchResult} />}
     </div>
   );
 }
