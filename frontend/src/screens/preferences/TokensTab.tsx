@@ -35,8 +35,11 @@ export function TokensTab() {
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<string[]>([]);
   const [revealed, setRevealed] = useState<AccessTokenWithSecret | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["tokens"] });
+
+  const canGenerate = !!name.trim() && scopes.length > 0;
 
   const createMutation = useMutation({
     mutationFn: () => createAccessToken(name, scopes, null),
@@ -44,7 +47,11 @@ export function TokensTab() {
       setRevealed(token);
       setName("");
       setScopes([]);
+      setCreateError(null);
       invalidate();
+    },
+    onError: (err) => {
+      setCreateError(err instanceof Error ? err.message : "Could not create token.");
     },
   });
   const rotateMutation = useMutation({
@@ -88,12 +95,26 @@ export function TokensTab() {
               </label>
             ))}
           </div>
+          {createError && (
+            <div style={{ fontSize: 13, color: "#e0442e" }}>{createError}</div>
+          )}
           <button
             onClick={() => createMutation.mutate()}
-            disabled={!name.trim() || scopes.length === 0 || createMutation.isPending}
-            style={{ alignSelf: "flex-start", padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700 }}
+            disabled={!canGenerate || createMutation.isPending}
+            style={{
+              alignSelf: "flex-start",
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "none",
+              background: "var(--ember)",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              opacity: canGenerate && !createMutation.isPending ? 1 : 0.4,
+              cursor: canGenerate && !createMutation.isPending ? "pointer" : "not-allowed",
+            }}
           >
-            Generate
+            {createMutation.isPending ? "Generating…" : "Generate"}
           </button>
         </div>
       </div>
