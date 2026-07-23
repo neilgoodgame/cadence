@@ -500,6 +500,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /v1/uploads/history:
+    delete:
+      tags: [Activities]
+      summary: Clear upload history
+      operationId: clearUploadHistory
+      description: >
+        Deletes all non-essential upload records for the authenticated athlete — skipped,
+        failed, duplicate, and any unlinked records. Upload records that protect a live
+        activity from duplicate re-import (status `ready` with an `activity_id`) are kept.
+        The stored source files for deleted records are also removed from storage.
+      responses:
+        "200":
+          description: Upload history cleared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadHistoryPurge"
+
   /v1/uploads/batches/{id}:
     parameters:
       - name: id
@@ -2231,6 +2249,19 @@ components:
             $ref: "#/components/schemas/Upload"
         received_at: { type: string, format: date-time }
         completed_at: { type: [string, "null"], format: date-time }
+
+    UploadHistoryPurge:
+      type: object
+      required: [uploads_deleted, files_deleted]
+      properties:
+        uploads_deleted:
+          type: integer
+          description: Number of upload records deleted.
+          example: 149393
+        files_deleted:
+          type: integer
+          description: Number of stored source files removed from storage.
+          example: 12804
 
     Upload:
       type: object

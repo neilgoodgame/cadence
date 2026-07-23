@@ -1,3 +1,4 @@
+from django.core.files.storage import default_storage
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
@@ -16,6 +17,29 @@ def _require_write(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_write(sub, athlete_id):
         raise PermissionDenied("You do not have write access to that athlete's data.")
+
+
+class UploadHistoryView(APIView):
+    def delete(self, request: Request) -> Response:
+        _, athlete_id = get_effective_athlete_id(request)
+        _require_write(request, athlete_id)
+
+        to_purge = Upload.objects.filter(athlete_id=athlete_id).exclude(status="ready", activity__isnull=False)
+        stored_paths = list(to_purge.values_list("stored_path", flat=True))
+
+        files_deleted = 0
+        for path in stored_paths:
+            if path:
+                try:
+                    default_storage.delete(path)
+                    files_deleted += 1
+                except Exception:
+                    pass
+
+        uploads_deleted, _ = to_purge.delete()
+        UploadBatch.objects.filter(athlete_id=athlete_id, uploads__isnull=True).delete()
+
+        return Response({"uploads_deleted": uploads_deleted, "files_deleted": files_deleted})
 
 
 class ActivityBatchUploadView(APIView):
