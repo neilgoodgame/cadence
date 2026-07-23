@@ -2,6 +2,7 @@ package com.cadence.api.uploads;
 
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.uploads.dto.UploadBatchResponse;
+import com.cadence.api.uploads.dto.UploadHistoryPurgeResponse;
 import com.cadence.api.uploads.dto.UploadResponse;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
@@ -9,6 +10,7 @@ import java.io.IOException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -71,6 +73,13 @@ public class UploadController {
 				.header(HttpHeaders.LOCATION, "/v1/uploads/batches/" + batch.getId())
 				.header("Retry-After", "5")
 				.body(body);
+	}
+
+	@DeleteMapping("/v1/uploads/history")
+	public UploadHistoryPurgeResponse clearUploadHistory() {
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+		return uploadService.purgeHistory(athleteId);
 	}
 
 	@GetMapping("/v1/uploads/{id}")

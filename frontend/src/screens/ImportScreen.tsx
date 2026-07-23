@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listShoes } from "../api/gear";
-import { uploadActivity, uploadActivityBatch, type UploadMetadata } from "../api/uploads";
+import { clearUploadHistory, uploadActivity, uploadActivityBatch, type UploadHistoryPurge, type UploadMetadata } from "../api/uploads";
 import { ApiError } from "../api/types";
 import type { Upload, UploadBatch } from "../api/types";
 import { BatchStatus } from "./import/BatchStatus";
@@ -30,6 +30,7 @@ export function ImportScreen() {
   const [batchResult, setBatchResult] = useState<{ data: UploadBatch; retryAfterSeconds: number | null } | null>(
     null,
   );
+  const [clearState, setClearState] = useState<"idle" | "confirming" | "clearing" | UploadHistoryPurge>("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: shoes } = useQuery({ queryKey: ["shoes"], queryFn: listShoes });
@@ -72,6 +73,18 @@ export function ImportScreen() {
     }
     finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleClearHistory() {
+    setClearState("clearing");
+    try {
+      const result = await clearUploadHistory();
+      setClearState(result);
+    }
+    catch {
+      setClearState("idle");
+      setError("Could not clear import history.");
     }
   }
 
@@ -206,6 +219,73 @@ export function ImportScreen() {
 
       {uploadResult && <UploadStatus key={uploadResult.data.id} initial={uploadResult} />}
       {batchResult && <BatchStatus key={batchResult.data.id} initial={batchResult} />}
+
+      <div style={{ borderTop: "1px solid var(--line)", paddingTop: 20, marginTop: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Import history</div>
+        <div style={{ fontSize: 13, color: "var(--ink2)", marginBottom: 12 }}>
+          Remove skipped, failed, and duplicate import records. Your activities are not affected.
+        </div>
+        {clearState === "idle" && (
+          <button
+            onClick={() => setClearState("confirming")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+              background: "transparent",
+              color: "var(--ink)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Clear import history
+          </button>
+        )}
+        {clearState === "confirming" && (
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "var(--ink2)" }}>This cannot be undone.</span>
+            <button
+              onClick={() => setClearState("idle")}
+              style={{
+                padding: "7px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--line)",
+                background: "transparent",
+                color: "var(--ink)",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleClearHistory}
+              style={{
+                padding: "7px 14px",
+                borderRadius: 8,
+                border: "none",
+                background: "var(--ember)",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+        {clearState === "clearing" && (
+          <span style={{ fontSize: 13, color: "var(--ink2)" }}>Clearing…</span>
+        )}
+        {typeof clearState === "object" && (
+          <span style={{ fontSize: 13, color: "#2fa66a" }}>
+            Cleared {clearState.uploads_deleted.toLocaleString()} import records.
+          </span>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,10 @@
-import { apiFetchWithHeaders } from "./client";
+import { apiFetch, apiFetchWithHeaders } from "./client";
 import type { Upload, UploadBatch } from "./types";
+
+export interface UploadHistoryPurge {
+  uploads_deleted: number;
+  files_deleted: number;
+}
 
 export interface UploadMetadata {
   weightBeforeKg?: number;
@@ -41,4 +46,8 @@ export async function uploadActivityBatch(
 
 export function getUploadBatch(id: string): Promise<{ data: UploadBatch; retryAfterSeconds: number | null }> {
   return apiFetchWithHeaders<UploadBatch>(`/v1/uploads/batches/${id}`);
+}
+
+export function clearUploadHistory(): Promise<UploadHistoryPurge> {
+  return apiFetch<UploadHistoryPurge>("/v1/uploads/history", { method: "DELETE" });
 }

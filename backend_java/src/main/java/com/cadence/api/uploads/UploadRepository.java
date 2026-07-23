@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -27,4 +28,11 @@ public interface UploadRepository extends JpaRepository<Upload, String> {
 	List<Upload> findByBatchIdWithActivity(@Param("batchId") String batchId);
 
 	long countByBatchIdAndStatusIn(String batchId, List<UploadStatus> statuses);
+
+	@Query("SELECT u.storedPath FROM Upload u WHERE u.athlete.id = :athleteId AND (u.status <> com.cadence.api.uploads.UploadStatus.READY OR u.activity IS NULL)")
+	List<String> findPurgeableStoredPathsByAthleteId(@Param("athleteId") String athleteId);
+
+	@Modifying
+	@Query("DELETE FROM Upload u WHERE u.athlete.id = :athleteId AND (u.status <> com.cadence.api.uploads.UploadStatus.READY OR u.activity IS NULL)")
+	int deleteNonEssentialByAthleteId(@Param("athleteId") String athleteId);
 }

@@ -8,8 +8,11 @@ import com.cadence.api.gear.ShoeRepository;
 import com.cadence.api.uploads.batch.UploadBatchFinalizer;
 import com.cadence.api.uploads.batch.UploadJobLauncher;
 import com.cadence.api.users.User;
+import com.cadence.api.uploads.dto.UploadHistoryPurgeResponse;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -17,6 +20,7 @@ import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -142,5 +146,23 @@ public class UploadService {
 
 	public List<Upload> getBatchChildren(String batchId) {
 		return uploadRepository.findByBatchIdWithActivity(batchId);
+	}
+
+	@Transactional
+	public UploadHistoryPurgeResponse purgeHistory(String athleteId) {
+		List<String> paths = uploadRepository.findPurgeableStoredPathsByAthleteId(athleteId);
+		int filesDeleted = 0;
+		for (String path : paths) {
+			if (path != null && !path.isBlank()) {
+				try {
+					Files.deleteIfExists(Path.of(properties.uploads().mediaRoot(), path));
+					filesDeleted++;
+				}
+				catch (IOException ignored) {}
+			}
+		}
+		int uploadsDeleted = uploadRepository.deleteNonEssentialByAthleteId(athleteId);
+		uploadBatchRepository.deleteOrphanedByAthleteId(athleteId);
+		return new UploadHistoryPurgeResponse(uploadsDeleted, filesDeleted);
 	}
 }
