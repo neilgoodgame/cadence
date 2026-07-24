@@ -47,6 +47,10 @@ export function deleteActivity(id: string): Promise<void> {
   return apiFetch<void>(`/v1/activities/${id}`, { method: "DELETE" });
 }
 
+export function recomputeActivityTss(id: string): Promise<Activity> {
+  return apiFetch<Activity>(`/v1/activities/${id}/recompute-tss`, { method: "POST" });
+}
+
 export function deleteAllActivities(): Promise<void> {
   return apiFetch<void>("/v1/activities", { method: "DELETE" });
 }

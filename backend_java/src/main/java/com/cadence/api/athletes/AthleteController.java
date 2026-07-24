@@ -1,5 +1,6 @@
 package com.cadence.api.athletes;
 
+import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.athletes.dto.AthleteUpdateResponse;
 import com.cadence.api.athletes.dto.ZoneSetReplaceRequest;
@@ -14,9 +15,12 @@ import com.cadence.api.users.dto.UserResponse;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,15 +34,18 @@ public class AthleteController {
 	private final AthleteService athleteService;
 	private final ZoneService zoneService;
 	private final FitnessService fitnessService;
+	private final TssRecomputeService tssRecomputeService;
 	private final AccessGuard accessGuard;
 
 	public AthleteController(UserService userService, UserMapper userMapper, AthleteService athleteService,
-			ZoneService zoneService, FitnessService fitnessService, AccessGuard accessGuard) {
+			ZoneService zoneService, FitnessService fitnessService, TssRecomputeService tssRecomputeService,
+			AccessGuard accessGuard) {
 		this.userService = userService;
 		this.userMapper = userMapper;
 		this.athleteService = athleteService;
 		this.zoneService = zoneService;
 		this.fitnessService = fitnessService;
+		this.tssRecomputeService = tssRecomputeService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -75,6 +82,14 @@ public class AthleteController {
 		zoneService.replaceZones(athlete, type, request.zones());
 		Double reference = zoneService.referenceFor(athlete, type);
 		return new ZoneSetReplaceResponse(type, reference, true);
+	}
+
+	@PostMapping("/v1/athletes/{id}/recompute-tss")
+	public ResponseEntity<Map<String, Integer>> recomputeTss(@PathVariable String id) {
+		accessGuard.requireWrite(id);
+		User athlete = userService.getById(id);
+		int updated = tssRecomputeService.recomputeForAthlete(athlete);
+		return ResponseEntity.ok(Map.of("updated", updated));
 	}
 
 	@GetMapping("/v1/athletes/{id}/fitness")

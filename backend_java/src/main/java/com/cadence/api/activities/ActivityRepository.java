@@ -31,6 +31,9 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 
 	List<Activity> findByWorkoutId(String workoutId);
 
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.parentActivity is null and a.primaryActivity is null")
+	List<Activity> findRecomputeCandidates(@Param("athleteId") String athleteId);
+
 	@Query("select a.id from Activity a where a.parentActivity.id = :parentId order by a.startDate")
 	List<String> findChildIds(@Param("parentId") String parentId);
 
