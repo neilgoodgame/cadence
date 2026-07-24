@@ -107,15 +107,16 @@ export function WeekCalendar({ activities, athleteId }: { activities: Activity[]
   }
 
   const weekActivities = [...byDate.values()].flat();
-  const totalTimeS = weekActivities.reduce((s, a) => s + a.moving_time, 0);
-  const weekTss = weekActivities.reduce((s, a) => s + a.tss, 0);
+  const trainingActivities = weekActivities.filter((a) => a.sport !== "walk");
+  const totalTimeS = trainingActivities.reduce((s, a) => s + a.moving_time, 0);
+  const weekTss = trainingActivities.reduce((s, a) => s + a.tss, 0);
 
-  const runs = weekActivities.filter((a) => a.sport === "run");
+  const runs = trainingActivities.filter((a) => a.sport === "run");
   const runDistanceKm = runs.reduce((s, a) => s + a.distance_km, 0);
   const runTimeS = runs.reduce((s, a) => s + a.moving_time, 0);
   const avgPaceSecPerKm = runDistanceKm > 0 ? runTimeS / runDistanceKm : null;
 
-  const rides = weekActivities.filter((a) => a.sport === "bike");
+  const rides = trainingActivities.filter((a) => a.sport === "bike");
   const bikeDistanceKm = rides.reduce((s, a) => s + a.distance_km, 0);
   const poweredRides = rides.filter((a) => a.avg_power != null);
   const avgBikePower =
@@ -248,7 +249,7 @@ export function WeekCalendar({ activities, athleteId }: { activities: Activity[]
         })}
       </div>
 
-      <WeekHrDistribution activities={weekActivities} athleteId={athleteId} />
+      <WeekHrDistribution activities={trainingActivities} athleteId={athleteId} />
     </div>
   );
 }
