@@ -27,6 +27,17 @@ public class TssRecomputeService {
 	}
 
 	@Transactional
+	public int recomputeForActivity(Activity activity) {
+		User athlete = activity.getAthlete();
+		ZoneSet hrZoneSet = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE);
+		Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
+		int tss = computeTss(activity, athlete, hrZoneSet, hrThreshold);
+		activity.setTss(tss);
+		activityRepository.save(activity);
+		return tss;
+	}
+
+	@Transactional
 	public int recomputeForAthlete(User athlete) {
 		ZoneSet hrZoneSet = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE);
 		Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);

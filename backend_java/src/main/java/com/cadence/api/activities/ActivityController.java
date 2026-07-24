@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -19,10 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class ActivityController {
 
 	private final ActivityService activityService;
+	private final TssRecomputeService tssRecomputeService;
 	private final AccessGuard accessGuard;
 
-	public ActivityController(ActivityService activityService, AccessGuard accessGuard) {
+	public ActivityController(ActivityService activityService, TssRecomputeService tssRecomputeService,
+			AccessGuard accessGuard) {
 		this.activityService = activityService;
+		this.tssRecomputeService = tssRecomputeService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -62,6 +66,14 @@ public class ActivityController {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		activityService.deleteAllActivities(athleteId);
+	}
+
+	@PostMapping("/v1/activities/{id}/recompute-tss")
+	public ActivityResponse recomputeTss(@PathVariable String id) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		tssRecomputeService.recomputeForActivity(activity);
+		return activityService.toResponse(activity);
 	}
 
 	@DeleteMapping("/v1/activities/{id}")
