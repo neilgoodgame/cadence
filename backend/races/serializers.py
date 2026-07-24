@@ -19,6 +19,7 @@ class RaceSerializer(serializers.ModelSerializer):
             "goal_time",
             "result_time",
             "activity_id",
+            "url",
             "notes",
         ]
         read_only_fields = ["id", "athlete_id"]
@@ -30,13 +31,14 @@ class RaceCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Race
-        fields = ["name", "date", "sport", "distance_km", "goal_time", "result_time", "activity_id", "notes"]
+        fields = ["name", "date", "sport", "distance_km", "goal_time", "result_time", "activity_id", "url", "notes"]
         extra_kwargs = {
             "sport": {"required": False},
             "distance_km": {"required": False},
             "goal_time": {"required": False},
             "result_time": {"required": False},
             "activity_id": {"required": False},
+            "url": {"required": False},
             "notes": {"required": False},
         }
 
@@ -47,5 +49,5 @@ class RaceUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Race
-        fields = ["name", "date", "sport", "distance_km", "goal_time", "result_time", "activity_id", "notes"]
+        fields = ["name", "date", "sport", "distance_km", "goal_time", "result_time", "activity_id", "url", "notes"]
         extra_kwargs = {field: {"required": False} for field in fields}

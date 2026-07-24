@@ -18,6 +18,7 @@ function RaceRow({ race, onDelete }: { race: Race; onDelete: () => void }) {
   const [distanceKm, setDistanceKm] = useState(race.distance_km?.toString() ?? "");
   const [goalTime, setGoalTime] = useState(formatGoalTime(race.goal_time));
   const [resultTime, setResultTime] = useState(formatGoalTime(race.result_time));
+  const [url, setUrl] = useState(race.url ?? "");
   const [notes, setNotes] = useState(race.notes);
 
   const saveMutation = useMutation({
@@ -29,6 +30,7 @@ function RaceRow({ race, onDelete }: { race: Race; onDelete: () => void }) {
         distance_km: distanceKm ? parseFloat(distanceKm) : null,
         goal_time: goalTime || null,
         result_time: resultTime || null,
+        url: url || null,
         notes,
       }),
     onSuccess: () => {
@@ -61,6 +63,7 @@ function RaceRow({ race, onDelete }: { race: Race; onDelete: () => void }) {
           <input value={goalTime} onChange={(e) => setGoalTime(e.target.value)} placeholder="Goal time (H:MM:SS)" style={inputStyle} />
           <input value={resultTime} onChange={(e) => setResultTime(e.target.value)} placeholder="Result time (H:MM:SS)" style={inputStyle} />
         </div>
+        <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Race website (optional)" style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
         <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" style={{ ...inputStyle, width: "100%", boxSizing: "border-box" }} />
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button onClick={() => saveMutation.mutate()} disabled={!name || !date || saveMutation.isPending} style={primaryBtn}>
@@ -83,6 +86,11 @@ function RaceRow({ race, onDelete }: { race: Race; onDelete: () => void }) {
           {race.goal_time && ` · Goal: ${race.goal_time}`}
           {race.result_time && ` · Result: ${race.result_time}`}
         </div>
+        {race.url && (
+          <a href={race.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ fontSize: 12, color: "var(--ember)", marginTop: 2, display: "block" }}>
+            {new URL(race.url).hostname}
+          </a>
+        )}
         {race.notes && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>{race.notes}</div>}
       </div>
       {isPast && !race.result_time && (

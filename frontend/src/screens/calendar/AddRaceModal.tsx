@@ -31,6 +31,7 @@ export function AddRaceModal({ date, onClose }: { date: string; onClose: () => v
   const [sport, setSport] = useState("");
   const [distanceKm, setDistanceKm] = useState("");
   const [goalTime, setGoalTime] = useState("");
+  const [url, setUrl] = useState("");
   const [notes, setNotes] = useState("");
 
   const mutation = useMutation({
@@ -41,6 +42,7 @@ export function AddRaceModal({ date, onClose }: { date: string; onClose: () => v
         sport: sport || undefined,
         distance_km: distanceKm ? parseFloat(distanceKm) : null,
         goal_time: goalTime || null,
+        url: url || null,
         notes,
       }),
     onSuccess: () => {
@@ -109,6 +111,11 @@ export function AddRaceModal({ date, onClose }: { date: string; onClose: () => v
         <label>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Goal time (optional)</div>
           <input value={goalTime} onChange={(e) => setGoalTime(e.target.value)} placeholder="H:MM:SS" style={fieldStyle} />
+        </label>
+
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Race website (optional)</div>
+          <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" style={fieldStyle} />
         </label>
 
         <label>

@@ -29,6 +29,7 @@ class Race(PrefixedIDModel):
         blank=True,
         related_name="race_result",
     )
+    url = models.URLField(null=True, blank=True)  # noqa: DJ001 -- API contract uses null, not ""
     notes = models.CharField(max_length=500, blank=True, default="")
 
     class Meta:

@@ -408,6 +408,7 @@ export interface Race {
   goal_time: string | null;
   result_time: string | null;
   activity_id: string | null;
+  url: string | null;
   notes: string;
 }
 
@@ -419,6 +420,7 @@ export interface RaceCreate {
   goal_time?: string | null;
   result_time?: string | null;
   activity_id?: string | null;
+  url?: string | null;
   notes?: string;
 }
 
