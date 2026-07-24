@@ -397,3 +397,31 @@ export interface CalendarResponse {
   data: ScheduledWorkout[];
   unplanned_activities: Activity[];
 }
+
+export interface Race {
+  id: string;
+  athlete_id: string;
+  name: string;
+  date: string;
+  sport: string;
+  distance_km: number | null;
+  goal_time: string | null;
+  result_time: string | null;
+  activity_id: string | null;
+  url: string | null;
+  notes: string;
+}
+
+export interface RaceCreate {
+  name: string;
+  date: string;
+  sport?: string;
+  distance_km?: number | null;
+  goal_time?: string | null;
+  result_time?: string | null;
+  activity_id?: string | null;
+  url?: string | null;
+  notes?: string;
+}
+
+export type RaceUpdate = Partial<RaceCreate>;

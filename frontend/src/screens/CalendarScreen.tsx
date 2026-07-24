@@ -2,12 +2,14 @@ import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getActivity } from "../api/activities";
+import { listRaces } from "../api/races";
 import { getCalendar, unscheduleWorkout } from "../api/scheduling";
 import { listWorkouts } from "../api/workouts";
-import type { Activity, ScheduledWorkout, Workout } from "../api/types";
+import type { Activity, Race, ScheduledWorkout, Workout } from "../api/types";
 import { dateKey, derivedStatus, monthGridDays } from "../lib/calendar";
 import { formatDuration, formatPace } from "../lib/format";
 import { sportColor } from "../lib/sportColors";
+import { AddRaceModal } from "./calendar/AddRaceModal";
 import { ScheduleModal } from "./calendar/ScheduleModal";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -102,11 +104,13 @@ export function CalendarScreen() {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [scheduleDate, setScheduleDate] = useState<string | null>(null);
+  const [addRaceDate, setAddRaceDate] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const { from, to } = monthRangeISO(year, month);
   const { data: calendarData } = useQuery({ queryKey: ["calendar", from, to], queryFn: () => getCalendar(from, to) });
   const { data: workoutsData } = useQuery({ queryKey: ["workouts"], queryFn: listWorkouts });
+  const { data: racesData } = useQuery({ queryKey: ["races"], queryFn: listRaces });
 
   const unscheduleMutation = useMutation({
     mutationFn: unscheduleWorkout,
@@ -154,6 +158,16 @@ export function CalendarScreen() {
     queries: matchedActivityIds.map((id) => ({ queryKey: ["activity", id], queryFn: () => getActivity(id) })),
     combine: (results) => new Map(results.flatMap((r) => (r.data ? [[r.data.id, r.data] as const] : []))),
   });
+
+  const racesByDate = useMemo(() => {
+    const map = new Map<string, Race[]>();
+    for (const race of racesData?.data ?? []) {
+      const list = map.get(race.date) ?? [];
+      list.push(race);
+      map.set(race.date, list);
+    }
+    return map;
+  }, [racesData]);
 
   const days = monthGridDays(year, month);
   const weeks: Date[][] = [];
@@ -226,8 +240,14 @@ export function CalendarScreen() {
             ›
           </button>
           <button
+            onClick={() => setAddRaceDate(todayKey)}
+            style={{ border: "1px solid var(--ember)", borderRadius: 8, background: "transparent", color: "var(--ember)", fontSize: 13, fontWeight: 700, padding: "8px 16px", marginLeft: 8, cursor: "pointer" }}
+          >
+            Add race
+          </button>
+          <button
             onClick={() => setScheduleDate(todayKey)}
-            style={{ border: "none", borderRadius: 8, background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px", marginLeft: 8 }}
+            style={{ border: "none", borderRadius: 8, background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px", cursor: "pointer" }}
           >
             Schedule workout
           </button>
@@ -354,6 +374,28 @@ export function CalendarScreen() {
                       </Link>
                     );
                   })}
+                  {(racesByDate.get(key) ?? []).map((race) => (
+                    <div
+                      key={race.id}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        fontSize: 11,
+                        padding: "3px 6px",
+                        borderRadius: 6,
+                        borderLeft: `3px solid var(--ember)`,
+                        background: "var(--ember)22",
+                        color: "var(--ink)",
+                        display: "block",
+                      }}
+                    >
+                      🏁 {race.name}
+                      {(race.distance_km != null || race.goal_time) && (
+                        <div className="mono" style={entryStatsStyle}>
+                          {[race.distance_km != null && `${race.distance_km} km`, race.goal_time && `Goal: ${race.goal_time}`].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               );
             })}
@@ -363,6 +405,7 @@ export function CalendarScreen() {
       </div>
 
       {scheduleDate && <ScheduleModal date={scheduleDate} onClose={() => setScheduleDate(null)} />}
+      {addRaceDate && <AddRaceModal date={addRaceDate} onClose={() => setAddRaceDate(null)} />}
     </div>
   );
 }

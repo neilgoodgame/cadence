@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listTags, tagActivity, untagActivity } from "../../api/activities";
+import { createRace, listRaces, updateRace } from "../../api/races";
 import type { Activity } from "../../api/types";
 import { formatDateTime } from "../../lib/format";
 import { sportColor, sportLabel } from "../../lib/sportColors";
@@ -8,6 +9,40 @@ import { sportColor, sportLabel } from "../../lib/sportColors";
 export function Header({ activity }: { activity: Activity }) {
   const queryClient = useQueryClient();
   const [newTag, setNewTag] = useState("");
+  const [markingRace, setMarkingRace] = useState(false);
+  const [raceName, setRaceName] = useState(activity.name);
+
+  const { data: racesData } = useQuery({ queryKey: ["races"], queryFn: listRaces });
+  const linkedRace = racesData?.data.find((r) => r.activity_id === activity.id);
+  const matchingRace = racesData?.data.find(
+    (r) => r.activity_id == null && r.date === activity.start_date.slice(0, 10)
+  );
+
+  const invalidateRaces = () => queryClient.invalidateQueries({ queryKey: ["races"] });
+
+  const linkToExistingMutation = useMutation({
+    mutationFn: (raceId: string) => updateRace(raceId, { activity_id: activity.id }),
+    onSuccess: invalidateRaces,
+  });
+
+  const createAndLinkMutation = useMutation({
+    mutationFn: () =>
+      createRace({
+        name: raceName,
+        date: activity.start_date.slice(0, 10),
+        sport: activity.sport,
+        activity_id: activity.id,
+      }),
+    onSuccess: () => {
+      invalidateRaces();
+      setMarkingRace(false);
+    },
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: (raceId: string) => updateRace(raceId, { activity_id: null }),
+    onSuccess: invalidateRaces,
+  });
 
   // Activity.tags is just names; removing one needs the tag's id, which only GET /v1/tags
   // (the athlete's full tag catalog) carries.
@@ -99,6 +134,53 @@ export function Header({ activity }: { activity: Activity }) {
           }}
         />
       </div>
+      {linkedRace ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ember)", padding: "3px 10px", borderRadius: 20, border: "1px solid var(--ember)" }}>
+            🏁 {linkedRace.name}
+          </span>
+          <button
+            onClick={() => unlinkMutation.mutate(linkedRace.id)}
+            style={{ fontSize: 12, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer" }}
+          >
+            Unlink
+          </button>
+        </div>
+      ) : markingRace ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+          <input
+            value={raceName}
+            onChange={(e) => setRaceName(e.target.value)}
+            placeholder="Race name"
+            style={{ fontSize: 13, padding: "4px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", width: 200 }}
+          />
+          <button
+            onClick={() => createAndLinkMutation.mutate()}
+            disabled={!raceName || createAndLinkMutation.isPending}
+            style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 8, border: "none", background: "var(--ember)", color: "#fff", cursor: "pointer" }}
+          >
+            {createAndLinkMutation.isPending ? "Saving…" : "Save"}
+          </button>
+          {matchingRace && (
+            <button
+              onClick={() => linkToExistingMutation.mutate(matchingRace.id)}
+              style={{ fontSize: 12, fontWeight: 600, padding: "5px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "none", color: "var(--ink2)", cursor: "pointer" }}
+            >
+              Link to "{matchingRace.name}"
+            </button>
+          )}
+          <button onClick={() => setMarkingRace(false)} style={{ fontSize: 12, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer" }}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setMarkingRace(true)}
+          style={{ marginTop: 10, fontSize: 12, fontWeight: 600, border: "1px dashed var(--line)", background: "none", color: "var(--ink3)", padding: "4px 12px", borderRadius: 20, cursor: "pointer" }}
+        >
+          + Mark as race
+        </button>
+      )}
     </div>
   );
 }

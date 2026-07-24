@@ -10,6 +10,7 @@ import { CoachingSection } from "./dashboard/CoachingSection";
 import { RecentActivitiesTable } from "./dashboard/RecentActivitiesTable";
 import { SportDistribution } from "./dashboard/SportDistribution";
 import { StatCardsRow } from "./dashboard/StatCardsRow";
+import { NextRaceCard } from "./dashboard/NextRaceCard";
 import { WeekCalendar } from "./dashboard/WeekCalendar";
 import { WeeklyVolumeChart } from "./dashboard/WeeklyVolumeChart";
 
@@ -64,6 +65,8 @@ export function DashboardScreen() {
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>Welcome back, {user.name}.</h1>
 
       <StatCardsRow points={points} weekTss={weekTss} />
+
+      <NextRaceCard />
 
       <Card>
         <WeekCalendar activities={activities} athleteId={user.id} />
