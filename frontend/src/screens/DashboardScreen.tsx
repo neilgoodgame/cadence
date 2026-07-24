@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthContext";
 import { getFitness } from "../api/athletes";
@@ -7,14 +7,11 @@ import { getContexts } from "../api/auth";
 import { Card } from "../components/Card";
 import { BestEffortsRow } from "./dashboard/BestEffortsRow";
 import { CoachingSection } from "./dashboard/CoachingSection";
-import { PmcChart } from "./dashboard/PmcChart";
 import { RecentActivitiesTable } from "./dashboard/RecentActivitiesTable";
 import { SportDistribution } from "./dashboard/SportDistribution";
 import { StatCardsRow } from "./dashboard/StatCardsRow";
+import { WeekCalendar } from "./dashboard/WeekCalendar";
 import { WeeklyVolumeChart } from "./dashboard/WeeklyVolumeChart";
-
-const RANGES = { "6w": 42, "12w": 84, Season: 180 } as const;
-type RangeKey = keyof typeof RANGES;
 
 function isoDaysAgo(days: number): string {
   const d = new Date();
@@ -24,11 +21,10 @@ function isoDaysAgo(days: number): string {
 
 export function DashboardScreen() {
   const { user } = useAuth();
-  const [range, setRange] = useState<RangeKey>("12w");
 
   const fitnessQuery = useQuery({
-    queryKey: ["fitness", user?.id, range],
-    queryFn: () => getFitness(user!.id, isoDaysAgo(RANGES[range]), isoDaysAgo(0)),
+    queryKey: ["fitness", user?.id],
+    queryFn: () => getFitness(user!.id, isoDaysAgo(84), isoDaysAgo(0)),
     enabled: !!user,
   });
 
@@ -52,15 +48,6 @@ export function DashboardScreen() {
 
   const activities = useMemo(() => activitiesQuery.data?.data ?? [], [activitiesQuery.data]);
 
-  const dailyTss = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const activity of activities) {
-      const date = activity.start_date.slice(0, 10);
-      map.set(date, (map.get(date) ?? 0) + activity.tss);
-    }
-    return map;
-  }, [activities]);
-
   const weekTss = useMemo(() => {
     const cutoff = isoDaysAgo(7);
     return activities
@@ -79,29 +66,7 @@ export function DashboardScreen() {
       <StatCardsRow points={points} weekTss={weekTss} />
 
       <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Performance management</h2>
-          <div style={{ display: "flex", gap: 4 }}>
-            {(Object.keys(RANGES) as RangeKey[]).map((key) => (
-              <button
-                key={key}
-                onClick={() => setRange(key)}
-                style={{
-                  border: "1px solid var(--line)",
-                  borderRadius: 8,
-                  padding: "6px 12px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  background: range === key ? "var(--elev)" : "transparent",
-                  color: range === key ? "var(--ink)" : "var(--ink3)",
-                }}
-              >
-                {key}
-              </button>
-            ))}
-          </div>
-        </div>
-        <PmcChart points={points} dailyTss={dailyTss} />
+        <WeekCalendar activities={activities} />
       </Card>
 
       <BestEffortsRow athleteId={user.id} />
