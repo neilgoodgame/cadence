@@ -4,6 +4,15 @@ import { createRace } from "../../api/races";
 
 const SPORTS = ["run", "bike", "swim", "multisport"];
 
+const RUN_PRESETS: { label: string; km: number }[] = [
+  { label: "5K", km: 5 },
+  { label: "10K", km: 10 },
+  { label: "Half", km: 21.0975 },
+  { label: "Marathon", km: 42.195 },
+  { label: "50K", km: 50 },
+  { label: "100K", km: 100 },
+];
+
 const fieldStyle: React.CSSProperties = {
   width: "100%",
   padding: "8px 12px",
@@ -61,18 +70,40 @@ export function AddRaceModal({ date, onClose }: { date: string; onClose: () => v
           <input type="date" value={raceDate} onChange={(e) => setRaceDate(e.target.value)} style={fieldStyle} />
         </label>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Sport (optional)</div>
-            <select value={sport} onChange={(e) => setSport(e.target.value)} style={fieldStyle}>
-              <option value="">—</option>
-              {SPORTS.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-            </select>
-          </label>
-          <label>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Distance km (optional)</div>
-            <input type="number" step="0.1" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} placeholder="42.2" style={fieldStyle} />
-          </label>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Sport (optional)</div>
+          <select value={sport} onChange={(e) => setSport(e.target.value)} style={fieldStyle}>
+            <option value="">—</option>
+            {SPORTS.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+          </select>
+        </label>
+
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Distance km (optional)</div>
+          {sport === "run" && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {RUN_PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => setDistanceKm(String(p.km))}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 20,
+                    border: `1px solid ${distanceKm === String(p.km) ? "var(--ember)" : "var(--line)"}`,
+                    background: distanceKm === String(p.km) ? "var(--ember)22" : "transparent",
+                    color: distanceKm === String(p.km) ? "var(--ember)" : "var(--ink2)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <input type="number" step="0.1" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} placeholder="km" style={fieldStyle} />
         </div>
 
         <label>
