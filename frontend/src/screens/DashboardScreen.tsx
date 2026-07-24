@@ -66,7 +66,7 @@ export function DashboardScreen() {
       <StatCardsRow points={points} weekTss={weekTss} />
 
       <Card>
-        <WeekCalendar activities={activities} />
+        <WeekCalendar activities={activities} athleteId={user.id} />
       </Card>
 
       <BestEffortsRow athleteId={user.id} />

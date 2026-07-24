@@ -1,9 +1,15 @@
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { Activity } from "../../api/types";
+import { getStreams } from "../../api/activities";
+import { listZones } from "../../api/athletes";
+import { bucketIntoZones } from "../../lib/zones";
 import { formatDuration, formatPace } from "../../lib/format";
 import { sportColor } from "../../lib/sportColors";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const ZONE_COLORS = ["var(--zone-1)", "var(--zone-2)", "var(--zone-3)", "var(--zone-4)", "var(--zone-5)"];
+const RESOLUTION_SECONDS = 5;
 
 function localIso(date: Date): string {
   const y = date.getFullYear();
@@ -12,7 +18,71 @@ function localIso(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-export function WeekCalendar({ activities }: { activities: Activity[] }) {
+function WeekHrDistribution({ activities, athleteId }: { activities: Activity[]; athleteId: string }) {
+  const hrActivities = activities.filter((a) => a.avg_hr != null);
+
+  const zonesQuery = useQuery({
+    queryKey: ["zones", athleteId],
+    queryFn: () => listZones(athleteId),
+  });
+
+  const streamQueries = useQueries({
+    queries: hrActivities.map((a) => ({
+      queryKey: ["activity-streams-zones", a.id, "heartrate"],
+      queryFn: () => getStreams(a.id, ["heartrate"], "medium"),
+    })),
+  });
+
+  if (hrActivities.length === 0) return null;
+
+  const zoneSet = zonesQuery.data?.data.find((z) => z.type === "heart_rate");
+  if (!zoneSet) return null;
+
+  const allLoaded = streamQueries.every((q) => q.data != null);
+  if (!allLoaded) {
+    return (
+      <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+        <div className="mono" style={{ fontSize: 11, color: "#e0442e", fontWeight: 600, letterSpacing: "0.06em", marginBottom: 10 }}>
+          HEART RATE ZONES
+        </div>
+        <div style={{ fontSize: 13, color: "var(--ink3)" }}>Loading…</div>
+      </div>
+    );
+  }
+
+  const allSamples = streamQueries.flatMap((q) => q.data!.fields["heartrate"] ?? []);
+  const zoneTimes = bucketIntoZones(allSamples, zoneSet, RESOLUTION_SECONDS);
+  const maxSeconds = Math.max(1, ...zoneTimes.map((z) => z.seconds));
+
+  return (
+    <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+      <div className="mono" style={{ fontSize: 11, color: "#e0442e", fontWeight: 600, letterSpacing: "0.06em", marginBottom: 10 }}>
+        HEART RATE ZONES
+      </div>
+      {zoneTimes.map((zone, i) => (
+        <div key={zone.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", fontSize: 13 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, flexShrink: 0, background: ZONE_COLORS[i % ZONE_COLORS.length] }} />
+          <span style={{ width: 110, flexShrink: 0 }}>{zone.name}</span>
+          <div style={{ flex: 1, height: 6, background: "var(--elev)", borderRadius: 3 }}>
+            <div
+              style={{
+                width: `${(zone.seconds / maxSeconds) * 100}%`,
+                height: "100%",
+                background: ZONE_COLORS[i % ZONE_COLORS.length],
+                borderRadius: 3,
+              }}
+            />
+          </div>
+          <span className="mono" style={{ width: 60, textAlign: "right", flexShrink: 0, color: "var(--ink2)" }}>
+            {formatDuration(zone.seconds)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function WeekCalendar({ activities, athleteId }: { activities: Activity[]; athleteId: string }) {
   const navigate = useNavigate();
 
   const today = new Date();
@@ -177,6 +247,8 @@ export function WeekCalendar({ activities }: { activities: Activity[] }) {
           );
         })}
       </div>
+
+      <WeekHrDistribution activities={weekActivities} athleteId={athleteId} />
     </div>
   );
 }
