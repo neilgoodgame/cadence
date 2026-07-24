@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { deleteRace, listRaces, updateRace } from "../../api/races";
 import type { Race } from "../../api/types";
 
+const SPORTS = ["run", "bike", "swim", "multisport"];
+
 function formatGoalTime(iso: string | null): string {
   if (!iso) return "";
   // Django DurationField returns "HH:MM:SS" or "H:MM:SS"
@@ -159,5 +161,17 @@ const ghostBtn: React.CSSProperties = {
   color: "var(--ink2)",
   fontSize: 13,
   fontWeight: 600,
+  cursor: "pointer",
+};
+
+const primaryBtn: React.CSSProperties = {
+  alignSelf: "flex-start",
+  padding: "8px 16px",
+  borderRadius: 8,
+  border: "none",
+  background: "var(--ember)",
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: 700,
   cursor: "pointer",
 };
