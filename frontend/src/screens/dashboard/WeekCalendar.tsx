@@ -5,12 +5,19 @@ import { sportColor } from "../../lib/sportColors";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+function localIso(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export function WeekCalendar({ activities }: { activities: Activity[] }) {
   const navigate = useNavigate();
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayIso = today.toISOString().slice(0, 10);
+  const todayIso = localIso(today);
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(today);
@@ -18,11 +25,11 @@ export function WeekCalendar({ activities }: { activities: Activity[] }) {
     return d;
   });
 
-  const cutoff = days[0].toISOString().slice(0, 10);
+  const cutoff = localIso(days[0]);
 
   const byDate = new Map<string, Activity[]>();
   for (const a of activities) {
-    const date = a.start_date.slice(0, 10);
+    const date = localIso(new Date(a.start_date));
     if (date >= cutoff) {
       if (!byDate.has(date)) byDate.set(date, []);
       byDate.get(date)!.push(a);
@@ -34,7 +41,7 @@ export function WeekCalendar({ activities }: { activities: Activity[] }) {
       <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 14px" }}>This week</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
         {days.map((day) => {
-          const iso = day.toISOString().slice(0, 10);
+          const iso = localIso(day);
           const isToday = iso === todayIso;
           const dayActivities = byDate.get(iso) ?? [];
 
