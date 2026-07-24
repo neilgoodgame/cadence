@@ -424,4 +424,4 @@ export interface RaceCreate {
   notes?: string;
 }
 
-export interface RaceUpdate extends Partial<RaceCreate> {}
+export type RaceUpdate = Partial<RaceCreate>;
