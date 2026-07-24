@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import type { Activity } from "../../api/types";
-import { formatDuration } from "../../lib/format";
+import { formatDuration, formatPace } from "../../lib/format";
 import { sportColor } from "../../lib/sportColors";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -35,6 +35,13 @@ export function WeekCalendar({ activities }: { activities: Activity[] }) {
       byDate.get(date)!.push(a);
     }
   }
+
+  const weekActivities = [...byDate.values()].flat();
+  const runs = weekActivities.filter((a) => a.sport === "run");
+  const runDistanceKm = runs.reduce((s, a) => s + a.distance_km, 0);
+  const runTimeS = runs.reduce((s, a) => s + a.moving_time, 0);
+  const weekTss = weekActivities.reduce((s, a) => s + a.tss, 0);
+  const avgPaceSecPerKm = runDistanceKm > 0 ? runTimeS / runDistanceKm : null;
 
   return (
     <div>
@@ -118,6 +125,32 @@ export function WeekCalendar({ activities }: { activities: Activity[] }) {
             </div>
           );
         })}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 32,
+          marginTop: 18,
+          paddingTop: 14,
+          borderTop: "1px solid var(--line)",
+        }}
+      >
+        {[
+          { label: "Run distance", value: `${runDistanceKm.toFixed(1)} km` },
+          { label: "Runs", value: String(runs.length) },
+          { label: "Avg run pace", value: avgPaceSecPerKm != null ? formatPace(avgPaceSecPerKm) : "—" },
+          { label: "TSS", value: Math.round(weekTss).toString() },
+        ].map(({ label, value }) => (
+          <div key={label}>
+            <div style={{ fontSize: 11, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 2 }}>
+              {label}
+            </div>
+            <div className="mono" style={{ fontSize: 18, fontWeight: 800, color: "var(--ink)" }}>
+              {value}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
