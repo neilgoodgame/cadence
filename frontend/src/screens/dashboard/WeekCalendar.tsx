@@ -46,6 +46,33 @@ export function WeekCalendar({ activities }: { activities: Activity[] }) {
   return (
     <div>
       <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 14px" }}>This week</h2>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 32,
+          marginBottom: 18,
+          paddingBottom: 14,
+          borderBottom: "1px solid var(--line)",
+        }}
+      >
+        {[
+          { label: "Run distance", value: `${runDistanceKm.toFixed(1)} km` },
+          { label: "Runs", value: String(runs.length) },
+          { label: "Avg run pace", value: avgPaceSecPerKm != null ? formatPace(avgPaceSecPerKm) : "—" },
+          { label: "TSS", value: Math.round(weekTss).toString() },
+        ].map(({ label, value }) => (
+          <div key={label}>
+            <div style={{ fontSize: 11, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 2 }}>
+              {label}
+            </div>
+            <div className="mono" style={{ fontSize: 18, fontWeight: 800, color: "var(--ink)" }}>
+              {value}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
         {days.map((day) => {
           const iso = localIso(day);
@@ -125,32 +152,6 @@ export function WeekCalendar({ activities }: { activities: Activity[] }) {
             </div>
           );
         })}
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          gap: 32,
-          marginTop: 18,
-          paddingTop: 14,
-          borderTop: "1px solid var(--line)",
-        }}
-      >
-        {[
-          { label: "Run distance", value: `${runDistanceKm.toFixed(1)} km` },
-          { label: "Runs", value: String(runs.length) },
-          { label: "Avg run pace", value: avgPaceSecPerKm != null ? formatPace(avgPaceSecPerKm) : "—" },
-          { label: "TSS", value: Math.round(weekTss).toString() },
-        ].map(({ label, value }) => (
-          <div key={label}>
-            <div style={{ fontSize: 11, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 2 }}>
-              {label}
-            </div>
-            <div className="mono" style={{ fontSize: 18, fontWeight: 800, color: "var(--ink)" }}>
-              {value}
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   );
