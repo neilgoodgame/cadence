@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { ProfileTab } from "./preferences/ProfileTab";
+import { RacesTab } from "./preferences/RacesTab";
 import { SharingTab } from "./preferences/SharingTab";
 import { TokensTab } from "./preferences/TokensTab";
 import { ZoneEditorTab } from "./preferences/ZoneEditorTab";
 import type { ZoneType } from "../api/types";
 
-type TabKey = "profile" | ZoneType | "sharing" | "tokens";
+type TabKey = "profile" | ZoneType | "races" | "sharing" | "tokens";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "profile", label: "Profile" },
@@ -14,6 +15,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "bike_power", label: "Bike power" },
   { key: "run_power", label: "Run power" },
   { key: "pace", label: "Pace" },
+  { key: "races", label: "Races" },
   { key: "sharing", label: "Sharing" },
   { key: "tokens", label: "API tokens" },
 ];
@@ -54,6 +56,7 @@ export function PreferencesScreen() {
       <div style={{ flex: 1 }}>
         {tab === "profile" && <ProfileTab />}
         {ZONE_TYPES.includes(tab as ZoneType) && <ZoneEditorTab athleteId={user.id} type={tab as ZoneType} />}
+        {tab === "races" && <RacesTab />}
         {tab === "sharing" && <SharingTab />}
         {tab === "tokens" && <TokensTab />}
       </div>

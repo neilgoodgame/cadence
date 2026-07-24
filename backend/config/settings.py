@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "workouts",
     "scheduling",
     "gear",
+    "races",
     "webhooks",
     "core",
 ]
