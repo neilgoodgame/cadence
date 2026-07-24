@@ -21,6 +21,7 @@ function RaceRow({ race, onDelete }: { race: Race; onDelete: () => void }) {
   const [goalTime, setGoalTime] = useState(formatGoalTime(race.goal_time));
   const [resultTime, setResultTime] = useState(formatGoalTime(race.result_time));
   const [url, setUrl] = useState(race.url ?? "");
+  const [resultsUrl, setResultsUrl] = useState(race.results_url ?? "");
   const [notes, setNotes] = useState(race.notes);
 
   const saveMutation = useMutation({
@@ -33,6 +34,7 @@ function RaceRow({ race, onDelete }: { race: Race; onDelete: () => void }) {
         goal_time: goalTime || null,
         result_time: resultTime || null,
         url: url || null,
+        results_url: resultsUrl || null,
         notes,
       }),
     onSuccess: () => {
@@ -66,6 +68,7 @@ function RaceRow({ race, onDelete }: { race: Race; onDelete: () => void }) {
           <input value={resultTime} onChange={(e) => setResultTime(e.target.value)} placeholder="Result time (H:MM:SS)" style={inputStyle} />
         </div>
         <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Race website (optional)" style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
+        <input type="url" value={resultsUrl} onChange={(e) => setResultsUrl(e.target.value)} placeholder="Results URL (optional)" style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
         <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" style={{ ...inputStyle, width: "100%", boxSizing: "border-box" }} />
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button onClick={() => saveMutation.mutate()} disabled={!name || !date || saveMutation.isPending} style={primaryBtn}>
@@ -91,6 +94,11 @@ function RaceRow({ race, onDelete }: { race: Race; onDelete: () => void }) {
         {race.url && (
           <a href={race.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ fontSize: 12, color: "var(--ember)", marginTop: 2, display: "block" }}>
             {new URL(race.url).hostname}
+          </a>
+        )}
+        {race.results_url && (
+          <a href={race.results_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ fontSize: 12, color: "var(--ember)", marginTop: 2, display: "block" }}>
+            Results ↗
           </a>
         )}
         {race.notes && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>{race.notes}</div>}

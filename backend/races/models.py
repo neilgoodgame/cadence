@@ -30,6 +30,7 @@ class Race(PrefixedIDModel):
         related_name="race_result",
     )
     url = models.URLField(null=True, blank=True)  # noqa: DJ001 -- API contract uses null, not ""
+    results_url = models.URLField(null=True, blank=True)  # noqa: DJ001 -- link to athlete's result page
     notes = models.CharField(max_length=500, blank=True, default="")
 
     class Meta:
