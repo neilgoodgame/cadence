@@ -13,6 +13,7 @@ import { StatCardsRow } from "./dashboard/StatCardsRow";
 import { NextRaceCard } from "./dashboard/NextRaceCard";
 import { WeekCalendar } from "./dashboard/WeekCalendar";
 import { WeeklyVolumeChart } from "./dashboard/WeeklyVolumeChart";
+import { TrainingHistory } from "./dashboard/TrainingHistory";
 
 function isoDaysAgo(days: number): string {
   const d = new Date();
@@ -70,6 +71,10 @@ export function DashboardScreen() {
 
       <Card>
         <WeekCalendar activities={activities} athleteId={user.id} />
+      </Card>
+
+      <Card>
+        <TrainingHistory activities={activities} />
       </Card>
 
       <BestEffortsRow athleteId={user.id} />
