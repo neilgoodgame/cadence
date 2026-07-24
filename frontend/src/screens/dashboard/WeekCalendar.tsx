@@ -59,10 +59,17 @@ function WeekHrDistribution({ activities, athleteId }: { activities: Activity[];
       <div className="mono" style={{ fontSize: 11, color: "#e0442e", fontWeight: 600, letterSpacing: "0.06em", marginBottom: 10 }}>
         HEART RATE ZONES
       </div>
-      {zoneTimes.map((zone, i) => (
+      {zoneTimes.map((zone, i) => {
+        const def = zoneSet.zones[i];
+        const isLast = i === zoneSet.zones.length - 1;
+        const low = Math.round((def.low_pct / 100) * zoneSet.reference!);
+        const high = Math.round((def.high_pct / 100) * zoneSet.reference!);
+        const rangeLabel = isLast ? `${low}+ bpm` : `${low}–${high} bpm`;
+        return (
         <div key={zone.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", fontSize: 13 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, flexShrink: 0, background: ZONE_COLORS[i % ZONE_COLORS.length] }} />
           <span style={{ width: 110, flexShrink: 0 }}>{zone.name}</span>
+          <span className="mono" style={{ width: 80, flexShrink: 0, fontSize: 11, color: "var(--ink3)" }}>{rangeLabel}</span>
           <div style={{ flex: 1, height: 6, background: "var(--elev)", borderRadius: 3 }}>
             <div
               style={{
@@ -77,7 +84,8 @@ function WeekHrDistribution({ activities, athleteId }: { activities: Activity[];
             {formatDuration(zone.seconds)}
           </span>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
