@@ -17,6 +17,10 @@ export function updateAthlete(id: string, patch: AthleteUpdate): Promise<Athlete
   return apiFetch<AthleteUpdateResponse>(`/v1/athletes/${id}`, { method: "PATCH", body: patch });
 }
 
+export function recomputeTss(athleteId: string): Promise<{ updated: number }> {
+  return apiFetch<{ updated: number }>(`/v1/athletes/${athleteId}/recompute-tss`, { method: "POST" });
+}
+
 export function getFitness(athleteId: string, from?: string, to?: string): Promise<DataList<FitnessPoint>> {
   const params = new URLSearchParams();
   if (from) params.set("from", from);

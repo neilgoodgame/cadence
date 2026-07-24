@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { recomputeTss } from "../../api/athletes";
 import type { Activity } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
 
@@ -73,8 +75,14 @@ function formatMetricValue(value: number, metric: Metric): string {
   return formatDuration(Math.round(value));
 }
 
-export function TrainingHistory({ activities }: { activities: Activity[] }) {
+export function TrainingHistory({ activities, athleteId }: { activities: Activity[]; athleteId: string }) {
+  const queryClient = useQueryClient();
   const [metric, setMetric] = useState<Metric>("run_distance");
+
+  const recomputeMutation = useMutation({
+    mutationFn: () => recomputeTss(athleteId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["activities", "dashboard"] }),
+  });
 
   const today = useMemo(() => new Date(), []);
   const weeks = useMemo(() => buildWeekBlocks(today), [today]);
@@ -137,7 +145,7 @@ export function TrainingHistory({ activities }: { activities: Activity[] }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>16-week block</h2>
-        <div style={{ display: "flex", gap: 4 }}>
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           {(Object.keys(METRIC_LABELS) as Metric[]).map((m) => (
             <button
               key={m}
@@ -157,6 +165,28 @@ export function TrainingHistory({ activities }: { activities: Activity[] }) {
               {METRIC_LABELS[m]}
             </button>
           ))}
+          {metric === "tss" && (
+            <button
+              type="button"
+              onClick={() => recomputeMutation.mutate()}
+              disabled={recomputeMutation.isPending}
+              title="Recompute TSS for all historical activities using your current HR zones"
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "3px 10px",
+                borderRadius: 20,
+                border: "1px solid var(--line)",
+                background: "none",
+                color: "var(--ink3)",
+                cursor: "pointer",
+                opacity: recomputeMutation.isPending ? 0.5 : 1,
+                marginLeft: 8,
+              }}
+            >
+              {recomputeMutation.isPending ? "Recomputing…" : recomputeMutation.isSuccess ? `Updated ${recomputeMutation.data?.updated}` : "Recompute TSS"}
+            </button>
+          )}
         </div>
       </div>
 

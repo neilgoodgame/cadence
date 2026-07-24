@@ -17,6 +17,12 @@ public final class TssCalculator {
 			return null;
 		}
 		double intensity = normPower / thresholdPower;
+		// IF > 1.5 is physiologically implausible for a sustained effort — treat as corrupt
+		// power data (e.g. Garmin Running Power overriding Stryd in the FIT field) and fall
+		// back to HR-based so the caller sees null and uses the HR path instead.
+		if (intensity > 1.5) {
+			return null;
+		}
 		double tss = (movingTimeSeconds * normPower * intensity) / (thresholdPower * 3600.0) * 100;
 		return (int) Math.round(tss);
 	}

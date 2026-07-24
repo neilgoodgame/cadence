@@ -74,7 +74,7 @@ export function DashboardScreen() {
       </Card>
 
       <Card>
-        <TrainingHistory activities={activities} />
+        <TrainingHistory activities={activities} athleteId={user.id} />
       </Card>
 
       <BestEffortsRow athleteId={user.id} />
