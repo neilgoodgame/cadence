@@ -37,11 +37,21 @@ export function WeekCalendar({ activities }: { activities: Activity[] }) {
   }
 
   const weekActivities = [...byDate.values()].flat();
+  const totalTimeS = weekActivities.reduce((s, a) => s + a.moving_time, 0);
+  const weekTss = weekActivities.reduce((s, a) => s + a.tss, 0);
+
   const runs = weekActivities.filter((a) => a.sport === "run");
   const runDistanceKm = runs.reduce((s, a) => s + a.distance_km, 0);
   const runTimeS = runs.reduce((s, a) => s + a.moving_time, 0);
-  const weekTss = weekActivities.reduce((s, a) => s + a.tss, 0);
   const avgPaceSecPerKm = runDistanceKm > 0 ? runTimeS / runDistanceKm : null;
+
+  const rides = weekActivities.filter((a) => a.sport === "bike");
+  const bikeDistanceKm = rides.reduce((s, a) => s + a.distance_km, 0);
+  const poweredRides = rides.filter((a) => a.avg_power != null);
+  const avgBikePower =
+    poweredRides.length > 0
+      ? Math.round(poweredRides.reduce((s, a) => s + a.avg_power!, 0) / poweredRides.length)
+      : null;
 
   return (
     <div>
@@ -57,20 +67,34 @@ export function WeekCalendar({ activities }: { activities: Activity[] }) {
         }}
       >
         {[
+          { label: "Training time", value: formatDuration(totalTimeS) },
+          { label: "TSS", value: Math.round(weekTss).toString() },
+          null,
           { label: "Run distance", value: `${runDistanceKm.toFixed(1)} km` },
           { label: "Runs", value: String(runs.length) },
           { label: "Avg run pace", value: avgPaceSecPerKm != null ? formatPace(avgPaceSecPerKm) : "—" },
-          { label: "TSS", value: Math.round(weekTss).toString() },
-        ].map(({ label, value }) => (
-          <div key={label}>
-            <div style={{ fontSize: 11, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 2 }}>
-              {label}
+          ...(rides.length > 0
+            ? [
+                null,
+                { label: "Bike distance", value: `${bikeDistanceKm.toFixed(1)} km` },
+                { label: "Rides", value: String(rides.length) },
+                { label: "Avg power", value: avgBikePower != null ? `${avgBikePower} W` : "—" },
+              ]
+            : []),
+        ].map((stat, i) =>
+          stat === null ? (
+            <div key={i} style={{ width: 1, background: "var(--line)", alignSelf: "stretch" }} />
+          ) : (
+            <div key={stat.label}>
+              <div style={{ fontSize: 11, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 2 }}>
+                {stat.label}
+              </div>
+              <div className="mono" style={{ fontSize: 18, fontWeight: 800, color: "var(--ink)" }}>
+                {stat.value}
+              </div>
             </div>
-            <div className="mono" style={{ fontSize: 18, fontWeight: 800, color: "var(--ink)" }}>
-              {value}
-            </div>
-          </div>
-        ))}
+          )
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
