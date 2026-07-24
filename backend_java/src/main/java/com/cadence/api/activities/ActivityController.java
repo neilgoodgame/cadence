@@ -72,8 +72,8 @@ public class ActivityController {
 	public ActivityResponse recomputeTss(@PathVariable String id) {
 		Activity activity = activityService.getActivity(id);
 		accessGuard.requireWrite(activity.getAthlete().getId());
-		tssRecomputeService.recomputeForActivity(activity);
-		return activityService.toResponse(activity);
+		tssRecomputeService.recomputeForActivity(id);
+		return activityService.toResponse(activityService.getActivity(id));
 	}
 
 	@DeleteMapping("/v1/activities/{id}")

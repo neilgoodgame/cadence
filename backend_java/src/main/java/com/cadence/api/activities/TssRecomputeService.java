@@ -27,7 +27,12 @@ public class TssRecomputeService {
 	}
 
 	@Transactional
-	public int recomputeForActivity(Activity activity) {
+	public int recomputeForActivity(String activityId) {
+		// Reload within this transaction — the entity passed from the controller is
+		// detached (its session closed after getActivity returned), so lazy-loading
+		// activity.getAthlete() would throw LazyInitializationException otherwise.
+		Activity activity = activityRepository.findById(activityId)
+				.orElseThrow(() -> new com.cadence.api.common.error.NotFoundException("No such activity."));
 		User athlete = activity.getAthlete();
 		ZoneSet hrZoneSet = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE);
 		Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
