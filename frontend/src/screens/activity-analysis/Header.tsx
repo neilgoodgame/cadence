@@ -11,6 +11,8 @@ export function Header({ activity }: { activity: Activity }) {
   const [newTag, setNewTag] = useState("");
   const [markingRace, setMarkingRace] = useState(false);
   const [raceName, setRaceName] = useState(activity.name);
+  const [chipTime, setChipTime] = useState("");
+  const [resultsUrl, setResultsUrl] = useState("");
 
   const { data: racesData } = useQuery({ queryKey: ["races"], queryFn: listRaces });
   const linkedRace = racesData?.data.find((r) => r.activity_id === activity.id);
@@ -32,6 +34,8 @@ export function Header({ activity }: { activity: Activity }) {
         date: activity.start_date.slice(0, 10),
         sport: activity.sport,
         activity_id: activity.id,
+        result_time: chipTime || null,
+        results_url: resultsUrl || null,
       }),
     onSuccess: () => {
       invalidateRaces();
@@ -135,43 +139,75 @@ export function Header({ activity }: { activity: Activity }) {
         />
       </div>
       {linkedRace ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ember)", padding: "3px 10px", borderRadius: 20, border: "1px solid var(--ember)" }}>
-            🏁 {linkedRace.name}
-          </span>
-          <button
-            onClick={() => unlinkMutation.mutate(linkedRace.id)}
-            style={{ fontSize: 12, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer" }}
-          >
-            Unlink
-          </button>
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ember)", padding: "3px 10px", borderRadius: 20, border: "1px solid var(--ember)" }}>
+              🏁 {linkedRace.name}
+            </span>
+            {linkedRace.result_time && (
+              <span style={{ fontSize: 12, color: "var(--ink2)" }}>{linkedRace.result_time}</span>
+            )}
+            {linkedRace.results_url && (
+              <a
+                href={linkedRace.results_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 12, color: "var(--ember)", textDecoration: "none" }}
+              >
+                Results ↗
+              </a>
+            )}
+            <button
+              onClick={() => unlinkMutation.mutate(linkedRace.id)}
+              style={{ fontSize: 12, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer" }}
+            >
+              Unlink
+            </button>
+          </div>
         </div>
       ) : markingRace ? (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-          <input
-            value={raceName}
-            onChange={(e) => setRaceName(e.target.value)}
-            placeholder="Race name"
-            style={{ fontSize: 13, padding: "4px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", width: 200 }}
-          />
-          <button
-            onClick={() => createAndLinkMutation.mutate()}
-            disabled={!raceName || createAndLinkMutation.isPending}
-            style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 8, border: "none", background: "var(--ember)", color: "#fff", cursor: "pointer" }}
-          >
-            {createAndLinkMutation.isPending ? "Saving…" : "Save"}
-          </button>
-          {matchingRace && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              value={raceName}
+              onChange={(e) => setRaceName(e.target.value)}
+              placeholder="Race name"
+              style={{ fontSize: 13, padding: "4px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", width: 200 }}
+            />
+            <input
+              value={chipTime}
+              onChange={(e) => setChipTime(e.target.value)}
+              placeholder="Chip time (H:MM:SS)"
+              style={{ fontSize: 13, padding: "4px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", width: 160 }}
+            />
+            <input
+              type="url"
+              value={resultsUrl}
+              onChange={(e) => setResultsUrl(e.target.value)}
+              placeholder="Results URL (optional)"
+              style={{ fontSize: 13, padding: "4px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", width: 200 }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
-              onClick={() => linkToExistingMutation.mutate(matchingRace.id)}
-              style={{ fontSize: 12, fontWeight: 600, padding: "5px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "none", color: "var(--ink2)", cursor: "pointer" }}
+              onClick={() => createAndLinkMutation.mutate()}
+              disabled={!raceName || createAndLinkMutation.isPending}
+              style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 8, border: "none", background: "var(--ember)", color: "#fff", cursor: "pointer" }}
             >
-              Link to "{matchingRace.name}"
+              {createAndLinkMutation.isPending ? "Saving…" : "Save"}
             </button>
-          )}
-          <button onClick={() => setMarkingRace(false)} style={{ fontSize: 12, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer" }}>
-            Cancel
-          </button>
+            {matchingRace && (
+              <button
+                onClick={() => linkToExistingMutation.mutate(matchingRace.id)}
+                style={{ fontSize: 12, fontWeight: 600, padding: "5px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "none", color: "var(--ink2)", cursor: "pointer" }}
+              >
+                Link to "{matchingRace.name}"
+              </button>
+            )}
+            <button onClick={() => setMarkingRace(false)} style={{ fontSize: 12, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer" }}>
+              Cancel
+            </button>
+          </div>
         </div>
       ) : (
         <button
