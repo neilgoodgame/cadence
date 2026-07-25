@@ -27,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 @StepScope
 public class BestEffortTasklet implements Tasklet {
 
+	private static final int TOP_N = 5;
+
 	private final UploadJobContext context;
 	private final ActivityRepository activityRepository;
 	private final BestEffortRepository bestEffortRepository;
@@ -40,8 +42,6 @@ public class BestEffortTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
-		// Only bike/run activities produce best efforts, so a multisport parent (and any
-		// transition leg) falls through both branches; each bike/run leg contributes its own.
 		for (UploadJobContext.Segment segment : context.getSegments()) {
 			Activity activity = activityRepository.findById(segment.activityId())
 					.orElseThrow(() -> new NotFoundException("No such activity."));
@@ -75,71 +75,55 @@ public class BestEffortTasklet implements Tasklet {
 
 	private void updateHrBestEfforts(Activity activity, User athlete, BestEffortKind kind, List<Integer> hrSeries) {
 		for (BestEffortWindows.PowerWindow window : BestEffortWindows.HR_BEST_EFFORT_WINDOWS) {
-			if (window.seconds() > hrSeries.size()) {
-				continue;
-			}
+			if (window.seconds() > hrSeries.size()) continue;
 			Double bestAvg = DurationCurveCalculator.bestAverage(hrSeries, window.seconds());
-			if (bestAvg == null) {
-				continue;
-			}
-			var existing = bestEffortRepository.findByAthleteIdAndKindAndWindow(athlete.getId(), kind, window.label());
-			if (existing.isEmpty() || bestAvg > existing.get().getValue()) {
-				BestEffort effort = existing.orElseGet(BestEffort::new);
-				effort.setAthlete(athlete);
-				effort.setKind(kind);
-				effort.setWindow(window.label());
-				effort.setValue(round1(bestAvg));
-				effort.setUnit("bpm");
-				effort.setDate(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
-				effort.setActivity(activity);
-				bestEffortRepository.save(effort);
-			}
+			if (bestAvg == null) continue;
+			upsertEffort(activity, athlete, kind, window.label(), round1(bestAvg), "bpm");
+			trimToTop(athlete.getId(), kind, window.label(), false);
 		}
 	}
 
 	private void updatePowerBestEfforts(Activity activity, User athlete, BestEffortKind kind, List<Integer> powerSeries) {
 		for (BestEffortWindows.PowerWindow window : BestEffortWindows.POWER_BEST_EFFORT_WINDOWS) {
-			if (window.seconds() > powerSeries.size()) {
-				continue;
-			}
+			if (window.seconds() > powerSeries.size()) continue;
 			Double bestAvg = DurationCurveCalculator.bestAverage(powerSeries, window.seconds());
-			if (bestAvg == null) {
-				continue;
-			}
-			var existing = bestEffortRepository.findByAthleteIdAndKindAndWindow(athlete.getId(), kind, window.label());
-			if (existing.isEmpty() || bestAvg > existing.get().getValue()) {
-				BestEffort effort = existing.orElseGet(BestEffort::new);
-				effort.setAthlete(athlete);
-				effort.setKind(kind);
-				effort.setWindow(window.label());
-				effort.setValue(round1(bestAvg));
-				effort.setUnit("watts");
-				effort.setDate(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
-				effort.setActivity(activity);
-				bestEffortRepository.save(effort);
-			}
+			if (bestAvg == null) continue;
+			upsertEffort(activity, athlete, kind, window.label(), round1(bestAvg), "watts");
+			trimToTop(athlete.getId(), kind, window.label(), false);
 		}
 	}
 
 	private void updatePaceBestEfforts(Activity activity, User athlete, List<Double> distanceKmSeries) {
 		for (BestEffortWindows.PaceDistance distance : BestEffortWindows.PACE_BEST_EFFORT_DISTANCES_KM) {
 			Double paceSecPerKm = PaceBestEffortCalculator.bestPaceSecondsPerKm(distanceKmSeries, distance.km());
-			if (paceSecPerKm == null) {
-				continue;
-			}
-			var existing = bestEffortRepository.findByAthleteIdAndKindAndWindow(
-					athlete.getId(), BestEffortKind.RUNNING_PACE, distance.label());
-			if (existing.isEmpty() || paceSecPerKm < existing.get().getValue()) {
-				BestEffort effort = existing.orElseGet(BestEffort::new);
-				effort.setAthlete(athlete);
-				effort.setKind(BestEffortKind.RUNNING_PACE);
-				effort.setWindow(distance.label());
-				effort.setValue(round1(paceSecPerKm));
-				effort.setUnit("sec_per_km");
-				effort.setDate(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
-				effort.setActivity(activity);
-				bestEffortRepository.save(effort);
-			}
+			if (paceSecPerKm == null) continue;
+			upsertEffort(activity, athlete, BestEffortKind.RUNNING_PACE, distance.label(), round1(paceSecPerKm), "sec_per_km");
+			trimToTop(athlete.getId(), BestEffortKind.RUNNING_PACE, distance.label(), true);
+		}
+	}
+
+	/** Upsert the per-activity best for a (kind, window) pair. */
+	private void upsertEffort(Activity activity, User athlete, BestEffortKind kind, String window, double value, String unit) {
+		var existing = bestEffortRepository.findByAthleteIdAndKindAndWindowAndActivityId(
+				athlete.getId(), kind, window, activity.getId());
+		BestEffort effort = existing.orElseGet(BestEffort::new);
+		effort.setAthlete(athlete);
+		effort.setKind(kind);
+		effort.setWindow(window);
+		effort.setValue(value);
+		effort.setUnit(unit);
+		effort.setDate(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
+		effort.setActivity(activity);
+		bestEffortRepository.save(effort);
+	}
+
+	/** Keep only the top-N efforts for a (athlete, kind, window), deleting the rest. */
+	private void trimToTop(String athleteId, BestEffortKind kind, String window, boolean lowerIsBetter) {
+		List<BestEffort> ranked = lowerIsBetter
+				? bestEffortRepository.findByAthleteIdAndKindAndWindowOrderByValueAsc(athleteId, kind, window)
+				: bestEffortRepository.findByAthleteIdAndKindAndWindowOrderByValueDesc(athleteId, kind, window);
+		if (ranked.size() > TOP_N) {
+			bestEffortRepository.deleteAll(ranked.subList(TOP_N, ranked.size()));
 		}
 	}
 

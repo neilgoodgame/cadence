@@ -35,8 +35,8 @@ public class BestEffortController {
 			default -> null;
 		};
 		List<BestEffort> efforts = since != null
-				? bestEffortRepository.findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindow(id, kind, since)
-				: bestEffortRepository.findByAthleteIdAndKindOrderByWindow(id, kind);
+				? bestEffortRepository.findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, since)
+				: bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(id, kind);
 		List<BestEffortResponse> data = efforts.stream()
 				.map(e -> new BestEffortResponse(e.getWindow(), e.getValue(), e.getUnit(), e.getDate(), e.getActivity().getId()))
 				.toList();

@@ -4,7 +4,7 @@ import { listBestEfforts } from "../api/athletes";
 import { listActivities, getActivity } from "../api/activities";
 import { useAuth } from "../auth/AuthContext";
 import { formatDuration, formatPace } from "../lib/format";
-import type { BestEffort, BestEffortPeriod } from "../api/types";
+import type { Activity, BestEffort, BestEffortPeriod } from "../api/types";
 
 // ─── Period config ────────────────────────────────────────────────────────────
 
@@ -36,14 +36,47 @@ function windowToKm(w: string): number {
   return m ? parseFloat(m[1]) : 0;
 }
 
+/** True only for the #1 all-time effort for a given window. */
 function isPR(effort: BestEffort, allTimeEfforts: BestEffort[], lowerIsBetter: boolean): boolean {
-  const best = allTimeEfforts.find((e) => e.window === effort.window);
-  if (!best) return false;
-  return lowerIsBetter ? effort.value <= best.value : effort.value >= best.value;
+  const windowBests = allTimeEfforts.filter((e) => e.window === effort.window);
+  if (!windowBests.length) return false;
+  if (lowerIsBetter) {
+    // API sorts value desc regardless of kind, so min is the true best for pace
+    const best = Math.min(...windowBests.map((e) => e.value));
+    return effort.value <= best;
+  }
+  // Higher is better: API sorts value desc, so first match is the best
+  return effort.value >= windowBests[0].value;
 }
 
 function fmtShortDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function fmtAvgHr(activity: Activity | null): string {
+  return activity?.avg_hr != null ? `${Math.round(activity.avg_hr)} bpm` : "—";
+}
+
+function fmtAvgPower(activity: Activity | null): string {
+  return activity?.avg_power != null ? `${Math.round(activity.avg_power)}w` : "—";
+}
+
+function fmtActivityPace(activity: Activity | null): string {
+  if (!activity?.moving_time || !activity?.distance_km) return "—";
+  return formatPace(activity.moving_time / activity.distance_km);
+}
+
+/** Unique sorted window labels from a list that may have multiple entries per window. */
+function uniqueWindowsSorted(efforts: BestEffort[], sortFn: (a: string, b: string) => number): string[] {
+  const seen = new Set<string>();
+  const windows: string[] = [];
+  for (const e of efforts) {
+    if (!seen.has(e.window)) {
+      seen.add(e.window);
+      windows.push(e.window);
+    }
+  }
+  return windows.sort(sortFn);
 }
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
@@ -104,6 +137,16 @@ function ActivityName({ id }: { id: string }) {
     staleTime: 5 * 60 * 1000,
   });
   return <>{data?.name ?? "—"}</>;
+}
+
+function useActivity(id: string | null): Activity | null {
+  const { data } = useQuery({
+    queryKey: ["activity", id],
+    queryFn: () => getActivity(id!),
+    enabled: !!id,
+    staleTime: 5 * 60 * 1000,
+  });
+  return data ?? null;
 }
 
 function TabBar({
@@ -210,9 +253,214 @@ function EmptyRow({ msg }: { msg: string }) {
   return <div style={{ padding: "20px 18px", color: "var(--ink3)", fontSize: 13 }}>{msg}</div>;
 }
 
+// ─── Running HR (HEART RATE · MAX SUSTAINED) ─────────────────────────────────
+
+const RUN_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr";
+
+function RunHrRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[] }) {
+  const pr = isPR(effort, allTimeEfforts, false);
+  const activity = useActivity(effort.activity_id);
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: RUN_HR_GRID,
+        gap: 8,
+        padding: "11px 18px",
+        borderBottom: "1px solid var(--line)",
+        alignItems: "center",
+      }}
+    >
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <ActivityName id={effort.activity_id} />
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
+        {fmtShortDate(effort.date)}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {effort.window}
+      </span>
+      <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, fontWeight: 700, color: "var(--run,#ec4a26)" }}>
+          {Math.round(effort.value)} bpm
+        </span>
+        {pr && <PrBadge color="var(--run,#ec4a26)" />}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {fmtAvgPower(activity)}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {fmtActivityPace(activity)}
+      </span>
+    </div>
+  );
+}
+
+function RunHrCard({
+  efforts,
+  allTimeEfforts,
+}: {
+  efforts: BestEffort[];
+  allTimeEfforts: BestEffort[];
+}) {
+  const tabs = useMemo(
+    () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToSeconds(a) - windowToSeconds(b)),
+    [allTimeEfforts],
+  );
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
+  const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
+  const windowEfforts = useMemo(() => {
+    const base = efforts.length > 0 ? efforts : allTimeEfforts;
+    return base.filter((e) => e.window === effective);
+  }, [efforts, allTimeEfforts, effective]);
+
+  return (
+    <CardShell
+      title="HEART RATE · MAX SUSTAINED"
+      tabs={
+        tabs.length > 0 ? (
+          <TabBar tabs={tabs} active={effective ?? ""} onChange={(t) => setActiveTab(t)} />
+        ) : undefined
+      }
+    >
+      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Avg HR", "Power", "Pace"]} gridCols={RUN_HR_GRID} />
+      {windowEfforts.length === 0 ? (
+        <EmptyRow msg="No heart rate data for this period." />
+      ) : (
+        windowEfforts.map((e, i) => (
+          <RunHrRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} />
+        ))
+      )}
+    </CardShell>
+  );
+}
+
+// ─── Cycling HR (HEART RATE · MAX SUSTAINED) ─────────────────────────────────
+
+const BIKE_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.55fr";
+
+function BikeHrRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[] }) {
+  const pr = isPR(effort, allTimeEfforts, false);
+  const activity = useActivity(effort.activity_id);
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: BIKE_HR_GRID,
+        gap: 8,
+        padding: "11px 18px",
+        borderBottom: "1px solid var(--line)",
+        alignItems: "center",
+      }}
+    >
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <ActivityName id={effort.activity_id} />
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
+        {fmtShortDate(effort.date)}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {effort.window}
+      </span>
+      <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, fontWeight: 700, color: "var(--bike,#3d7fd6)" }}>
+          {Math.round(effort.value)} bpm
+        </span>
+        {pr && <PrBadge color="var(--bike,#3d7fd6)" />}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {fmtAvgPower(activity)}
+      </span>
+    </div>
+  );
+}
+
+function BikeHrCard({
+  efforts,
+  allTimeEfforts,
+}: {
+  efforts: BestEffort[];
+  allTimeEfforts: BestEffort[];
+}) {
+  const tabs = useMemo(
+    () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToSeconds(a) - windowToSeconds(b)),
+    [allTimeEfforts],
+  );
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
+  const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
+  const windowEfforts = useMemo(() => {
+    const base = efforts.length > 0 ? efforts : allTimeEfforts;
+    return base.filter((e) => e.window === effective);
+  }, [efforts, allTimeEfforts, effective]);
+
+  return (
+    <CardShell
+      title="HEART RATE · MAX SUSTAINED"
+      tabs={
+        tabs.length > 0 ? (
+          <TabBar tabs={tabs} active={effective ?? ""} onChange={(t) => setActiveTab(t)} />
+        ) : undefined
+      }
+    >
+      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Avg HR", "Power"]} gridCols={BIKE_HR_GRID} />
+      {windowEfforts.length === 0 ? (
+        <EmptyRow msg="No heart rate data for this period." />
+      ) : (
+        windowEfforts.map((e, i) => (
+          <BikeHrRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} />
+        ))
+      )}
+    </CardShell>
+  );
+}
+
 // ─── Running Power (POWER · STRYD) ───────────────────────────────────────────
 
-const RUN_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr";
+const RUN_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr";
+
+function RunPowerRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[] }) {
+  const pr = isPR(effort, allTimeEfforts, false);
+  const activity = useActivity(effort.activity_id);
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: RUN_PWR_GRID,
+        gap: 8,
+        padding: "11px 18px",
+        borderBottom: "1px solid var(--line)",
+        alignItems: "center",
+      }}
+    >
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <ActivityName id={effort.activity_id} />
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
+        {fmtShortDate(effort.date)}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {effort.window}
+      </span>
+      <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, fontWeight: 700, color: "var(--run,#ec4a26)" }}>
+          {Math.round(effort.value)}w
+        </span>
+        {pr && <PrBadge color="var(--run,#ec4a26)" />}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {fmtAvgHr(activity)}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {fmtActivityPace(activity)}
+      </span>
+    </div>
+  );
+}
 
 function RunPowerCard({
   efforts,
@@ -224,17 +472,16 @@ function RunPowerCard({
   rCP: number | null;
 }) {
   const tabs = useMemo(
-    () =>
-      [...allTimeEfforts]
-        .sort((a, b) => windowToSeconds(a.window) - windowToSeconds(b.window))
-        .map((e) => e.window),
+    () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToSeconds(a) - windowToSeconds(b)),
     [allTimeEfforts],
   );
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
   const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
-  const effort = efforts.find((e) => e.window === effective) ?? null;
-  const pr = effort ? isPR(effort, allTimeEfforts, false) : false;
+  const windowEfforts = useMemo(() => {
+    const base = efforts.length > 0 ? efforts : allTimeEfforts;
+    return base.filter((e) => e.window === effective);
+  }, [efforts, allTimeEfforts, effective]);
 
   const title = (
     <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -264,55 +511,13 @@ function RunPowerCard({
         ) : undefined
       }
     >
-      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Power"]} gridCols={RUN_PWR_GRID} />
-      {!effort ? (
+      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Power", "Avg HR", "Pace"]} gridCols={RUN_PWR_GRID} />
+      {windowEfforts.length === 0 ? (
         <EmptyRow msg="No running power data for this period." />
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: RUN_PWR_GRID,
-            gap: 8,
-            padding: "11px 18px",
-            borderBottom: "1px solid var(--line)",
-            alignItems: "center",
-          }}
-        >
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
-            1
-          </span>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--ink)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            <ActivityName id={effort.activity_id} />
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
-            {fmtShortDate(effort.date)}
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
-            {effort.window}
-          </span>
-          <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono',monospace",
-                fontSize: 15,
-                fontWeight: 700,
-                color: "var(--run,#ec4a26)",
-              }}
-            >
-              {Math.round(effort.value)}w
-            </span>
-            {pr && <PrBadge color="var(--run,#ec4a26)" />}
-          </span>
-        </div>
+        windowEfforts.map((e, i) => (
+          <RunPowerRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} />
+        ))
       )}
     </CardShell>
   );
@@ -320,7 +525,49 @@ function RunPowerCard({
 
 // ─── Running Pace (BEST TIME · BY DISTANCE) ──────────────────────────────────
 
-const RUN_TIME_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.85fr 0.55fr";
+const RUN_TIME_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.85fr 0.55fr 0.5fr 0.55fr";
+
+function RunPaceRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[] }) {
+  const pr = isPR(effort, allTimeEfforts, true);
+  const activity = useActivity(effort.activity_id);
+  const distKm = windowToKm(effort.window);
+  const totalSec = distKm ? effort.value * distKm : null;
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: RUN_TIME_GRID,
+        gap: 8,
+        padding: "11px 18px",
+        borderBottom: "1px solid var(--line)",
+        alignItems: "center",
+      }}
+    >
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <ActivityName id={effort.activity_id} />
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
+        {fmtShortDate(effort.date)}
+      </span>
+      <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, fontWeight: 700, color: "var(--run,#ec4a26)" }}>
+          {totalSec !== null ? formatDuration(totalSec) : "—"}
+        </span>
+        {pr && <PrBadge color="var(--run,#ec4a26)" />}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {formatPace(effort.value)}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {fmtAvgHr(activity)}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {fmtAvgPower(activity)}
+      </span>
+    </div>
+  );
+}
 
 function RunPaceCard({
   efforts,
@@ -330,19 +577,18 @@ function RunPaceCard({
   allTimeEfforts: BestEffort[];
 }) {
   const tabs = useMemo(
-    () =>
-      [...allTimeEfforts]
-        .sort((a, b) => windowToKm(a.window) - windowToKm(b.window))
-        .map((e) => e.window),
+    () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToKm(a) - windowToKm(b)),
     [allTimeEfforts],
   );
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
   const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
-  const effort = efforts.find((e) => e.window === effective) ?? null;
-  const pr = effort ? isPR(effort, allTimeEfforts, true) : false;
-  const distKm = effective ? windowToKm(effective) : 0;
-  const totalSec = effort && distKm ? effort.value * distKm : null;
+  const windowEfforts = useMemo(() => {
+    const base = efforts.length > 0 ? efforts : allTimeEfforts;
+    // pace is lower-is-better; API returns value asc for pace? No — API always returns value desc.
+    // Re-sort ascending (lower = faster = better rank).
+    return base.filter((e) => e.window === effective).sort((a, b) => a.value - b.value);
+  }, [efforts, allTimeEfforts, effective]);
 
   return (
     <CardShell
@@ -353,146 +599,13 @@ function RunPaceCard({
         ) : undefined
       }
     >
-      <ColHeaders cols={["#", "Activity", "Date", "Time", "Pace"]} gridCols={RUN_TIME_GRID} />
-      {!effort ? (
+      <ColHeaders cols={["#", "Activity", "Date", "Time", "Pace", "Avg HR", "Power"]} gridCols={RUN_TIME_GRID} />
+      {windowEfforts.length === 0 ? (
         <EmptyRow msg="No running pace data for this period." />
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: RUN_TIME_GRID,
-            gap: 8,
-            padding: "11px 18px",
-            borderBottom: "1px solid var(--line)",
-            alignItems: "center",
-          }}
-        >
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
-            1
-          </span>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--ink)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            <ActivityName id={effort.activity_id} />
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
-            {fmtShortDate(effort.date)}
-          </span>
-          <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono',monospace",
-                fontSize: 15,
-                fontWeight: 700,
-                color: "var(--run,#ec4a26)",
-              }}
-            >
-              {totalSec !== null ? formatDuration(totalSec) : "—"}
-            </span>
-            {pr && <PrBadge color="var(--run,#ec4a26)" />}
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
-            {formatPace(effort.value)}
-          </span>
-        </div>
-      )}
-    </CardShell>
-  );
-}
-
-// ─── Heart Rate cards (shared pattern) ───────────────────────────────────────
-
-const HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr";
-
-function HrCard({
-  title,
-  efforts,
-  allTimeEfforts,
-  color,
-}: {
-  title: string;
-  efforts: BestEffort[];
-  allTimeEfforts: BestEffort[];
-  color: string;
-}) {
-  const tabs = useMemo(
-    () =>
-      [...allTimeEfforts]
-        .sort((a, b) => windowToSeconds(a.window) - windowToSeconds(b.window))
-        .map((e) => e.window),
-    [allTimeEfforts],
-  );
-  const [activeTab, setActiveTab] = useState<string | null>(null);
-  const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
-  const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
-  const effort = efforts.find((e) => e.window === effective) ?? null;
-  const pr = effort ? isPR(effort, allTimeEfforts, false) : false;
-
-  return (
-    <CardShell
-      title={title}
-      tabs={
-        tabs.length > 0 ? (
-          <TabBar tabs={tabs} active={effective ?? ""} onChange={(t) => setActiveTab(t)} />
-        ) : undefined
-      }
-    >
-      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Avg HR"]} gridCols={HR_GRID} />
-      {!effort ? (
-        <EmptyRow msg="No heart rate data for this period." />
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: HR_GRID,
-            gap: 8,
-            padding: "11px 18px",
-            borderBottom: "1px solid var(--line)",
-            alignItems: "center",
-          }}
-        >
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
-            1
-          </span>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--ink)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            <ActivityName id={effort.activity_id} />
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
-            {fmtShortDate(effort.date)}
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
-            {effort.window}
-          </span>
-          <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono',monospace",
-                fontSize: 15,
-                fontWeight: 700,
-                color,
-              }}
-            >
-              {Math.round(effort.value)} bpm
-            </span>
-            {pr && <PrBadge color={color} />}
-          </span>
-        </div>
+        windowEfforts.map((e, i) => (
+          <RunPaceRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} />
+        ))
       )}
     </CardShell>
   );
@@ -518,8 +631,19 @@ function PowerCurveCard({
   allTimeEfforts: BestEffort[];
   periodLabel: string;
 }) {
-  const curveEfforts = efforts.length > 0 ? efforts : allTimeEfforts;
+  const base = efforts.length > 0 ? efforts : allTimeEfforts;
   const curveLabel = efforts.length > 0 ? periodLabel : "all time";
+
+  // Deduplicate by window (API may return multiple per window); keep first = best
+  const curveEfforts = useMemo(() => {
+    const seen = new Set<string>();
+    return base.filter((e) => {
+      if (seen.has(e.window)) return false;
+      seen.add(e.window);
+      return true;
+    });
+  }, [base]);
+
   if (!curveEfforts.length) {
     return (
       <div
@@ -614,8 +738,58 @@ function PowerCurveCard({
 
 // ─── Cycling Peak Power (PEAK POWER) ─────────────────────────────────────────
 
-const BIKE_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.45fr";
-const BIKE_PWR_GRID_NO_WKG = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr";
+const BIKE_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.45fr 0.55fr";
+
+function BikePowerRow({
+  effort,
+  rank,
+  allTimeEfforts,
+  weightKg,
+}: {
+  effort: BestEffort;
+  rank: number;
+  allTimeEfforts: BestEffort[];
+  weightKg: number | null;
+}) {
+  const pr = isPR(effort, allTimeEfforts, false);
+  const activity = useActivity(effort.activity_id);
+  const wkg = weightKg ? (effort.value / weightKg).toFixed(1) : "—";
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: BIKE_PWR_GRID,
+        gap: 8,
+        padding: "11px 18px",
+        borderBottom: "1px solid var(--line)",
+        alignItems: "center",
+      }}
+    >
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <ActivityName id={effort.activity_id} />
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
+        {fmtShortDate(effort.date)}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {effort.window}
+      </span>
+      <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, fontWeight: 700, color: "var(--bike,#3d7fd6)" }}>
+          {Math.round(effort.value)}w
+        </span>
+        {pr && <PrBadge color="var(--bike,#3d7fd6)" />}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {wkg}
+      </span>
+      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+        {fmtAvgHr(activity)}
+      </span>
+    </div>
+  );
+}
 
 function BikePowerCard({
   efforts,
@@ -627,20 +801,16 @@ function BikePowerCard({
   weightKg: number | null;
 }) {
   const tabs = useMemo(
-    () =>
-      [...allTimeEfforts]
-        .sort((a, b) => windowToSeconds(a.window) - windowToSeconds(b.window))
-        .map((e) => e.window),
+    () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToSeconds(a) - windowToSeconds(b)),
     [allTimeEfforts],
   );
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
   const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
-  const effort = efforts.find((e) => e.window === effective) ?? null;
-  const pr = effort ? isPR(effort, allTimeEfforts, false) : false;
-  const wkg = effort && weightKg ? (effort.value / weightKg).toFixed(1) : null;
-  const gridCols = wkg ? BIKE_PWR_GRID : BIKE_PWR_GRID_NO_WKG;
-  const headers = wkg ? ["#", "Activity", "Date", "Duration", "Power", "W/kg"] : ["#", "Activity", "Date", "Duration", "Power"];
+  const windowEfforts = useMemo(() => {
+    const base = efforts.length > 0 ? efforts : allTimeEfforts;
+    return base.filter((e) => e.window === effective);
+  }, [efforts, allTimeEfforts, effective]);
 
   return (
     <CardShell
@@ -651,60 +821,13 @@ function BikePowerCard({
         ) : undefined
       }
     >
-      <ColHeaders cols={headers} gridCols={gridCols} />
-      {!effort ? (
+      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Power", "W/kg", "Avg HR"]} gridCols={BIKE_PWR_GRID} />
+      {windowEfforts.length === 0 ? (
         <EmptyRow msg="No cycling power data for this period." />
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: gridCols,
-            gap: 8,
-            padding: "11px 18px",
-            borderBottom: "1px solid var(--line)",
-            alignItems: "center",
-          }}
-        >
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
-            1
-          </span>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--ink)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            <ActivityName id={effort.activity_id} />
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
-            {fmtShortDate(effort.date)}
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
-            {effort.window}
-          </span>
-          <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono',monospace",
-                fontSize: 15,
-                fontWeight: 700,
-                color: "var(--bike,#3d7fd6)",
-              }}
-            >
-              {Math.round(effort.value)}w
-            </span>
-            {pr && <PrBadge color="var(--bike,#3d7fd6)" />}
-          </span>
-          {wkg && (
-            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
-              {wkg}
-            </span>
-          )}
-        </div>
+        windowEfforts.map((e, i) => (
+          <BikePowerRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} weightKg={weightKg} />
+        ))
       )}
     </CardShell>
   );
@@ -925,6 +1048,7 @@ export function BestEffortsScreen() {
   const hasRunPower = runPowerAllEfforts.length > 0;
   const hasBikeHr = bikeHrAllEfforts.length > 0;
 
+  // Count distinct windows that have a PR this period
   const runPrCount = [
     ...runHrEfforts.filter((e) => isPR(e, runHrAllEfforts, false)),
     ...runPowerEfforts.filter((e) => isPR(e, runPowerAllEfforts, false)),
@@ -1000,12 +1124,7 @@ export function BestEffortsScreen() {
           />
 
           {hasRunHr && (
-            <HrCard
-              title="HEART RATE · MAX SUSTAINED"
-              efforts={runHrEfforts}
-              allTimeEfforts={runHrAllEfforts}
-              color="var(--run,#ec4a26)"
-            />
+            <RunHrCard efforts={runHrEfforts} allTimeEfforts={runHrAllEfforts} />
           )}
 
           {hasRunPower && (
@@ -1024,12 +1143,7 @@ export function BestEffortsScreen() {
           />
 
           {hasBikeHr && (
-            <HrCard
-              title="HEART RATE · MAX SUSTAINED"
-              efforts={bikeHrEfforts}
-              allTimeEfforts={bikeHrAllEfforts}
-              color="var(--bike,#3d7fd6)"
-            />
+            <BikeHrCard efforts={bikeHrEfforts} allTimeEfforts={bikeHrAllEfforts} />
           )}
 
           <PowerCurveCard
