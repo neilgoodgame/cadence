@@ -18,6 +18,13 @@ from .parsers.types import Sample
 
 POWER_CURVE_DURATIONS = [5, 15, 30, 60, 300, 600, 1200, 3600]
 HR_CURVE_DURATIONS = [60, 300, 600, 1200, 3600]
+HR_BEST_EFFORT_WINDOWS = [
+    ("1min", 60),
+    ("5min", 300),
+    ("10min", 600),
+    ("20min", 1200),
+    ("60min", 3600),
+]
 POWER_BEST_EFFORT_WINDOWS = [
     ("5s", 5),
     ("15s", 15),
@@ -303,6 +310,29 @@ def _update_power_best_efforts(
             )
 
 
+def _update_hr_best_efforts(activity: Activity, athlete: User, kind: str, hr_series: Sequence[float | None]) -> None:
+    values = [h if h is not None else 0 for h in hr_series]
+    for window_label, seconds in HR_BEST_EFFORT_WINDOWS:
+        if seconds > len(values):
+            continue
+        best_avg = _sliding_window_best_avg(values, seconds)
+        if best_avg is None:
+            continue
+        existing = BestEffort.objects.filter(athlete=athlete, kind=kind, window=window_label).first()
+        if existing is None or best_avg > existing.value:
+            BestEffort.objects.update_or_create(
+                athlete=athlete,
+                kind=kind,
+                window=window_label,
+                defaults={
+                    "value": round(best_avg, 1),
+                    "unit": "bpm",
+                    "date": activity.start_date.date(),
+                    "activity": activity,
+                },
+            )
+
+
 def _update_pace_best_efforts(activity: Activity, athlete: User, distance_km_series: Sequence[float | None]) -> None:
     for label, target_km in PACE_BEST_EFFORT_DISTANCES_KM:
         pace_sec_per_km = _best_pace_seconds_per_km(distance_km_series, target_km)
@@ -328,13 +358,22 @@ def update_best_efforts(
     athlete: User,
     power_series: Sequence[float | None],
     distance_km_series: Sequence[float | None],
+    hr_series: Sequence[float | None] | None = None,
 ) -> None:
-    if activity.sport == "bike" and athlete.ftp:
-        _update_power_best_efforts(activity, athlete, "cycling_power", power_series)
+    if hr_series is None:
+        hr_series = []
+    has_hr = any(h is not None for h in hr_series)
+    if activity.sport == "bike":
+        if athlete.ftp:
+            _update_power_best_efforts(activity, athlete, "cycling_power", power_series)
+        if has_hr:
+            _update_hr_best_efforts(activity, athlete, "cycling_hr", hr_series)
     elif activity.sport == "run":
         if athlete.critical_run_power and any(p for p in power_series):
             _update_power_best_efforts(activity, athlete, "running_power", power_series)
         _update_pace_best_efforts(activity, athlete, distance_km_series)
+        if has_hr:
+            _update_hr_best_efforts(activity, athlete, "running_hr", hr_series)
 
 
 def attempt_workout_match(activity: Activity, athlete: User) -> None:
@@ -517,7 +556,7 @@ def _ingest_activity(
         # multisport workouts exist to match - the parent's legs handle all three instead.
         _write_duration_curves(activity, power_series, hr_series)
         distance_km_series = [s.get("distance_km") for s in samples]
-        update_best_efforts(activity, athlete, power_series, distance_km_series)
+        update_best_efforts(activity, athlete, power_series, distance_km_series, hr_series)
         attempt_workout_match(activity, athlete)
 
     return activity

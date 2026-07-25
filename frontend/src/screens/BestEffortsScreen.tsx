@@ -407,6 +407,97 @@ function RunPaceCard({
   );
 }
 
+// ─── Heart Rate cards (shared pattern) ───────────────────────────────────────
+
+const HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr";
+
+function HrCard({
+  title,
+  efforts,
+  allTimeEfforts,
+  color,
+}: {
+  title: string;
+  efforts: BestEffort[];
+  allTimeEfforts: BestEffort[];
+  color: string;
+}) {
+  const tabs = useMemo(
+    () =>
+      [...allTimeEfforts]
+        .sort((a, b) => windowToSeconds(a.window) - windowToSeconds(b.window))
+        .map((e) => e.window),
+    [allTimeEfforts],
+  );
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
+  const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
+  const effort = efforts.find((e) => e.window === effective) ?? null;
+  const pr = effort ? isPR(effort, allTimeEfforts, false) : false;
+
+  return (
+    <CardShell
+      title={title}
+      tabs={
+        tabs.length > 0 ? (
+          <TabBar tabs={tabs} active={effective ?? ""} onChange={(t) => setActiveTab(t)} />
+        ) : undefined
+      }
+    >
+      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Avg HR"]} gridCols={HR_GRID} />
+      {!effort ? (
+        <EmptyRow msg="No heart rate data for this period." />
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: HR_GRID,
+            gap: 8,
+            padding: "11px 18px",
+            borderBottom: "1px solid var(--line)",
+            alignItems: "center",
+          }}
+        >
+          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
+            1
+          </span>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--ink)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            <ActivityName id={effort.activity_id} />
+          </span>
+          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
+            {fmtShortDate(effort.date)}
+          </span>
+          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
+            {effort.window}
+          </span>
+          <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
+            <span
+              style={{
+                fontFamily: "'JetBrains Mono',monospace",
+                fontSize: 15,
+                fontWeight: 700,
+                color,
+              }}
+            >
+              {Math.round(effort.value)} bpm
+            </span>
+            {pr && <PrBadge color={color} />}
+          </span>
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
 // ─── Cycling power curve ──────────────────────────────────────────────────────
 
 const PDC_TICKS: [number, string][] = [
@@ -808,27 +899,41 @@ export function BestEffortsScreen() {
     enabled: !!athleteId,
   });
 
+  const { data: runHrData } = useQuery(bqOpts("running_hr", apiPeriod));
+  const { data: runHrAll } = useQuery(bqOpts("running_hr", "all"));
   const { data: runPowerData } = useQuery(bqOpts("running_power", apiPeriod));
   const { data: runPowerAll } = useQuery(bqOpts("running_power", "all"));
   const { data: runPaceData } = useQuery(bqOpts("running_pace", apiPeriod));
   const { data: runPaceAll } = useQuery(bqOpts("running_pace", "all"));
+  const { data: bikeHrData } = useQuery(bqOpts("cycling_hr", apiPeriod));
+  const { data: bikeHrAll } = useQuery(bqOpts("cycling_hr", "all"));
   const { data: bikePowerData } = useQuery(bqOpts("cycling_power", apiPeriod));
   const { data: bikePowerAll } = useQuery(bqOpts("cycling_power", "all"));
 
+  const runHrEfforts = runHrData?.data ?? [];
+  const runHrAllEfforts = runHrAll?.data ?? [];
   const runPowerEfforts = runPowerData?.data ?? [];
   const runPowerAllEfforts = runPowerAll?.data ?? [];
   const runPaceEfforts = runPaceData?.data ?? [];
   const runPaceAllEfforts = runPaceAll?.data ?? [];
+  const bikeHrEfforts = bikeHrData?.data ?? [];
+  const bikeHrAllEfforts = bikeHrAll?.data ?? [];
   const bikePowerEfforts = bikePowerData?.data ?? [];
   const bikePowerAllEfforts = bikePowerAll?.data ?? [];
 
+  const hasRunHr = runHrAllEfforts.length > 0;
   const hasRunPower = runPowerAllEfforts.length > 0;
+  const hasBikeHr = bikeHrAllEfforts.length > 0;
 
   const runPrCount = [
+    ...runHrEfforts.filter((e) => isPR(e, runHrAllEfforts, false)),
     ...runPowerEfforts.filter((e) => isPR(e, runPowerAllEfforts, false)),
     ...runPaceEfforts.filter((e) => isPR(e, runPaceAllEfforts, true)),
   ].length;
-  const bikePrCount = bikePowerEfforts.filter((e) => isPR(e, bikePowerAllEfforts, false)).length;
+  const bikePrCount = [
+    ...bikeHrEfforts.filter((e) => isPR(e, bikeHrAllEfforts, false)),
+    ...bikePowerEfforts.filter((e) => isPR(e, bikePowerAllEfforts, false)),
+  ].length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -894,6 +999,15 @@ export function BestEffortsScreen() {
             summary={`${runPrCount} record${runPrCount === 1 ? "" : "s"} standing this period`}
           />
 
+          {hasRunHr && (
+            <HrCard
+              title="HEART RATE · MAX SUSTAINED"
+              efforts={runHrEfforts}
+              allTimeEfforts={runHrAllEfforts}
+              color="var(--run,#ec4a26)"
+            />
+          )}
+
           {hasRunPower && (
             <RunPowerCard efforts={runPowerEfforts} allTimeEfforts={runPowerAllEfforts} rCP={rCP} />
           )}
@@ -908,6 +1022,15 @@ export function BestEffortsScreen() {
             color="var(--bike,#3d7fd6)"
             summary={`${bikePrCount} record${bikePrCount === 1 ? "" : "s"} standing this period`}
           />
+
+          {hasBikeHr && (
+            <HrCard
+              title="HEART RATE · MAX SUSTAINED"
+              efforts={bikeHrEfforts}
+              allTimeEfforts={bikeHrAllEfforts}
+              color="var(--bike,#3d7fd6)"
+            />
+          )}
 
           <PowerCurveCard
             efforts={bikePowerEfforts}

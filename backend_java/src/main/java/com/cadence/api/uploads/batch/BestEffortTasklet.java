@@ -47,9 +47,16 @@ public class BestEffortTasklet implements Tasklet {
 					.orElseThrow(() -> new NotFoundException("No such activity."));
 			User athlete = activity.getAthlete();
 			List<Integer> powerSeries = segment.parsed().samples().stream().map(ParsedActivity.Sample::power).toList();
+			List<Integer> hrSeries = segment.parsed().samples().stream().map(ParsedActivity.Sample::heartrate).toList();
+			boolean hasHr = hrSeries.stream().anyMatch(Objects::nonNull);
 
-			if (activity.getSport() == Sport.BIKE && athlete.getFtp() != null) {
-				updatePowerBestEfforts(activity, athlete, BestEffortKind.CYCLING_POWER, powerSeries);
+			if (activity.getSport() == Sport.BIKE) {
+				if (athlete.getFtp() != null) {
+					updatePowerBestEfforts(activity, athlete, BestEffortKind.CYCLING_POWER, powerSeries);
+				}
+				if (hasHr) {
+					updateHrBestEfforts(activity, athlete, BestEffortKind.CYCLING_HR, hrSeries);
+				}
 			}
 			else if (activity.getSport() == Sport.RUN) {
 				if (athlete.getCriticalRunPower() != null && powerSeries.stream().anyMatch(Objects::nonNull)) {
@@ -58,9 +65,36 @@ public class BestEffortTasklet implements Tasklet {
 				List<Double> distanceKmSeries =
 						segment.parsed().samples().stream().map(ParsedActivity.Sample::distanceKm).toList();
 				updatePaceBestEfforts(activity, athlete, distanceKmSeries);
+				if (hasHr) {
+					updateHrBestEfforts(activity, athlete, BestEffortKind.RUNNING_HR, hrSeries);
+				}
 			}
 		}
 		return RepeatStatus.FINISHED;
+	}
+
+	private void updateHrBestEfforts(Activity activity, User athlete, BestEffortKind kind, List<Integer> hrSeries) {
+		for (BestEffortWindows.PowerWindow window : BestEffortWindows.HR_BEST_EFFORT_WINDOWS) {
+			if (window.seconds() > hrSeries.size()) {
+				continue;
+			}
+			Double bestAvg = DurationCurveCalculator.bestAverage(hrSeries, window.seconds());
+			if (bestAvg == null) {
+				continue;
+			}
+			var existing = bestEffortRepository.findByAthleteIdAndKindAndWindow(athlete.getId(), kind, window.label());
+			if (existing.isEmpty() || bestAvg > existing.get().getValue()) {
+				BestEffort effort = existing.orElseGet(BestEffort::new);
+				effort.setAthlete(athlete);
+				effort.setKind(kind);
+				effort.setWindow(window.label());
+				effort.setValue(round1(bestAvg));
+				effort.setUnit("bpm");
+				effort.setDate(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
+				effort.setActivity(activity);
+				bestEffortRepository.save(effort);
+			}
+		}
 	}
 
 	private void updatePowerBestEfforts(Activity activity, User athlete, BestEffortKind kind, List<Integer> powerSeries) {

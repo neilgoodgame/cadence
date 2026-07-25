@@ -213,7 +213,9 @@ class BestEffort(models.Model):
     """
 
     KIND_CHOICES = [
+        ("cycling_hr", "Cycling heart rate"),
         ("cycling_power", "Cycling power"),
+        ("running_hr", "Running heart rate"),
         ("running_pace", "Running pace"),
         ("running_power", "Running power"),
     ]

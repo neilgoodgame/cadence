@@ -89,7 +89,9 @@ class BestEffortListView(APIView):
 
         kind = request.query_params.get("kind")
         if kind not in dict(BestEffort.KIND_CHOICES):
-            raise ValidationError({"kind": "Must be one of cycling_power, running_pace, running_power."})
+            raise ValidationError(
+                {"kind": "Must be one of cycling_hr, cycling_power, running_hr, running_pace, running_power."}
+            )
 
         period = request.query_params.get("period", "all")
         if period not in ("3m", "1y", "all"):
