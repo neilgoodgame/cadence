@@ -10,6 +10,7 @@ const SPORT_LABELS: Record<Sport, string> = {
   run: "Running",
   swim: "Swimming",
   walk: "Walking",
+  row: "Rowing",
   multisport: "Multisport",
   transition: "Transition",
 };
