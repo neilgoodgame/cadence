@@ -4,7 +4,9 @@ import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.paging.CursorPage;
 import com.cadence.api.security.AccessGuard;
+import java.time.LocalDate;
 import java.util.Map;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,13 +38,15 @@ public class ActivityController {
 			@RequestParam(required = false) String sort,
 			@RequestParam(required = false) Sport sport,
 			@RequestParam(required = false) Environment environment,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate after,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate before,
 			@RequestParam(defaultValue = "50") int limit,
 			@RequestParam(required = false) String cursor) {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		int effectiveLimit = Math.max(1, Math.min(limit, 200));
 		String effectiveQuery = mergeSortIntoQuery(q, sort);
-		return activityService.list(athleteId, effectiveQuery, sport, environment, cursor, effectiveLimit);
+		return activityService.list(athleteId, effectiveQuery, sport, environment, after, before, cursor, effectiveLimit);
 	}
 
 	@GetMapping("/v1/activities/{id}")

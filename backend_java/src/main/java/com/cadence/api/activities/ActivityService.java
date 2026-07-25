@@ -10,6 +10,9 @@ import com.cadence.api.cql.CqlNode;
 import com.cadence.api.cql.CqlParser;
 import com.cadence.api.cql.spec.CqlSpecification;
 import com.cadence.api.workouts.WorkoutService;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import org.springframework.data.domain.Sort;
@@ -70,7 +73,7 @@ public class ActivityService {
 	}
 
 	public CursorPage<ActivityResponse> list(String athleteId, String q, Sport sportFilter, Environment environmentFilter,
-			String cursor, int limit) {
+			LocalDate after, LocalDate before, String cursor, int limit) {
 		// Multisport children are reachable via their parent's child_activity_ids, not the list -
 		// showing legs alongside the parent would present the same session twice. Duplicate
 		// recordings are likewise reachable only via their primary's duplicate_activity_ids.
@@ -101,6 +104,15 @@ public class ActivityService {
 		}
 		if (environmentFilter != null) {
 			spec = spec.and((root, query, cb) -> cb.equal(root.get("environment"), environmentFilter));
+		}
+		if (after != null) {
+			Instant afterInstant = after.atStartOfDay(ZoneOffset.UTC).toInstant();
+			spec = spec.and((root, query, cb) -> cb.greaterThanOrEqualTo(root.get("startDate"), afterInstant));
+		}
+		if (before != null) {
+			// Add one day so 'before' is inclusive of the named date.
+			Instant beforeInstant = before.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+			spec = spec.and((root, query, cb) -> cb.lessThan(root.get("startDate"), beforeInstant));
 		}
 
 		CursorPage<Activity> page = pagination.page(spec, primaryOrder, cursor, limit);
