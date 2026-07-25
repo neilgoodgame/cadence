@@ -11,6 +11,7 @@ from core.auth_context import get_effective_athlete_id
 from core.cql import compile_ast_to_q, parse, resolve_order_by
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
+from uploads.processing import compute_normalized_power, compute_tss
 from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
 from workouts.models import Workout
@@ -131,6 +132,20 @@ class ActivityListView(APIView):
                 raise ValidationError({"environment": f"Unknown environment '{environment}'."})
             qs = qs.filter(environment=environment)
 
+        after = request.query_params.get("after")
+        if after:
+            try:
+                qs = qs.filter(start_date__date__gte=after)
+            except (ValueError, ValidationError) as exc:
+                raise ValidationError({"after": "Expected ISO date (YYYY-MM-DD)."}) from exc
+
+        before = request.query_params.get("before")
+        if before:
+            try:
+                qs = qs.filter(start_date__date__lte=before)
+            except (ValueError, ValidationError) as exc:
+                raise ValidationError({"before": "Expected ISO date (YYYY-MM-DD)."}) from exc
+
         if order_field is None:
             sort_param = request.query_params.get("sort")
             if sort_param:
@@ -236,6 +251,21 @@ class ActivityDetailView(APIView):
             raise PermissionDenied("You do not have write access to that athlete's data.")
         activity.delete()
         return Response(status=204)
+
+
+class RecomputeActivityTssView(APIView):
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        athlete = activity.athlete
+        power_series = list(activity.records.order_by("t").values_list("power", flat=True))
+        hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
+        norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
+        activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
+        activity.save(update_fields=["tss"])
+        return Response(ActivitySerializer(activity).data)
 
 
 class LapListView(APIView):

@@ -122,3 +122,32 @@ class FitnessListView(APIView):
 
         series = compute_fitness_series(id, from_date, to_date)
         return Response({"data": FitnessPointSerializer(series, many=True).data})
+
+
+class RecomputeAthleteTssView(APIView):
+    def post(self, request: Request, id: str) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        athlete = get_object_or_404(User, pk=id)
+
+        from activities.models import Activity
+        from uploads.processing import compute_normalized_power, compute_tss
+
+        candidates = Activity.objects.filter(
+            athlete_id=id,
+            parent_activity__isnull=True,
+        ).exclude(sport__in=("multisport", "transition"))
+
+        updated = 0
+        for activity in candidates:
+            power_series = list(activity.records.order_by("t").values_list("power", flat=True))
+            hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
+            norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
+            new_tss = compute_tss(activity, athlete, norm_power, hr_series)
+            if new_tss != activity.tss:
+                activity.tss = new_tss
+                activity.save(update_fields=["tss"])
+                updated += 1
+
+        return Response({"updated": updated})

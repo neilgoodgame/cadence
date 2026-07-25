@@ -199,6 +199,10 @@ def _power_based_tss(norm_power: float | None, threshold_power: int | None, movi
     if not norm_power or not threshold_power:
         return None
     intensity = norm_power / threshold_power
+    # IF > 1.5 indicates corrupt power data (e.g. Garmin Running Power field overriding
+    # a Stryd developer field in the FIT file, producing physically impossible wattage).
+    if intensity > 1.5:
+        return None
     return round((moving_time_seconds * norm_power * intensity) / (threshold_power * 3600) * 100)
 
 

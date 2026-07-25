@@ -1,6 +1,13 @@
 from django.urls import path
 
-from .views import AthleteDetailView, BestEffortListView, FitnessListView, ZoneSetDetailView, ZoneSetListView
+from .views import (
+    AthleteDetailView,
+    BestEffortListView,
+    FitnessListView,
+    RecomputeAthleteTssView,
+    ZoneSetDetailView,
+    ZoneSetListView,
+)
 
 urlpatterns = [
     path("v1/athletes/<str:id>", AthleteDetailView.as_view(), name="athlete-detail"),
@@ -8,4 +15,5 @@ urlpatterns = [
     path("v1/athletes/<str:id>/zones/<str:type>", ZoneSetDetailView.as_view(), name="athlete-zone-detail"),
     path("v1/athletes/<str:id>/best-efforts", BestEffortListView.as_view(), name="athlete-best-efforts"),
     path("v1/athletes/<str:id>/fitness", FitnessListView.as_view(), name="athlete-fitness"),
+    path("v1/athletes/<str:id>/recompute-tss", RecomputeAthleteTssView.as_view(), name="athlete-recompute-tss"),
 ]
