@@ -245,3 +245,193 @@ Suggested fix: add an optional `retired` boolean query param (omitted = active o
 
 Suggested fix: add optional `role` string to both create and update inputs on both
 backends and in `openapi.yaml`. No migration needed — the column already exists.
+
+---
+
+# Changelog — Dashboard redesign: weekly calendar and 16-week training history
+
+The original Dashboard design centred on a PMC (Performance Management Chart)
+showing fitness/fatigue/form curves. That view has been replaced with two new blocks:
+
+## 1. 7-day week calendar (replaces PMC chart)
+A horizontal strip showing the current week. Each day is a column; any activities on
+that day appear as stacked blocks colour-coded by sport. Each block shows sport label,
+TSS, and duration. Days with no activity are shown as empty columns. The block doubles
+as a link to the activity detail page.
+
+## 2. 16-week training history block
+A bar histogram for the trailing 16 weeks. Each bar represents one week; the metric is
+user-switchable between:
+- **Run distance** (km) — runs only
+- **Run time** (hh:mm) — runs only
+- **Activity time** (hh:mm) — all sports
+- **TSS** — all sports
+
+Above the histogram: a 16-week summary stat row (total distance, total time, total TSS,
+avg weekly TSS). A **"Recompute TSS"** button triggers `POST /v1/athletes/{id}/recompute-tss`
+which walks every eligible activity, recomputes NP from the 1 Hz power stream, and
+persists updated TSS values; the histogram refreshes after completion.
+
+The histogram queries `GET /v1/activities?after=<16-weeks-ago>` to bound the fetch to
+the relevant window.
+
+## Status
+**Implemented** — Java backend (PR #76 / PR #85), Python backend parity (PR #90).
+Frontend: weekly calendar replaces the PMC widget; 16-week block is a new card below.
+
+---
+
+# Changelog — HR zone distribution on dashboard
+
+A new chart on the dashboard showing time spent in each HR zone over the last 30 days.
+Zones are derived from the athlete's HR zone set (LTHR-based, 7 zones). Each zone is
+rendered as a horizontal bar, labelled with zone name and time.
+
+## Status
+**Implemented** — both backends (PR #78). Uses existing zone-set data; no schema change.
+
+---
+
+# Changelog — Races: race calendar and race management
+
+A new `race` entity for planning and tracking goal races. One race may optionally link
+to a completed activity (the athlete's result for that event).
+
+## Schema (`race` table)
+| Column | Type | Notes |
+|---|---|---|
+| `id` | text PK | |
+| `athlete_id` | text FK → user | |
+| `name` | text | event name |
+| `date` | date | event date |
+| `sport` | text | e.g. `run`, `bike` |
+| `distance_km` | numeric | event distance |
+| `goal_time` | interval / seconds | athlete's A-goal |
+| `result_time` | interval / seconds | actual finish time (chip time) |
+| `activity_id` | text FK → activity (unique) | linked result activity |
+| `url` | text | event website |
+| `results_url` | text | results page URL |
+| `notes` | text | free-form notes |
+
+## API endpoints
+- `GET /v1/athletes/{id}/races` — list races (upcoming first by default)
+- `POST /v1/athletes/{id}/races` — create a race
+- `GET /v1/athletes/{id}/races/{race_id}` — fetch one race
+- `PATCH /v1/athletes/{id}/races/{race_id}` — update (including linking a result
+  activity and setting result_time / results_url after the event)
+- `DELETE /v1/athletes/{id}/races/{race_id}` — remove
+
+## Frontend
+- **Next race card** on the Dashboard shows the nearest upcoming race with a goal-time
+  countdown and a link to the race detail.
+- **Race calendar** view (accessible from the Dashboard card) lists all races.
+- **Mark as race** flow: from an activity's action menu, the athlete can attach the
+  activity to an existing race or create a new race entry, setting result_time to the
+  activity's moving time and pre-filling distance from the activity's distance_km.
+- `chip_time` (`result_time`) and `results_url` are editable fields on the race detail.
+
+## Status
+**Implemented** — Java backend (PRs #81–#84), Python backend parity (PR #90).
+Java DB: `race` table. Python DB: `races_race` table (Django default app prefix).
+Walk exclusion from relevant list queries added in PR #79.
+
+---
+
+# Changelog — TSS recompute and IF sanity guard
+
+## 1. IF > 1.5 sanity guard
+When computing power-based TSS, the Intensity Factor (IF = NP / FTP) is checked
+against a 1.5 ceiling. Values above 1.5 indicate corrupt power data — most commonly
+the Garmin Running Power field overwriting a Stryd developer field in the FIT record.
+When IF > 1.5 the power-based TSS calculation is abandoned and the HR-based fallback
+is used instead.
+
+## 2. Per-activity TSS recompute
+`POST /v1/activities/{id}/recompute-tss` — recomputes normalized power from the
+stored 1 Hz power stream, applies the IF guard, recomputes TSS (power-based if valid,
+HR-based fallback), and saves the result. Returns the updated activity object.
+
+## 3. Batch athlete TSS recompute
+`POST /v1/athletes/{id}/recompute-tss` — walks all of the athlete's non-multisport,
+non-transition activities, applies the same recompute logic to each, and returns
+`{"updated": N}` with the count of activities whose TSS value changed.
+
+## Status
+**Implemented** — both backends (PR #86 Java; PR #90 Python parity).
+
+---
+
+# Changelog — TSS histogram fix and CQL search help
+
+## 1. 16-week histogram first-week bug
+The histogram was rendering the first bar (oldest week) as empty. Root cause: the
+`after` date param fence excluded day-boundary activities that fell exactly on the
+cutoff date. Fixed by using `>=` comparison against the ISO date (not the timestamp).
+
+## 2. CQL search help modal
+A "?" button next to the activity search bar opens a help modal documenting the
+supported CQL (Cadence Query Language) syntax: field comparisons, sport values
+(`run · bike · swim · row · multisport`), tag references, logical operators (AND/OR),
+ORDER BY, and example queries.
+
+## Status
+**Implemented** — Java backend + frontend (PRs #87–#88).
+
+---
+
+# Changelog — Rowing sport support
+
+Added `row` as a first-class sport across both backends, the data model, and the frontend.
+
+## Sport value
+`row` is now a valid value wherever `sport` appears: `activity.sport` check constraint,
+CQL `sport=` comparisons, upload batch labels, filter chips on the Activities screen.
+
+## FIT parsing
+Concept2 RowErg (and other ergometers using the FIT `fitness_equipment` / `indoor_rowing`
+sub-sport combination) is mapped to `sport: "row"`. The Garmin FIT SDK now has
+`setInvalidFileDataSize(true)` set before parsing, which allows files from Concept2
+monitors that have a minor FIT header size discrepancy to be parsed successfully
+(without this flag the SDK rejects the file as corrupt).
+
+Disambiguation from BikeErg (same top-level `fitness_equipment` sport but
+`indoor_cycling` sub-sport):
+
+| FIT sport | FIT sub-sport | Cadence sport |
+|---|---|---|
+| `fitness_equipment` | `indoor_rowing` | `row` |
+| `fitness_equipment` | `indoor_cycling` | `bike` |
+| `fitness_equipment` | other / none | `row` (default for fitness equipment) |
+
+## CQL aliases
+`row`, `rows`, `rowing`, `erg` all resolve to `sport = 'row'` in the CQL parser.
+
+## Data-viz
+Sport colour: `#1b8fa8` (teal), CSS custom property `--sport-row`.
+
+## DB migrations
+- Java: Flyway `V26__sport_row.sql` — drops and recreates the `activity_sport_check`
+  constraint to include `'row'`.
+- Python: Django migration `0009_sport_row` — AlterField on `activity.sport`.
+
+## Status
+**Implemented** — Java backend (PR #89), Python backend (PR #89 + PR #90).
+
+---
+
+# Changelog — Python backend parity (PR #90)
+
+Ported three fixes that had landed in the Java backend but were missing from the
+Python backend:
+
+1. **IF > 1.5 sanity guard** — `_power_based_tss()` in `uploads/processing.py` now
+   returns `None` (falling through to HR-based TSS) when IF > 1.5.
+2. **`after` / `before` date params on `GET /v1/activities`** — date-bounded queries
+   used by the 16-week histogram now work on the Python backend. Both params validate
+   to a clean 400 error on bad input.
+3. **Recompute TSS endpoints** — `POST /v1/activities/{id}/recompute-tss` and
+   `POST /v1/athletes/{id}/recompute-tss` added to the Python backend, matching the
+   Java backend behaviour.
+
+## Status
+**Implemented** — Python backend only (PR #90). Java backend already had all three.

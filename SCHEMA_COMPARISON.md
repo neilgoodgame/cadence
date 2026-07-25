@@ -38,6 +38,7 @@ the same logical entity.
 | `upload_batch` | `uploads_uploadbatch` |
 | `webhook` | `webhooks_webhook` |
 | `webhook_delivery` | `webhooks_webhookdelivery` |
+| `race` | `races_race` |
 | `workout` | `workouts_workout` |
 | `workout_step` | `workouts_workoutstep` |
 
@@ -127,6 +128,7 @@ and the matching columns, closing the gap. Both sides are at parity on this feat
 | avg_humidity | integer | integer | same derivation rules as avg_air_temp |
 | avg_power | integer | integer | |
 | bike_id | varchar(40) | varchar(40) | |
+| device | varchar(100) NOT NULL DEFAULT '' | varchar(100) NOT NULL | source device name (e.g. `Garmin`, `Concept2`); populated from FIT `device_info` |
 | distance_km | double precision NOT NULL DEFAULT 0 | double precision NOT NULL | |
 | distance_source | varchar(10) NOT NULL DEFAULT 'gps' | varchar(10) NOT NULL | |
 | end_weight_kg | double precision | double precision | |
@@ -143,7 +145,7 @@ and the matching columns, closing the gap. Both sides are at parity on this feat
 | primary_activity_id | varchar(40) | varchar(40) | marks this activity as a duplicate of another |
 | shoe_id | varchar(40) | varchar(40) | |
 | source | varchar(100) NOT NULL DEFAULT '' | varchar(100) NOT NULL | |
-| sport | varchar(10) NOT NULL | varchar(10) NOT NULL | |
+| sport | varchar(10) NOT NULL | varchar(10) NOT NULL | check constraint: `bike`, `run`, `swim`, `walk`, `row`, `multisport`, `transition` |
 | start_date | timestamptz NOT NULL | timestamptz NOT NULL | |
 | start_weight_kg | double precision | double precision | |
 | training_effect_label | varchar(30) NOT NULL DEFAULT '' | varchar(30) NOT NULL | derived from aerobic_training_effect |
@@ -400,6 +402,26 @@ and the matching columns, closing the gap. Both sides are at parity on this feat
 | repeat | integer NOT NULL DEFAULT 1 | integer NOT NULL | |
 | target_pct | double precision | double precision | |
 | workout_id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
+
+### `race` (Java) vs `races_race` (Python)
+
+Race planning and results tracking. One race may link to a completed activity as its
+result.
+
+| Column | Java | Python | Note |
+|---|---|---|---|
+| activity_id | varchar(40) UNIQUE | varchar(40) UNIQUE | unique FK → activity; null until the race has a result |
+| athlete_id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
+| date | date NOT NULL | date NOT NULL | event date |
+| distance_km | double precision | double precision | event distance |
+| goal_time | integer | integer | athlete's A-goal, stored as seconds |
+| id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
+| name | varchar(200) NOT NULL | varchar(200) NOT NULL | event name |
+| notes | text NOT NULL DEFAULT '' | text NOT NULL | free-form notes |
+| result_time | integer | integer | actual finish (chip) time in seconds; set after the race |
+| results_url | varchar(2048) NOT NULL DEFAULT '' | varchar(2048) NOT NULL | URL to official results page |
+| sport | varchar(10) NOT NULL | varchar(10) NOT NULL | same set as activity.sport |
+| url | varchar(2048) NOT NULL DEFAULT '' | varchar(2048) NOT NULL | event website URL |
 
 ## Structural differences (not just naming)
 
