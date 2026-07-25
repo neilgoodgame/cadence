@@ -23,7 +23,7 @@ export function StatRow({ activity }: { activity: Activity }) {
     mutationFn: () => recomputeActivityTss(activity.id),
     onSuccess: (updated) => {
       queryClient.setQueryData(["activity", activity.id], updated);
-      queryClient.invalidateQueries({ queryKey: ["activities", "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["activities", "training-history"] });
     },
   });
 

@@ -81,7 +81,7 @@ export function TrainingHistory({ activities, athleteId }: { activities: Activit
 
   const recomputeMutation = useMutation({
     mutationFn: () => recomputeTss(athleteId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["activities", "dashboard"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["activities", "training-history"] }),
   });
 
   const today = useMemo(() => new Date(), []);

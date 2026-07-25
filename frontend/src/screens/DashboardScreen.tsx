@@ -21,6 +21,21 @@ function isoDaysAgo(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function historyWindow(): { after: string; before: string } {
+  const today = new Date();
+  const day = today.getDay();
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
+  thisMonday.setHours(0, 0, 0, 0);
+  const after = new Date(thisMonday);
+  after.setDate(thisMonday.getDate() - 112); // 16 weeks back
+  const before = new Date(thisMonday);
+  before.setDate(thisMonday.getDate() - 1);  // last Sunday (inclusive)
+  return { after: after.toISOString().slice(0, 10), before: before.toISOString().slice(0, 10) };
+}
+
+const { after: historyAfter, before: historyBefore } = historyWindow();
+
 export function DashboardScreen() {
   const { user } = useAuth();
 
@@ -40,6 +55,12 @@ export function DashboardScreen() {
     enabled: !!user,
   });
 
+  const historyActivitiesQuery = useQuery({
+    queryKey: ["activities", "training-history", historyAfter],
+    queryFn: () => listActivities({ after: historyAfter, before: historyBefore, limit: 200 }),
+    enabled: !!user,
+  });
+
   const contextsQuery = useQuery({
     queryKey: ["contexts"],
     queryFn: getContexts,
@@ -49,6 +70,7 @@ export function DashboardScreen() {
   const points = fitnessQuery.data?.data ?? [];
 
   const activities = useMemo(() => activitiesQuery.data?.data ?? [], [activitiesQuery.data]);
+  const historyActivities = useMemo(() => historyActivitiesQuery.data?.data ?? [], [historyActivitiesQuery.data]);
 
   const weekTss = useMemo(() => {
     const cutoff = isoDaysAgo(7);
@@ -74,7 +96,7 @@ export function DashboardScreen() {
       </Card>
 
       <Card>
-        <TrainingHistory activities={activities} athleteId={user.id} />
+        <TrainingHistory activities={historyActivities} athleteId={user.id} />
       </Card>
 
       <BestEffortsRow athleteId={user.id} />

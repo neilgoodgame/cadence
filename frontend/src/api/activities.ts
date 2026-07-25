@@ -15,6 +15,8 @@ export interface ListActivitiesParams {
   sort?: string;
   sport?: string;
   environment?: string;
+  after?: string;
+  before?: string;
   limit?: number;
   cursor?: string;
   [key: string]: string | number | undefined;
