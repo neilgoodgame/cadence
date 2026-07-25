@@ -71,6 +71,10 @@ SPORT_VALUES = {
     "swim": "swim",
     "swims": "swim",
     "swimming": "swim",
+    "row": "row",
+    "rows": "row",
+    "rowing": "row",
+    "erg": "row",
 }
 
 UNIT_FIELDS = {

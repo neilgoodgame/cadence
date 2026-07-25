@@ -45,7 +45,8 @@ public final class CqlFieldRegistry {
 			Map.entry("run", "run"), Map.entry("runs", "run"), Map.entry("running", "run"),
 			Map.entry("ride", "bike"), Map.entry("rides", "bike"), Map.entry("bike", "bike"), Map.entry("bikes", "bike"),
 			Map.entry("biking", "bike"), Map.entry("cycling", "bike"), Map.entry("cycle", "bike"),
-			Map.entry("swim", "swim"), Map.entry("swims", "swim"), Map.entry("swimming", "swim"));
+			Map.entry("swim", "swim"), Map.entry("swims", "swim"), Map.entry("swimming", "swim"),
+			Map.entry("row", "row"), Map.entry("rows", "row"), Map.entry("rowing", "row"), Map.entry("erg", "row"));
 
 	public static final Map<String, String> UNIT_FIELDS = Map.ofEntries(
 			Map.entry("bpm", "hr"), Map.entry("km", "distance"), Map.entry("kms", "distance"),

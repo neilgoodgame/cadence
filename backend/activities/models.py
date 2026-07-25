@@ -14,6 +14,7 @@ class Activity(PrefixedIDModel):
         ("run", "Run"),
         ("swim", "Swim"),
         ("walk", "Walk"),
+        ("row", "Row"),
         # Only created by multisport FIT imports: the parent spans the whole file
         # ("multisport") and each leg, transitions included, is a child activity
         # linked via parent_activity.

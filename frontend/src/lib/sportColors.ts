@@ -5,6 +5,7 @@ const SPORT_COLOR_VAR: Record<Sport, string> = {
   run: "var(--sport-run)",
   swim: "var(--sport-swim)",
   walk: "var(--sport-walk)",
+  row: "var(--sport-row)",
   multisport: "var(--sport-multisport)",
   transition: "var(--sport-transition)",
 };
@@ -14,6 +15,7 @@ const SPORT_LABEL: Record<Sport, string> = {
   run: "Run",
   swim: "Swim",
   walk: "Walk",
+  row: "Row",
   multisport: "Multisport",
   transition: "Transition",
 };

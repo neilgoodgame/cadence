@@ -19,6 +19,17 @@ SPORT_MAP = {
     "walking": "walk",
     "hiking": "walk",
     "transition": "transition",
+    # fitness_equipment covers Concept2 ergs and similar; sub_sport distinguishes
+    # the specific activity type (indoor_rowing, indoor_cycling, etc.)
+    "fitness_equipment": "row",
+}
+
+# Sub-sport overrides for cases where the top-level sport is ambiguous.
+# fitness_equipment covers everything from ergs to ski machines; without
+# sub_sport we'd misclassify a Concept2 BikeErg session as rowing.
+SUB_SPORT_MAP = {
+    ("fitness_equipment", "indoor_cycling"): "bike",
+    ("fitness_equipment", "indoor_rowing"): "row",
 }
 
 SEMICIRCLE_TO_DEGREES = 180 / (2**31)
@@ -102,8 +113,10 @@ def _device_name(fit_file: FitFile) -> str:
 
 def _session_meta(message) -> dict:
     raw_sport = str(message.get_value("sport") or "").lower()
+    raw_sub = str(message.get_value("sub_sport") or "").lower()
+    sport = SUB_SPORT_MAP.get((raw_sport, raw_sub)) or SPORT_MAP.get(raw_sport, "bike")
     return {
-        "sport": SPORT_MAP.get(raw_sport, "bike"),
+        "sport": sport,
         "start_time": ensure_utc(message.get_value("start_time")),
         # Garmin's Firstbeat-derived training load, 0.0-5.0. Standard FIT
         # session fields (not developer fields) - only present on Garmin

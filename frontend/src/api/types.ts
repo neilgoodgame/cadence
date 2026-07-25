@@ -75,7 +75,7 @@ export class ApiError extends Error {
 }
 
 /** multisport/transition only occur on activities imported from a multisport FIT file. */
-export type Sport = "bike" | "run" | "swim" | "walk" | "multisport" | "transition";
+export type Sport = "bike" | "run" | "swim" | "walk" | "row" | "multisport" | "transition";
 export type Environment = "outdoor" | "indoor";
 export type DistanceSource = "gps" | "footpod" | "trainer" | "manual";
 export type ZoneType = "heart_rate" | "bike_power" | "run_power" | "pace";

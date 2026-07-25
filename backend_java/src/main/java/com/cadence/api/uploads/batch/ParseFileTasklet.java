@@ -42,6 +42,7 @@ public class ParseFileTasklet implements Tasklet {
 			Sport.RUN, "Run",
 			Sport.SWIM, "Swim",
 			Sport.WALK, "Walk",
+			Sport.ROW, "Row",
 			Sport.MULTISPORT, "Multisport",
 			Sport.TRANSITION, "Transition");
 	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
