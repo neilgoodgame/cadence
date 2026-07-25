@@ -33,7 +33,7 @@ const CQL_EXAMPLES = [
   { q: "tss > 200 orderby tss desc",          desc: "High-stress sessions, hardest first" },
   { q: "distance > 20 sport = run",           desc: "Long runs over 20 km" },
   { q: "power > 260 env = indoor",            desc: "Strong indoor rides" },
-  { q: "name ~ marathon",                     desc: "Activities with "marathon" in the name" },
+  { q: "name ~ marathon",                     desc: 'Activities with "marathon" in the name' },
   { q: "tag race",                            desc: "All tagged as race" },
   { q: "duration > 120 tss < 100",           desc: "Long but low-stress sessions" },
 ];
