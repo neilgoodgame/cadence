@@ -28,7 +28,7 @@ Each design file is a self-contained `.dc.html` prototype. Open any of them in a
 All screens share: a 228px left sidebar (brand + nav + appearance toggle), a sticky top bar (title + actions + notifications bell + profile/Preferences chip + context switcher), and the gradient canvas. Athlete-facing nav: Dashboard, Activities, Analysis, Calendar, Workouts, Import, Gear, Notifications.
 
 - **Login** — split layout; brand panel + auth form. Sign in / Create account tabs; social providers **Strava, Google, Apple**; email/password.
-- **Dashboard** — greeting, stat row, PMC training-load chart, volume bars, time-in-zone distribution, Best efforts (power/HR/pace, selectable over 3 months / 1 year / all-time, includes running power), recent activities. In **coach context**: a "Your athletes" feed (coached athletes' recent activities + compliance) and a context switcher in the top bar.
+- **Dashboard** — greeting, stat row, **7-day week calendar** (activity blocks per day with type colour, TSS, duration; replaces the original PMC chart), **16-week training history block** (bar histogram by week, switchable metric: run distance / run time / activity time / TSS; 16-week summary stats; "Recompute TSS" batch action), weekly volume bars, HR zone distribution, Best efforts (power/HR/pace, selectable over 3 months / 1 year / all-time, includes running power), **next race card** (upcoming race with goal time countdown), recent activities. In **coach context**: a "Your athletes" feed (coached athletes' recent activities + compliance) and a context switcher in the top bar.
 - **Activities** — list with **advanced search** (JQL/CQL-style: field comparisons, AND/OR, ORDER BY, e.g. `runs tagged race and distance > 10km ordered by tss`), sort control, type/tag filter chips, tag chips (manual + auto), indoor badges. Second tab **Best efforts** (cycling mean-maximal power curve + table; running best times & power by distance).
 - **Activity Analysis** — single-activity deep dive. Tabs (Stats / Curves). Route map (outdoor) OR indoor "no GPS" panel; lap table; time-in-zone; power & HR **duration curves** (extend to full length when activity > 60 min); hydration (sweat rate, % weight lost); editable tags; **coach comment thread** (coach/athlete avatars, role badges, composer).
 - **Calendar** — month grid, planned vs completed sessions, vertically aligned day columns, weekly summary column, type/tag filter, **schedule-workout modal** (pick designed workout → drop on day → time of day → assignee).
@@ -58,7 +58,7 @@ The app is fully token-driven via CSS custom properties. Three themes:
 - canvas: `rgba(192,132,252,0.10)` + `rgba(13,148,136,0.12)` over `#f3f6f8`
 - card `#ffffff`, elev `#f2f6f7`, ink `#0e1820`, ink2 `#51606b`, ink3 `#8a97a1`, line `rgba(14,24,32,0.10)`, accent `#0d9488`
 
-**Data-viz palette** (sports & zones): ride `#3d7fd6`, run `#ec4a26`, swim `#2fa66a`, walk `#8b95a1`; zone ramp recovery→neuromuscular grey→blue→green→amber→orange→red→purple; coach `#c084fc`.
+**Data-viz palette** (sports & zones): ride `#3d7fd6`, run `#ec4a26`, swim `#2fa66a`, walk `#8b95a1`, row `#1b8fa8`; zone ramp recovery→neuromuscular grey→blue→green→amber→orange→red→purple; coach `#c084fc`.
 
 **Typography**
 - UI/headings: **Hanken Grotesk** (400–800). Display headings 800, tight letter-spacing (~-0.02em).
