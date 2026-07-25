@@ -25,7 +25,7 @@ const CQL_FIELDS: {
   { label: "Sport",       aliases: ["sport", "type", "discipline"],    type: "text",    values: "run · bike · swim · multisport" },
   { label: "Environment", aliases: ["environment", "env"],             type: "text",    values: "indoor · outdoor" },
   { label: "Name",        aliases: ["name", "title"],                  type: "text" },
-  { label: "Tag",         aliases: ["tag"],                            type: "special", note: "tag <name>  — no operator" },
+  { label: "Tag",         aliases: ["tag"],                            type: "special", note: "tag <name>  — no operator; combine with AND / OR" },
 ];
 
 const CQL_EXAMPLES = [
@@ -35,6 +35,7 @@ const CQL_EXAMPLES = [
   { q: "power > 260 env = indoor",            desc: "Strong indoor rides" },
   { q: "name ~ marathon",                     desc: 'Activities with "marathon" in the name' },
   { q: "tag race",                            desc: "All tagged as race" },
+  { q: "tag race OR tag parkrun",             desc: "Tagged as race or parkrun" },
   { q: "duration > 120 tss < 100",           desc: "Long but low-stress sessions" },
 ];
 
