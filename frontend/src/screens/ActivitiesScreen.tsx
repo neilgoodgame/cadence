@@ -22,7 +22,7 @@ const CQL_FIELDS: {
   { label: "Duration",    aliases: ["duration", "time", "mins"],       type: "numeric", unit: "min" },
   { label: "Power",       aliases: ["power", "watts", "np"],           type: "numeric", unit: "W" },
   { label: "Pace",        aliases: ["pace"],                           type: "numeric", unit: "/km" },
-  { label: "Sport",       aliases: ["sport", "type", "discipline"],    type: "text",    values: "run · bike · swim · multisport" },
+  { label: "Sport",       aliases: ["sport", "type", "discipline"],    type: "text",    values: "run · bike · swim · row · multisport" },
   { label: "Environment", aliases: ["environment", "env"],             type: "text",    values: "indoor · outdoor" },
   { label: "Name",        aliases: ["name", "title"],                  type: "text" },
   { label: "Tag",         aliases: ["tag"],                            type: "special", note: "tag <name>  — no operator; combine with AND / OR" },
@@ -157,6 +157,7 @@ const SPORT_FILTERS: { value: Sport | "all"; label: string }[] = [
   { value: "bike", label: "Ride" },
   { value: "run", label: "Run" },
   { value: "swim", label: "Swim" },
+  { value: "row", label: "Row" },
   { value: "multisport", label: "Multisport" },
 ];
 

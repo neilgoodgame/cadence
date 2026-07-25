@@ -46,6 +46,9 @@ public final class FitFileParser {
 		FileIdMesgListener fileIdListener = fileIds::add;
 
 		Decode decode = new Decode();
+		// Accept files where the header's declared data size doesn't exactly match the stream
+		// length — common with third-party devices (Concept2 ergometers, fitness equipment).
+		decode.setInvalidFileDataSize(true);
 		MesgBroadcaster broadcaster = new MesgBroadcaster(decode);
 		broadcaster.addListener(recordListener);
 		broadcaster.addListener(lapListener);
@@ -63,9 +66,9 @@ public final class FitFileParser {
 				.filter(s -> s.getStartTime() != null)
 				.sorted(Comparator.comparing(s -> s.getStartTime().getDate()))
 				.toList();
-		long sportSessionCount = ordered.stream().filter(s -> mapSport(s.getSport()) != Sport.TRANSITION).count();
+		long sportSessionCount = ordered.stream().filter(s -> mapSport(s.getSport(), s.getSubSport()) != Sport.TRANSITION).count();
 		if (sportSessionCount <= 1) {
-			Sport sport = sessions.isEmpty() ? Sport.BIKE : mapSport(sessions.get(0).getSport());
+			Sport sport = sessions.isEmpty() ? Sport.BIKE : mapSport(sessions.get(0).getSport(), sessions.get(0).getSubSport());
 			return List.of(buildActivity(records, laps, sport, trainingEffects(sessions.isEmpty() ? null : sessions.get(0)), device));
 		}
 
@@ -79,7 +82,7 @@ public final class FitFileParser {
 		// session carries the total for the parent.
 		SessionMesg lastSport = null;
 		for (SessionMesg session : ordered) {
-			if (mapSport(session.getSport()) != Sport.TRANSITION) {
+			if (mapSport(session.getSport(), session.getSubSport()) != Sport.TRANSITION) {
 				lastSport = session;
 			}
 		}
@@ -99,7 +102,7 @@ public final class FitFileParser {
 			List<LapMesg> sliceLaps = laps.stream()
 					.filter(l -> l.getStartTime() != null && inWindow(l.getStartTime().getDate().getTime(), windowStart, windowEnd))
 					.toList();
-			result.add(buildActivity(sliceRecords, sliceLaps, mapSport(session.getSport()), trainingEffects(session), device));
+			result.add(buildActivity(sliceRecords, sliceLaps, mapSport(session.getSport(), session.getSubSport()), trainingEffects(session), device));
 		}
 		return result;
 	}
@@ -278,7 +281,7 @@ public final class FitFileParser {
 		return value != null ? value.intValue() : null;
 	}
 
-	private static Sport mapSport(com.garmin.fit.Sport fitSport) {
+	private static Sport mapSport(com.garmin.fit.Sport fitSport, com.garmin.fit.SubSport subSport) {
 		if (fitSport == com.garmin.fit.Sport.RUNNING) {
 			return Sport.RUN;
 		}
@@ -290,6 +293,10 @@ public final class FitFileParser {
 		}
 		if (fitSport == com.garmin.fit.Sport.TRANSITION) {
 			return Sport.TRANSITION;
+		}
+		if (fitSport == com.garmin.fit.Sport.FITNESS_EQUIPMENT
+				&& subSport == com.garmin.fit.SubSport.INDOOR_ROWING) {
+			return Sport.ROW;
 		}
 		return Sport.BIKE;
 	}

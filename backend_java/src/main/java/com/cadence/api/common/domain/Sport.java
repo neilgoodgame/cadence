@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * child activity linked via {@code parent_activity_id}.
  */
 public enum Sport {
-	BIKE, RUN, SWIM, WALK, MULTISPORT, TRANSITION;
+	BIKE, RUN, SWIM, WALK, ROW, MULTISPORT, TRANSITION;
 
 	@JsonValue
 	public String wireValue() {
