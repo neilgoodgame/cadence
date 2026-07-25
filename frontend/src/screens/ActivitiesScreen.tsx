@@ -44,7 +44,7 @@ function SearchHelpModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 1000,
-        background: "rgba(0,0,0,0.45)",
+        background: "rgba(0,0,0,0.6)",
         display: "flex", alignItems: "flex-start", justifyContent: "center",
         paddingTop: 80, paddingLeft: 16, paddingRight: 16,
       }}
@@ -55,6 +55,7 @@ function SearchHelpModal({ onClose }: { onClose: () => void }) {
           background: "var(--surface)",
           borderRadius: 14,
           border: "1px solid var(--line)",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.35), 0 8px 24px rgba(0,0,0,0.2)",
           padding: "28px 32px",
           width: "100%",
           maxWidth: 640,
