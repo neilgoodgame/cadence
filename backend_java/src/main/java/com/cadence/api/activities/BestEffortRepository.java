@@ -23,4 +23,6 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 			String athleteId, BestEffortKind kind, LocalDate since);
 
 	List<BestEffort> findByAthleteIdAndKindOrderByWindowAscValueDesc(String athleteId, BestEffortKind kind);
+
+	void deleteByAthleteIdAndActivityId(String athleteId, String activityId);
 }

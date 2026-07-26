@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { listBestEfforts } from "../api/athletes";
+import { Link } from "react-router-dom";
+import { listBestEfforts, excludeActivityFromBestEfforts } from "../api/athletes";
 import { listActivities, getActivity } from "../api/activities";
 import { useAuth } from "../auth/AuthContext";
 import { formatDuration, formatPace } from "../lib/format";
@@ -136,7 +137,26 @@ function ActivityName({ id }: { id: string }) {
     queryFn: () => getActivity(id),
     staleTime: 5 * 60 * 1000,
   });
-  return <>{data?.name ?? "—"}</>;
+  return (
+    <Link
+      to={`/activities/${id}`}
+      style={{ color: "inherit", textDecoration: "none" }}
+      onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "underline")}
+      onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "none")}
+    >
+      {data?.name ?? "—"}
+    </Link>
+  );
+}
+
+function useExclude(athleteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (activityId: string) => excludeActivityFromBestEfforts(athleteId, activityId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["best-efforts", athleteId] });
+    },
+  });
 }
 
 function useActivity(id: string | null): Activity | null {
@@ -253,11 +273,38 @@ function EmptyRow({ msg }: { msg: string }) {
   return <div style={{ padding: "20px 18px", color: "var(--ink3)", fontSize: 13 }}>{msg}</div>;
 }
 
+function ExcludeButton({ onExclude, pending }: { onExclude: () => void; pending: boolean }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onExclude}
+      disabled={pending}
+      title="Exclude activity from best efforts"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: "none",
+        border: "none",
+        cursor: pending ? "default" : "pointer",
+        padding: "2px 4px",
+        borderRadius: 4,
+        color: hovered ? "var(--ink2)" : "var(--ink3)",
+        fontSize: 13,
+        lineHeight: 1,
+        opacity: pending ? 0.4 : 1,
+        flexShrink: 0,
+      }}
+    >
+      ✕
+    </button>
+  );
+}
+
 // ─── Running HR (HEART RATE · MAX SUSTAINED) ─────────────────────────────────
 
-const RUN_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr";
+const RUN_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr 24px";
 
-function RunHrRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[] }) {
+function RunHrRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[]; onExclude: (id: string) => void; excludePending: boolean }) {
   const pr = isPR(effort, allTimeEfforts, false);
   const activity = useActivity(effort.activity_id);
   return (
@@ -293,6 +340,7 @@ function RunHrRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: 
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
         {fmtActivityPace(activity)}
       </span>
+      <ExcludeButton onExclude={() => onExclude(effort.activity_id)} pending={excludePending} />
     </div>
   );
 }
@@ -300,9 +348,13 @@ function RunHrRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: 
 function RunHrCard({
   efforts,
   allTimeEfforts,
+  onExclude,
+  excludePending,
 }: {
   efforts: BestEffort[];
   allTimeEfforts: BestEffort[];
+  onExclude: (id: string) => void;
+  excludePending: boolean;
 }) {
   const tabs = useMemo(
     () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToSeconds(a) - windowToSeconds(b)),
@@ -325,12 +377,12 @@ function RunHrCard({
         ) : undefined
       }
     >
-      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Avg HR", "Power", "Pace"]} gridCols={RUN_HR_GRID} />
+      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Avg HR", "Power", "Pace", ""]} gridCols={RUN_HR_GRID} />
       {windowEfforts.length === 0 ? (
         <EmptyRow msg="No heart rate data for this period." />
       ) : (
         windowEfforts.map((e, i) => (
-          <RunHrRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} />
+          <RunHrRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
     </CardShell>
@@ -339,9 +391,9 @@ function RunHrCard({
 
 // ─── Cycling HR (HEART RATE · MAX SUSTAINED) ─────────────────────────────────
 
-const BIKE_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.55fr";
+const BIKE_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.55fr 24px";
 
-function BikeHrRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[] }) {
+function BikeHrRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[]; onExclude: (id: string) => void; excludePending: boolean }) {
   const pr = isPR(effort, allTimeEfforts, false);
   const activity = useActivity(effort.activity_id);
   return (
@@ -374,6 +426,7 @@ function BikeHrRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank:
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
         {fmtAvgPower(activity)}
       </span>
+      <ExcludeButton onExclude={() => onExclude(effort.activity_id)} pending={excludePending} />
     </div>
   );
 }
@@ -381,9 +434,13 @@ function BikeHrRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank:
 function BikeHrCard({
   efforts,
   allTimeEfforts,
+  onExclude,
+  excludePending,
 }: {
   efforts: BestEffort[];
   allTimeEfforts: BestEffort[];
+  onExclude: (id: string) => void;
+  excludePending: boolean;
 }) {
   const tabs = useMemo(
     () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToSeconds(a) - windowToSeconds(b)),
@@ -406,12 +463,12 @@ function BikeHrCard({
         ) : undefined
       }
     >
-      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Avg HR", "Power"]} gridCols={BIKE_HR_GRID} />
+      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Avg HR", "Power", ""]} gridCols={BIKE_HR_GRID} />
       {windowEfforts.length === 0 ? (
         <EmptyRow msg="No heart rate data for this period." />
       ) : (
         windowEfforts.map((e, i) => (
-          <BikeHrRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} />
+          <BikeHrRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
     </CardShell>
@@ -420,9 +477,9 @@ function BikeHrCard({
 
 // ─── Running Power (POWER · STRYD) ───────────────────────────────────────────
 
-const RUN_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr";
+const RUN_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr 24px";
 
-function RunPowerRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[] }) {
+function RunPowerRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[]; onExclude: (id: string) => void; excludePending: boolean }) {
   const pr = isPR(effort, allTimeEfforts, false);
   const activity = useActivity(effort.activity_id);
   return (
@@ -458,6 +515,7 @@ function RunPowerRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; ran
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
         {fmtActivityPace(activity)}
       </span>
+      <ExcludeButton onExclude={() => onExclude(effort.activity_id)} pending={excludePending} />
     </div>
   );
 }
@@ -466,10 +524,14 @@ function RunPowerCard({
   efforts,
   allTimeEfforts,
   rCP,
+  onExclude,
+  excludePending,
 }: {
   efforts: BestEffort[];
   allTimeEfforts: BestEffort[];
   rCP: number | null;
+  onExclude: (id: string) => void;
+  excludePending: boolean;
 }) {
   const tabs = useMemo(
     () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToSeconds(a) - windowToSeconds(b)),
@@ -511,12 +573,12 @@ function RunPowerCard({
         ) : undefined
       }
     >
-      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Power", "Avg HR", "Pace"]} gridCols={RUN_PWR_GRID} />
+      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Power", "Avg HR", "Pace", ""]} gridCols={RUN_PWR_GRID} />
       {windowEfforts.length === 0 ? (
         <EmptyRow msg="No running power data for this period." />
       ) : (
         windowEfforts.map((e, i) => (
-          <RunPowerRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} />
+          <RunPowerRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
     </CardShell>
@@ -525,9 +587,9 @@ function RunPowerCard({
 
 // ─── Running Pace (BEST TIME · BY DISTANCE) ──────────────────────────────────
 
-const RUN_TIME_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.85fr 0.55fr 0.5fr 0.55fr";
+const RUN_TIME_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.85fr 0.55fr 0.5fr 0.55fr 24px";
 
-function RunPaceRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[] }) {
+function RunPaceRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[]; onExclude: (id: string) => void; excludePending: boolean }) {
   const pr = isPR(effort, allTimeEfforts, true);
   const activity = useActivity(effort.activity_id);
   const distKm = windowToKm(effort.window);
@@ -565,6 +627,7 @@ function RunPaceRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
         {fmtAvgPower(activity)}
       </span>
+      <ExcludeButton onExclude={() => onExclude(effort.activity_id)} pending={excludePending} />
     </div>
   );
 }
@@ -572,9 +635,13 @@ function RunPaceRow({ effort, rank, allTimeEfforts }: { effort: BestEffort; rank
 function RunPaceCard({
   efforts,
   allTimeEfforts,
+  onExclude,
+  excludePending,
 }: {
   efforts: BestEffort[];
   allTimeEfforts: BestEffort[];
+  onExclude: (id: string) => void;
+  excludePending: boolean;
 }) {
   const tabs = useMemo(
     () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToKm(a) - windowToKm(b)),
@@ -599,12 +666,12 @@ function RunPaceCard({
         ) : undefined
       }
     >
-      <ColHeaders cols={["#", "Activity", "Date", "Time", "Pace", "Avg HR", "Power"]} gridCols={RUN_TIME_GRID} />
+      <ColHeaders cols={["#", "Activity", "Date", "Time", "Pace", "Avg HR", "Power", ""]} gridCols={RUN_TIME_GRID} />
       {windowEfforts.length === 0 ? (
         <EmptyRow msg="No running pace data for this period." />
       ) : (
         windowEfforts.map((e, i) => (
-          <RunPaceRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} />
+          <RunPaceRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
     </CardShell>
@@ -738,18 +805,22 @@ function PowerCurveCard({
 
 // ─── Cycling Peak Power (PEAK POWER) ─────────────────────────────────────────
 
-const BIKE_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.45fr 0.55fr";
+const BIKE_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.45fr 0.55fr 24px";
 
 function BikePowerRow({
   effort,
   rank,
   allTimeEfforts,
   weightKg,
+  onExclude,
+  excludePending,
 }: {
   effort: BestEffort;
   rank: number;
   allTimeEfforts: BestEffort[];
   weightKg: number | null;
+  onExclude: (id: string) => void;
+  excludePending: boolean;
 }) {
   const pr = isPR(effort, allTimeEfforts, false);
   const activity = useActivity(effort.activity_id);
@@ -787,6 +858,7 @@ function BikePowerRow({
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
         {fmtAvgHr(activity)}
       </span>
+      <ExcludeButton onExclude={() => onExclude(effort.activity_id)} pending={excludePending} />
     </div>
   );
 }
@@ -795,10 +867,14 @@ function BikePowerCard({
   efforts,
   allTimeEfforts,
   weightKg,
+  onExclude,
+  excludePending,
 }: {
   efforts: BestEffort[];
   allTimeEfforts: BestEffort[];
   weightKg: number | null;
+  onExclude: (id: string) => void;
+  excludePending: boolean;
 }) {
   const tabs = useMemo(
     () => uniqueWindowsSorted(allTimeEfforts, (a, b) => windowToSeconds(a) - windowToSeconds(b)),
@@ -821,12 +897,12 @@ function BikePowerCard({
         ) : undefined
       }
     >
-      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Power", "W/kg", "Avg HR"]} gridCols={BIKE_PWR_GRID} />
+      <ColHeaders cols={["#", "Activity", "Date", "Duration", "Power", "W/kg", "Avg HR", ""]} gridCols={BIKE_PWR_GRID} />
       {windowEfforts.length === 0 ? (
         <EmptyRow msg="No cycling power data for this period." />
       ) : (
         windowEfforts.map((e, i) => (
-          <BikePowerRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} weightKg={weightKg} />
+          <BikePowerRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} weightKg={weightKg} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
     </CardShell>
@@ -1015,6 +1091,7 @@ export function BestEffortsScreen() {
   const rCP = user?.critical_run_power ?? null;
   const [displayPeriod, setDisplayPeriod] = useState<DisplayPeriod>("16w");
   const { apiPeriod, label: periodLabel } = PERIOD_CONFIG[displayPeriod];
+  const { mutate: excludeActivity, isPending: excludePending } = useExclude(athleteId);
 
   const bqOpts = (kind: Parameters<typeof listBestEfforts>[1], per: BestEffortPeriod) => ({
     queryKey: ["best-efforts", athleteId, kind, per],
@@ -1124,14 +1201,14 @@ export function BestEffortsScreen() {
           />
 
           {hasRunHr && (
-            <RunHrCard efforts={runHrEfforts} allTimeEfforts={runHrAllEfforts} />
+            <RunHrCard efforts={runHrEfforts} allTimeEfforts={runHrAllEfforts} onExclude={excludeActivity} excludePending={excludePending} />
           )}
 
           {hasRunPower && (
-            <RunPowerCard efforts={runPowerEfforts} allTimeEfforts={runPowerAllEfforts} rCP={rCP} />
+            <RunPowerCard efforts={runPowerEfforts} allTimeEfforts={runPowerAllEfforts} rCP={rCP} onExclude={excludeActivity} excludePending={excludePending} />
           )}
 
-          <RunPaceCard efforts={runPaceEfforts} allTimeEfforts={runPaceAllEfforts} />
+          <RunPaceCard efforts={runPaceEfforts} allTimeEfforts={runPaceAllEfforts} onExclude={excludeActivity} excludePending={excludePending} />
         </div>
 
         {/* Cycling section */}
@@ -1143,7 +1220,7 @@ export function BestEffortsScreen() {
           />
 
           {hasBikeHr && (
-            <BikeHrCard efforts={bikeHrEfforts} allTimeEfforts={bikeHrAllEfforts} />
+            <BikeHrCard efforts={bikeHrEfforts} allTimeEfforts={bikeHrAllEfforts} onExclude={excludeActivity} excludePending={excludePending} />
           )}
 
           <PowerCurveCard
@@ -1156,6 +1233,8 @@ export function BestEffortsScreen() {
             efforts={bikePowerEfforts}
             allTimeEfforts={bikePowerAllEfforts}
             weightKg={weightKg}
+            onExclude={excludeActivity}
+            excludePending={excludePending}
           />
 
           <LongestRidesCard />

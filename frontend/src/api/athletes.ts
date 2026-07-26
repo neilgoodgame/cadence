@@ -29,6 +29,10 @@ export function getFitness(athleteId: string, from?: string, to?: string): Promi
   return apiFetch<DataList<FitnessPoint>>(`/v1/athletes/${athleteId}/fitness${query ? `?${query}` : ""}`);
 }
 
+export function excludeActivityFromBestEfforts(athleteId: string, activityId: string): Promise<void> {
+  return apiFetch(`/v1/athletes/${athleteId}/best-efforts/by-activity/${activityId}`, { method: "DELETE" });
+}
+
 export function listBestEfforts(
   athleteId: string,
   kind: BestEffortKind,
