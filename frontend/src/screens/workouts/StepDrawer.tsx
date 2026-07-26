@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import type { StepEndType, StepKind, Target2Type, TargetType } from "../../api/types";
 import { fmtDuration, isGroup, parseDuration, targetInfo, type Group, type Leaf, type Step } from "./workoutTree";
 
@@ -17,6 +17,25 @@ const fieldStyle: CSSProperties = {
   width: "100%",
 };
 const labelStyle: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--ink3)" };
+
+// A plain `value={fmtDuration(seconds)}` input reformats/re-pads on every keystroke,
+// which resets the cursor to the end mid-edit. Keeping the displayed text as local
+// state (only reformatted on blur, or when `key`-ing this per step id forces a remount
+// on step switch) fixes that while still committing live via onChange as you type.
+function DurationInput({ seconds, onChange }: { seconds: number; onChange: (seconds: number) => void }) {
+  const [text, setText] = useState(() => fmtDuration(seconds));
+  return (
+    <input
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(parseDuration(e.target.value));
+      }}
+      onBlur={() => setText(fmtDuration(seconds))}
+      style={{ ...fieldStyle, fontFamily: "monospace" }}
+    />
+  );
+}
 const rampFromLabel: Record<TargetType, string> = {
   power: "FROM % FTP",
   hr: "FROM % MAX HR",
@@ -158,10 +177,10 @@ function LeafDrawer({ step, onChange, onRemove, onClose }: { step: Leaf; onChang
       {step.end_type === "time" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <label style={labelStyle}>DURATION (HH:MM:SS)</label>
-          <input
-            value={fmtDuration(step.duration || 0)}
-            onChange={(e) => onChange({ ...step, duration: parseDuration(e.target.value) })}
-            style={{ ...fieldStyle, fontFamily: "monospace" }}
+          <DurationInput
+            key={step.id}
+            seconds={step.duration || 0}
+            onChange={(seconds) => onChange({ ...step, duration: seconds })}
           />
         </div>
       )}

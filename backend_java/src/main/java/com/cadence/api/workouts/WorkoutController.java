@@ -41,7 +41,10 @@ public class WorkoutController {
 
 	@GetMapping("/v1/workouts")
 	public DataListResponse<WorkoutResponse> listWorkouts(
-			@RequestParam(required = false) String folderId,
+			// @RequestParam binds by the literal query-string key, unaffected by Jackson's
+			// snake_case body naming strategy - the frontend sends `folder_id`, so this needs
+			// an explicit `value` (the other params are single words, so no mismatch there).
+			@RequestParam(value = "folder_id", required = false) String folderId,
 			@RequestParam(required = false) String tag,
 			@RequestParam(required = false) String sport,
 			@RequestParam(required = false) String search,
