@@ -135,23 +135,29 @@ class Component extends DCLogic {
       ['compliance', 'done/plan'], ['tsb', 'form'], ['flags', 'int'] ] },
 
     { id: 'activity', domain: 'core', note: 'hub', fields: [
-      ['id', 'uuid', 'pk'], ['athlete_id', 'fk', 'fk', 'user'], ['sport', 'bike|run|swim|walk'],
-      ['environment', 'outdoor|indoor'], ['has_gps', 'bool'],
+      ['id', 'uuid', 'pk'], ['athlete_id', 'fk', 'fk', 'user'], ['sport', 'bike|run|swim|walk|row|multi'],
+      ['environment', 'outdoor|indoor'], ['has_gps', 'bool'], ['device', 'text'],
       ['name', 'text'], ['date', 'datetime'], ['source', 'Zwift|Garmin'], ['moving_time', 'sec'],
       ['distance', 'km'], ['distance_src', 'gps|footpod|trainer'], ['avg_power', 'watts'], ['norm_power', 'watts'], ['intensity', 'IF'],
       ['tss', 'int'], ['avg_hr', 'bpm'], ['max_hr', 'bpm'], ['ascent', 'm'],
       ['start_weight', 'kg?'], ['end_weight', 'kg?'], ['fluids', 'ml?'],
       ['avg_air_temp', '°C? ◦'], ['avg_humidity', '%? ◦'],
+      ['aerobic_te', '0-5 ◦'], ['anaerobic_te', '0-5 ◦'], ['te_label', 'text ◦'],
       ['bike_id', 'fk', 'fk', 'bike'], ['shoe_id', 'fk', 'fk', 'shoe'],
-      ['workout_id', 'fk?', 'fk', 'workout'] ] },
+      ['workout_id', 'fk?', 'fk', 'workout'],
+      ['parent_activity_id', 'fk?', 'fk', 'activity'], ['primary_activity_id', 'fk?', 'fk', 'activity'] ] },
     { id: 'lap', domain: 'core', note: 'splits', fields: [
       ['id', 'uuid', 'pk'], ['activity_id', 'fk', 'fk', 'activity'], ['index', 'int'],
       ['duration', 'sec'], ['distance', 'km'], ['avg_hr', 'bpm'], ['avg_power', 'watts'] ] },
     { id: 'record', domain: 'core', note: '1 Hz stream', fields: [
       ['activity_id', 'fk', 'fk', 'activity'], ['t', 'sec'], ['hr', 'bpm'], ['power', 'watts'],
       ['altitude', 'm'], ['distance', 'm'], ['cadence', 'rpm'], ['speed', 'm/s'],
-      ['lr_balance', '%'], ['core_temp', '°C'], ['skin_temp', '°C'], ['heat_strain', 'idx'],
+      ['core_temp', '°C'], ['skin_temp', '°C'], ['heat_strain', 'idx'],
       ['air_temp', '°C'], ['humidity', '%'] ] },
+    { id: 'race', domain: 'core', note: 'goal race', fields: [
+      ['id', 'uuid', 'pk'], ['athlete_id', 'fk', 'fk', 'user'], ['name', 'text'], ['date', 'date'],
+      ['sport', 'run|bike|…'], ['distance', 'km'], ['goal_time', 'sec'], ['result_time', 'sec?'],
+      ['activity_id', 'fk?', 'fk', 'activity'], ['url', 'url'], ['results_url', 'url'], ['notes', 'text'] ] },
     { id: 'duration_curve', domain: 'core', note: 'PDC · HDC', fields: [
       ['activity_id', 'fk', 'fk', 'activity'], ['metric', 'power|hr'],
       ['points', '{dur:best}'], ['extends_to', 'full len'] ] },
@@ -169,8 +175,12 @@ class Component extends DCLogic {
       ['type', 'VO2|Thr|SS|End'], ['duration', 'sec'], ['tss', 'int'] ] },
     { id: 'workout_step', domain: 'planning', note: 'structure', fields: [
       ['id', 'uuid', 'pk'], ['workout_id', 'fk', 'fk', 'workout'], ['order', 'int'],
-      ['kind', 'warmup|block|rec|cool'], ['end_type', 'time|distance|manual'],
-      ['duration', 'sec?'], ['distance', 'm?'], ['target_pct', '%ftp'], ['repeat', 'int'] ] },
+      ['parent_step_id', 'fk? self', 'fk', 'workout_step'],
+      ['kind', 'warmup|block|rec|cool|repeat'], ['end_type', 'time|distance|manual'],
+      ['duration', 'sec?'], ['distance', 'm?'],
+      ['target_type', 'power|hr|pace|cadence|open'], ['target_low', 'num?'], ['target_high', 'num?'],
+      ['target2_type', 'cadence|none'], ['target2_low', 'num?'], ['target2_high', 'num?'],
+      ['repeat', 'int'], ['note', 'text? ◦'] ] },
     { id: 'scheduled_workout', domain: 'planning', note: 'calendar', fields: [
       ['id', 'uuid', 'pk'], ['workout_id', 'fk', 'fk', 'workout'],
       ['athlete_id', 'fk', 'fk', 'user'], ['assigned_by', 'fk', 'fk', 'user'],
@@ -201,6 +211,7 @@ class Component extends DCLogic {
     lap: [2, 0], duration_curve: [1, 2], activity: [2, 2], record: [2, 4],
     tag: [1, 3], scheduled_workout: [3, 3], workout: [4, 2], workout_step: [4, 1],
     bike: [3, 0], component: [4, 0], shoe: [3, 4], shoe_model_version: [4, 3], shoe_model: [4, 4],
+    race: [2, 1],
   };
 
   // edges: [from, to, cardinality, kind('own'|'ref')]
@@ -221,7 +232,10 @@ class Component extends DCLogic {
     ['activity', 'shoe', 'N:1', 'ref'],
     ['activity', 'workout', 'N:1', 'ref'],
     ['best_effort', 'activity', 'N:1', 'ref'],
+    ['user', 'race', '1:N', 'own'],
+    ['race', 'activity', '1:1', 'ref'],
     ['workout', 'workout_step', '1:N', 'own'],
+    ['workout_step', 'workout_step', '1:N', 'own'],
     ['workout', 'scheduled_workout', '1:N', 'own'],
     ['scheduled_workout', 'activity', '1:1', 'ref'],
     ['bike', 'component', '1:N', 'own'],

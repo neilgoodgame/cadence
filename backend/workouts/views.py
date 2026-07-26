@@ -18,6 +18,7 @@ from .serializers import (
     WorkoutMatchSerializer,
     WorkoutSerializer,
     WorkoutUpdateSerializer,
+    clean_step_tree,
 )
 
 MATCH_METHODS = ("auto", "manual", "all")
@@ -45,24 +46,34 @@ def _require_write(request: Request, athlete_id: str) -> None:
         raise PermissionDenied("You do not have write access to that athlete's data.")
 
 
+def _create_steps(workout: Workout, steps_data: list[dict[str, Any]], parent: WorkoutStep | None = None) -> None:
+    for index, step in enumerate(steps_data):
+        row = WorkoutStep.objects.create(
+            workout=workout,
+            parent=parent,
+            order=index,
+            kind=step["kind"],
+            end_type=step.get("end_type"),
+            duration=step.get("duration"),
+            distance=step.get("distance"),
+            target_type=step.get("target_type"),
+            target_low=step.get("target_low"),
+            target_high=step.get("target_high"),
+            target2_type=step.get("target2_type") or "none",
+            target2_low=step.get("target2_low"),
+            target2_high=step.get("target2_high"),
+            repeat=step.get("repeat") or 1,
+            note=step.get("note") or "",
+        )
+        if step["kind"] == "repeat":
+            _create_steps(workout, step.get("children") or [], parent=row)
+
+
 def _replace_steps(workout: Workout, steps_data: list[dict[str, Any]]) -> None:
+    cleaned = clean_step_tree(steps_data)
     workout.steps.all().delete()
-    WorkoutStep.objects.bulk_create(
-        [
-            WorkoutStep(
-                workout=workout,
-                order=index,
-                kind=step["kind"],
-                end_type=step["end_type"],
-                duration=step.get("duration"),
-                distance=step.get("distance"),
-                target_pct=step.get("target_pct"),
-                repeat=step.get("repeat") or 1,
-            )
-            for index, step in enumerate(steps_data)
-        ]
-    )
-    duration, tss = compute_duration_and_tss(steps_data)
+    _create_steps(workout, cleaned)
+    duration, tss = compute_duration_and_tss(cleaned)
     workout.duration = duration
     workout.tss = tss
     workout.save(update_fields=["duration", "tss"])

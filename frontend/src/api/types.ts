@@ -344,15 +344,31 @@ export interface Shoe {
 export type WorkoutSport = "bike" | "run";
 export type StepKind = "warmup" | "block" | "rec" | "cool";
 export type StepEndType = "time" | "distance" | "manual";
+export type TargetType = "power" | "hr" | "pace" | "cadence" | "open";
+export type Target2Type = "cadence" | "none";
 
-export interface WorkoutStep {
+export interface LeafStep {
   kind: StepKind;
   end_type: StepEndType;
   duration: number | null;
   distance: number | null;
-  target_pct: number;
-  repeat: number;
+  target_type: TargetType;
+  target_low: number | null;
+  target_high: number | null;
+  target2_type: Target2Type;
+  target2_low: number | null;
+  target2_high: number | null;
+  note: string;
 }
+
+export interface RepeatGroup {
+  kind: "repeat";
+  repeat: number;
+  note: string;
+  children: WorkoutStep[];
+}
+
+export type WorkoutStep = LeafStep | RepeatGroup;
 
 export interface Workout {
   id: string;

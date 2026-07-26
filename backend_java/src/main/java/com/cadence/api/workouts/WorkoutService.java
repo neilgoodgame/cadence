@@ -72,21 +72,43 @@ public class WorkoutService {
 
 	private void applySteps(Workout workout, List<WorkoutStepDto> stepDtos) {
 		workout.getSteps().clear();
+		addSteps(workout, stepDtos, null);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(stepDtos);
+		workout.setDuration(result.durationSeconds());
+		workout.setTss(result.tss());
+	}
+
+	/**
+	 * Builds {@link WorkoutStep} entities bottom-up from the nested DTO tree, wiring
+	 * {@code parentStep} via the in-memory object reference rather than a raw FK id, and
+	 * adding every entity - leaves and groups, any depth - into the flat {@code workout.steps}
+	 * collection. {@code cascade = CascadeType.ALL} on that collection persists the whole
+	 * graph on save; Hibernate resolves FK insert ordering (parent row before its children)
+	 * from the object graph at flush time.
+	 */
+	private void addSteps(Workout workout, List<WorkoutStepDto> stepDtos, WorkoutStep parent) {
 		int order = 0;
 		for (WorkoutStepDto dto : stepDtos) {
 			WorkoutStep step = new WorkoutStep();
 			step.setWorkout(workout);
+			step.setParentStep(parent);
 			step.setOrder(order++);
 			step.setKind(dto.kind());
 			step.setEndType(dto.endType());
 			step.setDuration(dto.duration());
 			step.setDistance(dto.distance());
-			step.setTargetPct(dto.targetPct());
+			step.setTargetType(dto.targetType());
+			step.setTargetLow(dto.targetLow());
+			step.setTargetHigh(dto.targetHigh());
+			step.setTarget2Type(dto.target2Type() != null ? dto.target2Type() : Target2Type.NONE);
+			step.setTarget2Low(dto.target2Low());
+			step.setTarget2High(dto.target2High());
 			step.setRepeat(dto.repeat() != null ? dto.repeat() : 1);
+			step.setNote(dto.note() != null ? dto.note() : "");
 			workout.getSteps().add(step);
+			if (dto.kind() == StepKind.REPEAT) {
+				addSteps(workout, dto.children(), step);
+			}
 		}
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(stepDtos);
-		workout.setDuration(result.durationSeconds());
-		workout.setTss(result.tss());
 	}
 }

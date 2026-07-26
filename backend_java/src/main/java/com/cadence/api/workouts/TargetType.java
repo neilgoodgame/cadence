@@ -3,8 +3,8 @@ package com.cadence.api.workouts;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
-public enum StepKind {
-	WARMUP, BLOCK, REC, COOL, REPEAT;
+public enum TargetType {
+	POWER, HR, PACE, CADENCE, OPEN;
 
 	@JsonValue
 	public String wireValue() {
@@ -12,7 +12,7 @@ public enum StepKind {
 	}
 
 	@JsonCreator
-	public static StepKind fromWireValue(String value) {
-		return StepKind.valueOf(value.toUpperCase());
+	public static TargetType fromWireValue(String value) {
+		return TargetType.valueOf(value.toUpperCase());
 	}
 }

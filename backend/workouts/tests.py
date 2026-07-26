@@ -28,25 +28,106 @@ def _delegated_client(sub, athlete_id, scopes):
 
 
 class ComputeDurationAndTssTests(TestCase):
-    def test_worked_example(self):
-        steps = [{"end_type": "time", "duration": 300, "target_pct": 100, "repeat": 4}]
+    def test_worked_example_repeat_group(self):
+        steps = [
+            {
+                "kind": "repeat",
+                "repeat": 4,
+                "children": [
+                    {
+                        "kind": "block",
+                        "end_type": "time",
+                        "duration": 300,
+                        "target_type": "power",
+                        "target_low": 100,
+                        "target_high": 100,
+                    }
+                ],
+            }
+        ]
         duration, tss = compute_duration_and_tss(steps)
         self.assertEqual(duration, 1200)
         self.assertEqual(tss, 33)
 
-    def test_distance_and_manual_steps_contribute_zero(self):
+    def test_distance_and_manual_steps_contribute_zero_duration(self):
         steps = [
-            {"end_type": "distance", "distance": 5000, "repeat": 1},
-            {"end_type": "manual", "repeat": 1},
+            {
+                "kind": "block",
+                "end_type": "distance",
+                "distance": 5000,
+                "target_type": "power",
+                "target_low": 100,
+                "target_high": 100,
+            },
+            {"kind": "block", "end_type": "manual", "target_type": "open"},
         ]
         duration, tss = compute_duration_and_tss(steps)
         self.assertEqual(duration, 0)
         self.assertEqual(tss, 0)
 
-    def test_missing_repeat_defaults_to_one(self):
-        steps = [{"end_type": "time", "duration": 60, "target_pct": 50}]
-        duration, tss = compute_duration_and_tss(steps)
+    def test_flat_leaf_step(self):
+        steps = [
+            {
+                "kind": "block",
+                "end_type": "time",
+                "duration": 60,
+                "target_type": "power",
+                "target_low": 50,
+                "target_high": 50,
+            }
+        ]
+        duration, _tss = compute_duration_and_tss(steps)
         self.assertEqual(duration, 60)
+
+    def test_ramp_uses_low_high_midpoint(self):
+        steps = [
+            {
+                "kind": "block",
+                "end_type": "time",
+                "duration": 3600,
+                "target_type": "power",
+                "target_low": 50,
+                "target_high": 70,
+            }
+        ]
+        duration, tss = compute_duration_and_tss(steps)
+        self.assertEqual(duration, 3600)
+        self.assertEqual(tss, 36)  # midpoint 60% FTP -> (60/100)^2 * 100
+
+    def test_nested_repeat_groups_multiply_and_sum(self):
+        steps = [
+            {
+                "kind": "repeat",
+                "repeat": 2,
+                "children": [
+                    {
+                        "kind": "repeat",
+                        "repeat": 4,
+                        "children": [
+                            {
+                                "kind": "block",
+                                "end_type": "time",
+                                "duration": 240,
+                                "target_type": "power",
+                                "target_low": 100,
+                                "target_high": 100,
+                            }
+                        ],
+                    },
+                    {
+                        "kind": "rec",
+                        "end_type": "time",
+                        "duration": 200,
+                        "target_type": "power",
+                        "target_low": 50,
+                        "target_high": 50,
+                    },
+                ],
+            }
+        ]
+        duration, tss = compute_duration_and_tss(steps)
+        self.assertEqual(duration, 2 * (4 * 240 + 200))
+        self.assertEqual(tss, 56)
 
 
 @workouts_urlconf
@@ -60,9 +141,36 @@ class WorkoutViewTests(TestCase):
             "name": "VO2 Max 5x5",
             "sport": "bike",
             "steps": [
-                {"kind": "warmup", "end_type": "time", "duration": 600, "target_pct": 50, "repeat": 1},
-                {"kind": "block", "end_type": "time", "duration": 300, "target_pct": 100, "repeat": 4},
-                {"kind": "cool", "end_type": "time", "duration": 300, "target_pct": 40, "repeat": 1},
+                {
+                    "kind": "warmup",
+                    "end_type": "time",
+                    "duration": 600,
+                    "target_type": "power",
+                    "target_low": 50,
+                    "target_high": 50,
+                },
+                {
+                    "kind": "repeat",
+                    "repeat": 4,
+                    "children": [
+                        {
+                            "kind": "block",
+                            "end_type": "time",
+                            "duration": 300,
+                            "target_type": "power",
+                            "target_low": 100,
+                            "target_high": 100,
+                        }
+                    ],
+                },
+                {
+                    "kind": "cool",
+                    "end_type": "time",
+                    "duration": 300,
+                    "target_type": "power",
+                    "target_low": 40,
+                    "target_high": 40,
+                },
             ],
         }
         payload.update(overrides)
@@ -78,13 +186,29 @@ class WorkoutViewTests(TestCase):
         self.assertEqual(data["type"], "")
         workout = Workout.objects.get(pk=data["id"])
         self.assertEqual(workout.created_by_id, self.athlete.id)
-        self.assertEqual(workout.steps.count(), 3)
+        # warmup + repeat group + its 1 child + cool = 4 rows
+        self.assertEqual(workout.steps.count(), 4)
 
     def test_create_uses_worked_example_for_duration_and_tss(self):
         payload = {
             "name": "Single block",
             "sport": "bike",
-            "steps": [{"kind": "block", "end_type": "time", "duration": 300, "target_pct": 100, "repeat": 4}],
+            "steps": [
+                {
+                    "kind": "repeat",
+                    "repeat": 4,
+                    "children": [
+                        {
+                            "kind": "block",
+                            "end_type": "time",
+                            "duration": 300,
+                            "target_type": "power",
+                            "target_low": 100,
+                            "target_high": 100,
+                        }
+                    ],
+                }
+            ],
         }
         response = _bearer_client(self.athlete).post("/v1/workouts", payload, format="json")
         self.assertEqual(response.status_code, 201)
@@ -100,12 +224,23 @@ class WorkoutViewTests(TestCase):
         self.assertEqual(data["tss"], 0)
 
     def test_time_step_missing_duration_is_rejected(self):
-        payload = self._create_payload(steps=[{"kind": "block", "end_type": "time", "target_pct": 100, "repeat": 1}])
+        payload = self._create_payload(
+            steps=[{"kind": "block", "end_type": "time", "target_type": "power", "target_low": 100, "target_high": 100}]
+        )
         response = _bearer_client(self.athlete).post("/v1/workouts", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_distance_step_missing_distance_is_rejected(self):
-        payload = self._create_payload(steps=[{"kind": "block", "end_type": "distance", "repeat": 1}])
+        payload = self._create_payload(
+            steps=[
+                {"kind": "block", "end_type": "distance", "target_type": "power", "target_low": 100, "target_high": 100}
+            ]
+        )
+        response = _bearer_client(self.athlete).post("/v1/workouts", payload, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_repeat_group_without_children_is_rejected(self):
+        payload = self._create_payload(steps=[{"kind": "repeat", "repeat": 3, "children": []}])
         response = _bearer_client(self.athlete).post("/v1/workouts", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
@@ -122,14 +257,17 @@ class WorkoutViewTests(TestCase):
         self.assertEqual(data[0]["name"], "VO2 Max 5x5")
         self.assertNotIn("steps", data[0])
 
-    def test_get_detail_returns_ordered_steps(self):
+    def test_get_detail_returns_ordered_nested_steps(self):
         create_response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         workout_id = create_response.json()["id"]
 
         response = _bearer_client(self.athlete).get(f"/v1/workouts/{workout_id}")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual([s["kind"] for s in data["steps"]], ["warmup", "block", "cool"])
+        self.assertEqual([s["kind"] for s in data["steps"]], ["warmup", "repeat", "cool"])
+        repeat_group = data["steps"][1]
+        self.assertEqual(repeat_group["repeat"], 4)
+        self.assertEqual([c["kind"] for c in repeat_group["children"]], ["block"])
 
     def test_get_missing_workout_is_404(self):
         response = _bearer_client(self.athlete).get("/v1/workouts/wkt_doesnotexist")
@@ -152,7 +290,22 @@ class WorkoutViewTests(TestCase):
         create_response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
         workout_id = create_response.json()["id"]
 
-        new_steps = [{"kind": "block", "end_type": "time", "duration": 300, "target_pct": 100, "repeat": 4}]
+        new_steps = [
+            {
+                "kind": "repeat",
+                "repeat": 4,
+                "children": [
+                    {
+                        "kind": "block",
+                        "end_type": "time",
+                        "duration": 300,
+                        "target_type": "power",
+                        "target_low": 100,
+                        "target_high": 100,
+                    }
+                ],
+            }
+        ]
         response = _bearer_client(self.athlete).patch(f"/v1/workouts/{workout_id}", {"steps": new_steps}, format="json")
         self.assertEqual(response.status_code, 200)
         data = response.json()

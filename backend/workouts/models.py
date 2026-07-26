@@ -32,8 +32,14 @@ class Workout(PrefixedIDModel):
 
 class WorkoutStep(models.Model):
     """Not fetched by its own id, so it uses a plain BigAutoField per the
-    core.models.PrefixedIDModel convention. `order` makes the ordered `steps`
-    array on the workout detail response reconstructable.
+    core.models.PrefixedIDModel convention. `order` (scoped to `parent`, or to
+    `workout` for top-level steps) makes the nested `steps` tree on the workout
+    detail response reconstructable.
+
+    A step is either a leaf (`kind` in warmup/block/rec/cool — has an
+    `end_type`/`duration`/`distance` and a target) or a `repeat` group (has
+    `repeat` and owns child rows via `parent`, which may themselves be nested
+    `repeat` groups). See the CHECK constraint below for the exact split.
     """
 
     KIND_CHOICES = [
@@ -41,24 +47,60 @@ class WorkoutStep(models.Model):
         ("block", "Block"),
         ("rec", "Recovery"),
         ("cool", "Cooldown"),
+        ("repeat", "Repeat"),
     ]
     END_TYPE_CHOICES = [
         ("time", "Time"),
         ("distance", "Distance"),
         ("manual", "Manual"),
     ]
+    TARGET_TYPE_CHOICES = [
+        ("power", "Power"),
+        ("hr", "Heart rate"),
+        ("pace", "Pace"),
+        ("cadence", "Cadence"),
+        ("open", "Open"),
+    ]
+    TARGET2_TYPE_CHOICES = [
+        ("cadence", "Cadence"),
+        ("none", "None"),
+    ]
 
     workout = models.ForeignKey(Workout, on_delete=models.CASCADE, related_name="steps")
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="children")
     order = models.IntegerField(default=0)
     kind = models.CharField(max_length=10, choices=KIND_CHOICES)
-    end_type = models.CharField(max_length=10, choices=END_TYPE_CHOICES)
+    # blank (not null) for `repeat` rows — see repeat_step_has_no_leaf_fields below.
+    end_type = models.CharField(max_length=10, choices=END_TYPE_CHOICES, blank=True, default="")
     duration = models.IntegerField(null=True, blank=True)
     distance = models.IntegerField(null=True, blank=True)
-    target_pct = models.FloatField(null=True, blank=True)
+    target_type = models.CharField(max_length=10, choices=TARGET_TYPE_CHOICES, blank=True, default="")
+    target_low = models.FloatField(null=True, blank=True)
+    target_high = models.FloatField(null=True, blank=True)
+    target2_type = models.CharField(max_length=10, choices=TARGET2_TYPE_CHOICES, default="none")
+    target2_low = models.FloatField(null=True, blank=True)
+    target2_high = models.FloatField(null=True, blank=True)
     repeat = models.IntegerField(default=1)
+    note = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(fields=["workout", "parent", "order"], name="unique_step_order_per_parent"),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        kind="repeat",
+                        end_type="",
+                        duration__isnull=True,
+                        distance__isnull=True,
+                        target_type="",
+                    )
+                    | ~models.Q(kind="repeat")
+                ),
+                name="repeat_step_has_no_leaf_fields",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.workout_id} step {self.order} ({self.kind})"

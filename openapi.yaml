@@ -754,7 +754,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [cycling_hr, cycling_power, running_hr, running_pace, running_power]
+            enum: [cycling_power, running_pace, running_power]
         - name: period
           in: query
           schema:
@@ -869,9 +869,13 @@ paths:
       summary: Create a workout
       operationId: createWorkout
       description: >
-        Creates a structured workout. Each step declares an `end_type` of `time`,
-        `distance`, or `manual` (athlete taps lap to advance); `duration` or
-        `distance` is set accordingly.
+        Creates a structured workout. Each leaf step declares an `end_type` of
+        `time`, `distance`, or `manual` (athlete taps lap to advance); `duration`
+        or `distance` is set accordingly, along with a `target_type`
+        (power/hr/pace/cadence/open) and `target_low`/`target_high` (equal for a
+        flat target, different for a ramp), plus an optional `target2_type`
+        cadence constraint. A `repeat` step instead sets `repeat` and `children`
+        — children may themselves be nested `repeat` groups.
       requestBody:
         required: true
         content:
@@ -2387,19 +2391,38 @@ components:
 
     WorkoutStep:
       type: object
-      required: [kind, end_type]
+      required: [kind]
+      description: >
+        A leaf step (`warmup`/`block`/`rec`/`cool`) or a `repeat` group. Groups
+        carry `repeat` and `children` instead of an end condition or target;
+        a group's `children` may themselves include nested `repeat` groups
+        (e.g. 2× of [4×4min @280W, 4min recovery] + 5min recovery).
       properties:
-        kind: { type: string, enum: [warmup, block, rec, cool] }
+        kind: { type: string, enum: [warmup, block, rec, cool, repeat] }
         end_type:
           type: string
           enum: [time, distance, manual]
           description: >
-            How the step ends. `time` requires `duration`; `distance` requires
-            `distance`; `manual` advances when the athlete taps lap.
+            How the step ends. Required for leaf kinds; omit for `repeat`.
+            `time` requires `duration`; `distance` requires `distance`;
+            `manual` advances when the athlete taps lap.
         duration: { type: [integer, "null"], description: Seconds; required when end_type is time. }
         distance: { type: [integer, "null"], description: Metres; required when end_type is distance. }
-        target_pct: { type: number, description: Target as % of threshold. }
-        repeat: { type: integer, default: 1 }
+        target_type:
+          type: string
+          enum: [power, hr, pace, cadence, open]
+          description: Primary target dimension for a leaf step. `open` = no target (manual lap).
+        target_low: { type: [number, "null"], description: "Zone floor, or ramp start if target_high differs. Unit follows target_type: %FTP, %max HR, %threshold pace, or rpm." }
+        target_high: { type: [number, "null"], description: Zone ceiling, or ramp end. Equal to target_low for a flat (non-ramping) target. }
+        target2_type: { type: string, enum: [cadence, none], default: none, description: Optional secondary constraint alongside target_type. }
+        target2_low: { type: [number, "null"], description: rpm, when target2_type=cadence. }
+        target2_high: { type: [number, "null"], description: rpm, when target2_type=cadence. }
+        repeat: { type: integer, default: 1, description: Reps of `children`; only meaningful when kind=repeat. }
+        note: { type: [string, "null"], description: Coach cue shown on-device during this step. }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/WorkoutStep" }
+          description: Present only when kind=repeat. May contain leaf steps and/or nested repeat groups.
 
     ScheduledWorkout:
       type: object

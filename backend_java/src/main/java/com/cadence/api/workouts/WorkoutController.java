@@ -60,7 +60,7 @@ public class WorkoutController {
 	public WorkoutDetailResponse getWorkout(@PathVariable String id) {
 		Workout workout = workoutService.getWorkoutWithSteps(id);
 		accessGuard.requireRead(workout.getCreatedBy().getId());
-		var steps = workout.getSteps().stream().map(workoutMapper::toDto).toList();
+		var steps = workoutMapper.toStepTree(workout.getSteps());
 		return new WorkoutDetailResponse(workoutMapper.toResponse(workout), steps);
 	}
 
