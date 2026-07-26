@@ -10,7 +10,12 @@ export function nextId(): string {
   return `s${uid++}`;
 }
 
-export function isGroup(step: WorkoutStep): step is RepeatGroup {
+// Generic (rather than a fixed `step is RepeatGroup` predicate) so it narrows
+// correctly for whichever union it's called with: a client-side `Step` narrows to
+// `Group` (children: Step[]), a plain wire-shape `WorkoutStep` narrows to
+// `RepeatGroup` (children: WorkoutStep[]) - and, unlike an overloaded signature,
+// the `!isGroup(step)` else-branch narrows correctly too (to `Leaf`/`LeafStep`).
+export function isGroup<T extends { kind: string }>(step: T): step is Extract<T, { kind: "repeat" }> {
   return step.kind === "repeat";
 }
 
@@ -22,9 +27,14 @@ export function isGroup(step: WorkoutStep): step is RepeatGroup {
 export interface WithId {
   id: string;
 }
-export type Step = WorkoutStep & WithId;
 export type Leaf = LeafStep & WithId;
-export type Group = RepeatGroup & WithId & { children: Step[] };
+// `Step`'s recursive union has to be built from `Leaf`/`Group` directly (not
+// `WorkoutStep & WithId`) so its "repeat" branch's `children` is `Step[]` - if it
+// were derived from `WorkoutStep`, the repeat branch would just be `RepeatGroup &
+// WithId`, whose `children: WorkoutStep[]` doesn't carry ids, breaking `isGroup`'s
+// narrowing (and every recursive helper below that reads `.children` off a Group).
+export type Group = Omit<RepeatGroup, "children"> & WithId & { children: Step[] };
+export type Step = Leaf | Group;
 
 export function mapSteps(steps: Step[], id: string, fn: (step: Step) => Step): Step[] {
   return steps.map((s) => {
