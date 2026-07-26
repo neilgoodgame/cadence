@@ -9,11 +9,9 @@ import com.cadence.api.athletes.dto.BestEffortResponse;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.springframework.http.HttpStatus;
@@ -36,16 +34,14 @@ public class BestEffortController {
 	private final UserService userService;
 	private final AccessGuard accessGuard;
 	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
-	private final ObjectMapper objectMapper;
 
 	public BestEffortController(BestEffortRepository bestEffortRepository,
 			BestEffortRecomputeService recomputeService, UserService userService,
-			AccessGuard accessGuard, ObjectMapper objectMapper) {
+			AccessGuard accessGuard) {
 		this.bestEffortRepository = bestEffortRepository;
 		this.recomputeService = recomputeService;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
-		this.objectMapper = objectMapper;
 	}
 
 	@GetMapping("/v1/athletes/{id}/best-efforts")
@@ -90,7 +86,7 @@ public class BestEffortController {
 						: recomputeService.recomputeAll(athlete, (current, total) -> sendProgress(emitter, current, total));
 				emitter.send(SseEmitter.event()
 						.name("done")
-						.data(objectMapper.writeValueAsString(Map.of("processed", processed))));
+						.data("{\"processed\":" + processed + "}"));
 				emitter.complete();
 			} catch (Exception e) {
 				emitter.completeWithError(e);
@@ -103,7 +99,7 @@ public class BestEffortController {
 	private void sendProgress(SseEmitter emitter, int current, int total) {
 		try {
 			emitter.send(SseEmitter.event()
-					.data(objectMapper.writeValueAsString(Map.of("current", current, "total", total))));
+					.data("{\"current\":" + current + ",\"total\":" + total + "}"));
 		} catch (IOException e) {
 			// client disconnected — ignore, the emitter will complete with error naturally
 		}
