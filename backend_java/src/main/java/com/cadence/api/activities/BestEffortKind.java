@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 public enum BestEffortKind {
-	CYCLING_POWER, RUNNING_PACE, RUNNING_POWER;
+	CYCLING_HR, CYCLING_POWER, RUNNING_HR, RUNNING_PACE, RUNNING_POWER;
 
 	@JsonValue
 	public String wireValue() {

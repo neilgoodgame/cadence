@@ -22,24 +22,24 @@ class BestEffortUpsertTests(TestCase):
             start_date=datetime(2026, 6, 10, 7, 0, tzinfo=UTC),
         )
 
+    def _best(self, kind, window):
+        return BestEffort.objects.filter(athlete=self.athlete, kind=kind, window=window).order_by("-value").first()
+
     def test_improves_then_holds_then_improves_again(self):
         a1 = self._activity("1")
         update_best_efforts(a1, self.athlete, [200] * 60, [])
-        effort = BestEffort.objects.get(athlete=self.athlete, kind="cycling_power", window="1min")
-        self.assertEqual(effort.value, 200.0)
-        self.assertEqual(effort.activity_id, a1.id)
+        self.assertEqual(self._best("cycling_power", "1min").value, 200.0)
+        self.assertEqual(self._best("cycling_power", "1min").activity_id, a1.id)
 
         a2 = self._activity("2")
         update_best_efforts(a2, self.athlete, [150] * 60, [])
-        effort.refresh_from_db()
-        self.assertEqual(effort.value, 200.0)
-        self.assertEqual(effort.activity_id, a1.id)
+        self.assertEqual(self._best("cycling_power", "1min").value, 200.0)
+        self.assertEqual(self._best("cycling_power", "1min").activity_id, a1.id)
 
         a3 = self._activity("3")
         update_best_efforts(a3, self.athlete, [250] * 60, [])
-        effort.refresh_from_db()
-        self.assertEqual(effort.value, 250.0)
-        self.assertEqual(effort.activity_id, a3.id)
+        self.assertEqual(self._best("cycling_power", "1min").value, 250.0)
+        self.assertEqual(self._best("cycling_power", "1min").activity_id, a3.id)
 
 
 class WorkoutMatchingTests(TestCase):

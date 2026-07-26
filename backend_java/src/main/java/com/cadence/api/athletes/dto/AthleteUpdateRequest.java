@@ -7,5 +7,6 @@ public record AthleteUpdateRequest(
 		Integer criticalRunPower,
 		String thresholdPace,
 		Integer lthr,
-		Integer maxHr) {
+		Integer maxHr,
+		Integer bestEffortTopN) {
 }

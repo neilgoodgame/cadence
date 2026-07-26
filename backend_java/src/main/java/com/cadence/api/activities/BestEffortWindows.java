@@ -14,6 +14,13 @@ public final class BestEffortWindows {
 	public static final List<Integer> POWER_CURVE_DURATIONS = List.of(5, 15, 30, 60, 300, 600, 1200, 3600);
 	public static final List<Integer> HR_CURVE_DURATIONS = List.of(60, 300, 600, 1200, 3600);
 
+	public static final List<PowerWindow> HR_BEST_EFFORT_WINDOWS = List.of(
+			new PowerWindow("1min", 60),
+			new PowerWindow("5min", 300),
+			new PowerWindow("10min", 600),
+			new PowerWindow("20min", 1200),
+			new PowerWindow("60min", 3600));
+
 	public static final List<PowerWindow> POWER_BEST_EFFORT_WINDOWS = List.of(
 			new PowerWindow("5s", 5),
 			new PowerWindow("15s", 15),

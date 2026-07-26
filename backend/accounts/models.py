@@ -40,6 +40,7 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     lthr = models.PositiveIntegerField(null=True, blank=True)
     max_hr = models.PositiveIntegerField(null=True, blank=True)
     is_coach = models.BooleanField(default=False)
+    best_effort_top_n = models.PositiveSmallIntegerField(default=10)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

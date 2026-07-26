@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, apiFetchStream } from "./client";
 import type {
   AthleteUpdate,
   AthleteUpdateResponse,
@@ -27,6 +27,62 @@ export function getFitness(athleteId: string, from?: string, to?: string): Promi
   if (to) params.set("to", to);
   const query = params.toString();
   return apiFetch<DataList<FitnessPoint>>(`/v1/athletes/${athleteId}/fitness${query ? `?${query}` : ""}`);
+}
+
+export function excludeActivityFromBestEfforts(athleteId: string, activityId: string, kind: BestEffortKind): Promise<void> {
+  return apiFetch(`/v1/athletes/${athleteId}/best-efforts/by-activity/${activityId}?kind=${kind}`, { method: "DELETE" });
+}
+
+export type RecomputeEvent =
+  | { type: "progress"; current: number; total: number }
+  | { type: "done"; processed: number };
+
+export async function* recomputeBestEffortsStream(
+  athleteId: string,
+  kind?: BestEffortKind,
+): AsyncGenerator<RecomputeEvent> {
+  const qs = kind ? `?kind=${kind}` : "";
+  const response = await apiFetchStream(
+    `/v1/athletes/${athleteId}/best-efforts/recompute${qs}`,
+    { method: "POST" },
+  );
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const parseBlock = function* (block: string): Generator<RecomputeEvent> {
+    let eventName = "message";
+    let data = "";
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) eventName = line.slice(6).trim();
+      else if (line.startsWith("data:")) data = line.slice(5).trim();
+    }
+    if (!data) return;
+    try {
+      const parsed = JSON.parse(data);
+      if (eventName === "done") {
+        yield { type: "done", processed: parsed.processed ?? 0 };
+      } else {
+        yield { type: "progress", current: parsed.current ?? 0, total: parsed.total ?? 0 };
+      }
+    } catch { /* ignore malformed */ }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split("\n\n");
+    buffer = blocks.pop()!;
+    for (const block of blocks) {
+      if (block.trim()) yield* parseBlock(block);
+    }
+  }
+  if (buffer.trim()) yield* parseBlock(buffer);
+}
+
+export function trimBestEfforts(athleteId: string): Promise<void> {
+  return apiFetch(`/v1/athletes/${athleteId}/best-efforts/trim`, { method: "POST" });
 }
 
 export function listBestEfforts(

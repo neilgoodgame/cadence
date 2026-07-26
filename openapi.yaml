@@ -754,7 +754,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [cycling_power, running_pace, running_power]
+            enum: [cycling_hr, cycling_power, running_hr, running_pace, running_power]
         - name: period
           in: query
           schema:

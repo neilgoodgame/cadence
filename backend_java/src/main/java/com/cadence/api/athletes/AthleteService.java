@@ -52,6 +52,11 @@ public class AthleteService {
 			athlete.setMaxHr(request.maxHr());
 			changed.add("maxHr");
 		}
+		if (request.bestEffortTopN() != null) {
+			int n = request.bestEffortTopN();
+			athlete.setBestEffortTopN(n == 0 ? 0 : Math.max(1, Math.min(50, n)));
+			changed.add("bestEffortTopN");
+		}
 		userRepository.save(athlete);
 		return zoneService.recomputedZoneTypes(athlete, changed);
 	}

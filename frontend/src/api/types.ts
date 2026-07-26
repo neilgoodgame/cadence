@@ -9,6 +9,7 @@ export interface Athlete {
   threshold_pace: string | null;
   lthr: number | null;
   max_hr: number | null;
+  best_effort_top_n: number;
   is_coach: boolean;
 }
 
@@ -148,6 +149,7 @@ export interface AthleteUpdate {
   threshold_pace?: string;
   lthr?: number;
   max_hr?: number;
+  best_effort_top_n?: number;
 }
 
 export interface AthleteUpdateResponse extends Athlete {
@@ -198,7 +200,7 @@ export interface BestEffort {
   activity_id: string;
 }
 
-export type BestEffortKind = "cycling_power" | "running_pace" | "running_power";
+export type BestEffortKind = "cycling_hr" | "cycling_power" | "running_hr" | "running_pace" | "running_power";
 export type BestEffortPeriod = "3m" | "1y" | "all";
 
 export interface Tag {

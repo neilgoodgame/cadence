@@ -5,6 +5,7 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { AppShell } from "./layout/AppShell";
 import { ActivitiesScreen } from "./screens/ActivitiesScreen";
 import { ActivityAnalysisScreen } from "./screens/ActivityAnalysisScreen";
+import { BestEffortsScreen } from "./screens/BestEffortsScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { GearScreen } from "./screens/GearScreen";
@@ -27,6 +28,7 @@ export function App() {
                 <Route path="/" element={<DashboardScreen />} />
                 <Route path="/activities" element={<ActivitiesScreen />} />
                 <Route path="/activities/:id" element={<ActivityAnalysisScreen />} />
+                <Route path="/best-efforts" element={<BestEffortsScreen />} />
                 <Route path="/calendar" element={<CalendarScreen />} />
                 <Route path="/gear" element={<GearScreen />} />
                 <Route path="/import" element={<ImportScreen />} />

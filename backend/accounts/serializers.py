@@ -21,6 +21,7 @@ class UserSerializer(serializers.ModelSerializer):
             "lthr",
             "max_hr",
             "is_coach",
+            "best_effort_top_n",
         ]
 
 
