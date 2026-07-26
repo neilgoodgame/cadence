@@ -5,7 +5,7 @@ import { getContexts } from "../../api/auth";
 import { scheduleWorkout } from "../../api/scheduling";
 import { useAuth } from "../../auth/AuthContext";
 import { Card } from "../../components/Card";
-import type { WorkoutSport } from "../../api/types";
+import { ApiError, type WorkoutSport } from "../../api/types";
 import { WorkoutChart } from "./WorkoutChart";
 import { WorkoutStructureList, type StructureActions } from "./WorkoutStructureList";
 import { StepDrawer } from "./StepDrawer";
@@ -92,6 +92,11 @@ function WorkoutEditorForm({
       setSavedAt(Date.now());
     },
   });
+  const saveError = saveMutation.isError
+    ? saveMutation.error instanceof ApiError
+      ? saveMutation.error.message
+      : "Couldn't save the workout. Try again."
+    : null;
 
   const actions: StructureActions = {
     selectedId,
@@ -259,6 +264,7 @@ function WorkoutEditorForm({
         <button onClick={onDone} style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, padding: "8px 16px", cursor: "pointer" }}>
           Back to list
         </button>
+        {saveError && <span style={{ alignSelf: "center", fontSize: 13, color: "#e0442e" }}>{saveError}</span>}
       </div>
 
       {templatesOpen && <TemplatesPanel sport={sport} onInsert={(newSteps) => setSteps([...steps, ...newSteps])} onClose={() => setTemplatesOpen(false)} />}
@@ -313,6 +319,11 @@ function PublishModal({
     },
     onSuccess: onClose,
   });
+  const publishError = publishMutation.isError
+    ? publishMutation.error instanceof ApiError
+      ? publishMutation.error.message
+      : "Couldn't assign the workout. Try again."
+    : null;
 
   const assignedCount = Object.values(selected).filter(Boolean).length;
 
@@ -359,6 +370,7 @@ function PublishModal({
               style={{ padding: "9px 11px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", fontSize: 13, fontFamily: "monospace", fontWeight: 600, color: "var(--ink)" }}
             />
           </div>
+          {publishError && <div style={{ fontSize: 13, color: "#e0442e" }}>{publishError}</div>}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 9, padding: "14px 22px", borderTop: "1px solid var(--line)", background: "var(--elev)" }}>
           <button onClick={onClose} style={{ padding: "9px 16px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--card)", fontSize: 13, fontWeight: 600, color: "var(--ink2)", cursor: "pointer" }}>
