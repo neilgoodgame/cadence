@@ -15,7 +15,7 @@ const TIME_OPTIONS: { value: TimeOfDay; label: string }[] = [
 export function ScheduleModal({ date, onClose }: { date: string; onClose: () => void }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { data } = useQuery({ queryKey: ["workouts"], queryFn: listWorkouts });
+  const { data } = useQuery({ queryKey: ["workouts"], queryFn: () => listWorkouts() });
   const [workoutId, setWorkoutId] = useState("");
   const [scheduleDate, setScheduleDate] = useState(date);
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | "">("");

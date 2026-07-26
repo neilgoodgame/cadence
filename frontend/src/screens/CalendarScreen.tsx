@@ -109,7 +109,7 @@ export function CalendarScreen() {
   const queryClient = useQueryClient();
   const { from, to } = monthRangeISO(year, month);
   const { data: calendarData } = useQuery({ queryKey: ["calendar", from, to], queryFn: () => getCalendar(from, to) });
-  const { data: workoutsData } = useQuery({ queryKey: ["workouts"], queryFn: listWorkouts });
+  const { data: workoutsData } = useQuery({ queryKey: ["workouts"], queryFn: () => listWorkouts() });
   const { data: racesData } = useQuery({ queryKey: ["races"], queryFn: listRaces });
 
   const unscheduleMutation = useMutation({

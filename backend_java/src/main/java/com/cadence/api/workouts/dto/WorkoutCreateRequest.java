@@ -10,5 +10,7 @@ import java.util.List;
 public record WorkoutCreateRequest(
 		@NotBlank String name,
 		@NotNull Sport sport,
-		@NotEmpty List<@Valid WorkoutStepDto> steps) {
+		@NotEmpty List<@Valid WorkoutStepDto> steps,
+		String folderId,
+		List<String> tags) {
 }

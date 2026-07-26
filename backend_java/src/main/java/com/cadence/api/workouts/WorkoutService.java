@@ -8,20 +8,30 @@ import com.cadence.api.workouts.dto.WorkoutCreateRequest;
 import com.cadence.api.workouts.dto.WorkoutStepDto;
 import com.cadence.api.workouts.dto.WorkoutUpdateRequest;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class WorkoutService {
 
-	private final WorkoutRepository workoutRepository;
+	private static final Set<String> SORT_OPTIONS = Set.of("recent", "name", "duration", "tss", "used");
 
-	public WorkoutService(WorkoutRepository workoutRepository) {
+	private final WorkoutRepository workoutRepository;
+	private final WorkoutFolderRepository workoutFolderRepository;
+
+	public WorkoutService(WorkoutRepository workoutRepository, WorkoutFolderRepository workoutFolderRepository) {
 		this.workoutRepository = workoutRepository;
+		this.workoutFolderRepository = workoutFolderRepository;
 	}
 
-	public List<Workout> listWorkouts(String createdById) {
-		return workoutRepository.findByCreatedByIdOrderByIdDesc(createdById);
+	public List<Workout> listWorkouts(
+			String athleteId, String folderId, String tag, String sport, String search, String sort) {
+		String effectiveSort = sort != null ? sort : "recent";
+		if (!SORT_OPTIONS.contains(effectiveSort)) {
+			throw new ValidationException("Must be one of recent, name, duration, tss, used.", "sort");
+		}
+		return workoutRepository.findFiltered(athleteId, folderId, tag, sport, search, effectiveSort);
 	}
 
 	public Workout getWorkout(String id) {
@@ -39,6 +49,10 @@ public class WorkoutService {
 		workout.setCreatedBy(creator);
 		workout.setName(request.name());
 		workout.setSport(request.sport());
+		workout.setFolder(resolveFolder(request.folderId(), creator.getId()));
+		if (request.tags() != null) {
+			workout.setTags(request.tags());
+		}
 		applySteps(workout, request.steps());
 		return workoutRepository.save(workout);
 	}
@@ -52,6 +66,12 @@ public class WorkoutService {
 		Workout workout = getWorkoutWithSteps(id);
 		if (request.name() != null) {
 			workout.setName(request.name());
+		}
+		if (request.folderId() != null) {
+			workout.setFolder(resolveFolder(request.folderId(), workout.getCreatedBy().getId()));
+		}
+		if (request.tags() != null) {
+			workout.setTags(request.tags());
 		}
 		if (request.steps() != null) {
 			applySteps(workout, request.steps());
@@ -70,23 +90,60 @@ public class WorkoutService {
 		}
 	}
 
+	/** {@code null} or blank clears the folder; otherwise resolves it, scoped to the owning athlete. */
+	private WorkoutFolder resolveFolder(String folderId, String athleteId) {
+		if (folderId == null || folderId.isBlank()) {
+			return null;
+		}
+		WorkoutFolder folder = workoutFolderRepository
+				.findById(folderId)
+				.orElseThrow(() -> new NotFoundException("No such folder."));
+		if (!folder.getCreatedBy().getId().equals(athleteId)) {
+			throw new NotFoundException("No such folder.");
+		}
+		return folder;
+	}
+
 	private void applySteps(Workout workout, List<WorkoutStepDto> stepDtos) {
 		workout.getSteps().clear();
+		addSteps(workout, stepDtos, null);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(stepDtos);
+		workout.setDuration(result.durationSeconds());
+		workout.setTss(result.tss());
+		workout.setChartPreview(WorkoutCalculations.computeChartPreview(stepDtos));
+	}
+
+	/**
+	 * Builds {@link WorkoutStep} entities bottom-up from the nested DTO tree, wiring
+	 * {@code parentStep} via the in-memory object reference rather than a raw FK id, and
+	 * adding every entity - leaves and groups, any depth - into the flat {@code workout.steps}
+	 * collection. {@code cascade = CascadeType.ALL} on that collection persists the whole
+	 * graph on save; Hibernate resolves FK insert ordering (parent row before its children)
+	 * from the object graph at flush time.
+	 */
+	private void addSteps(Workout workout, List<WorkoutStepDto> stepDtos, WorkoutStep parent) {
 		int order = 0;
 		for (WorkoutStepDto dto : stepDtos) {
 			WorkoutStep step = new WorkoutStep();
 			step.setWorkout(workout);
+			step.setParentStep(parent);
 			step.setOrder(order++);
 			step.setKind(dto.kind());
 			step.setEndType(dto.endType());
 			step.setDuration(dto.duration());
 			step.setDistance(dto.distance());
-			step.setTargetPct(dto.targetPct());
+			step.setTargetType(dto.targetType());
+			step.setTargetLow(dto.targetLow());
+			step.setTargetHigh(dto.targetHigh());
+			step.setTarget2Type(dto.target2Type() != null ? dto.target2Type() : Target2Type.NONE);
+			step.setTarget2Low(dto.target2Low());
+			step.setTarget2High(dto.target2High());
 			step.setRepeat(dto.repeat() != null ? dto.repeat() : 1);
+			step.setNote(dto.note() != null ? dto.note() : "");
 			workout.getSteps().add(step);
+			if (dto.kind() == StepKind.REPEAT) {
+				addSteps(workout, dto.children(), step);
+			}
 		}
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(stepDtos);
-		workout.setDuration(result.durationSeconds());
-		workout.setTss(result.tss());
 	}
 }
