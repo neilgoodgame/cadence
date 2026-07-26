@@ -1,5 +1,8 @@
+import json
+from collections.abc import Iterator
 from datetime import timedelta
 
+from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -10,7 +13,7 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.serializers import UserSerializer
-from activities.models import BestEffort
+from activities.models import Activity, BestEffort
 from activities.serializers import BestEffortSerializer
 from core.auth_context import get_effective_athlete_id
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
@@ -97,7 +100,7 @@ class BestEffortListView(APIView):
         if period not in ("3m", "1y", "all"):
             raise ValidationError({"period": "Must be one of 3m, 1y, all."})
 
-        qs = BestEffort.objects.filter(athlete_id=id, kind=kind)
+        qs = BestEffort.objects.filter(athlete_id=id, kind=kind).order_by("window", "-value")
         if period in BEST_EFFORT_PERIOD_DAYS:
             cutoff = timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
             qs = qs.filter(date__gte=cutoff)
@@ -153,3 +156,85 @@ class RecomputeAthleteTssView(APIView):
                 updated += 1
 
         return Response({"updated": updated})
+
+
+_SPORT_FOR_KIND = {
+    "cycling_hr": "bike",
+    "cycling_power": "bike",
+    "running_hr": "run",
+    "running_pace": "run",
+    "running_power": "run",
+}
+
+
+class BestEffortExcludeView(APIView):
+    def delete(self, request: Request, id: str, activity_id: str) -> Response:
+        _require_read(request, id)
+        kind = request.query_params.get("kind")
+        if not kind or kind not in dict(BestEffort.KIND_CHOICES):
+            raise ValidationError(
+                {"kind": "Must be one of cycling_hr, cycling_power, running_hr, running_pace, running_power."}
+            )
+        BestEffort.objects.filter(athlete_id=id, kind=kind, activity_id=activity_id).delete()
+        return Response(status=204)
+
+
+def _recompute_stream(athlete: User, kind: str | None) -> Iterator[str]:
+    from uploads.processing import compute_kind_best_efforts, update_best_efforts
+
+    qs = BestEffort.objects.filter(athlete=athlete)
+    if kind:
+        qs = qs.filter(kind=kind)
+    qs.delete()
+
+    candidates = Activity.objects.filter(
+        athlete=athlete,
+        parent_activity__isnull=True,
+    ).exclude(sport__in=("multisport", "transition"))
+    if kind:
+        candidates = candidates.filter(sport=_SPORT_FOR_KIND[kind])
+
+    activities = list(candidates.order_by("start_date"))
+    total = len(activities)
+
+    for i, activity in enumerate(activities):
+        records = list(activity.records.order_by("t"))
+        if records:
+            power_series = [r.power for r in records]
+            hr_series = [r.heartrate for r in records]
+            distance_series = [r.distance_km for r in records]
+            if kind:
+                compute_kind_best_efforts(activity, athlete, kind, power_series, distance_series, hr_series)
+            else:
+                update_best_efforts(activity, athlete, power_series, distance_series, hr_series)
+        yield f"data: {json.dumps({'current': i + 1, 'total': total})}\n\n"
+
+    yield f"event: done\ndata: {json.dumps({'processed': total})}\n\n"
+
+
+class BestEffortRecomputeView(APIView):
+    def post(self, request: Request, id: str) -> StreamingHttpResponse:
+        _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        kind = request.query_params.get("kind") or None
+        if kind and kind not in dict(BestEffort.KIND_CHOICES):
+            raise ValidationError(
+                {"kind": "Must be one of cycling_hr, cycling_power, running_hr, running_pace, running_power."}
+            )
+        response = StreamingHttpResponse(
+            _recompute_stream(athlete, kind),
+            content_type="text/event-stream",
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+
+class BestEffortTrimView(APIView):
+    def post(self, request: Request, id: str) -> Response:
+        _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        from uploads.processing import trim_best_efforts
+
+        trim_best_efforts(athlete)
+        return Response(status=204)

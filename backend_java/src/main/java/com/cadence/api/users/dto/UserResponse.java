@@ -11,5 +11,6 @@ public record UserResponse(
 		String thresholdPace,
 		Integer lthr,
 		Integer maxHr,
+		int bestEffortTopN,
 		boolean isCoach) {
 }

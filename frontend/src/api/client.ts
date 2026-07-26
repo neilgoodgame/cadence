@@ -90,6 +90,15 @@ export async function apiFetchWithHeaders<T>(
   return { data, retryAfterSeconds };
 }
 
+/** Returns the raw Response so the caller can stream the body (e.g. SSE). Throws on non-2xx. */
+export async function apiFetchStream(path: string, options: RequestOptions = {}): Promise<Response> {
+  const response = await fetchWithRefresh(path, options);
+  if (!response.ok) {
+    throw new ApiError(response.status, await parseErrorBody(response));
+  }
+  return response;
+}
+
 export async function apiFetchForm<T>(path: string, form: Record<string, string>): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     method: "POST",

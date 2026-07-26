@@ -44,6 +44,9 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "max_hr")
 	private Integer maxHr;
 
+	@Column(name = "best_effort_top_n", nullable = false)
+	private int bestEffortTopN = 10;
+
 	@Column(name = "is_coach", nullable = false)
 	private boolean coach = false;
 
@@ -151,6 +154,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setMaxHr(Integer maxHr) {
 		this.maxHr = maxHr;
+	}
+
+	public int getBestEffortTopN() {
+		return bestEffortTopN;
+	}
+
+	public void setBestEffortTopN(int bestEffortTopN) {
+		this.bestEffortTopN = bestEffortTopN;
 	}
 
 	public boolean isCoach() {

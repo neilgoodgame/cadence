@@ -5,7 +5,7 @@ import { listBestEfforts, excludeActivityFromBestEfforts } from "../api/athletes
 import { listActivities, getActivity } from "../api/activities";
 import { useAuth } from "../auth/AuthContext";
 import { formatDuration, formatPace } from "../lib/format";
-import type { Activity, BestEffort, BestEffortPeriod } from "../api/types";
+import type { Activity, BestEffort, BestEffortKind, BestEffortPeriod } from "../api/types";
 
 // ─── Period config ────────────────────────────────────────────────────────────
 
@@ -152,7 +152,8 @@ function ActivityName({ id }: { id: string }) {
 function useExclude(athleteId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (activityId: string) => excludeActivityFromBestEfforts(athleteId, activityId),
+    mutationFn: ({ activityId, kind }: { activityId: string; kind: BestEffortKind }) =>
+      excludeActivityFromBestEfforts(athleteId, activityId, kind),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["best-efforts", athleteId] });
     },
@@ -279,30 +280,31 @@ function ExcludeButton({ onExclude, pending }: { onExclude: () => void; pending:
     <button
       onClick={onExclude}
       disabled={pending}
-      title="Exclude activity from best efforts"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: "none",
-        border: "none",
+        background: hovered ? "var(--surface2)" : "none",
+        border: "1px solid",
+        borderColor: hovered ? "var(--ink3)" : "var(--ink4)",
         cursor: pending ? "default" : "pointer",
-        padding: "2px 4px",
+        padding: "2px 6px",
         borderRadius: 4,
         color: hovered ? "var(--ink2)" : "var(--ink3)",
-        fontSize: 13,
-        lineHeight: 1,
+        fontSize: 11,
+        lineHeight: 1.4,
         opacity: pending ? 0.4 : 1,
         flexShrink: 0,
+        whiteSpace: "nowrap",
       }}
     >
-      ✕
+      {pending ? "…" : "Exclude"}
     </button>
   );
 }
 
 // ─── Running HR (HEART RATE · MAX SUSTAINED) ─────────────────────────────────
 
-const RUN_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr 24px";
+const RUN_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr 64px";
 
 function RunHrRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[]; onExclude: (id: string) => void; excludePending: boolean }) {
   const pr = isPR(effort, allTimeEfforts, false);
@@ -391,7 +393,7 @@ function RunHrCard({
 
 // ─── Cycling HR (HEART RATE · MAX SUSTAINED) ─────────────────────────────────
 
-const BIKE_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.55fr 24px";
+const BIKE_HR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.55fr 64px";
 
 function BikeHrRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[]; onExclude: (id: string) => void; excludePending: boolean }) {
   const pr = isPR(effort, allTimeEfforts, false);
@@ -477,7 +479,7 @@ function BikeHrCard({
 
 // ─── Running Power (POWER · STRYD) ───────────────────────────────────────────
 
-const RUN_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr 24px";
+const RUN_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr 64px";
 
 function RunPowerRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[]; onExclude: (id: string) => void; excludePending: boolean }) {
   const pr = isPR(effort, allTimeEfforts, false);
@@ -587,7 +589,7 @@ function RunPowerCard({
 
 // ─── Running Pace (BEST TIME · BY DISTANCE) ──────────────────────────────────
 
-const RUN_TIME_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.85fr 0.55fr 0.5fr 0.55fr 24px";
+const RUN_TIME_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.85fr 0.55fr 0.5fr 0.55fr 64px";
 
 function RunPaceRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: { effort: BestEffort; rank: number; allTimeEfforts: BestEffort[]; onExclude: (id: string) => void; excludePending: boolean }) {
   const pr = isPR(effort, allTimeEfforts, true);
@@ -805,7 +807,7 @@ function PowerCurveCard({
 
 // ─── Cycling Peak Power (PEAK POWER) ─────────────────────────────────────────
 
-const BIKE_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.45fr 0.55fr 24px";
+const BIKE_PWR_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.45fr 0.55fr 64px";
 
 function BikePowerRow({
   effort,
@@ -1092,6 +1094,7 @@ export function BestEffortsScreen() {
   const [displayPeriod, setDisplayPeriod] = useState<DisplayPeriod>("16w");
   const { apiPeriod, label: periodLabel } = PERIOD_CONFIG[displayPeriod];
   const { mutate: excludeActivity, isPending: excludePending } = useExclude(athleteId);
+  const makeExclude = (kind: BestEffortKind) => (activityId: string) => excludeActivity({ activityId, kind });
 
   const bqOpts = (kind: Parameters<typeof listBestEfforts>[1], per: BestEffortPeriod) => ({
     queryKey: ["best-efforts", athleteId, kind, per],
@@ -1201,14 +1204,14 @@ export function BestEffortsScreen() {
           />
 
           {hasRunHr && (
-            <RunHrCard efforts={runHrEfforts} allTimeEfforts={runHrAllEfforts} onExclude={excludeActivity} excludePending={excludePending} />
+            <RunHrCard efforts={runHrEfforts} allTimeEfforts={runHrAllEfforts} onExclude={makeExclude("running_hr")} excludePending={excludePending} />
           )}
 
           {hasRunPower && (
-            <RunPowerCard efforts={runPowerEfforts} allTimeEfforts={runPowerAllEfforts} rCP={rCP} onExclude={excludeActivity} excludePending={excludePending} />
+            <RunPowerCard efforts={runPowerEfforts} allTimeEfforts={runPowerAllEfforts} rCP={rCP} onExclude={makeExclude("running_power")} excludePending={excludePending} />
           )}
 
-          <RunPaceCard efforts={runPaceEfforts} allTimeEfforts={runPaceAllEfforts} onExclude={excludeActivity} excludePending={excludePending} />
+          <RunPaceCard efforts={runPaceEfforts} allTimeEfforts={runPaceAllEfforts} onExclude={makeExclude("running_pace")} excludePending={excludePending} />
         </div>
 
         {/* Cycling section */}
@@ -1220,7 +1223,7 @@ export function BestEffortsScreen() {
           />
 
           {hasBikeHr && (
-            <BikeHrCard efforts={bikeHrEfforts} allTimeEfforts={bikeHrAllEfforts} onExclude={excludeActivity} excludePending={excludePending} />
+            <BikeHrCard efforts={bikeHrEfforts} allTimeEfforts={bikeHrAllEfforts} onExclude={makeExclude("cycling_hr")} excludePending={excludePending} />
           )}
 
           <PowerCurveCard
@@ -1233,7 +1236,7 @@ export function BestEffortsScreen() {
             efforts={bikePowerEfforts}
             allTimeEfforts={bikePowerAllEfforts}
             weightKg={weightKg}
-            onExclude={excludeActivity}
+            onExclude={makeExclude("cycling_power")}
             excludePending={excludePending}
           />
 

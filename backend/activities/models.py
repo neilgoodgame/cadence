@@ -206,10 +206,9 @@ class DurationCurve(models.Model):
 
 
 class BestEffort(models.Model):
-    """One row per (athlete, kind, window) — the current personal record,
-    upserted whenever a new activity's curve beats it. Not fetched by its own
-    id, so it uses a plain BigAutoField per the core.models.PrefixedIDModel
-    convention.
+    """One row per (athlete, kind, window, activity) — the top-N personal records
+    per window, ranked by value. Not fetched by its own id, so it uses a plain
+    BigAutoField per the core.models.PrefixedIDModel convention.
     """
 
     KIND_CHOICES = [
@@ -230,9 +229,11 @@ class BestEffort(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["athlete", "kind", "window"], name="unique_athlete_kind_window"),
+            models.UniqueConstraint(
+                fields=["athlete", "kind", "window", "activity"], name="unique_athlete_kind_window_activity"
+            ),
         ]
-        ordering = ["kind", "window"]
+        ordering = ["kind", "window", "-value"]
 
     def __str__(self) -> str:
         return f"{self.athlete_id} {self.kind} {self.window}"

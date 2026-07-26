@@ -7,10 +7,15 @@ from .zones import reference_for
 
 
 class AthleteUpdateSerializer(serializers.ModelSerializer):
+    best_effort_top_n = serializers.IntegerField(required=False, min_value=0, max_value=50)
+
     class Meta:
         model = User
-        fields = ["name", "age", "ftp", "critical_run_power", "threshold_pace", "lthr", "max_hr"]
-        extra_kwargs = {field: {"required": False} for field in fields}
+        fields = ["name", "age", "ftp", "critical_run_power", "threshold_pace", "lthr", "max_hr", "best_effort_top_n"]
+        extra_kwargs = {
+            field: {"required": False}
+            for field in ["name", "age", "ftp", "critical_run_power", "threshold_pace", "lthr", "max_hr"]
+        }
 
 
 class ZoneSerializer(serializers.Serializer):

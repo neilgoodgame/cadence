@@ -285,72 +285,125 @@ def _write_duration_curves(
             )
 
 
+def _trim_kind_window(athlete_id: str, kind: str, window: str, lower_is_better: bool, top_n: int) -> None:
+    if top_n == 0:
+        return
+    qs = BestEffort.objects.filter(athlete_id=athlete_id, kind=kind, window=window)
+    if qs.count() <= top_n:
+        return
+    order = "value" if lower_is_better else "-value"
+    keeper_ids = list(qs.order_by(order).values_list("id", flat=True)[:top_n])
+    qs.exclude(id__in=keeper_ids).delete()
+
+
 def _update_power_best_efforts(
     activity: Activity, athlete: User, kind: str, power_series: Sequence[float | None]
 ) -> None:
     values = [p if p is not None else 0 for p in power_series]
+    top_n = athlete.best_effort_top_n
     for window_label, seconds in POWER_BEST_EFFORT_WINDOWS:
         if seconds > len(values):
             continue
         best_avg = _sliding_window_best_avg(values, seconds)
         if best_avg is None:
             continue
-        existing = BestEffort.objects.filter(athlete=athlete, kind=kind, window=window_label).first()
-        if existing is None or best_avg > existing.value:
-            BestEffort.objects.update_or_create(
-                athlete=athlete,
-                kind=kind,
-                window=window_label,
-                defaults={
-                    "value": round(best_avg, 1),
-                    "unit": "watts",
-                    "date": activity.start_date.date(),
-                    "activity": activity,
-                },
-            )
+        BestEffort.objects.update_or_create(
+            athlete=athlete,
+            kind=kind,
+            window=window_label,
+            activity=activity,
+            defaults={
+                "value": round(best_avg, 1),
+                "unit": "watts",
+                "date": activity.start_date.date(),
+            },
+        )
+        _trim_kind_window(athlete.id, kind, window_label, False, top_n)
 
 
 def _update_hr_best_efforts(activity: Activity, athlete: User, kind: str, hr_series: Sequence[float | None]) -> None:
     values = [h if h is not None else 0 for h in hr_series]
+    top_n = athlete.best_effort_top_n
     for window_label, seconds in HR_BEST_EFFORT_WINDOWS:
         if seconds > len(values):
             continue
         best_avg = _sliding_window_best_avg(values, seconds)
         if best_avg is None:
             continue
-        existing = BestEffort.objects.filter(athlete=athlete, kind=kind, window=window_label).first()
-        if existing is None or best_avg > existing.value:
-            BestEffort.objects.update_or_create(
-                athlete=athlete,
-                kind=kind,
-                window=window_label,
-                defaults={
-                    "value": round(best_avg, 1),
-                    "unit": "bpm",
-                    "date": activity.start_date.date(),
-                    "activity": activity,
-                },
-            )
+        BestEffort.objects.update_or_create(
+            athlete=athlete,
+            kind=kind,
+            window=window_label,
+            activity=activity,
+            defaults={
+                "value": round(best_avg, 1),
+                "unit": "bpm",
+                "date": activity.start_date.date(),
+            },
+        )
+        _trim_kind_window(athlete.id, kind, window_label, False, top_n)
 
 
 def _update_pace_best_efforts(activity: Activity, athlete: User, distance_km_series: Sequence[float | None]) -> None:
+    top_n = athlete.best_effort_top_n
     for label, target_km in PACE_BEST_EFFORT_DISTANCES_KM:
         pace_sec_per_km = _best_pace_seconds_per_km(distance_km_series, target_km)
         if pace_sec_per_km is None:
             continue
-        existing = BestEffort.objects.filter(athlete=athlete, kind="running_pace", window=label).first()
-        if existing is None or pace_sec_per_km < existing.value:
-            BestEffort.objects.update_or_create(
-                athlete=athlete,
-                kind="running_pace",
-                window=label,
-                defaults={
-                    "value": round(pace_sec_per_km, 1),
-                    "unit": "sec_per_km",
-                    "date": activity.start_date.date(),
-                    "activity": activity,
-                },
-            )
+        BestEffort.objects.update_or_create(
+            athlete=athlete,
+            kind="running_pace",
+            window=label,
+            activity=activity,
+            defaults={
+                "value": round(pace_sec_per_km, 1),
+                "unit": "sec_per_km",
+                "date": activity.start_date.date(),
+            },
+        )
+        _trim_kind_window(athlete.id, "running_pace", label, True, top_n)
+
+
+def compute_kind_best_efforts(
+    activity: Activity,
+    athlete: User,
+    kind: str,
+    power_series: Sequence[float | None],
+    distance_km_series: Sequence[float | None],
+    hr_series: Sequence[float | None] | None = None,
+) -> None:
+    if hr_series is None:
+        hr_series = []
+    has_hr = any(h is not None for h in hr_series)
+    if kind == "cycling_power":
+        if activity.sport == "bike" and athlete.ftp:
+            _update_power_best_efforts(activity, athlete, "cycling_power", power_series)
+    elif kind == "cycling_hr":
+        if activity.sport == "bike" and has_hr:
+            _update_hr_best_efforts(activity, athlete, "cycling_hr", hr_series)
+    elif kind == "running_power":
+        if activity.sport == "run" and athlete.critical_run_power and any(p for p in power_series):
+            _update_power_best_efforts(activity, athlete, "running_power", power_series)
+    elif kind == "running_pace":
+        if activity.sport == "run":
+            _update_pace_best_efforts(activity, athlete, distance_km_series)
+    elif kind == "running_hr":
+        if activity.sport == "run" and has_hr:
+            _update_hr_best_efforts(activity, athlete, "running_hr", hr_series)
+
+
+def trim_best_efforts(athlete: User) -> None:
+    top_n = athlete.best_effort_top_n
+    if top_n == 0:
+        return
+    for window_label, _ in HR_BEST_EFFORT_WINDOWS:
+        _trim_kind_window(athlete.id, "cycling_hr", window_label, False, top_n)
+        _trim_kind_window(athlete.id, "running_hr", window_label, False, top_n)
+    for window_label, _ in POWER_BEST_EFFORT_WINDOWS:
+        _trim_kind_window(athlete.id, "cycling_power", window_label, False, top_n)
+        _trim_kind_window(athlete.id, "running_power", window_label, False, top_n)
+    for label, _ in PACE_BEST_EFFORT_DISTANCES_KM:
+        _trim_kind_window(athlete.id, "running_pace", label, True, top_n)
 
 
 def update_best_efforts(

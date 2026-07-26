@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN best_effort_top_n INTEGER NOT NULL DEFAULT 10;

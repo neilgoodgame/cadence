@@ -9,6 +9,7 @@ export interface Athlete {
   threshold_pace: string | null;
   lthr: number | null;
   max_hr: number | null;
+  best_effort_top_n: number;
   is_coach: boolean;
 }
 
@@ -148,6 +149,7 @@ export interface AthleteUpdate {
   threshold_pace?: string;
   lthr?: number;
   max_hr?: number;
+  best_effort_top_n?: number;
 }
 
 export interface AthleteUpdateResponse extends Athlete {
