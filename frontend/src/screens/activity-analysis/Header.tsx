@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listTags, tagActivity, untagActivity } from "../../api/activities";
+import { listTags, tagActivity, untagActivity, updateActivity } from "../../api/activities";
 import { createRace, listRaces, updateRace } from "../../api/races";
 import type { Activity } from "../../api/types";
 import { formatDateTime } from "../../lib/format";
@@ -46,7 +46,28 @@ function closestPresetKm(sport: string, activityKm: number): number | null {
 export function Header({ activity }: { activity: Activity }) {
   const queryClient = useQueryClient();
   const [newTag, setNewTag] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [nameInput, setNameInput] = useState(activity.name);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [markingRace, setMarkingRace] = useState(false);
+
+  const renameMutation = useMutation({
+    mutationFn: (name: string) => updateActivity(activity.id, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["activity", activity.id] });
+      setRenaming(false);
+    },
+  });
+
+  function commitRename() {
+    const trimmed = nameInput.trim();
+    if (trimmed && trimmed !== activity.name) {
+      renameMutation.mutate(trimmed);
+    } else {
+      setNameInput(activity.name);
+      setRenaming(false);
+    }
+  }
   const [selectedRaceId, setSelectedRaceId] = useState("");
   const [raceName, setRaceName] = useState(activity.name);
   const [distanceKm, setDistanceKm] = useState("");
@@ -145,7 +166,57 @@ export function Header({ activity }: { activity: Activity }) {
         </span>
       </div>
 
-      <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 12px" }}>{activity.name}</h1>
+      {renaming ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 12px" }}>
+          <input
+            ref={nameInputRef}
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") { setNameInput(activity.name); setRenaming(false); }
+            }}
+            autoFocus
+            style={{
+              fontSize: 24,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              border: "none",
+              borderBottom: "2px solid var(--ember)",
+              background: "none",
+              color: "var(--ink)",
+              outline: "none",
+              width: "100%",
+              maxWidth: 520,
+              padding: "2px 0",
+            }}
+          />
+          <button
+            onClick={commitRename}
+            disabled={renameMutation.isPending}
+            style={{ fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 8, border: "none", background: "var(--ember)", color: "#fff", cursor: "pointer", flexShrink: 0 }}
+          >
+            {renameMutation.isPending ? "…" : "Save"}
+          </button>
+          <button
+            onClick={() => { setNameInput(activity.name); setRenaming(false); }}
+            style={{ fontSize: 12, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer", flexShrink: 0 }}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 12px" }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>{activity.name}</h1>
+          <button
+            onClick={() => { setNameInput(activity.name); setRenaming(true); }}
+            title="Rename activity"
+            style={{ fontSize: 14, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer", padding: "2px 4px", borderRadius: 4, lineHeight: 1, flexShrink: 0 }}
+          >
+            ✎
+          </button>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {activity.tags.map((tag) => {

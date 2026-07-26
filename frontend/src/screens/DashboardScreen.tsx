@@ -5,7 +5,6 @@ import { getFitness } from "../api/athletes";
 import { listActivities } from "../api/activities";
 import { getContexts } from "../api/auth";
 import { Card } from "../components/Card";
-import { BestEffortsRow } from "./dashboard/BestEffortsRow";
 import { CoachingSection } from "./dashboard/CoachingSection";
 import { RecentActivitiesTable } from "./dashboard/RecentActivitiesTable";
 import { SportDistribution } from "./dashboard/SportDistribution";
@@ -99,9 +98,7 @@ export function DashboardScreen() {
         <TrainingHistory activities={historyActivities} athleteId={user.id} />
       </Card>
 
-      <BestEffortsRow athleteId={user.id} />
-
-      {user.is_coach && <CoachingSection athletes={contextsQuery.data?.coaching ?? []} />}
+{user.is_coach && <CoachingSection athletes={contextsQuery.data?.coaching ?? []} />}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <Card>
