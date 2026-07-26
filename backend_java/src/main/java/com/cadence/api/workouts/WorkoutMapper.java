@@ -12,6 +12,7 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface WorkoutMapper {
 
+	@Mapping(target = "folderId", source = "folder.id")
 	WorkoutResponse toResponse(Workout workout);
 
 	@Mapping(target = "children", ignore = true)

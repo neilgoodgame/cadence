@@ -1,6 +1,7 @@
 package com.cadence.api.workouts;
 
 import com.cadence.api.workouts.dto.WorkoutStepDto;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -71,6 +72,34 @@ public final class WorkoutCalculations {
 			return hours * 55;
 		}
 		return hours * (avg / 100.0) * 80;
+	}
+
+	/**
+	 * A small array of per-leaf average target intensity (flattened/unrolled repeat groups),
+	 * denormalized onto {@code Workout.chartPreview} so the library list endpoint can render a
+	 * mini interval chart per card without shipping the full step tree.
+	 */
+	public static List<Double> computeChartPreview(List<WorkoutStepDto> steps) {
+		List<Double> preview = new ArrayList<>();
+		flattenLeaves(steps, preview);
+		return preview;
+	}
+
+	private static void flattenLeaves(List<WorkoutStepDto> steps, List<Double> preview) {
+		for (WorkoutStepDto step : steps) {
+			if (step.kind() == StepKind.REPEAT) {
+				int repeat = step.repeat() != null ? step.repeat() : 1;
+				for (int r = 0; r < repeat; r++) {
+					flattenLeaves(step.children(), preview);
+				}
+			} else if (step.targetType() == TargetType.OPEN) {
+				preview.add(40.0);
+			} else {
+				double low = step.targetLow() != null ? step.targetLow() : 60;
+				double high = step.targetHigh() != null ? step.targetHigh() : low;
+				preview.add((low + high) / 2);
+			}
+		}
 	}
 
 	private WorkoutCalculations() {

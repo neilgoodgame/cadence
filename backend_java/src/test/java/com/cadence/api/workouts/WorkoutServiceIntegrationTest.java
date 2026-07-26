@@ -52,7 +52,7 @@ class WorkoutServiceIntegrationTest extends IntegrationTest {
 				leaf(StepKind.COOL, StepEndType.TIME, 300, TargetType.POWER, 40.0, 40.0));
 
 		Workout workout = workoutService.createWorkout(athlete,
-				new WorkoutCreateRequest("VO2 Max 5x5", Sport.BIKE, steps));
+				new WorkoutCreateRequest("VO2 Max 5x5", Sport.BIKE, steps, null, null));
 
 		assertThat(workout.getDuration()).isEqualTo(1200 + 600 + 300);
 		assertThat(workout.getTss()).isGreaterThan(0);
@@ -75,7 +75,7 @@ class WorkoutServiceIntegrationTest extends IntegrationTest {
 				leaf(StepKind.REC, StepEndType.TIME, 200, TargetType.POWER, 50.0, 50.0)));
 
 		Workout workout = workoutService.createWorkout(athlete,
-				new WorkoutCreateRequest("Double nested", Sport.BIKE, steps));
+				new WorkoutCreateRequest("Double nested", Sport.BIKE, steps, null, null));
 
 		assertThat(workout.getDuration()).isEqualTo(2 * (4 * 240 + 200));
 
@@ -95,11 +95,11 @@ class WorkoutServiceIntegrationTest extends IntegrationTest {
 	void updateReplacesStepsAndRecomputesTotals() {
 		User athlete = saveAthlete("replace-steps@example.cc");
 		Workout workout = workoutService.createWorkout(athlete, new WorkoutCreateRequest("Original", Sport.BIKE,
-				List.of(leaf(StepKind.BLOCK, StepEndType.TIME, 60, TargetType.POWER, 50.0, 50.0))));
+				List.of(leaf(StepKind.BLOCK, StepEndType.TIME, 60, TargetType.POWER, 50.0, 50.0)), null, null));
 
 		List<WorkoutStepDto> newSteps = List
 				.of(group(4, leaf(StepKind.BLOCK, StepEndType.TIME, 300, TargetType.POWER, 100.0, 100.0)));
-		Workout updated = workoutService.updateWorkout(workout.getId(), new WorkoutUpdateRequest(null, newSteps));
+		Workout updated = workoutService.updateWorkout(workout.getId(), new WorkoutUpdateRequest(null, newSteps, null, null));
 
 		assertThat(updated.getDuration()).isEqualTo(1200);
 		assertThat(updated.getTss()).isEqualTo(33);

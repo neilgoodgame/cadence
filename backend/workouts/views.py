@@ -1,5 +1,6 @@
 from typing import Any
 
+from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
@@ -10,11 +11,12 @@ from activities.models import Activity
 from core.auth_context import get_effective_athlete_id
 from core.permissions import user_may_read, user_may_write
 
-from .calculations import compute_duration_and_tss
-from .models import Workout, WorkoutStep
+from .calculations import compute_chart_preview, compute_duration_and_tss
+from .models import Workout, WorkoutFolder, WorkoutStep
 from .serializers import (
     WorkoutCreateSerializer,
     WorkoutDetailSerializer,
+    WorkoutFolderSerializer,
     WorkoutMatchSerializer,
     WorkoutSerializer,
     WorkoutUpdateSerializer,
@@ -22,6 +24,12 @@ from .serializers import (
 )
 
 MATCH_METHODS = ("auto", "manual", "all")
+SORT_OPTIONS = {
+    "recent": ["-updated_at"],
+    "name": ["name"],
+    "duration": ["-duration"],
+    "tss": ["-tss"],
+}
 
 
 def _closeness(actual: float, planned: float) -> float | None:
@@ -76,14 +84,44 @@ def _replace_steps(workout: Workout, steps_data: list[dict[str, Any]]) -> None:
     duration, tss = compute_duration_and_tss(cleaned)
     workout.duration = duration
     workout.tss = tss
-    workout.save(update_fields=["duration", "tss"])
+    workout.chart_preview = compute_chart_preview(cleaned)
+    workout.save(update_fields=["duration", "tss", "chart_preview", "updated_at"])
+
+
+def _resolve_folder(folder_id: str | None, athlete_id: str) -> WorkoutFolder | None:
+    if not folder_id:
+        return None
+    return get_object_or_404(WorkoutFolder, pk=folder_id, created_by_id=athlete_id)
 
 
 class WorkoutListView(APIView):
     def get(self, request: Request) -> Response:
         sub, athlete_id = get_effective_athlete_id(request)
         _require_read(request, athlete_id)
+
         workouts = Workout.objects.filter(created_by_id=athlete_id)
+
+        folder_id = request.query_params.get("folder_id")
+        if folder_id:
+            workouts = workouts.filter(folder_id=folder_id)
+        tag = request.query_params.get("tag")
+        if tag:
+            workouts = workouts.filter(tags__contains=[tag])
+        sport = request.query_params.get("sport")
+        if sport:
+            workouts = workouts.filter(sport=sport)
+        search = request.query_params.get("search")
+        if search:
+            workouts = workouts.filter(name__icontains=search)
+
+        sort = request.query_params.get("sort", "recent")
+        if sort == "used":
+            workouts = workouts.annotate(uses=Count("scheduled_workouts")).order_by("-uses")
+        else:
+            if sort not in SORT_OPTIONS:
+                raise ValidationError({"sort": "Must be one of recent, name, duration, tss, used."})
+            workouts = workouts.order_by(*SORT_OPTIONS[sort])
+
         return Response({"data": WorkoutSerializer(workouts, many=True).data})
 
     def post(self, request: Request) -> Response:
@@ -97,6 +135,8 @@ class WorkoutListView(APIView):
             created_by_id=athlete_id,
             name=serializer.validated_data["name"],
             sport=serializer.validated_data["sport"],
+            folder=_resolve_folder(serializer.validated_data.get("folder_id"), athlete_id),
+            tags=serializer.validated_data.get("tags", []),
         )
         _replace_steps(workout, serializer.validated_data["steps"])
 
@@ -120,9 +160,18 @@ class WorkoutDetailView(APIView):
         serializer = WorkoutUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        update_fields = []
         if "name" in serializer.validated_data:
             workout.name = serializer.validated_data["name"]
-            workout.save(update_fields=["name"])
+            update_fields.append("name")
+        if "folder_id" in serializer.validated_data:
+            workout.folder = _resolve_folder(serializer.validated_data["folder_id"], workout.created_by_id)
+            update_fields.append("folder")
+        if "tags" in serializer.validated_data:
+            workout.tags = serializer.validated_data["tags"]
+            update_fields.append("tags")
+        if update_fields:
+            workout.save(update_fields=[*update_fields, "updated_at"])
 
         if "steps" in serializer.validated_data:
             _replace_steps(workout, serializer.validated_data["steps"])
@@ -135,6 +184,59 @@ class WorkoutDetailView(APIView):
         if not user_may_write(sub, workout.created_by_id):
             raise PermissionDenied("You do not have write access to that athlete's data.")
         workout.delete()
+        return Response(status=204)
+
+
+class WorkoutFolderListView(APIView):
+    def get(self, request: Request) -> Response:
+        sub, athlete_id = get_effective_athlete_id(request)
+        _require_read(request, athlete_id)
+        folders = WorkoutFolder.objects.filter(created_by_id=athlete_id).annotate(count=Count("workouts"))
+        return Response({"data": WorkoutFolderSerializer(folders, many=True).data})
+
+    def post(self, request: Request) -> Response:
+        sub, athlete_id = get_effective_athlete_id(request)
+        _require_write(request, athlete_id)
+
+        name = (request.data.get("name") or "").strip()
+        if not name:
+            raise ValidationError({"name": "This field is required."})
+        if WorkoutFolder.objects.filter(created_by_id=athlete_id, name=name).exists():
+            raise ValidationError({"name": "A folder with this name already exists."})
+
+        folder = WorkoutFolder.objects.create(created_by_id=athlete_id, name=name)
+        folder.count = 0
+        return Response(WorkoutFolderSerializer(folder).data, status=201)
+
+
+class WorkoutFolderDetailView(APIView):
+    def patch(self, request: Request, id: str) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        folder = get_object_or_404(WorkoutFolder, pk=id)
+        if not user_may_write(sub, folder.created_by_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        name = request.data.get("name")
+        if name is not None:
+            name = name.strip()
+            if (
+                WorkoutFolder.objects.filter(created_by_id=folder.created_by_id, name=name)
+                .exclude(pk=folder.pk)
+                .exists()
+            ):
+                raise ValidationError({"name": "A folder with this name already exists."})
+            folder.name = name
+            folder.save(update_fields=["name"])
+
+        folder.count = folder.workouts.count()
+        return Response(WorkoutFolderSerializer(folder).data)
+
+    def delete(self, request: Request, id: str) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        folder = get_object_or_404(WorkoutFolder, pk=id)
+        if not user_may_write(sub, folder.created_by_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        folder.delete()
         return Response(status=204)
 
 

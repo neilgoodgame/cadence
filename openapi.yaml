@@ -851,7 +851,32 @@ paths:
       tags: [Workouts]
       summary: List designed workouts
       operationId: listWorkouts
-      description: The athlete's workout library.
+      description: >
+        The athlete's workout library — filterable by folder/tag/sport/name and
+        sortable, for the Workout Library screen.
+      parameters:
+        - name: folder_id
+          in: query
+          schema: { type: string }
+        - name: tag
+          in: query
+          schema: { type: string }
+        - name: sport
+          in: query
+          schema: { type: string, enum: [bike, run] }
+        - name: search
+          in: query
+          description: Case-insensitive substring match on workout name.
+          schema: { type: string }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [recent, name, duration, tss, used]
+            default: recent
+          description: >
+            `used` orders by how many times the workout has been scheduled
+            (`ScheduledWorkout` count).
       responses:
         "200":
           description: Workouts.
@@ -864,6 +889,8 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Workout"
+        "400":
+          $ref: "#/components/responses/BadRequest"
     post:
       tags: [Workouts]
       summary: Create a workout
@@ -875,7 +902,8 @@ paths:
         (power/hr/pace/cadence/open) and `target_low`/`target_high` (equal for a
         flat target, different for a ramp), plus an optional `target2_type`
         cadence constraint. A `repeat` step instead sets `repeat` and `children`
-        — children may themselves be nested `repeat` groups.
+        — children may themselves be nested `repeat` groups. `folder_id`/`tags`
+        organize the workout in the library.
       requestBody:
         required: true
         content:
@@ -925,8 +953,10 @@ paths:
       operationId: updateWorkout
       description: >
         Rename or re-author the workout. Passing `steps` replaces the entire step
-        list; duration and TSS are recomputed. Edits do not affect already-completed
-        activities matched to this workout.
+        list; duration and TSS are recomputed. `folder_id`/`tags`, if present,
+        replace the workout's folder/tags — `folder_id: null` (or `""`) clears
+        the folder; omitting a field leaves it untouched. Edits do not affect
+        already-completed activities matched to this workout.
       requestBody:
         required: true
         content:
@@ -939,6 +969,8 @@ paths:
                   type: array
                   items:
                     $ref: "#/components/schemas/WorkoutStep"
+                folder_id: { type: [string, "null"] }
+                tags: { type: array, items: { type: string } }
       responses:
         "200":
           description: The updated workout.
@@ -955,6 +987,87 @@ paths:
       description: >
         Removes the workout from the library. Scheduled instances are unlinked but
         completed activities keep their match for history.
+      responses:
+        "204":
+          description: Deleted.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/workout-folders:
+    get:
+      tags: [Workouts]
+      summary: List workout folders
+      operationId: listWorkoutFolders
+      description: The athlete's workout folders, each with its workout count.
+      responses:
+        "200":
+          description: Folders.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WorkoutFolder"
+    post:
+      tags: [Workouts]
+      summary: Create a workout folder
+      operationId: createWorkoutFolder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: Folder created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutFolder"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/workout-folders/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Workouts]
+      summary: Rename a workout folder
+      operationId: updateWorkoutFolder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        "200":
+          description: The renamed folder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutFolder"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Workouts]
+      summary: Delete a workout folder
+      operationId: deleteWorkoutFolder
+      description: Workouts in the folder are not deleted — their `folder_id` is cleared.
       responses:
         "204":
           description: Deleted.
@@ -2377,6 +2490,23 @@ components:
         type: { type: string, example: vo2 }
         duration: { type: integer, description: Seconds, example: 3300 }
         tss: { type: integer, example: 78 }
+        folder_id: { type: [string, "null"] }
+        tags: { type: array, items: { type: string }, example: [intervals, "race prep"] }
+        chart_preview:
+          type: array
+          items: { type: number }
+          description: >
+            Flattened per-leaf average target intensity (repeat groups unrolled),
+            recomputed whenever steps are replaced — cheap chart data for the
+            Workout Library screen without shipping the full step tree.
+        updated_at: { type: string, format: date-time }
+
+    WorkoutFolder:
+      type: object
+      properties:
+        id: { type: string, example: wfd_vo2_max }
+        name: { type: string, example: "VO2 Max" }
+        count: { type: integer, description: Number of workouts currently in this folder. }
 
     WorkoutCreate:
       type: object
@@ -2388,6 +2518,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkoutStep"
+        folder_id: { type: [string, "null"] }
+        tags: { type: array, items: { type: string } }
 
     WorkoutStep:
       type: object

@@ -130,6 +130,47 @@ class ComputeDurationAndTssTests(TestCase):
         self.assertEqual(tss, 56)
 
 
+def _workout_payload(**overrides):
+    payload = {
+        "name": "VO2 Max 5x5",
+        "sport": "bike",
+        "steps": [
+            {
+                "kind": "warmup",
+                "end_type": "time",
+                "duration": 600,
+                "target_type": "power",
+                "target_low": 50,
+                "target_high": 50,
+            },
+            {
+                "kind": "repeat",
+                "repeat": 4,
+                "children": [
+                    {
+                        "kind": "block",
+                        "end_type": "time",
+                        "duration": 300,
+                        "target_type": "power",
+                        "target_low": 100,
+                        "target_high": 100,
+                    }
+                ],
+            },
+            {
+                "kind": "cool",
+                "end_type": "time",
+                "duration": 300,
+                "target_type": "power",
+                "target_low": 40,
+                "target_high": 40,
+            },
+        ],
+    }
+    payload.update(overrides)
+    return payload
+
+
 @workouts_urlconf
 class WorkoutViewTests(TestCase):
     def setUp(self):
@@ -137,44 +178,7 @@ class WorkoutViewTests(TestCase):
         self.outsider = User.objects.create_user(email="outsider@example.cc", password="x", name="Outsider")
 
     def _create_payload(self, **overrides):
-        payload = {
-            "name": "VO2 Max 5x5",
-            "sport": "bike",
-            "steps": [
-                {
-                    "kind": "warmup",
-                    "end_type": "time",
-                    "duration": 600,
-                    "target_type": "power",
-                    "target_low": 50,
-                    "target_high": 50,
-                },
-                {
-                    "kind": "repeat",
-                    "repeat": 4,
-                    "children": [
-                        {
-                            "kind": "block",
-                            "end_type": "time",
-                            "duration": 300,
-                            "target_type": "power",
-                            "target_low": 100,
-                            "target_high": 100,
-                        }
-                    ],
-                },
-                {
-                    "kind": "cool",
-                    "end_type": "time",
-                    "duration": 300,
-                    "target_type": "power",
-                    "target_low": 40,
-                    "target_high": 40,
-                },
-            ],
-        }
-        payload.update(overrides)
-        return payload
+        return _workout_payload(**overrides)
 
     def test_create_workout_with_steps(self):
         response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(), format="json")
@@ -401,6 +405,119 @@ class WorkoutViewTests(TestCase):
 
         delete_response = client.delete(f"/v1/workouts/{workout_id}")
         self.assertEqual(delete_response.status_code, 204)
+
+
+@workouts_urlconf
+class WorkoutLibraryTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")
+        self.outsider = User.objects.create_user(email="outsider@example.cc", password="x", name="Outsider")
+        self.client = _bearer_client(self.athlete)
+
+    def test_create_and_list_folders_with_counts(self):
+        create_response = self.client.post("/v1/workout-folders", {"name": "VO2 Max"}, format="json")
+        self.assertEqual(create_response.status_code, 201)
+        folder = create_response.json()
+        self.assertEqual(folder["name"], "VO2 Max")
+        self.assertEqual(folder["count"], 0)
+
+        self.client.post("/v1/workouts", _workout_payload(folder_id=folder["id"]), format="json")
+
+        list_response = self.client.get("/v1/workout-folders")
+        self.assertEqual(list_response.status_code, 200)
+        data = list_response.json()["data"]
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["count"], 1)
+
+    def test_duplicate_folder_name_is_rejected(self):
+        self.client.post("/v1/workout-folders", {"name": "Race Prep"}, format="json")
+        response = self.client.post("/v1/workout-folders", {"name": "Race Prep"}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_rename_and_delete_folder_unassigns_workouts(self):
+        folder = self.client.post("/v1/workout-folders", {"name": "Base"}, format="json").json()
+        workout = self.client.post("/v1/workouts", _workout_payload(folder_id=folder["id"]), format="json").json()
+        self.assertEqual(workout["folder_id"], folder["id"])
+
+        rename_response = self.client.patch(
+            f"/v1/workout-folders/{folder['id']}", {"name": "Base / Endurance"}, format="json"
+        )
+        self.assertEqual(rename_response.status_code, 200)
+        self.assertEqual(rename_response.json()["name"], "Base / Endurance")
+
+        delete_response = self.client.delete(f"/v1/workout-folders/{folder['id']}")
+        self.assertEqual(delete_response.status_code, 204)
+
+        detail = self.client.get(f"/v1/workouts/{workout['id']}").json()
+        self.assertIsNone(detail["folder_id"])
+
+    def test_outsider_cannot_create_or_modify_athletes_folders(self):
+        folder = self.client.post("/v1/workout-folders", {"name": "Threshold"}, format="json").json()
+        outsider_client = _bearer_client(self.outsider)
+
+        list_response = outsider_client.get("/v1/workout-folders")
+        self.assertEqual(list_response.json()["data"], [])
+
+        rename_response = outsider_client.patch(
+            f"/v1/workout-folders/{folder['id']}", {"name": "Hijacked"}, format="json"
+        )
+        self.assertEqual(rename_response.status_code, 403)
+
+    def test_create_and_patch_workout_with_tags(self):
+        response = self.client.post("/v1/workouts", _workout_payload(tags=["intervals", "race prep"]), format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["tags"], ["intervals", "race prep"])
+        workout_id = response.json()["id"]
+
+        patch_response = self.client.patch(f"/v1/workouts/{workout_id}", {"tags": ["base"]}, format="json")
+        self.assertEqual(patch_response.status_code, 200)
+        self.assertEqual(patch_response.json()["tags"], ["base"])
+
+    def test_chart_preview_is_computed_on_save(self):
+        response = self.client.post("/v1/workouts", _workout_payload(), format="json")
+        preview = response.json()["chart_preview"]
+        # warmup (50), 4x block (100), cool (40) — flattened/unrolled per leaf
+        self.assertEqual(preview, [50, 100, 100, 100, 100, 40])
+
+    def test_list_filters_by_folder_tag_sport_and_search(self):
+        folder = self.client.post("/v1/workout-folders", {"name": "Intervals"}, format="json").json()
+        self.client.post(
+            "/v1/workouts", _workout_payload(name="VO2 Max 5x5", folder_id=folder["id"], tags=["hard"]), format="json"
+        )
+        self.client.post("/v1/workouts", _workout_payload(name="Easy Spin", sport="bike", tags=["easy"]), format="json")
+        self.client.post("/v1/workouts", _workout_payload(name="Long Run", sport="run", tags=["easy"]), format="json")
+
+        by_folder = self.client.get(f"/v1/workouts?folder_id={folder['id']}").json()["data"]
+        self.assertEqual([w["name"] for w in by_folder], ["VO2 Max 5x5"])
+
+        by_tag = self.client.get("/v1/workouts?tag=easy").json()["data"]
+        self.assertEqual({w["name"] for w in by_tag}, {"Easy Spin", "Long Run"})
+
+        by_sport = self.client.get("/v1/workouts?sport=run").json()["data"]
+        self.assertEqual([w["name"] for w in by_sport], ["Long Run"])
+
+        by_search = self.client.get("/v1/workouts?search=vo2").json()["data"]
+        self.assertEqual([w["name"] for w in by_search], ["VO2 Max 5x5"])
+
+    def test_list_sorts_by_name_duration_tss_and_used(self):
+        from scheduling.models import ScheduledWorkout
+
+        self.client.post("/v1/workouts", _workout_payload(name="Zulu", steps=[]), format="json")
+        alpha = self.client.post("/v1/workouts", _workout_payload(name="Alpha", steps=[]), format="json").json()
+
+        by_name = self.client.get("/v1/workouts?sort=name").json()["data"]
+        self.assertEqual([w["name"] for w in by_name], ["Alpha", "Zulu"])
+
+        # Created directly via the ORM (not the /v1/scheduled-workouts API) since this
+        # test's urlconf is overridden to only mount workouts.urls.
+        ScheduledWorkout.objects.create(workout_id=alpha["id"], athlete=self.athlete, date="2026-08-01")
+
+        by_used = self.client.get("/v1/workouts?sort=used").json()["data"]
+        self.assertEqual(by_used[0]["name"], "Alpha")
+
+    def test_invalid_sort_is_rejected(self):
+        response = self.client.get("/v1/workouts?sort=bogus")
+        self.assertEqual(response.status_code, 400)
 
 
 @workouts_urlconf

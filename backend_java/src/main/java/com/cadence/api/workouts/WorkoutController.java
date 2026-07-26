@@ -40,10 +40,16 @@ public class WorkoutController {
 	}
 
 	@GetMapping("/v1/workouts")
-	public DataListResponse<WorkoutResponse> listWorkouts() {
+	public DataListResponse<WorkoutResponse> listWorkouts(
+			@RequestParam(required = false) String folderId,
+			@RequestParam(required = false) String tag,
+			@RequestParam(required = false) String sport,
+			@RequestParam(required = false) String search,
+			@RequestParam(required = false) String sort) {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
-		return new DataListResponse<>(workoutService.listWorkouts(athleteId).stream().map(workoutMapper::toResponse).toList());
+		var workouts = workoutService.listWorkouts(athleteId, folderId, tag, sport, search, sort);
+		return new DataListResponse<>(workouts.stream().map(workoutMapper::toResponse).toList());
 	}
 
 	@PostMapping("/v1/workouts")

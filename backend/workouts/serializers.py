@@ -2,7 +2,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from .models import Workout, WorkoutStep
+from .models import Workout, WorkoutFolder, WorkoutStep
 
 LEAF_KINDS = {"warmup", "block", "rec", "cool"}
 
@@ -137,10 +137,16 @@ class WorkoutStepSerializer(serializers.Serializer):
 
 
 class WorkoutSerializer(serializers.ModelSerializer):
+    # `Workout.folder` is a FK; DRF's ModelSerializer can't auto-resolve a plain
+    # "folder_id" Meta.fields entry (only "folder" is a real model field), so this
+    # is declared explicitly. `getattr(workout, "folder_id")` reads the raw FK
+    # column directly — no join needed.
+    folder_id = serializers.CharField(allow_null=True, read_only=True)
+
     class Meta:
         model = Workout
-        fields = ["id", "name", "sport", "type", "duration", "tss"]
-        read_only_fields = ["id", "type", "duration", "tss"]
+        fields = ["id", "name", "sport", "type", "duration", "tss", "folder_id", "tags", "chart_preview", "updated_at"]
+        read_only_fields = ["id", "type", "duration", "tss", "folder_id", "tags", "chart_preview", "updated_at"]
 
 
 class WorkoutDetailSerializer(WorkoutSerializer):
@@ -157,11 +163,24 @@ class WorkoutCreateSerializer(serializers.Serializer):
     name = serializers.CharField()
     sport = serializers.ChoiceField(choices=Workout.SPORT_CHOICES)
     steps = serializers.ListField(child=serializers.DictField())
+    folder_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    tags = serializers.ListField(child=serializers.CharField(), required=False)
 
 
 class WorkoutUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
     steps = serializers.ListField(child=serializers.DictField(), required=False)
+    folder_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    tags = serializers.ListField(child=serializers.CharField(), required=False)
+
+
+class WorkoutFolderSerializer(serializers.ModelSerializer):
+    count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = WorkoutFolder
+        fields = ["id", "name", "count"]
+        read_only_fields = ["id", "count"]
 
 
 class WorkoutMatchSerializer(serializers.Serializer):

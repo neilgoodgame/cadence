@@ -377,7 +377,19 @@ export interface Workout {
   type: string;
   duration: number;
   tss: number;
+  folder_id: string | null;
+  tags: string[];
+  chart_preview: number[];
+  updated_at: string;
 }
+
+export interface WorkoutFolder {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export type WorkoutSort = "recent" | "name" | "duration" | "tss" | "used";
 
 export interface WorkoutDetail extends Workout {
   steps: WorkoutStep[];

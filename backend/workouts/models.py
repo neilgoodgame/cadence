@@ -4,6 +4,21 @@ from accounts.models import User
 from core.models import PrefixedIDModel
 
 
+class WorkoutFolder(PrefixedIDModel):
+    id_prefix = "wfd"
+
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workout_folders")
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["created_by", "name"], name="unique_athlete_folder_name"),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Workout(PrefixedIDModel):
     id_prefix = "wkt"
 
@@ -25,6 +40,14 @@ class Workout(PrefixedIDModel):
     type = models.CharField(max_length=50, blank=True, default="")
     duration = models.IntegerField(default=0)
     tss = models.IntegerField(default=0)
+    folder = models.ForeignKey(WorkoutFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name="workouts")
+    tags = models.JSONField(default=list, blank=True)
+    # Flattened per-leaf average target intensity, recomputed alongside duration/tss
+    # whenever steps are replaced — cheap chart data for library cards/rows without
+    # shipping the full step tree in the list response.
+    chart_preview = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
         return self.name

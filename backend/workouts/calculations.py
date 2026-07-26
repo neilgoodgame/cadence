@@ -61,3 +61,35 @@ def compute_duration_and_tss(steps: list[dict[str, Any]]) -> tuple[int, int]:
     `repeat`, to arbitrary nesting depth).
     """
     return _total_duration(steps), round(_tss_sum(steps))
+
+
+def _flatten_leaves(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Unrolls `repeat` groups into their repeated leaf sequence (same leaves
+    reused per repetition), matching the frontend's `flattenLeaves`.
+    """
+    out: list[dict[str, Any]] = []
+    for step in steps:
+        if step["kind"] == "repeat":
+            for _ in range(step.get("repeat") or 1):
+                out.extend(_flatten_leaves(step.get("children") or []))
+        else:
+            out.append(step)
+    return out
+
+
+def compute_chart_preview(steps: list[dict[str, Any]]) -> list[float]:
+    """A small array of per-leaf average target intensity (flattened/unrolled),
+    denormalized onto `Workout.chart_preview` so the library list endpoint can
+    render a mini interval chart per card without shipping the full step tree.
+    """
+    preview = []
+    for leaf in _flatten_leaves(steps):
+        if leaf.get("target_type") == "open":
+            preview.append(40.0)
+            continue
+        low = leaf.get("target_low")
+        low = low if low is not None else 60
+        high = leaf.get("target_high")
+        high = high if high is not None else low
+        preview.append((low + high) / 2)
+    return preview

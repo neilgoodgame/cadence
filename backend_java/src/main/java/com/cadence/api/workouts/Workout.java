@@ -12,8 +12,13 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "workout")
@@ -39,6 +44,29 @@ public class Workout extends PrefixedIdEntity {
 
 	@Column(nullable = false)
 	private int tss;
+
+	@ManyToOne(fetch = FetchType.LAZY, optional = true)
+	@JoinColumn(name = "folder_id")
+	private WorkoutFolder folder;
+
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(nullable = false)
+	private List<String> tags = new ArrayList<>();
+
+	/** Flattened per-leaf average target intensity, recomputed alongside duration/tss whenever
+	 * steps are replaced - cheap chart data for library cards/rows without shipping the full
+	 * step tree in the list response. */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(nullable = false)
+	private List<Double> chartPreview = new ArrayList<>();
+
+	@CreationTimestamp
+	@Column(nullable = false, updatable = false)
+	private Instant createdAt;
+
+	@UpdateTimestamp
+	@Column(nullable = false)
+	private Instant updatedAt;
 
 	@OneToMany(mappedBy = "workout", cascade = CascadeType.ALL, orphanRemoval = true)
 	@OrderBy("order ASC")
@@ -91,6 +119,38 @@ public class Workout extends PrefixedIdEntity {
 
 	public void setTss(int tss) {
 		this.tss = tss;
+	}
+
+	public WorkoutFolder getFolder() {
+		return folder;
+	}
+
+	public void setFolder(WorkoutFolder folder) {
+		this.folder = folder;
+	}
+
+	public List<String> getTags() {
+		return tags;
+	}
+
+	public void setTags(List<String> tags) {
+		this.tags = tags;
+	}
+
+	public List<Double> getChartPreview() {
+		return chartPreview;
+	}
+
+	public void setChartPreview(List<Double> chartPreview) {
+		this.chartPreview = chartPreview;
+	}
+
+	public Instant getCreatedAt() {
+		return createdAt;
+	}
+
+	public Instant getUpdatedAt() {
+		return updatedAt;
 	}
 
 	public List<WorkoutStep> getSteps() {
