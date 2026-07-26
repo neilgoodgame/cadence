@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,17 +35,16 @@ public class BestEffortController {
 	private final BestEffortRecomputeService recomputeService;
 	private final UserService userService;
 	private final AccessGuard accessGuard;
-	private final Executor taskExecutor;
+	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 	private final ObjectMapper objectMapper;
 
 	public BestEffortController(BestEffortRepository bestEffortRepository,
 			BestEffortRecomputeService recomputeService, UserService userService,
-			AccessGuard accessGuard, Executor taskExecutor, ObjectMapper objectMapper) {
+			AccessGuard accessGuard, ObjectMapper objectMapper) {
 		this.bestEffortRepository = bestEffortRepository;
 		this.recomputeService = recomputeService;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
-		this.taskExecutor = taskExecutor;
 		this.objectMapper = objectMapper;
 	}
 
