@@ -1,0 +1,65 @@
+{
+  "name": "Zone 5 Intervals",
+  "sport": "bike",
+  "steps": [
+    {
+      "kind": "warmup",
+      "end_type": "time",
+      "duration": 600,
+      "distance": null,
+      "target_type": "power",
+      "target_low": 25,
+      "target_high": 75,
+      "target2_type": "none",
+      "target2_low": null,
+      "target2_high": null,
+      "note": ""
+    },
+    {
+      "kind": "repeat",
+      "repeat": 10,
+      "note": "",
+      "children": [
+        {
+          "kind": "block",
+          "end_type": "time",
+          "duration": 180,
+          "distance": null,
+          "target_type": "power",
+          "target_low": 110,
+          "target_high": 110,
+          "target2_type": "none",
+          "target2_low": null,
+          "target2_high": null,
+          "note": ""
+        },
+        {
+          "kind": "rec",
+          "end_type": "time",
+          "duration": 180,
+          "distance": null,
+          "target_type": "power",
+          "target_low": 65,
+          "target_high": 65,
+          "target2_type": "none",
+          "target2_low": null,
+          "target2_high": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "kind": "cool",
+      "end_type": "time",
+      "duration": 180,
+      "distance": null,
+      "target_type": "power",
+      "target_low": 63,
+      "target_high": 25,
+      "target2_type": "none",
+      "target2_low": null,
+      "target2_high": null,
+      "note": ""
+    }
+  ]
+}

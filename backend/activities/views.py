@@ -14,6 +14,7 @@ from core.permissions import user_may_read, user_may_write
 from uploads.processing import compute_normalized_power, compute_tss
 from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
+from workouts.inference import infer_workout
 from workouts.models import Workout
 
 from .models import Activity, ActivityTag, DurationCurve, Record, Tag
@@ -275,6 +276,21 @@ class LapListView(APIView):
         if not user_may_read(sub, activity.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
         return Response({"data": LapSerializer(activity.laps.all(), many=True).data})
+
+
+class InferWorkoutView(APIView):
+    def get(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        if activity.sport not in dict(Workout.SPORT_CHOICES):
+            raise ValidationError({"sport": "Only bike and run activities can be inferred into a workout."})
+        if not activity.laps.exists():
+            raise ValidationError({"laps": "This activity has no laps to infer a workout from."})
+
+        auto_detect_repeats = request.query_params.get("auto_detect_repeats", "true").lower() == "true"
+        return Response(infer_workout(activity, auto_detect_repeats=auto_detect_repeats))
 
 
 class StreamsView(APIView):

@@ -1,0 +1,65 @@
+{
+  "name": "4 x 15 minutes at threshold",
+  "sport": "bike",
+  "steps": [
+    {
+      "kind": "warmup",
+      "end_type": "time",
+      "duration": 600,
+      "distance": null,
+      "target_type": "power",
+      "target_low": 50,
+      "target_high": 70,
+      "target2_type": "none",
+      "target2_low": 85,
+      "target2_high": 95,
+      "note": ""
+    },
+    {
+      "kind": "repeat",
+      "repeat": 4,
+      "note": "",
+      "children": [
+        {
+          "kind": "block",
+          "end_type": "time",
+          "duration": 900,
+          "distance": null,
+          "target_type": "power",
+          "target_low": 100,
+          "target_high": 100,
+          "target2_type": "none",
+          "target2_low": 85,
+          "target2_high": 95,
+          "note": ""
+        },
+        {
+          "kind": "rec",
+          "end_type": "time",
+          "duration": 300,
+          "distance": null,
+          "target_type": "power",
+          "target_low": 50,
+          "target_high": 50,
+          "target2_type": "none",
+          "target2_low": 85,
+          "target2_high": 95,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "kind": "rec",
+      "end_type": "time",
+      "duration": 300,
+      "distance": null,
+      "target_type": "power",
+      "target_low": 50,
+      "target_high": 55,
+      "target2_type": "none",
+      "target2_low": 85,
+      "target2_high": 95,
+      "note": ""
+    }
+  ]
+}
