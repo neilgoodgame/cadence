@@ -1,55 +1,98 @@
-import { useQuery } from "@tanstack/react-query";
-import { getLaps } from "../../api/activities";
+import { useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { getLaps, inferWorkout } from "../../api/activities";
+import { ApiError, type Sport } from "../../api/types";
 import { formatDuration } from "../../lib/format";
 
-export function LapsTab({ activityId }: { activityId: string }) {
+export function LapsTab({ activityId, sport }: { activityId: string; sport: Sport }) {
+  const navigate = useNavigate();
   const { data } = useQuery({ queryKey: ["activity-laps", activityId], queryFn: () => getLaps(activityId) });
   const laps = data?.data ?? [];
   const maxPower = Math.max(1, ...laps.map((l) => l.avg_power ?? 0));
+  const [autoDetectRepeats, setAutoDetectRepeats] = useState(true);
+
+  const inferMutation = useMutation({
+    mutationFn: () => inferWorkout(activityId, autoDetectRepeats),
+    onSuccess: (draft) => navigate("/workouts", { state: { inferredDraft: draft } }),
+  });
+  const inferError = inferMutation.isError
+    ? inferMutation.error instanceof ApiError
+      ? inferMutation.error.message
+      : "Couldn't infer a workout from these laps. Try again."
+    : null;
 
   if (laps.length === 0) {
     return <div style={{ color: "var(--ink3)", fontSize: 13 }}>No laps recorded.</div>;
   }
 
   return (
-    <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-      <thead>
-        <tr style={{ textAlign: "left", color: "var(--ink3)", fontSize: 11 }}>
-          <th style={{ paddingBottom: 8 }}>Lap</th>
-          <th style={{ paddingBottom: 8 }}>Distance</th>
-          <th style={{ paddingBottom: 8 }}>Time</th>
-          <th style={{ paddingBottom: 8 }}>Speed</th>
-          <th style={{ paddingBottom: 8 }}>Avg Power</th>
-          <th style={{ paddingBottom: 8 }}>Avg HR</th>
-        </tr>
-      </thead>
-      <tbody>
-        {laps.map((lap) => (
-          <tr key={lap.index} style={{ borderTop: "1px solid var(--line)" }}>
-            <td style={{ padding: "8px 0" }}>
-              <span style={{ display: "inline-block", width: 24, height: 24, borderRadius: "50%", background: "var(--elev)", textAlign: "center", lineHeight: "24px", fontSize: 11 }}>
-                {lap.index}
-              </span>
-            </td>
-            <td className="mono">{lap.distance_km.toFixed(2)} km</td>
-            <td className="mono">{formatDuration(lap.duration)}</td>
-            <td className="mono">{((lap.distance_km / (lap.duration / 3600)) || 0).toFixed(1)} km/h</td>
-            <td>
-              {lap.avg_power != null ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 60, height: 6, background: "var(--elev)", borderRadius: 3 }}>
-                    <div style={{ width: `${(lap.avg_power / maxPower) * 100}%`, height: "100%", background: "var(--ember)", borderRadius: 3 }} />
-                  </div>
-                  <span className="mono">{lap.avg_power} w</span>
-                </div>
-              ) : (
-                <span className="mono" style={{ color: "var(--ink3)" }}>—</span>
-              )}
-            </td>
-            <td className="mono">{lap.avg_hr != null ? `${lap.avg_hr} bpm` : "—"}</td>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {(sport === "bike" || sport === "run") && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={() => inferMutation.mutate()}
+            disabled={inferMutation.isPending}
+            style={{
+              border: "1px solid var(--line)",
+              borderRadius: 8,
+              background: "var(--card)",
+              color: "var(--ink2)",
+              fontSize: 12.5,
+              fontWeight: 700,
+              padding: "7px 14px",
+              cursor: "pointer",
+              opacity: inferMutation.isPending ? 0.6 : 1,
+            }}
+          >
+            {inferMutation.isPending ? "Building…" : "Create workout from laps"}
+          </button>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink3)" }}>
+            <input type="checkbox" checked={autoDetectRepeats} onChange={(e) => setAutoDetectRepeats(e.target.checked)} />
+            Auto-detect repeat groups
+          </label>
+          {inferError && <span style={{ fontSize: 12.5, color: "#e0442e" }}>{inferError}</span>}
+        </div>
+      )}
+      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ textAlign: "left", color: "var(--ink3)", fontSize: 11 }}>
+            <th style={{ paddingBottom: 8 }}>Lap</th>
+            <th style={{ paddingBottom: 8 }}>Distance</th>
+            <th style={{ paddingBottom: 8 }}>Time</th>
+            <th style={{ paddingBottom: 8 }}>Speed</th>
+            <th style={{ paddingBottom: 8 }}>Avg Power</th>
+            <th style={{ paddingBottom: 8 }}>Avg HR</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {laps.map((lap) => (
+            <tr key={lap.index} style={{ borderTop: "1px solid var(--line)" }}>
+              <td style={{ padding: "8px 0" }}>
+                <span style={{ display: "inline-block", width: 24, height: 24, borderRadius: "50%", background: "var(--elev)", textAlign: "center", lineHeight: "24px", fontSize: 11 }}>
+                  {lap.index}
+                </span>
+              </td>
+              <td className="mono">{lap.distance_km.toFixed(2)} km</td>
+              <td className="mono">{formatDuration(lap.duration)}</td>
+              <td className="mono">{((lap.distance_km / (lap.duration / 3600)) || 0).toFixed(1)} km/h</td>
+              <td>
+                {lap.avg_power != null ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 60, height: 6, background: "var(--elev)", borderRadius: 3 }}>
+                      <div style={{ width: `${(lap.avg_power / maxPower) * 100}%`, height: "100%", background: "var(--ember)", borderRadius: 3 }} />
+                    </div>
+                    <span className="mono">{lap.avg_power} w</span>
+                  </div>
+                ) : (
+                  <span className="mono" style={{ color: "var(--ink3)" }}>—</span>
+                )}
+              </td>
+              <td className="mono">{lap.avg_hr != null ? `${lap.avg_hr} bpm` : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

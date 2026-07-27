@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { InferredWorkout } from "../../api/activities";
 import { createWorkout, getWorkout, updateWorkout, type WorkoutInput } from "../../api/workouts";
 import { useAuth } from "../../auth/AuthContext";
 import { Card } from "../../components/Card";
@@ -29,7 +30,16 @@ import {
 
 const SPORTS: WorkoutSport[] = ["bike", "run"];
 
-export function WorkoutEditor({ workoutId, onDone }: { workoutId: string | "new"; onDone: () => void }) {
+export function WorkoutEditor({
+  workoutId,
+  initialDraft,
+  onDone,
+}: {
+  workoutId: string | "new";
+  /** Pre-populates a "new" editor (e.g. a workout inferred from an activity's laps) instead of the blank default. Ignored when editing an existing workout. */
+  initialDraft?: InferredWorkout | null;
+  onDone: () => void;
+}) {
   const isNew = workoutId === "new";
   const { data: existing } = useQuery({
     queryKey: ["workout", workoutId],
@@ -41,7 +51,7 @@ export function WorkoutEditor({ workoutId, onDone }: { workoutId: string | "new"
     return <div style={{ color: "var(--ink3)", fontSize: 13 }}>Loading…</div>;
   }
 
-  return <WorkoutEditorForm workoutId={workoutId} initial={existing ?? null} onDone={onDone} />;
+  return <WorkoutEditorForm workoutId={workoutId} initial={isNew ? (initialDraft ?? null) : (existing ?? null)} onDone={onDone} />;
 }
 
 function WorkoutEditorForm({

@@ -96,7 +96,7 @@ export function ActivityAnalysisScreen() {
           ))}
         </div>
 
-        {tab === "laps" && <LapsTab activityId={activity.id} />}
+        {tab === "laps" && <LapsTab activityId={activity.id} sport={activity.sport} />}
         {tab === "zones" && <ZonesTab activity={activity} athleteId={user.id} />}
         {tab === "curves" && <CurvesTab activityId={activity.id} />}
       </div>
