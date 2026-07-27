@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listTags, tagActivity, untagActivity, updateActivity } from "../../api/activities";
+import { useNavigate } from "react-router-dom";
+import { deleteActivity, listTags, tagActivity, untagActivity, updateActivity } from "../../api/activities";
 import { createRace, listRaces, updateRace } from "../../api/races";
 import type { Activity } from "../../api/types";
 import { formatDateTime } from "../../lib/format";
@@ -45,6 +46,7 @@ function closestPresetKm(sport: string, activityKm: number): number | null {
 
 export function Header({ activity }: { activity: Activity }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [newTag, setNewTag] = useState("");
   const [renaming, setRenaming] = useState(false);
   const [nameInput, setNameInput] = useState(activity.name);
@@ -56,6 +58,14 @@ export function Header({ activity }: { activity: Activity }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["activity", activity.id] });
       setRenaming(false);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteActivity(activity.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["activities"] });
+      navigate("/activities");
     },
   });
 
@@ -214,6 +224,16 @@ export function Header({ activity }: { activity: Activity }) {
             style={{ fontSize: 14, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer", padding: "2px 4px", borderRadius: 4, lineHeight: 1, flexShrink: 0 }}
           >
             ✎
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm(`Delete "${activity.name}"? This can't be undone.`)) deleteMutation.mutate();
+            }}
+            disabled={deleteMutation.isPending}
+            title="Delete activity"
+            style={{ fontSize: 14, border: "none", background: "none", color: "#c4332a", cursor: "pointer", padding: "2px 4px", borderRadius: 4, lineHeight: 1, flexShrink: 0, opacity: deleteMutation.isPending ? 0.6 : 1 }}
+          >
+            {deleteMutation.isPending ? "…" : "✕"}
           </button>
         </div>
       )}
