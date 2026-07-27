@@ -19,6 +19,7 @@ function ZoneList({
   activityId,
   channel,
   zoneType,
+  unit,
 }: {
   title: string;
   color: string;
@@ -26,6 +27,7 @@ function ZoneList({
   activityId: string;
   channel: "power" | "heartrate";
   zoneType: ZoneType;
+  unit: string;
 }) {
   const zonesQuery = useQuery({ queryKey: ["zones", athleteId], queryFn: () => listZones(athleteId) });
   const streamsQuery = useQuery({
@@ -40,31 +42,47 @@ function ZoneList({
 
   const zoneTimes = bucketIntoZones(streamsQuery.data.fields[channel] ?? [], zoneSet, RESOLUTION_SECONDS);
   const maxSeconds = Math.max(1, ...zoneTimes.map((z) => z.seconds));
+  const reference = zoneSet.reference;
 
   return (
     <div>
       <div className="mono" style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.06em", marginBottom: 10 }}>
         {title.toUpperCase()}
       </div>
-      {zoneTimes.map((zone, i) => (
-        <div key={zone.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", fontSize: 13 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: ZONE_COLORS[i % ZONE_COLORS.length] }} />
-          <span style={{ width: 110 }}>{zone.name}</span>
-          <div style={{ flex: 1, height: 6, background: "var(--elev)", borderRadius: 3 }}>
-            <div
-              style={{
-                width: `${(zone.seconds / maxSeconds) * 100}%`,
-                height: "100%",
-                background: ZONE_COLORS[i % ZONE_COLORS.length],
-                borderRadius: 3,
-              }}
-            />
+      {zoneTimes.map((zone, i) => {
+        const def = zoneSet.zones[i];
+        const isLast = i === zoneSet.zones.length - 1;
+        let rangeLabel: string | null = null;
+        if (reference != null) {
+          const low = Math.round((def.low_pct / 100) * reference);
+          const high = Math.round((def.high_pct / 100) * reference);
+          rangeLabel = isLast ? `${low}+ ${unit}` : `${low}–${high} ${unit}`;
+        }
+        return (
+          <div key={zone.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", fontSize: 13 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, flexShrink: 0, background: ZONE_COLORS[i % ZONE_COLORS.length] }} />
+            <span style={{ width: 110, flexShrink: 0 }}>{zone.name}</span>
+            {rangeLabel != null && (
+              <span className="mono" style={{ width: 80, flexShrink: 0, fontSize: 11, color: "var(--ink3)" }}>
+                {rangeLabel}
+              </span>
+            )}
+            <div style={{ flex: 1, height: 6, background: "var(--elev)", borderRadius: 3 }}>
+              <div
+                style={{
+                  width: `${(zone.seconds / maxSeconds) * 100}%`,
+                  height: "100%",
+                  background: ZONE_COLORS[i % ZONE_COLORS.length],
+                  borderRadius: 3,
+                }}
+              />
+            </div>
+            <span className="mono" style={{ width: 60, textAlign: "right", flexShrink: 0, color: "var(--ink2)" }}>
+              {formatDuration(zone.seconds)}
+            </span>
           </div>
-          <span className="mono" style={{ width: 60, textAlign: "right", color: "var(--ink2)" }}>
-            {formatDuration(zone.seconds)}
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -79,6 +97,7 @@ export function ZonesTab({ activity, athleteId }: { activity: Activity; athleteI
         activityId={activity.id}
         channel="power"
         zoneType={powerZoneType(activity)}
+        unit="W"
       />
       <ZoneList
         title="Heart rate zones"
@@ -87,6 +106,7 @@ export function ZonesTab({ activity, athleteId }: { activity: Activity; athleteI
         activityId={activity.id}
         channel="heartrate"
         zoneType="heart_rate"
+        unit="bpm"
       />
     </div>
   );
