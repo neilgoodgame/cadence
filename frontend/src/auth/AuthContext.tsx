@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as authApi from "../api/auth";
 import { setAccessToken, setRefreshHandler } from "../api/client";
 import type { Athlete } from "../api/types";
@@ -34,21 +34,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(athlete);
   }, []);
 
-  const refresh = useCallback(async (): Promise<string | null> => {
-    const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-    if (!storedRefreshToken) {
-      return null;
+  // The backend rotates refresh tokens on use (single-use), so two concurrent callers
+  // presenting the same stored token race: whichever request the server sees second gets
+  // rejected outright, and its caller would otherwise call logout() and wipe out the state
+  // the first (successful) call just set. This happens for real - React StrictMode
+  // double-invokes the mount effect below in dev, and any burst of API calls that all 401
+  // at once each independently call this via setRefreshHandler. A single in-flight promise,
+  // shared via a ref (so it survives StrictMode's simulated remount of the same instance),
+  // makes every concurrent caller await one actual network call instead of racing.
+  const refreshInFlight = useRef<Promise<string | null> | null>(null);
+  const refresh = useCallback((): Promise<string | null> => {
+    if (refreshInFlight.current) {
+      return refreshInFlight.current;
     }
-    try {
-      const tokens = await authApi.refreshTokens(storedRefreshToken);
-      setAccessToken(tokens.access_token);
-      localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
-      return tokens.access_token;
-    }
-    catch {
-      logout();
-      return null;
-    }
+    const promise = (async () => {
+      const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+      if (!storedRefreshToken) {
+        return null;
+      }
+      try {
+        const tokens = await authApi.refreshTokens(storedRefreshToken);
+        setAccessToken(tokens.access_token);
+        localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
+        return tokens.access_token;
+      }
+      catch {
+        logout();
+        return null;
+      }
+      finally {
+        refreshInFlight.current = null;
+      }
+    })();
+    refreshInFlight.current = promise;
+    return promise;
   }, [logout]);
 
   useEffect(() => {
