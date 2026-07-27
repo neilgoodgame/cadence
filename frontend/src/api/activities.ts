@@ -8,6 +8,8 @@ import type {
   List,
   StreamsResponse,
   Tag,
+  WorkoutSport,
+  WorkoutStep,
 } from "./types";
 
 export interface ListActivitiesParams {
@@ -59,6 +61,16 @@ export function deleteAllActivities(): Promise<void> {
 
 export function getLaps(id: string): Promise<DataList<Lap>> {
   return apiFetch<DataList<Lap>>(`/v1/activities/${id}/laps`);
+}
+
+export interface InferredWorkout {
+  name: string;
+  sport: WorkoutSport;
+  steps: WorkoutStep[];
+}
+
+export function inferWorkout(id: string, autoDetectRepeats: boolean): Promise<InferredWorkout> {
+  return apiFetch<InferredWorkout>(`/v1/activities/${id}/infer-workout${toQueryString({ auto_detect_repeats: autoDetectRepeats })}`);
 }
 
 export function getStreams(
