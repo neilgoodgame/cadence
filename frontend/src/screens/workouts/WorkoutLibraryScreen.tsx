@@ -12,7 +12,7 @@ import {
 import type { Workout, WorkoutFolder, WorkoutSort, WorkoutSport } from "../../api/types";
 import { sportColor, sportLabel } from "../../lib/sportColors";
 import { useAuth } from "../../auth/AuthContext";
-import { fmtDuration, withIds } from "./workoutTree";
+import { fmtDuration, withIds, zoneColor } from "./workoutTree";
 import { AssignModal } from "./AssignModal";
 import { ExportModal } from "./ExportModal";
 import { buildZwo, download } from "./workoutExport";
@@ -505,7 +505,7 @@ function WorkoutCard({
         <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--ink3)" }}>
           {fmtDuration(workout.duration)} · {workout.tss} TSS
         </div>
-        <MiniChart preview={workout.chart_preview} color={sportColor(workout.sport)} />
+        <MiniChart preview={workout.chart_preview} />
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5, marginTop: 10 }}>
         {workout.tags.map((t) => (
@@ -582,13 +582,15 @@ function CheckBox({ checked, onClick }: { checked: boolean; onClick: () => void 
   );
 }
 
-function MiniChart({ preview, color }: { preview: number[]; color: string }) {
+// Same 5-zone %FTP/%threshold colour scale as the Builder's chart (workoutTree.zoneColor),
+// so a workout's intensity profile looks the same whether you're viewing or editing it.
+function MiniChart({ preview }: { preview: number[] }) {
   if (preview.length === 0) return null;
   return (
     <div style={{ height: 44, display: "flex", alignItems: "flex-end", gap: 1, background: "var(--elev)", borderRadius: 6, overflow: "hidden", marginTop: 10 }}>
       {preview.map((v, i) => (
         <div key={i} style={{ flex: 1, height: "100%", display: "flex", alignItems: "flex-end" }}>
-          <div style={{ width: "100%", height: `${Math.min(100, (v / 150) * 100)}%`, background: color, opacity: 0.55 }} />
+          <div style={{ width: "100%", height: `${Math.min(100, (v / 150) * 100)}%`, background: zoneColor(v), opacity: 0.65 }} />
         </div>
       ))}
     </div>
