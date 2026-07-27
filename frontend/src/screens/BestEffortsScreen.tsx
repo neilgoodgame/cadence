@@ -17,6 +17,11 @@ type DisplayPeriod = "4w" | "16w" | "1y" | "all";
 // bucket instead), and `days` then trims the result client-side to the label's actual window -
 // otherwise e.g. the "4 weeks" tab would silently show the full 3-month bucket it was fetched
 // from. `days: null` means trust the backend's own bucket boundary as-is (already exact).
+//
+// Note this only ever filters the athlete's stored all-time top-N BestEffort rows by date - a
+// below-the-cutoff effort has no row to filter at all, even within the period. See the trim
+// note in backend/uploads/processing.py's _trim_kind_window (and its Java equivalent) for why,
+// and what a true "best of this period" view would need.
 const PERIOD_CONFIG: Record<DisplayPeriod, { apiPeriod: BestEffortPeriod; days: number | null; label: string }> = {
   "4w": { apiPeriod: "3m", days: 28, label: "4 weeks" },
   "16w": { apiPeriod: "1y", days: 112, label: "16 weeks" },
