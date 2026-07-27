@@ -11,15 +11,27 @@ import type { Activity, BestEffort, BestEffortKind, BestEffortPeriod } from "../
 
 type DisplayPeriod = "4w" | "16w" | "1y" | "all";
 
-const PERIOD_CONFIG: Record<DisplayPeriod, { apiPeriod: BestEffortPeriod; label: string }> = {
-  "4w": { apiPeriod: "3m", label: "4 weeks" },
-  "16w": { apiPeriod: "3m", label: "16 weeks" },
-  "1y": { apiPeriod: "1y", label: "1 year" },
-  all: { apiPeriod: "all", label: "All time" },
+// The backend only buckets by "3m" / "1y" / "all" (BestEffortPeriod) - there's no native
+// "last N weeks" query. apiPeriod is always fetched as a *superset* of the displayed window
+// (16 weeks is 112 days, which is wider than the "3m" bucket's ~90 days, so it needs the "1y"
+// bucket instead), and `days` then trims the result client-side to the label's actual window -
+// otherwise e.g. the "4 weeks" tab would silently show the full 3-month bucket it was fetched
+// from. `days: null` means trust the backend's own bucket boundary as-is (already exact).
+const PERIOD_CONFIG: Record<DisplayPeriod, { apiPeriod: BestEffortPeriod; days: number | null; label: string }> = {
+  "4w": { apiPeriod: "3m", days: 28, label: "4 weeks" },
+  "16w": { apiPeriod: "1y", days: 112, label: "16 weeks" },
+  "1y": { apiPeriod: "1y", days: null, label: "1 year" },
+  all: { apiPeriod: "all", days: null, label: "All time" },
 };
 const DISPLAY_PERIODS: DisplayPeriod[] = ["4w", "16w", "1y", "all"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function withinLastDays(dateStr: string, days: number | null): boolean {
+  if (days == null) return true;
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return new Date(dateStr).getTime() >= cutoff;
+}
 
 function windowToSeconds(w: string): number {
   const m = w.match(/^(\d+)\s*(s|sec|m|min|h|hr)/i);
@@ -365,10 +377,10 @@ function RunHrCard({
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
   const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
-  const windowEfforts = useMemo(() => {
-    const base = efforts.length > 0 ? efforts : allTimeEfforts;
-    return base.filter((e) => e.window === effective);
-  }, [efforts, allTimeEfforts, effective]);
+  // Deliberately never falls back to allTimeEfforts when the period has nothing for the
+  // selected window - that silently showed activities from outside the chosen period (e.g.
+  // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
+  const windowEfforts = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
 
   return (
     <CardShell
@@ -451,10 +463,10 @@ function BikeHrCard({
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
   const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
-  const windowEfforts = useMemo(() => {
-    const base = efforts.length > 0 ? efforts : allTimeEfforts;
-    return base.filter((e) => e.window === effective);
-  }, [efforts, allTimeEfforts, effective]);
+  // Deliberately never falls back to allTimeEfforts when the period has nothing for the
+  // selected window - that silently showed activities from outside the chosen period (e.g.
+  // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
+  const windowEfforts = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
 
   return (
     <CardShell
@@ -542,10 +554,10 @@ function RunPowerCard({
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
   const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
-  const windowEfforts = useMemo(() => {
-    const base = efforts.length > 0 ? efforts : allTimeEfforts;
-    return base.filter((e) => e.window === effective);
-  }, [efforts, allTimeEfforts, effective]);
+  // Deliberately never falls back to allTimeEfforts when the period has nothing for the
+  // selected window - that silently showed activities from outside the chosen period (e.g.
+  // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
+  const windowEfforts = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
 
   const title = (
     <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -652,12 +664,14 @@ function RunPaceCard({
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
   const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
+  // Deliberately never falls back to allTimeEfforts when the period has nothing for the
+  // selected window - that silently showed activities from outside the chosen period (e.g.
+  // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
   const windowEfforts = useMemo(() => {
-    const base = efforts.length > 0 ? efforts : allTimeEfforts;
     // pace is lower-is-better; API returns value asc for pace? No — API always returns value desc.
     // Re-sort ascending (lower = faster = better rank).
-    return base.filter((e) => e.window === effective).sort((a, b) => a.value - b.value);
-  }, [efforts, allTimeEfforts, effective]);
+    return efforts.filter((e) => e.window === effective).sort((a, b) => a.value - b.value);
+  }, [efforts, effective]);
 
   return (
     <CardShell
@@ -760,10 +774,10 @@ function BikePowerCard({
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const firstWithData = useMemo(() => tabs.find((t) => efforts.some((e) => e.window === t)), [tabs, efforts]);
   const effective = activeTab ?? firstWithData ?? tabs[0] ?? null;
-  const windowEfforts = useMemo(() => {
-    const base = efforts.length > 0 ? efforts : allTimeEfforts;
-    return base.filter((e) => e.window === effective);
-  }, [efforts, allTimeEfforts, effective]);
+  // Deliberately never falls back to allTimeEfforts when the period has nothing for the
+  // selected window - that silently showed activities from outside the chosen period (e.g.
+  // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
+  const windowEfforts = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
 
   return (
     <CardShell
@@ -967,7 +981,7 @@ export function BestEffortsScreen() {
   const weightKg = user?.weight_kg ?? null;
   const rCP = user?.critical_run_power ?? null;
   const [displayPeriod, setDisplayPeriod] = useState<DisplayPeriod>("16w");
-  const { apiPeriod, label: periodLabel } = PERIOD_CONFIG[displayPeriod];
+  const { apiPeriod, days: windowDays, label: periodLabel } = PERIOD_CONFIG[displayPeriod];
   const { mutate: excludeActivity, isPending: excludePending } = useExclude(athleteId);
   const makeExclude = (kind: BestEffortKind) => (activityId: string) => excludeActivity({ activityId, kind });
 
@@ -988,15 +1002,15 @@ export function BestEffortsScreen() {
   const { data: bikePowerData } = useQuery(bqOpts("cycling_power", apiPeriod));
   const { data: bikePowerAll } = useQuery(bqOpts("cycling_power", "all"));
 
-  const runHrEfforts = runHrData?.data ?? [];
+  const runHrEfforts = (runHrData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
   const runHrAllEfforts = runHrAll?.data ?? [];
-  const runPowerEfforts = runPowerData?.data ?? [];
+  const runPowerEfforts = (runPowerData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
   const runPowerAllEfforts = runPowerAll?.data ?? [];
-  const runPaceEfforts = runPaceData?.data ?? [];
+  const runPaceEfforts = (runPaceData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
   const runPaceAllEfforts = runPaceAll?.data ?? [];
-  const bikeHrEfforts = bikeHrData?.data ?? [];
+  const bikeHrEfforts = (bikeHrData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
   const bikeHrAllEfforts = bikeHrAll?.data ?? [];
-  const bikePowerEfforts = bikePowerData?.data ?? [];
+  const bikePowerEfforts = (bikePowerData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
   const bikePowerAllEfforts = bikePowerAll?.data ?? [];
 
   const hasRunHr = runHrAllEfforts.length > 0;
