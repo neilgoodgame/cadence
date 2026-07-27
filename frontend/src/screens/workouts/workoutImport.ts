@@ -95,3 +95,31 @@ export function parseZwoFile(xmlText: string): { name: string; sport: WorkoutSpo
 
   return { name, sport, steps };
 }
+
+// Inverse of workoutExport.ts's buildFixtureJson - loads the {name, sport, steps} shape
+// documented in backend/workouts/test_fixtures/roundtrip_workout.schema.json. Deliberately
+// light validation (just enough for a clear error message): the create-workout API is the
+// real gate on step-tree correctness, same as any other workout this screen can produce.
+export function parseFixtureJson(jsonText: string): { name: string; sport: WorkoutSport; steps: WorkoutStep[] } {
+  let data: unknown;
+  try {
+    data = JSON.parse(jsonText);
+  } catch {
+    throw new Error("This file isn't valid JSON.");
+  }
+
+  if (typeof data !== "object" || data === null) {
+    throw new Error('Expected a JSON object with "name", "sport", and "steps".');
+  }
+  const obj = data as Record<string, unknown>;
+
+  if (obj.sport !== "bike" && obj.sport !== "run") {
+    throw new Error('"sport" must be "bike" or "run".');
+  }
+  if (!Array.isArray(obj.steps) || obj.steps.length === 0) {
+    throw new Error('Expected a non-empty "steps" array.');
+  }
+
+  const name = typeof obj.name === "string" && obj.name.trim() ? obj.name : "Imported workout";
+  return { name, sport: obj.sport, steps: obj.steps as WorkoutStep[] };
+}
