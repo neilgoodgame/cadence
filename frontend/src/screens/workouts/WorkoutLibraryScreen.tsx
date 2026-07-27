@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createWorkout,
@@ -16,6 +16,7 @@ import { fmtDuration, withIds } from "./workoutTree";
 import { AssignModal } from "./AssignModal";
 import { ExportModal } from "./ExportModal";
 import { buildZwo, download } from "./workoutExport";
+import { parseZwoFile } from "./workoutImport";
 
 const SORTS: { value: WorkoutSort; label: string }[] = [
   { value: "recent", label: "Recently updated" },
@@ -52,6 +53,7 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [assignTargetId, setAssignTargetId] = useState<string | null>(null);
   const [exportTargetId, setExportTargetId] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const foldersQuery = useQuery({ queryKey: ["workout-folders"], queryFn: listWorkoutFolders });
   // Unfiltered, purely to compute the always-visible tag chip list (matches the design:
@@ -128,6 +130,31 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
     },
   });
 
+  const importMutation = useMutation({
+    mutationFn: async (files: File[]) => {
+      const results: { filename: string; ok: boolean; error?: string }[] = [];
+      for (const file of files) {
+        try {
+          const parsed = parseZwoFile(await file.text());
+          await createWorkout({ name: parsed.name, sport: parsed.sport, steps: parsed.steps });
+          results.push({ filename: file.name, ok: true });
+        } catch (err) {
+          results.push({ filename: file.name, ok: false, error: err instanceof Error ? err.message : "Unknown error" });
+        }
+      }
+      return results;
+    },
+    onSuccess: (results) => {
+      invalidate();
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length > 0) {
+        window.alert(
+          `Imported ${results.length - failed.length} of ${results.length}.\n\nFailed:\n${failed.map((f) => `${f.filename}: ${f.error}`).join("\n")}`,
+        );
+      }
+    },
+  });
+
   const bulkExportMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       for (const id of ids) {
@@ -160,12 +187,33 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
             {workouts.length} of {totalCount} workouts
           </div>
         </div>
-        <button
-          onClick={onNew}
-          style={{ border: "none", borderRadius: 10, background: "var(--ember)", color: "#fff", fontSize: 14, fontWeight: 700, padding: "10px 20px", cursor: "pointer" }}
-        >
-          + New workout
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".zwo,.xml"
+            multiple
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              if (files.length > 0) importMutation.mutate(files);
+            }}
+          />
+          <button
+            onClick={() => importInputRef.current?.click()}
+            disabled={importMutation.isPending}
+            style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--card)", color: "var(--ink2)", fontSize: 14, fontWeight: 700, padding: "10px 20px", cursor: "pointer" }}
+          >
+            {importMutation.isPending ? "Importing…" : "Import .zwo"}
+          </button>
+          <button
+            onClick={onNew}
+            style={{ border: "none", borderRadius: 10, background: "var(--ember)", color: "#fff", fontSize: 14, fontWeight: 700, padding: "10px 20px", cursor: "pointer" }}
+          >
+            + New workout
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "210px 1fr", gap: 20, alignItems: "start" }}>
