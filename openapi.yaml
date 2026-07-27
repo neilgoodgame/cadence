@@ -682,6 +682,41 @@ paths:
                     items:
                       $ref: "#/components/schemas/Lap"
 
+  /v1/activities/{id}/infer-workout:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Streams & curves]
+      summary: Infer a workout structure from a recorded activity's laps
+      operationId: inferWorkout
+      description: >
+        Read-only/idempotent — does not create a `Workout`. Turns the activity's
+        laps into a step tree shaped like `WorkoutCreate`, suitable for opening as
+        an unsaved draft in the workout builder. Only `bike`/`run` activities with
+        at least one lap are eligible.
+      parameters:
+        - name: auto_detect_repeats
+          in: query
+          description: When true, collapses repeated contiguous lap patterns (e.g. 5×[work, rest]) into `repeat` groups.
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Inferred workout draft.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  sport: { type: string, enum: [bike, run] }
+                  steps:
+                    type: array
+                    items: { $ref: "#/components/schemas/WorkoutStep" }
+        "400":
+          description: Activity isn't bike/run, or has no laps.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/activities/{id}/streams:
     parameters:
       - $ref: "#/components/parameters/ActivityId"

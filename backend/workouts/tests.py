@@ -3,11 +3,12 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User, UserRelationship
-from activities.models import Activity, ActivityTag, Tag
+from activities.models import Activity, ActivityTag, Lap, Tag
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 
 from .calculations import compute_duration_and_tss
+from .inference import Group, LeafCandidate, _compress_pass, infer_workout
 from .models import Workout, WorkoutStep
 
 workouts_urlconf = override_settings(ROOT_URLCONF="workouts.urls")
@@ -128,6 +129,143 @@ class ComputeDurationAndTssTests(TestCase):
         duration, tss = compute_duration_and_tss(steps)
         self.assertEqual(duration, 2 * (4 * 240 + 200))
         self.assertEqual(tss, 56)
+
+
+class CompressPassTests(TestCase):
+    """Unit tests for the pure repeat-pattern-detection helpers, no DB involved."""
+
+    def test_detects_a_flat_repeated_work_rest_pattern(self):
+        leaves = [LeafCandidate(300, "power", 118), LeafCandidate(180, "power", 55)] * 3
+        [group] = _compress_pass(leaves)
+        self.assertIsInstance(group, Group)
+        self.assertEqual(group.repeat, 3)
+        self.assertEqual([(c.duration, c.pct) for c in group.children], [(300, 118), (180, 55)])
+
+    def test_tolerates_minor_jitter_between_reps(self):
+        # Real recordings never repeat exactly - duration/power drift a little rep to rep.
+        leaves = [
+            LeafCandidate(300, "power", 118),
+            LeafCandidate(180, "power", 55),
+            LeafCandidate(305, "power", 120),
+            LeafCandidate(178, "power", 53),
+            LeafCandidate(298, "power", 116),
+            LeafCandidate(182, "power", 56),
+        ]
+        [group] = _compress_pass(leaves)
+        self.assertIsInstance(group, Group)
+        self.assertEqual(group.repeat, 3)
+
+    def test_no_repetition_stays_flat(self):
+        leaves = [
+            LeafCandidate(600, "power", 55),
+            LeafCandidate(1200, "power", 88),
+            LeafCandidate(300, "power", 40),
+        ]
+        result = _compress_pass(leaves)
+        self.assertEqual(result, leaves)
+
+    def test_recompresses_two_equivalent_groups_into_an_outer_group(self):
+        # Simulates what a second compression pass sees after an earlier pass has
+        # already collapsed two separate inner sets into Groups.
+        inner_a = Group(repeat=4, children=[LeafCandidate(240, "power", 100), LeafCandidate(60, "power", 50)])
+        inner_b = Group(repeat=4, children=[LeafCandidate(241, "power", 101), LeafCandidate(59, "power", 51)])
+        [outer] = _compress_pass([inner_a, inner_b])
+        self.assertIsInstance(outer, Group)
+        self.assertEqual(outer.repeat, 2)
+        self.assertEqual(outer.children, [inner_a])
+
+    def test_requires_at_least_two_repetitions(self):
+        leaves = [LeafCandidate(300, "power", 118), LeafCandidate(180, "power", 55), LeafCandidate(400, "power", 90)]
+        result = _compress_pass(leaves)
+        self.assertEqual(result, leaves)
+
+
+class InferWorkoutTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="infer@example.cc", password="x", name="Athlete", ftp=265)
+
+    def _activity_with_laps(self, laps: list[dict], sport: str = "bike") -> Activity:
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport=sport,
+            name="Zwift VO2 Max 5x5",
+            start_date=timezone.now(),
+            moving_time=sum(lap["duration"] for lap in laps),
+        )
+        for i, lap in enumerate(laps):
+            Lap.objects.create(
+                activity=activity,
+                index=i,
+                duration=lap["duration"],
+                distance_km=0,
+                **{k: v for k, v in lap.items() if k != "duration"},
+            )
+        return activity
+
+    def test_infers_warmup_repeat_group_and_cooldown(self):
+        laps = [
+            {"duration": 600, "avg_power": 145},  # ~55% FTP -> warmup
+            {"duration": 300, "avg_power": 313},  # ~118% FTP -> work
+            {"duration": 180, "avg_power": 146},  # ~55% -> rest
+            {"duration": 300, "avg_power": 315},
+            {"duration": 180, "avg_power": 143},
+            {"duration": 300, "avg_power": 312},
+            {"duration": 180, "avg_power": 145},
+            {"duration": 300, "avg_power": 106},  # ~40% -> cool
+        ]
+        activity = self._activity_with_laps(laps)
+
+        result = infer_workout(activity, auto_detect_repeats=True)
+
+        self.assertEqual(result["sport"], "bike")
+        kinds = [s["kind"] for s in result["steps"]]
+        self.assertEqual(kinds, ["warmup", "repeat", "cool"])
+        group = result["steps"][1]
+        self.assertEqual(group["repeat"], 3)
+        self.assertEqual([c["kind"] for c in group["children"]], ["block", "rec"])
+        self.assertEqual(group["children"][0]["target_low"], 118)
+
+    def test_auto_detect_repeats_false_stays_flat(self):
+        laps = [{"duration": 300, "avg_power": 313}] * 4
+        activity = self._activity_with_laps(laps)
+
+        result = infer_workout(activity, auto_detect_repeats=False)
+
+        self.assertEqual(len(result["steps"]), 4)
+        self.assertTrue(all(s["kind"] != "repeat" for s in result["steps"]))
+
+    def test_output_is_a_valid_step_tree_for_compute_duration_and_tss(self):
+        laps = [
+            {"duration": 600, "avg_power": 145},
+            {"duration": 300, "avg_power": 313},
+            {"duration": 180, "avg_power": 146},
+            {"duration": 300, "avg_power": 315},
+            {"duration": 180, "avg_power": 143},
+        ]
+        activity = self._activity_with_laps(laps)
+
+        result = infer_workout(activity, auto_detect_repeats=True)
+        duration, _tss = compute_duration_and_tss(result["steps"])
+
+        self.assertEqual(duration, sum(lap["duration"] for lap in laps))
+
+    def test_falls_back_to_heart_rate_when_no_power(self):
+        self.athlete.ftp = None
+        self.athlete.lthr = 165
+        self.athlete.save(update_fields=["ftp", "lthr"])
+        activity = self._activity_with_laps([{"duration": 600, "avg_hr": 132}], sport="run")
+
+        result = infer_workout(activity, auto_detect_repeats=True)
+
+        self.assertEqual(result["steps"][0]["target_type"], "hr")
+        self.assertEqual(result["steps"][0]["target_low"], 80)
+
+    def test_open_target_when_no_power_or_hr_data(self):
+        activity = self._activity_with_laps([{"duration": 600}])
+
+        result = infer_workout(activity, auto_detect_repeats=True)
+
+        self.assertEqual(result["steps"][0]["target_type"], "open")
 
 
 def _workout_payload(**overrides):
