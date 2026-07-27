@@ -1,5 +1,5 @@
 import type { WorkoutSport } from "../../api/types";
-import { isGroup, kindLabel, type Leaf, type Step } from "./workoutTree";
+import { isGroup, kindLabel, stripIds, type Leaf, type Step } from "./workoutTree";
 
 const FTP = 265; // approximate reference threshold for the TCX watts preview
 
@@ -91,6 +91,13 @@ export function buildTcx(name: string, sport: WorkoutSport, steps: Step[]): stri
     '<?xml version="1.0" encoding="UTF-8"?>\n<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n  <Workouts>\n' +
     `    <Workout Sport="${sport === "bike" ? "Biking" : "Running"}">\n      <Name>${name}</Name>\n${body.join("")}    </Workout>\n  </Workouts>\n</TrainingCenterDatabase>\n`
   );
+}
+
+// Matches backend/workouts/test_fixtures/roundtrip_workout.schema.json - drop the
+// downloaded file into backend/workouts/test_fixtures/roundtrip/ to add it as a
+// round-trip test fixture for workouts.inference (see workouts/test_roundtrip.py).
+export function buildFixtureJson(name: string, sport: WorkoutSport, steps: Step[]): string {
+  return JSON.stringify({ name, sport, steps: stripIds(steps) }, null, 2) + "\n";
 }
 
 export function download(filename: string, content: string) {

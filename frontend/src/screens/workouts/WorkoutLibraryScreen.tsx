@@ -16,7 +16,7 @@ import { fmtDuration, withIds } from "./workoutTree";
 import { AssignModal } from "./AssignModal";
 import { ExportModal } from "./ExportModal";
 import { buildZwo, download } from "./workoutExport";
-import { parseZwoFile } from "./workoutImport";
+import { parseFixtureJson, parseZwoFile } from "./workoutImport";
 
 const SORTS: { value: WorkoutSort; label: string }[] = [
   { value: "recent", label: "Recently updated" },
@@ -135,7 +135,8 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
       const results: { filename: string; ok: boolean; error?: string }[] = [];
       for (const file of files) {
         try {
-          const parsed = parseZwoFile(await file.text());
+          const text = await file.text();
+          const parsed = file.name.toLowerCase().endsWith(".json") ? parseFixtureJson(text) : parseZwoFile(text);
           await createWorkout({ name: parsed.name, sport: parsed.sport, steps: parsed.steps });
           results.push({ filename: file.name, ok: true });
         } catch (err) {
@@ -191,7 +192,7 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
           <input
             ref={importInputRef}
             type="file"
-            accept=".zwo,.xml"
+            accept=".zwo,.xml,.json"
             multiple
             style={{ display: "none" }}
             onChange={(e) => {
@@ -205,7 +206,7 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
             disabled={importMutation.isPending}
             style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--card)", color: "var(--ink2)", fontSize: 14, fontWeight: 700, padding: "10px 20px", cursor: "pointer" }}
           >
-            {importMutation.isPending ? "Importing…" : "Import .zwo"}
+            {importMutation.isPending ? "Importing…" : "Import"}
           </button>
           <button
             onClick={onNew}

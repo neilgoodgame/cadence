@@ -1,17 +1,23 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import type { WorkoutSport } from "../../api/types";
 import type { Step } from "./workoutTree";
-import { buildTcx, buildZwo, download } from "./workoutExport";
+import { buildFixtureJson, buildTcx, buildZwo, download } from "./workoutExport";
 
 export function ExportModal({ name, sport, steps, onClose }: { name: string; sport: WorkoutSport; steps: Step[]; onClose: () => void }) {
-  const [format, setFormat] = useState<"zwo" | "tcx">("zwo");
-  const preview = useMemo(() => (format === "zwo" ? buildZwo(name, sport, steps) : buildTcx(name, sport, steps)), [format, name, sport, steps]);
-  const filename = format === "zwo" ? "workout.zwo" : "workout.tcx";
-  const target = format === "zwo" ? "Zwift" : "Garmin Connect";
+  const [format, setFormat] = useState<"zwo" | "tcx" | "fixture">("zwo");
+  const preview = useMemo(() => {
+    if (format === "zwo") return buildZwo(name, sport, steps);
+    if (format === "tcx") return buildTcx(name, sport, steps);
+    return buildFixtureJson(name, sport, steps);
+  }, [format, name, sport, steps]);
+  const filename = format === "zwo" ? "workout.zwo" : format === "tcx" ? "workout.tcx" : "workout.json";
+  const target = format === "zwo" ? "Zwift" : format === "tcx" ? "Garmin Connect" : "test fixture";
   const note =
     format === "zwo"
       ? "Drop the .zwo into Documents/Zwift/Workouts/<id>/ or import via the companion. Non-power targets approximated as %FTP."
-      : "Garmin Connect → Training → Workouts → Import. Non-power targets approximated as %FTP.";
+      : format === "tcx"
+        ? "Garmin Connect → Training → Workouts → Import. Non-power targets approximated as %FTP."
+        : "For backend testing: drop the file into backend/workouts/test_fixtures/roundtrip/ to add it as a round-trip inference test case.";
 
   const segBtn = (active: boolean): CSSProperties => ({
     flex: 1,
@@ -52,6 +58,9 @@ export function ExportModal({ name, sport, steps, onClose }: { name: string; spo
             </div>
             <div onClick={() => setFormat("tcx")} style={segBtn(format === "tcx")}>
               Garmin · .tcx
+            </div>
+            <div onClick={() => setFormat("fixture")} style={segBtn(format === "fixture")}>
+              Test fixture · .json
             </div>
           </div>
           <div style={{ fontSize: 12.5, color: "var(--ink2)" }}>{note}</div>
