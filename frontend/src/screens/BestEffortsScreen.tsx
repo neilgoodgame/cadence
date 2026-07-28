@@ -68,7 +68,7 @@ function isPR(effort: BestEffort, allTimeEfforts: BestEffort[], lowerIsBetter: b
 }
 
 function fmtShortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function fmtAvgHr(activity: Activity | null): string {
