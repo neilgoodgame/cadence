@@ -286,6 +286,20 @@ def _write_duration_curves(
 
 
 def _trim_kind_window(athlete_id: str, kind: str, window: str, lower_is_better: bool, top_n: int) -> None:
+    """Deletes (not just hides) anything outside the athlete's all-time top N for this
+    kind/window - BestEffort only ever holds a global top-N leaderboard, never the full
+    history. This is why a "period" filter on the Best Efforts screen can only show entries
+    that are BOTH within the period AND still an all-time top-N record - a below-the-cutoff
+    effort leaves no row at all, even if it happened yesterday.
+
+    Revisit if a true "best of this period" view (ranked only among that period's own
+    activities, regardless of all-time rank) is wanted: it needs this function to stop
+    deleting non-top-N rows (retain everything, compute the all-time top-N at read time
+    instead), a one-time recompute pass to backfill history already deleted under the
+    current trimming (only recoverable by reprocessing raw records, not from BestEffort
+    itself), and the equivalent change in the Java backend for parity. Decided to keep the
+    current all-time-only behavior for now (2026-07-28).
+    """
     if top_n == 0:
         return
     qs = BestEffort.objects.filter(athlete_id=athlete_id, kind=kind, window=window)
