@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+// maplibre-gl v6's own worker chunk imports a sibling .mjs Vite's plain dependency
+// pre-bundling doesn't carry along, so the worker fails on its first import and no vector
+// tiles ever load (no visible error - the map just silently never fetches tile data).
+// ?worker&url routes it through Vite's worker pipeline instead, which does bundle correctly.
+// https://github.com/maplibre/maplibre-gl-js/issues/7339
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { getStreams } from "../../api/activities";
 import type { Activity } from "../../api/types";
+
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 const HEIGHT = 360;
 
