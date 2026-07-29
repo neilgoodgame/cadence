@@ -9,7 +9,6 @@ import com.cadence.api.uploads.UploadStatus;
 import com.cadence.api.webhooks.ActivityCreatedEvent;
 import java.time.Instant;
 import org.springframework.batch.core.step.StepContribution;
-import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
@@ -18,17 +17,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
-@StepScope
 public class FinalizeUploadTasklet implements Tasklet {
 
-	private final UploadJobContext context;
+	private final UploadJobContextRegistry contextRegistry;
 	private final UploadRepository uploadRepository;
 	private final ActivityRepository activityRepository;
 	private final ApplicationEventPublisher eventPublisher;
 
-	public FinalizeUploadTasklet(UploadJobContext context, UploadRepository uploadRepository,
+	public FinalizeUploadTasklet(UploadJobContextRegistry contextRegistry, UploadRepository uploadRepository,
 			ActivityRepository activityRepository, ApplicationEventPublisher eventPublisher) {
-		this.context = context;
+		this.contextRegistry = contextRegistry;
 		this.uploadRepository = uploadRepository;
 		this.activityRepository = activityRepository;
 		this.eventPublisher = eventPublisher;
@@ -37,6 +35,8 @@ public class FinalizeUploadTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
+		String uploadId = chunkContext.getStepContext().getStepExecution().getJobParameters().getString("uploadId");
+		UploadJobContext context = contextRegistry.forUpload(uploadId);
 		Upload upload = uploadRepository.findById(context.getUploadId())
 				.orElseThrow(() -> new NotFoundException("No such upload."));
 		// A multisport upload resolves to its parent activity; webhook consumers see one

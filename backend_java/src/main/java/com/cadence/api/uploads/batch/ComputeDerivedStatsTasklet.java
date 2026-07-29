@@ -18,7 +18,6 @@ import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import org.springframework.batch.core.step.StepContribution;
-import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
@@ -27,15 +26,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Average/normalized power, average/max HR, intensity factor, and TSS - the same numbers {@code GET /v1/activities/{id}} reads back. */
 @Component
-@StepScope
 public class ComputeDerivedStatsTasklet implements Tasklet {
 
-	private final UploadJobContext context;
+	private final UploadJobContextRegistry contextRegistry;
 	private final ActivityRepository activityRepository;
 	private final ZoneService zoneService;
 
-	public ComputeDerivedStatsTasklet(UploadJobContext context, ActivityRepository activityRepository, ZoneService zoneService) {
-		this.context = context;
+	public ComputeDerivedStatsTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
+			ZoneService zoneService) {
+		this.contextRegistry = contextRegistry;
 		this.activityRepository = activityRepository;
 		this.zoneService = zoneService;
 	}
@@ -43,6 +42,8 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
+		String uploadId = chunkContext.getStepContext().getStepExecution().getJobParameters().getString("uploadId");
+		UploadJobContext context = contextRegistry.forUpload(uploadId);
 		// A multisport parent's TSS is the sum of its legs' (no single threshold applies across
 		// sports), so the legs must be computed first; the parent is the first segment.
 		Activity parent = null;

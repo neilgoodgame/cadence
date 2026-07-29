@@ -641,20 +641,44 @@ get misrouted through the rest of the job.
 earlier version of this document described it): "in-process with virtual
 threads" does *not* mean concurrent ingestion. `UploadJobLauncher` runs
 every job on a **single dedicated virtual thread**
-(`Executors.newSingleThreadExecutor`), deliberately serialized — the
-in-code comment explains why: `@JobScope`/`@StepScope` beans (e.g.
-`UploadJobContext`) were verified to **not** be safely isolated across
-genuinely concurrent `Job.execute()` calls on this Spring Batch version,
-and concurrent uploads produced cross-contaminated `Record` rows and
-dropped/duplicate launches before this fix. So a Java batch import of N
-files processes them **one at a time**, not N-wide in parallel — virtual
-threads here buy cheap, non-blocking hand-off from the HTTP request
-thread (`launch()` returns immediately), not throughput. This is the
-concrete mechanism behind the batch-import contention concern already
-flagged in `AWS_MIGRATION_PLAN.md` §5.4/§10: a large Garmin export
-genuinely runs its files sequentially on the same task, so splitting
-ingestion onto its own ECS service buys you *more parallel single-worker
-queues* (one per task), not a fix to the per-task seriality itself.
+(`Executors.newSingleThreadExecutor`), deliberately serialized. This has
+been investigated twice now, not just carried forward as an assumption:
+
+- **First finding** (original design): `@JobScope`/`@StepScope` beans
+  (e.g. `UploadJobContext`) resolved per-execution via Spring Batch's
+  thread-local `JobSynchronizationManager` were verified **not** safely
+  isolated across genuinely concurrent `Job.execute()` calls — concurrent
+  uploads produced cross-contaminated `Record` rows and dropped/duplicate
+  launches.
+- **Second finding** (a later attempt to fix the above and re-enable real
+  concurrency): replacing that scoping with an explicit thread-safe
+  registry (`UploadJobContextRegistry`, keyed by `uploadId`) removed the
+  first issue, and a related gap was found and fixed alongside it —
+  `BatchConfig`'s `syncJobOperator` had been constructing
+  `TaskExecutorJobOperator` manually, skipping the transactional proxy
+  Spring Batch's own docs say `JobOperatorFactoryBean` exists specifically
+  to provide for safe concurrent `start()` calls. **Both fixes are real
+  and are kept** — but `UploadConcurrencyIntegrationTest` (fires many
+  uploads at genuinely the same moment, checks every one lands
+  uncontaminated data) still fails with concurrency raised above 1 even
+  with both fixes in place: `JobParameters` intermittently get
+  cross-assigned between concurrent `start()` calls, a different specific
+  symptom each run — consistent with a genuine race still present
+  somewhere in this exact Spring Batch 6.0.4 release's `JobRepository`/
+  `JobExplorer` internals, not yet root-caused with confidence. Forcing
+  concurrency through against a real failing regression test would be
+  irresponsible, so ingestion **stays serialized** — now provably safe at
+  that concurrency by the same test, rather than safe-by-assumption.
+
+So a Java batch import of N files still processes them **one at a time**,
+not N-wide in parallel — virtual threads here buy cheap, non-blocking
+hand-off from the HTTP request thread (`launch()` returns immediately),
+not throughput. This is the concrete mechanism behind the batch-import
+contention concern already flagged in `AWS_MIGRATION_PLAN.md` §5.4/§10: a
+large Garmin export genuinely runs its files sequentially on the same
+task, so splitting ingestion onto its own ECS service buys you *more
+parallel single-worker queues* (one per task), not a fix to the per-task
+seriality itself.
 
 Webhook delivery uses Spring's own async/retry machinery — `@Async`
 (delivery runs on Spring's task executor thread pool, not the ingestion
