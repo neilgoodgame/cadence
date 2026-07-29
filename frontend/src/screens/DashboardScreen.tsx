@@ -6,7 +6,6 @@ import { listActivities } from "../api/activities";
 import { getContexts } from "../api/auth";
 import { Card } from "../components/Card";
 import { CoachingSection } from "./dashboard/CoachingSection";
-import { RecentActivitiesTable } from "./dashboard/RecentActivitiesTable";
 import { SportDistribution } from "./dashboard/SportDistribution";
 import { StatCardsRow } from "./dashboard/StatCardsRow";
 import { NextRaceCard } from "./dashboard/NextRaceCard";
@@ -108,11 +107,6 @@ export function DashboardScreen() {
           <SportDistribution activities={activities} />
         </Card>
       </div>
-
-      <Card>
-        <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 14px" }}>Recent activities</h2>
-        <RecentActivitiesTable activities={activities} />
-      </Card>
     </div>
   );
 }
