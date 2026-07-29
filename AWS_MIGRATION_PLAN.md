@@ -137,6 +137,41 @@ Revisit Timescale Cloud only if/when stream-data volume grows enough that
 native compression or tiered storage becomes a real cost lever — that's a
 data-volume-triggered decision, not a day-one one.
 
+### 4.1 Underlying storage volume
+
+RDS storage is EBS-backed under the hood — the concrete choice is **gp3
+(General Purpose SSD) with storage autoscaling enabled**, not Provisioned
+IOPS (io2):
+
+- **Why gp3, not io2**: the app's workload is small OLTP reads/writes with
+  occasional bulk-insert bursts (a FIT upload writes thousands of 1Hz
+  `activities_record` rows at once; a Garmin batch import multiplies that
+  across files). gp3's baseline (3,000 IOPS / 125 MB/s, both provisionable
+  higher **independent of volume size**, unlike the older gp2) comfortably
+  covers this. io2's higher per-GB and per-IOPS cost only pays off at
+  sustained high-IOPS workloads this app doesn't have — start on gp3,
+  watch `ReadIOPS`/`WriteIOPS`/`DiskQueueDepth` in CloudWatch, only move to
+  io2 if those actually pressure the baseline.
+- **Why autoscaling matters more than initial sizing here**: `activities_record`
+  is a 1Hz time-series table that only grows — every second of every
+  uploaded activity, indefinitely, with no retention or compression policy
+  in the current migrations (§4 already notes no compression policies
+  exist today). Picking a fixed volume size up front means someone has to
+  notice and manually grow it before it fills; **RDS Storage Autoscaling**
+  (set a max threshold, RDS grows the volume automatically as it
+  approaches the current limit) turns that into a non-event. Pair it with
+  a CloudWatch alarm on free storage space as a sanity check, not as the
+  primary mechanism.
+- **The actual long-term lever is data volume, not disk type**: if
+  stream-data growth ever becomes a real cost driver, the fix is a
+  retention/compression policy on old chunks (native TimescaleDB
+  compression, or a rollup-and-drop-raw-rows policy for activities past a
+  certain age) — the same trigger that would justify revisiting Timescale
+  Cloud above — not a bigger or faster disk.
+- **Backups are separate**: RDS automated snapshots land in S3, managed by
+  AWS as part of the RDS service — not a volume you provision or size
+  yourself.
+
 ## 5. Ingestion: should FIT/GPX/TCX processing move to Lambda?
 
 ### 5.1 What "moving to Lambda" would look like
