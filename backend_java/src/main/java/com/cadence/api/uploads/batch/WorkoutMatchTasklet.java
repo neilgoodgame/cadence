@@ -17,7 +17,6 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.batch.core.step.StepContribution;
-import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
@@ -27,20 +26,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Links a same-day, same-sport, still-planned {@link ScheduledWorkout} to the newly-ingested activity, if one exists. */
 @Component
-@StepScope
 public class WorkoutMatchTasklet implements Tasklet {
 
-	private final UploadJobContext context;
+	private final UploadJobContextRegistry contextRegistry;
 	private final ActivityRepository activityRepository;
 	private final ScheduledWorkoutRepository scheduledWorkoutRepository;
 	private final TagRepository tagRepository;
 	private final ActivityTagRepository activityTagRepository;
 	private final ApplicationEventPublisher eventPublisher;
 
-	public WorkoutMatchTasklet(UploadJobContext context, ActivityRepository activityRepository,
+	public WorkoutMatchTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
 			ScheduledWorkoutRepository scheduledWorkoutRepository, TagRepository tagRepository,
 			ActivityTagRepository activityTagRepository, ApplicationEventPublisher eventPublisher) {
-		this.context = context;
+		this.contextRegistry = contextRegistry;
 		this.activityRepository = activityRepository;
 		this.scheduledWorkoutRepository = scheduledWorkoutRepository;
 		this.tagRepository = tagRepository;
@@ -51,6 +49,8 @@ public class WorkoutMatchTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
+		String uploadId = chunkContext.getStepContext().getStepExecution().getJobParameters().getString("uploadId");
+		UploadJobContext context = contextRegistry.forUpload(uploadId);
 		// Matching is per-sport, so a multisport parent never matches (no designed workout has
 		// sport 'multisport') but its bike/run legs can each complete their own scheduled workout.
 		for (UploadJobContext.Segment segment : context.getSegments()) {

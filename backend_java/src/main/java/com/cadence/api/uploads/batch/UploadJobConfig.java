@@ -1,52 +1,30 @@
 package com.cadence.api.uploads.batch;
 
-import com.cadence.api.uploads.parsing.ParsedActivity;
-import java.util.ArrayList;
-import java.util.List;
 import javax.sql.DataSource;
-import org.springframework.batch.core.ExitStatus;
-import org.springframework.batch.core.configuration.annotation.StepScope;
-import org.springframework.batch.core.job.Job;
-import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.Step;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.infrastructure.item.ItemProcessor;
-import org.springframework.batch.infrastructure.item.ItemReader;
-import org.springframework.batch.infrastructure.item.ItemWriter;
 import org.springframework.batch.infrastructure.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.infrastructure.item.database.builder.JdbcBatchItemWriterBuilder;
-import org.springframework.batch.infrastructure.item.support.ListItemReader;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
 
+/**
+ * Wires every {@code processUploadJob} step except {@code loadRecordsStep} - see
+ * {@link UploadJobFactory} for why that one is built fresh per launch instead of as a singleton
+ * {@code @Bean} here, and for {@code processUploadJob}'s own assembly (moved there for the same
+ * reason: it composes {@code loadRecordsStep}).
+ *
+ * <p>Every step bean below is safe as an ordinary shared singleton: none of them hold
+ * per-execution mutable instance state any more (each Tasklet resolves its
+ * {@link UploadJobContext} explicitly via {@link UploadJobContextRegistry}, keyed by the
+ * {@code uploadId} it reads out of {@code ChunkContext} on every call) - see
+ * {@link UploadJobContext}'s Javadoc for why that replaced {@code @JobScope}/{@code @StepScope}.
+ */
 @Configuration
 public class UploadJobConfig {
-
-	@Bean
-	public Job processUploadJob(JobRepository jobRepository, UploadJobExecutionListener listener,
-			Step parseFileStep, Step loadRecordsStep, Step computeDerivedStatsStep, Step durationCurveStep,
-			Step bestEffortStep, Step workoutMatchStep, Step finalizeUploadStep) {
-		// A batch child holding a metadata-stub FIT (no activity data) is settled as skipped
-		// inside parseFileStep, which then exits NO_ACTIVITY_DATA; that routes straight to a
-		// clean COMPLETED end so Spring Batch never logs it as a failure. The explicit FAILED
-		// transition is load-bearing: with any explicit transition present, the on("*") branch
-		// would otherwise match a failed parse too and run the rest of the job on it.
-		return new JobBuilder("processUploadJob", jobRepository)
-				.listener(listener)
-				.start(parseFileStep)
-				.on(ParseFileTasklet.EXIT_NO_ACTIVITY_DATA).end()
-				.from(parseFileStep).on(ExitStatus.FAILED.getExitCode()).fail()
-				.from(parseFileStep).on("*").to(loadRecordsStep)
-				.next(computeDerivedStatsStep)
-				.next(durationCurveStep)
-				.next(bestEffortStep)
-				.next(workoutMatchStep)
-				.next(finalizeUploadStep)
-				.end()
-				.build();
-	}
 
 	@Bean
 	public Step parseFileStep(JobRepository jobRepository, PlatformTransactionManager tm, ParseFileTasklet tasklet) {
@@ -78,38 +56,13 @@ public class UploadJobConfig {
 		return new StepBuilder("finalizeUploadStep", jobRepository).tasklet(tasklet, tm).build();
 	}
 
+	/** Stateless (see {@link RecordItemProcessor}) - safe as an ordinary shared singleton. */
 	@Bean
-	public Step loadRecordsStep(JobRepository jobRepository, PlatformTransactionManager tm,
-			ItemReader<RecordItemProcessor.SegmentSample> recordItemReader,
-			ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor,
-			ItemWriter<RecordRow> recordItemWriter) {
-		return new StepBuilder("loadRecordsStep", jobRepository)
-				.<RecordItemProcessor.SegmentSample, RecordRow>chunk(1000)
-				.reader(recordItemReader)
-				.processor(recordItemProcessor)
-				.writer(recordItemWriter)
-				.transactionManager(tm)
-				.build();
-	}
-
-	@Bean
-	@StepScope
-	public ItemReader<RecordItemProcessor.SegmentSample> recordItemReader(UploadJobContext context) {
-		List<RecordItemProcessor.SegmentSample> items = new ArrayList<>();
-		for (UploadJobContext.Segment segment : context.getSegments()) {
-			for (ParsedActivity.Sample sample : segment.parsed().samples()) {
-				items.add(new RecordItemProcessor.SegmentSample(segment.activityId(), segment.parsed().startDate(), sample));
-			}
-		}
-		return new ListItemReader<>(items);
-	}
-
-	@Bean
-	@StepScope
 	public ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor() {
 		return new RecordItemProcessor();
 	}
 
+	/** Stateless wrapper around a shared {@link DataSource} - safe as an ordinary shared singleton. */
 	@Bean
 	public JdbcBatchItemWriter<RecordRow> recordItemWriter(DataSource dataSource) {
 		return new JdbcBatchItemWriterBuilder<RecordRow>()

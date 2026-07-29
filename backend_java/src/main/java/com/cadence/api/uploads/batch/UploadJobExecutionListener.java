@@ -21,10 +21,13 @@ public class UploadJobExecutionListener implements JobExecutionListener {
 
 	private final UploadRepository uploadRepository;
 	private final UploadBatchFinalizer batchFinalizer;
+	private final UploadJobContextRegistry contextRegistry;
 
-	public UploadJobExecutionListener(UploadRepository uploadRepository, UploadBatchFinalizer batchFinalizer) {
+	public UploadJobExecutionListener(UploadRepository uploadRepository, UploadBatchFinalizer batchFinalizer,
+			UploadJobContextRegistry contextRegistry) {
 		this.uploadRepository = uploadRepository;
 		this.batchFinalizer = batchFinalizer;
+		this.contextRegistry = contextRegistry;
 	}
 
 	@Override
@@ -34,6 +37,11 @@ public class UploadJobExecutionListener implements JobExecutionListener {
 		if (uploadId == null) {
 			return;
 		}
+		// Runs exactly once per execution regardless of outcome - the only place every code
+		// path (success, failure, or a step throwing before FinalizeUploadTasklet ever runs)
+		// is guaranteed to pass through, so it's the one safe place to release this execution's
+		// entry from UploadJobContextRegistry without leaking it on a failure path.
+		contextRegistry.release(uploadId);
 		Upload upload = uploadRepository.findById(uploadId).orElse(null);
 		if (upload == null) {
 			return;

@@ -29,12 +29,10 @@ import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
-import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
-@StepScope
 public class ParseFileTasklet implements Tasklet {
 
 	private static final Map<Sport, String> SPORT_LABELS = Map.of(
@@ -50,15 +48,15 @@ public class ParseFileTasklet implements Tasklet {
 	/** Step exit code routing metadata-stub files to the job's clean skip end (see UploadJobConfig). */
 	static final String EXIT_NO_ACTIVITY_DATA = "NO_ACTIVITY_DATA";
 
-	private final UploadJobContext context;
+	private final UploadJobContextRegistry contextRegistry;
 	private final UploadRepository uploadRepository;
 	private final ActivityRepository activityRepository;
 	private final LapRepository lapRepository;
 	private final CadenceProperties properties;
 
-	public ParseFileTasklet(UploadJobContext context, UploadRepository uploadRepository, ActivityRepository activityRepository,
-			LapRepository lapRepository, CadenceProperties properties) {
-		this.context = context;
+	public ParseFileTasklet(UploadJobContextRegistry contextRegistry, UploadRepository uploadRepository,
+			ActivityRepository activityRepository, LapRepository lapRepository, CadenceProperties properties) {
+		this.contextRegistry = contextRegistry;
 		this.uploadRepository = uploadRepository;
 		this.activityRepository = activityRepository;
 		this.lapRepository = lapRepository;
@@ -68,6 +66,8 @@ public class ParseFileTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) throws Exception {
+		String uploadId = chunkContext.getStepContext().getStepExecution().getJobParameters().getString("uploadId");
+		UploadJobContext context = contextRegistry.forUpload(uploadId);
 		Upload upload = uploadRepository.findById(context.getUploadId())
 				.orElseThrow(() -> new NotFoundException("No such upload."));
 		upload.setStatus(UploadStatus.PROCESSING);

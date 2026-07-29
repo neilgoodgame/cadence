@@ -8,7 +8,6 @@ import com.cadence.api.uploads.parsing.ParsedActivity;
 import com.cadence.api.users.User;
 import java.util.List;
 import org.springframework.batch.core.step.StepContribution;
-import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
@@ -16,16 +15,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
-@StepScope
 public class BestEffortTasklet implements Tasklet {
 
-	private final UploadJobContext context;
+	private final UploadJobContextRegistry contextRegistry;
 	private final ActivityRepository activityRepository;
 	private final BestEffortComputeService computeService;
 
-	public BestEffortTasklet(UploadJobContext context, ActivityRepository activityRepository,
+	public BestEffortTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
 			BestEffortComputeService computeService) {
-		this.context = context;
+		this.contextRegistry = contextRegistry;
 		this.activityRepository = activityRepository;
 		this.computeService = computeService;
 	}
@@ -33,6 +31,8 @@ public class BestEffortTasklet implements Tasklet {
 	@Override
 	@Transactional
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
+		String uploadId = chunkContext.getStepContext().getStepExecution().getJobParameters().getString("uploadId");
+		UploadJobContext context = contextRegistry.forUpload(uploadId);
 		for (UploadJobContext.Segment segment : context.getSegments()) {
 			Activity activity = activityRepository.findById(segment.activityId())
 					.orElseThrow(() -> new NotFoundException("No such activity."));
