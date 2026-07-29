@@ -529,33 +529,150 @@ matches, run against both).
 
 Both backends accept the same inputs (single file or bulk `.zip`, `.fit` /
 `.gpx` / `.tcx`) through the same async job shape (`Upload`/`UploadBatch`
-rows, client polls with `Retry-After` hints), but process them completely
-differently under the hood:
+rows, client polls `GET /v1/uploads/{id}` with `Retry-After` hints — see
+`AWS_MIGRATION_PLAN.md` §5 for why this shape matters for a Lambda move),
+compute the same derived data (laps, 1Hz records, duration curves, TSS,
+best efforts, workout auto-match), and fire the same webhook events on
+completion — but the two implementations are genuinely different
+architectures underneath, not just a syntax translation of each other.
 
-- **Python**: `POST` writes the file to `default_storage` and creates an
-  `Upload` row with `status=queued`, then hands off to Celery
-  (`uploads/tasks.py::process_upload`, `@shared_task(bind=True,
-  max_retries=3)`). The worker calls `ingest_upload()`
-  (`uploads/processing.py`), which dispatches to a format-specific parser
-  (`fitparse`, `gpxpy`, or `lxml`-based TCX parsing under
-  `uploads/parsers/`), then computes laps/records/duration-curves/best-
-  efforts and fires an `activity.created` webhook event on success. A
-  batch's individual failures don't fail the batch — Garmin account
-  exports mix in metadata-only stub FITs with no real activity data, so
-  those are marked `skipped` rather than `failed` (see the comment in
-  `process_upload`), letting a large export finish instead of erroring out
-  on the first stub file.
-- **Java**: no queue, no worker process. `UploadIngestService` runs the
-  equivalent parse-and-compute pipeline **in-process**, dispatched via
-  Spring Batch (`UploadJobLauncher`/`BatchConfig`) and Java 24's virtual
-  threads for concurrency, using the official `com.garmin:fit` SDK instead
-  of a third-party FIT parser. This is a real architectural difference,
-  not just an implementation detail — it means the Java backend has no
-  Redis/broker dependency at all, at the cost of ingestion work competing
-  for the same task's CPU/heap as live API traffic (relevant at the batch
-  sizes this app already supports — up to 50,000 files/200MB per `.zip`,
-  `MAX_BATCH_FILES`/`MAX_BATCH_BYTES` in `uploads/services.py`, mirrored in
-  Java's `max-batch-files: 50000`).
+### 5.1 Python: Celery + Redis
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant V as Django view<br/>(uploads/views.py)
+    participant S as default_storage
+    participant DB as Postgres
+    participant R as Redis (broker)
+    participant W as Celery worker
+    participant WH as Webhook endpoint
+
+    C->>V: POST /v1/activities (or .../batch, .zip)
+    Note over V: single file: hash + dedupe check.<br/>batch: unpack the zip IN THE REQUEST,<br/>hash + dedupe every entry
+    V->>S: write raw file(s)
+    V->>DB: create Upload row(s), status=queued
+    V->>R: process_upload.delay(upload_id) per file
+    V-->>C: 202 Accepted + Retry-After
+    C->>V: GET /v1/uploads/{id} (poll)
+    V-->>C: status=queued/processing
+
+    R->>W: deliver task
+    W->>DB: status=processing
+    W->>S: read raw file
+    Note over W: ingest_upload() dispatches to<br/>fitparse / gpxpy / lxml (TCX),<br/>computes laps/records/duration-curve/<br/>TSS/best-efforts, attempt_workout_match()
+    W->>DB: bulk_create Record/Lap rows,<br/>write Activity + derived data
+    W->>DB: status=ready, activity=&lt;id&gt;
+    W->>DB: fire_event(): create WebhookDelivery row(s)
+    W->>R: deliver_webhook.delay(delivery_id)
+    R->>W: deliver task (own retry/backoff, autoretry_for)
+    W->>WH: signed HMAC POST
+
+    C->>V: GET /v1/uploads/{id} (poll)
+    V-->>C: status=ready, activity=&lt;id&gt;
+```
+
+Zip unpacking happens **synchronously inside the request** — the entire
+archive is opened, every entry hashed and dedupe-checked, and every file
+written to storage before the view returns — only the actual per-file
+parse-and-compute work is deferred to Celery. A batch's individual
+failures don't fail the batch: Garmin account exports mix in metadata-only
+stub FITs with no real activity data, so those are marked `skipped` rather
+than `failed` (see the comment in `uploads/tasks.py::process_upload`),
+letting a large export finish instead of erroring out on the first stub
+file. Webhook delivery retry (`deliver_webhook`) is Celery's own
+`autoretry_for`/`retry_backoff`, running on the same worker pool as
+ingestion — a slow/hanging webhook endpoint competes with FIT parsing for
+worker capacity, since both are just tasks on the same queue.
+
+### 5.2 Java: in-process, no queue
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant Ctl as UploadController
+    participant Svc as UploadService
+    participant FS as media volume
+    participant DB as Postgres
+    participant JL as UploadJobLauncher<br/>(single virtual-thread worker)
+    participant Job as processUploadJob<br/>(Spring Batch)
+    participant Evt as ApplicationEventPublisher
+    participant Async as webhook @Async thread
+    participant WH as Webhook endpoint
+
+    C->>Ctl: POST /v1/activities (or .../batch, .zip)
+    Ctl->>Svc: createSingleUpload / createBatchUpload
+    Note over Svc: batch: unpack the zip IN THE REQUEST<br/>(ZipInputStream), validate every entry
+    Svc->>FS: write raw file(s)
+    Svc->>DB: create Upload row(s), status=queued
+    Svc->>JL: launch(uploadId) per file
+    Svc-->>Ctl: Upload / UploadBatch
+    Ctl-->>C: 202 Accepted + Retry-After
+    C->>Ctl: GET /v1/uploads/{id} (poll)
+    Ctl-->>C: status=queued/processing
+
+    Note over JL: launch() returns immediately;<br/>the job itself runs on ONE dedicated<br/>virtual thread - see note below
+    JL->>Job: syncJobOperator.start(processUploadJob)
+    Job->>FS: parseFileStep (com.garmin:fit SDK, or GPX/TCX parser)
+    Job->>DB: loadRecordsStep - chunked JDBC batch insert,<br/>1000 Record rows/chunk
+    Job->>DB: computeDerivedStatsStep → durationCurveStep →<br/>bestEffortStep → workoutMatchStep
+    Job->>DB: finalizeUploadStep: status=ready, activity=&lt;id&gt;
+    Job->>Evt: publishEvent(ActivityCreatedEvent)
+    Note over Evt: @TransactionalEventListener(AFTER_COMMIT)
+    Evt->>DB: create WebhookDelivery row
+    Evt->>Async: deliver(delivery.id) - @Async, @Retryable
+    Async->>WH: signed HMAC POST
+
+    C->>Ctl: GET /v1/uploads/{id} (poll)
+    Ctl-->>C: status=ready, activity=&lt;id&gt;
+```
+
+`processUploadJob` is seven Spring Batch steps
+(`UploadJobConfig.java`): `parseFileStep` → `loadRecordsStep` (the one
+chunked step — everything else is a single tasklet) →
+`computeDerivedStatsStep` → `durationCurveStep` → `bestEffortStep` →
+`workoutMatchStep` → `finalizeUploadStep`, with an explicit
+`NO_ACTIVITY_DATA` exit routed straight to a clean `COMPLETED` end (the
+same Garmin-stub-file case Python handles via `status=skipped`) kept
+separate from the `FAILED` transition so a genuinely corrupt file doesn't
+get misrouted through the rest of the job.
+
+**Correction to a common assumption about this pipeline** (and to how an
+earlier version of this document described it): "in-process with virtual
+threads" does *not* mean concurrent ingestion. `UploadJobLauncher` runs
+every job on a **single dedicated virtual thread**
+(`Executors.newSingleThreadExecutor`), deliberately serialized — the
+in-code comment explains why: `@JobScope`/`@StepScope` beans (e.g.
+`UploadJobContext`) were verified to **not** be safely isolated across
+genuinely concurrent `Job.execute()` calls on this Spring Batch version,
+and concurrent uploads produced cross-contaminated `Record` rows and
+dropped/duplicate launches before this fix. So a Java batch import of N
+files processes them **one at a time**, not N-wide in parallel — virtual
+threads here buy cheap, non-blocking hand-off from the HTTP request
+thread (`launch()` returns immediately), not throughput. This is the
+concrete mechanism behind the batch-import contention concern already
+flagged in `AWS_MIGRATION_PLAN.md` §5.4/§10: a large Garmin export
+genuinely runs its files sequentially on the same task, so splitting
+ingestion onto its own ECS service buys you *more parallel single-worker
+queues* (one per task), not a fix to the per-task seriality itself.
+
+Webhook delivery uses Spring's own async/retry machinery — `@Async`
+(delivery runs on Spring's task executor thread pool, not the ingestion
+job's thread) + `@Retryable` — functionally equivalent to Celery's
+`autoretry_for`/`retry_backoff` on the Python side, but in-process rather
+than broker-dispatched, consistent with Java having no queue anywhere in
+this pipeline.
+
+### 5.3 Side by side
+
+| | Python | Java |
+|---|---|---|
+| Dispatch | Celery task via Redis broker | Single-worker virtual-thread executor, in-process |
+| Parse libraries | `fitparse`, `gpxpy`, `lxml` (TCX) | `com.garmin:fit` (official SDK), own GPX/TCX parsers |
+| Bulk `Record` insert | Django `bulk_create()` | `JdbcBatchItemWriter`, 1000-row chunks |
+| Concurrency across files in one batch | One Celery task per file — as concurrent as the worker pool/replica count allows | Strictly serial — one file at a time, by design (see above) |
+| Webhook delivery | Celery task, own retry/backoff, same worker pool as ingestion | `@Async` + `@Retryable`, separate thread pool from ingestion |
+| Failure isolation (Garmin stub files) | `status=skipped`, batch continues | `NO_ACTIVITY_DATA` exit → clean `COMPLETED`, batch continues |
 
 **Best-effort storage is a top-N leaderboard, not full history**: `BestEffort`
 rows are trimmed at write time to the athlete's global all-time top N
