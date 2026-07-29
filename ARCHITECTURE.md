@@ -597,7 +597,7 @@ sequenceDiagram
     participant JL as UploadJobLauncher<br/>(single virtual-thread worker)
     participant Job as processUploadJob<br/>(Spring Batch)
     participant Evt as ApplicationEventPublisher
-    participant Async as webhook @Async thread
+    participant Async as webhook Async thread
     participant WH as Webhook endpoint
 
     C->>Ctl: POST /v1/activities (or .../batch, .zip)
@@ -618,9 +618,9 @@ sequenceDiagram
     Job->>DB: computeDerivedStatsStep → durationCurveStep →<br/>bestEffortStep → workoutMatchStep
     Job->>DB: finalizeUploadStep: status=ready, activity=activity_id
     Job->>Evt: publishEvent(ActivityCreatedEvent)
-    Note over Evt: @TransactionalEventListener(AFTER_COMMIT)
+    Note over Evt: TransactionalEventListener, AFTER_COMMIT phase
     Evt->>DB: create WebhookDelivery row
-    Evt->>Async: deliver(delivery.id) - @Async, @Retryable
+    Evt->>Async: deliver(delivery.id) - Async, Retryable
     Async->>WH: signed HMAC POST
 
     C->>Ctl: GET /v1/uploads/{id} (poll)
