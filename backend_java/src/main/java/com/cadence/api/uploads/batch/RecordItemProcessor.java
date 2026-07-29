@@ -17,23 +17,22 @@ public class RecordItemProcessor implements ItemProcessor<RecordItemProcessor.Se
 	@Override
 	public RecordRow process(SegmentSample item) {
 		ParsedActivity.Sample sample = item.sample();
-		RecordRow row = new RecordRow();
-		row.setActivityId(item.activityId());
-		row.setTs(java.sql.Timestamp.from(item.startDate().plusSeconds(sample.t())));
-		row.setT(sample.t());
-		row.setPower(sample.power());
-		row.setHeartrate(sample.heartrate());
-		row.setCadence(sample.cadence());
-		row.setAltitude(sample.altitude());
-		row.setLat(sample.lat());
-		row.setLng(sample.lng());
-		row.setSpeed(sample.speed());
-		row.setDistanceKm(sample.distanceKm());
-		row.setAirTemp(sample.airTemp());
-		row.setHumidity(sample.humidity());
-		row.setCoreTemp(sample.coreTemp());
-		row.setSkinTemp(sample.skinTemp());
-		row.setHeatStrain(sample.heatStrain());
-		return row;
+		return new RecordRow(
+				item.activityId(),
+				java.sql.Timestamp.from(item.startDate().plusSeconds(sample.t())),
+				sample.t(),
+				sample.power(),
+				sample.heartrate(),
+				sample.cadence(),
+				sample.altitude(),
+				sample.lat(),
+				sample.lng(),
+				sample.speed(),
+				sample.distanceKm(),
+				sample.airTemp(),
+				sample.humidity(),
+				sample.coreTemp(),
+				sample.skinTemp(),
+				sample.heatStrain());
 	}
 }

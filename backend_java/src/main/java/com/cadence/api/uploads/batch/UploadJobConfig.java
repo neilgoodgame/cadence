@@ -9,6 +9,7 @@ import org.springframework.batch.infrastructure.item.database.JdbcBatchItemWrite
 import org.springframework.batch.infrastructure.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /**
@@ -71,7 +72,26 @@ public class UploadJobConfig {
 						+ "air_temp, humidity, core_temp, skin_temp, heat_strain) "
 						+ "VALUES (:activityId, :ts, :t, :power, :heartrate, :cadence, :altitude, :lat, :lng, :speed, :distanceKm, "
 						+ ":airTemp, :humidity, :coreTemp, :skinTemp, :heatStrain)")
-				.beanMapped()
+				// Not .beanMapped() - that resolves named parameters through getXxx()-style
+				// JavaBean accessors, which RecordRow (a record, deliberately - see its
+				// Javadoc) doesn't have. Named parameters are mapped explicitly instead.
+				.itemSqlParameterSourceProvider(row -> new MapSqlParameterSource()
+						.addValue("activityId", row.activityId())
+						.addValue("ts", row.ts())
+						.addValue("t", row.t())
+						.addValue("power", row.power())
+						.addValue("heartrate", row.heartrate())
+						.addValue("cadence", row.cadence())
+						.addValue("altitude", row.altitude())
+						.addValue("lat", row.lat())
+						.addValue("lng", row.lng())
+						.addValue("speed", row.speed())
+						.addValue("distanceKm", row.distanceKm())
+						.addValue("airTemp", row.airTemp())
+						.addValue("humidity", row.humidity())
+						.addValue("coreTemp", row.coreTemp())
+						.addValue("skinTemp", row.skinTemp())
+						.addValue("heatStrain", row.heatStrain()))
 				.build();
 	}
 }

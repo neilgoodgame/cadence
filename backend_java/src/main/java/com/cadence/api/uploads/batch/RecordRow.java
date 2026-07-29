@@ -3,157 +3,32 @@ package com.cadence.api.uploads.batch;
 import java.sql.Timestamp;
 
 /**
- * A plain JavaBean (not a Java {@code record}) deliberately - {@code JdbcBatchItemWriter}'s
- * {@code BeanPropertyItemSqlParameterSourceProvider} resolves SQL parameters through
- * {@code getXxx()} accessors, which a Java record doesn't expose. {@code ts} is a
- * {@code java.sql.Timestamp} rather than {@code Instant}: this goes through plain JDBC
- * (bypassing Hibernate's type system, which does know how to bind an {@code Instant}), and
- * pgjdbc's own {@code setObject} can't infer a SQL type for a bare {@code Instant}.
+ * One {@code record} table row, built once by {@link RecordItemProcessor} and never mutated
+ * afterward - a record fits that write-once shape better than the mutable JavaBean this used to
+ * be. {@code ts} is a {@code java.sql.Timestamp} rather than {@code Instant}: this goes through
+ * plain JDBC (bypassing Hibernate's type system, which does know how to bind an {@code Instant}),
+ * and pgjdbc's own {@code setObject} can't infer a SQL type for a bare {@code Instant}.
+ *
+ * <p>{@code UploadJobConfig}'s {@code recordItemWriter} maps this via an explicit
+ * {@code ItemSqlParameterSourceProvider}, not {@code JdbcBatchItemWriterBuilder.beanMapped()} -
+ * {@code beanMapped()} resolves named SQL parameters through {@code getXxx()}-style JavaBean
+ * accessors, which a record's {@code xxx()}-named accessors don't match.
  */
-public class RecordRow {
-
-	private String activityId;
-	private Timestamp ts;
-	private int t;
-	private Integer power;
-	private Integer heartrate;
-	private Integer cadence;
-	private Double altitude;
-	private Double lat;
-	private Double lng;
-	private Double speed;
-	private Double distanceKm;
-	private Double airTemp;
-	private Integer humidity;
-	private Double coreTemp;
-	private Double skinTemp;
-	private Double heatStrain;
-
-	public String getActivityId() {
-		return activityId;
-	}
-
-	public void setActivityId(String activityId) {
-		this.activityId = activityId;
-	}
-
-	public Timestamp getTs() {
-		return ts;
-	}
-
-	public void setTs(Timestamp ts) {
-		this.ts = ts;
-	}
-
-	public int getT() {
-		return t;
-	}
-
-	public void setT(int t) {
-		this.t = t;
-	}
-
-	public Integer getPower() {
-		return power;
-	}
-
-	public void setPower(Integer power) {
-		this.power = power;
-	}
-
-	public Integer getHeartrate() {
-		return heartrate;
-	}
-
-	public void setHeartrate(Integer heartrate) {
-		this.heartrate = heartrate;
-	}
-
-	public Integer getCadence() {
-		return cadence;
-	}
-
-	public void setCadence(Integer cadence) {
-		this.cadence = cadence;
-	}
-
-	public Double getAltitude() {
-		return altitude;
-	}
-
-	public void setAltitude(Double altitude) {
-		this.altitude = altitude;
-	}
-
-	public Double getLat() {
-		return lat;
-	}
-
-	public void setLat(Double lat) {
-		this.lat = lat;
-	}
-
-	public Double getLng() {
-		return lng;
-	}
-
-	public void setLng(Double lng) {
-		this.lng = lng;
-	}
-
-	public Double getSpeed() {
-		return speed;
-	}
-
-	public void setSpeed(Double speed) {
-		this.speed = speed;
-	}
-
-	public Double getDistanceKm() {
-		return distanceKm;
-	}
-
-	public void setDistanceKm(Double distanceKm) {
-		this.distanceKm = distanceKm;
-	}
-
-	public Double getAirTemp() {
-		return airTemp;
-	}
-
-	public void setAirTemp(Double airTemp) {
-		this.airTemp = airTemp;
-	}
-
-	public Integer getHumidity() {
-		return humidity;
-	}
-
-	public void setHumidity(Integer humidity) {
-		this.humidity = humidity;
-	}
-
-	public Double getCoreTemp() {
-		return coreTemp;
-	}
-
-	public void setCoreTemp(Double coreTemp) {
-		this.coreTemp = coreTemp;
-	}
-
-	public Double getSkinTemp() {
-		return skinTemp;
-	}
-
-	public void setSkinTemp(Double skinTemp) {
-		this.skinTemp = skinTemp;
-	}
-
-	public Double getHeatStrain() {
-		return heatStrain;
-	}
-
-	public void setHeatStrain(Double heatStrain) {
-		this.heatStrain = heatStrain;
-	}
+public record RecordRow(
+		String activityId,
+		Timestamp ts,
+		int t,
+		Integer power,
+		Integer heartrate,
+		Integer cadence,
+		Double altitude,
+		Double lat,
+		Double lng,
+		Double speed,
+		Double distanceKm,
+		Double airTemp,
+		Integer humidity,
+		Double coreTemp,
+		Double skinTemp,
+		Double heatStrain) {
 }
