@@ -562,14 +562,14 @@ sequenceDiagram
     W->>S: read raw file
     Note over W: ingest_upload() dispatches to<br/>fitparse / gpxpy / lxml (TCX),<br/>computes laps/records/duration-curve/<br/>TSS/best-efforts, attempt_workout_match()
     W->>DB: bulk_create Record/Lap rows,<br/>write Activity + derived data
-    W->>DB: status=ready, activity=&lt;id&gt;
+    W->>DB: status=ready, activity=activity_id
     W->>DB: fire_event(): create WebhookDelivery row(s)
     W->>R: deliver_webhook.delay(delivery_id)
     R->>W: deliver task (own retry/backoff, autoretry_for)
     W->>WH: signed HMAC POST
 
     C->>V: GET /v1/uploads/{id} (poll)
-    V-->>C: status=ready, activity=&lt;id&gt;
+    V-->>C: status=ready, activity=activity_id
 ```
 
 Zip unpacking happens **synchronously inside the request** — the entire
@@ -616,7 +616,7 @@ sequenceDiagram
     Job->>FS: parseFileStep (com.garmin:fit SDK, or GPX/TCX parser)
     Job->>DB: loadRecordsStep - chunked JDBC batch insert,<br/>1000 Record rows/chunk
     Job->>DB: computeDerivedStatsStep → durationCurveStep →<br/>bestEffortStep → workoutMatchStep
-    Job->>DB: finalizeUploadStep: status=ready, activity=&lt;id&gt;
+    Job->>DB: finalizeUploadStep: status=ready, activity=activity_id
     Job->>Evt: publishEvent(ActivityCreatedEvent)
     Note over Evt: @TransactionalEventListener(AFTER_COMMIT)
     Evt->>DB: create WebhookDelivery row
@@ -624,7 +624,7 @@ sequenceDiagram
     Async->>WH: signed HMAC POST
 
     C->>Ctl: GET /v1/uploads/{id} (poll)
-    Ctl-->>C: status=ready, activity=&lt;id&gt;
+    Ctl-->>C: status=ready, activity=activity_id
 ```
 
 `processUploadJob` is seven Spring Batch steps
