@@ -6,11 +6,9 @@ import { listActivities } from "../api/activities";
 import { getContexts } from "../api/auth";
 import { Card } from "../components/Card";
 import { CoachingSection } from "./dashboard/CoachingSection";
-import { SportDistribution } from "./dashboard/SportDistribution";
 import { StatCardsRow } from "./dashboard/StatCardsRow";
 import { NextRaceCard } from "./dashboard/NextRaceCard";
 import { WeekCalendar } from "./dashboard/WeekCalendar";
-import { WeeklyVolumeChart } from "./dashboard/WeeklyVolumeChart";
 import { TrainingHistory } from "./dashboard/TrainingHistory";
 
 function isoDaysAgo(days: number): string {
@@ -98,15 +96,6 @@ export function DashboardScreen() {
       </Card>
 
 {user.is_coach && <CoachingSection athletes={contextsQuery.data?.coaching ?? []} />}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <Card>
-          <WeeklyVolumeChart activities={activities} />
-        </Card>
-        <Card>
-          <SportDistribution activities={activities} />
-        </Card>
-      </div>
     </div>
   );
 }
