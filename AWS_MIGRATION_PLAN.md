@@ -16,6 +16,10 @@ as a concrete pre-migration task, not glossed over.
 
 ## 1. Current architecture (as-is)
 
+See `ARCHITECTURE.md` for the full system reference (domain model, auth,
+the CQL query language, ingestion pipeline, frontend, testing, CI). This
+section is just the subset relevant to an AWS move.
+
 | Component | What it is today |
 |---|---|
 | **Python backend** | Django 6 + DRF, `gunicorn`, served on :8000. OAuth2 (django-oauth-toolkit) + scoped delegated JWTs (RS256, key pair on disk). |
