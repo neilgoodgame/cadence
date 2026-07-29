@@ -59,6 +59,11 @@
         <div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:4px;font-family:'JetBrains Mono',monospace;">{{ countLabel }}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
+        <label style="display:flex;align-items:center;gap:7px;padding:8px 16px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;cursor:pointer;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>
+          Import
+          <input type="file" accept=".zwo,.xml,.json" onChange="{{ onImportFile }}" style="display:none;" />
+        </label>
         <a href="Workout Designer.dc.html" style="text-decoration:none;padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;">+ New workout</a>
       </div>
     </div>
@@ -150,6 +155,15 @@
                     </sc-for>
                   </div>
                 </div>
+                <div onClick="{{ stopProp }}" style="margin-top:10px;">
+                  <select value="{{ w.folderValue }}" onChange="{{ w.onFolderChange }}" style="{{ w.folderSelectStyle }}">
+                    <option value="none">No folder</option>
+                    <option value="vo2">VO2 Max</option>
+                    <option value="threshold">Threshold</option>
+                    <option value="base">Base / Endurance</option>
+                    <option value="race">Race Prep</option>
+                  </select>
+                </div>
                 <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;">
                   <sc-for list="{{ w.tags }}" as="tg" hint-placeholder-count="2">
                     <span style="font-size:10.5px;font-weight:600;color:var(--ink3,#9a958d);background:var(--elev,#faf9f7);padding:3px 8px;border-radius:20px;">{{ tg.name }}</span>
@@ -159,7 +173,6 @@
                   <div onClick="{{ w.onAssign }}" style="{{ w.actionBtnStyle }}" title="Assign">
                     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"></path></svg>
                   </div>
-                  <a href="Workout Designer.dc.html" style="{{ w.actionBtnStyle }}" title="Edit"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M11 2 14 5 5 14 2 14 2 11 11 2Z"></path></svg></a>
                   <div onClick="{{ w.onDuplicate }}" style="{{ w.actionBtnStyle }}" title="Duplicate"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="8" height="8" rx="1.5"></rect><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"></path></svg></div>
                   <div onClick="{{ w.onExport }}" style="{{ w.actionBtnStyle }}" title="Export"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v8M5 7l3 3 3-3"></path><path d="M3 12v1.5h10V12"></path></svg></div>
                   <div onClick="{{ w.onDelete }}" style="{{ w.actionBtnStyle }}margin-left:auto;color:#c4332a;" title="Delete"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4h10M6 4V2.6h4V4M4.5 4l.6 9h5.8l.6-9"></path></svg></div>
@@ -172,11 +185,11 @@
         <!-- ===== LIST VIEW ===== -->
         <sc-if value="{{ isListView }}" hint-placeholder-val="{{ false }}">
           <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
-            <div style="display:grid;grid-template-columns:26px minmax(150px,1.6fr) 80px 90px 70px 60px 1fr 150px;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);align-items:center;">
-              <span></span><span>Name</span><span>Sport</span><span>Duration</span><span>TSS</span><span>Steps</span><span>Tags</span><span style="text-align:right;">Actions</span>
+            <div style="display:grid;grid-template-columns:26px minmax(150px,1.6fr) 80px 90px 70px 130px 1fr 150px;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);align-items:center;">
+              <span></span><span>Name</span><span>Sport</span><span>Duration</span><span>TSS</span><span>Folder</span><span>Tags</span><span style="text-align:right;">Actions</span>
             </div>
             <sc-for list="{{ cards }}" as="w" hint-placeholder-count="6">
-              <div style="display:grid;grid-template-columns:26px minmax(150px,1.6fr) 80px 90px 70px 60px 1fr 150px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
+              <div style="display:grid;grid-template-columns:26px minmax(150px,1.6fr) 80px 90px 70px 130px 1fr 150px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
                 <div onClick="{{ w.toggleSelect }}" style="{{ w.checkStyle }}"><sc-if value="{{ w.selected }}" hint-placeholder-val="{{ false }}">✓</sc-if></div>
                 <div onClick="{{ w.onOpen }}" style="cursor:pointer;min-width:0;">
                   <div style="font-size:13.5px;font-weight:700;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ w.name }}</div>
@@ -184,7 +197,13 @@
                 <div style="{{ w.sportBadgeStyle }}justify-self:start;">{{ w.sportLabel }}</div>
                 <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink2,#6f6b65);">{{ w.durationLabel }}</span>
                 <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink2,#6f6b65);">{{ w.tssLabel }}</span>
-                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink2,#6f6b65);">{{ w.stepsLabel }}</span>
+                <select value="{{ w.folderValue }}" onChange="{{ w.onFolderChange }}" style="{{ w.folderSelectStyle }}">
+                  <option value="none">No folder</option>
+                  <option value="vo2">VO2 Max</option>
+                  <option value="threshold">Threshold</option>
+                  <option value="base">Base / Endurance</option>
+                  <option value="race">Race Prep</option>
+                </select>
                 <div style="display:flex;flex-wrap:wrap;gap:4px;min-width:0;">
                   <sc-for list="{{ w.tags }}" as="tg" hint-placeholder-count="2">
                     <span style="font-size:10.5px;font-weight:600;color:var(--ink3,#9a958d);background:var(--elev,#faf9f7);padding:2px 7px;border-radius:20px;">{{ tg.name }}</span>
@@ -192,7 +211,6 @@
                 </div>
                 <div style="display:flex;align-items:center;gap:5px;justify-self:end;">
                   <div onClick="{{ w.onAssign }}" style="{{ w.actionBtnStyle }}" title="Assign"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"></path></svg></div>
-                  <a href="Workout Designer.dc.html" style="{{ w.actionBtnStyle }}" title="Edit"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M11 2 14 5 5 14 2 14 2 11 11 2Z"></path></svg></a>
                   <div onClick="{{ w.onDuplicate }}" style="{{ w.actionBtnStyle }}" title="Duplicate"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="8" height="8" rx="1.5"></rect><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"></path></svg></div>
                   <div onClick="{{ w.onExport }}" style="{{ w.actionBtnStyle }}" title="Export"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v8M5 7l3 3 3-3"></path><path d="M3 12v1.5h10V12"></path></svg></div>
                   <div onClick="{{ w.onDelete }}" style="{{ w.actionBtnStyle }}color:#c4332a;" title="Delete"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4h10M6 4V2.6h4V4M4.5 4l.6 9h5.8l.6-9"></path></svg></div>
@@ -267,6 +285,13 @@ class Component extends DCLogic {
     return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
   }
 
+  // Same zone ramp as the Builder's chart, so a workout's intensity profile
+  // reads consistently between the library preview and the editor.
+  zoneColor(pct) {
+    if (pct < 56) return '#8a94a6'; if (pct < 76) return '#3d7fd6'; if (pct < 91) return '#2fa66a';
+    if (pct < 106) return '#f0a02e'; if (pct < 121) return '#ec4a26'; return '#c4332a';
+  }
+
   renderVals() {
     const st = this.state;
     const isLab = st.theme === 'lab';
@@ -308,9 +333,12 @@ class Component extends DCLogic {
 
     const cardsSrc = list.map(w => {
       const total = w.chart.reduce((a, v) => a + 1, 0) || 1;
+      // Mini preview chart — bars colored by %FTP/%threshold zone (same scale as
+      // the Builder's chart), not a flat sport tint, so the intensity profile of
+      // a workout is visible at a glance in the library.
       const chart = w.chart.map((v, i) => ({
         wrapStyle: { width: (100 / total) + '%', height: '100%', display: 'flex', alignItems: 'flex-end' },
-        barStyle: { width: '100%', height: Math.min(100, (v / 150) * 100).toFixed(0) + '%', background: w.sport === 'run' ? '#ec4a26' : '#3d7fd6', opacity: 0.55 },
+        barStyle: { width: '100%', height: Math.min(100, (v / 150) * 100).toFixed(0) + '%', background: this.zoneColor(v), opacity: 0.85 },
       }));
       const selected = !!st.selected[w.id];
       return {
@@ -321,6 +349,9 @@ class Component extends DCLogic {
         durationLabel: this.fmtDuration(w.dur), tssLabel: w.tss, stepsLabel: w.steps,
         chart,
         tags: w.tags.map(t => ({ name: t })),
+        folderValue: w.folder || 'none',
+        onFolderChange: (e) => { const v = e.target.value; this.setState({ workouts: this.state.workouts.map(x => x.id === w.id ? { ...x, folder: v === 'none' ? null : v } : x) }); },
+        folderSelectStyle: { width: '100%', padding: '6px 9px', borderRadius: '7px', border: '1px solid var(--line,#e6e2dc)', background: 'var(--elev,#faf9f7)', color: 'var(--ink2,#6f6b65)', fontSize: '12px', fontWeight: 600 },
         checkStyle: { width: '20px', height: '20px', borderRadius: '6px', border: '1.5px solid ' + (selected ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), background: selected ? 'var(--ember,#ec4a26)' : 'transparent', color: '#fff', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
         cardStyle: { background: 'var(--card,#fff)', border: '1px solid ' + (selected ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), borderRadius: '14px', padding: '14px 16px 16px' },
         actionBtnStyle: { width: '26px', height: '26px', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink3,#9a958d)', cursor: 'pointer', textDecoration: 'none', flexShrink: 0 },
@@ -354,6 +385,11 @@ class Component extends DCLogic {
       clearSelection: () => this.setState({ selected: {} }),
       cards: cardsSrc, isEmpty: cardsSrc.length === 0,
       stopProp: (e) => e.stopPropagation(),
+      // Real behavior: parses a Zwift .zwo (Warmup/Cooldown/SteadyState/Ramp/
+      // IntervalsT, etc.) or a "Test fixture · .json" export ({name, sport,
+      // steps}) client-side and creates it through the same workout-create API
+      // the Builder's Save uses. Dispatches on file extension.
+      onImportFile: (e) => {},
       assignOpen: st.assignOpen, assignTargetName: target ? target.name : '',
       closeAssign: () => this.setState({ assignOpen: false }),
       confirmAssign: () => this.setState({ assignOpen: false }),

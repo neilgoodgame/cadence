@@ -172,7 +172,11 @@ class Component extends DCLogic {
 
     { id: 'workout', domain: 'planning', note: 'designed', fields: [
       ['id', 'uuid', 'pk'], ['name', 'text'], ['sport', 'bike|run'],
-      ['type', 'VO2|Thr|SS|End'], ['duration', 'sec'], ['tss', 'int'] ] },
+      ['type', 'VO2|Thr|SS|End'], ['duration', 'sec'], ['tss', 'int'],
+      ['folder_id', 'fk?', 'fk', 'workout_folder'], ['tags', 'text[]'],
+      ['chart_preview', 'num[]'] ] },
+    { id: 'workout_folder', domain: 'planning', note: 'single-membership', fields: [
+      ['id', 'uuid', 'pk'], ['name', 'text'] ] },
     { id: 'workout_step', domain: 'planning', note: 'structure', fields: [
       ['id', 'uuid', 'pk'], ['workout_id', 'fk', 'fk', 'workout'], ['order', 'int'],
       ['parent_step_id', 'fk? self', 'fk', 'workout_step'],
@@ -209,7 +213,7 @@ class Component extends DCLogic {
     user: [0, 1], zone_set: [0, 2], user_relationship: [0, 3],
     best_effort: [1, 0], activity_tag: [1, 4],
     lap: [2, 0], duration_curve: [1, 2], activity: [2, 2], record: [2, 4],
-    tag: [1, 3], scheduled_workout: [3, 3], workout: [4, 2], workout_step: [4, 1],
+    tag: [1, 3], scheduled_workout: [3, 3], workout: [4, 2], workout_step: [4, 1], workout_folder: [3, 2],
     bike: [3, 0], component: [4, 0], shoe: [3, 4], shoe_model_version: [4, 3], shoe_model: [4, 4],
     race: [2, 1],
   };
@@ -236,6 +240,7 @@ class Component extends DCLogic {
     ['race', 'activity', '1:1', 'ref'],
     ['workout', 'workout_step', '1:N', 'own'],
     ['workout_step', 'workout_step', '1:N', 'own'],
+    ['workout_folder', 'workout', '1:N', 'own'],
     ['workout', 'scheduled_workout', '1:N', 'own'],
     ['scheduled_workout', 'activity', '1:1', 'ref'],
     ['bike', 'component', '1:N', 'own'],
