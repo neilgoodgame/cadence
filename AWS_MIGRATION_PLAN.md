@@ -449,6 +449,47 @@ NAT Gateway is a fixed cost regardless of traffic — a NAT instance or VPC
 endpoints for AWS-service traffic (S3, Secrets Manager) can trim this
 if it matters at this scale.
 
+### 11.1 Cost per user
+
+Measured directly from the local Java stack's real data (`testuser1783507448@example.com`,
+a genuinely-migrated Garmin Connect account: 2,609 activities from 2020-08-04
+to 2026-07-28, ≈63.5 min average activity), rather than assumed:
+
+- The `record` hypertable (1Hz stream data) is **2,674 MB for 9,912,650 rows
+  DB-wide → ≈282.9 bytes/row**, a schema-level constant, not user-specific.
+- This one account's 9,230,146 rows work out to **≈2.6 GB** — and that's
+  ~99.8% of its own footprint; every other table combined (`lap`,
+  `duration_curve`, `activity`, `best_effort`) is under 6 MB DB-wide across
+  *all* accounts. Stream data is the entire storage story.
+- Average **≈1.0 MB of stream data per activity**.
+
+Projected forward at the stated **2 activities/day**: +2.0 MB/day → **+730
+MB/year** per user. On RDS gp3 (≈$0.115/GB-month, us-east-1 — confirm
+current rate): today's 2.6 GB ≈ **$0.30/month**; even five more years at
+this pace (→~6.3 GB) is only **≈$0.72/month**. Compute is the same story —
+a FIT parse is sub-second of CPU, so at 2/day the marginal compute cost per
+user is well under a cent a month regardless of whether it runs on
+already-provisioned Fargate capacity or billed per-Lambda-invocation.
+
+**Conclusion: per-user storage/compute cost is a rounding error at this
+usage rate.** "Cost per user" is really the §11 fixed infrastructure floor
+(RDS instance, ECS baseline tasks, ALB, NAT Gateway — all roughly flat
+until a real scaling threshold is hit) divided by however many users share
+it:
+
+| Users | Cost/user/month (one-backend production, ~$280–380/mo floor) |
+|---|---|
+| 10 | ~$28–38 |
+| 100 | ~$2.80–3.80 |
+| 1,000 | ~$0.28–0.38 — data volume starts to become a real fraction here |
+| 10,000 | ~$0.03–0.04 — the fixed floor no longer dominates; RDS tier size and stream-data volume start to matter more than instance count |
+
+The practical implication: don't right-size infrastructure around per-user
+data volume at this app's usage pattern — right-size it around how many
+users are sharing the fixed floor, and revisit only once user count is
+large enough that the floor stops dominating (rough rule of thumb from the
+table above: somewhere past a few thousand active users).
+
 ## 12. Other things worth deciding now, not discovering later
 
 - **Data residency / backups**: confirm RDS automated backup retention
