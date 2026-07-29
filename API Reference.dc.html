@@ -231,7 +231,7 @@ class Component extends DCLogic {
     { id: 'streams', label: 'Streams & curves', desc: 'High-resolution data inside an activity — laps, the 1 Hz record stream, and pre-computed power/HR duration curves.' },
     { id: 'efforts', label: 'Best efforts', desc: 'Personal records across durations (power) and distances (pace), windowed by period.' },
     { id: 'tags', label: 'Tags', desc: 'Manual and auto-generated labels, and the join that attaches them to activities.' },
-    { id: 'workouts', label: 'Workouts', desc: 'Designed workout templates and their step structure — time-based, distance-based, or manual steps.' },
+    { id: 'workouts', label: 'Workouts', desc: 'Designed workout templates and their step structure — time-based, distance-based, or manual steps, with ramps, secondary targets, and nested repeat groups — plus the library folders that organize them.' },
     { id: 'calendar', label: 'Scheduling', desc: 'Place designed workouts on the calendar, assign them to athletes, and reconcile against completed activities.' },
     { id: 'athletes', label: 'Athletes & zones', desc: 'Profile, thresholds (FTP, critical power, threshold pace, LTHR), the four editable zone sets, and the fitness/fatigue/form trend.' },
     { id: 'sharing', label: 'Sharing', desc: 'Grant another person Viewer (read-only) or Coach (can also assign workouts) access to your training.' },
@@ -256,6 +256,16 @@ class Component extends DCLogic {
         ],
         req: '{\n  "name": "Neil Goodgame",\n  "email": "neil@example.cc",\n  "password": "••••••••••"\n}',
         status: '201 Created',
+        res: '{\n  "athlete": { "id": "ath_neil", "name": "Neil Goodgame" },\n  "tokens": {\n    "access_token": "cad_at_9f2a7c",\n    "refresh_token": "cad_rt_1be40d",\n    "expires_in": 21600\n  }\n}',
+      }),
+      this.ep('POST', '/v1/auth/login', 'Sign in with email + password', {
+        description: 'Authenticates an existing email/password account and returns the athlete and a fresh token pair — no separate session step, this issues real bearer tokens directly, the same way /v1/auth/register does for a brand-new account. Social-linked accounts (no password set) cannot use this endpoint.',
+        params: [
+          { name: 'email', type: 'string', required: true, desc: 'Account email' },
+          { name: 'password', type: 'string', required: true, desc: 'Account password' },
+        ],
+        req: '{\n  "email": "neil@example.cc",\n  "password": "••••••••••"\n}',
+        status: '200 OK',
         res: '{\n  "athlete": { "id": "ath_neil", "name": "Neil Goodgame" },\n  "tokens": {\n    "access_token": "cad_at_9f2a7c",\n    "refresh_token": "cad_rt_1be40d",\n    "expires_in": 21600\n  }\n}',
       }),
       this.ep('POST', '/v1/auth/jwt', 'Mint a scoped JWT', {
@@ -289,6 +299,11 @@ class Component extends DCLogic {
         status: '200 OK',
         res: '{\n  "id": "ath_neil",\n  "name": "Neil Goodgame",\n  "ftp": 265,\n  "lthr": 155,\n  "role": "athlete"\n}',
       }),
+      this.ep('GET', '/v1/me/contexts', 'Switchable contexts', {
+        description: 'Returns every context the signed-in user can act in — their own training plus each athlete they coach (via an active user_relationship). Powers the account/context switcher. Switching context just changes the athlete_id you pass (or mint a JWT for) — sub stays the signed-in user.',
+        status: '200 OK',
+        res: '{\n  "self": { "id": "ath_neil", "name": "Neil Goodgame" },\n  "coaching": [\n    { "athlete_id": "ath_sofia", "name": "Sofia Greco" }\n  ],\n  "coached_by": [\n    { "id": "shr_7c1a2b", "name": "Mara Køhl", "role": "coach" }\n  ]\n}',
+      }),
     ],
     activities: [
       this.ep('GET', '/v1/activities', 'List & query activities', {
@@ -296,13 +311,14 @@ class Component extends DCLogic {
         params: [
           { name: 'q', type: 'string', required: false, desc: 'CQL, e.g. avg_hr > 140 AND sport = run' },
           { name: 'sort', type: 'string', required: false, desc: 'Field, prefix - for descending (e.g. -tss)' },
-          { name: 'sport', type: 'enum', required: false, desc: 'bike | run | swim | walk' },
+          { name: 'sport', type: 'enum', required: false, desc: 'bike | run | swim | walk | multisport | transition' },
+          { name: 'environment', type: 'enum', required: false, desc: 'outdoor | indoor (treadmill / trainer)' },
           { name: 'limit', type: 'int', required: false, desc: 'Page size, max 200' },
           { name: 'cursor', type: 'string', required: false, desc: 'Pagination cursor' },
         ],
         req: 'GET /v1/activities\n  ?q=runs tagged race and distance > 10km\n  &sort=-tss&limit=50',
         status: '200 OK',
-        res: '{\n  "object": "list",\n  "has_more": true,\n  "next_cursor": "act_8KQ2",\n  "data": [\n    {\n      "id": "act_9f2a7c",\n      "sport": "run",\n      "name": "Sunday Long Run",\n      "start_date": "2026-06-06T07:12:00Z",\n      "moving_time": 6510,\n      "distance_km": 23.0,\n      "avg_hr": 138,\n      "tss": 96,\n      "tags": ["Endurance", "Race"],\n      "workout_id": "wkt_long_z2",\n      "shoe_id": "shoe_vf3"\n    }\n  ]\n}',
+        res: '{\n  "object": "list",\n  "has_more": true,\n  "next_cursor": "act_8KQ2",\n  "data": [\n    {\n      "id": "act_9f2a7c",\n      "sport": "run",\n      "name": "Sunday Long Run",\n      "start_date": "2026-06-06T07:12:00Z",\n      "moving_time": 6510,\n      "distance_km": 23.0,\n      "avg_hr": 138,\n      "tss": 96,\n      "avg_air_temp": 21.5,\n      "avg_humidity": 57,\n      "tags": ["Endurance", "Race"],\n      "workout_id": "wkt_long_z2",\n      "shoe_id": "shoe_vf3"\n    }\n  ]\n}',
       }),
       this.ep('POST', '/v1/activities', 'Upload a .fit file', {
         description: 'Uploads an activity file (multipart/form-data). Optional fields capture the pre/post weigh-in, fluids, and the shoe worn. Parsing is asynchronous and may take an unknown amount of time, so this returns 202 Accepted immediately with an upload job and a Location header. Poll GET /v1/uploads/{id} until ready, or subscribe to the activity.created webhook.',
@@ -314,12 +330,22 @@ class Component extends DCLogic {
           { name: 'shoe_id', type: 'string', required: false, desc: 'Shoe worn (run activities)' },
         ],
         status: '202 Accepted',
-        res: '// 202 Accepted\n// Location: /v1/uploads/upl_8KQ2a7\n// Retry-After: 2\n{\n  "id": "upl_8KQ2a7",\n  "object": "upload",\n  "status": "queued",\n  "progress": 0,\n  "filename": "2026-06-15-intervals.fit",\n  "activity_id": null,\n  "received_at": "2026-06-15T09:04:11Z",\n  "completed_at": null\n}',
+        res: '// 202 Accepted\n// Location: /v1/uploads/upl_8KQ2a7\n// Retry-After: 2\n{\n  "id": "upl_8KQ2a7",\n  "object": "upload",\n  "status": "queued",\n  "progress": 0,\n  "filename": "2026-06-15-intervals.fit",\n  "activity_id": null,\n  "activity_sport": null,\n  "received_at": "2026-06-15T09:04:11Z",\n  "completed_at": null\n}',
+      }),
+      this.ep('DELETE', '/v1/activities', 'Delete all activities', {
+        description: 'Permanently deletes every one of the athlete’s activities and their streams (laps, the 1 Hz record stream, duration curves, best efforts, tags). Upload records are kept but unlinked (activity_id set to null), so the same files can be re-imported later without being flagged as duplicates.',
+        status: '204 No Content',
+        res: '// empty body',
       }),
       this.ep('GET', '/v1/uploads/{id}', 'Poll an upload job', {
-        description: 'Returns the status of an asynchronous upload. While status is processing the activity_id is null; once ready it points at the created activity. On failed, an error object explains why. Poll with backoff, honouring the Retry-After header.',
+        description: 'Returns the status of an asynchronous upload. While status is processing the activity_id is null; once ready it points at the created activity. activity_sport denormalizes the linked activity’s sport once activity_id is set, so pollers can render the result without a second request. On failed, an error object explains why. Poll with backoff, honouring the Retry-After header.',
         status: '200 OK',
-        res: '// while parsing — Retry-After: 3\n{\n  "id": "upl_8KQ2a7",\n  "object": "upload",\n  "status": "processing",\n  "progress": 0.45,\n  "activity_id": null\n}\n\n// once finished\n{\n  "id": "upl_8KQ2a7",\n  "object": "upload",\n  "status": "ready",\n  "progress": 1,\n  "activity_id": "act_new4d1",\n  "completed_at": "2026-06-15T09:04:19Z"\n}',
+        res: '// while parsing — Retry-After: 3\n{\n  "id": "upl_8KQ2a7",\n  "object": "upload",\n  "status": "processing",\n  "progress": 0.45,\n  "activity_id": null,\n  "activity_sport": null\n}\n\n// once finished\n{\n  "id": "upl_8KQ2a7",\n  "object": "upload",\n  "status": "ready",\n  "progress": 1,\n  "activity_id": "act_new4d1",\n  "activity_sport": "run",\n  "completed_at": "2026-06-15T09:04:19Z"\n}',
+      }),
+      this.ep('DELETE', '/v1/uploads/history', 'Clear upload history', {
+        description: 'Deletes all non-essential upload records for the authenticated athlete — skipped, failed, duplicate, and any unlinked records. Upload records that protect a live activity from duplicate re-import (status ready with an activity_id) are kept. The stored source files for deleted records are also removed from storage.',
+        status: '200 OK',
+        res: '{\n  "uploads_deleted": 149393,\n  "files_deleted": 12804\n}',
       }),
       this.ep('POST', '/v1/activities/batch', 'Bulk-upload a .zip', {
         description: 'Uploads a .zip archive of many .fit / .gpx / .tcx files for bulk import — e.g. a full export from another platform. The archive is unpacked server-side and each file becomes its own async Upload job, so this returns 202 Accepted with a batch job and a Location header. Poll GET /v1/uploads/batches/{id}, or subscribe to activity.created (per file) and upload_batch.completed (once).',
@@ -337,27 +363,41 @@ class Component extends DCLogic {
       }),
       this.ep('GET', '/v1/activities/{id}', 'Retrieve an activity', { description: 'Returns the full activity with summary metrics and matched workout.', status: '200 OK', res: '{\n  "id": "act_9f2a7c",\n  "sport": "run",\n  "norm_power": null,\n  "intensity": 0.78,\n  "tss": 96,\n  "workout_id": "wkt_long_z2"\n}' }),
       this.ep('PATCH', '/v1/activities/{id}', 'Update an activity', {
-        description: 'Edit mutable fields — rename, change sport, or link/unlink a designed workout for matching.',
+        description: 'Edit mutable fields — rename, change sport, or link/unlink a designed workout for matching. avg_air_temp / avg_humidity are writable only for activities without sensor-derived environmental data (rides, or runs without a Stryd) — for runs with Stryd stream data they’re computed and read-only, so writes are ignored. primary_activity_id marks this activity as a duplicate recording of another (null to unlink); duplicates drop out of lists, the calendar, and training load until unlinked. Rejected (400) when the target is itself a duplicate, this activity already has duplicates, on self-links, or for multisport parents/legs.',
         params: [
           { name: 'name', type: 'string', required: false, desc: 'Display name' },
+          { name: 'sport', type: 'enum', required: false, desc: 'bike | run | swim | walk | multisport | transition' },
           { name: 'workout_id', type: 'string', required: false, desc: 'Link a designed workout (null to clear)' },
+          { name: 'primary_activity_id', type: 'string', required: false, desc: 'Mark as duplicate of this activity (null to unlink)' },
+          { name: 'start_weight_kg', type: 'float', required: false, desc: 'Body weight before the session' },
+          { name: 'end_weight_kg', type: 'float', required: false, desc: 'Body weight after the session' },
+          { name: 'fluids_ml', type: 'int', required: false, desc: 'Fluids consumed during the session' },
+          { name: 'avg_air_temp', type: 'float', required: false, desc: 'Mean air temp, °C — ignored if Stryd-computed' },
+          { name: 'avg_humidity', type: 'int', required: false, desc: 'Mean humidity, % RH — ignored if Stryd-computed' },
         ],
+        req: '{\n  "avg_air_temp": 24.0,\n  "avg_humidity": 60\n}',
         status: '200 OK',
-        res: '{\n  "id": "act_9f2a7c",\n  "name": "Sunday Long Run",\n  "workout_id": "wkt_long_z2"\n}',
+        res: '{\n  "id": "act_9f2a7c",\n  "name": "Sunday Long Run",\n  "workout_id": "wkt_long_z2",\n  "avg_air_temp": 24.0,\n  "avg_humidity": 60\n}',
       }),
       this.ep('DELETE', '/v1/activities/{id}', 'Delete an activity', { description: 'Permanently deletes the activity and its streams.', status: '204 No Content', res: '// empty body' }),
     ],
     streams: [
       this.ep('GET', '/v1/activities/{id}/laps', 'List laps', { description: 'Returns the activity’s splits in order.', status: '200 OK', res: '{\n  "data": [\n    { "index": 1, "duration": 300, "distance_km": 1.02, "avg_hr": 162, "avg_power": 288 }\n  ]\n}' }),
+      this.ep('GET', '/v1/activities/{id}/infer-workout', 'Infer a workout structure from laps', {
+        description: 'Read-only/idempotent — does not create a Workout. Turns the activity’s laps into a step tree shaped like the workout-create body, suitable for opening as an unsaved draft in the workout builder. Only bike/run activities with at least one lap are eligible; 400 otherwise.',
+        params: [{ name: 'auto_detect_repeats', type: 'boolean', required: false, desc: 'Collapse repeated contiguous lap patterns into repeat groups (default true)' }],
+        status: '200 OK',
+        res: '{\n  "name": "Inferred from laps",\n  "sport": "run",\n  "steps": [\n    { "kind": "warmup", "end_type": "time",\n      "duration": 600,\n      "target_type": "pace", "target_low": 65, "target_high": 65 },\n    { "kind": "repeat", "repeat": 5,\n      "children": [\n        { "kind": "block", "end_type": "distance",\n          "distance": 1000,\n          "target_type": "pace", "target_low": 100, "target_high": 100 },\n        { "kind": "rec", "end_type": "time", "duration": 120,\n          "target_type": "open" }\n      ] }\n  ]\n}',
+      }),
       this.ep('GET', '/v1/activities/{id}/streams', 'Read the 1 Hz stream', {
-        description: 'Returns parallel arrays sampled at 1 Hz. Request only the channels you need with fields.',
+        description: 'Returns parallel arrays sampled at 1 Hz. Request only the channels you need with fields. Runs recorded with a Stryd footpod can include air_temp/humidity; a CORE sensor adds core_temp/skin_temp/heat_strain.',
         params: [
           { name: 'fields', type: 'string', required: false, desc: 'time,power,heartrate,altitude,cadence…' },
           { name: 'resolution', type: 'enum', required: false, desc: 'high (1 Hz) | medium | low' },
         ],
         req: 'GET /v1/activities/act_9f2a7c/streams\n  ?fields=time,power,heartrate',
         status: '200 OK',
-        res: '{\n  "object": "streams",\n  "resolution": "high",\n  "fields": {\n    "time":      [0, 1, 2, 3],\n    "power":     [210, 214, 219, 222],\n    "heartrate": [128, 129, 131, 132]\n  }\n}',
+        res: '{\n  "object": "streams",\n  "resolution": "high",\n  "fields": {\n    "time":      [0, 1, 2, 3],\n    "power":     [210, 214, 219, 222],\n    "heartrate": [128, 129, 131, 132],\n    "core_temp": [37.6, 37.6, 37.7, 37.7],\n    "skin_temp": [33.1, 33.2, 33.2, 33.3],\n    "air_temp":  [21.4, 21.4, 21.5, 21.6],\n    "humidity":  [58, 58, 57, 57]\n  }\n}',
       }),
       this.ep('GET', '/v1/activities/{id}/curves', 'Duration curves', {
         description: 'Mean-maximal power and HR curves. When the activity exceeds 60 minutes the curve extends to the full duration; the final point is the whole-activity average.',
@@ -389,24 +429,39 @@ class Component extends DCLogic {
       this.ep('DELETE', '/v1/activities/{id}/tags/{tag_id}', 'Remove a tag', { description: 'Detaches a manual tag from the activity.', status: '204 No Content', res: '// empty body' }),
     ],
     workouts: [
-      this.ep('GET', '/v1/workouts', 'List designed workouts', { description: 'The athlete’s workout library.', status: '200 OK', res: '{\n  "data": [\n    { "id": "wkt_vo2_5x5", "name": "VO2 Max · 5×5",\n      "sport": "bike", "type": "vo2", "duration": 3300, "tss": 78 }\n  ]\n}' }),
+      this.ep('GET', '/v1/workouts', 'List designed workouts', {
+        description: 'The athlete’s workout library — filterable by folder/tag/sport/name and sortable, for the Workout Library screen.',
+        params: [
+          { name: 'folder_id', type: 'string', required: false, desc: 'Restrict to one folder' },
+          { name: 'tag', type: 'string', required: false, desc: 'Restrict to workouts carrying this tag' },
+          { name: 'sport', type: 'enum', required: false, desc: 'bike | run' },
+          { name: 'search', type: 'string', required: false, desc: 'Case-insensitive substring match on name' },
+          { name: 'sort', type: 'enum', required: false, desc: 'recent | name | duration | tss | used (default recent)' },
+        ],
+        status: '200 OK',
+        res: '{\n  "data": [\n    { "id": "wkt_vo2_5x5", "name": "VO2 Max · 5×5",\n      "sport": "bike", "type": "vo2", "duration": 3300, "tss": 78,\n      "folder_id": "wfd_vo2_max", "tags": ["intervals"] }\n  ]\n}',
+      }),
       this.ep('POST', '/v1/workouts', 'Create a workout', {
-        description: 'Creates a structured workout. Each step declares an end_type of time, distance, or manual (athlete taps lap to advance); duration or distance is set accordingly.',
+        description: 'Creates a structured workout. Each leaf step declares an end_type of time, distance, or manual (athlete taps lap to advance); duration or distance is set accordingly, along with a target_type (power/hr/pace/cadence/open) and target_low/target_high (equal for a flat target, different for a ramp), plus an optional target2_type cadence constraint. A repeat step instead sets repeat and children — children may themselves be nested repeat groups. folder_id/tags organize the workout in the library.',
         params: [
           { name: 'name', type: 'string', required: true, desc: 'Workout name' },
           { name: 'sport', type: 'enum', required: true, desc: 'bike | run' },
-          { name: 'steps[]', type: 'object[]', required: true, desc: 'Ordered steps (see body)' },
+          { name: 'steps[]', type: 'object[]', required: true, desc: 'Ordered steps, nested repeat groups via children (see body)' },
+          { name: 'folder_id', type: 'string', required: false, desc: 'Library folder (null for none)' },
+          { name: 'tags[]', type: 'string[]', required: false, desc: 'Free-form multi-value tags' },
         ],
-        req: '{\n  "name": "Threshold 1km Reps",\n  "sport": "run",\n  "steps": [\n    { "kind": "warmup", "end_type": "time",\n      "duration": 600, "target_pct": 65 },\n    { "kind": "block", "end_type": "distance",\n      "distance": 1000, "target_pct": 100, "repeat": 5 },\n    { "kind": "cool", "end_type": "manual",\n      "target_pct": 55 }\n  ]\n}',
+        req: '{\n  "name": "Threshold 1km Reps",\n  "sport": "run",\n  "folder_id": "wfd_threshold",\n  "tags": ["intervals"],\n  "steps": [\n    { "kind": "warmup", "end_type": "time", "duration": 600,\n      "target_type": "pace", "target_low": 65, "target_high": 65 },\n    { "kind": "repeat", "repeat": 5,\n      "children": [\n        { "kind": "block", "end_type": "distance", "distance": 1000,\n          "target_type": "pace", "target_low": 100, "target_high": 100,\n          "target2_type": "cadence", "target2_low": 85, "target2_high": 90 },\n        { "kind": "rec", "end_type": "time", "duration": 120,\n          "target_type": "open" }\n      ] },\n    { "kind": "cool", "end_type": "manual",\n      "target_type": "pace", "target_low": 55, "target_high": 55 }\n  ]\n}',
         status: '201 Created',
-        res: '{\n  "id": "wkt_thr1k",\n  "name": "Threshold 1km Reps",\n  "duration": 4200,\n  "tss": 71\n}',
+        res: '{\n  "id": "wkt_thr1k",\n  "name": "Threshold 1km Reps",\n  "duration": 4200,\n  "tss": 71,\n  "folder_id": "wfd_threshold",\n  "tags": ["intervals"]\n}',
       }),
-      this.ep('GET', '/v1/workouts/{id}', 'Retrieve a workout', { description: 'Returns a designed workout with its full ordered step structure.', status: '200 OK', res: '{\n  "id": "wkt_vo2_5x5",\n  "name": "VO2 Max · 5×5",\n  "sport": "bike",\n  "duration": 3300,\n  "tss": 78,\n  "steps": [\n    { "kind": "warmup", "end_type": "time",\n      "duration": 600, "target_pct": 60 },\n    { "kind": "block", "end_type": "time",\n      "duration": 300, "target_pct": 115, "repeat": 5 }\n  ]\n}' }),
+      this.ep('GET', '/v1/workouts/{id}', 'Retrieve a workout', { description: 'Returns a designed workout with its full ordered step structure.', status: '200 OK', res: '{\n  "id": "wkt_vo2_5x5",\n  "name": "VO2 Max · 5×5",\n  "sport": "bike",\n  "duration": 3300,\n  "tss": 78,\n  "folder_id": "wfd_vo2_max",\n  "tags": ["intervals"],\n  "steps": [\n    { "kind": "warmup", "end_type": "time", "duration": 600,\n      "target_type": "power", "target_low": 60, "target_high": 60 },\n    { "kind": "repeat", "repeat": 5,\n      "children": [\n        { "kind": "block", "end_type": "time", "duration": 300,\n          "target_type": "power", "target_low": 115, "target_high": 115 },\n        { "kind": "rec", "end_type": "time", "duration": 180,\n          "target_type": "power", "target_low": 50, "target_high": 50 }\n      ] }\n  ]\n}' }),
       this.ep('PATCH', '/v1/workouts/{id}', 'Update a workout', {
-        description: 'Rename or re-author the workout. Passing steps replaces the entire step list; duration and TSS are recomputed. Edits do not affect already-completed activities matched to this workout.',
+        description: 'Rename or re-author the workout. Passing steps replaces the entire step list; duration and TSS are recomputed. folder_id/tags, if present, replace the workout’s folder/tags — folder_id: null clears the folder; omitting a field leaves it untouched. Edits do not affect already-completed activities matched to this workout.',
         params: [
           { name: 'name', type: 'string', required: false, desc: 'New name' },
           { name: 'steps[]', type: 'object[]', required: false, desc: 'Replaces the full step list' },
+          { name: 'folder_id', type: 'string', required: false, desc: 'New folder (null to clear)' },
+          { name: 'tags[]', type: 'string[]', required: false, desc: 'Replaces the tag list' },
         ],
         status: '200 OK',
         res: '{\n  "id": "wkt_vo2_5x5",\n  "name": "VO2 Max · 6×5",\n  "duration": 3600,\n  "tss": 84\n}',
@@ -418,6 +473,19 @@ class Component extends DCLogic {
         status: '200 OK',
         res: '{\n  "data": [\n    { "activity_id": "act_9f2a7c",\n      "name": "VO2 intervals · Tuesday AM",\n      "date": "2026-06-10",\n      "method": "auto",\n      "confidence": 0.94,\n      "compliance": 0.88 }\n  ]\n}',
       }),
+      this.ep('GET', '/v1/workout-folders', 'List workout folders', { description: 'The athlete’s workout folders, each with its workout count.', status: '200 OK', res: '{\n  "data": [\n    { "id": "wfd_vo2_max", "name": "VO2 Max", "count": 6 }\n  ]\n}' }),
+      this.ep('POST', '/v1/workout-folders', 'Create a workout folder', {
+        params: [{ name: 'name', type: 'string', required: true, desc: 'Folder name' }],
+        req: '{\n  "name": "Race Prep"\n}',
+        status: '201 Created',
+        res: '{\n  "id": "wfd_race_prep",\n  "name": "Race Prep",\n  "count": 0\n}',
+      }),
+      this.ep('PATCH', '/v1/workout-folders/{id}', 'Rename a workout folder', {
+        params: [{ name: 'name', type: 'string', required: false, desc: 'New name' }],
+        status: '200 OK',
+        res: '{\n  "id": "wfd_race_prep",\n  "name": "Race Prep 2026",\n  "count": 3\n}',
+      }),
+      this.ep('DELETE', '/v1/workout-folders/{id}', 'Delete a workout folder', { description: 'Workouts in the folder are not deleted — their folder_id is cleared.', status: '204 No Content', res: '// empty body' }),
     ],
     calendar: [
       this.ep('GET', '/v1/calendar', 'List planned & completed', {
@@ -443,6 +511,7 @@ class Component extends DCLogic {
         res: '{\n  "id": "sch_88",\n  "status": "planned",\n  "assigned_by": "coach_mara"\n}',
       }),
       this.ep('PATCH', '/v1/scheduled-workouts/{id}', 'Reschedule or match', { description: 'Move to another date, or link the completed activity that fulfilled it.', params: [{ name: 'date', type: 'date', required: false, desc: 'New date' }, { name: 'activity_id', type: 'string', required: false, desc: 'Completed activity to match' }], status: '200 OK', res: '{\n  "id": "sch_88",\n  "status": "completed",\n  "activity_id": "act_9f2a7c"\n}' }),
+      this.ep('DELETE', '/v1/scheduled-workouts/{id}', 'Unschedule a workout', { description: 'Removes the entry from the calendar.', status: '204 No Content', res: '// empty body' }),
     ],
     athletes: [
       this.ep('GET', '/v1/athletes/{id}', 'Retrieve an athlete', { description: 'Profile and thresholds.', status: '200 OK', res: '{\n  "id": "ath_neil",\n  "name": "Neil Goodgame",\n  "age": 34,\n  "ftp": 265,\n  "critical_run_power": 285,\n  "threshold_pace": "4:00",\n  "lthr": 155,\n  "max_hr": 186\n}' }),
@@ -628,8 +697,6 @@ class Component extends DCLogic {
       }),
       this.ep('GET', '/v1/webhooks', 'List subscriptions', { description: 'All active webhook subscriptions for the app.', status: '200 OK', res: '{\n  "data": [\n    { "id": "whk_4a", "status": "active",\n      "events": ["activity.created"] }\n  ]\n}' }),
       this.ep('DELETE', '/v1/webhooks/{id}', 'Delete a subscription', { description: 'Stops delivery and removes the webhook subscription.', status: '204 No Content', res: '// empty body' }),
-    ],
-  };ve",\n      "events": ["activity.created"] }\n  ]\n}' }),
     ],
   };
 

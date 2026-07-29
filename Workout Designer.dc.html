@@ -73,6 +73,9 @@
               <div onClick="{{ setSportBike }}" style="{{ bikeBtn }}">Bike</div>
               <div onClick="{{ setSportRun }}" style="{{ runBtn }}">Run</div>
             </div>
+            <sc-if value="{{ isInferredDraft }}" hint-placeholder-val="{{ false }}">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);white-space:nowrap;">⤷ FROM ACTIVITY LAPS · UNSAVED</span>
+            </sc-if>
           </div>
           <div style="font-size:12.5px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ buildSubtitle }}</div>
         </div>
@@ -465,6 +468,10 @@
                       <div onClick="{{ selRepUp }}" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--line,#e6e2dc);display:flex;align-items:center;justify-content:center;font-weight:700;cursor:pointer;">+</div>
                     </div>
                   </div>
+                  <div style="display:flex;flex-direction:column;gap:6px;">
+                    <label style="font-size:11px;font-weight:600;color:var(--ink3,#9a958d);">COACH NOTE</label>
+                    <textarea value="{{ selNote }}" onChange="{{ onNoteChange }}" placeholder="Cue shown on-device during this step…" style="padding:8px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);min-height:56px;resize:vertical;font-family:inherit;"></textarea>
+                  </div>
                 </sc-if>
 
                 <!-- LEAF editor -->
@@ -596,11 +603,11 @@
     <div onClick="{{ closePublish }}" style="position:fixed;inset:0;z-index:60;background:rgba(6,8,12,0.5);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:32px;">
       <div onClick="{{ stopClick }}" style="width:420px;max-width:100%;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,0.45);display:flex;flex-direction:column;overflow:hidden;">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line,#e6e2dc);">
-          <div style="font-size:16px;font-weight:800;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Publish & assign</div>
+          <div style="font-size:16px;font-weight:800;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Assign “{{ workoutName }}”</div>
           <div onClick="{{ closePublish }}" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink3,#9a958d);cursor:pointer;font-size:18px;border:1px solid var(--line,#e6e2dc);">×</div>
         </div>
         <div style="padding:18px 22px;display:flex;flex-direction:column;gap:14px;">
-          <div style="font-size:13px;color:var(--ink2,#6f6b65);">{{ workoutName }} · {{ totalDurationLabel }} · {{ totalTss }} TSS</div>
+          <div style="font-size:13px;color:var(--ink2,#6f6b65);">Choose athletes and a date · {{ totalDurationLabel }} · {{ totalTss }} TSS</div>
           <div style="display:flex;flex-direction:column;gap:6px;">
             <label style="font-size:11px;font-weight:600;color:var(--ink3,#9a958d);">ASSIGN TO</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -637,6 +644,7 @@
           <div style="display:flex;gap:4px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;width:fit-content;">
             <div onClick="{{ setFmtZwo }}" style="{{ zwoBtn }}">Zwift · .zwo</div>
             <div onClick="{{ setFmtTcx }}" style="{{ tcxBtn }}">Garmin · .tcx</div>
+            <div onClick="{{ setFmtJson }}" style="{{ jsonBtn }}">Test fixture · .json</div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2,#6f6b65);"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.6"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="7.4" x2="8" y2="11"></line><line x1="8" y1="4.8" x2="8" y2="5"></line></svg>{{ exportNote }}</div>
           <div style="position:relative;background:var(--codeBg,#0c0d10);border:1px solid var(--line,#e6e2dc);border-radius:11px;overflow:auto;max-height:300px;">
@@ -676,7 +684,7 @@ class Component extends DCLogic {
   }
 
   defaultGroup() {
-    return { id: this.nextId(), kind: 'repeat', repeat: 4, children: [
+    return { id: this.nextId(), kind: 'repeat', repeat: 4, note: '', children: [
       { id: this.nextId(), kind: 'block', end_type: 'time', duration: 300, distance: null, target_type: 'power', target_low: 100, target_high: 100, target2_type: 'none', target2_low: 85, target2_high: 95, note: '' },
       { id: this.nextId(), kind: 'rec', end_type: 'time', duration: 120, distance: null, target_type: 'power', target_low: 50, target_high: 55, target2_type: 'none', target2_low: 85, target2_high: 95, note: '' },
     ]};
@@ -685,7 +693,7 @@ class Component extends DCLogic {
   initialSteps() {
     return [
       { id: 's1', kind: 'warmup', end_type: 'time', duration: 600, distance: null, target_type: 'power', target_low: 50, target_high: 70, target2_type: 'none', target2_low: 85, target2_high: 95, note: '' },
-      { id: 'g1', kind: 'repeat', repeat: 5, children: [
+      { id: 'g1', kind: 'repeat', repeat: 5, note: '', children: [
         { id: 's2', kind: 'block', end_type: 'time', duration: 300, distance: null, target_type: 'power', target_low: 118, target_high: 118, target2_type: 'cadence', target2_low: 90, target2_high: 100, note: 'Hold steady, stay seated' },
         { id: 's3', kind: 'rec', end_type: 'time', duration: 180, distance: null, target_type: 'power', target_low: 50, target_high: 55, target2_type: 'none', target2_low: 85, target2_high: 95, note: '' },
       ]},
@@ -699,6 +707,13 @@ class Component extends DCLogic {
     matchMode: 'auto', exportOpen: false, exportFmt: 'zwo',
     templatesOpen: false, startFromOpen: false, publishOpen: false,
     assignedAthletes: {}, publishDate: '2026-07-28', savedAt: null,
+    // Real entry point: "Create workout from laps" on the Activity Analysis
+    // screen's Laps tab calls GET /v1/activities/{id}/infer-workout and opens
+    // the resulting step tree here as an unsaved draft (workoutName seeded
+    // from the activity, sport from activity.sport, savedAt still null) for
+    // review before Save. fromActivityId is null on every other entry path
+    // (blank / duplicate / template).
+    fromActivityId: null,
   };
 
   // ---------- tree helpers (recursive — supports groups nested inside groups) ----------
@@ -869,8 +884,22 @@ class Component extends DCLogic {
     emitTcx(this.state.steps);
     return '<?xml version="1.0" encoding="UTF-8"?>\n<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n  <Workouts>\n    <Workout Sport="' + (this.state.sport === 'bike' ? 'Biking' : 'Running') + '">\n      <Name>' + this.state.workoutName + '</Name>\n' + body.join('') + '    </Workout>\n  </Workouts>\n</TrainingCenterDatabase>\n';
   }
-  download(name, content) {
-    const blob = new Blob([content], { type: 'application/xml' });
+  // Portable {name, sport, steps} JSON — same shape as WorkoutCreate/WorkoutStep
+  // in openapi.yaml, nesting repeat children directly rather than via
+  // parent_step_id. Used to pull a real workout out of the library as a
+  // fixture file (e.g. to seed backend test fixtures) or re-import it.
+  jsonStep(s) {
+    if (s.kind === 'repeat') {
+      return { kind: 'repeat', end_type: null, duration: null, distance: null, target_type: null, target_low: null, target_high: null, target2_type: null, target2_low: null, target2_high: null, repeat: s.repeat, note: s.note || null, children: s.children.map(c => this.jsonStep(c)) };
+    }
+    return { kind: s.kind, end_type: s.end_type, duration: s.end_type === 'time' ? (s.duration || 0) : null, distance: s.end_type === 'distance' ? (s.distance || 0) : null, target_type: s.target_type, target_low: s.target_low ?? null, target_high: s.target_high ?? null, target2_type: s.target2_type || 'none', target2_low: s.target2_type === 'cadence' ? (s.target2_low ?? null) : null, target2_high: s.target2_type === 'cadence' ? (s.target2_high ?? null) : null, repeat: null, note: s.note || null, children: null };
+  }
+  buildJsonFixture() {
+    const fixture = { name: this.state.workoutName, sport: this.state.sport, steps: this.state.steps.map(s => this.jsonStep(s)) };
+    return JSON.stringify(fixture, null, 2) + '\n';
+  }
+  download(name, content, mime) {
+    const blob = new Blob([content], { type: mime || 'application/xml' });
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -895,7 +924,7 @@ class Component extends DCLogic {
     return { id: this.nextId(), kind, end_type: 'time', duration: dur, distance: null, target_type: ttype, target_low: lo, target_high: hi, target2_type: t2type || 'none', target2_low: t2lo || 85, target2_high: t2hi || 95, note: '' };
   }
   defaultGroup2(reps, onDur, onLo, onHi, offDur, offLo, offHi, cad, cadLo, cadHi) {
-    return [{ id: this.nextId(), kind: 'repeat', repeat: reps, children: [
+    return [{ id: this.nextId(), kind: 'repeat', repeat: reps, note: '', children: [
       { id: this.nextId(), kind: 'block', end_type: 'time', duration: onDur, distance: null, target_type: this.state.sport === 'bike' ? 'power' : 'pace', target_low: onLo, target_high: onHi, target2_type: cad ? 'cadence' : 'none', target2_low: cadLo || 85, target2_high: cadHi || 95, note: '' },
       { id: this.nextId(), kind: 'rec', end_type: 'time', duration: offDur, distance: null, target_type: this.state.sport === 'bike' ? 'power' : 'pace', target_low: offLo, target_high: offHi, target2_type: 'none', target2_low: 85, target2_high: 95, note: '' },
     ]}];
@@ -981,7 +1010,7 @@ class Component extends DCLogic {
     const mkGroupRow = (s) => {
       const selected = s.id === st.selectedId;
       return {
-        isGroup: true, leafDisplay: { display: 'none' }, title: 'Repeat group', note: '', repeatCount: s.repeat,
+        isGroup: true, leafDisplay: { display: 'none' }, title: 'Repeat group', note: s.note, repeatCount: s.repeat,
         detail: this.stepCount(s.children) + ' steps × ' + s.repeat + ' · ' + this.fmtDuration(this.totalDuration(s.children) * s.repeat) + ' total',
         colorBar: { width: '5px', alignSelf: 'stretch', borderRadius: '3px', background: 'var(--ember,#ec4a26)', flexShrink: 0 },
         rowStyle: { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', background: selected ? 'var(--emberSoft,#fff5f1)' : 'rgba(236,74,38,0.05)', border: '1px solid ' + (selected ? 'var(--ember,#ec4a26)' : 'rgba(236,74,38,0.25)') },
@@ -1000,16 +1029,26 @@ class Component extends DCLogic {
     const rows = steps.map(s => s.kind === 'repeat' ? mkGroupRow(s) : mkRow(s));
 
     // ---- chart segments (unroll repeats, any nesting depth) ----
+    // Ramp steps (target_low !== target_high) render as a sloped trapezoid — the
+    // left edge follows target_low, the right edge follows target_high — instead
+    // of a flat rectangle at the average, so the ramp direction (warmup ramping
+    // up, cooldown ramping down) is visible directly in the chart.
     const flatLeaves = this.flattenLeaves(steps);
     const chartTotalDur = flatLeaves.reduce((a, c) => a + (c.duration || 60), 0) || 1;
     const AXIS = 150;
     const chartSegments = flatLeaves.map(c => {
       const t = this.targetInfo(c);
-      const avg = c.target_type === 'open' ? 40 : ((c.target_low ?? 60) + (c.target_high ?? c.target_low ?? 60)) / 2;
-      const hPct = Math.min(100, (avg / AXIS) * 100);
+      const lo = c.target_type === 'open' ? 40 : (c.target_low ?? 60);
+      const hi = c.target_type === 'open' ? 40 : (c.target_high ?? lo);
+      const loPct = Math.min(100, (lo / AXIS) * 100);
+      const hiPct = Math.min(100, (hi / AXIS) * 100);
+      const maxPct = Math.max(loPct, hiPct, 1);
+      const loTop = (1 - loPct / maxPct) * 100;
+      const hiTop = (1 - hiPct / maxPct) * 100;
+      const clip = 'polygon(0% 100%, 0% ' + loTop.toFixed(1) + '%, 100% ' + hiTop.toFixed(1) + '%, 100% 100%)';
       return {
         style: { position: 'relative', width: (((c.duration || 60) / chartTotalDur) * 100) + '%', height: '100%', display: 'flex', alignItems: 'flex-end', borderRight: '1px solid var(--card,#fff)', cursor: 'pointer' },
-        barStyle: { width: '100%', height: hPct.toFixed(1) + '%', background: t.color, opacity: c.id === st.selectedId ? 0.75 : 0.4, borderTop: '2px solid ' + t.color },
+        barStyle: { width: '100%', height: maxPct.toFixed(1) + '%', background: t.color, opacity: c.id === st.selectedId ? 0.75 : 0.4, borderTop: '2px solid ' + t.color, clipPath: clip, WebkitClipPath: clip },
         onClick: () => this.setState({ selectedId: c.id }),
       };
     });
@@ -1019,8 +1058,8 @@ class Component extends DCLogic {
     const templateList = this.templates(sport).map(tpl => ({ name: tpl.name, desc: tpl.desc, onInsert: () => { this.setState({ steps: [...this.state.steps, ...tpl.build()], templatesOpen: false }); } }));
 
     // ---- export ----
-    const isZwo = st.exportFmt === 'zwo';
-    const exportPreview = isZwo ? this.buildZwo() : this.buildTcx();
+    const isZwo = st.exportFmt === 'zwo', isTcx = st.exportFmt === 'tcx', isJson = st.exportFmt === 'json';
+    const exportPreview = isZwo ? this.buildZwo() : isTcx ? this.buildTcx() : this.buildJsonFixture();
 
     // ---- publish ----
     const athleteNames = ['Sam Ortega', 'Priya Nair', 'Jules Ferran'];
@@ -1032,6 +1071,7 @@ class Component extends DCLogic {
       setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
       labBtn: seg(st.theme === 'lab'), cockpitBtn: seg(st.theme === 'cockpit'), dayBtn: seg(st.theme === 'day'),
       isBuild, isAnalyze, isHybrid: st.layout === 'hybrid',
+      isInferredDraft: !!st.fromActivityId,
       workoutName: st.workoutName, onNameChange: (e) => this.setState({ workoutName: e.target.value }),
       sportBadge: sport === 'bike' ? 'BIKE' : 'RUN',
       bikeBtn: seg(sport === 'bike'), runBtn: seg(sport === 'run'),
@@ -1061,7 +1101,7 @@ class Component extends DCLogic {
       openPublish: () => this.setState({ publishOpen: true }), closePublish: () => this.setState({ publishOpen: false }), publishOpen: st.publishOpen,
       stopClick: (e) => e.stopPropagation(),
       athleteChips, publishDateLabel: st.publishDate, onPublishDateChange: (e) => this.setState({ publishDate: e.target.value }),
-      publishConfirmLabel: assignedCount ? 'Assign to ' + assignedCount : 'Publish',
+      publishConfirmLabel: assignedCount ? 'Assign to ' + assignedCount : 'Assign',
       confirmPublish: () => this.setState({ publishOpen: false }),
       hasSelection: !!sel, selIsGroup, selIsLeaf,
       drawerTitle: sel ? (selIsGroup ? 'Repeat group' : this.kindLabel(sel.kind)) : '',
@@ -1097,15 +1137,16 @@ class Component extends DCLogic {
       onTarget2LowChange: (e) => this.setState({ steps: this.mapSteps(this.state.steps, sel.id, s => ({ ...s, target2_low: parseFloat(e.target.value) || 0 })) }),
       selTarget2High: sel && selIsLeaf ? String(sel.target2_high ?? '') : '',
       onTarget2HighChange: (e) => this.setState({ steps: this.mapSteps(this.state.steps, sel.id, s => ({ ...s, target2_high: parseFloat(e.target.value) || 0 })) }),
-      selNote: sel && selIsLeaf ? (sel.note || '') : '',
+      selNote: sel ? (sel.note || '') : '',
       onNoteChange: (e) => this.setState({ steps: this.mapSteps(this.state.steps, sel.id, s => ({ ...s, note: e.target.value })) }),
       removeSelected: () => { const ns = this.removeStep(this.state.steps, sel.id); this.setState({ steps: ns, selectedId: null }); },
       openExport: () => this.setState({ exportOpen: true }), closeExport: () => this.setState({ exportOpen: false }), exportOpen: st.exportOpen,
-      setFmtZwo: () => this.setState({ exportFmt: 'zwo' }), setFmtTcx: () => this.setState({ exportFmt: 'tcx' }),
-      zwoBtn: seg(isZwo), tcxBtn: seg(!isZwo),
-      exportPreview, exportFile: isZwo ? 'workout.zwo' : 'workout.tcx', exportTarget: isZwo ? 'Zwift' : 'Garmin Connect',
-      exportNote: isZwo ? 'Drop the .zwo into Documents/Zwift/Workouts/<id>/ or import via the companion. Non-power targets approximated as %FTP.' : 'Garmin Connect → Training → Workouts → Import. Non-power targets approximated as %FTP.',
-      doDownload: () => this.download(isZwo ? 'workout.zwo' : 'workout.tcx', exportPreview),
+      setFmtZwo: () => this.setState({ exportFmt: 'zwo' }), setFmtTcx: () => this.setState({ exportFmt: 'tcx' }), setFmtJson: () => this.setState({ exportFmt: 'json' }),
+      zwoBtn: seg(isZwo), tcxBtn: seg(isTcx), jsonBtn: seg(isJson),
+      exportPreview, exportFile: isZwo ? 'workout.zwo' : isTcx ? 'workout.tcx' : 'workout.json',
+      exportTarget: isZwo ? 'Zwift' : isTcx ? 'Garmin Connect' : 'Test fixtures',
+      exportNote: isZwo ? 'Drop the .zwo into Documents/Zwift/Workouts/<id>/ or import via the companion. Non-power targets approximated as %FTP.' : isTcx ? 'Garmin Connect → Training → Workouts → Import. Non-power targets approximated as %FTP.' : 'Portable {name, sport, steps} JSON (same shape as WorkoutCreate in openapi.yaml). Round-trips back in via Import, or drop into backend test fixtures.',
+      doDownload: () => this.download(isZwo ? 'workout.zwo' : isTcx ? 'workout.tcx' : 'workout.json', exportPreview, isJson ? 'application/json' : 'application/xml'),
       doCopy: () => this.copyExport(exportPreview),
       setAuto: () => this.setState({ matchMode: 'auto' }), setManual: () => this.setState({ matchMode: 'manual' }),
       autoBtn: seg(st.matchMode !== 'manual'), manualBtn: seg(st.matchMode === 'manual'),

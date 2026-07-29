@@ -50,10 +50,9 @@
             <div style="display:flex;flex-direction:column;gap:22px;">
               <div>
                 <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:12px;">Athlete</div>
-                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:13px;">
+                <div style="display:grid;grid-template-columns:2fr 1fr;gap:13px;">
                   <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Name</label><input class="preft" type="text" value="{{ pName }}" onInput="{{ onName }}"/></div>
                   <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Age</label><input class="prefn" type="number" value="{{ pAge }}" onInput="{{ onAge }}"/></div>
-                  <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Weight <span style="color:var(--ink3,#9a958d);font-weight:400;">kg</span></label><input class="prefn" type="number" value="{{ pWeight }}" onInput="{{ onWeight }}"/></div>
                 </div>
               </div>
               <div>
@@ -66,11 +65,48 @@
                   <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Max heart rate <span style="color:var(--ink3,#9a958d);font-weight:400;">bpm</span></label><input class="prefn" type="number" value="{{ pMaxHr }}" onInput="{{ onMaxHr }}"/></div>
                 </div>
               </div>
+
+              <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:20px;">
+                <div style="font-size:14px;font-weight:700;color:#e0442e;margin-bottom:6px;">Danger zone</div>
+                <div style="font-size:13px;color:var(--ink2,#6f6b65);margin-bottom:12px;line-height:1.5;">Remove every activity from your account. Uploaded files can be imported again afterwards.</div>
+                <div onClick="{{ openDeleteAll }}" style="display:inline-block;padding:9px 16px;border-radius:9px;border:1px solid #e0442e;background:transparent;color:#e0442e;font-size:13px;font-weight:700;cursor:pointer;">Remove all activities&hellip;</div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ confirmDeleteOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeDeleteAll }}" style="position:fixed;inset:0;z-index:100;background:rgba(20,17,15,0.42);display:flex;align-items:center;justify-content:center;">
+              <div onClick="{{ stopP }}" style="width:420px;max-width:90%;background:var(--card,#fff);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:16px;">
+                <div style="font-size:16px;font-weight:700;color:var(--ink,#1b1a18);">Remove all activities?</div>
+                <div style="font-size:13px;color:var(--ink2,#6f6b65);line-height:1.5;">This will permanently remove all existing activities from your account, including their laps, streams, and tags. This cannot be undone. Do you want to proceed?</div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;">
+                  <div onClick="{{ closeDeleteAll }}" style="padding:8px 16px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;cursor:pointer;">Cancel</div>
+                  <div onClick="{{ confirmDeleteAll }}" style="padding:8px 16px;border-radius:8px;border:none;background:#e0442e;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Remove all activities</div>
+                </div>
+              </div>
             </div>
           </sc-if>
 
           <sc-if value="{{ isZone }}" hint-placeholder-val="{{ false }}">
             <div>
+              <sc-if value="{{ isHr }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid var(--line,#e6e2dc);border-radius:12px;padding:18px;margin-bottom:24px;">
+                  <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:4px;">Recompute zones</div>
+                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:14px;">Generate all five zones from your physiology. Applying updates your profile's LTHR and max HR too.</div>
+                  <div style="display:flex;gap:4px;margin-bottom:10px;">
+                    <sc-for list="{{ hrMethods }}" as="m" hint-placeholder-count="3">
+                      <div onClick="{{ m.onClick }}" style="{{ m.style }}">{{ m.label }}</div>
+                    </sc-for>
+                  </div>
+                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:14px;">{{ hrMethodBlurb }}</div>
+                  <div style="display:flex;gap:18px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;">
+                    <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">RESTING HR</label><input class="prefn" style="width:72px;" type="number" value="{{ hrRestingHr }}" onInput="{{ onHrResting }}" placeholder="45"/></div>
+                    <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">LTHR</label><input class="prefn" style="width:72px;" type="number" value="{{ hrLthr }}" onInput="{{ onHrLthr }}"/></div>
+                    <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">MAX HR</label><input class="prefn" style="width:72px;" type="number" value="{{ hrMaxHr }}" onInput="{{ onHrMaxHr }}"/></div>
+                  </div>
+                  <div onClick="{{ applyHrZones }}" style="display:inline-block;padding:9px 16px;border-radius:9px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Apply zones</div>
+                </div>
+              </sc-if>
               <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:14px;">Edit boundaries <span style="color:var(--ink2,#6f6b65);font-weight:600;">{{ zoneRefLabel }}</span></div>
               <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:20px;">
                 <sc-for list="{{ zoneRows }}" as="z" hint-placeholder-count="5">
@@ -97,101 +133,128 @@
 
           <sc-if value="{{ isSharing }}" hint-placeholder-val="{{ false }}">
             <div style="display:flex;flex-direction:column;gap:18px;">
-              <!-- MY COACHES -->
+              <!-- MY COACHES (read-only: filtered from the same shares list below) -->
               <div>
-                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:6px;">My coaches</div>
-                <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);margin-bottom:12px;">Invite someone to coach you. They get Coach access to your training — viewing your data and assigning workouts — once they accept.</div>
-                <div style="display:flex;gap:9px;margin-bottom:12px;">
-                  <input class="preft" type="text" value="{{ coachInvite }}" onInput="{{ onCoachInvite }}" placeholder="Coach's email or @handle" style="flex:1;"/>
-                  <div onClick="{{ inviteCoach }}" style="{{ coachBtnStyle }}"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"></path></svg>Invite coach</div>
-                </div>
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:10px;">My coaches</div>
                 <sc-if value="{{ hasCoaches }}" hint-placeholder-val="{{ true }}">
                   <div style="display:flex;flex-direction:column;gap:9px;">
                     <sc-for list="{{ coachesView }}" as="c" hint-placeholder-count="1">
-                      <div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line,#e6e2dc);border-radius:11px;padding:11px 14px;background:var(--card,#fff);">
-                        <div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;background:#ec4a26;">{{ c.initials }}</div>
-                        <div style="flex:1;min-width:0;">
-                          <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13.5px;font-weight:700;color:var(--ink,#1b1a18);">{{ c.name }}</span><sc-if value="{{ c.pending }}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:700;letter-spacing:0.04em;color:#f0a02e;background:rgba(240,160,46,0.14);padding:2px 7px;border-radius:20px;">PENDING</span></sc-if></div>
-                          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);margin-top:2px;">{{ c.handle }} · Coach</div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
+                        <div>
+                          <div style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ c.name }}</div>
+                          <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ c.handle }} · {{ c.statusText }}</div>
                         </div>
-                        <div onClick="{{ c.onRemove }}" style="width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink3,#9a958d);cursor:pointer;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"></path></svg></div>
+                        <div onClick="{{ c.onRevoke }}" style="font-size:12px;font-weight:600;color:#e0442e;cursor:pointer;">Revoke</div>
                       </div>
                     </sc-for>
                   </div>
                 </sc-if>
+                <sc-if value="{{ noCoaches }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px;color:var(--ink3,#9a958d);">No one has coach access yet.</div>
+                </sc-if>
               </div>
 
-              <div style="height:1px;background:var(--line,#e6e2dc);"></div>
-
-              <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);">Grant another person access to your training. A <span style="font-weight:700;color:#3d7fd6;">Viewer</span> can see everything read-only; a <span style="font-weight:700;color:var(--ember,#ec4a26);">Coach</span> can also create and assign workouts to you.</div>
-
-              <div style="border:1px solid var(--line,#e6e2dc);border-radius:12px;padding:16px;background:var(--elev,#faf9f7);">
+              <div>
                 <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:12px;">Invite someone</div>
-                <div style="display:flex;flex-direction:column;gap:12px;">
-                  <div style="display:flex;gap:9px;">
-                    <input class="preft" type="text" value="{{ inviteValue }}" onInput="{{ onInvite }}" placeholder="Email or @handle" style="flex:1;"/>
-                    <div onClick="{{ sendInvite }}" style="{{ inviteBtnStyle }}"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"></path></svg>Invite</div>
-                  </div>
-                  <div>
-                    <div style="font-size:11px;font-weight:600;color:var(--ink3,#9a958d);margin-bottom:6px;">Role</div>
-                    <div style="display:flex;gap:4px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;max-width:240px;">
-                      <sc-for list="{{ inviteRoles }}" as="r" hint-placeholder-count="2">
-                        <div onClick="{{ r.onClick }}" style="{{ r.style }}">{{ r.label }}</div>
-                      </sc-for>
-                    </div>
-                  </div>
-                  <div style="display:flex;flex-direction:column;gap:5px;padding:11px 13px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;">
-                    <sc-for list="{{ inviteRoleCaps }}" as="c" hint-placeholder-count="2">
-                      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2,#6f6b65);"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#2fa66a" stroke-width="2.2"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg>{{ c }}</div>
-                    </sc-for>
-                    <sc-if value="{{ inviteRoleHasCant }}" hint-placeholder-val="{{ false }}">
-                      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink3,#9a958d);"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#9a958d" stroke-width="2.2"><path d="M4 8h8"></path></svg>{{ inviteRoleCant }}</div>
-                    </sc-if>
-                  </div>
+                <div style="display:flex;gap:9px;">
+                  <input class="preft" type="text" value="{{ inviteValue }}" onInput="{{ onInvite }}" placeholder="Email or @handle" style="flex:1;"/>
+                  <select class="preft" value="{{ inviteRoleValue }}" onChange="{{ onInviteRole }}" style="width:auto;">
+                    <option value="viewer">Viewer</option>
+                    <option value="coach">Coach</option>
+                  </select>
+                  <div onClick="{{ sendInvite }}" style="{{ inviteBtnStyle }}">Invite</div>
                 </div>
               </div>
 
               <div>
                 <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:10px;">People with access</div>
                 <sc-if value="{{ hasShares }}" hint-placeholder-val="{{ true }}">
-                  <div style="display:flex;flex-direction:column;gap:9px;">
+                  <div style="display:flex;flex-direction:column;gap:0;">
                     <sc-for list="{{ sharesView }}" as="p" hint-placeholder-count="2">
-                      <div style="border:1px solid var(--line,#e6e2dc);border-radius:11px;padding:13px 15px;background:var(--card,#fff);">
-                        <div style="display:flex;align-items:center;gap:12px;">
-                          <div style="{{ p.avatarStyle }}">{{ p.initials }}</div>
-                          <div style="flex:1;min-width:0;">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                              <span style="font-size:13.5px;font-weight:700;color:var(--ink,#1b1a18);">{{ p.name }}</span>
-                              <sc-if value="{{ p.pending }}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-weight:700;letter-spacing:0.04em;color:#f0a02e;background:rgba(240,160,46,0.14);padding:2px 7px;border-radius:20px;">PENDING</span></sc-if>
-                            </div>
-                            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);margin-top:2px;">{{ p.handle }}</div>
-                          </div>
-                          <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:3px;">
-                            <div onClick="{{ p.toViewer }}" style="{{ p.viewerTabStyle }}">Viewer</div>
-                            <div onClick="{{ p.toCoach }}" style="{{ p.coachTabStyle }}">Coach</div>
-                          </div>
-                          <div onClick="{{ p.onRevoke }}" style="width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink3,#9a958d);cursor:pointer;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"></path></svg></div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
+                        <div>
+                          <div style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ p.name }}</div>
+                          <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ p.handle }} · {{ p.statusText }}</div>
                         </div>
-                        <div style="font-size:11.5px;color:var(--ink3,#9a958d);margin-top:9px;padding-left:46px;">{{ p.roleBlurb }}</div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                          <div onClick="{{ p.toViewer }}" style="{{ p.viewerBtnStyle }}">Viewer</div>
+                          <div onClick="{{ p.toCoach }}" style="{{ p.coachBtnStyle }}">Coach</div>
+                          <div onClick="{{ p.onRevoke }}" style="font-size:12px;font-weight:600;color:#e0442e;cursor:pointer;margin-left:4px;">Revoke</div>
+                        </div>
                       </div>
                     </sc-for>
                   </div>
                 </sc-if>
+                <sc-if value="{{ noShares }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px;color:var(--ink3,#9a958d);">You haven't shared your training with anyone yet.</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isBestEfforts }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:28px;">
+              <div>
+                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:10px;">Entries per window</div>
+                <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);margin-bottom:12px;">How many top efforts to track per time window (e.g. top {{ topNLabel }} for 5-minute power). Applied on the next upload and after a recompute.</div>
+                <div onClick="{{ toggleAllEfforts }}" style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink2,#6f6b65);cursor:pointer;margin-bottom:12px;">
+                  <div style="{{ allEffortsBoxStyle }}"><sc-if value="{{ allEfforts }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
+                  Store best efforts for every activity (no limit)
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <input class="prefn" style="width:80px;" type="number" min="1" max="50" value="{{ topN }}" onInput="{{ onTopN }}"/>
+                  <div onClick="{{ saveBestEfforts }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Save</div>
+                  <div onClick="{{ recomputeAll }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Save &amp; recompute all</div>
+                </div>
+              </div>
+
+              <div>
+                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:6px;">Recompute best efforts</div>
+                <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);margin-bottom:14px;">Recalculates best efforts from your stored activity records. Use this after changing the entries-per-window setting, or to fix records that were computed from bad data.</div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <sc-for list="{{ beKinds }}" as="k" hint-placeholder-count="5">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:9px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);">
+                      <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ k.label }}</span>
+                      <div onClick="{{ k.onClick }}" style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">{{ k.btnLabel }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isRaces }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:22px;">
+              <div style="font-size:12.5px;color:var(--ink3,#9a958d);">Add races from the Calendar view. Link a completed race to an activity to track your result automatically.</div>
+              <div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:4px;">Upcoming</div>
+                <sc-for list="{{ racesUpcoming }}" as="r" hint-placeholder-count="1">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
+                    <div><div style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ r.name }}</div><div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ r.meta }}</div></div>
+                  </div>
+                </sc-for>
+              </div>
+              <div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:4px;">Past</div>
+                <sc-for list="{{ racesPast }}" as="r" hint-placeholder-count="1">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
+                    <div><div style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ r.name }}</div><div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ r.meta }}</div></div>
+                  </div>
+                </sc-for>
               </div>
             </div>
           </sc-if>
 
           <sc-if value="{{ isTokens }}" hint-placeholder-val="{{ false }}">
             <div style="display:flex;flex-direction:column;gap:18px;">
-              <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);">Personal access tokens authenticate as <span style="font-weight:700;color:var(--ink,#1b1a18);">you</span> against the REST API — scoped to your own data. Send as <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ember,#ec4a26);">Authorization: Bearer …</span></div>
+              <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);">Personal access tokens let you script against the API as yourself. Scope each one to only what it needs.</div>
 
               <sc-if value="{{ revealed }}" hint-placeholder-val="{{ false }}">
                 <div style="border:1px solid rgba(47,166,106,0.4);background:rgba(47,166,106,0.07);border-radius:12px;padding:14px 16px;">
                   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;">
-                    <div style="display:flex;align-items:center;gap:8px;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#2fa66a" stroke-width="2.2"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg><span style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">Token {{ revealAction }} — copy it now</span></div>
+                    <div style="display:flex;align-items:center;gap:8px;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#2fa66a" stroke-width="2.2"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg><span style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">Token created — copy it now, you won't see it again</span></div>
                     <div onClick="{{ dismissReveal }}" style="font-size:11px;font-weight:600;color:var(--ink3,#9a958d);cursor:pointer;">Done</div>
                   </div>
-                  <div style="font-size:11.5px;color:var(--ink2,#6f6b65);margin-bottom:9px;">This secret for <span style="font-weight:600;">{{ revealName }}</span> is shown once. Store it now — you won't be able to see it again.</div>
                   <div style="display:flex;align-items:center;gap:8px;">
                     <div style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink,#1b1a18);background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:9px 11px;overflow-x:auto;white-space:nowrap;">{{ revealSecret }}</div>
                     <div onClick="{{ copySecret }}" style="flex-shrink:0;display:flex;align-items:center;gap:6px;padding:9px 13px;border-radius:8px;background:var(--ink,#1b1a18);color:var(--card,#fff);font-size:12px;font-weight:600;cursor:pointer;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg>Copy</div>
@@ -217,18 +280,7 @@
                       </sc-for>
                     </div>
                   </div>
-                  <div>
-                    <label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:7px;">Expires</label>
-                    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
-                      <input class="preft" type="date" value="{{ tokenExpiry }}" onInput="{{ onTokenExpiry }}" style="width:auto;"/>
-                      <div style="display:flex;gap:5px;">
-                        <sc-for list="{{ expiryPresets }}" as="e" hint-placeholder-count="4">
-                          <div onClick="{{ e.onClick }}" style="{{ e.style }}">{{ e.label }}</div>
-                        </sc-for>
-                      </div>
-                    </div>
-                  </div>
-                  <div onClick="{{ createToken }}" style="{{ createBtnStyle }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"></path></svg>Generate token</div>
+                  <div onClick="{{ createToken }}" style="{{ createBtnStyle }}">Generate</div>
                 </div>
               </div>
 
@@ -245,13 +297,11 @@
                               <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink3,#9a958d);">{{ t.mask }}</span>
                             </div>
                             <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ember,#ec4a26);margin-top:6px;">{{ t.scopeText }}</div>
-                            <div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:4px;">{{ t.meta }}</div>
                           </div>
-                          <span style="{{ t.statusStyle }}">{{ t.statusLabel }}</span>
                         </div>
-                        <div style="display:flex;gap:8px;margin-top:11px;">
-                          <div onClick="{{ t.onRotate }}" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"></path><polyline points="13.5 2 13.5 4.6 10.9 4.6"></polyline></svg>Rotate</div>
-                          <div onClick="{{ t.onRevoke }}" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid rgba(224,68,46,0.3);background:var(--card,#fff);font-size:12px;font-weight:600;color:#e0442e;cursor:pointer;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 4.5h10M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5 4.5l.5 8a1 1 0 0 0 1 .9h3a1 1 0 0 0 1-.9l.5-8"></path></svg>Revoke</div>
+                        <div style="display:flex;gap:14px;margin-top:9px;">
+                          <div onClick="{{ t.onRotate }}" style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Rotate</div>
+                          <div onClick="{{ t.onRevoke }}" style="font-size:12px;font-weight:600;color:#e0442e;cursor:pointer;">Revoke</div>
                         </div>
                       </div>
                     </sc-for>
@@ -279,22 +329,25 @@
 class Component extends DCLogic {
   state = {
     prefsOpen: false, prefsTab: 'profile',
+    confirmDeleteOpen: false,
     revealed: null,
-    tokenForm: { name: '', expiry: '2026-09-13', scopes: { 'activities:read': true, 'activities:write': false, 'workouts:write': false, 'gear:write': false } },
+    tokenForm: { name: '', scopes: { 'activities:read': true, 'activities:write': false, 'workouts:write': false, 'gear:write': false } },
     tokens: [
-      { id: 't1', name: 'Home server sync', prefix: 'cad_pat_7Qda', scopes: ['activities:read'], created: '2026-04-12', expires: '2026-07-11', lastUsed: '2026-06-14' },
-      { id: 't2', name: 'Strava bridge', prefix: 'cad_pat_M2pK', scopes: ['activities:read', 'activities:write'], created: '2026-02-01', expires: '2026-05-30', lastUsed: '2026-05-28' },
+      { id: 't1', name: 'Home server sync', prefix: 'cad_pat_7Qda', scopes: ['activities:read'] },
+      { id: 't2', name: 'Strava bridge', prefix: 'cad_pat_M2pK', scopes: ['activities:read', 'activities:write'] },
     ],
     shareForm: { invite: '', role: 'viewer' },
-    coachForm: { invite: '' },
-    coaches: [
-      { id: 'co1', name: 'Mara Køhl', handle: '@marakohl', status: 'active', since: '2026-01-08' },
-    ],
     shares: [
       { id: 's1', name: 'Mara Køhl', handle: '@marakohl', role: 'coach', status: 'active', since: '2026-01-08' },
       { id: 's2', name: 'Dr. Lena Voss', handle: '@lenavoss.physio', role: 'viewer', status: 'active', since: '2026-03-21' },
     ],
-    prefs: { name: 'Neil Goodgame', age: 34, weight: 72, ftp: 265, cp: 285, thrPace: '4:00', lthr: 155, maxHr: 186 },
+    hrGen: { method: 'coggan', restingHr: '', lthr: '155', maxHr: '186' },
+    bestEfforts: { allActivities: false, topN: 10, recomputing: null },
+    races: [
+      { id: 'r1', name: 'City Marathon', date: '2026-10-11', sport: 'Run', distanceKm: 42.2, goalTime: '3:15:00', resultTime: null, when: 'upcoming' },
+      { id: 'r2', name: 'Half Iron Lakeside', date: '2026-05-03', sport: 'Multisport', distanceKm: null, goalTime: '5:10:00', resultTime: '5:07:42', when: 'past' },
+    ],
+    prefs: { name: 'Neil Goodgame', age: 34, ftp: 265, cp: 285, thrPace: '4:00', lthr: 155, maxHr: 186 },
     zones: {
       hr: [
         { name: 'Z1 Recovery', lo: 0, hi: 80, color: '#8b95a1' },
@@ -339,45 +392,37 @@ class Component extends DCLogic {
 
   genStr(n) { const c = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; let s = ''; for (let i = 0; i < n; i++) s += c[Math.floor(Math.random() * c.length)]; return s; }
   makeSecret() { const prefix = 'cad_pat_' + this.genStr(4); return { prefix, secret: prefix + this.genStr(28) }; }
-  daysUntil(d) { return Math.round((new Date(d + 'T00:00:00') - new Date(this.TODAY + 'T00:00:00')) / 86400000); }
-  fmtDate(d) { const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; const p = d.split('-'); return p[2] + ' ' + m[+p[1] - 1] + ' ' + p[0].slice(2); }
 
   setTokenName(e) { const v = e.target.value; this.setState(s => ({ tokenForm: { ...s.tokenForm, name: v } })); }
-  setTokenExpiry(e) { const v = e.target.value; this.setState(s => ({ tokenForm: { ...s.tokenForm, expiry: v } })); }
   toggleScope(key) { this.setState(s => ({ tokenForm: { ...s.tokenForm, scopes: { ...s.tokenForm.scopes, [key]: !s.tokenForm.scopes[key] } } })); }
-  setExpiryPreset(days) {
-    if (days == null) { this.setState(s => ({ tokenForm: { ...s.tokenForm, expiry: '' } })); return; }
-    const d = new Date(this.TODAY + 'T00:00:00'); d.setDate(d.getDate() + days);
-    this.setState(s => ({ tokenForm: { ...s.tokenForm, expiry: d.toISOString().slice(0, 10) } }));
-  }
   createToken() {
     const f = this.state.tokenForm;
     const scopes = this.scopeList.map(x => x[0]).filter(k => f.scopes[k]);
     if (!f.name.trim() || scopes.length === 0) return;
     const { prefix, secret } = this.makeSecret();
-    const tok = { id: 'tok_' + this.genStr(6), name: f.name.trim(), prefix, scopes, created: this.TODAY, expires: f.expiry || null, lastUsed: null };
+    const tok = { id: 'tok_' + this.genStr(6), name: f.name.trim(), prefix, scopes };
     this.setState(s => ({
       tokens: [tok, ...s.tokens],
-      tokenForm: { ...s.tokenForm, name: '' },
-      revealed: { secret, name: tok.name, action: 'created' },
+      tokenForm: { ...s.tokenForm, name: '', scopes: { 'activities:read': false, 'activities:write': false, 'workouts:write': false, 'gear:write': false } },
+      revealed: { secret, name: tok.name },
     }));
   }
   rotateToken(id) {
     const { prefix, secret } = this.makeSecret();
     let name = '';
     this.setState(s => ({
-      tokens: s.tokens.map(t => { if (t.id === id) { name = t.name; return { ...t, prefix, lastUsed: null, created: this.TODAY }; } return t; }),
-      revealed: { secret, name, action: 'rotated' },
+      tokens: s.tokens.map(t => { if (t.id === id) { name = t.name; return { ...t, prefix }; } return t; }),
+      revealed: { secret, name },
     }));
   }
   revokeToken(id) { this.setState(s => ({ tokens: s.tokens.filter(t => t.id !== id) })); }
   dismissReveal() { this.setState({ revealed: null }); }
   copySecret() { try { navigator.clipboard.writeText(this.state.revealed.secret); } catch (e) {} }
 
-  roleMeta = {
-    viewer: { label: 'Viewer', color: '#3d7fd6', blurb: 'Read-only access to your training', caps: ['View activities & analysis', 'View workouts & calendar'], cant: 'Cannot create or assign workouts' },
-    coach: { label: 'Coach', color: '#ec4a26', blurb: 'Everything a viewer can, plus planning', caps: ['View activities & analysis', 'Create & assign workouts'], cant: null },
-  };
+  openDeleteAll() { this.setState({ confirmDeleteOpen: true }); }
+  closeDeleteAll() { this.setState({ confirmDeleteOpen: false }); }
+  confirmDeleteAll() { this.setState({ confirmDeleteOpen: false }); }
+
   setInvite(e) { const v = e.target.value; this.setState(s => ({ shareForm: { ...s.shareForm, invite: v } })); }
   setInviteRole(r) { this.setState(s => ({ shareForm: { ...s.shareForm, role: r } })); }
   sendInvite() {
@@ -391,17 +436,28 @@ class Component extends DCLogic {
   }
   setShareRole(id, r) { this.setState(s => ({ shares: s.shares.map(x => x.id === id ? { ...x, role: r } : x) })); }
   revokeShare(id) { this.setState(s => ({ shares: s.shares.filter(x => x.id !== id) })); }
-  setCoachInvite(e) { const v = e.target.value; this.setState(s => ({ coachForm: { invite: v } })); }
-  inviteCoach() {
-    const v = this.state.coachForm.invite.trim(); if (!v) return;
-    const handle = v.startsWith('@') ? v : '@' + v.split('@')[0];
-    const name = v.replace(/^@/, '').split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const c = { id: 'co_' + this.genStr(6), name, handle, status: 'pending', since: this.TODAY };
-    this.setState(s => ({ coaches: [...s.coaches, c], coachForm: { invite: '' } }));
+
+  HR_METHODS = {
+    max_hr: { label: '% of max HR', blurb: 'Zones as a percentage of maximum heart rate (Fox 1971 / Garmin default).' },
+    karvonen: { label: 'Karvonen', blurb: 'Zones as a percentage of heart rate reserve (max HR − resting HR).' },
+    coggan: { label: 'Coggan', blurb: 'Zones anchored to lactate threshold heart rate (68/83/94/105%).' },
+  };
+  setHrMethod(m) { this.setState(s => ({ hrGen: { ...s.hrGen, method: m } })); }
+  onHrField(k) { return (e) => { const v = e.target.value; this.setState(s => ({ hrGen: { ...s.hrGen, [k]: v } })); }; }
+  applyHrZones() {
+    const lthr = parseInt(this.state.hrGen.lthr, 10) || this.state.prefs.lthr;
+    const maxHr = parseInt(this.state.hrGen.maxHr, 10) || this.state.prefs.maxHr;
+    this.setState(s => ({ prefs: { ...s.prefs, lthr, maxHr } }));
   }
-  removeCoach(id) { this.setState(s => ({ coaches: s.coaches.filter(x => x.id !== id) })); }
-  rgbaOf(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
-  roleSeg(active, color) { return { padding: '4px 11px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 600, cursor: 'pointer', color: active ? '#fff' : 'var(--ink3,#9a958d)', background: active ? color : 'transparent' }; }
+
+  toggleAllEfforts() { this.setState(s => ({ bestEfforts: { ...s.bestEfforts, allActivities: !s.bestEfforts.allActivities } })); }
+  onTopN(e) { const v = Math.max(1, Math.min(50, Number(e.target.value) || 1)); this.setState(s => ({ bestEfforts: { ...s.bestEfforts, topN: v } })); }
+  saveBestEfforts() { }
+  recomputeBestEfforts(kind) {
+    this.setState(s => ({ bestEfforts: { ...s.bestEfforts, recomputing: kind || 'all' } }));
+    clearTimeout(this._reTt);
+    this._reTt = setTimeout(() => this.setState(s => ({ bestEfforts: { ...s.bestEfforts, recomputing: null } })), 900);
+  }
 
   paceToSec(str) { const p = String(str).split(':').map(Number); return p.length === 2 ? p[0] * 60 + p[1] : (parseFloat(str) || 0); }
   secToPace(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return m + ':' + String(s).padStart(2, '0'); }
@@ -442,11 +498,14 @@ class Component extends DCLogic {
   renderVals() {
     const p = this.state.prefs, tab = this.state.prefsTab;
     const railItem = (a) => ({ display: 'flex', alignItems: 'center', gap: '9px', padding: '9px 12px', borderRadius: '9px', fontSize: '13px', fontWeight: a ? 600 : 500, cursor: 'pointer', color: a ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', background: a ? 'var(--emberSoft,#fff5f1)' : 'transparent' });
-    const prefsTabs = [['profile', 'Profile'], ['hr', 'Heart rate'], ['bike', 'Bike power'], ['run', 'Run power'], ['pace', 'Pace'], ['sharing', 'Sharing'], ['tokens', 'API tokens']].map(([k, l]) => ({ label: l, onClick: () => this.setState({ prefsTab: k }), style: railItem(tab === k) }));
+    const prefsTabs = [['profile', 'Profile'], ['hr', 'Heart rate'], ['bike', 'Bike power'], ['run', 'Run power'], ['pace', 'Pace'], ['best_efforts', 'Best efforts'], ['races', 'Races'], ['sharing', 'Sharing'], ['tokens', 'API tokens']].map(([k, l]) => ({ label: l, onClick: () => this.setState({ prefsTab: k }), style: railItem(tab === k) }));
     const isProfile = tab === 'profile';
     const isTokens = tab === 'tokens';
     const isSharing = tab === 'sharing';
-    const isZone = !isProfile && !isTokens && !isSharing;
+    const isBestEfforts = tab === 'best_efforts';
+    const isRaces = tab === 'races';
+    const isZone = !isProfile && !isTokens && !isSharing && !isBestEfforts && !isRaces;
+    const isHr = tab === 'hr';
     const zone = isZone ? this.computeZone(tab) : { zoneRows: [], zoneRefLabel: '' };
 
     // ---- API tokens ----
@@ -456,95 +515,92 @@ class Component extends DCLogic {
       onClick: () => this.toggleScope(key),
       boxStyle: { width: '16px', height: '16px', borderRadius: '5px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: f.scopes[key] ? 'none' : '1.5px solid var(--line,#e6e2dc)', background: f.scopes[key] ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)' },
     }));
-    const expiryPresets = [['30d', 30], ['90d', 90], ['1yr', 365], ['No expiry', null]].map(([label, days]) => {
-      const target = days == null ? '' : (() => { const d = new Date(this.TODAY + 'T00:00:00'); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); })();
-      const active = f.expiry === target;
-      return { label, onClick: () => this.setExpiryPreset(days), style: { padding: '5px 11px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', border: '1px solid ' + (active ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), color: active ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', background: active ? 'var(--emberSoft,#fff5f1)' : 'var(--card,#fff)' } };
-    });
     const canCreate = !!f.name.trim() && this.scopeList.some(x => f.scopes[x[0]]);
 
-    const tokensView = this.state.tokens.map(t => {
-      const dleft = t.expires ? this.daysUntil(t.expires) : null;
-      const expired = dleft != null && dleft < 0;
-      const soon = dleft != null && dleft >= 0 && dleft <= 14;
-      let statusLabel, statusColor;
-      if (expired) { statusLabel = 'Expired ' + this.fmtDate(t.expires); statusColor = '#e0442e'; }
-      else if (t.expires == null) { statusLabel = 'No expiry'; statusColor = '#9a958d'; }
-      else if (soon) { statusLabel = 'Expires in ' + dleft + 'd'; statusColor = '#f0a02e'; }
-      else { statusLabel = 'Expires ' + this.fmtDate(t.expires); statusColor = '#2fa66a'; }
-      return {
-        id: t.id, name: t.name, mask: t.prefix + '\u2026' + '\u2022\u2022\u2022\u2022',
-        scopeText: t.scopes.join('  \u00b7  '),
-        meta: 'Created ' + this.fmtDate(t.created) + (t.lastUsed ? '  \u00b7  last used ' + this.fmtDate(t.lastUsed) : '  \u00b7  never used'),
-        statusLabel, statusStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', color: statusColor, background: expired ? 'rgba(224,68,46,0.12)' : (soon ? 'rgba(240,160,46,0.14)' : 'var(--elev,#faf9f7)'), border: '1px solid var(--line,#e6e2dc)' },
-        rowStyle: { border: '1px solid var(--line,#e6e2dc)', borderRadius: '11px', padding: '13px 15px', background: expired ? 'var(--elev,#faf9f7)' : 'var(--card,#fff)', opacity: expired ? 0.85 : 1 },
-        onRotate: () => this.rotateToken(t.id),
-        onRevoke: () => this.revokeToken(t.id),
-      };
-    });
+    const tokensView = this.state.tokens.map(t => ({
+      id: t.id, name: t.name, mask: t.prefix + '\u2026',
+      scopeText: t.scopes.join(', '),
+      rowStyle: { border: '1px solid var(--line,#e6e2dc)', borderRadius: '11px', padding: '13px 15px', background: 'var(--card,#fff)' },
+      onRotate: () => this.rotateToken(t.id),
+      onRevoke: () => this.revokeToken(t.id),
+    }));
     const rv = this.state.revealed;
 
-    // ---- sharing ----
+    // ---- heart-rate zone generator ----
+    const hg = this.state.hrGen;
+    const hrMethods = Object.keys(this.HR_METHODS).map(k => ({
+      key: k, label: this.HR_METHODS[k].label,
+      onClick: () => this.setHrMethod(k),
+      style: { border: '1px solid var(--line,#e6e2dc)', borderRadius: '8px', padding: '6px 12px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: hg.method === k ? 'var(--elev,#faf9f7)' : 'transparent', color: hg.method === k ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)' },
+    }));
+
+    // ---- best efforts ----
+    const be = this.state.bestEfforts;
+    const beKinds = ['Running HR', 'Running Power', 'Running Pace', 'Cycling HR', 'Cycling Power'].map(label => ({
+      label, btnLabel: be.recomputing === label ? 'Working\u2026' : 'Recompute',
+      onClick: () => this.recomputeBestEfforts(label),
+    }));
+
+    // ---- races ----
+    const racesUpcoming = this.state.races.filter(r => r.when === 'upcoming').map(raceRow => ({
+      name: raceRow.name,
+      meta: raceRow.date + (raceRow.sport ? ' \u00b7 ' + raceRow.sport : '') + (raceRow.distanceKm ? ' \u00b7 ' + raceRow.distanceKm + ' km' : '') + (raceRow.goalTime ? ' \u00b7 Goal: ' + raceRow.goalTime : '') + (raceRow.resultTime ? ' \u00b7 Result: ' + raceRow.resultTime : ''),
+    }));
+    const racesPast = this.state.races.filter(r => r.when === 'past').map(raceRow => ({
+      name: raceRow.name,
+      meta: raceRow.date + (raceRow.sport ? ' \u00b7 ' + raceRow.sport : '') + (raceRow.distanceKm ? ' \u00b7 ' + raceRow.distanceKm + ' km' : '') + (raceRow.goalTime ? ' \u00b7 Goal: ' + raceRow.goalTime : '') + (raceRow.resultTime ? ' \u00b7 Result: ' + raceRow.resultTime : ''),
+    }));
+
+    // ---- sharing (role toggle buttons, no capability blurbs \u2014 matches the live Sharing tab) ----
     const sf = this.state.shareForm;
-    const roleChoice = (r) => ({
-      label: this.roleMeta[r].label, onClick: () => this.setInviteRole(r),
-      style: { flex: 1, textAlign: 'center', padding: '7px 0', fontSize: '12.5px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: sf.role === r ? '#fff' : 'var(--ink2,#6f6b65)', background: sf.role === r ? this.roleMeta[r].color : 'transparent' },
-    });
-    const inviteRoles = ['viewer', 'coach'].map(roleChoice);
-    const activeRoleMeta = this.roleMeta[sf.role];
+    const shareBtn = (active, color) => ({ padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', border: '1px solid var(--line,#e6e2dc)', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--elev,#faf9f7)' : 'transparent' });
     const canInvite = !!sf.invite.trim();
-    const sharesView = this.state.shares.map(x => {
-      const rm = this.roleMeta[x.role];
-      const initials = x.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-      return {
-        id: x.id, name: x.name, handle: x.handle, initials,
-        pending: x.status === 'pending',
-        roleLabel: rm.label, roleBlurb: rm.blurb,
-        avatarStyle: { width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: rm.color, color: '#fff', fontSize: '12px', fontWeight: 700, fontFamily: "'Hanken Grotesk',sans-serif" },
-        roleBadgeStyle: { fontSize: '10.5px', fontWeight: 700, padding: '2px 9px', borderRadius: '20px', color: rm.color, background: this.rgbaOf(rm.color, 0.12) },
-        isViewer: x.role === 'viewer', isCoach: x.role === 'coach',
-        toViewer: () => this.setShareRole(x.id, 'viewer'),
-        toCoach: () => this.setShareRole(x.id, 'coach'),
-        viewerTabStyle: this.roleSeg(x.role === 'viewer', '#3d7fd6'),
-        coachTabStyle: this.roleSeg(x.role === 'coach', '#ec4a26'),
-        onRevoke: () => this.revokeShare(x.id),
-      };
-    });
+    const statusText = (x) => x.status === 'pending' ? 'Pending' : ('Since ' + x.since);
+    const sharesView = this.state.shares.map(x => ({
+      id: x.id, name: x.name, handle: x.handle, statusText: statusText(x),
+      toViewer: () => this.setShareRole(x.id, 'viewer'),
+      toCoach: () => this.setShareRole(x.id, 'coach'),
+      viewerBtnStyle: shareBtn(x.role === 'viewer'), coachBtnStyle: shareBtn(x.role === 'coach'),
+      onRevoke: () => this.revokeShare(x.id),
+    }));
+    const coachesView = this.state.shares.filter(x => x.role === 'coach').map(x => ({
+      id: x.id, name: x.name, handle: x.handle, statusText: statusText(x),
+      onRevoke: () => this.revokeShare(x.id),
+    }));
     return {
       prefsOpen: this.state.prefsOpen,
       openPrefs: () => this.setState({ prefsOpen: true }),
       closePrefs: () => this.setState({ prefsOpen: false }),
       savePrefs: () => this.setState({ prefsOpen: false }),
       stopP: (e) => e.stopPropagation(),
-      prefsTabs, isProfile, isZone, isTokens, isSharing,
-      sharesView, inviteRoles, hasShares: this.state.shares.length > 0,
+      confirmDeleteOpen: this.state.confirmDeleteOpen,
+      openDeleteAll: () => this.openDeleteAll(), closeDeleteAll: () => this.closeDeleteAll(), confirmDeleteAll: () => this.confirmDeleteAll(),
+      prefsTabs, isProfile, isZone, isTokens, isSharing, isBestEfforts, isRaces, isHr,
+      sharesView, coachesView, hasShares: this.state.shares.length > 0, noShares: this.state.shares.length === 0, hasCoaches: coachesView.length > 0, noCoaches: coachesView.length === 0,
       inviteValue: sf.invite, onInvite: (e) => this.setInvite(e),
+      inviteRoleValue: sf.role, onInviteRole: (e) => this.setInviteRole(e.target.value),
       sendInvite: () => this.sendInvite(), canInvite,
-      coachesView: this.state.coaches.map(c => ({
-        name: c.name, handle: c.handle, pending: c.status === 'pending',
-        initials: c.name.split(' ').map(w => w[0]).slice(0, 2).join(''),
-        onRemove: () => this.removeCoach(c.id),
-      })),
-      hasCoaches: this.state.coaches.length > 0,
-      coachInvite: this.state.coachForm.invite,
-      onCoachInvite: (e) => this.setCoachInvite(e),
-      inviteCoach: () => this.inviteCoach(),
-      canInviteCoach: !!this.state.coachForm.invite.trim(),
-      coachBtnStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px 16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap', cursor: this.state.coachForm.invite.trim() ? 'pointer' : 'not-allowed', background: this.state.coachForm.invite.trim() ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)', color: this.state.coachForm.invite.trim() ? '#fff' : 'var(--ink3,#9a958d)' },
-      inviteBtnStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px 16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap', cursor: canInvite ? 'pointer' : 'not-allowed', background: canInvite ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)', color: canInvite ? '#fff' : 'var(--ink3,#9a958d)' },
-      inviteRoleCaps: activeRoleMeta.caps, inviteRoleCant: activeRoleMeta.cant, inviteRoleHasCant: !!activeRoleMeta.cant,
-      tokensView, scopeOptions, expiryPresets, canCreate,
-      tokenName: f.name, tokenExpiry: f.expiry,
+      inviteBtnStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '9px 16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap', cursor: canInvite ? 'pointer' : 'not-allowed', background: canInvite ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)', color: canInvite ? '#fff' : 'var(--ink3,#9a958d)' },
+      tokensView, scopeOptions, canCreate,
+      tokenName: f.name,
       createBtnStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', padding: '10px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, cursor: canCreate ? 'pointer' : 'not-allowed', background: canCreate ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)', color: canCreate ? '#fff' : 'var(--ink3,#9a958d)' },
       onTokenName: (e) => this.setTokenName(e),
-      onTokenExpiry: (e) => this.setTokenExpiry(e),
       createToken: () => this.createToken(),
       hasTokens: this.state.tokens.length > 0,
-      revealed: !!rv, revealSecret: rv ? rv.secret : '', revealName: rv ? rv.name : '', revealAction: rv ? rv.action : '',
+      revealed: !!rv, revealSecret: rv ? rv.secret : '', revealName: rv ? rv.name : '',
       dismissReveal: () => this.dismissReveal(),
       copySecret: () => this.copySecret(),
-      pName: p.name, pAge: p.age, pWeight: p.weight, pFtp: p.ftp, pCp: p.cp, pThrPace: p.thrPace, pLthr: p.lthr, pMaxHr: p.maxHr,
-      onName: this.onPref('name'), onAge: this.onPref('age'), onWeight: this.onPref('weight'), onFtp: this.onPref('ftp'), onCp: this.onPref('cp'), onThrPace: this.onPref('thrPace'), onLthr: this.onPref('lthr'), onMaxHr: this.onPref('maxHr'),
+      hrMethods, hrRestingHr: hg.restingHr, hrLthr: hg.lthr, hrMaxHr: hg.maxHr,
+      onHrResting: this.onHrField('restingHr'), onHrLthr: this.onHrField('lthr'), onHrMaxHr: this.onHrField('maxHr'),
+      hrMethodBlurb: this.HR_METHODS[hg.method].blurb,
+      applyHrZones: () => this.applyHrZones(),
+      beKinds, allEfforts: be.allActivities, topN: be.topN, topNLabel: be.allActivities ? 'all' : be.topN,
+      allEffortsBoxStyle: { width: '16px', height: '16px', borderRadius: '5px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: be.allActivities ? 'none' : '1.5px solid var(--line,#e6e2dc)', background: be.allActivities ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)' },
+      toggleAllEfforts: () => this.toggleAllEfforts(), onTopN: (e) => this.onTopN(e),
+      saveBestEfforts: () => this.saveBestEfforts(), recomputeAll: () => this.recomputeBestEfforts(),
+      racesUpcoming, racesPast,
+      pName: p.name, pAge: p.age, pFtp: p.ftp, pCp: p.cp, pThrPace: p.thrPace, pLthr: p.lthr, pMaxHr: p.maxHr,
+      onName: this.onPref('name'), onAge: this.onPref('age'), onFtp: this.onPref('ftp'), onCp: this.onPref('cp'), onThrPace: this.onPref('thrPace'), onLthr: this.onPref('lthr'), onMaxHr: this.onPref('maxHr'),
       chipMeta: 'FTP ' + p.ftp + ' \u00b7 LTHR ' + p.lthr,
       ...zone,
     };

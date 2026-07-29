@@ -52,182 +52,145 @@
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
       <div>
         <h1 style="font-size:21px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Gear</h1>
-        <div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:2px;">Equipment garage · mileage auto-tracked from your activities</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">
-          <span style="width:8px;height:8px;border-radius:50%;background:#2fa66a;"></span>Synced from 486 rides
-        </div>
-        <div style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">+ Add gear</div>
-        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 1px 0 3px;"></div>
         <a href="Notifications.dc.html" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg><span style="position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--ember,#ec4a26);border:1.5px solid var(--card,#fff);"></span></a><dc-import name="Preferences" hint-size="218px,46px"></dc-import>
       </div>
     </div>
 
-    <div style="padding:22px 32px 64px;display:flex;flex-direction:column;gap:14px;">
+    <div style="padding:22px 32px 64px;display:flex;flex-direction:column;gap:36px;">
 
-      <!-- STAT ROW -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
-        <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
-          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px 20px;">
-            <div style="display:flex;align-items:center;gap:9px;">
-              <span style="width:9px;height:9px;border-radius:3px;background:{{ s.dot }};"></span>
-              <span style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);font-weight:600;">{{ s.label }}</span>
-            </div>
-            <div style="display:flex;align-items:baseline;gap:5px;margin-top:14px;">
-              <span style="{{ s.valStyle }}">{{ s.value }}</span>
-              <span style="font-size:13px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ s.unit }}</span>
-            </div>
-            <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:4px;">{{ s.sub }}</div>
-          </div>
-        </sc-for>
-      </div>
-
-      <!-- BIKES + SERVICE -->
-      <div style="display:grid;grid-template-columns:1.62fr 1fr;gap:14px;align-items:start;">
-
-        <!-- LEFT: bikes -->
-        <div style="display:flex;flex-direction:column;gap:14px;">
-          <sc-for list="{{ bikes }}" as="bike" hint-placeholder-count="2">
-            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
-              <!-- header -->
-              <div style="display:flex;gap:18px;padding:20px 22px 18px;">
-                <div style="width:128px;height:84px;flex-shrink:0;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:repeating-linear-gradient(135deg,var(--elev,#faf9f7),var(--elev,#faf9f7) 7px,var(--canvas,#f3f1ee) 7px,var(--canvas,#f3f1ee) 14px);display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;">
-                  <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink3,#9a958d);">bike photo</span>
-                </div>
-                <div style="flex:1;min-width:0;">
-                  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-                    <div style="min-width:0;">
-                      <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ bike.name }}</div>
-                      <div style="display:flex;gap:7px;margin-top:7px;flex-wrap:wrap;">
-                        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;padding:3px 9px;border-radius:6px;background:{{ bike.tintBg }};color:{{ bike.tint }};">{{ bike.kind }}</span>
-                        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;padding:3px 9px;border-radius:6px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);">{{ bike.groupset }}</span>
-                      </div>
-                    </div>
-                    <div style="display:flex;gap:6px;flex-shrink:0;">
-                      <sc-for list="{{ bike.statusChips }}" as="sc" hint-placeholder-count="1">
-                        <span style="{{ sc.style }}">{{ sc.text }}</span>
-                      </sc-for>
-                    </div>
-                  </div>
-                  <div style="display:flex;gap:26px;margin-top:16px;">
-                    <div><div style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">{{ bike.kmBig }}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-top:1px;">Lifetime km</div></div>
-                    <div><div style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">{{ bike.hours }}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-top:1px;">Hours</div></div>
-                    <div><div style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">{{ bike.rides }}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-top:1px;">Rides</div></div>
-                    <div><div style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;letter-spacing:-0.02em;color:var(--ink,#1b1a18);">{{ bike.since }}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-top:1px;">Added</div></div>
-                  </div>
-                </div>
-              </div>
-              <!-- components -->
-              <div style="padding:2px 22px 8px;">
-                <div style="display:grid;grid-template-columns:minmax(0,156px) 1fr 122px 84px;gap:16px;padding:8px 0 9px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);">
-                  <span>Component</span><span>Wear</span><span style="text-align:right;">Distance</span><span style="text-align:right;">Status</span>
-                </div>
-                <sc-for list="{{ bike.components }}" as="c" hint-placeholder-count="6">
-                  <div style="display:grid;grid-template-columns:minmax(0,156px) 1fr 122px 84px;gap:16px;padding:12px 0;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
-                    <div style="min-width:0;">
-                      <div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ c.name }}</div>
-                      <div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:1px;">{{ c.remainLabel }}</div>
-                    </div>
-                    <div style="height:7px;border-radius:4px;background:var(--canvas,#f3f1ee);overflow:hidden;">
-                      <div style="{{ c.barFillStyle }}"></div>
-                    </div>
-                    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);text-align:right;">{{ c.kmLabel }}</span>
-                    <span style="{{ c.chipStyle }}">{{ c.chipText }}</span>
-                  </div>
-                </sc-for>
-              </div>
-            </div>
-          </sc-for>
+      <!-- BIKES -->
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <h2 style="font-size:19px;font-weight:800;letter-spacing:-0.01em;margin:0;color:var(--ink,#1b1a18);">Bikes</h2>
+          <sc-if value="{{ addBikeOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeAddBike }}" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
+          </sc-if>
+          <sc-if value="{{ !addBikeOpen }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ openAddBike }}" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink,#1b1a18);cursor:pointer;">+ Add bike</div>
+          </sc-if>
         </div>
 
-        <!-- RIGHT: service + history -->
-        <div style="display:flex;flex-direction:column;gap:14px;">
+        <sc-if value="{{ addBikeOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
+            <div style="padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink3,#9a958d);">Name</div>
+            <div style="display:flex;align-items:center;gap:6px;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink,#1b1a18);">road<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.8"><polyline points="4,6 8,10 12,6"></polyline></svg></div>
+            <div style="padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink3,#9a958d);">Groupset (optional)</div>
+            <div style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Add</div>
+          </div>
+        </sc-if>
 
-          <!-- service due -->
-          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px 8px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-              <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Service due</div>
-              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--ember,#ec4a26);background:var(--emberSoft,#fff5f1);padding:3px 9px;border-radius:20px;">{{ alertCount }}</span>
-            </div>
-            <sc-for list="{{ alerts }}" as="a" hint-placeholder-count="5">
-              <div style="display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line,#e6e2dc);">
-                <div style="width:34px;height:34px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:{{ a.tintBg }};">
-                  <span style="width:9px;height:9px;border-radius:3px;background:{{ a.tint }};"></span>
+        <sc-if value="{{ hasBikes }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <sc-for list="{{ bikes }}" as="bike" hint-placeholder-count="1">
+              <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
+                <!-- header -->
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px;">
+                  <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ bike.name }}</div>
+                    <div style="display:flex;gap:7px;margin-top:7px;flex-wrap:wrap;">
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:6px;background:{{ bike.tintBg }};color:{{ bike.tint }};text-transform:uppercase;">{{ bike.kind }}</span>
+                      <sc-if value="{{ bike.groupset }}" hint-placeholder-val="{{ false }}">
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:500;padding:3px 9px;border-radius:6px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);">{{ bike.groupset }}</span>
+                      </sc-if>
+                    </div>
+                  </div>
+                  <span style="{{ bike.statusStyle }}">{{ bike.statusText }}</span>
                 </div>
-                <div style="flex:1;min-width:0;">
-                  <div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ a.part }}</div>
-                  <div style="font-size:11px;color:var(--ink3,#9a958d);">{{ a.gear }}</div>
-                </div>
-                <div style="text-align:right;flex-shrink:0;">
-                  <div style="{{ a.statusStyle }}">{{ a.status }}</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);margin-top:3px;">{{ a.remain }}</div>
+                <!-- components -->
+                <div style="padding:2px 20px 8px;">
+                  <div style="display:grid;grid-template-columns:minmax(0,150px) 1fr 100px 128px;gap:14px;padding:8px 0 9px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);">
+                    <span>Component</span><span>Wear</span><span style="text-align:right;">Distance</span><span></span>
+                  </div>
+                  <sc-for list="{{ bike.components }}" as="c" hint-placeholder-count="4">
+                    <div style="display:grid;grid-template-columns:minmax(0,150px) 1fr 100px 128px;gap:14px;padding:12px 0;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
+                      <div style="min-width:0;">
+                        <div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ c.name }}</div>
+                        <span style="{{ c.chipStyle }}">{{ c.chipText }}</span>
+                      </div>
+                      <div style="height:7px;border-radius:4px;background:var(--canvas,#f3f1ee);overflow:hidden;">
+                        <div style="{{ c.barFillStyle }}"></div>
+                      </div>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);text-align:right;">{{ c.kmLabel }}</span>
+                      <div style="text-align:right;font-size:11px;color:var(--ink3,#9a958d);white-space:nowrap;">
+                        <span style="cursor:pointer;">Log replacement</span> · <span style="cursor:pointer;">Remove</span>
+                      </div>
+                    </div>
+                  </sc-for>
                 </div>
               </div>
             </sc-for>
           </div>
-
-          <!-- maintenance history -->
-          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 22px;">
-            <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);margin-bottom:14px;">Recent maintenance</div>
-            <div style="position:relative;">
-              <sc-for list="{{ history }}" as="h" hint-placeholder-count="5">
-                <div style="display:grid;grid-template-columns:54px 1fr;gap:12px;padding:0 0 16px;">
-                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);padding-top:1px;">{{ h.date }}</span>
-                  <div style="display:flex;gap:11px;">
-                    <div style="display:flex;flex-direction:column;align-items:center;">
-                      <span style="width:9px;height:9px;border-radius:50%;background:{{ h.dot }};margin-top:4px;flex-shrink:0;"></span>
-                      <span style="width:1px;flex:1;background:var(--line,#e6e2dc);margin-top:3px;"></span>
-                    </div>
-                    <div style="padding-bottom:2px;">
-                      <div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ h.title }}</div>
-                      <div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:1px;">{{ h.sub }}</div>
-                    </div>
-                  </div>
-                </div>
-              </sc-for>
-            </div>
-          </div>
-        </div>
+        </sc-if>
+        <sc-if value="{{ !hasBikes }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;color:var(--ink3,#9a958d);">No bikes in the garage yet.</div>
+        </sc-if>
       </div>
 
       <!-- RUN SHOES -->
-      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px 22px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
-          <div>
-            <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Run shoes</div>
-            <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">Mileage tracked from running activities · retire at limit</div>
-          </div>
-          <span style="font-size:13px;font-weight:600;color:var(--ember,#ec4a26);cursor:pointer;">Retired shoes →</span>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <h2 style="font-size:19px;font-weight:800;letter-spacing:-0.01em;margin:0;color:var(--ink,#1b1a18);">Run shoes</h2>
+          <sc-if value="{{ addShoeOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeAddShoe }}" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
+          </sc-if>
+          <sc-if value="{{ !addShoeOpen }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ openAddShoe }}" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink,#1b1a18);cursor:pointer;">+ Add shoes</div>
+          </sc-if>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
-          <sc-for list="{{ shoes }}" as="sh" hint-placeholder-count="3">
-            <div style="border:1px solid var(--line,#e6e2dc);border-radius:12px;padding:18px;display:flex;gap:16px;align-items:center;">
-              <div style="position:relative;width:84px;height:84px;flex-shrink:0;">
-                <svg width="84" height="84" viewBox="0 0 84 84">
-                  <circle cx="42" cy="42" r="32" fill="none" stroke="var(--canvas,#f3f1ee)" stroke-width="7"></circle>
-                  <circle cx="42" cy="42" r="32" fill="none" stroke="{{ sh.ringColor }}" stroke-width="7" stroke-linecap="round" stroke-dasharray="{{ sh.dash }}" stroke-dashoffset="{{ sh.offset }}" transform="rotate(-90 42 42)"></circle>
-                </svg>
-                <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span style="font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:600;color:var(--ink,#1b1a18);line-height:1;">{{ sh.pct }}</span>
-                  <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink3,#9a958d);margin-top:2px;">used</span>
-                </div>
+
+        <sc-if value="{{ addShoeOpen }}" hint-placeholder-val="{{ false }}">
+          <sc-if value="{{ !shoePicked }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-bottom:10px;">
+              <div style="padding:11px 14px;border-radius:9px;border:1.5px solid var(--ember,#ec4a26);background:var(--card,#fff);font-size:13px;color:var(--ink,#1b1a18);">{{ shoeQuery }}</div>
+              <div style="border:1px solid var(--line,#e6e2dc);border-top:none;border-radius:0 0 9px 9px;background:var(--card,#fff);overflow:hidden;">
+                <sc-for list="{{ catalogResults }}" as="r" hint-placeholder-count="4">
+                  <div onClick="{{ r.onPick }}" style="padding:10px 14px;font-size:13px;color:var(--ink,#1b1a18);cursor:pointer;border-top:1px solid var(--line,#e6e2dc);">{{ r.label }}</div>
+                </sc-for>
               </div>
-              <div style="min-width:0;">
-                <div style="display:flex;align-items:flex-start;gap:7px;">
-                  <span style="width:11px;height:11px;border-radius:3px;background:{{ sh.colour }};border:1px solid rgba(0,0,0,0.12);flex-shrink:0;margin-top:4px;"></span>
-                  <span style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);line-height:1.25;">{{ sh.name }}</span>
-                </div>
-                <sc-if value="{{ sh.isCustom }}" hint-placeholder-val="{{ false }}">
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--ink3,#9a958d);margin-top:3px;">{{ sh.catalogSpec }}</div>
-                </sc-if>
-                <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:5px;">{{ sh.role }}</div>
-                <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);margin-top:10px;">{{ sh.kmLabel }}</div>
-                <span style="{{ sh.chipStyle }}">{{ sh.status }}</span>
-              </div>
+              <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:8px;cursor:pointer;">+ Can't find your shoe? Add it to the catalog</div>
             </div>
-          </sc-for>
-        </div>
+          </sc-if>
+          <sc-if value="{{ shoePicked }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
+              <span style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">{{ shoePickedName }}</span>
+              <div style="padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink3,#9a958d);">Colourway</div>
+              <div style="padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink3,#9a958d);">Custom name (optional)</div>
+              <div style="width:70px;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink,#1b1a18);">600</div>
+              <div style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Add</div>
+              <span onClick="{{ shoeBack }}" style="font-size:13px;color:var(--ink3,#9a958d);cursor:pointer;">Back</span>
+            </div>
+          </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ hasShoes }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+            <sc-for list="{{ shoes }}" as="sh" hint-placeholder-count="1">
+              <div style="border:1px solid var(--line,#e6e2dc);border-radius:12px;padding:18px;display:flex;gap:16px;align-items:center;">
+                <div style="position:relative;width:84px;height:84px;flex-shrink:0;">
+                  <svg width="84" height="84" viewBox="0 0 84 84">
+                    <circle cx="42" cy="42" r="32" fill="none" stroke="var(--canvas,#f3f1ee)" stroke-width="7"></circle>
+                    <circle cx="42" cy="42" r="32" fill="none" stroke="{{ sh.ringColor }}" stroke-width="7" stroke-linecap="round" stroke-dasharray="{{ sh.dash }}" stroke-dashoffset="{{ sh.offset }}" transform="rotate(-90 42 42)"></circle>
+                  </svg>
+                  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:600;color:var(--ink,#1b1a18);line-height:1;">{{ sh.pct }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink3,#9a958d);margin-top:2px;">used</span>
+                  </div>
+                </div>
+                <div style="min-width:0;">
+                  <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);line-height:1.25;">{{ sh.name }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);margin-top:10px;">{{ sh.kmLabel }}</div>
+                  <span style="{{ sh.chipStyle }}">{{ sh.status }}</span>
+                  <div style="margin-top:8px;font-size:12px;color:var(--ink3,#9a958d);cursor:pointer;">Retire</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ !hasShoes }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;color:var(--ink3,#9a958d);">No shoes tracked yet.</div>
+        </sc-if>
       </div>
 
     </div>
@@ -237,7 +200,7 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:1020}}">
 class Component extends DCLogic {
-  state = { theme: 'lab' };
+  state = { theme: 'lab', addBikeOpen: false, addShoeOpen: false, shoeQuery: 'Nike', shoePicked: false, shoePickedName: '' };
 
   rgba(hex, a) {
     const n = parseInt(hex.slice(1), 16);
@@ -246,7 +209,7 @@ class Component extends DCLogic {
 
   fmt(n) { return n.toLocaleString('en-US'); }
 
-  // wear evaluation -> color + status label
+  // wear evaluation -> color + status label (Good < 85%, Soon >= 85%, Replace >= 100%)
   wear(km, limit) {
     const w = km / limit;
     const over = km >= limit;
@@ -257,124 +220,70 @@ class Component extends DCLogic {
     return { w, over, color, status };
   }
 
-  chip(color) {
-    return {
-      fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600,
-      padding: '3px 0', width: '100%', textAlign: 'center', display: 'block',
-      borderRadius: '6px', color, background: this.rgba(color, 0.13), letterSpacing: '0.02em',
-    };
-  }
-
-  statChip(text, color) {
+  miniChip(color, text) {
     return {
       text,
       style: {
-        fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600,
-        padding: '4px 9px', borderRadius: '20px', color,
-        background: this.rgba(color, 0.14), whiteSpace: 'nowrap',
+        display: 'inline-block', marginTop: '4px',
+        fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 600,
+        padding: '2px 7px', borderRadius: '5px', color, background: this.rgba(color, 0.13),
       },
     };
   }
 
-  comp(name, km, limit, note) {
+  comp(name, km, limit) {
     const wi = this.wear(km, limit);
-    const remain = wi.over
-      ? this.fmt(km - limit) + ' km over' + (note ? ' · ' + note : '')
-      : this.fmt(limit - km) + ' km left' + (note ? ' · ' + note : '');
+    const chip = this.miniChip(wi.color, wi.status);
     return {
       name, _km: km, _limit: limit, _wi: wi,
-      remainLabel: remain,
       kmLabel: this.fmt(km) + ' / ' + this.fmt(limit),
       barFillStyle: { height: '100%', width: (Math.min(wi.w, 1) * 100).toFixed(1) + '%', background: wi.color, borderRadius: '4px' },
-      chipText: wi.status,
-      chipStyle: this.chip(wi.color),
+      chipText: chip.text, chipStyle: chip.style,
     };
   }
 
   bike(def) {
-    const components = def.comps.map(c => this.comp(c[0], c[1], c[2], c[3]));
+    const components = def.comps.map(c => this.comp(c[0], c[1], c[2]));
     const due = components.filter(c => c._wi.over).length;
     const soon = components.filter(c => !c._wi.over && c._wi.w >= 0.85).length;
-    const statusChips = [];
-    if (due) statusChips.push(this.statChip(due + ' due', '#e0442e'));
-    if (soon) statusChips.push(this.statChip(soon + ' soon', '#f0a02e'));
-    if (!due && !soon) statusChips.push(this.statChip('All healthy', '#2fa66a'));
+    let statusText, statusColor;
+    if (due) { statusText = due + ' due'; statusColor = '#e0442e'; }
+    else if (soon) { statusText = soon + ' soon'; statusColor = '#f0a02e'; }
+    else { statusText = 'All healthy'; statusColor = '#2fa66a'; }
     return {
       name: def.name, kind: def.kind, groupset: def.groupset,
       tint: def.tint, tintBg: this.rgba(def.tint, 0.13),
-      kmBig: this.fmt(def.km), hours: def.hours, rides: this.fmt(def.rides), since: def.since,
-      statusChips, components,
+      statusText,
+      statusStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600, padding: '4px 9px', borderRadius: '20px', color: statusColor, background: this.rgba(statusColor, 0.14), whiteSpace: 'nowrap', flexShrink: 0 },
+      components,
     };
   }
 
   build() {
     const bikeDefs = [
       {
-        name: 'Canyon Aeroad CF SLX', kind: 'ROAD · OUTDOOR', groupset: 'Dura-Ace Di2',
-        tint: '#3d7fd6', km: 14820, hours: '612', rides: 486, since: "Mar '22",
+        name: 'Canyon Aeroad CF SLX', kind: 'road', groupset: 'Dura-Ace Di2',
+        tint: '#3d7fd6',
         comps: [
-          ['Chain', 4080, 4000, 'KMC X11SL'],
-          ['Rear tyre', 4520, 4500, 'GP 5000 S TR'],
-          ['Cassette', 6900, 8000, '11-30T'],
-          ['Front tyre', 2180, 5000, 'GP 5000 S TR'],
-          ['Brake pads', 3050, 6000, 'SwissStop'],
-          ['Chainrings', 14820, 20000, '52/36'],
-          ['Bottom bracket', 9200, 15000, 'CeramicSpeed'],
-          ['Bar tape', 5400, 8000, 'Supacaz'],
-        ],
-      },
-      {
-        name: 'Specialized Tarmac SL7', kind: 'INDOOR · KICKR V6', groupset: 'Ultegra Di2',
-        tint: '#3d7fd6', km: 8640, hours: '358', rides: 271, since: "Nov '23",
-        comps: [
-          ['Bar tape', 6200, 7000, 'replace soon'],
-          ['Cassette', 5180, 9000, '11-28T'],
-          ['Chain', 1240, 4000, 'fitted Jun 2'],
-          ['Chainrings', 8640, 18000, '50/34'],
-          ['Trainer (Kickr)', 8640, 40000, 'belt & bearings'],
+          ['Chain', 4080, 4000],
+          ['Rear tyre', 4520, 4500],
+          ['Cassette', 6900, 8000],
+          ['Brake pads', 3050, 6000],
         ],
       },
     ];
     const bikes = bikeDefs.map(d => this.bike(d));
 
-    // ----- aggregate service alerts across all gear -----
-    const rawAlerts = [];
-    bikeDefs.forEach((d, bi) => {
-      bikes[bi].components.forEach(c => {
-        if (c._wi.over || c._wi.w >= 0.85) {
-          rawAlerts.push({
-            part: c.name, gear: d.name, tint: d.tint, wi: c._wi,
-            over: c._wi.over,
-            remain: c._wi.over ? this.fmt(c._km - c._limit) + ' km over' : this.fmt(c._limit - c._km) + ' km left',
-            sortW: c._wi.w,
-          });
-        }
-      });
-    });
-
     const shoeDefs = [
-      { manufacturer: 'Nike', model: 'Vaporfly', version: '3', colourway: 'Volt / Black', colour: '#c6ff00', name: 'Race Day Flyers', role: 'Race & threshold', km: 412, limit: 600, since: "Jan '26" },
-      { manufacturer: 'Hoka', model: 'Mach', version: '6', colourway: 'Coastal Sky', colour: '#3d7fd6', role: 'Daily trainer', km: 712, limit: 800, since: "Sep '25" },
-      { manufacturer: 'Saucony', model: 'Endorphin Speed', version: '4', colourway: 'Rosewood', colour: '#b0413e', role: 'Tempo & long run', km: 158, limit: 700, since: "Apr '26" },
+      { manufacturer: 'Nike', model: 'Vaporfly', version: '3', colourway: 'red', km: 0, limit: 600 },
+      { manufacturer: 'Hoka', model: 'Mach', version: '6', colourway: 'Coastal Sky', km: 712, limit: 800 },
     ];
     const R = 32, C = 2 * Math.PI * R;
     const shoes = shoeDefs.map(s => {
       const wi = this.wear(s.km, s.limit);
-      const catalogSpec = s.manufacturer + ' ' + s.model + ' ' + s.version;
-      const defaultName = catalogSpec + ' ' + s.colourway;
-      const displayName = s.name || defaultName;
-      const isCustom = !!s.name;
-      if (wi.over || wi.w >= 0.85) {
-        rawAlerts.push({
-          part: displayName, gear: 'Run shoes · ' + s.role, tint: '#ec4a26', wi,
-          over: wi.over,
-          remain: wi.over ? this.fmt(s.km - s.limit) + ' km over' : this.fmt(s.limit - s.km) + ' km left',
-          sortW: wi.w,
-        });
-      }
+      const displayName = s.manufacturer + ' ' + s.model + ' ' + s.version + ' ' + s.colourway;
       return {
-        name: displayName, isCustom, catalogSpec: catalogSpec + ' · ' + s.colourway,
-        colourway: s.colourway, colour: s.colour, role: s.role,
+        name: displayName,
         ringColor: wi.color,
         dash: C.toFixed(1),
         offset: (C * (1 - Math.min(wi.w, 1))).toFixed(1),
@@ -389,40 +298,19 @@ class Component extends DCLogic {
       };
     });
 
-    rawAlerts.sort((a, b) => (b.over - a.over) || (b.sortW - a.sortW));
-    const alerts = rawAlerts.map(a => ({
-      part: a.part, gear: a.gear, tint: a.tint, tintBg: this.rgba(a.tint, 0.13),
-      status: a.over ? 'Replace' : 'Soon',
-      remain: a.remain,
-      statusStyle: {
-        fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600,
-        color: a.over ? '#e0442e' : '#f0a02e',
-      },
-    }));
-    const alertCount = rawAlerts.filter(a => a.over).length + ' due · ' + rawAlerts.filter(a => !a.over).length + ' soon';
-
-    // ----- stat cards -----
-    const valBase = { fontFamily: "'JetBrains Mono',monospace", fontSize: '30px', fontWeight: 600, letterSpacing: '-0.02em', lineHeight: '1' };
-    const stats = [
-      { label: 'Gear in garage', dot: '#1b1a18', value: '5', unit: 'items', sub: '2 bikes · 3 run shoes', valStyle: { ...valBase, color: 'var(--ink,#1b1a18)' } },
-      { label: 'Distance this season', dot: '#3d7fd6', value: '4,182', unit: 'km', sub: '+12% vs prior block', valStyle: { ...valBase, color: '#3d7fd6' } },
-      { label: 'Service due', dot: '#ec4a26', value: '2', unit: 'now', sub: '3 more coming soon', valStyle: { ...valBase, color: 'var(--ember,#ec4a26)' } },
-      { label: 'Lifetime logged', dot: '#9a958d', value: '24.7', unit: 'k km', sub: 'across all gear since 2022', valStyle: { ...valBase, color: 'var(--ink,#1b1a18)' } },
-    ];
-
-    // ----- maintenance history -----
-    const history = [
-      { date: 'Jun 2', dot: '#3d7fd6', title: 'Fitted new chain', sub: 'Tarmac SL7 · KMC X11SL' },
-      { date: 'May 24', dot: '#ec4a26', title: 'Retired Hoka Clifton 9', sub: 'Run shoes · logged 812 km' },
-      { date: 'May 9', dot: '#3d7fd6', title: 'Bled rear brake', sub: 'Aeroad · Dura-Ace' },
-      { date: 'Apr 18', dot: '#3d7fd6', title: 'New front tyre', sub: 'Aeroad · GP 5000 S TR' },
-      { date: 'Apr 2', dot: '#ec4a26', title: 'Added Saucony Endorphin', sub: 'Run shoes · tempo rotation' },
-    ];
-
-    return { bikes, alerts, alertCount, shoes, stats, history };
+    return { bikes, shoes, hasBikes: bikes.length > 0, hasShoes: shoes.length > 0 };
   }
 
   model = this.build();
+
+  catalog = ['Nike Alphafly 3', 'Nike Invincible 3', 'Nike Pegasus 41', 'Nike Vaporfly 3'];
+
+  openAddBike() { this.setState({ addBikeOpen: true }); }
+  closeAddBike() { this.setState({ addBikeOpen: false }); }
+  openAddShoe() { this.setState({ addShoeOpen: true, shoePicked: false }); }
+  closeAddShoe() { this.setState({ addShoeOpen: false, shoePicked: false }); }
+  pickShoe(name) { this.setState({ shoePicked: true, shoePickedName: name }); }
+  shoeBack() { this.setState({ shoePicked: false }); }
 
   renderVals() {
     const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
@@ -430,12 +318,26 @@ class Component extends DCLogic {
     const isLab = this.state.theme === 'lab';
     const segActive = { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--card,#fff)', boxShadow: '0 1px 2px rgba(0,0,0,0.14)' };
     const segIdle = { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink3,#9a958d)', background: 'transparent' };
+
+    const catalogResults = this.catalog.map(name => ({ label: name, onPick: () => this.pickShoe(name) }));
+
     return {
       themeVars: this.state.theme === 'day' ? { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--emberLine': 'rgba(13,148,136,0.30)', '--grid': 'rgba(14,24,32,0.06)' } : (isLab ? lab : cockpit),
       setLab: () => this.setState({ theme: 'lab' }),
       setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
       labBtn: this.state.theme === 'lab' ? segActive : segIdle,
       cockpitBtn: this.state.theme === 'cockpit' ? segActive : segIdle, dayBtn: this.state.theme === 'day' ? segActive : segIdle,
+      addBikeOpen: this.state.addBikeOpen,
+      openAddBike: () => this.openAddBike(),
+      closeAddBike: () => this.closeAddBike(),
+      addShoeOpen: this.state.addShoeOpen,
+      openAddShoe: () => this.openAddShoe(),
+      closeAddShoe: () => this.closeAddShoe(),
+      shoeQuery: this.state.shoeQuery,
+      shoePicked: this.state.shoePicked,
+      shoePickedName: this.state.shoePickedName,
+      shoeBack: () => this.shoeBack(),
+      catalogResults,
       ...this.model,
     };
   }
