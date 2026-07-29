@@ -181,15 +181,39 @@ fix lands.
 
 ### 5.4 Recommendation
 
-Move `process_upload` to Lambda-on-SQS; the cost/idle-capacity argument and
-the burst-scaling argument are both real and specific to this app's actual
-usage pattern (bursty batch imports, long idle gaps). Move
-`deliver_webhook` to Lambda-on-SQS too — it's an even better fit (short,
-bounded HTTP calls, naturally bursty, already has its own retry/backoff
-logic that maps directly onto SQS redrive + DLQ). This also means, combined
-with dropping Celery, **Redis/ElastiCache can be removed entirely** if the
-Python backend is kept and Java is dropped, or was never needed if Java is
-kept (§3) — either way, this is the change that gets Redis off the bill.
+**This whole section's case for Lambda is conditioned on keeping the
+Python backend.** Every argument in §5.2 — removing idle 24/7 worker cost,
+removing Redis/ElastiCache, elastic burst scaling for batch imports — is a
+Lambda-vs-Celery-on-Fargate comparison. Java doesn't have the thing Lambda
+would be replacing: ingestion already runs in-process inside the API
+service (Spring Batch, virtual threads), with no dedicated worker task
+idling between uploads and no Redis broker in the picture at all. So:
+
+- **If Python is the chosen production backend**: move `process_upload` to
+  Lambda-on-SQS. The idle-cost and burst-scaling arguments are real and
+  specific to this app's usage pattern (bursty batch imports, long idle
+  gaps). Move `deliver_webhook` to Lambda-on-SQS too — an even better fit
+  (short, bounded HTTP calls, already has retry/backoff logic that maps
+  directly onto SQS redrive + DLQ). Combined with dropping Celery, this is
+  what gets Redis/ElastiCache off the bill entirely.
+- **If Java is the chosen production backend**: don't move ingestion to
+  Lambda. There's no idle worker or broker cost to eliminate, and Java's
+  JVM cold-start penalty on Lambda (seconds, not the sub-second Python
+  figure in §5.2) would need SnapStart or GraalVM native-image work to
+  avoid — real added complexity for a win that doesn't exist here. If large
+  batch imports ever contend enough with live API request-serving on the
+  same task (the one legitimate remaining concern), the fix is splitting
+  ingestion into its **own ECS service** — still in-process Spring Batch,
+  same runtime, no queue/Lambda rewrite — not adopting Lambda. Webhook
+  delivery has the same answer: it's a lighter-weight in-process call
+  today with its own retry handling; no queue needed unless delivery
+  volume grows enough to justify one, and if it does, SQS-consumed-by-ECS
+  is a smaller step than SQS-consumed-by-Lambda for a Java shop.
+
+Net: §10 Phase 3 (the Lambda ingestion move) is a real, worthwhile phase
+**only in the Python-backend branch of §13's open decision #1**. If Java is
+picked, Phase 3 is void — Redis/ElastiCache was never provisioned for Java
+in the first place (§3), so there's nothing left to remove.
 
 Keep this as a **second-phase** migration step (§10), after the initial
 lift-and-shift is live and stable — don't do the Lambda rewrite and the AWS
@@ -323,10 +347,11 @@ behavior change):
 - Decommission local-only infra once production is stable for an agreed
   bake period.
 
-**Phase 3 — ingestion modernization** (optional, do once Phase 1/2 are
-boring and stable):
+**Phase 3 — ingestion modernization** (optional, **Python-backend branch
+only** — see §5.4; if Java is the chosen backend this phase is void, do
+once Phase 1/2 are boring and stable):
 - Move `process_upload` and `deliver_webhook` to Lambda-on-SQS (§5), drop
-  the Celery worker service, drop ElastiCache if nothing else needs Redis.
+  the Celery worker service, drop ElastiCache.
 - Add RDS Proxy in front of RDS for the Lambda connection pattern.
 
 **Phase 4 — backend consolidation** (optional, product decision — §11):
@@ -364,8 +389,10 @@ actual traffic/data volume.
 Biggest cost levers, in order: (1) whether both backends run in parallel
 long-term (§3/§11 open question) — this roughly doubles compute; (2)
 Multi-AZ RDS in production (worth it for a real user base, skip it for
-staging); (3) whether Celery/ElastiCache is kept vs the Lambda move in
-Phase 3, which removes a fixed monthly cost in favor of pay-per-use; (4)
+staging); (3) if Python is the chosen backend, whether Celery/ElastiCache
+is kept vs the Lambda move in Phase 3, which removes a fixed monthly cost
+in favor of pay-per-use — moot if Java is chosen, since it never needed
+Celery/ElastiCache in the first place; (4)
 NAT Gateway is a fixed cost regardless of traffic — a NAT instance or VPC
 endpoints for AWS-service traffic (S3, Secrets Manager) can trim this
 if it matters at this scale.
@@ -417,9 +444,12 @@ if it matters at this scale.
 2. **RDS+extension vs Timescale Cloud** (§4) — recommended default is RDS,
    revisit only if a specific commercial Timescale feature becomes a hard
    requirement.
-3. **Timeline for the Lambda ingestion move** (§5/§10 Phase 3) — bundle
-   into the initial migration, or deliberately defer until the lift-and-
-   shift is proven stable? Recommendation is to defer.
+3. **Timeline for the Lambda ingestion move** (§5/§10 Phase 3) — **only
+   applicable if decision 1 lands on Python**; Java's in-process ingestion
+   has no idle-worker/broker cost for Lambda to remove, so this phase is
+   void in the Java branch. If Python is kept: bundle into the initial
+   migration, or deliberately defer until the lift-and-shift is proven
+   stable? Recommendation is to defer.
 4. **Is there a real user base to cut over already**, or is this
    pre-launch? Changes whether Phase 2's DNS cutover has a bake-period/
    rollback plan that matters for real people, or is just "flip it."
