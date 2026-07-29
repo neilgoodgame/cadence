@@ -75,6 +75,401 @@ directly by ID (`Record`, `Lap`, `BestEffort`, `DurationCurve`,
 `WorkoutStep`, zone rows) use a plain auto-increment integer PK instead —
 deliberately not every table pays for a prefixed ID.
 
+### 2.1 Full schema
+
+Introspected directly from a running instance (26 domain tables, every
+column and foreign key), not reconstructed from the ORM model files —
+this is what's actually on disk today. Entity names below are the logical/
+domain names used throughout this doc; **physical table names differ per
+backend** (Django prefixes with the app label — `activities_activity`,
+`accounts_user`, `gear_shoemodelversion`, etc. — while the Java schema
+uses bare singular snake_case — `activity`, `users`, `shoe_model_version`).
+Same columns, same relationships, same constraints; different names on
+disk. Each backend also owns its own **framework-managed auth-storage
+tables**, intentionally excluded below since they're not app domain data:
+Django's `oauth2_provider_*` (access/refresh tokens, grants, applications)
+plus Django's own `auth_*`/`django_*` tables, versus Java's single
+`oauth_authorization` table (Spring's OAuth2 Authorization Server schema)
+plus Spring Batch's `batch_*` job-tracking tables and Flyway's
+`flyway_schema_history`.
+
+```mermaid
+erDiagram
+    User {
+        string id PK
+        string email UK
+        string password
+        string name
+        string handle
+        int age
+        float weight_kg
+        int ftp
+        int critical_run_power
+        string threshold_pace
+        int lthr
+        int max_hr
+        bool is_coach
+        bool is_active
+        datetime date_joined
+        int best_effort_top_n
+    }
+    UserRelationship {
+        string id PK
+        string owner_id FK
+        string grantee_id FK
+        string role
+        string status
+        datetime created
+    }
+    PersonalAccessToken {
+        string id PK
+        string user_id FK
+        string name
+        string prefix
+        string hashed_secret
+        jsonb scopes
+        datetime created
+        date expires_at
+        date last_used
+    }
+    Activity {
+        string id PK
+        string athlete_id FK
+        string sport
+        string environment
+        bool has_gps
+        string name
+        datetime start_date
+        string source
+        int moving_time
+        float distance_km
+        string distance_source
+        int avg_power
+        int norm_power
+        float intensity
+        int tss
+        int avg_hr
+        int max_hr
+        int ascent
+        float start_weight_kg
+        float end_weight_kg
+        int fluids_ml
+        string workout_id FK
+        string bike_id FK
+        string shoe_id FK
+        float avg_air_temp
+        int avg_humidity
+        float aerobic_training_effect
+        float anaerobic_training_effect
+        string training_effect_label
+        string parent_activity_id FK
+        string primary_activity_id FK
+        string device
+    }
+    Lap {
+        bigint id PK
+        string activity_id FK
+        int lap_index
+        int duration
+        float distance_km
+        int avg_hr
+        int avg_power
+    }
+    Record {
+        string activity_id "PK, FK"
+        datetime ts PK
+        int t
+        int power
+        int heartrate
+        int cadence
+        float altitude
+        float lat
+        float lng
+        float speed
+        float distance_km
+        float air_temp
+        int humidity
+        float core_temp
+        float skin_temp
+        float heat_strain
+    }
+    DurationCurve {
+        bigint id PK
+        string activity_id FK
+        string metric
+        int extends_to
+        jsonb points
+    }
+    BestEffort {
+        bigint id PK
+        string athlete_id FK
+        string kind
+        string window_label
+        float value
+        string unit
+        date date
+        string activity_id FK
+    }
+    Tag {
+        string id PK
+        string athlete_id FK
+        string name
+        string origin
+        string color
+    }
+    ActivityTag {
+        bigint id PK
+        string activity_id FK
+        string tag_id FK
+    }
+    ZoneSet {
+        bigint id PK
+        string athlete_id FK
+        string type
+        jsonb zones
+    }
+    Workout {
+        string id PK
+        string created_by FK
+        string name
+        string sport
+        string type
+        int duration
+        int tss
+        string folder_id FK
+        jsonb tags
+        jsonb chart_preview
+        datetime created_at
+        datetime updated_at
+    }
+    WorkoutFolder {
+        string id PK
+        string created_by FK
+        string name
+    }
+    WorkoutStep {
+        bigint id PK
+        string workout_id FK
+        int step_order
+        string kind
+        string end_type
+        int duration
+        int distance
+        int repeat
+        string target_type
+        float target_low
+        float target_high
+        string target2_type
+        float target2_low
+        float target2_high
+        text note
+        bigint parent_step_id FK
+    }
+    ScheduledWorkout {
+        string id PK
+        string workout_id FK
+        string athlete_id FK
+        string assigned_by FK
+        date date
+        string time_of_day
+        string status
+        string activity_id FK
+    }
+    Bike {
+        string id PK
+        string athlete_id FK
+        string name
+        string kind
+        string groupset
+        int distance_km
+        float hours
+        int rides
+    }
+    Component {
+        string id PK
+        string bike_id FK
+        string name
+        int km
+        int limit_km
+        string model
+    }
+    ServiceRecord {
+        string id PK
+        string component_id FK
+        string action
+        bool reset
+        string note
+        date date
+    }
+    Shoe {
+        string id PK
+        string athlete_id FK
+        string shoe_model_version_id FK
+        string colourway
+        string name
+        string image
+        string role
+        int km
+        int limit_km
+        date since
+        bool retired
+    }
+    ShoeModel {
+        string id PK
+        string manufacturer
+        string model
+        string created_by FK
+    }
+    ShoeModelVersion {
+        string id PK
+        string shoe_model_id FK
+        string version
+    }
+    Upload {
+        string id PK
+        string athlete_id FK
+        string batch_id FK
+        string filename
+        string file_hash
+        string stored_path
+        string status
+        float progress
+        string activity_id FK
+        string error_code
+        string error_message
+        float weight_before_kg
+        float weight_after_kg
+        int fluids_ml
+        string shoe_id FK
+        datetime received_at
+        datetime completed_at
+    }
+    UploadBatch {
+        string id PK
+        string athlete_id FK
+        string filename
+        string on_duplicate
+        string status
+        datetime received_at
+        datetime completed_at
+        string error_code
+        string error_message
+    }
+    Webhook {
+        string id PK
+        string owner_id FK
+        string url
+        string status
+        jsonb events
+        string secret
+        datetime created
+    }
+    WebhookDelivery {
+        bigint id PK
+        string webhook_id FK
+        string event
+        jsonb payload
+        string status
+        int attempts
+        text last_error
+        datetime created
+    }
+    Race {
+        string id PK
+        string athlete_id FK
+        string name
+        date date
+        string sport
+        float distance_km
+        int goal_time
+        int result_time
+        string activity_id FK
+        string url
+        string results_url
+        string notes
+    }
+
+    User ||--o{ Activity : "athlete_id"
+    Activity ||--o{ Activity : "parent_activity_id"
+    Activity ||--o{ Activity : "primary_activity_id"
+    Workout ||--o{ Activity : "workout_id"
+    Bike ||--o{ Activity : "bike_id"
+    Shoe ||--o{ Activity : "shoe_id"
+    Activity ||--o{ ActivityTag : "activity_id"
+    Tag ||--o{ ActivityTag : "tag_id"
+    Activity ||--o{ BestEffort : "activity_id"
+    User ||--o{ BestEffort : "athlete_id"
+    User ||--o{ Bike : "athlete_id"
+    Bike ||--o{ Component : "bike_id"
+    Component ||--o{ ServiceRecord : "component_id"
+    Activity ||--o{ DurationCurve : "activity_id"
+    Activity ||--o{ Lap : "activity_id"
+    Activity ||--o{ Record : "activity_id"
+    User ||--o{ PersonalAccessToken : "user_id"
+    Activity ||--o{ Race : "activity_id"
+    User ||--o{ Race : "athlete_id"
+    Workout ||--o{ ScheduledWorkout : "workout_id"
+    User ||--o{ ScheduledWorkout : "athlete_id"
+    User ||--o{ ScheduledWorkout : "assigned_by"
+    Activity ||--o{ ScheduledWorkout : "activity_id"
+    User ||--o{ Shoe : "athlete_id"
+    ShoeModelVersion ||--o{ Shoe : "shoe_model_version_id"
+    User ||--o{ ShoeModel : "created_by"
+    ShoeModel ||--o{ ShoeModelVersion : "shoe_model_id"
+    User ||--o{ Tag : "athlete_id"
+    User ||--o{ Upload : "athlete_id"
+    UploadBatch ||--o{ Upload : "batch_id"
+    Activity ||--o{ Upload : "activity_id"
+    Shoe ||--o{ Upload : "shoe_id"
+    User ||--o{ UploadBatch : "athlete_id"
+    User ||--o{ UserRelationship : "owner_id"
+    User ||--o{ UserRelationship : "grantee_id"
+    User ||--o{ Webhook : "owner_id"
+    Webhook ||--o{ WebhookDelivery : "webhook_id"
+    User ||--o{ Workout : "created_by"
+    WorkoutFolder ||--o{ Workout : "folder_id"
+    User ||--o{ WorkoutFolder : "created_by"
+    Workout ||--o{ WorkoutStep : "workout_id"
+    WorkoutStep ||--o{ WorkoutStep : "parent_step_id"
+    User ||--o{ ZoneSet : "athlete_id"
+```
+
+A few things in this schema that aren't self-explanatory from the diagram
+alone:
+
+- **`Record` has no surrogate `id`** — its primary key is the composite
+  `(activity_id, ts)`, and it's the one hypertable in the system
+  (partitioned on `ts`, 1-day chunks — 1,444 chunk tables in the local dev
+  DB alone). Every other table is a normal (non-partitioned) Postgres
+  table. See `AWS_MIGRATION_PLAN.md` §4 for why this table specifically
+  drove the TimescaleDB choice.
+- **`Activity` has two different self-referential FKs, and they're
+  mutually exclusive by application-level validation** (not a DB
+  constraint): `parent_activity_id` links a multisport/transition leg to
+  its parent session (`sport in ("multisport", "transition")`);
+  `primary_activity_id` links a duplicate upload to the activity it's a
+  duplicate of. The API explicitly rejects linking a multisport session as
+  a duplicate, and rejects a duplicate-of-a-duplicate chain (`views.py`'s
+  merge-duplicate validation) — the schema itself would happily allow
+  either, so this is enforced in application code, not by a check
+  constraint.
+- **`WorkoutStep.parent_step_id`** is how `repeat` groups nest — a step
+  with `kind="repeat"` is a container whose children point back at it via
+  this column; the tree is walked in application code (§6), not via a
+  recursive SQL query anywhere in either backend.
+- **`Shoe` is two hops from its catalog data**: `Shoe` (an athlete's owned
+  pair) → `ShoeModelVersion` (a specific version/colourway) →
+  `ShoeModel` (manufacturer + model name) — mileage/retirement tracking
+  lives on `Shoe` itself, the catalog tables are just reference data
+  shared across athletes.
+- **Nullable FKs are the norm, not the exception**, here — `workout_id`,
+  `bike_id`, `shoe_id` on `Activity`; `assigned_by`, `activity_id` on
+  `ScheduledWorkout`; `batch_id`, `activity_id`, `shoe_id` on `Upload`; etc.
+  are all optional links, reflecting that most of this data starts
+  disconnected (an uploaded activity has no matched workout until
+  auto-matching or a manual link happens) rather than being created
+  pre-linked.
+
 ## 3. Authentication & authorization
 
 Three credential types are accepted on the same API surface, distinguished
