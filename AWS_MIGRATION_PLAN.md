@@ -16,10 +16,14 @@ as a concrete pre-migration task, not glossed over.
 
 ## 1. Current architecture (as-is)
 
+See `ARCHITECTURE.md` for the full system reference (domain model, auth,
+the CQL query language, ingestion pipeline, frontend, testing, CI). This
+section is just the subset relevant to an AWS move.
+
 | Component | What it is today |
 |---|---|
 | **Python backend** | Django 6 + DRF, `gunicorn`, served on :8000. OAuth2 (django-oauth-toolkit) + scoped delegated JWTs (RS256, key pair on disk). |
-| **Java backend** | Spring Boot 4 / Java 24, parity port of the same API, served on :8080. Same JWT scheme, own key pair. Uses Spring Batch **in-process** (not a queue) with virtual threads for upload ingestion — no separate worker process, no Redis dependency. |
+| **Java backend** | Spring Boot 4 / Java 24, parity port of the same API, served on :8080. Same JWT scheme, own key pair. Uses Spring Batch **in-process** (not a queue) for upload ingestion — no separate worker process, no Redis dependency — but jobs are deliberately serialized onto a single virtual thread, one file at a time, not concurrent (see `ARCHITECTURE.md` §5.2). |
 | **Celery worker (Python only)** | Separate container, consumes Redis-backed queue: `process_upload` (parses FIT/GPX/TCX, computes streams/laps/best-efforts/TSS) and `deliver_webhook` (signed outbound POST with retry/backoff). |
 | **Database** | TimescaleDB (Postgres 16 + extension), one instance per backend locally. `activities_record` (1 Hz stream data: HR/power/cadence/etc. per second per activity) is a **real hypertable**, partitioned on `ts`, created via raw SQL migration (`CREATE EXTENSION timescaledb; SELECT create_hypertable(...)`). This is the one piece of infra that isn't "just Postgres." |
 | **Redis** | Celery broker + result backend (Python only; unused by Java). |
@@ -221,8 +225,10 @@ Python backend.** Every argument in §5.2 — removing idle 24/7 worker cost,
 removing Redis/ElastiCache, elastic burst scaling for batch imports — is a
 Lambda-vs-Celery-on-Fargate comparison. Java doesn't have the thing Lambda
 would be replacing: ingestion already runs in-process inside the API
-service (Spring Batch, virtual threads), with no dedicated worker task
-idling between uploads and no Redis broker in the picture at all. So:
+service (Spring Batch, on a single dedicated virtual thread — see
+`ARCHITECTURE.md` §5.2 for why it's deliberately serialized to one file at
+a time, not concurrent), with no dedicated worker task idling between
+uploads and no Redis broker in the picture at all. So:
 
 - **If Python is the chosen production backend**: move `process_upload` to
   Lambda-on-SQS. The idle-cost and burst-scaling arguments are real and
@@ -240,14 +246,19 @@ idling between uploads and no Redis broker in the picture at all. So:
   Connect account export — the README names Garmin Connect as a primary
   import source, and `process_upload` already has special-case handling
   for the metadata-stub FITs those exports mix in — can be exactly that
-  large. A batch that size run in-process today means sustained CPU-bound
-  parsing work sharing virtual threads and heap with whatever else the
-  same task is serving at that moment, including live user requests. The
-  fix is a **second ECS service running the same Java image**, invoked via
-  its own internal endpoint or a lightweight SQS-consumed-by-ECS queue (not
+  large. A batch that size runs in-process today, one file at a time on a
+  single dedicated virtual thread (a deliberate fix for a real cross-file
+  data-corruption bug when jobs ran concurrently — `ARCHITECTURE.md` §5.2
+  has the mechanism), meaning that CPU-bound parsing work both takes a
+  while to work through *and* shares the same task's heap as whatever else
+  it's serving at that moment, including live user requests. The fix is a
+  **second ECS service running the same Java image**, invoked via its own
+  internal endpoint or a lightweight SQS-consumed-by-ECS queue (not
   Lambda — same JVM runtime, no cold-start penalty, no rewrite), so a large
   Garmin export can scale out its own task count independently of the
-  request-serving fleet instead of competing with it. Java's JVM cold-start
+  request-serving fleet instead of competing with it — more parallel
+  single-worker queues (one per task), which is the only axis this
+  particular serialization can be scaled on. Java's JVM cold-start
   penalty on Lambda specifically (seconds, not the sub-second Python figure
   in §5.2) would need SnapStart or GraalVM native-image work to avoid —
   complexity that buys nothing here since ECS-to-ECS decoupling already
