@@ -611,7 +611,7 @@ sequenceDiagram
     C->>Ctl: GET /v1/uploads/{id} (poll)
     Ctl-->>C: status=queued/processing
 
-    Note over JL: launch() returns immediately;<br/>the job itself runs on ONE dedicated<br/>virtual thread - see note below
+    Note over JL: launch() returns immediately -<br/>the job itself runs on ONE dedicated<br/>virtual thread, see note below
     JL->>Job: syncJobOperator.start(processUploadJob)
     Job->>FS: parseFileStep (com.garmin:fit SDK, or GPX/TCX parser)
     Job->>DB: loadRecordsStep - chunked JDBC batch insert,<br/>1000 Record rows/chunk
