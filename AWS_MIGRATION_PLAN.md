@@ -154,7 +154,7 @@ task per file as today.
 | | Celery-on-Fargate (current shape) | Lambda |
 |---|---|---|
 | **Idle cost** | Worker task runs 24/7 regardless of upload volume — you're paying for idle capacity between uploads. | Pay only per invocation + duration. For a training-log app, upload traffic is bursty (batch Garmin exports, occasional single uploads) with long idle stretches — this is close to Lambda's ideal use case. |
-| **Scaling burst imports** | A large batch (e.g. a full Garmin export .zip) queues up behind however many worker processes/tasks you've provisioned; scaling out means adding Fargate tasks, which isn't instant. | Scales to hundreds of concurrent file-parses automatically; a 500-file batch import finishes in roughly the time one file takes, not 500× one file. This is a genuine capability upgrade, not just a cost optimization. |
+| **Scaling burst imports** | A large batch (e.g. a full Garmin export .zip) queues up behind however many worker processes/tasks you've provisioned; scaling out means adding Fargate tasks, which isn't instant. | Scales concurrent file-parses automatically; a several-hundred-file batch finishes in roughly the time one file takes, not N× one file. Note the app's own batch cap is up to 50,000 files (`MAX_BATCH_FILES` in `uploads/services.py`) — a batch anywhere near that size would hit the **default Lambda account concurrency limit (1,000 concurrent executions)**, which is a soft limit AWS will raise on request, worth flagging as a setup step rather than a blocker. |
 | **Cold starts** | N/A — long-running process. | Python Lambda cold start is small (typically sub-second to ~1-2s with the dependency set here — `fitparse`/`gpxpy`/`lxml` aren't huge). Provisioned concurrency can remove this entirely if it matters, at a cost. |
 | **Execution time limit** | Unbounded (worker just keeps running). | 15-minute hard cap per invocation. A single FIT/GPX/TCX file parse is milliseconds-to-low-seconds today — not a real constraint here unless a single file gets pathologically large. |
 | **Code reuse** | `uploads/processing.py`'s `ingest_upload()` already isolates parsing from the Celery/Django-request plumbing around it. | Same function is largely reusable — the main rewrite is the entry point (Lambda handler instead of `@shared_task`) and, critically, the DB access pattern (see below). |
@@ -197,18 +197,30 @@ idling between uploads and no Redis broker in the picture at all. So:
   directly onto SQS redrive + DLQ). Combined with dropping Celery, this is
   what gets Redis/ElastiCache off the bill entirely.
 - **If Java is the chosen production backend**: don't move ingestion to
-  Lambda. There's no idle worker or broker cost to eliminate, and Java's
-  JVM cold-start penalty on Lambda (seconds, not the sub-second Python
-  figure in §5.2) would need SnapStart or GraalVM native-image work to
-  avoid — real added complexity for a win that doesn't exist here. If large
-  batch imports ever contend enough with live API request-serving on the
-  same task (the one legitimate remaining concern), the fix is splitting
-  ingestion into its **own ECS service** — still in-process Spring Batch,
-  same runtime, no queue/Lambda rewrite — not adopting Lambda. Webhook
-  delivery has the same answer: it's a lighter-weight in-process call
-  today with its own retry handling; no queue needed unless delivery
-  volume grows enough to justify one, and if it does, SQS-consumed-by-ECS
-  is a smaller step than SQS-consumed-by-Lambda for a Java shop.
+  Lambda, but **do** split it off the request-serving fleet — this isn't a
+  hypothetical "if it ever becomes a concern." The app already caps batch
+  imports at up to **50,000 files / 200MB per `.zip`**
+  (`MAX_BATCH_FILES`/`MAX_BATCH_BYTES` in `uploads/services.py`, mirrored
+  in Java's `max-batch-files: 50000`), specifically because a full Garmin
+  Connect account export — the README names Garmin Connect as a primary
+  import source, and `process_upload` already has special-case handling
+  for the metadata-stub FITs those exports mix in — can be exactly that
+  large. A batch that size run in-process today means sustained CPU-bound
+  parsing work sharing virtual threads and heap with whatever else the
+  same task is serving at that moment, including live user requests. The
+  fix is a **second ECS service running the same Java image**, invoked via
+  its own internal endpoint or a lightweight SQS-consumed-by-ECS queue (not
+  Lambda — same JVM runtime, no cold-start penalty, no rewrite), so a large
+  Garmin export can scale out its own task count independently of the
+  request-serving fleet instead of competing with it. Java's JVM cold-start
+  penalty on Lambda specifically (seconds, not the sub-second Python figure
+  in §5.2) would need SnapStart or GraalVM native-image work to avoid —
+  complexity that buys nothing here since ECS-to-ECS decoupling already
+  solves the actual problem (contention), as opposed to Lambda's problem
+  (idle cost), which Java never had. Webhook delivery has the same answer:
+  it's a lighter-weight in-process call today with its own retry handling;
+  no separate service needed unless delivery volume grows enough to justify
+  one.
 
 Net: §10 Phase 3 (the Lambda ingestion move) is a real, worthwhile phase
 **only in the Python-backend branch of §13's open decision #1**. If Java is
@@ -347,12 +359,17 @@ behavior change):
 - Decommission local-only infra once production is stable for an agreed
   bake period.
 
-**Phase 3 — ingestion modernization** (optional, **Python-backend branch
-only** — see §5.4; if Java is the chosen backend this phase is void, do
-once Phase 1/2 are boring and stable):
-- Move `process_upload` and `deliver_webhook` to Lambda-on-SQS (§5), drop
-  the Celery worker service, drop ElastiCache.
-- Add RDS Proxy in front of RDS for the Lambda connection pattern.
+**Phase 3 — ingestion modernization** (do once Phase 1/2 are boring and
+stable; shape depends on §13 decision 1 — see §5.4):
+- **Python branch**: move `process_upload` and `deliver_webhook` to
+  Lambda-on-SQS, drop the Celery worker service, drop ElastiCache. Add RDS
+  Proxy in front of RDS for the Lambda connection pattern.
+- **Java branch**: split ingestion out of the request-serving ECS service
+  into its own ECS service (same image, same in-process Spring Batch code
+  path — no Lambda, no rewrite), so a large Garmin Connect batch export
+  (up to the app's own 50,000-file batch limit) scales its own task count
+  independently instead of contending with live API traffic on the same
+  task.
 
 **Phase 4 — backend consolidation** (optional, product decision — §11):
 - If/when the team decides to run one backend long-term, decommission the
@@ -444,12 +461,12 @@ if it matters at this scale.
 2. **RDS+extension vs Timescale Cloud** (§4) — recommended default is RDS,
    revisit only if a specific commercial Timescale feature becomes a hard
    requirement.
-3. **Timeline for the Lambda ingestion move** (§5/§10 Phase 3) — **only
-   applicable if decision 1 lands on Python**; Java's in-process ingestion
-   has no idle-worker/broker cost for Lambda to remove, so this phase is
-   void in the Java branch. If Python is kept: bundle into the initial
-   migration, or deliberately defer until the lift-and-shift is proven
-   stable? Recommendation is to defer.
+3. **Timeline for Phase 3's ingestion split** (§5/§10 Phase 3) — shape
+   depends on decision 1: Lambda-on-SQS if Python, a second same-image ECS
+   service if Java (both driven by the same real concern — a Garmin
+   Connect export can be up to the app's own 50,000-file batch cap).
+   Either way: bundle into the initial migration, or deliberately defer
+   until the lift-and-shift is proven stable? Recommendation is to defer.
 4. **Is there a real user base to cut over already**, or is this
    pre-launch? Changes whether Phase 2's DNS cutover has a bake-period/
    rollback plan that matters for real people, or is just "flip it."
