@@ -26,6 +26,12 @@ export interface AuthResponse {
   tokens: TokenResponse;
 }
 
+export interface DelegatedTokenResponse {
+  token: string;
+  token_type: string;
+  expires_in: number;
+}
+
 export interface CoachedAthlete {
   relationship_id: string;
   user_id: string;

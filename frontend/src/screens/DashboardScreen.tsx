@@ -33,7 +33,7 @@ function historyWindow(): { after: string; before: string } {
 const { after: historyAfter, before: historyBefore } = historyWindow();
 
 export function DashboardScreen() {
-  const { user } = useAuth();
+  const { user, isCoachAccount } = useAuth();
 
   const fitnessQuery = useQuery({
     queryKey: ["fitness", user?.id],
@@ -60,7 +60,10 @@ export function DashboardScreen() {
   const contextsQuery = useQuery({
     queryKey: ["contexts"],
     queryFn: getContexts,
-    enabled: !!user?.is_coach,
+    // isCoachAccount, not user.is_coach: this must stay based on the signed-in principal,
+    // not whichever profile is currently active - otherwise switching to view as a
+    // non-coaching athlete would hide the coach's own "Your athletes" section entirely.
+    enabled: isCoachAccount,
   });
 
   const points = fitnessQuery.data?.data ?? [];
@@ -95,7 +98,7 @@ export function DashboardScreen() {
         <TrainingHistory activities={historyActivities} athleteId={user.id} />
       </Card>
 
-{user.is_coach && <CoachingSection athletes={contextsQuery.data?.coaching ?? []} />}
+{isCoachAccount && <CoachingSection athletes={contextsQuery.data?.coaching ?? []} />}
     </div>
   );
 }

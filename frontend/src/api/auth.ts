@@ -1,5 +1,5 @@
 import { apiFetch, apiFetchForm } from "./client";
-import type { Athlete, AuthResponse, Contexts, TokenResponse } from "./types";
+import type { Athlete, AuthResponse, Contexts, DelegatedTokenResponse, TokenResponse } from "./types";
 
 export function register(name: string, email: string, password: string): Promise<AuthResponse> {
   return apiFetch<AuthResponse>("/v1/auth/register", {
@@ -39,4 +39,16 @@ export function getMe(): Promise<Athlete> {
 
 export function getContexts(): Promise<Contexts> {
   return apiFetch<Contexts>("/v1/me/contexts");
+}
+
+// Mints a short-lived JWT carrying a different athlete_id than the caller's own - every
+// endpoint that resolves "which athlete" implicitly from the token (not from an explicit
+// :id in the URL) then transparently acts on athleteId's data instead. The caller (sub)
+// doesn't change, so this only succeeds if the caller has an active coach/viewer
+// relationship granting access - see backend/authn/views.py::CreateJwtView.
+export function createDelegatedJwt(athleteId: string): Promise<DelegatedTokenResponse> {
+  return apiFetch<DelegatedTokenResponse>("/v1/auth/jwt", {
+    method: "POST",
+    body: { athlete_id: athleteId },
+  });
 }

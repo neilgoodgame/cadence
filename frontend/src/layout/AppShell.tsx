@@ -1,6 +1,7 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ThemeToggle } from "./ThemeToggle";
+import { TrainingContextSwitcher } from "./TrainingContextSwitcher";
 
 // Only screens with a real route get a link; the rest are later stages and stay inert
 // labels rather than linking to a route that doesn't exist yet.
@@ -67,7 +68,10 @@ export function AppShell() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <ThemeToggle />
-          <div style={{ fontSize: 13, color: "var(--ink2)" }}>{user?.name}</div>
+          <TrainingContextSwitcher />
+          <Link to="/preferences" style={{ fontSize: 13, color: "var(--ink2)", textDecoration: "none" }}>
+            {user?.name}
+          </Link>
           <button
             onClick={logout}
             style={{
