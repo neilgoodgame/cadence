@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ProfileChip } from "./ProfileChip";
 import { ThemeToggle } from "./ThemeToggle";
 import { TrainingContextSwitcher } from "./TrainingContextSwitcher";
 
@@ -17,7 +18,7 @@ const NAV_ITEMS = [
 ];
 
 export function AppShell() {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
@@ -68,10 +69,6 @@ export function AppShell() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <ThemeToggle />
-          <TrainingContextSwitcher />
-          <Link to="/preferences" style={{ fontSize: 13, color: "var(--ink2)", textDecoration: "none" }}>
-            {user?.name}
-          </Link>
           <button
             onClick={logout}
             style={{
@@ -89,9 +86,66 @@ export function AppShell() {
         </div>
       </aside>
 
-      <main style={{ flex: 1, padding: 32 }}>
-        <Outlet />
-      </main>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <header
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: 8,
+            padding: "12px 32px",
+            borderBottom: "1px solid var(--line)",
+            background: "var(--card)",
+            position: "sticky",
+            top: 0,
+            zIndex: 10,
+          }}
+        >
+          <Link
+            to="/import"
+            style={{
+              padding: "8px 15px",
+              borderRadius: 8,
+              background: "var(--ember)",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            + Import activity
+          </Link>
+          {/* No notifications feature exists yet (no route, no API) - inert placeholder,
+              same convention as NAV_ITEMS above for not-yet-built screens. */}
+          <div
+            aria-hidden
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 38,
+              height: 38,
+              borderRadius: 9,
+              border: "1px solid var(--line)",
+              background: "var(--card)",
+              color: "var(--ink3)",
+              flexShrink: 0,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z" />
+              <path d="M6.5 13.5a1.6 1.6 0 0 0 3 0" />
+            </svg>
+          </div>
+          <div style={{ width: 1, height: 28, background: "var(--line)", margin: "0 3px" }} />
+          <TrainingContextSwitcher />
+          <ProfileChip />
+        </header>
+
+        <main style={{ flex: 1, padding: 32 }}>
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

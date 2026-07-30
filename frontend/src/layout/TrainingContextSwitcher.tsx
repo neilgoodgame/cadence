@@ -7,6 +7,9 @@ import { useAuth } from "../auth/AuthContext";
  * Lets a coach switch between viewing their own training and any athlete they coach.
  * Hidden entirely for non-coaching accounts. `isCoachAccount` (not `user.is_coach`) gates
  * this - see AuthContext for why that distinction matters while a switch is active.
+ *
+ * Lives in the shared top bar (AppShell), not the sidebar - the dropdown opens downward,
+ * right-aligned under the button, since it sits near the top bar's right edge.
  */
 export function TrainingContextSwitcher() {
   const { user, activeAthleteId, isCoachAccount, switchToAthlete, switchToSelf } = useAuth();
@@ -52,25 +55,22 @@ export function TrainingContextSwitcher() {
         onClick={() => setOpen((o) => !o)}
         disabled={switching}
         style={{
-          width: "100%",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
           gap: 8,
-          padding: "8px 12px",
-          borderRadius: 8,
+          padding: "7px 12px",
+          borderRadius: 9,
           border: "1px solid var(--line)",
           background: "var(--card)",
           fontSize: 13,
           fontWeight: 600,
           color: "var(--ink2)",
           cursor: switching ? "default" : "pointer",
+          whiteSpace: "nowrap",
         }}
       >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {activeAthleteId ? `Coaching · ${user?.name}` : "My training"}
-        </span>
-        <span style={{ fontSize: 10, flexShrink: 0 }}>▾</span>
+        <span>{activeAthleteId ? `Coaching · ${user?.name}` : "My training"}</span>
+        <span style={{ fontSize: 10 }}>▾</span>
       </button>
 
       {open && (
@@ -79,17 +79,15 @@ export function TrainingContextSwitcher() {
           <div
             style={{
               position: "absolute",
-              bottom: "calc(100% + 6px)",
-              left: 0,
+              top: "calc(100% + 6px)",
+              right: 0,
               zIndex: 31,
               width: 220,
               maxHeight: 260,
               overflowY: "auto",
               background: "var(--card)",
-              // var(--card) is translucent by design (every card in this app is, over the
-              // gradient canvas) - fine for page content, but this dropdown sits directly
-              // over other interactive sidebar controls (the theme toggle), so it needs a
-              // blur or their content visibly (if faintly) shows through it.
+              // var(--card) is translucent by design - fine for page content, but this sits
+              // over other top-bar controls, so it needs a blur or their content shows through.
               backdropFilter: "blur(14px)",
               WebkitBackdropFilter: "blur(14px)",
               border: "1px solid var(--line)",
