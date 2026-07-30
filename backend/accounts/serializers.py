@@ -20,6 +20,7 @@ class UserSerializer(serializers.ModelSerializer):
             "threshold_pace",
             "lthr",
             "max_hr",
+            "resting_hr",
             "is_coach",
             "best_effort_top_n",
         ]

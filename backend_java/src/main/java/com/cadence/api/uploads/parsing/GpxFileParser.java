@@ -88,7 +88,7 @@ public final class GpxFileParser {
 				int t = (int) (time.getEpochSecond() - startDate.getEpochSecond());
 				samples.add(new ParsedActivity.Sample(
 						t, lat, lng, altitude, cumulativeKm, heartrate, cadence, power, null,
-						null, null, null, null, null));
+						null, null, null, null, null, null));
 			}
 
 			if (!trkpts.isEmpty() && segStartTime != null) {

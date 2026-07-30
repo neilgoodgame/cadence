@@ -50,6 +50,25 @@ public final class UploadCalculations {
 		return count < 2 ? null : (int) Math.round(gain);
 	}
 
+	/** Sum of negative altitude deltas between consecutive readings; {@code null} if fewer than two altitude samples exist. */
+	public static Integer totalDescent(List<ParsedActivity.Sample> samples) {
+		Double previous = null;
+		double loss = 0;
+		int count = 0;
+		for (ParsedActivity.Sample sample : samples) {
+			Double altitude = sample.altitude();
+			if (altitude == null) {
+				continue;
+			}
+			count++;
+			if (previous != null && altitude < previous) {
+				loss += previous - altitude;
+			}
+			previous = altitude;
+		}
+		return count < 2 ? null : (int) Math.round(loss);
+	}
+
 	private static double round3(double v) {
 		return Math.round(v * 1000) / 1000.0;
 	}

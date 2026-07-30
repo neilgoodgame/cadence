@@ -72,6 +72,11 @@ def _max(values: Sequence[float | None]) -> float | None:
     return max(filtered) if filtered else None
 
 
+def _min(values: Sequence[float | None]) -> float | None:
+    filtered = [v for v in values if v is not None]
+    return min(filtered) if filtered else None
+
+
 def _moving_time(samples: Sequence[Sample]) -> int:
     if not samples:
         return 0
@@ -98,6 +103,18 @@ def _total_ascent(samples: Sequence[Sample]) -> int | None:
         if curr > prev:
             gain += curr - prev
     return int(round(gain))
+
+
+def _total_descent(samples: Sequence[Sample]) -> int | None:
+    raw_altitudes = [s.get("altitude") for s in samples]
+    altitudes = [a for a in raw_altitudes if a is not None]
+    if len(altitudes) < 2:
+        return None
+    loss = 0.0
+    for prev, curr in zip(altitudes, altitudes[1:], strict=False):
+        if curr < prev:
+            loss += prev - curr
+    return int(round(loss))
 
 
 def compute_normalized_power(power_series: Sequence[float | None], window: int = 30) -> float | None:
@@ -243,6 +260,34 @@ def compute_tss(
     if power_tss is not None:
         return power_tss
     return _hr_based_tss(athlete, heartrate_series, activity.moving_time)
+
+
+def compute_edwards_trimp(athlete: User, heartrate_series: Sequence[float | None]) -> float | None:
+    """Edwards' TRIMP: sum over HR zones of (minutes in zone * zone number 1-5). Chosen
+    over Banister's original formula because it needs no resting-HR baseline - it reuses
+    the same HR zone set already computed for hrTSS.
+    """
+    zone_set = get_or_create_zone_set(athlete, "heart_rate")
+    zones_seconds = compute_time_in_zone_seconds(athlete, heartrate_series)
+    if not zones_seconds:
+        return None
+    trimp = 0.0
+    for zone_number, zone in enumerate(zone_set.zones, start=1):
+        seconds = zones_seconds.get(zone["name"], 0)
+        trimp += (seconds / 60) * zone_number
+    return round(trimp, 1)
+
+
+def compute_calories(power_series: Sequence[float | None], moving_time_seconds: int) -> int | None:
+    """Power-based estimate only: work_kJ / 0.24 (a standard cycling efficiency
+    approximation). Deliberately not falling back to an HR-based estimate for
+    power-less activities, which would be a much rougher guess.
+    """
+    avg_power = _mean(power_series)
+    if avg_power is None:
+        return None
+    work_kj = avg_power * moving_time_seconds / 1000
+    return round(work_kj / 0.24)
 
 
 def training_effect_label(aerobic_training_effect: float | None) -> str:
@@ -527,6 +572,7 @@ def _ingest_activity(
         distance_km=_total_distance_km(samples, laps),
         distance_source=parsed.get("distance_source", "gps" if parsed["has_gps"] else "manual"),
         ascent=_total_ascent(samples),
+        total_descent=_total_descent(samples),
         parent_activity=parent,
         # Upload-level metadata describes the session as a whole, so it lives on the
         # parent (or sole) activity rather than being duplicated onto each leg.
@@ -607,6 +653,49 @@ def _ingest_activity(
             avg_humidity = _mean(humidity_series)
             activity.avg_humidity = round(avg_humidity) if avg_humidity is not None else None
             update_fields.append("avg_humidity")
+
+    max_power = _max(power_series)
+    if max_power is not None:
+        activity.max_power = round(max_power)
+        update_fields.append("max_power")
+
+    cadence_series = [s.get("cadence") for s in samples]
+    if any(c is not None for c in cadence_series):
+        avg_cadence = _mean(cadence_series)
+        max_cadence = _max(cadence_series)
+        activity.avg_cadence = round(avg_cadence) if avg_cadence is not None else None
+        activity.max_cadence = round(max_cadence) if max_cadence is not None else None
+        update_fields.extend(["avg_cadence", "max_cadence"])
+
+    speed_series = [s.get("speed") for s in samples]
+    max_speed_ms = _max(speed_series)
+    if max_speed_ms is not None:
+        activity.max_speed = round(max_speed_ms * 3.6, 1)
+        update_fields.append("max_speed")
+
+    altitude_series = [s.get("altitude") for s in samples]
+    if any(a is not None for a in altitude_series):
+        elevation_min = _min(altitude_series)
+        elevation_max = _max(altitude_series)
+        activity.elevation_min = round(elevation_min) if elevation_min is not None else None
+        activity.elevation_max = round(elevation_max) if elevation_max is not None else None
+        update_fields.extend(["elevation_min", "elevation_max"])
+
+    calories = compute_calories(power_series, activity.moving_time)
+    if calories is not None:
+        activity.calories = calories
+        update_fields.append("calories")
+
+    trimp = compute_edwards_trimp(athlete, hr_series)
+    if trimp is not None:
+        activity.trimp = trimp
+        update_fields.append("trimp")
+
+    left_balance_series = [s.get("left_balance_pct") for s in samples]
+    if any(v is not None for v in left_balance_series):
+        avg_left_balance = _mean(left_balance_series)
+        activity.avg_left_balance_pct = round(avg_left_balance, 1) if avg_left_balance is not None else None
+        update_fields.append("avg_left_balance_pct")
 
     aerobic_te = parsed.get("aerobic_training_effect")
     anaerobic_te = parsed.get("anaerobic_training_effect")

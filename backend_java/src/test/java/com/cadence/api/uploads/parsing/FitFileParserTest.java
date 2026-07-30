@@ -75,4 +75,20 @@ class FitFileParserTest {
 			assertThat(parsed.get(0).device()).isEqualTo("Garmin Epix Gen2");
 		}
 	}
+
+	@Test
+	void leftBalancePctConvertsRightFlaggedValueToLeftPercent() {
+		// 0x80 (right flag) | 62 (62% right) -> 38% left.
+		assertThat(FitFileParser.leftBalancePct((short) (0x80 | 62))).isEqualTo(38.0);
+	}
+
+	@Test
+	void leftBalancePctWithoutRightFlagIsAlreadyLeftPercent() {
+		assertThat(FitFileParser.leftBalancePct((short) 45)).isEqualTo(45.0);
+	}
+
+	@Test
+	void leftBalancePctNullWhenFieldMissing() {
+		assertThat(FitFileParser.leftBalancePct(null)).isNull();
+	}
 }

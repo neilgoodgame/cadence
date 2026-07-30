@@ -3,6 +3,8 @@ from django.urls import path
 from uploads.views import ActivityBatchUploadView
 
 from .views import (
+    ActivityCommentDetailView,
+    ActivityCommentListView,
     ActivityDetailView,
     ActivityListView,
     ActivityTagView,
@@ -24,6 +26,12 @@ urlpatterns = [
     path("v1/activities/<str:id>/infer-workout", InferWorkoutView.as_view(), name="activity-infer-workout"),
     path("v1/activities/<str:id>/streams", StreamsView.as_view(), name="activity-streams"),
     path("v1/activities/<str:id>/curves", CurvesView.as_view(), name="activity-curves"),
+    path("v1/activities/<str:id>/comments", ActivityCommentListView.as_view(), name="activity-comments"),
+    path(
+        "v1/activities/<str:id>/comments/<str:comment_id>",
+        ActivityCommentDetailView.as_view(),
+        name="activity-comment-detail",
+    ),
     path("v1/tags", TagListView.as_view(), name="tag-list"),
     path("v1/activities/<str:id>/tags", ActivityTagView.as_view(), name="activity-tags"),
     path("v1/activities/<str:id>/tags/<str:tag_id>", ActivityUntagView.as_view(), name="activity-untag"),

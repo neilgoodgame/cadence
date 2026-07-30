@@ -44,6 +44,10 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "max_hr")
 	private Integer maxHr;
 
+	/** Optional - only used for the Karvonen heart-rate-reserve % shown on Activity Analysis's Stats tab. */
+	@Column(name = "resting_hr")
+	private Integer restingHr;
+
 	@Column(name = "best_effort_top_n", nullable = false)
 	private int bestEffortTopN = 10;
 
@@ -154,6 +158,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setMaxHr(Integer maxHr) {
 		this.maxHr = maxHr;
+	}
+
+	public Integer getRestingHr() {
+		return restingHr;
+	}
+
+	public void setRestingHr(Integer restingHr) {
+		this.restingHr = restingHr;
 	}
 
 	public int getBestEffortTopN() {

@@ -2,7 +2,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from .models import Activity, BestEffort, DurationCurve, Lap, Tag
+from .models import Activity, ActivityComment, BestEffort, DurationCurve, Lap, Tag
 
 
 class ActivitySerializer(serializers.ModelSerializer):
@@ -32,6 +32,16 @@ class ActivitySerializer(serializers.ModelSerializer):
             "avg_hr",
             "max_hr",
             "ascent",
+            "max_power",
+            "avg_cadence",
+            "max_cadence",
+            "max_speed",
+            "total_descent",
+            "elevation_min",
+            "elevation_max",
+            "calories",
+            "trimp",
+            "avg_left_balance_pct",
             "start_weight_kg",
             "end_weight_kg",
             "fluids_ml",
@@ -113,3 +123,32 @@ class TagAttachSerializer(serializers.Serializer):
         if not attrs.get("tag_id") and not attrs.get("name"):
             raise serializers.ValidationError("Provide either tag_id or name.")
         return attrs
+
+
+class ActivityCommentSerializer(serializers.ModelSerializer):
+    author_id = serializers.CharField(read_only=True)
+    author_name = serializers.CharField(source="author.name", read_only=True)
+    author_role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ActivityComment
+        fields = ["id", "activity_id", "author_id", "author_name", "author_role", "text", "created"]
+
+    def get_author_role(self, obj: ActivityComment) -> str:
+        if obj.author_id == obj.activity.athlete_id:
+            return "athlete"
+        from accounts.models import UserRelationship
+
+        relationship = UserRelationship.objects.filter(
+            owner_id=obj.activity.athlete_id, grantee_id=obj.author_id, status=UserRelationship.STATUS_ACTIVE
+        ).first()
+        return relationship.role if relationship else "viewer"
+
+
+class ActivityCommentCreateSerializer(serializers.Serializer):
+    text = serializers.CharField(max_length=4000, trim_whitespace=True)
+
+    def validate_text(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("Comment text cannot be empty.")
+        return value

@@ -204,9 +204,10 @@ public final class FitFileParser {
 			Double coreTemp = developerFieldAsDouble(r, "core_temperature");
 			Double skinTemp = developerFieldAsDouble(r, "skin_temperature");
 			Double heatStrain = developerFieldAsDouble(r, "heat_strain_index");
+			Double leftBalancePct = leftBalancePct(r.getLeftRightBalance());
 			samples.add(new ParsedActivity.Sample(
 					t, lat, lng, altitude, distanceKm, heartrate, cadence, power, speed,
-					airTemp, humidity, coreTemp, skinTemp, heatStrain));
+					airTemp, humidity, coreTemp, skinTemp, heatStrain, leftBalancePct));
 		}
 
 		List<ParsedActivity.LapSummary> lapSummaries = new ArrayList<>(laps.size());
@@ -242,6 +243,22 @@ public final class FitFileParser {
 
 	private static double semicirclesToDegrees(int semicircles) {
 		return semicircles * (180.0 / Math.pow(2, 31));
+	}
+
+	/**
+	 * FIT's left_right_balance is a bitfield, not a plain number: bit 0x80 flags that the %
+	 * contribution in bits 0x7F belongs to the right leg rather than the left (dual-sided/
+	 * balance-capable power meters set this consistently). The SDK's getLeftRightBalance()
+	 * hands back the raw uint8, unlike enum-valued fields it doesn't resolve.
+	 */
+	static Double leftBalancePct(Short raw) {
+		if (raw == null) {
+			return null;
+		}
+		int value = raw & 0xFF;
+		int pct = value & 0x7F;
+		boolean isRight = (value & 0x80) != 0;
+		return (double) (isRight ? 100 - pct : pct);
 	}
 
 	/**

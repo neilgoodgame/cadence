@@ -39,6 +39,10 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     threshold_pace = models.CharField(max_length=10, blank=True, default="")
     lthr = models.PositiveIntegerField(null=True, blank=True)
     max_hr = models.PositiveIntegerField(null=True, blank=True)
+    # Optional - only used for the Karvonen heart-rate-reserve % shown on Activity
+    # Analysis's Stats tab. Every other threshold on this model is required for its own
+    # feature to work at all (zones, TSS); this one isn't, so it stays null until set.
+    resting_hr = models.PositiveIntegerField(null=True, blank=True)
     is_coach = models.BooleanField(default=False)
     best_effort_top_n = models.PositiveSmallIntegerField(default=10)
 

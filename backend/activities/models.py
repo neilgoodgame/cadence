@@ -64,6 +64,32 @@ class Activity(PrefixedIDModel):
     aerobic_training_effect = models.FloatField(null=True, blank=True)
     anaerobic_training_effect = models.FloatField(null=True, blank=True)
     training_effect_label = models.CharField(max_length=20, blank=True, default="")
+    # Extended stats (Activity Analysis "Stats" tab). All computed once at ingest from the
+    # record stream, same pattern as avg_power/max_hr above - null whenever the source data
+    # needed for that one metric wasn't present (e.g. no altitude stream -> no elevation
+    # fields; no power meter -> no max_power/calories). Deliberately NOT storing metrics
+    # that are pure arithmetic over fields that already exist (avg W/kg, work in kJ, avg
+    # speed, HR reserve % all derive from avg_power/moving_time/distance_km/avg_hr plus the
+    # athlete's own profile - the frontend computes those directly).
+    max_power = models.IntegerField(null=True, blank=True)
+    avg_cadence = models.IntegerField(null=True, blank=True)
+    max_cadence = models.IntegerField(null=True, blank=True)
+    max_speed = models.FloatField(null=True, blank=True, help_text="km/h")
+    total_descent = models.IntegerField(null=True, blank=True, help_text="metres")
+    elevation_min = models.IntegerField(null=True, blank=True, help_text="metres")
+    elevation_max = models.IntegerField(null=True, blank=True, help_text="metres")
+    # Power-based estimate only (work_kJ / 0.24, a standard cycling efficiency
+    # approximation) - deliberately not falling back to an HR-based estimate for
+    # power-less activities, which would be a much rougher guess.
+    calories = models.IntegerField(null=True, blank=True, help_text="kcal")
+    # Edwards' TRIMP: sum over HR zones of (minutes in zone * zone number 1-5). Chosen
+    # over Banister's original formula specifically because it needs no resting-HR
+    # baseline - reuses the same HR zone set already computed for hrTSS.
+    trimp = models.FloatField(null=True, blank=True)
+    # % of power from the left leg, from the FIT record stream's left_right_balance field
+    # (dual-sided/balance-capable power meters only - null for everything else, which is
+    # most activities). Right % = 100 - this.
+    avg_left_balance_pct = models.FloatField(null=True, blank=True)
     workout = models.ForeignKey(Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     bike = models.ForeignKey(Bike, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     shoe = models.ForeignKey(Shoe, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
@@ -237,3 +263,26 @@ class BestEffort(models.Model):
 
     def __str__(self) -> str:
         return f"{self.athlete_id} {self.kind} {self.window}"
+
+
+class ActivityComment(PrefixedIDModel):
+    """A comment on an activity, from the athlete or anyone with read access to their data
+    (a coach or viewer share) — a lightweight social feature, not a data mutation, so it's
+    gated by user_may_read rather than user_may_write (see activities/views.py). Role
+    (athlete vs coach) is derived at read time from the relationship to the activity's
+    owner, not stored - it can change (a share could be revoked) and storing it would let
+    it drift from the truth.
+    """
+
+    id_prefix = "cmt"
+
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="activity_comments")
+    text = models.TextField()
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created"]
+
+    def __str__(self) -> str:
+        return f"{self.author_id} on {self.activity_id}"

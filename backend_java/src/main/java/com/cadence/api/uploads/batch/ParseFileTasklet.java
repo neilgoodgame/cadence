@@ -124,6 +124,7 @@ public class ParseFileTasklet implements Tasklet {
 					? parsed.distanceSource()
 					: (parsed.hasGps() ? DistanceSource.GPS : DistanceSource.MANUAL));
 			activity.setAscent(UploadCalculations.totalAscent(parsed.samples()));
+			activity.setTotalDescent(UploadCalculations.totalDescent(parsed.samples()));
 			if (isChild) {
 				activity.setParentActivity(parent);
 			}
