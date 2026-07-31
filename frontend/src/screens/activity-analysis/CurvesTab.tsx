@@ -171,7 +171,7 @@ function DurationCurveChart({
               </>
             )}
             <path d={chart.curveArea(chart.points) ?? ""} fill={fill} />
-            <path d={chart.curveLine(chart.points) ?? ""} fill="none" stroke={color} strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
+            <path d={chart.curveLine(chart.points) ?? ""} fill="none" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
           </g>
         </svg>
 
