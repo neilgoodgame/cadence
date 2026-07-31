@@ -56,6 +56,13 @@ export function recomputeActivityTss(id: string): Promise<Activity> {
   return apiFetch<Activity>(`/v1/activities/${id}/recompute-tss`, { method: "POST" });
 }
 
+/** Backfills max_power/cadence/elevation/calories/trimp etc. from stored records - for
+ * activities ingested before that computation existed. Can't recover avg_left_balance_pct
+ * (never persisted per-sample - see the backend's recompute-stats view docstring). */
+export function recomputeActivityStats(id: string): Promise<Activity> {
+  return apiFetch<Activity>(`/v1/activities/${id}/recompute-stats`, { method: "POST" });
+}
+
 export function deleteAllActivities(): Promise<void> {
   return apiFetch<void>("/v1/activities", { method: "DELETE" });
 }

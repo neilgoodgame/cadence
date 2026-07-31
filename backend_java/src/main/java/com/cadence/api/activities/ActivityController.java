@@ -23,12 +23,14 @@ public class ActivityController {
 
 	private final ActivityService activityService;
 	private final TssRecomputeService tssRecomputeService;
+	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
 	private final AccessGuard accessGuard;
 
 	public ActivityController(ActivityService activityService, TssRecomputeService tssRecomputeService,
-			AccessGuard accessGuard) {
+			DerivedStatsRecomputeService derivedStatsRecomputeService, AccessGuard accessGuard) {
 		this.activityService = activityService;
 		this.tssRecomputeService = tssRecomputeService;
+		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -77,6 +79,14 @@ public class ActivityController {
 		Activity activity = activityService.getActivity(id);
 		accessGuard.requireWrite(activity.getAthlete().getId());
 		tssRecomputeService.recomputeForActivity(id);
+		return activityService.toResponse(activityService.getActivity(id));
+	}
+
+	@PostMapping("/v1/activities/{id}/recompute-stats")
+	public ActivityResponse recomputeStats(@PathVariable String id) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		derivedStatsRecomputeService.recomputeForActivity(id);
 		return activityService.toResponse(activityService.getActivity(id));
 	}
 

@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { getCurves } from "../../api/activities";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getCurves, recomputeActivityStats } from "../../api/activities";
 import type { Activity, Athlete } from "../../api/types";
 import { formatDuration } from "../../lib/format";
 
@@ -37,6 +37,36 @@ function hrReservePct(activity: Activity, athlete: Athlete): number | null {
   return Math.round(((activity.avg_hr - athlete.resting_hr) / span) * 100);
 }
 
+function RecomputeButton({ activityId }: { activityId: string }) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => recomputeActivityStats(activityId),
+    onSuccess: (updated) => queryClient.setQueryData(["activity", activityId], updated),
+  });
+  return (
+    <button
+      type="button"
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+      title="Backfill max power, cadence, elevation, calories, and TRIMP from this activity's stored records - for activities uploaded before this stats tab existed. Can't recover L/R power balance, which isn't stored per-sample."
+      style={{
+        fontSize: 12,
+        fontWeight: 600,
+        padding: "5px 10px",
+        borderRadius: 8,
+        border: "1px solid var(--line)",
+        background: "none",
+        color: mutation.isSuccess ? "var(--ember)" : "var(--ink3)",
+        cursor: "pointer",
+        opacity: mutation.isPending ? 0.6 : 1,
+        marginBottom: 14,
+      }}
+    >
+      {mutation.isPending ? "Recomputing…" : "↺ Recompute stats"}
+    </button>
+  );
+}
+
 export function StatsTab({ activity, athlete }: { activity: Activity; athlete: Athlete }) {
   const { data: hrCurve } = useQuery({
     queryKey: ["activity-curve", activity.id, "heartrate"],
@@ -58,53 +88,67 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
     activity.total_descent != null || activity.elevation_min != null || activity.calories != null;
 
   if (!hasPowerCard && !hasHrCard && !hasSpeedCadenceCard && !hasElevationCard) {
-    return <div style={{ color: "var(--ink3)", fontSize: 13 }}>No extended stats available for this activity.</div>;
+    return (
+      <div>
+        <div style={{ color: "var(--ink3)", fontSize: 13, marginBottom: 14 }}>
+          No extended stats available for this activity.
+        </div>
+        <RecomputeButton activityId={activity.id} />
+      </div>
+    );
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-      {hasPowerCard && (
-        <Card title="POWER" color="var(--ember)">
-          <Stat label="Max Power" value={activity.max_power} unit="w" />
-          <Stat label="Avg Watts/kg" value={avgWkg} unit="w/kg" />
-          <Stat label="Work" value={workKj?.toLocaleString()} unit="kJ" />
-          {activity.avg_left_balance_pct != null && (
+    <div>
+      <RecomputeButton activityId={activity.id} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+        {hasPowerCard && (
+          <Card title="POWER" color="var(--ember)">
+            <Stat label="Max Power" value={activity.max_power} unit="w" />
+            <Stat label="Avg Watts/kg" value={avgWkg} unit="w/kg" />
+            <Stat label="Work" value={workKj?.toLocaleString()} unit="kJ" />
+            {activity.avg_left_balance_pct != null && (
+              <Stat
+                label="L/R Balance"
+                value={`${Math.round(activity.avg_left_balance_pct)}/${Math.round(100 - activity.avg_left_balance_pct)}`}
+                unit="%"
+              />
+            )}
+          </Card>
+        )}
+        {hasHrCard && (
+          <Card title="HEART RATE" color="#e0442e">
+            <Stat label="Max HR" value={activity.max_hr} unit="bpm" />
+            <Stat label="Best 20 min" value={best20MinHr} unit="bpm" />
+            <Stat label="TRIMP" value={activity.trimp != null ? Math.round(activity.trimp) : null} />
+            <Stat label="HR Reserve Avg" value={hrReservePct(activity, athlete)} unit="%" />
+          </Card>
+        )}
+        {hasSpeedCadenceCard && (
+          <Card title="SPEED · CADENCE" color="#3d7fd6">
+            <Stat label="Avg Speed" value={avgSpeedKmh} unit="km/h" />
+            <Stat label="Max Speed" value={activity.max_speed?.toFixed(1)} unit="km/h" />
+            <Stat label="Avg Cadence" value={activity.avg_cadence} unit="rpm" />
+            <Stat label="Max Cadence" value={activity.max_cadence} unit="rpm" />
+          </Card>
+        )}
+        {hasElevationCard && (
+          <Card title="ELEVATION · ENERGY" color="#2fa66a">
+            <Stat label="Total Descent" value={activity.total_descent} unit="m" />
             <Stat
-              label="L/R Balance"
-              value={`${Math.round(activity.avg_left_balance_pct)}/${Math.round(100 - activity.avg_left_balance_pct)}`}
-              unit="%"
+              label="Elev Range"
+              value={
+                activity.elevation_min != null && activity.elevation_max != null
+                  ? `${activity.elevation_min} to ${activity.elevation_max}`
+                  : null
+              }
+              unit="m"
             />
-          )}
-        </Card>
-      )}
-      {hasHrCard && (
-        <Card title="HEART RATE" color="#e0442e">
-          <Stat label="Max HR" value={activity.max_hr} unit="bpm" />
-          <Stat label="Best 20 min" value={best20MinHr} unit="bpm" />
-          <Stat label="TRIMP" value={activity.trimp != null ? Math.round(activity.trimp) : null} />
-          <Stat label="HR Reserve Avg" value={hrReservePct(activity, athlete)} unit="%" />
-        </Card>
-      )}
-      {hasSpeedCadenceCard && (
-        <Card title="SPEED · CADENCE" color="#3d7fd6">
-          <Stat label="Avg Speed" value={avgSpeedKmh} unit="km/h" />
-          <Stat label="Max Speed" value={activity.max_speed?.toFixed(1)} unit="km/h" />
-          <Stat label="Avg Cadence" value={activity.avg_cadence} unit="rpm" />
-          <Stat label="Max Cadence" value={activity.max_cadence} unit="rpm" />
-        </Card>
-      )}
-      {hasElevationCard && (
-        <Card title="ELEVATION · ENERGY" color="#2fa66a">
-          <Stat label="Total Descent" value={activity.total_descent} unit="m" />
-          <Stat
-            label="Elev Range"
-            value={activity.elevation_min != null && activity.elevation_max != null ? `${activity.elevation_min} to ${activity.elevation_max}` : null}
-            unit="m"
-          />
-          <Stat label="Calories" value={activity.calories?.toLocaleString()} unit="kcal" />
-          <Stat label="Elapsed Time" value={formatDuration(activity.moving_time)} />
-        </Card>
-      )}
+            <Stat label="Calories" value={activity.calories?.toLocaleString()} unit="kcal" />
+            <Stat label="Elapsed Time" value={formatDuration(activity.moving_time)} />
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
