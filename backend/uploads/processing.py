@@ -147,11 +147,18 @@ def _sliding_window_best_avg(values: Sequence[float], window: int) -> float | No
     return best
 
 
-def _best_pace_seconds_per_km(distance_km_series: Sequence[float | None], target_km: float) -> float | None:
+def _best_pace_seconds_per_km(
+    t_series: Sequence[int], distance_km_series: Sequence[float | None], target_km: float
+) -> float | None:
     """The fastest pace over any contiguous span of the activity covering at least
     target_km - a classic minimum-window two-pointer scan, not a variant of
     _sliding_window_best_avg: a fixed *distance* target needs a variable-length *time*
     window, the opposite shape of a fixed-duration best-effort.
+
+    Takes t_series (each sample's real elapsed-seconds offset) rather than assuming
+    samples are 1 Hz - some devices ("smart"/adaptive recording) log a sample every few
+    seconds instead of every second, and using the sample *index* gap as a stand-in for
+    elapsed time silently understates duration (and so overstates pace) on those files.
     """
     # Forward-fill: a None sample (e.g. a brief GPS dropout) means "no new distance
     # recorded yet," not "reset to zero" - the same convention _total_distance_km relies on.
@@ -173,7 +180,7 @@ def _best_pace_seconds_per_km(distance_km_series: Sequence[float | None], target
             right += 1
         if right >= n:
             break
-        duration = right - left
+        duration = t_series[right] - t_series[left]
         actual_distance = cumulative[right] - cumulative[left]
         if duration > 0 and actual_distance > 0:
             pace = duration / actual_distance
@@ -403,10 +410,12 @@ def _update_hr_best_efforts(activity: Activity, athlete: User, kind: str, hr_ser
         _trim_kind_window(athlete.id, kind, window_label, False, top_n)
 
 
-def _update_pace_best_efforts(activity: Activity, athlete: User, distance_km_series: Sequence[float | None]) -> None:
+def _update_pace_best_efforts(
+    activity: Activity, athlete: User, t_series: Sequence[int], distance_km_series: Sequence[float | None]
+) -> None:
     top_n = athlete.best_effort_top_n
     for label, target_km in PACE_BEST_EFFORT_DISTANCES_KM:
-        pace_sec_per_km = _best_pace_seconds_per_km(distance_km_series, target_km)
+        pace_sec_per_km = _best_pace_seconds_per_km(t_series, distance_km_series, target_km)
         if pace_sec_per_km is None:
             continue
         BestEffort.objects.update_or_create(
@@ -428,6 +437,7 @@ def compute_kind_best_efforts(
     athlete: User,
     kind: str,
     power_series: Sequence[float | None],
+    t_series: Sequence[int],
     distance_km_series: Sequence[float | None],
     hr_series: Sequence[float | None] | None = None,
 ) -> None:
@@ -445,7 +455,7 @@ def compute_kind_best_efforts(
             _update_power_best_efforts(activity, athlete, "running_power", power_series)
     elif kind == "running_pace":
         if activity.sport == "run":
-            _update_pace_best_efforts(activity, athlete, distance_km_series)
+            _update_pace_best_efforts(activity, athlete, t_series, distance_km_series)
     elif kind == "running_hr":
         if activity.sport == "run" and has_hr:
             _update_hr_best_efforts(activity, athlete, "running_hr", hr_series)
@@ -469,6 +479,7 @@ def update_best_efforts(
     activity: Activity,
     athlete: User,
     power_series: Sequence[float | None],
+    t_series: Sequence[int],
     distance_km_series: Sequence[float | None],
     hr_series: Sequence[float | None] | None = None,
 ) -> None:
@@ -483,7 +494,7 @@ def update_best_efforts(
     elif activity.sport == "run":
         if athlete.critical_run_power and any(p for p in power_series):
             _update_power_best_efforts(activity, athlete, "running_power", power_series)
-        _update_pace_best_efforts(activity, athlete, distance_km_series)
+        _update_pace_best_efforts(activity, athlete, t_series, distance_km_series)
         if has_hr:
             _update_hr_best_efforts(activity, athlete, "running_hr", hr_series)
 
@@ -711,8 +722,9 @@ def _ingest_activity(
         # Duration curves and best efforts compare like-for-like within a sport, and no
         # multisport workouts exist to match - the parent's legs handle all three instead.
         _write_duration_curves(activity, power_series, hr_series)
+        t_series = [s["t"] for s in samples]
         distance_km_series = [s.get("distance_km") for s in samples]
-        update_best_efforts(activity, athlete, power_series, distance_km_series, hr_series)
+        update_best_efforts(activity, athlete, power_series, t_series, distance_km_series, hr_series)
         attempt_workout_match(activity, athlete)
 
     return activity

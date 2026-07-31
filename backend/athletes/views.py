@@ -202,11 +202,12 @@ def _recompute_stream(athlete: User, kind: str | None) -> Iterator[str]:
         if records:
             power_series = [r.power for r in records]
             hr_series = [r.heartrate for r in records]
+            t_series = [r.t for r in records]
             distance_series = [r.distance_km for r in records]
             if kind:
-                compute_kind_best_efforts(activity, athlete, kind, power_series, distance_series, hr_series)
+                compute_kind_best_efforts(activity, athlete, kind, power_series, t_series, distance_series, hr_series)
             else:
-                update_best_efforts(activity, athlete, power_series, distance_series, hr_series)
+                update_best_efforts(activity, athlete, power_series, t_series, distance_series, hr_series)
         yield f"data: {json.dumps({'current': i + 1, 'total': total})}\n\n"
 
     yield f"event: done\ndata: {json.dumps({'processed': total})}\n\n"

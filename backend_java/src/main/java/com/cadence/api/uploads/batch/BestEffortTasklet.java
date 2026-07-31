@@ -43,7 +43,9 @@ public class BestEffortTasklet implements Tasklet {
 					.map(ParsedActivity.Sample::heartrate).toList();
 			List<Double> distanceSeries = segment.parsed().samples().stream()
 					.map(ParsedActivity.Sample::distanceKm).toList();
-			computeService.computeForActivity(activity, athlete, powerSeries, hrSeries, distanceSeries);
+			List<Integer> tSeries = segment.parsed().samples().stream()
+					.map(ParsedActivity.Sample::t).toList();
+			computeService.computeForActivity(activity, athlete, powerSeries, hrSeries, tSeries, distanceSeries);
 		}
 		return RepeatStatus.FINISHED;
 	}

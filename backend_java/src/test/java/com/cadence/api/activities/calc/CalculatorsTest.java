@@ -74,6 +74,14 @@ class CalculatorsTest {
 		assertThat(points).containsOnlyKeys(5, 60, 3600);
 	}
 
+	private static List<Integer> indices(int size) {
+		List<Integer> t = new ArrayList<>(size);
+		for (int i = 0; i < size; i++) {
+			t.add(i);
+		}
+		return t;
+	}
+
 	@Test
 	void bestPaceConstantPaceReturnsThatPace() {
 		// 1 km every 300 seconds, 10 km total -> 300 sec/km throughout.
@@ -81,7 +89,8 @@ class CalculatorsTest {
 		for (int i = 0; i <= 3000; i++) {
 			series.add(i / 300.0);
 		}
-		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(series, 1.0)).isCloseTo(300.0, within(0.1));
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(indices(series.size()), series, 1.0))
+				.isCloseTo(300.0, within(0.1));
 	}
 
 	@Test
@@ -90,7 +99,8 @@ class CalculatorsTest {
 		// from t=1 to t=2 (exactly 1.0 km in 1 second), not the first qualifying window
 		// found (t=0 to t=2, 1.5km in 2 seconds).
 		List<Double> series = List.of(0.0, 0.5, 1.5, 2.5, 3.0);
-		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(series, 1.0)).isCloseTo(1.0, within(0.001));
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(indices(series.size()), series, 1.0))
+				.isCloseTo(1.0, within(0.001));
 	}
 
 	@Test
@@ -99,7 +109,7 @@ class CalculatorsTest {
 		for (int i = 0; i <= 600; i++) {
 			series.add(i / 300.0); // 2 km total
 		}
-		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(series, 5.0)).isNull();
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(indices(series.size()), series, 5.0)).isNull();
 	}
 
 	@Test
@@ -108,7 +118,19 @@ class CalculatorsTest {
 		// same convention the activity's total distance already relies on. The full 2.0 km
 		// span (index 0 to 4) takes 4 seconds, so the pace is 4 / 2.0 = 2.0 sec/km.
 		List<Double> series = Arrays.asList(0.0, 0.5, null, null, 2.0);
-		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(series, 2.0)).isCloseTo(2.0, within(0.001));
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(indices(series.size()), series, 2.0))
+				.isCloseTo(2.0, within(0.001));
+	}
+
+	@Test
+	void bestPaceUsesRealElapsedTimeNotSampleIndexForSparseRecording() {
+		// Some devices ("smart"/adaptive recording) log a sample every few seconds instead
+		// of every second. 2 km covered over samples at t=0, 60, 120 (real elapsed time
+		// 120s) must come out as 60 sec/km - not 2 sec/km, which is what you'd get from
+		// mistaking the 2-sample gap (index 0 to index 2) for 2 seconds.
+		List<Integer> t = List.of(0, 60, 120);
+		List<Double> series = List.of(0.0, 1.0, 2.0);
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(t, series, 2.0)).isCloseTo(60.0, within(0.001));
 	}
 
 	@Test
