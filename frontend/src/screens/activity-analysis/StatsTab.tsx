@@ -106,7 +106,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
           <Card title="POWER" color="var(--ember)">
             <Stat label="Max Power" value={activity.max_power} unit="w" />
             <Stat label="Avg Watts/kg" value={avgWkg} unit="w/kg" />
-            <Stat label="Work" value={workKj?.toLocaleString()} unit="kJ" />
+            <Stat label="Work" value={workKj?.toLocaleString() ?? null} unit="kJ" />
             {activity.avg_left_balance_pct != null && (
               <Stat
                 label="L/R Balance"
@@ -127,7 +127,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
         {hasSpeedCadenceCard && (
           <Card title="SPEED · CADENCE" color="#3d7fd6">
             <Stat label="Avg Speed" value={avgSpeedKmh} unit="km/h" />
-            <Stat label="Max Speed" value={activity.max_speed?.toFixed(1)} unit="km/h" />
+            <Stat label="Max Speed" value={activity.max_speed?.toFixed(1) ?? null} unit="km/h" />
             <Stat label="Avg Cadence" value={activity.avg_cadence} unit="rpm" />
             <Stat label="Max Cadence" value={activity.max_cadence} unit="rpm" />
           </Card>
@@ -144,7 +144,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
               }
               unit="m"
             />
-            <Stat label="Calories" value={activity.calories?.toLocaleString()} unit="kcal" />
+            <Stat label="Calories" value={activity.calories?.toLocaleString() ?? null} unit="kcal" />
             <Stat label="Elapsed Time" value={formatDuration(activity.moving_time)} />
           </Card>
         )}
