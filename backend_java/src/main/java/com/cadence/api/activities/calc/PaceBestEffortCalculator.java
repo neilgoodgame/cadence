@@ -7,10 +7,15 @@ import java.util.List;
  * distance - a classic minimum-window two-pointer scan, not a variant of
  * {@link DurationCurveCalculator}: a fixed *distance* target needs a variable-length *time*
  * window, the opposite shape of a fixed-duration best-effort.
+ *
+ * <p>Takes tSeries (each sample's real elapsed-seconds offset) rather than assuming samples
+ * are 1 Hz - some devices ("smart"/adaptive recording) log a sample every few seconds
+ * instead of every second, and using the sample <em>index</em> gap as a stand-in for elapsed
+ * time silently understates duration (and so overstates pace) on those files.
  */
 public final class PaceBestEffortCalculator {
 
-	public static Double bestPaceSecondsPerKm(List<Double> distanceKmSeries, double targetKm) {
+	public static Double bestPaceSecondsPerKm(List<Integer> tSeries, List<Double> distanceKmSeries, double targetKm) {
 		// Forward-fill: a null sample (e.g. a brief GPS dropout) means "no new distance
 		// recorded yet," not "reset to zero" - the same convention the activity's total
 		// distance already relies on.
@@ -38,7 +43,7 @@ public final class PaceBestEffortCalculator {
 			if (right >= n) {
 				break;
 			}
-			int duration = right - left;
+			int duration = tSeries.get(right) - tSeries.get(left);
 			double actualDistance = cumulative[right] - cumulative[left];
 			if (duration > 0 && actualDistance > 0) {
 				double pace = duration / actualDistance;

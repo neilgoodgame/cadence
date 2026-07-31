@@ -58,25 +58,38 @@ class BestPaceSecondsPerKmTests(SimpleTestCase):
     def test_constant_pace_returns_that_pace(self):
         # 1 km every 300 seconds, 10 km total -> 300 sec/km throughout.
         series = [i / 300 for i in range(3001)]
-        self.assertAlmostEqual(_best_pace_seconds_per_km(series, 1.0), 300.0, places=1)
+        t = list(range(len(series)))
+        self.assertAlmostEqual(_best_pace_seconds_per_km(t, series, 1.0), 300.0, places=1)
 
     def test_finds_the_genuinely_fastest_window_not_the_first_one(self):
         # Hand-traced in the plan: 0, 0.5, 1.5, 2.5, 3.0 km at t=0..4. The fastest 1km
         # split is the single second from t=1 to t=2 (exactly 1.0 km in 1 second),
         # not the first qualifying window found (t=0 to t=2, 1.5km in 2 seconds).
         series = [0, 0.5, 1.5, 2.5, 3.0]
-        self.assertAlmostEqual(_best_pace_seconds_per_km(series, 1.0), 1.0, places=3)
+        t = list(range(len(series)))
+        self.assertAlmostEqual(_best_pace_seconds_per_km(t, series, 1.0), 1.0, places=3)
 
     def test_returns_none_when_target_distance_is_never_reached(self):
         series = [i / 300 for i in range(601)]  # 2 km total
-        self.assertIsNone(_best_pace_seconds_per_km(series, 5.0))
+        t = list(range(len(series)))
+        self.assertIsNone(_best_pace_seconds_per_km(t, series, 5.0))
 
     def test_forward_fills_gaps_instead_of_treating_them_as_a_reset(self):
         # A None sample (brief GPS dropout) should read as "distance unchanged," not zero -
         # same convention _total_distance_km already relies on. The full 2.0 km span
         # (index 0 to 4) takes 4 seconds, so the pace is 4 / 2.0 = 2.0 sec/km.
         series = [0, 0.5, None, None, 2.0]
-        self.assertAlmostEqual(_best_pace_seconds_per_km(series, 2.0), 2.0, places=3)
+        t = list(range(len(series)))
+        self.assertAlmostEqual(_best_pace_seconds_per_km(t, series, 2.0), 2.0, places=3)
+
+    def test_uses_real_elapsed_time_not_sample_index_for_sparse_recording(self):
+        # Some devices ("smart"/adaptive recording) log a sample every few seconds
+        # instead of every second. 2 km covered over samples at t=0, 60, 120 (real
+        # elapsed time 120s) must come out as 60 sec/km - not 2 sec/km, which is what
+        # you'd get from mistaking the 2-sample gap (index 0 to index 2) for 2 seconds.
+        t = [0, 60, 120]
+        series = [0, 1.0, 2.0]
+        self.assertAlmostEqual(_best_pace_seconds_per_km(t, series, 2.0), 60.0, places=3)
 
 
 class ComputeTssTests(TestCase):

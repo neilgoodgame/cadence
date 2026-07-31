@@ -96,11 +96,12 @@ public class BestEffortRecomputeService {
 			if (records.isEmpty()) return null;
 			List<Integer> powerSeries = records.stream().map(Record::getPower).toList();
 			List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
+			List<Integer> tSeries = records.stream().map(Record::getT).toList();
 			List<Double> distanceSeries = records.stream().map(Record::getDistanceKm).toList();
 			if (kind == null) {
-				computeService.computeForActivity(activity, athlete, powerSeries, hrSeries, distanceSeries);
+				computeService.computeForActivity(activity, athlete, powerSeries, hrSeries, tSeries, distanceSeries);
 			} else {
-				computeService.computeForActivity(activity, athlete, kind, powerSeries, hrSeries, distanceSeries);
+				computeService.computeForActivity(activity, athlete, kind, powerSeries, hrSeries, tSeries, distanceSeries);
 			}
 			return null;
 		});

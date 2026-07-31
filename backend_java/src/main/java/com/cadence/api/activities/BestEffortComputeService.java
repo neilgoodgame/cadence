@@ -24,8 +24,8 @@ public class BestEffortComputeService {
 	}
 
 	/** Compute all applicable kinds for one activity. */
-	public void computeForActivity(Activity activity, User athlete,
-			List<Integer> powerSeries, List<Integer> hrSeries, List<Double> distanceSeries) {
+	public void computeForActivity(Activity activity, User athlete, List<Integer> powerSeries,
+			List<Integer> hrSeries, List<Integer> tSeries, List<Double> distanceSeries) {
 		int topN = athlete.getBestEffortTopN();
 		boolean hasHr = hrSeries.stream().anyMatch(Objects::nonNull);
 
@@ -40,7 +40,7 @@ public class BestEffortComputeService {
 			if (athlete.getCriticalRunPower() != null && powerSeries.stream().anyMatch(Objects::nonNull)) {
 				updatePowerBestEfforts(activity, athlete, BestEffortKind.RUNNING_POWER, powerSeries, topN);
 			}
-			updatePaceBestEfforts(activity, athlete, distanceSeries, topN);
+			updatePaceBestEfforts(activity, athlete, tSeries, distanceSeries, topN);
 			if (hasHr) {
 				updateHrBestEfforts(activity, athlete, BestEffortKind.RUNNING_HR, hrSeries, topN);
 			}
@@ -48,15 +48,15 @@ public class BestEffortComputeService {
 	}
 
 	/** Compute a single kind for one activity. */
-	public void computeForActivity(Activity activity, User athlete, BestEffortKind kind,
-			List<Integer> powerSeries, List<Integer> hrSeries, List<Double> distanceSeries) {
+	public void computeForActivity(Activity activity, User athlete, BestEffortKind kind, List<Integer> powerSeries,
+			List<Integer> hrSeries, List<Integer> tSeries, List<Double> distanceSeries) {
 		int topN = athlete.getBestEffortTopN();
 		switch (kind) {
 			case CYCLING_POWER -> updatePowerBestEfforts(activity, athlete, kind, powerSeries, topN);
 			case CYCLING_HR -> updateHrBestEfforts(activity, athlete, kind, hrSeries, topN);
 			case RUNNING_POWER -> updatePowerBestEfforts(activity, athlete, kind, powerSeries, topN);
 			case RUNNING_HR -> updateHrBestEfforts(activity, athlete, kind, hrSeries, topN);
-			case RUNNING_PACE -> updatePaceBestEfforts(activity, athlete, distanceSeries, topN);
+			case RUNNING_PACE -> updatePaceBestEfforts(activity, athlete, tSeries, distanceSeries, topN);
 		}
 	}
 
@@ -83,9 +83,9 @@ public class BestEffortComputeService {
 	}
 
 	private void updatePaceBestEfforts(Activity activity, User athlete,
-			List<Double> distanceSeries, int topN) {
+			List<Integer> tSeries, List<Double> distanceSeries, int topN) {
 		for (BestEffortWindows.PaceDistance distance : BestEffortWindows.PACE_BEST_EFFORT_DISTANCES_KM) {
-			Double paceSecPerKm = PaceBestEffortCalculator.bestPaceSecondsPerKm(distanceSeries, distance.km());
+			Double paceSecPerKm = PaceBestEffortCalculator.bestPaceSecondsPerKm(tSeries, distanceSeries, distance.km());
 			if (paceSecPerKm == null) continue;
 			upsertEffort(activity, athlete, BestEffortKind.RUNNING_PACE, distance.label(), round1(paceSecPerKm), "sec_per_km");
 			trimToTop(athlete.getId(), BestEffortKind.RUNNING_PACE, distance.label(), true, topN);
