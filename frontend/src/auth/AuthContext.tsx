@@ -11,6 +11,12 @@ interface AuthContextValue {
   /** The currently-active profile - the signed-in principal's own, unless viewing as a
    * coached athlete (see activeAthleteId), in which case this is that athlete's profile. */
   user: Athlete | null;
+  /** The signed-in principal's own id, stable across a context switch - unlike `user.id`,
+   * which becomes the viewed athlete's id while viewing as them. Server-attributed actions
+   * (e.g. an ActivityComment's author_id) are always the real principal, never the
+   * delegated athlete_id, so compare against this - not `user.id` - to tell whether such a
+   * record was authored by whoever is actually signed in right now. */
+  selfId: string | null;
   /** Non-null while viewing as a coached athlete rather than the signed-in principal.
    * Unlike `user.is_coach`, this and `isCoachAccount` are stable across a context switch -
    * they describe who's really logged in, not whichever profile is currently active. */
@@ -37,6 +43,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Athlete | null>(null);
+  const [selfId, setSelfId] = useState<string | null>(null);
   const [activeAthleteId, setActiveAthleteId] = useState<string | null>(null);
   const [isCoachAccount, setIsCoachAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(null);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     setUser(null);
+    setSelfId(null);
     setActiveAthleteId(null);
     setIsCoachAccount(false);
   }, []);
@@ -54,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(tokens.access_token);
     localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
     setUser(athlete);
+    setSelfId(athlete.id);
     setActiveAthleteId(null);
     setIsCoachAccount(athlete.is_coach);
   }, []);
@@ -117,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const athlete = await authApi.getMe();
           setUser(athlete);
+          setSelfId(athlete.id);
           setIsCoachAccount(athlete.is_coach);
         }
         catch {
@@ -165,16 +175,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const profile = await authApi.getMe();
     setUser(profile);
+    setSelfId(profile.id);
     setActiveAthleteId(null);
     queryClient.clear();
   }, [refresh, queryClient]);
 
   const value = useMemo(
     () => ({
-      user, activeAthleteId, isCoachAccount, isLoading, register, login, logout, setUser,
+      user, selfId, activeAthleteId, isCoachAccount, isLoading, register, login, logout, setUser,
       switchToAthlete, switchToSelf,
     }),
-    [user, activeAthleteId, isCoachAccount, isLoading, register, login, logout, setUser, switchToAthlete, switchToSelf],
+    [
+      user, selfId, activeAthleteId, isCoachAccount, isLoading, register, login, logout, setUser,
+      switchToAthlete, switchToSelf,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

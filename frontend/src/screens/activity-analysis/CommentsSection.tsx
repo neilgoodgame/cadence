@@ -81,7 +81,7 @@ function Comment({ comment, canDelete, onDelete }: { comment: ActivityComment; c
 }
 
 export function CommentsSection({ activityId }: { activityId: string }) {
-  const { user } = useAuth();
+  const { selfId } = useAuth();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
 
@@ -125,7 +125,7 @@ export function CommentsSection({ activityId }: { activityId: string }) {
             <Comment
               key={c.id}
               comment={c}
-              canDelete={c.author_id === user?.id}
+              canDelete={c.author_id === selfId}
               onDelete={() => deleteMutation.mutate(c.id)}
             />
           ))}
