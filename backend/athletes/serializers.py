@@ -14,6 +14,7 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
         fields = [
             "name",
             "age",
+            "weight_kg",
             "ftp",
             "critical_run_power",
             "threshold_pace",
@@ -24,7 +25,17 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {
             field: {"required": False}
-            for field in ["name", "age", "ftp", "critical_run_power", "threshold_pace", "lthr", "max_hr", "resting_hr"]
+            for field in [
+                "name",
+                "age",
+                "weight_kg",
+                "ftp",
+                "critical_run_power",
+                "threshold_pace",
+                "lthr",
+                "max_hr",
+                "resting_hr",
+            ]
         }
 
 

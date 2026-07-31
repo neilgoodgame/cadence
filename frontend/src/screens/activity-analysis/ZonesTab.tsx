@@ -4,6 +4,7 @@ import { listZones } from "../../api/athletes";
 import { bucketIntoZones } from "../../lib/zones";
 import { formatDuration } from "../../lib/format";
 import type { Activity, ZoneType } from "../../api/types";
+import { HeatStrainCard } from "./HeatStrainCard";
 
 const RESOLUTION_SECONDS = 5; // "medium" resolution steps every 5th sample
 const ZONE_COLORS = ["var(--zone-1)", "var(--zone-2)", "var(--zone-3)", "var(--zone-4)", "var(--zone-5)"];
@@ -14,7 +15,6 @@ function powerZoneType(activity: Activity): ZoneType {
 
 function ZoneList({
   title,
-  color,
   athleteId,
   activityId,
   channel,
@@ -22,7 +22,6 @@ function ZoneList({
   unit,
 }: {
   title: string;
-  color: string;
   athleteId: string;
   activityId: string;
   channel: "power" | "heartrate";
@@ -45,8 +44,8 @@ function ZoneList({
   const reference = zoneSet.reference;
 
   return (
-    <div>
-      <div className="mono" style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.06em", marginBottom: 10 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "20px 22px" }}>
+      <div className="mono" style={{ fontSize: 11, color: "var(--ink3)", letterSpacing: "0.08em", marginBottom: 18 }}>
         {title.toUpperCase()}
       </div>
       {zoneTimes.map((zone, i) => {
@@ -59,25 +58,27 @@ function ZoneList({
           rangeLabel = isLast ? `${low}+ ${unit}` : `${low}–${high} ${unit}`;
         }
         return (
-          <div key={zone.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", fontSize: 13 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, flexShrink: 0, background: ZONE_COLORS[i % ZONE_COLORS.length] }} />
-            <span style={{ width: 110, flexShrink: 0 }}>{zone.name}</span>
-            {rangeLabel != null && (
-              <span className="mono" style={{ width: 80, flexShrink: 0, fontSize: 11, color: "var(--ink3)" }}>
-                {rangeLabel}
-              </span>
-            )}
-            <div style={{ flex: 1, height: 6, background: "var(--elev)", borderRadius: 3 }}>
+          <div key={zone.name} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, flexShrink: 0, background: ZONE_COLORS[i % ZONE_COLORS.length] }} />
+            <div style={{ width: 120, flexShrink: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{zone.name}</div>
+              {rangeLabel != null && (
+                <div className="mono" style={{ fontSize: 11, color: "var(--ink3)" }}>
+                  {rangeLabel}
+                </div>
+              )}
+            </div>
+            <div style={{ flex: 1, height: 18, borderRadius: 5, background: "var(--canvas)", overflow: "hidden" }}>
               <div
                 style={{
-                  width: `${(zone.seconds / maxSeconds) * 100}%`,
                   height: "100%",
+                  width: `${(zone.seconds / maxSeconds) * 100}%`,
                   background: ZONE_COLORS[i % ZONE_COLORS.length],
-                  borderRadius: 3,
+                  borderRadius: 5,
                 }}
               />
             </div>
-            <span className="mono" style={{ width: 60, textAlign: "right", flexShrink: 0, color: "var(--ink2)" }}>
+            <span className="mono" style={{ fontSize: 13, color: "var(--ink)", width: 54, textAlign: "right", flexShrink: 0 }}>
               {formatDuration(zone.seconds)}
             </span>
           </div>
@@ -89,10 +90,9 @@ function ZoneList({
 
 export function ZonesTab({ activity, athleteId }: { activity: Activity; athleteId: string }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
       <ZoneList
         title="Power zones"
-        color="var(--ember)"
         athleteId={athleteId}
         activityId={activity.id}
         channel="power"
@@ -101,13 +101,13 @@ export function ZonesTab({ activity, athleteId }: { activity: Activity; athleteI
       />
       <ZoneList
         title="Heart rate zones"
-        color="#e0442e"
         athleteId={athleteId}
         activityId={activity.id}
         channel="heartrate"
         zoneType="heart_rate"
         unit="bpm"
       />
+      <HeatStrainCard activityId={activity.id} />
     </div>
   );
 }

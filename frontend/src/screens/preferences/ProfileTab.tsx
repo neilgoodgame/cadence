@@ -89,11 +89,13 @@ export function ProfileTab() {
   const [form, setForm] = useState<AthleteUpdate>({
     name: user?.name ?? "",
     age: user?.age ?? undefined,
+    weight_kg: user?.weight_kg ?? undefined,
     ftp: user?.ftp ?? undefined,
     critical_run_power: user?.critical_run_power ?? undefined,
     threshold_pace: user?.threshold_pace ?? undefined,
     lthr: user?.lthr ?? undefined,
     max_hr: user?.max_hr ?? undefined,
+    resting_hr: user?.resting_hr ?? undefined,
   });
 
   const mutation = useMutation({
@@ -120,6 +122,16 @@ export function ProfileTab() {
               style={inputStyle}
               value={form.age ?? ""}
               onChange={(e) => setForm({ ...form, age: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Weight" unit="kg">
+            <input
+              type="number"
+              step="0.1"
+              className="mono"
+              style={inputStyle}
+              value={form.weight_kg ?? ""}
+              onChange={(e) => setForm({ ...form, weight_kg: Number(e.target.value) })}
             />
           </Field>
         </div>
@@ -171,6 +183,15 @@ export function ProfileTab() {
               style={inputStyle}
               value={form.max_hr ?? ""}
               onChange={(e) => setForm({ ...form, max_hr: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Resting heart rate" unit="bpm">
+            <input
+              type="number"
+              className="mono"
+              style={inputStyle}
+              value={form.resting_hr ?? ""}
+              onChange={(e) => setForm({ ...form, resting_hr: Number(e.target.value) })}
             />
           </Field>
         </div>

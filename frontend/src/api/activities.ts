@@ -1,6 +1,7 @@
 import { apiFetch } from "./client";
 import type {
   Activity,
+  ActivityComment,
   ActivityUpdate,
   DataList,
   DurationCurve,
@@ -55,6 +56,13 @@ export function recomputeActivityTss(id: string): Promise<Activity> {
   return apiFetch<Activity>(`/v1/activities/${id}/recompute-tss`, { method: "POST" });
 }
 
+/** Backfills max_power/cadence/elevation/calories/trimp etc. from stored records - for
+ * activities ingested before that computation existed. Can't recover avg_left_balance_pct
+ * (never persisted per-sample - see the backend's recompute-stats view docstring). */
+export function recomputeActivityStats(id: string): Promise<Activity> {
+  return apiFetch<Activity>(`/v1/activities/${id}/recompute-stats`, { method: "POST" });
+}
+
 export function deleteAllActivities(): Promise<void> {
   return apiFetch<void>("/v1/activities", { method: "DELETE" });
 }
@@ -96,4 +104,16 @@ export function tagActivity(activityId: string, name: string): Promise<{ activit
 
 export function untagActivity(activityId: string, tagId: string): Promise<void> {
   return apiFetch<void>(`/v1/activities/${activityId}/tags/${tagId}`, { method: "DELETE" });
+}
+
+export function listComments(activityId: string): Promise<DataList<ActivityComment>> {
+  return apiFetch<DataList<ActivityComment>>(`/v1/activities/${activityId}/comments`);
+}
+
+export function createComment(activityId: string, text: string): Promise<ActivityComment> {
+  return apiFetch<ActivityComment>(`/v1/activities/${activityId}/comments`, { method: "POST", body: { text } });
+}
+
+export function deleteComment(activityId: string, commentId: string): Promise<void> {
+  return apiFetch<void>(`/v1/activities/${activityId}/comments/${commentId}`, { method: "DELETE" });
 }

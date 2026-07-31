@@ -120,11 +120,30 @@ export function RouteMap({ activity }: { activity: Activity }) {
   }
 
   return (
-    <div
-      ref={containerRef}
-      role="img"
-      aria-label="Route map"
-      style={{ height: HEIGHT, borderRadius: 12, border: "1px solid var(--line)", overflow: "hidden" }}
-    />
+    <div style={{ position: "relative", height: HEIGHT, borderRadius: 12, border: "1px solid var(--line)", overflow: "hidden" }}>
+      <div ref={containerRef} role="img" aria-label="Route map" style={{ width: "100%", height: "100%" }} />
+      {activity.avg_air_temp != null && (
+        <div
+          className="mono"
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 14,
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            background: "var(--card)",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            padding: "6px 11px",
+            fontSize: 12,
+            color: "var(--ink2)",
+          }}
+        >
+          {activity.avg_air_temp.toFixed(1)}°C
+          {activity.avg_humidity != null && ` · ${activity.avg_humidity}% RH`}
+        </div>
+      )}
+    </div>
   );
 }

@@ -1355,6 +1355,7 @@ paths:
               properties:
                 name: { type: string }
                 age: { type: integer }
+                weight_kg: { type: number, description: Used for the Avg Watts/kg stat on Activity Analysis. }
                 ftp: { type: integer, description: Functional threshold power (W). }
                 critical_run_power: { type: integer, description: Critical running power (W). }
                 threshold_pace: { type: string, description: "mm:ss per km." }

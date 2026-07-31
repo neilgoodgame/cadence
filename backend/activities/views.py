@@ -11,7 +11,16 @@ from core.auth_context import get_effective_athlete_id
 from core.cql import compile_ast_to_q, parse, resolve_order_by
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
-from uploads.processing import compute_normalized_power, compute_tss
+from uploads.processing import (
+    _max,
+    _mean,
+    _min,
+    _total_descent,
+    compute_calories,
+    compute_edwards_trimp,
+    compute_normalized_power,
+    compute_tss,
+)
 from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
 from workouts.inference import infer_workout
@@ -268,6 +277,74 @@ class RecomputeActivityTssView(APIView):
         norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
         activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
         activity.save(update_fields=["tss"])
+        return Response(ActivitySerializer(activity).data)
+
+
+class RecomputeActivityStatsView(APIView):
+    """Backfills the extended Activity Analysis stats (max power, cadence, elevation,
+    calories, TRIMP) for activities ingested before that computation existed, from stored
+    per-second Record rows rather than re-parsing the original upload file - same data
+    source RecomputeActivityTssView already uses for the same reason.
+
+    avg_left_balance_pct can NOT be backfilled this way: the FIT left_right_balance field is
+    deliberately never persisted per-sample onto Record (the UI only shows one aggregate
+    split, not a stream - see uploads/parsers/fit.py's _left_balance_pct), so it's simply
+    unrecoverable for anything not re-ingested from the original file.
+    """
+
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        athlete = activity.athlete
+        records = list(activity.records.order_by("t").values("power", "cadence", "speed", "altitude", "heartrate"))
+
+        power_series = [r["power"] for r in records]
+        cadence_series = [r["cadence"] for r in records]
+        speed_series = [r["speed"] for r in records]
+        altitude_series = [r["altitude"] for r in records]
+        hr_series = [r["heartrate"] for r in records]
+
+        update_fields = []
+
+        max_power = _max(power_series)
+        if max_power is not None:
+            activity.max_power = round(max_power)
+            update_fields.append("max_power")
+
+        if any(c is not None for c in cadence_series):
+            avg_cadence = _mean(cadence_series)
+            max_cadence = _max(cadence_series)
+            activity.avg_cadence = round(avg_cadence) if avg_cadence is not None else None
+            activity.max_cadence = round(max_cadence) if max_cadence is not None else None
+            update_fields.extend(["avg_cadence", "max_cadence"])
+
+        max_speed_ms = _max(speed_series)
+        if max_speed_ms is not None:
+            activity.max_speed = round(max_speed_ms * 3.6, 1)
+            update_fields.append("max_speed")
+
+        if any(a is not None for a in altitude_series):
+            elevation_min = _min(altitude_series)
+            elevation_max = _max(altitude_series)
+            activity.elevation_min = round(elevation_min) if elevation_min is not None else None
+            activity.elevation_max = round(elevation_max) if elevation_max is not None else None
+            activity.total_descent = _total_descent([{"altitude": a} for a in altitude_series])
+            update_fields.extend(["elevation_min", "elevation_max", "total_descent"])
+
+        calories = compute_calories(power_series, activity.moving_time)
+        if calories is not None:
+            activity.calories = calories
+            update_fields.append("calories")
+
+        trimp = compute_edwards_trimp(athlete, hr_series)
+        if trimp is not None:
+            activity.trimp = trimp
+            update_fields.append("trimp")
+
+        if update_fields:
+            activity.save(update_fields=update_fields)
         return Response(ActivitySerializer(activity).data)
 
 

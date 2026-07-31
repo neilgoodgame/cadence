@@ -3,6 +3,7 @@ package com.cadence.api.athletes.dto;
 public record AthleteUpdateRequest(
 		String name,
 		Integer age,
+		Double weightKg,
 		Integer ftp,
 		Integer criticalRunPower,
 		String thresholdPace,

@@ -1,11 +1,67 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { deleteActivity, listTags, tagActivity, untagActivity, updateActivity } from "../../api/activities";
+import { deleteActivity, getStreams, listTags, tagActivity, untagActivity, updateActivity } from "../../api/activities";
 import { createRace, listRaces, updateRace } from "../../api/races";
 import type { Activity } from "../../api/types";
 import { formatDateTime } from "../../lib/format";
+import { buildGpx, downloadGpx } from "../../lib/gpxExport";
 import { sportColor, sportLabel } from "../../lib/sportColors";
+
+function HeaderActions({ activity }: { activity: Activity }) {
+  const [copied, setCopied] = useState(false);
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const streams = await getStreams(activity.id, ["time", "latlng", "altitude", "heartrate"], "high");
+      const gpx = buildGpx(activity.name, activity.start_date, streams);
+      downloadGpx(`${activity.name.replace(/[^\w-]+/g, "_")}.gpx`, gpx);
+    },
+  });
+
+  async function share() {
+    await navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexShrink: 0 }}>
+      <button
+        onClick={() => exportMutation.mutate()}
+        disabled={!activity.has_gps || exportMutation.isPending}
+        title={activity.has_gps ? "Download as GPX" : "No GPS track to export"}
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          padding: "8px 14px",
+          borderRadius: 8,
+          border: "1px solid var(--line)",
+          background: "none",
+          color: "var(--ink2)",
+          cursor: activity.has_gps ? "pointer" : "not-allowed",
+          opacity: activity.has_gps ? 1 : 0.5,
+        }}
+      >
+        {exportMutation.isPending ? "Exporting…" : "Export"}
+      </button>
+      <button
+        onClick={share}
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          padding: "8px 14px",
+          borderRadius: 8,
+          border: "none",
+          background: "var(--ember)",
+          color: "#fff",
+          cursor: "pointer",
+        }}
+      >
+        {copied ? "Link copied" : "Share"}
+      </button>
+    </div>
+  );
+}
 
 const DISTANCE_PRESETS: Record<string, { label: string; km: number }[]> = {
   run: [
@@ -174,6 +230,7 @@ export function Header({ activity }: { activity: Activity }) {
           {formatDateTime(activity.start_date)} · {activity.source}
           {activity.device && ` · ${activity.device}`}
         </span>
+        <HeaderActions activity={activity} />
       </div>
 
       {renaming ? (
