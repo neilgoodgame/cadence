@@ -137,8 +137,8 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
         )}
         {hasSpeedCadenceCard && (
           <Card title="SPEED · CADENCE" color="#3d7fd6">
-            <Stat label="Avg Speed" value={avgSpeedKmh} unit="km/h" />
             {avgPace != null && <Stat label="Avg Pace" value={avgPace} />}
+            <Stat label="Avg Speed" value={avgSpeedKmh} unit="km/h" />
             <Stat label="Max Speed" value={activity.max_speed?.toFixed(1) ?? null} unit="km/h" />
             <Stat label="Avg Cadence" value={activity.avg_cadence} unit="rpm" />
             <Stat label="Max Cadence" value={activity.max_cadence} unit="rpm" />
