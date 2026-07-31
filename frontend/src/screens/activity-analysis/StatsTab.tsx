@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getCurves, recomputeActivityStats } from "../../api/activities";
 import type { Activity, Athlete } from "../../api/types";
+import { EnvironmentCard } from "./EnvironmentCard";
 import { formatDuration } from "../../lib/format";
 
 function Stat({ label, value, unit }: { label: string; value: string | number | null; unit?: string }) {
@@ -148,6 +149,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
             <Stat label="Elapsed Time" value={formatDuration(activity.moving_time)} />
           </Card>
         )}
+        <EnvironmentCard activity={activity} />
       </div>
     </div>
   );
