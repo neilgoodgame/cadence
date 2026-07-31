@@ -1,5 +1,6 @@
 import { apiFetch, apiFetchStream } from "./client";
 import type {
+  Athlete,
   AthleteUpdate,
   AthleteUpdateResponse,
   BestEffort,
@@ -12,6 +13,12 @@ import type {
   ZoneSetUpdateResponse,
   ZoneType,
 } from "./types";
+
+// Permission-checked via user_may_read(sub, id) - works for any caller with an active
+// coach/viewer relationship to this athlete, using the caller's own (non-delegated) token.
+export function getAthlete(id: string): Promise<Athlete> {
+  return apiFetch<Athlete>(`/v1/athletes/${id}`);
+}
 
 export function updateAthlete(id: string, patch: AthleteUpdate): Promise<AthleteUpdateResponse> {
   return apiFetch<AthleteUpdateResponse>(`/v1/athletes/${id}`, { method: "PATCH", body: patch });
