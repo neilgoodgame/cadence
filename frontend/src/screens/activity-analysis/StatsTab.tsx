@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getCurves, recomputeActivityStats } from "../../api/activities";
 import type { Activity, Athlete } from "../../api/types";
 import { EnvironmentCard } from "./EnvironmentCard";
-import { formatDuration } from "../../lib/format";
+import { formatDuration, formatPace } from "../../lib/format";
 
 function Stat({ label, value, unit }: { label: string; value: string | number | null; unit?: string }) {
   return (
@@ -80,11 +80,21 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
     activity.avg_power != null && referenceWeightKg ? (activity.avg_power / referenceWeightKg).toFixed(2) : null;
   const workKj = activity.avg_power != null ? Math.round((activity.avg_power * activity.moving_time) / 1000) : null;
   const avgSpeedKmh = activity.moving_time > 0 ? ((activity.distance_km / activity.moving_time) * 3600).toFixed(1) : null;
+  // Runners think in pace, not speed - shown alongside Avg Speed (not instead of it) only
+  // for run, matching the sport scope the running_pace best-effort already uses.
+  const avgPace =
+    activity.sport === "run" && activity.moving_time > 0 && activity.distance_km > 0
+      ? formatPace(activity.moving_time / activity.distance_km)
+      : null;
 
   const hasPowerCard = activity.avg_power != null || activity.max_power != null;
   const hasHrCard = activity.avg_hr != null || activity.max_hr != null;
   const hasSpeedCadenceCard =
-    avgSpeedKmh != null || activity.max_speed != null || activity.avg_cadence != null || activity.max_cadence != null;
+    avgSpeedKmh != null ||
+    avgPace != null ||
+    activity.max_speed != null ||
+    activity.avg_cadence != null ||
+    activity.max_cadence != null;
   const hasElevationCard =
     activity.total_descent != null || activity.elevation_min != null || activity.calories != null;
 
@@ -127,6 +137,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
         )}
         {hasSpeedCadenceCard && (
           <Card title="SPEED · CADENCE" color="#3d7fd6">
+            {avgPace != null && <Stat label="Avg Pace" value={avgPace} />}
             <Stat label="Avg Speed" value={avgSpeedKmh} unit="km/h" />
             <Stat label="Max Speed" value={activity.max_speed?.toFixed(1) ?? null} unit="km/h" />
             <Stat label="Avg Cadence" value={activity.avg_cadence} unit="rpm" />
