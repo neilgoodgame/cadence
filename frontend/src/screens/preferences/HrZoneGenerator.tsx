@@ -30,7 +30,7 @@ export function HrZoneGenerator({ athleteId }: { athleteId: string }) {
   const queryClient = useQueryClient();
 
   const [method, setMethod] = useState<HrZoneMethod>("coggan");
-  const [restingHrInput, setRestingHrInput] = useState("");
+  const [restingHrInput, setRestingHrInput] = useState(user?.resting_hr ? String(user.resting_hr) : "");
   const [lthrInput, setLthrInput] = useState(user?.lthr ? String(user.lthr) : "");
   const [maxHrInput, setMaxHrInput] = useState(user?.max_hr ? String(user.max_hr) : "");
 
@@ -50,7 +50,13 @@ export function HrZoneGenerator({ athleteId }: { athleteId: string }) {
     mutationFn: async () => {
       // The backend stores HR zones as % of LTHR, so the profile's LTHR (the reference)
       // has to be updated first for the percentages to resolve to the previewed bpm.
-      const athlete = await updateAthlete(athleteId, { lthr: params.lthr, max_hr: params.maxHr });
+      // resting_hr isn't a zone reference threshold (it only feeds the Karvonen HRR% stat
+      // on Activity Analysis) - saved here too since this is the only place athletes enter it.
+      const athlete = await updateAthlete(athleteId, {
+        lthr: params.lthr,
+        max_hr: params.maxHr,
+        ...(params.restingHr != null ? { resting_hr: params.restingHr } : {}),
+      });
       await replaceZoneSet(athleteId, "heart_rate", hrZoneBandsToZones(bands!, params.lthr));
       return athlete;
     },

@@ -9,6 +9,8 @@ export interface Athlete {
   threshold_pace: string | null;
   lthr: number | null;
   max_hr: number | null;
+  /** Optional - only used for the Karvonen heart-rate-reserve % stat on Activity Analysis. */
+  resting_hr: number | null;
   best_effort_top_n: number;
   is_coach: boolean;
 }
@@ -123,6 +125,23 @@ export interface Activity {
   avg_hr: number | null;
   max_hr: number | null;
   ascent: number | null;
+  max_power: number | null;
+  avg_cadence: number | null;
+  max_cadence: number | null;
+  /** km/h. */
+  max_speed: number | null;
+  /** Metres. */
+  total_descent: number | null;
+  /** Metres. */
+  elevation_min: number | null;
+  /** Metres. */
+  elevation_max: number | null;
+  /** Power-based estimate only; null for activities with no power data. */
+  calories: number | null;
+  /** Edwards' TRIMP - sum over HR zones of (minutes in zone * zone number 1-5). */
+  trimp: number | null;
+  /** Mean % of power from the left leg (dual-sided power meters only). Right % is 100 minus this. */
+  avg_left_balance_pct: number | null;
   start_weight_kg: number | null;
   end_weight_kg: number | null;
   fluids_ml: number | null;
@@ -155,7 +174,18 @@ export interface AthleteUpdate {
   threshold_pace?: string;
   lthr?: number;
   max_hr?: number;
+  resting_hr?: number;
   best_effort_top_n?: number;
+}
+
+export interface ActivityComment {
+  id: string;
+  activity_id: string;
+  author_id: string;
+  author_name: string;
+  author_role: "athlete" | "coach" | "viewer";
+  text: string;
+  created: string;
 }
 
 export interface AthleteUpdateResponse extends Athlete {

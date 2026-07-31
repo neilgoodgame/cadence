@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getActivity } from "../api/activities";
 import { useAuth } from "../auth/AuthContext";
+import { CommentsSection } from "./activity-analysis/CommentsSection";
 import { CurvesTab } from "./activity-analysis/CurvesTab";
 import { DuplicateBanner, DuplicatesCard } from "./activity-analysis/DuplicatesCard";
 import { Header } from "./activity-analysis/Header";
@@ -12,11 +13,13 @@ import { MultisportLegs } from "./activity-analysis/MultisportLegs";
 import { MultisportStreamChart } from "./activity-analysis/MultisportStreamChart";
 import { RouteMap } from "./activity-analysis/RouteMap";
 import { StatRow } from "./activity-analysis/StatRow";
+import { StatsTab } from "./activity-analysis/StatsTab";
 import { StreamChart } from "./activity-analysis/StreamChart";
 import { ZonesTab } from "./activity-analysis/ZonesTab";
 
-type Tab = "laps" | "zones" | "curves";
+type Tab = "stats" | "laps" | "zones" | "curves";
 const TABS: { key: Tab; label: string }[] = [
+  { key: "stats", label: "Stats" },
   { key: "laps", label: "Laps" },
   { key: "zones", label: "Zones" },
   { key: "curves", label: "Curves" },
@@ -25,7 +28,7 @@ const TABS: { key: Tab; label: string }[] = [
 export function ActivityAnalysisScreen() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const [tab, setTab] = useState<Tab>("laps");
+  const [tab, setTab] = useState<Tab>("stats");
 
   const { data: activity, isLoading } = useQuery({
     queryKey: ["activity", id],
@@ -96,10 +99,13 @@ export function ActivityAnalysisScreen() {
           ))}
         </div>
 
+        {tab === "stats" && <StatsTab activity={activity} athlete={user} />}
         {tab === "laps" && <LapsTab activityId={activity.id} sport={activity.sport} />}
         {tab === "zones" && <ZonesTab activity={activity} athleteId={user.id} />}
         {tab === "curves" && <CurvesTab activityId={activity.id} />}
       </div>
+
+      <CommentsSection activityId={activity.id} />
     </div>
   );
 }

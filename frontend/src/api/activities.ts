@@ -1,6 +1,7 @@
 import { apiFetch } from "./client";
 import type {
   Activity,
+  ActivityComment,
   ActivityUpdate,
   DataList,
   DurationCurve,
@@ -96,4 +97,16 @@ export function tagActivity(activityId: string, name: string): Promise<{ activit
 
 export function untagActivity(activityId: string, tagId: string): Promise<void> {
   return apiFetch<void>(`/v1/activities/${activityId}/tags/${tagId}`, { method: "DELETE" });
+}
+
+export function listComments(activityId: string): Promise<DataList<ActivityComment>> {
+  return apiFetch<DataList<ActivityComment>>(`/v1/activities/${activityId}/comments`);
+}
+
+export function createComment(activityId: string, text: string): Promise<ActivityComment> {
+  return apiFetch<ActivityComment>(`/v1/activities/${activityId}/comments`, { method: "POST", body: { text } });
+}
+
+export function deleteComment(activityId: string, commentId: string): Promise<void> {
+  return apiFetch<void>(`/v1/activities/${activityId}/comments/${commentId}`, { method: "DELETE" });
 }

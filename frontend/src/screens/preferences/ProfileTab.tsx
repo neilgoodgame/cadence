@@ -94,6 +94,7 @@ export function ProfileTab() {
     threshold_pace: user?.threshold_pace ?? undefined,
     lthr: user?.lthr ?? undefined,
     max_hr: user?.max_hr ?? undefined,
+    resting_hr: user?.resting_hr ?? undefined,
   });
 
   const mutation = useMutation({
@@ -171,6 +172,15 @@ export function ProfileTab() {
               style={inputStyle}
               value={form.max_hr ?? ""}
               onChange={(e) => setForm({ ...form, max_hr: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Resting heart rate" unit="bpm">
+            <input
+              type="number"
+              className="mono"
+              style={inputStyle}
+              value={form.resting_hr ?? ""}
+              onChange={(e) => setForm({ ...form, resting_hr: Number(e.target.value) })}
             />
           </Field>
         </div>
