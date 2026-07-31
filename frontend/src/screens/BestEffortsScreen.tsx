@@ -1097,6 +1097,8 @@ export function BestEffortsScreen() {
             summary={`${runPrCount} record${runPrCount === 1 ? "" : "s"} standing this period`}
           />
 
+          <RunPaceCard efforts={runPaceEfforts} allTimeEfforts={runPaceAllEfforts} onExclude={makeExclude("running_pace")} excludePending={excludePending} />
+
           {hasRunHr && (
             <RunHrCard efforts={runHrEfforts} allTimeEfforts={runHrAllEfforts} onExclude={makeExclude("running_hr")} excludePending={excludePending} />
           )}
@@ -1104,8 +1106,6 @@ export function BestEffortsScreen() {
           {hasRunPower && (
             <RunPowerCard efforts={runPowerEfforts} allTimeEfforts={runPowerAllEfforts} rCP={rCP} onExclude={makeExclude("running_power")} excludePending={excludePending} />
           )}
-
-          <RunPaceCard efforts={runPaceEfforts} allTimeEfforts={runPaceAllEfforts} onExclude={makeExclude("running_pace")} excludePending={excludePending} />
         </div>
 
         {/* Cycling section */}
@@ -1116,10 +1116,6 @@ export function BestEffortsScreen() {
             summary={`${bikePrCount} record${bikePrCount === 1 ? "" : "s"} standing this period`}
           />
 
-          {hasBikeHr && (
-            <BikeHrCard efforts={bikeHrEfforts} allTimeEfforts={bikeHrAllEfforts} onExclude={makeExclude("cycling_hr")} excludePending={excludePending} />
-          )}
-
           <BikePowerCard
             efforts={bikePowerEfforts}
             allTimeEfforts={bikePowerAllEfforts}
@@ -1127,6 +1123,10 @@ export function BestEffortsScreen() {
             onExclude={makeExclude("cycling_power")}
             excludePending={excludePending}
           />
+
+          {hasBikeHr && (
+            <BikeHrCard efforts={bikeHrEfforts} allTimeEfforts={bikeHrAllEfforts} onExclude={makeExclude("cycling_hr")} excludePending={excludePending} />
+          )}
 
           <LongestRidesCard />
 
