@@ -70,6 +70,15 @@ class AthleteDetailViewTests(TestCase):
         response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
         self.assertEqual(response.json()["zones_recomputed"], ["bike_power"])
 
+    def test_self_can_update_weight(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"weight_kg": 71.5}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["weight_kg"], 71.5)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.weight_kg, 71.5)
+
     def test_self_can_update_resting_hr(self):
         response = _bearer_client(self.athlete).patch(
             f"/v1/athletes/{self.athlete.id}", {"resting_hr": 48}, format="json"

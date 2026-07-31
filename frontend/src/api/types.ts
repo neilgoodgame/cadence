@@ -169,6 +169,7 @@ export interface Activity {
 export interface AthleteUpdate {
   name?: string;
   age?: number;
+  weight_kg?: number;
   ftp?: number;
   critical_run_power?: number;
   threshold_pace?: string;

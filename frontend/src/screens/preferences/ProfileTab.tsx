@@ -89,6 +89,7 @@ export function ProfileTab() {
   const [form, setForm] = useState<AthleteUpdate>({
     name: user?.name ?? "",
     age: user?.age ?? undefined,
+    weight_kg: user?.weight_kg ?? undefined,
     ftp: user?.ftp ?? undefined,
     critical_run_power: user?.critical_run_power ?? undefined,
     threshold_pace: user?.threshold_pace ?? undefined,
@@ -121,6 +122,16 @@ export function ProfileTab() {
               style={inputStyle}
               value={form.age ?? ""}
               onChange={(e) => setForm({ ...form, age: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Weight" unit="kg">
+            <input
+              type="number"
+              step="0.1"
+              className="mono"
+              style={inputStyle}
+              value={form.weight_kg ?? ""}
+              onChange={(e) => setForm({ ...form, weight_kg: Number(e.target.value) })}
             />
           </Field>
         </div>

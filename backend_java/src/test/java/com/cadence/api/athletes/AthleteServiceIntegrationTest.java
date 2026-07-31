@@ -34,7 +34,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("no-zoneset@example.cc");
 
 		var recomputed = athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, 280, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null));
 
 		assertThat(recomputed).isEmpty();
 	}
@@ -49,8 +49,18 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		zoneSetRepository.save(zoneSet);
 
 		var recomputed = athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, 280, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null));
 
 		assertThat(recomputed).containsExactly(ZoneType.BIKE_POWER);
+	}
+
+	@Test
+	void updatesWeightKg() {
+		User athlete = newAthlete("weight@example.cc");
+
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, 71.5, null, null, null, null, null, null, null));
+
+		assertThat(athlete.getWeightKg()).isEqualTo(71.5);
 	}
 }

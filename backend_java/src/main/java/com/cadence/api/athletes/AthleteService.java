@@ -32,6 +32,10 @@ public class AthleteService {
 			athlete.setAge(request.age());
 			changed.add("age");
 		}
+		if (request.weightKg() != null) {
+			athlete.setWeightKg(request.weightKg());
+			changed.add("weightKg");
+		}
 		if (request.ftp() != null) {
 			athlete.setFtp(request.ftp());
 			changed.add("ftp");
