@@ -6,7 +6,7 @@ from django.test import SimpleTestCase
 
 from ..fixtures_helpers import build_gpx, build_tcx
 from ..parsers import UnsupportedFileType, parse_file
-from ..parsers.fit import parse_fit
+from ..parsers.fit import _left_balance_pct, parse_fit
 from ..parsers.gpx import parse_gpx
 from ..parsers.tcx import parse_tcx
 from .helpers import FIXTURES_DIR, _fit_msg
@@ -127,6 +127,18 @@ class FitParserMockedTests(SimpleTestCase):
 
         self.assertEqual(len(result["laps"]), 1)
         self.assertEqual(result["laps"][0]["avg_power"], 203)
+
+
+class LeftBalancePctTests(SimpleTestCase):
+    def test_right_flag_set_converts_to_left_pct(self):
+        # 0x80 (right flag) | 62 (62% right) -> 38% left.
+        self.assertEqual(_left_balance_pct(_fit_msg(left_right_balance=0x80 | 62)), 38)
+
+    def test_right_flag_unset_is_already_left_pct(self):
+        self.assertEqual(_left_balance_pct(_fit_msg(left_right_balance=45)), 45)
+
+    def test_missing_field_returns_none(self):
+        self.assertIsNone(_left_balance_pct(_fit_msg(left_right_balance=None)))
 
 
 class ParseFileDispatchTests(SimpleTestCase):

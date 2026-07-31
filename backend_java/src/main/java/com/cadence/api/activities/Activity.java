@@ -73,6 +73,49 @@ public class Activity extends PrefixedIdEntity {
 
 	private Integer ascent;
 
+	/**
+	 * Extended stats (Activity Analysis "Stats" tab). All computed once at ingest from the
+	 * record stream, same pattern as avgPower/maxHr above - null whenever the source data
+	 * needed for that one metric wasn't present. Matches the Python backend's
+	 * 0011_activity_avg_cadence_activity_avg_left_balance_pct_and_more migration.
+	 */
+	@Column(name = "max_power")
+	private Integer maxPower;
+
+	@Column(name = "avg_cadence")
+	private Integer avgCadence;
+
+	@Column(name = "max_cadence")
+	private Integer maxCadence;
+
+	/** km/h. */
+	@Column(name = "max_speed")
+	private Double maxSpeed;
+
+	/** Metres. */
+	@Column(name = "total_descent")
+	private Integer totalDescent;
+
+	/** Metres. */
+	@Column(name = "elevation_min")
+	private Integer elevationMin;
+
+	/** Metres. */
+	@Column(name = "elevation_max")
+	private Integer elevationMax;
+
+	/** Power-based estimate only (work_kJ / 0.24, a standard cycling efficiency approximation). */
+	@Column(name = "calories")
+	private Integer calories;
+
+	/** Edwards' TRIMP: sum over HR zones of (minutes in zone * zone number 1-5). */
+	@Column(name = "trimp")
+	private Double trimp;
+
+	/** % of power from the left leg (dual-sided/balance-capable power meters only). Right % = 100 - this. */
+	@Column(name = "avg_left_balance_pct")
+	private Double avgLeftBalancePct;
+
 	@Column(name = "start_weight_kg")
 	private Double startWeightKg;
 
@@ -272,6 +315,86 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setAscent(Integer ascent) {
 		this.ascent = ascent;
+	}
+
+	public Integer getMaxPower() {
+		return maxPower;
+	}
+
+	public void setMaxPower(Integer maxPower) {
+		this.maxPower = maxPower;
+	}
+
+	public Integer getAvgCadence() {
+		return avgCadence;
+	}
+
+	public void setAvgCadence(Integer avgCadence) {
+		this.avgCadence = avgCadence;
+	}
+
+	public Integer getMaxCadence() {
+		return maxCadence;
+	}
+
+	public void setMaxCadence(Integer maxCadence) {
+		this.maxCadence = maxCadence;
+	}
+
+	public Double getMaxSpeed() {
+		return maxSpeed;
+	}
+
+	public void setMaxSpeed(Double maxSpeed) {
+		this.maxSpeed = maxSpeed;
+	}
+
+	public Integer getTotalDescent() {
+		return totalDescent;
+	}
+
+	public void setTotalDescent(Integer totalDescent) {
+		this.totalDescent = totalDescent;
+	}
+
+	public Integer getElevationMin() {
+		return elevationMin;
+	}
+
+	public void setElevationMin(Integer elevationMin) {
+		this.elevationMin = elevationMin;
+	}
+
+	public Integer getElevationMax() {
+		return elevationMax;
+	}
+
+	public void setElevationMax(Integer elevationMax) {
+		this.elevationMax = elevationMax;
+	}
+
+	public Integer getCalories() {
+		return calories;
+	}
+
+	public void setCalories(Integer calories) {
+		this.calories = calories;
+	}
+
+	public Double getTrimp() {
+		return trimp;
+	}
+
+	public void setTrimp(Double trimp) {
+		this.trimp = trimp;
+	}
+
+	public Double getAvgLeftBalancePct() {
+		return avgLeftBalancePct;
+	}
+
+	public void setAvgLeftBalancePct(Double avgLeftBalancePct) {
+		this.avgLeftBalancePct = avgLeftBalancePct;
 	}
 
 	public Double getStartWeightKg() {

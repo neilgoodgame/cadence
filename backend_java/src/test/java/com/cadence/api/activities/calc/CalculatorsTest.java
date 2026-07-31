@@ -140,6 +140,21 @@ class CalculatorsTest {
 	}
 
 	@Test
+	void trimpWeightsMinutesByZoneNumber() {
+		// All 60 minutes at 100% of threshold -> Z4 Threshold (91-105%, zone 4) -> 60 * 4 = 240.
+		List<Zone> zones = List.of(
+				new Zone("Z1 Recovery", 0, 55), new Zone("Z2 Endurance", 56, 75), new Zone("Z3 Tempo", 76, 90),
+				new Zone("Z4 Threshold", 91, 105), new Zone("Z5 VO2max", 106, 150));
+		Map<String, Integer> secondsPerZone = Map.of("Z4 Threshold", 3600);
+		assertThat(TrimpCalculator.compute(secondsPerZone, zones)).isEqualTo(240.0);
+	}
+
+	@Test
+	void trimpNullWithoutHrData() {
+		assertThat(TrimpCalculator.compute(null, List.of())).isNull();
+	}
+
+	@Test
 	void trainingEffectLabelNullReturnsEmptyString() {
 		assertThat(TrainingEffectLabel.of(null)).isEmpty();
 	}

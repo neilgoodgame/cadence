@@ -70,6 +70,24 @@ class AthleteDetailViewTests(TestCase):
         response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
         self.assertEqual(response.json()["zones_recomputed"], ["bike_power"])
 
+    def test_self_can_update_resting_hr(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"resting_hr": 48}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["resting_hr"], 48)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.resting_hr, 48)
+
+    def test_resting_hr_update_does_not_trigger_zone_recompute(self):
+        # resting_hr isn't a zone reference threshold (it only feeds the Karvonen HRR%
+        # stat) - unlike ftp/lthr/max_hr, changing it shouldn't report any recompute.
+        ZoneSet.objects.create(athlete=self.athlete, type="heart_rate", zones=DEFAULT_ZONES)
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"resting_hr": 48}, format="json"
+        )
+        self.assertEqual(response.json()["zones_recomputed"], [])
+
     def test_viewer_cannot_write(self):
         UserRelationship.objects.create(
             owner=self.athlete,

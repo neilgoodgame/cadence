@@ -11,10 +11,20 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["name", "age", "ftp", "critical_run_power", "threshold_pace", "lthr", "max_hr", "best_effort_top_n"]
+        fields = [
+            "name",
+            "age",
+            "ftp",
+            "critical_run_power",
+            "threshold_pace",
+            "lthr",
+            "max_hr",
+            "resting_hr",
+            "best_effort_top_n",
+        ]
         extra_kwargs = {
             field: {"required": False}
-            for field in ["name", "age", "ftp", "critical_run_power", "threshold_pace", "lthr", "max_hr"]
+            for field in ["name", "age", "ftp", "critical_run_power", "threshold_pace", "lthr", "max_hr", "resting_hr"]
         }
 
 

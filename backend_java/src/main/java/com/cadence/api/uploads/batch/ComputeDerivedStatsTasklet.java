@@ -4,6 +4,7 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.calc.NormalizedPowerCalculator;
 import com.cadence.api.activities.calc.TrainingEffectLabel;
+import com.cadence.api.activities.calc.TrimpCalculator;
 import com.cadence.api.activities.calc.TssCalculator;
 import com.cadence.api.athletes.Zone;
 import com.cadence.api.athletes.ZoneService;
@@ -108,6 +109,54 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 			}
 		}
 
+		Integer maxPower = max(powerSeries);
+		if (maxPower != null) {
+			activity.setMaxPower(maxPower);
+		}
+
+		List<Integer> cadenceSeries = parsed.samples().stream().map(ParsedActivity.Sample::cadence).toList();
+		if (cadenceSeries.stream().anyMatch(Objects::nonNull)) {
+			Double avgCadence = mean(cadenceSeries);
+			activity.setAvgCadence(avgCadence != null ? (int) Math.round(avgCadence) : null);
+			activity.setMaxCadence(max(cadenceSeries));
+		}
+
+		List<Double> speedSeries = parsed.samples().stream().map(ParsedActivity.Sample::speed).toList();
+		Double maxSpeedMs = maxDouble(speedSeries);
+		if (maxSpeedMs != null) {
+			activity.setMaxSpeed(round1(maxSpeedMs * 3.6));
+		}
+
+		List<Double> altitudeSeries = parsed.samples().stream().map(ParsedActivity.Sample::altitude).toList();
+		if (altitudeSeries.stream().anyMatch(Objects::nonNull)) {
+			Double elevationMin = minDouble(altitudeSeries);
+			Double elevationMax = maxDouble(altitudeSeries);
+			activity.setElevationMin(elevationMin != null ? (int) Math.round(elevationMin) : null);
+			activity.setElevationMax(elevationMax != null ? (int) Math.round(elevationMax) : null);
+		}
+
+		if (avgPower != null) {
+			// Power-based estimate only (work_kJ / 0.24, a standard cycling efficiency
+			// approximation) - deliberately not falling back to an HR-based estimate for
+			// power-less activities, which would be a much rougher guess.
+			double workKj = avgPower * activity.getMovingTime() / 1000.0;
+			activity.setCalories((int) Math.round(workKj / 0.24));
+		}
+
+		List<Zone> hrZones = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE).getZones();
+		Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
+		Map<String, Integer> hrSecondsPerZone = TssCalculator.secondsPerZone(hrSeries, hrZones, hrThreshold);
+		Double trimp = TrimpCalculator.compute(hrSecondsPerZone, hrZones);
+		if (trimp != null) {
+			activity.setTrimp(trimp);
+		}
+
+		List<Double> leftBalanceSeries = parsed.samples().stream().map(ParsedActivity.Sample::leftBalancePct).toList();
+		if (leftBalanceSeries.stream().anyMatch(Objects::nonNull)) {
+			Double avgLeftBalance = meanDouble(leftBalanceSeries);
+			activity.setAvgLeftBalancePct(avgLeftBalance != null ? round1(avgLeftBalance) : null);
+		}
+
 		Double aerobicTrainingEffect = parsed.aerobicTrainingEffect();
 		Double anaerobicTrainingEffect = parsed.anaerobicTrainingEffect();
 		if (aerobicTrainingEffect != null || anaerobicTrainingEffect != null) {
@@ -151,6 +200,16 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 	private Integer max(List<Integer> values) {
 		OptionalInt max = values.stream().filter(Objects::nonNull).mapToInt(Integer::intValue).max();
 		return max.isPresent() ? max.getAsInt() : null;
+	}
+
+	private Double maxDouble(List<Double> values) {
+		OptionalDouble max = values.stream().filter(Objects::nonNull).mapToDouble(Double::doubleValue).max();
+		return max.isPresent() ? max.getAsDouble() : null;
+	}
+
+	private Double minDouble(List<Double> values) {
+		OptionalDouble min = values.stream().filter(Objects::nonNull).mapToDouble(Double::doubleValue).min();
+		return min.isPresent() ? min.getAsDouble() : null;
 	}
 
 	private double round3(double v) {

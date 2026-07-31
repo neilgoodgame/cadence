@@ -60,6 +60,21 @@ def _semicircles_to_degrees(value: float | None) -> float | None:
     return value * SEMICIRCLE_TO_DEGREES if value is not None else None
 
 
+def _left_balance_pct(message) -> float | None:
+    """FIT's left_right_balance is a bitfield, not a plain number: bit 0x80 flags that
+    the % contribution in bits 0x7F belongs to the right leg rather than the left (dual-
+    sided/balance-capable power meters set this consistently). fitparse only resolves
+    known FieldType.values on an exact match, and a real combined byte essentially never
+    equals 0x7F or 0x80 alone, so get_value() reliably hands back the raw uint8 here.
+    """
+    raw = message.get_value("left_right_balance")
+    if not isinstance(raw, int):
+        return None
+    pct = raw & 0x7F
+    is_right = bool(raw & 0x80)
+    return 100 - pct if is_right else pct
+
+
 def _developer_field_scales(fit_file: FitFile) -> dict[str, tuple[float | None, float | None]]:
     """fitparse==1.2.0 has a bug: it never copies a developer field's declared scale/offset
     out of the file's own `field_description` messages onto the `DevField` it builds
@@ -230,6 +245,10 @@ def _build_activity(
                 "core_temp": _developer_value(message, "core_temperature", dev_field_scales),
                 "skin_temp": _developer_value(message, "skin_temperature", dev_field_scales),
                 "heat_strain": _developer_value(message, "heat_strain_index", dev_field_scales),
+                # Transient only - consumed by uploads/processing.py to compute the
+                # activity-level avg_left_balance_pct, not persisted per-sample onto
+                # Record (the mockup only shows one aggregate L/R split, not a stream).
+                "left_balance_pct": _left_balance_pct(message),
             }
         )
 

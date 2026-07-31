@@ -682,6 +682,79 @@ paths:
                     items:
                       $ref: "#/components/schemas/Lap"
 
+  /v1/activities/{id}/comments:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Comments]
+      summary: List an activity's comments
+      operationId: listActivityComments
+      description: >
+        Anyone with read access to the activity's athlete (the athlete, a coach,
+        or a viewer share) can list comments — this is a read-gated social
+        feature, not a write-mutation. Oldest first.
+      responses:
+        "200":
+          description: Comments.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ActivityComment"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Comments]
+      summary: Comment on an activity
+      operationId: createActivityComment
+      description: Same read-gated access as listing — no separate write scope is required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 4000 }
+      responses:
+        "201":
+          description: Comment created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityComment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/activities/{id}/comments/{comment_id}:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+      - name: comment_id
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Comments]
+      summary: Delete a comment
+      operationId: deleteActivityComment
+      description: Only the comment's own author may delete it, regardless of read/write access to the activity.
+      responses:
+        "204":
+          description: Comment deleted.
+        "403":
+          description: Not the comment's author.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/activities/{id}/infer-workout:
     parameters:
       - $ref: "#/components/parameters/ActivityId"
@@ -1287,6 +1360,12 @@ paths:
                 threshold_pace: { type: string, description: "mm:ss per km." }
                 lthr: { type: integer, description: Lactate threshold HR (bpm). }
                 max_hr: { type: integer }
+                resting_hr:
+                  type: integer
+                  description: >
+                    Optional; only feeds the Karvonen HRR% stat, not a zone
+                    reference threshold, so changing it never appears in
+                    zones_recomputed.
       responses:
         "200":
           description: Updated athlete.
@@ -2190,6 +2269,10 @@ components:
         threshold_pace: { type: string, example: "4:00" }
         lthr: { type: integer, example: 155 }
         max_hr: { type: integer, example: 186 }
+        resting_hr:
+          type: [integer, "null"]
+          description: Optional. Only used for the Karvonen heart-rate-reserve % shown on Activity Analysis's Stats tab.
+          example: 48
         is_coach:
           type: boolean
           description: Whether this user also coaches other users. A user can train and coach at once.
@@ -2283,6 +2366,33 @@ components:
         avg_hr: { type: integer, example: 138 }
         max_hr: { type: integer }
         ascent: { type: integer, description: Metres }
+        max_power: { type: [integer, "null"] }
+        avg_cadence: { type: [integer, "null"] }
+        max_cadence: { type: [integer, "null"] }
+        max_speed: { type: [number, "null"], description: km/h }
+        total_descent: { type: [integer, "null"], description: Metres }
+        elevation_min: { type: [integer, "null"], description: Metres }
+        elevation_max: { type: [integer, "null"], description: Metres }
+        calories:
+          type: [integer, "null"]
+          description: >
+            Power-based estimate only (work_kJ / 0.24, a standard cycling efficiency
+            approximation). Null for activities with no power data.
+          example: 850
+        trimp:
+          type: [number, "null"]
+          description: >
+            Edwards' TRIMP - sum over HR zones of (minutes in zone * zone number
+            1-5). Null unless the athlete has an HR threshold set (lthr) and the
+            activity has a heart rate stream.
+          example: 142.5
+        avg_left_balance_pct:
+          type: [number, "null"]
+          description: >
+            Mean % of power from the left leg, from a dual-sided/balance-capable
+            power meter's left_right_balance field. Right % is 100 minus this.
+            Null for everything else (most activities).
+          example: 51.2
         start_weight_kg:
           type: [number, "null"]
           description: Body weight before the session. Defaults to the user's profile weight if unset.
@@ -2515,6 +2625,24 @@ components:
         name: { type: string, example: Race }
         origin: { type: string, enum: [manual, auto], example: manual }
         color: { type: string, example: "#e0442e" }
+
+    ActivityComment:
+      type: object
+      properties:
+        id: { type: string, example: cmt_9f2a7c }
+        activity_id: { type: string }
+        author_id: { type: string }
+        author_name: { type: string, example: Alex Coach }
+        author_role:
+          type: string
+          enum: [athlete, coach, viewer]
+          description: >
+            Derived at read time from the author's relationship to the
+            activity's owner, not stored — it can change if a share is later
+            revoked.
+          example: coach
+        text: { type: string, example: Great pacing on the back half! }
+        created: { type: string, format: date-time }
 
     Workout:
       type: object

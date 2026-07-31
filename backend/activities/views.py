@@ -17,8 +17,10 @@ from uploads.services import create_activity_upload
 from workouts.inference import infer_workout
 from workouts.models import Workout
 
-from .models import Activity, ActivityTag, DurationCurve, Record, Tag
+from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Record, Tag
 from .serializers import (
+    ActivityCommentCreateSerializer,
+    ActivityCommentSerializer,
     ActivitySerializer,
     ActivityUpdateSerializer,
     DurationCurveSerializer,
@@ -386,4 +388,47 @@ class ActivityUntagView(APIView):
         if link.tag.origin == "auto":
             raise PermissionDenied("Auto-applied tags cannot be removed.")
         link.delete()
+        return Response(status=204)
+
+
+class ActivityCommentListView(APIView):
+    """Comments are a lightweight social feature gated by read access, not write access -
+    anyone who can see an athlete's activity (the athlete, a coach, or a viewer share) can
+    comment on it, same as the model docstring documents.
+    """
+
+    def get(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        comments = activity.comments.select_related("author", "activity").order_by("created")
+        return Response({"data": ActivityCommentSerializer(comments, many=True).data})
+
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+
+        serializer = ActivityCommentCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        comment = ActivityComment.objects.create(
+            activity=activity, author_id=sub, text=serializer.validated_data["text"]
+        )
+        return Response(ActivityCommentSerializer(comment).data, status=201)
+
+
+class ActivityCommentDetailView(APIView):
+    def delete(self, request: Request, id: str, comment_id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+
+        comment = get_object_or_404(ActivityComment, pk=comment_id, activity=activity)
+        if comment.author_id != sub:
+            raise PermissionDenied("You can only delete your own comments.")
+        comment.delete()
         return Response(status=204)

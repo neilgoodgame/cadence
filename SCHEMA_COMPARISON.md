@@ -20,6 +20,7 @@ the same logical entity.
 | `user_relationship` | `accounts_userrelationship` |
 | `personal_access_token` | `accounts_personalaccesstoken` |
 | `activity` | `activities_activity` |
+| `activity_comment` | `activities_activitycomment` |
 | `activity_tag` | `activities_activitytag` |
 | `best_effort` | `activities_besteffort` |
 | `duration_curve` | `activities_durationcurve` |

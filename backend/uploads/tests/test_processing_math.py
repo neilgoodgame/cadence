@@ -5,7 +5,11 @@ from activities.models import Activity
 
 from ..processing import (
     _best_pace_seconds_per_km,
+    _min,
+    _total_descent,
+    compute_calories,
     compute_duration_curve,
+    compute_edwards_trimp,
     compute_normalized_power,
     compute_tss,
     training_effect_label,
@@ -89,6 +93,47 @@ class ComputeTssTests(TestCase):
         # All samples sit at exactly 100% of LTHR -> Z4 Threshold (91-105%),
         # whose midpoint is 98% -> a full hour there is 98 hrTSS exactly.
         self.assertEqual(tss, 98)
+
+
+class MinTests(SimpleTestCase):
+    def test_ignores_nones(self):
+        self.assertEqual(_min([None, 5, 2, None, 8]), 2)
+
+    def test_empty_or_all_none_returns_none(self):
+        self.assertIsNone(_min([]))
+        self.assertIsNone(_min([None, None]))
+
+
+class TotalDescentTests(SimpleTestCase):
+    def test_sums_only_downhill_deltas(self):
+        # Up 10, down 15, up 5 -> only the 15 counts.
+        samples = [{"altitude": a} for a in (100, 110, 95, 100)]
+        self.assertEqual(_total_descent(samples), 15)
+
+    def test_fewer_than_two_altitude_samples_returns_none(self):
+        self.assertIsNone(_total_descent([{"altitude": 100}]))
+        self.assertIsNone(_total_descent([{"altitude": None}, {"altitude": None}]))
+
+
+class ComputeCaloriesTests(SimpleTestCase):
+    def test_power_based_estimate(self):
+        # 200W for 3600s -> 720 kJ of work -> /0.24 efficiency -> 3000 kcal.
+        self.assertEqual(compute_calories([200] * 3600, 3600), 3000)
+
+    def test_no_power_data_returns_none(self):
+        self.assertIsNone(compute_calories([None, None], 3600))
+
+
+class ComputeEdwardsTrimpTests(TestCase):
+    def test_one_hour_at_threshold_zone_weights_by_zone_number(self):
+        athlete = User.objects.create_user(email="trimp@example.cc", password="x", name="Trimp Athlete", lthr=160)
+        # All samples at 100% of LTHR -> Z4 Threshold (zone 4) -> 60 min * 4 = 240.
+        trimp = compute_edwards_trimp(athlete, [160] * 3600)
+        self.assertEqual(trimp, 240.0)
+
+    def test_no_lthr_returns_none(self):
+        athlete = User.objects.create_user(email="notrimp@example.cc", password="x", name="No Threshold Athlete")
+        self.assertIsNone(compute_edwards_trimp(athlete, [140] * 600))
 
 
 class TrainingEffectLabelTests(SimpleTestCase):
