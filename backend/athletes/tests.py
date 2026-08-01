@@ -8,6 +8,7 @@ from accounts.models import User, UserRelationship
 from activities.models import Activity, BestEffort
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
+from uploads.processing import _trim_kind_window
 
 from .models import ZoneSet
 from .zones import DEFAULT_ZONES
@@ -243,6 +244,55 @@ class BestEffortListViewTests(TestCase):
     def test_unknown_kind_400(self):
         response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=bogus")
         self.assertEqual(response.status_code, 400)
+
+    def test_period_filter_returns_a_recent_non_all_time_record(self):
+        # Two old, fast efforts occupy the all-time top-2 for this window; a slower but recent
+        # one is 3rd all-time. Trimming with top_n=2 must still retain it (it's a top-2 record
+        # within the last 90 days), and the period=3m filter should then return it.
+        old1 = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Old fast run 1", start_date=timezone.now() - timedelta(days=1000)
+        )
+        BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window="10km",
+            value=200.0,
+            unit="sec_per_km",
+            date=date.today() - timedelta(days=1000),
+            activity=old1,
+        )
+        old2 = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Old fast run 2", start_date=timezone.now() - timedelta(days=900)
+        )
+        BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window="10km",
+            value=210.0,
+            unit="sec_per_km",
+            date=date.today() - timedelta(days=900),
+            activity=old2,
+        )
+        recent_activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Recent slower run", start_date=timezone.now() - timedelta(days=10)
+        )
+        BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window="10km",
+            value=280.0,
+            unit="sec_per_km",
+            date=date.today() - timedelta(days=10),
+            activity=recent_activity,
+        )
+
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, top_n=2)
+
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts?kind=running_pace&period=3m"
+        )
+        activity_ids = {e["activity_id"] for e in response.json()["data"]}
+        self.assertEqual(activity_ids, {recent_activity.id})
 
     def test_outsider_forbidden(self):
         response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power")

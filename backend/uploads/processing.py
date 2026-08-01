@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from datetime import timedelta
 
 from django.core.files.storage import default_storage
+from django.utils import timezone
 
 from accounts.models import User
 from activities.models import Activity, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
@@ -44,6 +45,14 @@ PACE_BEST_EFFORT_DISTANCES_KM = [
     ("marathon", 42.195),
     ("50km", 50.0),
 ]
+
+# Cutoffs a window's leaderboard is independently top-N'd against, in addition to unbounded
+# all-time (see _trim_kind_window). 28/112 are what the Best Efforts screen's "4 weeks"/
+# "16 weeks" tabs narrow down to client-side (PERIOD_CONFIG in
+# frontend/src/screens/BestEffortsScreen.tsx); 90/365 are this API's own `period=3m|1y` values
+# (BEST_EFFORT_PERIOD_DAYS in athletes/views.py). Keep in sync with
+# BestEffortWindows.TRIM_PERIOD_DAYS in the Java backend - see ARCHITECTURE.md section 12.
+BEST_EFFORT_TRIM_PERIOD_DAYS: tuple[int, ...] = (28, 90, 112, 365)
 
 SPORT_LABELS = {
     "bike": "Bike",
@@ -338,27 +347,38 @@ def _write_duration_curves(
 
 
 def _trim_kind_window(athlete_id: str, kind: str, window: str, lower_is_better: bool, top_n: int) -> None:
-    """Deletes (not just hides) anything outside the athlete's all-time top N for this
-    kind/window - BestEffort only ever holds a global top-N leaderboard, never the full
-    history. This is why a "period" filter on the Best Efforts screen can only show entries
-    that are BOTH within the period AND still an all-time top-N record - a below-the-cutoff
-    effort leaves no row at all, even if it happened yesterday.
+    """Deletes (not just hides) anything outside the athlete's top N for this kind/window in
+    EVERY period it tracks - a row survives if it's in the top N all-time, OR in the top N of
+    any cutoff in BEST_EFFORT_TRIM_PERIOD_DAYS (as of today, not the activity's own date - this
+    keeps a rolling "last 28 days" window rolling even when replaying old activities during a
+    recompute). This is why the Best Efforts screen's period filters can show a recent effort
+    that isn't an all-time record: it only needs to be a record within ITS OWN period.
 
-    Revisit if a true "best of this period" view (ranked only among that period's own
-    activities, regardless of all-time rank) is wanted: it needs this function to stop
-    deleting non-top-N rows (retain everything, compute the all-time top-N at read time
-    instead), a one-time recompute pass to backfill history already deleted under the
-    current trimming (only recoverable by reprocessing raw records, not from BestEffort
-    itself), and the equivalent change in the Java backend for parity. Decided to keep the
-    current all-time-only behavior for now (2026-07-28).
+    Storage is still bounded, just not to a single top_n anymore: at most
+    top_n * (len(BEST_EFFORT_TRIM_PERIOD_DAYS) + 1) rows per (athlete, kind, window), and
+    typically far fewer since the periods overlap and mostly keep the same rows.
     """
     if top_n == 0:
         return
     qs = BestEffort.objects.filter(athlete_id=athlete_id, kind=kind, window=window)
-    if qs.count() <= top_n:
-        return
     order = "value" if lower_is_better else "-value"
-    keeper_ids = list(qs.order_by(order).values_list("id", flat=True)[:top_n])
+    ranked = list(qs.order_by(order).values_list("id", "date"))
+    if len(ranked) <= top_n:
+        return
+
+    keeper_ids: set[int] = {row_id for row_id, _row_date in ranked[:top_n]}
+    today = timezone.now().date()
+    for days in BEST_EFFORT_TRIM_PERIOD_DAYS:
+        cutoff = today - timedelta(days=days)
+        kept_in_period = 0
+        for row_id, row_date in ranked:
+            if row_date < cutoff:
+                continue
+            keeper_ids.add(row_id)
+            kept_in_period += 1
+            if kept_in_period == top_n:
+                break
+
     qs.exclude(id__in=keeper_ids).delete()
 
 

@@ -18,10 +18,11 @@ type DisplayPeriod = "4w" | "16w" | "1y" | "all";
 // otherwise e.g. the "4 weeks" tab would silently show the full 3-month bucket it was fetched
 // from. `days: null` means trust the backend's own bucket boundary as-is (already exact).
 //
-// Note this only ever filters the athlete's stored all-time top-N BestEffort rows by date - a
-// below-the-cutoff effort has no row to filter at all, even within the period. See the trim
-// note in backend/uploads/processing.py's _trim_kind_window (and its Java equivalent) for why,
-// and what a true "best of this period" view would need.
+// The backend keeps each tracked period's own top-N leaderboard (not just an all-time one), so
+// a recent effort can show up here even if it's not an all-time record - it only needs to be a
+// top-N record within its own period. See BEST_EFFORT_TRIM_PERIOD_DAYS in
+// backend/uploads/processing.py (and BestEffortWindows.TRIM_PERIOD_DAYS in the Java backend)
+// for the exact cutoffs that are kept.
 const PERIOD_CONFIG: Record<DisplayPeriod, { apiPeriod: BestEffortPeriod; days: number | null; label: string }> = {
   "4w": { apiPeriod: "3m", days: 28, label: "4 weeks" },
   "16w": { apiPeriod: "1y", days: 112, label: "16 weeks" },

@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from django.test import TestCase
 
@@ -7,7 +7,7 @@ from activities.models import Activity, ActivityTag, BestEffort
 from scheduling.models import ScheduledWorkout
 from workouts.models import Workout
 
-from ..processing import attempt_workout_match, update_best_efforts
+from ..processing import BEST_EFFORT_TRIM_PERIOD_DAYS, _trim_kind_window, attempt_workout_match, update_best_efforts
 
 
 class BestEffortUpsertTests(TestCase):
@@ -40,6 +40,90 @@ class BestEffortUpsertTests(TestCase):
         update_best_efforts(a3, self.athlete, [250] * 60, [], [])
         self.assertEqual(self._best("cycling_power", "1min").value, 250.0)
         self.assertEqual(self._best("cycling_power", "1min").activity_id, a3.id)
+
+
+class BestEffortTrimPeriodTests(TestCase):
+    """_trim_kind_window keeps a row if it's a top-N record within ANY tracked period
+    (BEST_EFFORT_TRIM_PERIOD_DAYS, or all-time), not just the all-time top-N."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="trim@example.cc", password="x", name="Trim Athlete")
+        self.top_n = 2
+
+    def _make(self, value, days_ago, window="10km"):
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name=f"Run -{days_ago}d",
+            start_date=datetime.now(UTC) - timedelta(days=days_ago),
+        )
+        return BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window=window,
+            value=value,
+            unit="sec_per_km",
+            date=date.today() - timedelta(days=days_ago),
+            activity=activity,
+        )
+
+    def _survivor_ids(self, window="10km"):
+        return set(
+            BestEffort.objects.filter(athlete=self.athlete, kind="running_pace", window=window).values_list(
+                "id", flat=True
+            )
+        )
+
+    def test_recent_effort_survives_even_when_not_all_time_top_n(self):
+        # Two very fast, very old efforts fill the all-time top-2 (lower value = better pace).
+        old1 = self._make(200.0, days_ago=1000)
+        old2 = self._make(210.0, days_ago=900)
+        # 3rd all-time, but the only effort in the last 28 days - should survive on that basis.
+        recent = self._make(280.0, days_ago=10)
+
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, self.top_n)
+
+        self.assertEqual(self._survivor_ids(), {old1.id, old2.id, recent.id})
+
+    def test_row_deleted_once_it_loses_every_period(self):
+        self._make(200.0, days_ago=1000)
+        self._make(210.0, days_ago=900)
+        recent = self._make(280.0, days_ago=10)
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, self.top_n)
+        self.assertIn(recent.id, self._survivor_ids())
+
+        # Two faster, similarly-recent efforts now fill every period's top-2 ahead of `recent` -
+        # it's no longer a record in the 28-day window, and every wider period it also belongs
+        # to (90/112/365/all) prefers these two over it as well.
+        self._make(150.0, days_ago=5)
+        self._make(160.0, days_ago=4)
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, self.top_n)
+
+        self.assertNotIn(recent.id, self._survivor_ids())
+
+    def test_trim_bound_respects_top_n_times_period_count(self):
+        # One pair of rows per tracked period, deliberately slower the more recent the band -
+        # so each period's own top-2 are exactly that band's two rows, none of which intrude on
+        # a narrower (more recent) period's top-2. Plus one extra row that isn't fast enough to
+        # win any period, to prove it's the one that gets dropped rather than the bound being
+        # exceeded.
+        bands_oldest_first = [
+            max(BEST_EFFORT_TRIM_PERIOD_DAYS) + 35,
+            *sorted(BEST_EFFORT_TRIM_PERIOD_DAYS, reverse=True),
+        ]
+        expected_survivors = set()
+        for band_index, days_ago in enumerate(bands_oldest_first):
+            base_value = band_index * 10
+            expected_survivors.add(self._make(base_value, days_ago=days_ago - 5).id)
+            expected_survivors.add(self._make(base_value + 1, days_ago=days_ago - 4).id)
+        loser = self._make(999.0, days_ago=3)
+
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, self.top_n)
+
+        survivors = self._survivor_ids()
+        self.assertEqual(len(survivors), self.top_n * (len(BEST_EFFORT_TRIM_PERIOD_DAYS) + 1))
+        self.assertEqual(survivors, expected_survivors)
+        self.assertNotIn(loser.id, survivors)
 
 
 class WorkoutMatchingTests(TestCase):

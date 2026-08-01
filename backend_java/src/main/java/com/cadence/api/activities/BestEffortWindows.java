@@ -40,6 +40,14 @@ public final class BestEffortWindows {
 			new PaceDistance("marathon", 42.195),
 			new PaceDistance("50km", 50.0));
 
+	/**
+	 * Cutoffs (in days) a window's leaderboard is independently top-N'd against, in addition to
+	 * unbounded all-time. Keep in sync with BEST_EFFORT_TRIM_PERIOD_DAYS in the Python backend's
+	 * uploads/processing.py - see ARCHITECTURE.md section 12 for why this file pair is a known
+	 * drift risk.
+	 */
+	public static final List<Integer> TRIM_PERIOD_DAYS = List.of(28, 90, 112, 365);
+
 	private BestEffortWindows() {
 	}
 }

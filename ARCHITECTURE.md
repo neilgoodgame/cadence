@@ -698,17 +698,21 @@ this pipeline.
 | Webhook delivery | Celery task, own retry/backoff, same worker pool as ingestion | `@Async` + `@Retryable`, separate thread pool from ingestion |
 | Failure isolation (Garmin stub files) | `status=skipped`, batch continues | `NO_ACTIVITY_DATA` exit → clean `COMPLETED`, batch continues |
 
-**Best-effort storage is a top-N leaderboard, not full history**: `BestEffort`
-rows are trimmed at write time to the athlete's global all-time top N
-(default 10) per `kind`+`window_label` — anything outside the top N is
-**deleted**, not hidden (`_trim_kind_window` in Python's
-`uploads/processing.py`, `trimToTop` in Java's `BestEffortComputeService`).
-Both have a detailed comment explaining the consequence: a "period" filter
-on the Best Efforts screen can only ever show entries that are *both*
-within the period *and* still an all-time top-N record — this was the root
-cause of more than one "missing data" bug found during manual testing, and
-is a deliberate, documented, revisit-later trade-off rather than an
-oversight.
+**Best-effort storage is a union of per-period top-N leaderboards, not full
+history**: `BestEffort` rows are trimmed at write time to the athlete's top N
+(default 10) per `kind`+`window_label`, independently *for each* of several
+day-cutoffs (28/90/112/365, plus unbounded all-time) — a row survives if it's
+a top-N record in ANY of those periods, and anything outside every period's
+top N is **deleted**, not hidden (`_trim_kind_window` in Python's
+`uploads/processing.py`, `trimToTop` in Java's `BestEffortComputeService`;
+cutoffs live in `BEST_EFFORT_TRIM_PERIOD_DAYS` / `BestEffortWindows.TRIM_PERIOD_DAYS`
+respectively). This is why a "period" filter on the Best Efforts screen can
+show a recent effort that isn't an all-time record — it only needs to be a
+top-N record within its own period. Storage is still bounded, just not to a
+single top N anymore: at most `top_n * (periods + 1)` rows per
+(athlete, kind, window). Trim only runs when a row is upserted (new upload or
+a recompute pass) — a row isn't proactively deleted the instant it ages out
+of a period between uploads, only at the next trim call for that window.
 
 ## 6. Workout subsystem
 
