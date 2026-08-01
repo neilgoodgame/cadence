@@ -238,7 +238,7 @@ export interface BestEffort {
 }
 
 export type BestEffortKind = "cycling_hr" | "cycling_power" | "running_hr" | "running_pace" | "running_power";
-export type BestEffortPeriod = "3m" | "1y" | "all";
+export type BestEffortPeriod = "4w" | "3m" | "16w" | "1y" | "all";
 
 export interface Tag {
   id: string;

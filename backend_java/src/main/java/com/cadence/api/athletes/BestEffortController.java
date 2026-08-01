@@ -54,8 +54,14 @@ public class BestEffortController {
 			@RequestParam BestEffortKind kind,
 			@RequestParam(defaultValue = "all") String period) {
 		accessGuard.requireRead(id);
+		// 4w/16w match BestEffortWindows.TRIM_PERIOD_DAYS exactly - querying the exact displayed
+		// period directly (rather than fetching a wider bucket and narrowing client-side) avoids
+		// capPerWindow discarding entries that are top-N within the narrower window but not
+		// within the top-N of a wider one it happened to be fetched from.
 		LocalDate since = switch (period) {
+			case "4w" -> LocalDate.now().minusDays(28);
 			case "3m" -> LocalDate.now().minusDays(90);
+			case "16w" -> LocalDate.now().minusDays(112);
 			case "1y" -> LocalDate.now().minusDays(365);
 			default -> null;
 		};

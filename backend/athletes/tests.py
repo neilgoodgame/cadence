@@ -337,6 +337,50 @@ class BestEffortListViewTests(TestCase):
         # the assertion that matters here, not that they're ascending.
         self.assertEqual([e["value"] for e in data], [102.0, 101.0, 100.0])
 
+    def test_16w_period_queries_native_112_day_window(self):
+        # Before native 4w/16w periods existed, the frontend faked "16 weeks" by fetching the
+        # wider "1y" bucket (already capped to top_n there) and narrowing client-side to 112
+        # days - which could drop entries that are genuinely top-N within 112 days but not
+        # within the top-N of the full 365-day bucket. period=16w must query that exact window
+        # natively instead.
+        self.athlete.best_effort_top_n = 2
+        self.athlete.save()
+
+        def make(value, days_ago):
+            activity = Activity.objects.create(
+                athlete=self.athlete,
+                sport="run",
+                name=f"Run -{days_ago}d",
+                start_date=timezone.now() - timedelta(days=days_ago),
+            )
+            return BestEffort.objects.create(
+                athlete=self.athlete,
+                kind="running_pace",
+                window="1km",
+                value=value,
+                unit="sec_per_km",
+                date=date.today() - timedelta(days=days_ago),
+                activity=activity,
+            )
+
+        # Two very fast efforts outside the 112-day window (but inside 365) - these would
+        # dominate a naive "top-2 of the last year, then narrow to 112 days" query down to
+        # nothing, since neither survives the narrowing.
+        make(150.0, days_ago=200)
+        make(151.0, days_ago=210)
+        # Two slower-but-still-notable efforts inside the last 112 days - what "16 weeks"
+        # should actually show.
+        recent1 = make(280.0, days_ago=20)
+        recent2 = make(285.0, days_ago=50)
+
+        _trim_kind_window(self.athlete.id, "running_pace", "1km", True, self.athlete.best_effort_top_n)
+
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts?kind=running_pace&period=16w"
+        )
+        activity_ids = {e["activity_id"] for e in response.json()["data"]}
+        self.assertEqual(activity_ids, {recent1.activity_id, recent2.activity_id})
+
     def test_outsider_forbidden(self):
         response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power")
         self.assertEqual(response.status_code, 403)

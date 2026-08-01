@@ -11,33 +11,29 @@ import type { Activity, BestEffort, BestEffortKind, BestEffortPeriod } from "../
 
 type DisplayPeriod = "4w" | "16w" | "1y" | "all";
 
-// The backend only buckets by "3m" / "1y" / "all" (BestEffortPeriod) - there's no native
-// "last N weeks" query. apiPeriod is always fetched as a *superset* of the displayed window
-// (16 weeks is 112 days, which is wider than the "3m" bucket's ~90 days, so it needs the "1y"
-// bucket instead), and `days` then trims the result client-side to the label's actual window -
-// otherwise e.g. the "4 weeks" tab would silently show the full 3-month bucket it was fetched
-// from. `days: null` means trust the backend's own bucket boundary as-is (already exact).
+// Each display tab maps to a backend period of the exact same cutoff - the backend used to
+// only bucket by "3m" / "1y" / "all", so "4w"/"16w" were faked by fetching a wider bucket (3m
+// or 1y) and narrowing the result client-side to 28/112 days. That narrowing was applied AFTER
+// the backend had already capped each window to its top-N *within the wider bucket* - so an
+// effort that was genuinely top-N within the narrower 28/112-day window, but not within the
+// top-N of the wider bucket it was fetched from, got silently dropped before the client-side
+// filter ever saw it (seen live: a window with plenty of history over the year showed only 3
+// of the last 16 weeks' true top-10). The backend now has native "4w"/"16w" periods matching
+// BEST_EFFORT_TRIM_PERIOD_DAYS exactly, so each tab fetches precisely the window it displays -
+// no client-side narrowing needed.
 //
 // The backend keeps each tracked period's own top-N leaderboard (not just an all-time one), so
 // a recent effort can show up here even if it's not an all-time record - it only needs to be a
 // top-N record within its own period. See BEST_EFFORT_TRIM_PERIOD_DAYS in
 // backend/uploads/processing.py (and BestEffortWindows.TRIM_PERIOD_DAYS in the Java backend)
 // for the exact cutoffs that are kept.
-const PERIOD_CONFIG: Record<DisplayPeriod, { apiPeriod: BestEffortPeriod; days: number | null; label: string }> = {
-  "4w": { apiPeriod: "3m", days: 28, label: "4 weeks" },
-  "16w": { apiPeriod: "1y", days: 112, label: "16 weeks" },
-  "1y": { apiPeriod: "1y", days: null, label: "1 year" },
-  all: { apiPeriod: "all", days: null, label: "All time" },
+const PERIOD_CONFIG: Record<DisplayPeriod, { apiPeriod: BestEffortPeriod; label: string }> = {
+  "4w": { apiPeriod: "4w", label: "4 weeks" },
+  "16w": { apiPeriod: "16w", label: "16 weeks" },
+  "1y": { apiPeriod: "1y", label: "1 year" },
+  all: { apiPeriod: "all", label: "All time" },
 };
 const DISPLAY_PERIODS: DisplayPeriod[] = ["4w", "16w", "1y", "all"];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function withinLastDays(dateStr: string, days: number | null): boolean {
-  if (days == null) return true;
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  return new Date(dateStr).getTime() >= cutoff;
-}
 
 function windowToSeconds(w: string): number {
   const m = w.match(/^(\d+)\s*(s|sec|m|min|h|hr)/i);
@@ -987,7 +983,7 @@ export function BestEffortsScreen() {
   const weightKg = user?.weight_kg ?? null;
   const rCP = user?.critical_run_power ?? null;
   const [displayPeriod, setDisplayPeriod] = useState<DisplayPeriod>("16w");
-  const { apiPeriod, days: windowDays, label: periodLabel } = PERIOD_CONFIG[displayPeriod];
+  const { apiPeriod, label: periodLabel } = PERIOD_CONFIG[displayPeriod];
   const { mutate: excludeActivity, isPending: excludePending } = useExclude(athleteId);
   const makeExclude = (kind: BestEffortKind) => (activityId: string) => excludeActivity({ activityId, kind });
 
@@ -1008,15 +1004,15 @@ export function BestEffortsScreen() {
   const { data: bikePowerData } = useQuery(bqOpts("cycling_power", apiPeriod));
   const { data: bikePowerAll } = useQuery(bqOpts("cycling_power", "all"));
 
-  const runHrEfforts = (runHrData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
+  const runHrEfforts = runHrData?.data ?? [];
   const runHrAllEfforts = runHrAll?.data ?? [];
-  const runPowerEfforts = (runPowerData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
+  const runPowerEfforts = runPowerData?.data ?? [];
   const runPowerAllEfforts = runPowerAll?.data ?? [];
-  const runPaceEfforts = (runPaceData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
+  const runPaceEfforts = runPaceData?.data ?? [];
   const runPaceAllEfforts = runPaceAll?.data ?? [];
-  const bikeHrEfforts = (bikeHrData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
+  const bikeHrEfforts = bikeHrData?.data ?? [];
   const bikeHrAllEfforts = bikeHrAll?.data ?? [];
-  const bikePowerEfforts = (bikePowerData?.data ?? []).filter((e) => withinLastDays(e.date, windowDays));
+  const bikePowerEfforts = bikePowerData?.data ?? [];
   const bikePowerAllEfforts = bikePowerAll?.data ?? [];
 
   const hasRunHr = runHrAllEfforts.length > 0;

@@ -23,7 +23,15 @@ from .models import ZoneSet
 from .serializers import AthleteUpdateSerializer, FitnessPointSerializer, ZoneSetReplaceSerializer, ZoneSetSerializer
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for, zone_types_affected_by
 
-BEST_EFFORT_PERIOD_DAYS = {"3m": 90, "1y": 365}
+# 4w/16w match BEST_EFFORT_TRIM_PERIOD_DAYS in uploads/processing.py exactly - the Best Efforts
+# screen used to fetch the wider 3m/1y bucket and narrow it client-side to 28/112 days, but
+# capping to top-N happens per the FETCHED bucket's own value ranking (see _cap_per_window), so
+# narrowing afterwards could drop entries that were genuinely top-N within the narrower window
+# but not within the top-N of the wider one it was fetched from (seen live: a 1km window with
+# plenty of trimmed history over the year showed only 3 of the last 16 weeks' true top-10,
+# because the fastest-of-the-year 10 happened to mostly predate that window). Querying the exact
+# period directly avoids the mismatch.
+BEST_EFFORT_PERIOD_DAYS = {"4w": 28, "3m": 90, "16w": 112, "1y": 365}
 LOWER_IS_BETTER_KINDS = {"running_pace"}
 
 
@@ -119,8 +127,8 @@ class BestEffortListView(APIView):
             )
 
         period = request.query_params.get("period", "all")
-        if period not in ("3m", "1y", "all"):
-            raise ValidationError({"period": "Must be one of 3m, 1y, all."})
+        if period not in ("4w", "3m", "16w", "1y", "all"):
+            raise ValidationError({"period": "Must be one of 4w, 3m, 16w, 1y, all."})
 
         qs = BestEffort.objects.filter(athlete_id=id, kind=kind).order_by("window", "-value")
         if period in BEST_EFFORT_PERIOD_DAYS:
