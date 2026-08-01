@@ -867,7 +867,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [3m, 1y, all]
+            enum: [4w, 3m, 16w, 1y, all]
             default: all
       responses:
         "200":

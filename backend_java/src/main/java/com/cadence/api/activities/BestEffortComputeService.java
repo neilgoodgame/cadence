@@ -4,10 +4,13 @@ import com.cadence.api.activities.calc.DurationCurveCalculator;
 import com.cadence.api.activities.calc.PaceBestEffortCalculator;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.users.User;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 /**
@@ -112,19 +115,17 @@ public class BestEffortComputeService {
 	}
 
 	/**
-	 * Deletes (not just hides) anything outside the athlete's all-time top N for this
-	 * kind/window - BestEffort only ever holds a global top-N leaderboard, never the full
-	 * history. This is why a "period" filter on the Best Efforts screen can only show
-	 * entries that are BOTH within the period AND still an all-time top-N record - a
-	 * below-the-cutoff effort leaves no row at all, even if it happened yesterday.
+	 * Deletes (not just hides) anything outside the athlete's top N for this kind/window in
+	 * EVERY period it tracks - a row survives if it's in the top N all-time, OR in the top N of
+	 * any cutoff in {@link BestEffortWindows#TRIM_PERIOD_DAYS} (as of today, not the activity's
+	 * own date - this keeps a rolling "last 28 days" window rolling even when replaying old
+	 * activities during a recompute). This is why the Best Efforts screen's period filters can
+	 * show a recent effort that isn't an all-time record: it only needs to be a record within
+	 * ITS OWN period.
 	 *
-	 * <p>Revisit if a true "best of this period" view (ranked only among that period's own
-	 * activities, regardless of all-time rank) is wanted: it needs this method to stop
-	 * deleting non-top-N rows (retain everything, compute the all-time top-N at read time
-	 * instead), a one-time recompute pass to backfill history already deleted under the
-	 * current trimming (only recoverable by reprocessing raw records, not from BestEffort
-	 * itself), and the equivalent change in the Python backend for parity. Decided to keep
-	 * the current all-time-only behavior for now (2026-07-28).
+	 * <p>Storage is still bounded, just not to a single top_n anymore: at most
+	 * {@code topN * (TRIM_PERIOD_DAYS.size() + 1)} rows per (athlete, kind, window), and
+	 * typically far fewer since the periods overlap and mostly keep the same rows.
 	 */
 	private void trimToTop(String athleteId, BestEffortKind kind, String window,
 			boolean lowerIsBetter, int topN) {
@@ -132,8 +133,23 @@ public class BestEffortComputeService {
 		List<BestEffort> ranked = lowerIsBetter
 				? bestEffortRepository.findByAthleteIdAndKindAndWindowOrderByValueAsc(athleteId, kind, window)
 				: bestEffortRepository.findByAthleteIdAndKindAndWindowOrderByValueDesc(athleteId, kind, window);
-		if (ranked.size() > topN) {
-			bestEffortRepository.deleteAll(ranked.subList(topN, ranked.size()));
+		if (ranked.size() <= topN) return;
+
+		Set<Long> keeperIds = new HashSet<>();
+		ranked.stream().limit(topN).forEach(e -> keeperIds.add(e.getId()));
+
+		LocalDate today = LocalDate.now();
+		for (int days : BestEffortWindows.TRIM_PERIOD_DAYS) {
+			LocalDate cutoff = today.minusDays(days);
+			ranked.stream()
+					.filter(e -> !e.getDate().isBefore(cutoff))
+					.limit(topN)
+					.forEach(e -> keeperIds.add(e.getId()));
+		}
+
+		List<BestEffort> toDelete = ranked.stream().filter(e -> !keeperIds.contains(e.getId())).toList();
+		if (!toDelete.isEmpty()) {
+			bestEffortRepository.deleteAll(toDelete);
 		}
 	}
 

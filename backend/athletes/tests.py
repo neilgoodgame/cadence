@@ -8,6 +8,7 @@ from accounts.models import User, UserRelationship
 from activities.models import Activity, BestEffort
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
+from uploads.processing import _trim_kind_window
 
 from .models import ZoneSet
 from .zones import DEFAULT_ZONES
@@ -243,6 +244,142 @@ class BestEffortListViewTests(TestCase):
     def test_unknown_kind_400(self):
         response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=bogus")
         self.assertEqual(response.status_code, 400)
+
+    def test_period_filter_returns_a_recent_non_all_time_record(self):
+        # Two old, fast efforts occupy the all-time top-2 for this window; a slower but recent
+        # one is 3rd all-time. Trimming with top_n=2 must still retain it (it's a top-2 record
+        # within the last 90 days), and the period=3m filter should then return it.
+        old1 = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Old fast run 1", start_date=timezone.now() - timedelta(days=1000)
+        )
+        BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window="10km",
+            value=200.0,
+            unit="sec_per_km",
+            date=date.today() - timedelta(days=1000),
+            activity=old1,
+        )
+        old2 = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Old fast run 2", start_date=timezone.now() - timedelta(days=900)
+        )
+        BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window="10km",
+            value=210.0,
+            unit="sec_per_km",
+            date=date.today() - timedelta(days=900),
+            activity=old2,
+        )
+        recent_activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Recent slower run", start_date=timezone.now() - timedelta(days=10)
+        )
+        BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window="10km",
+            value=280.0,
+            unit="sec_per_km",
+            date=date.today() - timedelta(days=10),
+            activity=recent_activity,
+        )
+
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, top_n=2)
+
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts?kind=running_pace&period=3m"
+        )
+        activity_ids = {e["activity_id"] for e in response.json()["data"]}
+        self.assertEqual(activity_ids, {recent_activity.id})
+
+    def test_period_filter_caps_to_top_n_per_window_across_bands(self):
+        # Trim retains up to top_n rows PER PERIOD (see the Java/Python trim tests), so a read
+        # spanning multiple periods can see more survivors for one window than top_n unless the
+        # read endpoint re-caps. Here a 200-days-ago band (fast, wins the wider 365-day/all-time
+        # periods) and a 100-days-ago band (slower, but forms its own top-N within the narrower
+        # 112-day period) both survive trim - a period=1y read spans both bands' cutoffs, so
+        # without a read-side cap it would return 2*top_n rows for this one window.
+        self.athlete.best_effort_top_n = 3
+        self.athlete.save()
+
+        def make(value, days_ago):
+            activity = Activity.objects.create(
+                athlete=self.athlete,
+                sport="run",
+                name=f"Run -{days_ago}d",
+                start_date=timezone.now() - timedelta(days=days_ago),
+            )
+            return BestEffort.objects.create(
+                athlete=self.athlete,
+                kind="running_pace",
+                window="10km",
+                value=value,
+                unit="sec_per_km",
+                date=date.today() - timedelta(days=days_ago),
+                activity=activity,
+            )
+
+        for v in (100.0, 101.0, 102.0, 103.0):
+            make(v, days_ago=200)
+        for v in (200.0, 201.0, 202.0, 203.0):
+            make(v, days_ago=100)
+
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, self.athlete.best_effort_top_n)
+
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts?kind=running_pace&period=1y"
+        )
+        data = response.json()["data"]
+        # API always orders value desc regardless of kind (see LOWER_IS_BETTER_KINDS /
+        # frontend's isPR comment) - for pace that's worst-to-best, so the *set* of values is
+        # the assertion that matters here, not that they're ascending.
+        self.assertEqual([e["value"] for e in data], [102.0, 101.0, 100.0])
+
+    def test_16w_period_queries_native_112_day_window(self):
+        # Before native 4w/16w periods existed, the frontend faked "16 weeks" by fetching the
+        # wider "1y" bucket (already capped to top_n there) and narrowing client-side to 112
+        # days - which could drop entries that are genuinely top-N within 112 days but not
+        # within the top-N of the full 365-day bucket. period=16w must query that exact window
+        # natively instead.
+        self.athlete.best_effort_top_n = 2
+        self.athlete.save()
+
+        def make(value, days_ago):
+            activity = Activity.objects.create(
+                athlete=self.athlete,
+                sport="run",
+                name=f"Run -{days_ago}d",
+                start_date=timezone.now() - timedelta(days=days_ago),
+            )
+            return BestEffort.objects.create(
+                athlete=self.athlete,
+                kind="running_pace",
+                window="1km",
+                value=value,
+                unit="sec_per_km",
+                date=date.today() - timedelta(days=days_ago),
+                activity=activity,
+            )
+
+        # Two very fast efforts outside the 112-day window (but inside 365) - these would
+        # dominate a naive "top-2 of the last year, then narrow to 112 days" query down to
+        # nothing, since neither survives the narrowing.
+        make(150.0, days_ago=200)
+        make(151.0, days_ago=210)
+        # Two slower-but-still-notable efforts inside the last 112 days - what "16 weeks"
+        # should actually show.
+        recent1 = make(280.0, days_ago=20)
+        recent2 = make(285.0, days_ago=50)
+
+        _trim_kind_window(self.athlete.id, "running_pace", "1km", True, self.athlete.best_effort_top_n)
+
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts?kind=running_pace&period=16w"
+        )
+        activity_ids = {e["activity_id"] for e in response.json()["data"]}
+        self.assertEqual(activity_ids, {recent1.activity_id, recent2.activity_id})
 
     def test_outsider_forbidden(self):
         response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power")

@@ -23,7 +23,37 @@ from .models import ZoneSet
 from .serializers import AthleteUpdateSerializer, FitnessPointSerializer, ZoneSetReplaceSerializer, ZoneSetSerializer
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for, zone_types_affected_by
 
-BEST_EFFORT_PERIOD_DAYS = {"3m": 90, "1y": 365}
+# 4w/16w match BEST_EFFORT_TRIM_PERIOD_DAYS in uploads/processing.py exactly - the Best Efforts
+# screen used to fetch the wider 3m/1y bucket and narrow it client-side to 28/112 days, but
+# capping to top-N happens per the FETCHED bucket's own value ranking (see _cap_per_window), so
+# narrowing afterwards could drop entries that were genuinely top-N within the narrower window
+# but not within the top-N of the wider one it was fetched from (seen live: a 1km window with
+# plenty of trimmed history over the year showed only 3 of the last 16 weeks' true top-10,
+# because the fastest-of-the-year 10 happened to mostly predate that window). Querying the exact
+# period directly avoids the mismatch.
+BEST_EFFORT_PERIOD_DAYS = {"4w": 28, "3m": 90, "16w": 112, "1y": 365}
+LOWER_IS_BETTER_KINDS = {"running_pace"}
+
+
+def _cap_per_window(efforts: list[BestEffort], lower_is_better: bool, top_n: int) -> list[BestEffort]:
+    """Trim retains up to top_n rows per window in EACH tracked period independently (see
+    _trim_kind_window in uploads/processing.py), so a single date-filtered read can still
+    return more than top_n rows for one window - e.g. the top-10-of-112-days set and the
+    top-10-of-365-days set can differ, and a query spanning both periods sees their union.
+    This re-caps to the true top N by value (respecting direction) before returning,
+    preserving the window-asc/value-desc order callers expect.
+    """
+    if top_n <= 0:  # 0 = unlimited, matching _trim_kind_window's own "0 = keep all"
+        return efforts
+    by_window: dict[str, list[BestEffort]] = {}
+    for effort in efforts:
+        by_window.setdefault(effort.window, []).append(effort)
+    capped: list[BestEffort] = []
+    for window_efforts in by_window.values():
+        window_efforts.sort(key=lambda e: e.value, reverse=not lower_is_better)
+        capped.extend(window_efforts[:top_n])
+    capped.sort(key=lambda e: (e.window, -e.value))
+    return capped
 
 
 def _require_read(request: Request, athlete_id: str) -> None:
@@ -97,15 +127,18 @@ class BestEffortListView(APIView):
             )
 
         period = request.query_params.get("period", "all")
-        if period not in ("3m", "1y", "all"):
-            raise ValidationError({"period": "Must be one of 3m, 1y, all."})
+        if period not in ("4w", "3m", "16w", "1y", "all"):
+            raise ValidationError({"period": "Must be one of 4w, 3m, 16w, 1y, all."})
 
         qs = BestEffort.objects.filter(athlete_id=id, kind=kind).order_by("window", "-value")
         if period in BEST_EFFORT_PERIOD_DAYS:
             cutoff = timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
             qs = qs.filter(date__gte=cutoff)
 
-        return Response({"kind": kind, "period": period, "data": BestEffortSerializer(qs, many=True).data})
+        athlete = get_object_or_404(User, pk=id)
+        capped = _cap_per_window(list(qs), kind in LOWER_IS_BETTER_KINDS, athlete.best_effort_top_n)
+
+        return Response({"kind": kind, "period": period, "data": BestEffortSerializer(capped, many=True).data})
 
 
 class FitnessListView(APIView):
