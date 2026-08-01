@@ -24,6 +24,28 @@ from .serializers import AthleteUpdateSerializer, FitnessPointSerializer, ZoneSe
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for, zone_types_affected_by
 
 BEST_EFFORT_PERIOD_DAYS = {"3m": 90, "1y": 365}
+LOWER_IS_BETTER_KINDS = {"running_pace"}
+
+
+def _cap_per_window(efforts: list[BestEffort], lower_is_better: bool, top_n: int) -> list[BestEffort]:
+    """Trim retains up to top_n rows per window in EACH tracked period independently (see
+    _trim_kind_window in uploads/processing.py), so a single date-filtered read can still
+    return more than top_n rows for one window - e.g. the top-10-of-112-days set and the
+    top-10-of-365-days set can differ, and a query spanning both periods sees their union.
+    This re-caps to the true top N by value (respecting direction) before returning,
+    preserving the window-asc/value-desc order callers expect.
+    """
+    if top_n <= 0:  # 0 = unlimited, matching _trim_kind_window's own "0 = keep all"
+        return efforts
+    by_window: dict[str, list[BestEffort]] = {}
+    for effort in efforts:
+        by_window.setdefault(effort.window, []).append(effort)
+    capped: list[BestEffort] = []
+    for window_efforts in by_window.values():
+        window_efforts.sort(key=lambda e: e.value, reverse=not lower_is_better)
+        capped.extend(window_efforts[:top_n])
+    capped.sort(key=lambda e: (e.window, -e.value))
+    return capped
 
 
 def _require_read(request: Request, athlete_id: str) -> None:
@@ -105,7 +127,10 @@ class BestEffortListView(APIView):
             cutoff = timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
             qs = qs.filter(date__gte=cutoff)
 
-        return Response({"kind": kind, "period": period, "data": BestEffortSerializer(qs, many=True).data})
+        athlete = get_object_or_404(User, pk=id)
+        capped = _cap_per_window(list(qs), kind in LOWER_IS_BETTER_KINDS, athlete.best_effort_top_n)
+
+        return Response({"kind": kind, "period": period, "data": BestEffortSerializer(capped, many=True).data})
 
 
 class FitnessListView(APIView):

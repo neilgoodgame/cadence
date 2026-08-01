@@ -294,6 +294,49 @@ class BestEffortListViewTests(TestCase):
         activity_ids = {e["activity_id"] for e in response.json()["data"]}
         self.assertEqual(activity_ids, {recent_activity.id})
 
+    def test_period_filter_caps_to_top_n_per_window_across_bands(self):
+        # Trim retains up to top_n rows PER PERIOD (see the Java/Python trim tests), so a read
+        # spanning multiple periods can see more survivors for one window than top_n unless the
+        # read endpoint re-caps. Here a 200-days-ago band (fast, wins the wider 365-day/all-time
+        # periods) and a 100-days-ago band (slower, but forms its own top-N within the narrower
+        # 112-day period) both survive trim - a period=1y read spans both bands' cutoffs, so
+        # without a read-side cap it would return 2*top_n rows for this one window.
+        self.athlete.best_effort_top_n = 3
+        self.athlete.save()
+
+        def make(value, days_ago):
+            activity = Activity.objects.create(
+                athlete=self.athlete,
+                sport="run",
+                name=f"Run -{days_ago}d",
+                start_date=timezone.now() - timedelta(days=days_ago),
+            )
+            return BestEffort.objects.create(
+                athlete=self.athlete,
+                kind="running_pace",
+                window="10km",
+                value=value,
+                unit="sec_per_km",
+                date=date.today() - timedelta(days=days_ago),
+                activity=activity,
+            )
+
+        for v in (100.0, 101.0, 102.0, 103.0):
+            make(v, days_ago=200)
+        for v in (200.0, 201.0, 202.0, 203.0):
+            make(v, days_ago=100)
+
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, self.athlete.best_effort_top_n)
+
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts?kind=running_pace&period=1y"
+        )
+        data = response.json()["data"]
+        # API always orders value desc regardless of kind (see LOWER_IS_BETTER_KINDS /
+        # frontend's isPR comment) - for pace that's worst-to-best, so the *set* of values is
+        # the assertion that matters here, not that they're ascending.
+        self.assertEqual([e["value"] for e in data], [102.0, 101.0, 100.0])
+
     def test_outsider_forbidden(self):
         response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power")
         self.assertEqual(response.status_code, 403)
