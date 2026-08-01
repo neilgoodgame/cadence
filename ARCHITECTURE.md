@@ -698,21 +698,95 @@ this pipeline.
 | Webhook delivery | Celery task, own retry/backoff, same worker pool as ingestion | `@Async` + `@Retryable`, separate thread pool from ingestion |
 | Failure isolation (Garmin stub files) | `status=skipped`, batch continues | `NO_ACTIVITY_DATA` exit → clean `COMPLETED`, batch continues |
 
-**Best-effort storage is a union of per-period top-N leaderboards, not full
-history**: `BestEffort` rows are trimmed at write time to the athlete's top N
-(default 10) per `kind`+`window_label`, independently *for each* of several
-day-cutoffs (28/90/112/365, plus unbounded all-time) — a row survives if it's
-a top-N record in ANY of those periods, and anything outside every period's
-top N is **deleted**, not hidden (`_trim_kind_window` in Python's
-`uploads/processing.py`, `trimToTop` in Java's `BestEffortComputeService`;
-cutoffs live in `BEST_EFFORT_TRIM_PERIOD_DAYS` / `BestEffortWindows.TRIM_PERIOD_DAYS`
-respectively). This is why a "period" filter on the Best Efforts screen can
-show a recent effort that isn't an all-time record — it only needs to be a
-top-N record within its own period. Storage is still bounded, just not to a
-single top N anymore: at most `top_n * (periods + 1)` rows per
-(athlete, kind, window). Trim only runs when a row is upserted (new upload or
-a recompute pass) — a row isn't proactively deleted the instant it ages out
-of a period between uploads, only at the next trim call for that window.
+### 5.4 Best-effort computation
+
+`BestEffort` rows (max power/HR over fixed durations, best pace over fixed
+distances) are computed by the same algorithm on both backends — Python in
+`backend/uploads/processing.py`, Java in `BestEffortComputeService` /
+`PaceBestEffortCalculator` / `DurationCurveCalculator`.
+
+**Trigger.** Runs once per ingested activity, immediately after its `Record`
+rows are persisted, from `ingest_upload()` — but *not* for a multisport
+parent activity (its legs run it individually, since best efforts compare
+like-for-like within a single sport). The identical per-activity logic also
+runs during a full recompute (`POST /v1/athletes/{id}/best-efforts/recompute`,
+streamed as SSE progress events), which first deletes every existing row for
+the athlete (optionally scoped to one `kind`) and then replays every activity
+oldest-to-newest through the same code path — order doesn't affect the final
+result, since trim (below) re-derives the keeper set from whatever rows exist
+in the database at that moment, not from an in-memory running comparison.
+
+**Gating — which kinds get computed at all.** A kind is skipped entirely,
+for every activity, until the athlete has the relevant threshold set:
+
+| kind | requires |
+|---|---|
+| `cycling_power` | sport is bike, and `athlete.ftp` is set |
+| `cycling_hr` | sport is bike, and the activity has any HR samples |
+| `running_power` | sport is run, `athlete.critical_run_power` is set, and at least one non-null power sample |
+| `running_pace` | sport is run — no threshold gate |
+| `running_hr` | sport is run, and the activity has any HR samples |
+
+**Two different scan algorithms**, depending on whether the window is a
+fixed *duration* or a fixed *distance*:
+
+- **Power/HR — fixed-duration sliding window.** Null samples are zero-filled
+  first, then a running-sum slide finds the highest average over a fixed
+  *index* count matching the window's label (`5s`→5 elements ... `60min`→3600),
+  which implicitly assumes ~1 Hz sampling. Windows checked — power:
+  `5s, 15s, 30s, 1min, 5min, 10min, 20min, 60min`; HR:
+  `1min, 5min, 10min, 20min, 60min`.
+- **Pace — fixed-distance, variable-time two-pointer.** Null distance samples
+  are forward-filled (a gap means "no new distance yet," not "reset to
+  zero"). For each target distance (`1km, 5km, 10km, half_marathon, 30km,
+  marathon, 50km`), a two-pointer scan finds the shortest real-elapsed-time
+  span — using each sample's actual elapsed-seconds offset, not the sample
+  *index* gap, so devices with adaptive/non-1 Hz recording aren't
+  mismeasured — covering at least that distance, keeping the fastest pace
+  found anywhere in the activity.
+
+**Upsert.** Every window that produced a value gets one row, keyed on
+`(athlete, kind, window, activity)` — `update_or_create`/JPA upsert, so
+reprocessing an activity updates its own row rather than duplicating.
+
+**Retention (trim).** Immediately after each upsert, trim re-derives the
+full keeper set for that `(athlete, kind, window)` from every row currently
+stored: the athlete's top N (`best_effort_top_n`, default 10) all-time by
+value, **unioned with** the top N within each of several rolling day-cutoffs
+— `28, 90, 112, 365` (`BEST_EFFORT_TRIM_PERIOD_DAYS` in Python,
+`BestEffortWindows.TRIM_PERIOD_DAYS` in Java), measured from wall-clock
+today, not the activity's own date. Anything outside that union is
+**deleted**, not hidden (`_trim_kind_window` / `trimToTop`). A row surviving
+trim is therefore "a top-N record in at least one tracked period," not
+necessarily an all-time record — storage is still bounded, just to
+`top_n * (periods + 1)` rows per window instead of a single top N. Trim only
+runs when a row is upserted; a row isn't proactively deleted the instant it
+ages out of a period between uploads, only at the next trim call for that
+window.
+
+**Reading it back.** `GET /v1/athletes/{id}/best-efforts?kind=&period=`
+supports native period cutoffs `4w, 3m, 16w, 1y, all` (`4w`/`16w` match the
+trim cutoffs exactly, so the Best Efforts screen's tabs query precisely the
+window they display rather than over-fetching a wider bucket and narrowing
+client-side — an earlier version of this endpoint did the latter, which
+could silently drop entries that were genuinely top-N within the narrower
+window but not within the top-N of the wider bucket they were fetched from).
+Because trim retains a *union* across periods, a single date-filtered read
+can still see more than top-N survivors for one window (e.g. two disjoint
+period-slices' keepers both falling inside the query range) — so the read
+endpoint re-groups by window and re-caps to the true top N by value
+(respecting pace's lower-is-better direction) before returning
+(`_cap_per_window` in Python, `capPerWindow` in Java's
+`BestEffortController`).
+
+**Known quirks.**
+- Power/HR windowing assumes roughly-uniform (~1 Hz) sampling (index-based);
+  pace deliberately doesn't (time-based) — an asymmetry that exists because
+  only the pace algorithm's sparse-recording bug has been found/fixed so far.
+- `running_pace` runs for every run regardless of profile completeness; the
+  power/HR kinds silently produce nothing until the relevant threshold field
+  is set on the athlete.
+- Multisport parent activities never get their own best-effort rows.
 
 ## 6. Workout subsystem
 
@@ -844,8 +918,8 @@ plus an anonymous volume over `.venv`/build output so the host's
   truth a human (or an agent) reconciles against; a schema or behavior
   change in one backend without the matching change in the other won't be
   caught by CI.
-- **The CQL parser (§4) and the best-effort trimming logic (§5) are the
-  two most likely places for silent behavioral drift** between backends —
+- **The CQL parser (§4) and the best-effort computation/trimming logic
+  (§5.4) are the two most likely places for silent behavioral drift** between backends —
   both are non-trivial hand-written logic implemented twice, not thin
   wrappers around a shared library.
 - **`Record` (1Hz stream data) dominates storage** by a wide margin over
