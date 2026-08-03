@@ -31,6 +31,11 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 
 	List<Activity> findByWorkoutId(String workoutId);
 
+	// Unlike list()/findRecomputeCandidates, multisport children and duplicate recordings are
+	// NOT filtered out here - a full data export must include every activity row, since silently
+	// dropping them would understate the athlete's own data.
+	List<Activity> findByAthleteIdOrderByStartDate(String athleteId);
+
 	@Query("select a from Activity a where a.athlete.id = :athleteId and a.parentActivity is null and a.primaryActivity is null")
 	List<Activity> findRecomputeCandidates(@Param("athleteId") String athleteId);
 

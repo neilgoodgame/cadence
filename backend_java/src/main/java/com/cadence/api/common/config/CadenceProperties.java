@@ -4,7 +4,7 @@ import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "cadence")
-public record CadenceProperties(Jwt jwt, Cors cors, Uploads uploads, Oauth oauth) {
+public record CadenceProperties(Jwt jwt, Cors cors, Uploads uploads, DataImport dataImport, Oauth oauth) {
 
 	public record Jwt(String privateKeyPath, String publicKeyPath, String kid, String issuer, String audience) {
 	}
@@ -13,6 +13,9 @@ public record CadenceProperties(Jwt jwt, Cors cors, Uploads uploads, Oauth oauth
 	}
 
 	public record Uploads(String mediaRoot, long maxUploadBytes, int maxBatchFiles) {
+	}
+
+	public record DataImport(long maxFileBytes) {
 	}
 
 	public record Oauth(String firstPartyClientSecret) {

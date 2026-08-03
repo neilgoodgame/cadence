@@ -6,9 +6,10 @@ import { SharingTab } from "./preferences/SharingTab";
 import { TokensTab } from "./preferences/TokensTab";
 import { ZoneEditorTab } from "./preferences/ZoneEditorTab";
 import { BestEffortsTab } from "./preferences/BestEffortsTab";
+import { ExportTab } from "./preferences/ExportTab";
 import type { ZoneType } from "../api/types";
 
-type TabKey = "profile" | ZoneType | "races" | "sharing" | "tokens" | "best_efforts";
+type TabKey = "profile" | ZoneType | "races" | "sharing" | "tokens" | "best_efforts" | "export";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "profile", label: "Profile" },
@@ -20,6 +21,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "races", label: "Races" },
   { key: "sharing", label: "Sharing" },
   { key: "tokens", label: "API tokens" },
+  { key: "export", label: "Export data" },
 ];
 
 const ZONE_TYPES: ZoneType[] = ["heart_rate", "bike_power", "run_power", "pace"];
@@ -62,6 +64,7 @@ export function PreferencesScreen() {
         {tab === "races" && <RacesTab />}
         {tab === "sharing" && <SharingTab />}
         {tab === "tokens" && <TokensTab />}
+        {tab === "export" && <ExportTab />}
       </div>
     </div>
   );

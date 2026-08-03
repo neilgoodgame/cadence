@@ -19,11 +19,13 @@ spring:
 
   servlet:
     multipart:
-      # Must be >= cadence.uploads.max-upload-bytes below - otherwise Tomcat's multipart
-      # layer rejects large-but-legitimate files before they ever reach UploadIngestService's
-      # own size check, with a generic framework error instead of our typed 413 response.
-      max-file-size: 200MB
-      max-request-size: 200MB
+      # Must be >= the largest of cadence.uploads.max-upload-bytes and cadence.import.max-file-bytes
+      # below - otherwise Tomcat's multipart layer rejects large-but-legitimate files before they
+      # ever reach the app's own size check, with a generic framework error instead of our typed
+      # 413 response. 2GB to cover a full-account data-export re-import (cadence.import above),
+      # even though a single activity upload never needs more than cadence.uploads.max-upload-bytes.
+      max-file-size: 2GB
+      max-request-size: 2GB
 
   jpa:
     hibernate:
@@ -59,6 +61,8 @@ cadence:
     media-root: ${MEDIA_ROOT:media}
     max-upload-bytes: 209715200
     max-batch-files: 50000
+  data-import:
+    max-file-bytes: 2147483648
   oauth:
     first-party-client-secret: ${OAUTH_FIRST_PARTY_CLIENT_SECRET:dev-only-secret-change-me}
 
