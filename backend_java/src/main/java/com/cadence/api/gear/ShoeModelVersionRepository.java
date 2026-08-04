@@ -21,4 +21,7 @@ public interface ShoeModelVersionRepository extends JpaRepository<ShoeModelVersi
 
 	@Query("select smv from ShoeModelVersion smv join fetch smv.shoeModel where smv.id = :id")
 	Optional<ShoeModelVersion> findByIdWithShoeModel(@Param("id") String id);
+
+	// findFirst - same reasoning as ShoeModelRepository.findFirstByManufacturerAndModel.
+	Optional<ShoeModelVersion> findFirstByShoeModelIdAndVersion(String shoeModelId, String version);
 }

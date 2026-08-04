@@ -335,6 +335,41 @@ export interface ShoeCatalogEntry {
 
 export type UploadStatus = "queued" | "processing" | "ready" | "failed" | "duplicate" | "skipped";
 
+export type ExportStatus = "queued" | "processing" | "ready" | "failed";
+
+export interface ExportJob {
+  id: string;
+  object: "export";
+  status: ExportStatus;
+  file_size_bytes: number | null;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export type ImportStatus = "queued" | "processing" | "ready" | "failed";
+
+export interface ImportCounts {
+  activities_imported: number;
+  races_imported: number;
+  workouts_imported: number;
+  scheduled_workouts_imported: number;
+  bikes_imported: number;
+  shoes_imported: number;
+  components_imported: number;
+  items_skipped: number;
+}
+
+export interface ImportJob {
+  id: string;
+  object: "import";
+  status: ImportStatus;
+  counts: ImportCounts;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
 export interface Upload {
   id: string;
   object: "upload";
