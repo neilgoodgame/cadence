@@ -3,6 +3,7 @@ package com.cadence.api.export;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.NotFoundException;
@@ -60,7 +61,7 @@ class ExportControllerIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("export-start@example.cc");
 		authAs(athlete.getId());
 
-		ResponseEntity<ExportJobResponse> response = exportController.startExport();
+		ResponseEntity<ExportJobResponse> response = exportController.startExport(null);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
 		assertThat(response.getHeaders().getFirst(HttpHeaders.LOCATION)).isEqualTo("/v1/export/" + response.getBody().id());
@@ -69,12 +70,22 @@ class ExportControllerIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void startExportAcceptsAnOptionalSportFilter() {
+		User athlete = newAthlete("export-sport@example.cc");
+		authAs(athlete.getId());
+
+		ResponseEntity<ExportJobResponse> response = exportController.startExport(Sport.BIKE);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+	}
+
+	@Test
 	void startExportReplacesAnyPreviousJobForTheSameAthlete() {
 		User athlete = newAthlete("export-replace@example.cc");
 		ExportJob previous = newJob(athlete, ExportStatus.READY);
 		authAs(athlete.getId());
 
-		ResponseEntity<ExportJobResponse> response = exportController.startExport();
+		ResponseEntity<ExportJobResponse> response = exportController.startExport(null);
 
 		assertThat(response.getBody().id()).isNotEqualTo(previous.getId());
 		assertThat(exportJobRepository.findById(previous.getId())).isEmpty();

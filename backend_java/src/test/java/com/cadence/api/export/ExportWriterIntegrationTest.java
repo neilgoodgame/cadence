@@ -36,6 +36,8 @@ import com.cadence.api.workouts.WorkoutStep;
 import java.io.ByteArrayOutputStream;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.core.JsonGenerator;
@@ -162,7 +164,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
-			exportWriter.write(athlete.getId(), generator);
+			exportWriter.write(athlete.getId(), null, generator);
 		}
 
 		JsonNode root = jsonMapper.readTree(out.toByteArray());
@@ -187,6 +189,123 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		assertThat(equipment.get("components")).hasSize(1);
 		assertThat(equipment.get("shoes")).hasSize(1);
 		assertThat(equipment.get("shoes").get(0).get("name").asText()).isEqualTo("Daily trainer");
+	}
+
+	@Test
+	void sportFilterExcludesOtherDisciplinesButIncludesMatchingMultisportLegsAndAllEquipment() throws Exception {
+		User athlete = newUser("export-sport-filter@example.cc");
+
+		Activity bikeActivity = new Activity();
+		bikeActivity.setAthlete(athlete);
+		bikeActivity.setSport(Sport.BIKE);
+		bikeActivity.setName("Standalone Ride");
+		bikeActivity.setStartDate(Instant.parse("2026-02-01T07:00:00Z"));
+		activityRepository.save(bikeActivity);
+
+		Activity runActivity = new Activity();
+		runActivity.setAthlete(athlete);
+		runActivity.setSport(Sport.RUN);
+		runActivity.setName("Standalone Run");
+		runActivity.setStartDate(Instant.parse("2026-02-02T07:00:00Z"));
+		activityRepository.save(runActivity);
+
+		Activity multisportParent = new Activity();
+		multisportParent.setAthlete(athlete);
+		multisportParent.setSport(Sport.MULTISPORT);
+		multisportParent.setName("Triathlon");
+		multisportParent.setStartDate(Instant.parse("2026-02-03T07:00:00Z"));
+		multisportParent = activityRepository.save(multisportParent);
+
+		Activity bikeLeg = new Activity();
+		bikeLeg.setAthlete(athlete);
+		bikeLeg.setSport(Sport.BIKE);
+		bikeLeg.setName("Triathlon Bike Leg");
+		bikeLeg.setStartDate(Instant.parse("2026-02-03T08:00:00Z"));
+		bikeLeg.setParentActivity(multisportParent);
+		activityRepository.save(bikeLeg);
+
+		Race bikeRace = new Race();
+		bikeRace.setAthlete(athlete);
+		bikeRace.setName("Local Crit");
+		bikeRace.setSport(Sport.BIKE);
+		bikeRace.setDate(LocalDate.of(2026, 2, 1));
+		raceRepository.save(bikeRace);
+
+		Race runRace = new Race();
+		runRace.setAthlete(athlete);
+		runRace.setName("Local 5k");
+		runRace.setSport(Sport.RUN);
+		runRace.setDate(LocalDate.of(2026, 2, 2));
+		raceRepository.save(runRace);
+
+		Workout bikeWorkout = new Workout();
+		bikeWorkout.setCreatedBy(athlete);
+		bikeWorkout.setName("FTP Test");
+		bikeWorkout.setSport(Sport.BIKE);
+		WorkoutStep bikeStep = new WorkoutStep();
+		bikeStep.setWorkout(bikeWorkout);
+		bikeStep.setOrder(0);
+		bikeStep.setKind(StepKind.BLOCK);
+		bikeStep.setEndType(StepEndType.TIME);
+		bikeStep.setDuration(1200);
+		bikeWorkout.getSteps().add(bikeStep);
+		workoutRepository.save(bikeWorkout);
+
+		Workout runWorkout = new Workout();
+		runWorkout.setCreatedBy(athlete);
+		runWorkout.setName("Tempo Run");
+		runWorkout.setSport(Sport.RUN);
+		WorkoutStep runStep = new WorkoutStep();
+		runStep.setWorkout(runWorkout);
+		runStep.setOrder(0);
+		runStep.setKind(StepKind.BLOCK);
+		runStep.setEndType(StepEndType.TIME);
+		runStep.setDuration(1200);
+		runWorkout.getSteps().add(runStep);
+		workoutRepository.save(runWorkout);
+
+		Bike bike = new Bike();
+		bike.setAthlete(athlete);
+		bike.setName("TT Bike");
+		bike.setKind(BikeKind.TT);
+		bikeRepository.save(bike);
+
+		ShoeModel shoeModel = new ShoeModel();
+		shoeModel.setManufacturer("SportFilterCo");
+		shoeModel.setModel("Trainer");
+		shoeModel = shoeModelRepository.save(shoeModel);
+		ShoeModelVersion shoeModelVersion = new ShoeModelVersion();
+		shoeModelVersion.setShoeModel(shoeModel);
+		shoeModelVersion.setVersion("v1");
+		shoeModelVersion = shoeModelVersionRepository.save(shoeModelVersion);
+		Shoe shoe = new Shoe();
+		shoe.setAthlete(athlete);
+		shoe.setShoeModelVersion(shoeModelVersion);
+		shoe.setName("Daily trainer");
+		shoeRepository.save(shoe);
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
+			exportWriter.write(athlete.getId(), Sport.BIKE, generator);
+		}
+
+		JsonNode root = jsonMapper.readTree(out.toByteArray());
+
+		assertThat(root.get("activities")).hasSize(2);
+		List<String> activityNames = new ArrayList<>();
+		root.get("activities").forEach(entry -> activityNames.add(entry.get("activity").get("name").asText()));
+		assertThat(activityNames).containsExactlyInAnyOrder("Standalone Ride", "Triathlon Bike Leg");
+
+		assertThat(root.get("races")).hasSize(1);
+		assertThat(root.get("races").get(0).get("name").asText()).isEqualTo("Local Crit");
+
+		assertThat(root.get("workouts")).hasSize(1);
+		assertThat(root.get("workouts").get(0).get("name").asText()).isEqualTo("FTP Test");
+
+		// Equipment is always exported in full, regardless of the sport filter.
+		JsonNode equipment = root.get("equipment");
+		assertThat(equipment.get("bikes")).hasSize(1);
+		assertThat(equipment.get("shoes")).hasSize(1);
 	}
 
 	private User newUser(String email) {

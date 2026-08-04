@@ -1,6 +1,7 @@
 package com.cadence.api.export;
 
 import com.cadence.api.common.config.CadenceProperties;
+import com.cadence.api.common.domain.Sport;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -40,7 +41,7 @@ public class ExportService {
 	}
 
 	@Async
-	public void runExport(String jobId) {
+	public void runExport(String jobId, Sport sportFilter) {
 		ExportJob job = exportJobRepository.findById(jobId).orElseThrow();
 		job.setStatus(ExportStatus.PROCESSING);
 		exportJobRepository.save(job);
@@ -52,7 +53,7 @@ public class ExportService {
 			Files.createDirectories(exportsDir);
 			try (JsonGenerator generator = jsonMapper.createGenerator(
 					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(target))), JsonEncoding.UTF8)) {
-				exportWriter.write(athleteId, generator);
+				exportWriter.write(athleteId, sportFilter, generator);
 			}
 			job.setStatus(ExportStatus.READY);
 			job.setFilePath(Path.of(athleteId, "exports", jobId + ".json.gz").toString());

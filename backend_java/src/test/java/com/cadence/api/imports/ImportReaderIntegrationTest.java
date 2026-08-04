@@ -196,7 +196,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 		try {
 			try (JsonGenerator generator = jsonMapper.createGenerator(
 					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
-				exportWriter.write(source.getId(), generator);
+				exportWriter.write(source.getId(), null, generator);
 			}
 
 			ImportCounts counts = importReader.read(target.getId(), file);

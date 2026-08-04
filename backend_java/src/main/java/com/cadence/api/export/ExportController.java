@@ -1,6 +1,7 @@
 package com.cadence.api.export;
 
 import com.cadence.api.common.config.CadenceProperties;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.export.dto.ExportJobResponse;
@@ -20,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -41,7 +43,7 @@ public class ExportController {
 	}
 
 	@PostMapping("/v1/export")
-	public ResponseEntity<ExportJobResponse> startExport() {
+	public ResponseEntity<ExportJobResponse> startExport(@RequestParam(required = false) Sport sport) {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		User athlete = userService.getById(athleteId);
@@ -57,7 +59,7 @@ public class ExportController {
 		job.setAthlete(athlete);
 		job = exportJobRepository.save(job);
 
-		exportService.runExport(job.getId());
+		exportService.runExport(job.getId(), sport);
 
 		return ResponseEntity.status(HttpStatus.ACCEPTED)
 				.header(HttpHeaders.LOCATION, "/v1/export/" + job.getId())

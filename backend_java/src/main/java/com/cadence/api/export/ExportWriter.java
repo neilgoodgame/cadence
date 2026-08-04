@@ -7,6 +7,7 @@ import com.cadence.api.activities.LapMapper;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.StreamService;
 import com.cadence.api.activities.dto.LapResponse;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.export.dto.ActivityExportEntry;
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.ComponentRepository;
@@ -91,8 +92,12 @@ public class ExportWriter {
 		this.entityManager = entityManager;
 	}
 
+	/** {@code sportFilter} narrows activities/races/workouts/scheduled_workouts to one discipline;
+	 * {@code null} exports everything, unchanged from before this filter existed. Equipment is
+	 * always exported in full either way - it's small, and shoes have no sport of their own to
+	 * filter by. */
 	@Transactional(readOnly = true)
-	public void write(String athleteId, JsonGenerator generator) {
+	public void write(String athleteId, Sport sportFilter, JsonGenerator generator) {
 		generator.writeStartObject();
 		generator.writeStringProperty("generated_at", Instant.now().toString());
 		generator.writeStringProperty("athlete_id", athleteId);
@@ -102,17 +107,26 @@ public class ExportWriter {
 		// dependency order, so a forward-only streaming importer can resolve id references in one
 		// pass without having to look ahead. See ImportReader for the reader side of this contract.
 		writeEquipment(athleteId, generator);
-		writeWorkouts(athleteId, generator);
-		writeActivities(athleteId, generator);
-		writeRaces(athleteId, generator);
-		writeScheduledWorkouts(athleteId, generator);
+		writeWorkouts(athleteId, sportFilter, generator);
+		writeActivities(athleteId, sportFilter, generator);
+		writeRaces(athleteId, sportFilter, generator);
+		writeScheduledWorkouts(athleteId, sportFilter, generator);
 
 		generator.writeEndObject();
 	}
 
-	private void writeActivities(String athleteId, JsonGenerator generator) {
+	private void writeActivities(String athleteId, Sport sportFilter, JsonGenerator generator) {
+		// A multisport parent's own sport is MULTISPORT, not e.g. BIKE, so filtering by sport here
+		// naturally excludes multisport parents while still including any matching individual legs -
+		// no special-case code needed. A leg whose parent got excluded this way just carries a
+		// parent_activity_id ImportReader won't find in this file; its deferred-link resolution
+		// already handles that (skips the link rather than failing).
+		List<Activity> activities = sportFilter == null
+				? activityRepository.findByAthleteIdOrderByStartDate(athleteId)
+				: activityRepository.findByAthleteIdAndSportOrderByStartDate(athleteId, sportFilter);
+
 		generator.writeArrayPropertyStart("activities");
-		for (Activity activity : activityRepository.findByAthleteIdOrderByStartDate(athleteId)) {
+		for (Activity activity : activities) {
 			List<LapResponse> laps = lapRepository.findByActivityIdOrderByIndex(activity.getId()).stream()
 					.map(lapMapper::toResponse)
 					.toList();
@@ -125,27 +139,34 @@ public class ExportWriter {
 		generator.writeEndArray();
 	}
 
-	private void writeRaces(String athleteId, JsonGenerator generator) {
+	private void writeRaces(String athleteId, Sport sportFilter, JsonGenerator generator) {
 		generator.writeArrayPropertyStart("races");
 		for (var race : raceRepository.findByAthleteIdOrderByDateAsc(athleteId)) {
-			generator.writePOJO(raceService.toResponse(race));
+			// A race with no sport recorded is excluded under a filter - ambiguous otherwise.
+			if (sportFilter == null || sportFilter.equals(race.getSport())) {
+				generator.writePOJO(raceService.toResponse(race));
+			}
 		}
 		generator.writeEndArray();
 	}
 
-	private void writeWorkouts(String athleteId, JsonGenerator generator) {
+	private void writeWorkouts(String athleteId, Sport sportFilter, JsonGenerator generator) {
 		generator.writeArrayPropertyStart("workouts");
 		for (Workout workout : workoutRepository.findByCreatedByIdOrderByIdDesc(athleteId)) {
-			generator.writePOJO(new WorkoutDetailResponse(
-					workoutMapper.toResponse(workout), workoutMapper.toStepTree(workout.getSteps())));
+			if (sportFilter == null || sportFilter.equals(workout.getSport())) {
+				generator.writePOJO(new WorkoutDetailResponse(
+						workoutMapper.toResponse(workout), workoutMapper.toStepTree(workout.getSteps())));
+			}
 		}
 		generator.writeEndArray();
 	}
 
-	private void writeScheduledWorkouts(String athleteId, JsonGenerator generator) {
+	private void writeScheduledWorkouts(String athleteId, Sport sportFilter, JsonGenerator generator) {
 		generator.writeArrayPropertyStart("scheduled_workouts");
 		for (var scheduled : scheduledWorkoutRepository.findByAthleteIdOrderByDate(athleteId)) {
-			generator.writePOJO(schedulingMapper.toResponse(scheduled));
+			if (sportFilter == null || sportFilter.equals(scheduled.getWorkout().getSport())) {
+				generator.writePOJO(schedulingMapper.toResponse(scheduled));
+			}
 		}
 		generator.writeEndArray();
 	}

@@ -1,10 +1,21 @@
 import { useRef, useState } from "react";
 import { getImportJob, startImport } from "../../api/dataImport";
 import { downloadExport, getExportJob, startExport } from "../../api/export";
-import type { ImportJob, ExportJob } from "../../api/types";
+import type { ImportJob, ExportJob, Sport } from "../../api/types";
 import { usePolling } from "../import/usePolling";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
+
+// multisport/transition are composition artifacts of an activity, not a discipline someone
+// would choose to export by - deliberately not offered here (see ExportWriter.writeActivities).
+const SPORT_OPTIONS: { value: Sport | ""; label: string }[] = [
+  { value: "", label: "All sports" },
+  { value: "bike", label: "Bike" },
+  { value: "run", label: "Run" },
+  { value: "swim", label: "Swim" },
+  { value: "walk", label: "Walk" },
+  { value: "row", label: "Row" },
+];
 
 const PRIMARY_BUTTON_STYLE: React.CSSProperties = {
   alignSelf: "flex-start",
@@ -15,6 +26,15 @@ const PRIMARY_BUTTON_STYLE: React.CSSProperties = {
   fontWeight: 600,
   background: "var(--ember)",
   color: "#fff",
+};
+
+const SELECT_STYLE: React.CSSProperties = {
+  border: "1px solid var(--line)",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 14,
+  background: "var(--elev)",
+  color: "var(--ink)",
 };
 
 function triggerDownload(filename: string, blob: Blob): void {
@@ -203,6 +223,7 @@ function ImportSection() {
 
 export function ExportTab() {
   const [job, setJob] = useState<{ data: ExportJob; retryAfterSeconds: number | null } | null>(null);
+  const [sport, setSport] = useState<Sport | "">("");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 480 }}>
@@ -211,16 +232,25 @@ export function ExportTab() {
           <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>Export your data</h3>
           <p style={{ margin: 0, color: "var(--ink2)", fontSize: 14 }}>
             Download all of your activities (including recorded streams), races, workouts, and equipment as a single
-            compressed JSON file (.json.gz).
+            compressed JSON file (.json.gz). Optionally narrow it to a single sport.
           </p>
         </div>
 
         {job ? (
           <ExportStatus initial={job} onReset={() => setJob(null)} />
         ) : (
-          <button onClick={() => startExport().then(setJob)} style={PRIMARY_BUTTON_STYLE}>
-            Generate export
-          </button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <select value={sport} onChange={(e) => setSport(e.target.value as Sport | "")} style={SELECT_STYLE}>
+              {SPORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <button onClick={() => startExport(sport || undefined).then(setJob)} style={PRIMARY_BUTTON_STYLE}>
+              Generate export
+            </button>
+          </div>
         )}
       </div>
 
