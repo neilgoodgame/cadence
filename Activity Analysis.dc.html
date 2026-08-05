@@ -83,26 +83,55 @@
     <div style="padding:28px 32px 60px;max-width:1320px;width:100%;">
 
       <!-- header -->
-      <div style="margin-bottom:20px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-          <span style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;background:#3d7fd6;color:#fff;">Ride</span>
-          <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink3,#9a958d);">Thu, 11 Jun 2026, 18:42 · fit · Zwift</span>
+      <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;">
+        <div style="width:46px;height:46px;border-radius:11px;background:var(--emberSoft,#fff5f1);border:1px solid var(--emberLine,#f6d2c5);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ember,#ec4a26)" stroke-width="1.7"><circle cx="5.5" cy="17.5" r="3.5"></circle><circle cx="18.5" cy="17.5" r="3.5"></circle><path d="M5.5 17.5 L10 8 H14 M12 8 L18.5 17.5 M9 8 H15"></path></svg>
         </div>
-
+        <div style="flex:1;min-width:0;">
         <sc-if value="{{ renaming }}" hint-placeholder-val="{{ false }}">
-          <div style="display:flex;align-items:center;gap:8px;margin:0 0 12px;">
+          <div style="display:flex;align-items:center;gap:8px;margin:0 0 6px;">
             <input value="{{ nameInput }}" onChange="{{ onNameInput }}" onKeyDown="{{ onNameKey }}" style="font-size:26px;font-weight:800;letter-spacing:-0.02em;border:none;border-bottom:2px solid var(--ember,#ec4a26);background:none;color:var(--ink,#1b1a18);outline:none;width:100%;max-width:520px;padding:2px 0;font-family:'Hanken Grotesk',sans-serif;" />
             <div onClick="{{ commitRename }}" style="font-size:12px;font-weight:700;padding:4px 12px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;cursor:pointer;flex-shrink:0;">Save</div>
             <div onClick="{{ cancelRename }}" style="font-size:12px;color:var(--ink3,#9a958d);cursor:pointer;flex-shrink:0;">Cancel</div>
           </div>
         </sc-if>
         <sc-if value="{{ notRenaming }}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;align-items:center;gap:8px;margin:0 0 12px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 6px;">
             <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;line-height:1.1;margin:0;color:var(--ink,#1b1a18);">{{ activityName }}</h1>
             <div onClick="{{ startRename }}" title="Rename activity" style="font-size:14px;color:var(--ink3,#9a958d);cursor:pointer;padding:2px 4px;border-radius:4px;line-height:1;flex-shrink:0;">✎</div>
             <div onClick="{{ requestDelete }}" title="Delete activity" style="font-size:14px;color:#c4332a;cursor:pointer;padding:2px 4px;border-radius:4px;line-height:1;flex-shrink:0;">✕</div>
+            <span style="width:1px;height:18px;background:var(--line,#e6e2dc);margin:0 1px;"></span>
+            <sc-for list="{{ tags }}" as="tag" hint-placeholder-count="2">
+              <span style="{{ tag.style }}"><span style="{{ tag.dotStyle }}"></span>{{ tag.label }}<span onClick="{{ tag.onRemove }}" style="{{ tag.xStyle }}">×</span></span>
+            </sc-for>
+            <div style="position:relative;">
+              <div onClick="{{ toggleTagMenu }}" style="{{ addTagStyle }}"><span style="font-size:14px;line-height:1;">+</span>Tag</div>
+              <sc-if value="{{ tagMenuOpen }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ stopTag }}" style="position:absolute;top:32px;left:0;z-index:30;width:270px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:12px;box-shadow:0 14px 36px rgba(20,17,15,0.18);padding:13px;">
+                  <input value="{{ tagDraft }}" onChange="{{ onTagInput }}" onKeyDown="{{ onTagKey }}" placeholder="Create or search tags…" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;font-family:'Hanken Grotesk',sans-serif;color:var(--ink,#1b1a18);outline:none;margin-bottom:12px;">
+                  <sc-if value="{{ showCreate }}" hint-placeholder-val="{{ false }}">
+                    <div onClick="{{ commitDraft }}" style="display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:8px;background:var(--emberSoft,#fff5f1);border:1px solid rgba(236,74,38,0.2);cursor:pointer;margin-bottom:12px;"><span style="font-size:14px;color:var(--ember,#ec4a26);line-height:1;">+</span><span style="font-size:12px;color:var(--ink2,#6f6b65);">Create</span><span style="font-size:12px;font-weight:700;color:var(--ember,#ec4a26);">{{ tagDraft }}</span></div>
+                  </sc-if>
+                  <sc-for list="{{ tagGroups }}" as="g" hint-placeholder-count="3">
+                    <div style="margin-bottom:11px;">
+                      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;color:var(--ink3,#9a958d);margin-bottom:7px;">{{ g.name }}</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                        <sc-for list="{{ g.items }}" as="s" hint-placeholder-count="4">
+                          <div onClick="{{ s.onClick }}" style="{{ s.style }}"><span style="{{ s.dotStyle }}"></span>{{ s.label }}</div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
           </div>
         </sc-if>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <span style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;background:#3d7fd6;color:#fff;">Ride</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink3,#9a958d);">Thu, 11 Jun 2026, 18:42 · fit · Zwift</span>
+        </div>
 
         <sc-if value="{{ confirmingDelete }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;align-items:center;gap:12px;background:rgba(196,51,42,0.08);border:1px solid rgba(196,51,42,0.3);border-radius:9px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:var(--ink2,#6f6b65);flex-wrap:wrap;">
@@ -114,14 +143,8 @@
           </div>
         </sc-if>
 
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <sc-for list="{{ tags }}" as="tag" hint-placeholder-count="2">
-            <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2,#6f6b65);background:var(--elev,#faf9f7);padding:4px 10px;border-radius:20px;">{{ tag.label }}<span onClick="{{ tag.onRemove }}" style="border:none;background:none;color:var(--ink3,#9a958d);cursor:pointer;font-size:12px;line-height:1;">×</span></span>
-          </sc-for>
-          <input value="{{ tagDraft }}" onChange="{{ onTagInput }}" onKeyDown="{{ onTagKey }}" placeholder="+ Tag" style="font-size:12px;border:1px dashed var(--line,#e6e2dc);border-radius:20px;padding:4px 10px;background:none;color:var(--ink,#1b1a18);width:80px;font-family:'Hanken Grotesk',sans-serif;outline:none;" />
-        </div>
-
         <div style="margin-top:10px;display:inline-flex;align-items:center;font-size:12px;font-weight:600;border:1px dashed var(--line,#e6e2dc);color:var(--ink3,#9a958d);padding:4px 12px;border-radius:20px;cursor:pointer;">+ Mark as race</div>
+        </div>
       </div>
 
       <!-- stat row -->
@@ -373,12 +396,27 @@
 class Component extends DCLogic {
   state = {
     theme: 'lab', tab: 'laps', stream: 'power', hover: null,
-    tags: ['Tempo', 'Key session'], tagDraft: '',
+    tags: ['Tempo', 'Key session'], tagMenuOpen: false, tagDraft: '',
     activityName: 'Big Loop in Watopia', renaming: false, nameInput: 'Big Loop in Watopia',
     confirmingDelete: false,
     autoDetectRepeats: true, inferring: false,
     recomputed: false,
   };
+
+  tagGroups = [
+    { name: 'INTENSITY', tags: ['Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Recovery'] },
+    { name: 'SESSION TYPE', tags: ['Long Ride', 'Long Run', 'Race', 'Key session', 'Group ride', 'Brick', 'Commute', 'Indoor', 'Travel'] },
+    { name: 'HOW IT FELT', tags: ['Felt strong', 'Felt flat', 'Hot day', 'Sick'] },
+  ];
+
+  // deterministic hash -> fixed palette, so any tag name (preset or user-created) gets a stable color
+  tagPalette = ['#3d7fd6', '#2fa66a', '#f0a02e', '#e0442e', '#ec4a26', '#9a6ad0', '#8b95a1', '#0d9488', '#f0823a', '#7e858e'];
+  tagColor(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+    return this.tagPalette[Math.abs(hash) % this.tagPalette.length];
+  }
+  tagRgba(name, a) { const c = this.tagColor(name); const n = parseInt(c.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
 
   // ----- header: rename -----
   startRename() { this.setState(s => ({ renaming: true, nameInput: s.activityName })); }
@@ -398,6 +436,7 @@ class Component extends DCLogic {
   confirmDelete() { this.setState({ confirmingDelete: false }); }
 
   // ----- tags -----
+  toggleTagMenu() { this.setState(s => ({ tagMenuOpen: !s.tagMenuOpen })); }
   addTag(name) { name = (name || '').trim(); if (!name) return; this.setState(s => (s.tags.includes(name) ? { tagDraft: '' } : { tags: [...s.tags, name], tagDraft: '' })); }
   removeTag(name) { this.setState(s => ({ tags: s.tags.filter(t => t !== name) })); }
   onTagInput(e) { this.setState({ tagDraft: e.target.value }); }
@@ -592,11 +631,34 @@ class Component extends DCLogic {
     const hv = h != null ? this.model.samples[h] : null;
     const frac = h != null ? h / (this.model.N - 1) : 0;
 
-    // ----- tags (flat chips, no colour coding — matches the live header) -----
-    const tags = this.state.tags.map(name => ({
-      label: name,
-      onRemove: () => this.removeTag(name),
-    }));
+    // ----- tags -----
+    const tagChip = (name) => {
+      const c = this.tagColor(name);
+      return {
+        label: name,
+        style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, padding: '4px 7px 4px 10px', borderRadius: '20px', background: this.tagRgba(name, 0.1), border: '1px solid ' + this.tagRgba(name, 0.3), color: 'var(--ink2,#6f6b65)' },
+        dotStyle: { width: '6px', height: '6px', borderRadius: '50%', background: c, flexShrink: 0 },
+        xStyle: { marginLeft: '1px', fontSize: '14px', lineHeight: '1', fontWeight: 700, color: 'var(--ink3,#9a958d)', cursor: 'pointer' },
+        onRemove: () => this.removeTag(name),
+      };
+    };
+    const tags = this.state.tags.map(tagChip);
+    const applied = this.state.tags;
+    const draft = this.state.tagDraft.trim();
+    const tagGroups = this.tagGroups.map(g => ({
+      name: g.name,
+      items: g.tags
+        .filter(t => !applied.includes(t))
+        .filter(t => !draft || t.toLowerCase().includes(draft.toLowerCase()))
+        .map(t => ({
+          label: t,
+          onClick: () => this.addTag(t),
+          style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 500, padding: '5px 10px', borderRadius: '20px', cursor: 'pointer', background: 'var(--canvas,#f3f1ee)', border: '1px solid var(--line,#e6e2dc)', color: 'var(--ink2,#6f6b65)' },
+          dotStyle: { width: '6px', height: '6px', borderRadius: '50%', background: this.tagColor(t), flexShrink: 0 },
+        })),
+    })).filter(g => g.items.length > 0);
+    const knownLower = this.tagGroups.flatMap(g => g.tags).map(s => s.toLowerCase());
+    const showCreate = draft.length > 0 && !applied.some(t => t.toLowerCase() === draft.toLowerCase()) && !knownLower.includes(draft.toLowerCase());
 
     return {
       themeVars,
@@ -621,9 +683,16 @@ class Component extends DCLogic {
       confirmDelete: () => this.confirmDelete(),
 
       tags,
+      tagMenuOpen: this.state.tagMenuOpen,
       tagDraft: this.state.tagDraft,
+      tagGroups,
+      showCreate,
       onTagInput: (e) => this.onTagInput(e),
       onTagKey: (e) => this.onTagKey(e),
+      toggleTagMenu: () => this.toggleTagMenu(),
+      stopTag: (e) => e.stopPropagation(),
+      commitDraft: () => this.addTag(this.state.tagDraft),
+      addTagStyle: { display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 600, padding: '4px 11px', borderRadius: '20px', cursor: 'pointer', color: this.state.tagMenuOpen ? 'var(--ember,#ec4a26)' : 'var(--ink3,#9a958d)', border: '1px dashed ' + (this.state.tagMenuOpen ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), background: this.state.tagMenuOpen ? 'var(--emberSoft,#fff5f1)' : 'transparent' },
 
       recomputeTss: () => this.recomputeTss(),
       recomputeLabel: this.state.recomputed ? '✓' : '↺',
