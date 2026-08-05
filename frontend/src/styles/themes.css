@@ -58,6 +58,13 @@
   --sport-row: #1b8fa8;
   --sport-multisport: #a86fd6;
   --sport-transition: #6b7683;
+  --sport-ride-soft: rgba(61, 127, 214, 0.12);
+  --sport-run-soft: rgba(236, 74, 38, 0.12);
+  --sport-swim-soft: rgba(47, 166, 106, 0.12);
+  --sport-walk-soft: rgba(139, 149, 161, 0.12);
+  --sport-row-soft: rgba(27, 143, 168, 0.12);
+  --sport-multisport-soft: rgba(168, 111, 214, 0.12);
+  --sport-transition-soft: rgba(107, 118, 131, 0.12);
   --zone-1: #8b95a1;
   --zone-2: #3d7fd6;
   --zone-3: #2fa66a;

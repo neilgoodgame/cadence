@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { deleteActivity, getStreams, listTags, tagActivity, untagActivity, updateActivity } from "../../api/activities";
@@ -6,7 +6,9 @@ import { createRace, listRaces, updateRace } from "../../api/races";
 import type { Activity } from "../../api/types";
 import { formatDateTime } from "../../lib/format";
 import { buildGpx, downloadGpx } from "../../lib/gpxExport";
-import { sportColor, sportLabel } from "../../lib/sportColors";
+import { sportColor, sportColorSoft, sportLabel } from "../../lib/sportColors";
+import { SportIcon } from "../../lib/sportIcons";
+import { tagColor, tagRgba } from "../../lib/tagColors";
 
 function HeaderActions({ activity }: { activity: Activity }) {
   const [copied, setCopied] = useState(false);
@@ -92,6 +94,12 @@ const DISTANCE_PRESETS: Record<string, { label: string; km: number }[]> = {
   ],
 };
 
+const TAG_GROUPS: { name: string; tags: string[] }[] = [
+  { name: "INTENSITY", tags: ["Endurance", "Tempo", "Sweet Spot", "Threshold", "VO2 Max", "Recovery"] },
+  { name: "SESSION TYPE", tags: ["Long Ride", "Long Run", "Race", "Key session", "Group ride", "Brick", "Commute", "Indoor", "Travel"] },
+  { name: "HOW IT FELT", tags: ["Felt strong", "Felt flat", "Hot day", "Sick"] },
+];
+
 function closestPresetKm(sport: string, activityKm: number): number | null {
   const presets = DISTANCE_PRESETS[sport] ?? DISTANCE_PRESETS.run;
   if (!presets.length) return null;
@@ -104,10 +112,23 @@ export function Header({ activity }: { activity: Activity }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [newTag, setNewTag] = useState("");
+  const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  const tagMenuRef = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState(false);
   const [nameInput, setNameInput] = useState(activity.name);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [markingRace, setMarkingRace] = useState(false);
+
+  useEffect(() => {
+    if (!tagMenuOpen) return;
+    function onClick(e: MouseEvent) {
+      if (tagMenuRef.current && !tagMenuRef.current.contains(e.target as Node)) {
+        setTagMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [tagMenuOpen]);
 
   const renameMutation = useMutation({
     mutationFn: (name: string) => updateActivity(activity.id, { name }),
@@ -211,30 +232,52 @@ export function Header({ activity }: { activity: Activity }) {
     onSuccess: invalidate,
   });
 
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            padding: "3px 10px",
-            borderRadius: 20,
-            background: sportColor(activity.sport),
-            color: "#fff",
-          }}
-        >
-          {sportLabel(activity.sport)}
-        </span>
-        <span style={{ fontSize: 13, color: "var(--ink3)" }}>
-          {formatDateTime(activity.start_date)} · {activity.source}
-          {activity.device && ` · ${activity.device}`}
-        </span>
-        <HeaderActions activity={activity} />
-      </div>
+  const tagDraft = newTag.trim();
+  const appliedTagsLower = activity.tags.map((t) => t.toLowerCase());
+  const presetTagsLower = new Set(TAG_GROUPS.flatMap((g) => g.tags.map((t) => t.toLowerCase())));
+  // The athlete's own tag catalog (from GET /v1/tags) takes priority over the presets below:
+  // the backend matches tag names case-insensitively and keeps whatever casing was stored
+  // first, so surfacing the athlete's existing tags (with their real casing) here is what
+  // stops "fartlek" from silently becoming "FARTLEK" when it collides with an old tag.
+  const customTagNames = (allTags?.data ?? [])
+    .map((t) => t.name)
+    .filter((name) => !presetTagsLower.has(name.toLowerCase()) && !activity.tags.includes(name));
+  const filteredTagGroups = [{ name: "YOUR TAGS", tags: customTagNames }, ...TAG_GROUPS]
+    .map((g) => ({
+      name: g.name,
+      items: g.tags
+        .filter((t) => !activity.tags.includes(t))
+        .filter((t) => !tagDraft || t.toLowerCase().includes(tagDraft.toLowerCase())),
+    }))
+    .filter((g) => g.items.length > 0);
+  const knownTagsLower = new Set([
+    ...presetTagsLower,
+    ...(allTags?.data.map((t) => t.name.toLowerCase()) ?? []),
+  ]);
+  const showCreateTag =
+    tagDraft.length > 0 && !appliedTagsLower.includes(tagDraft.toLowerCase()) && !knownTagsLower.has(tagDraft.toLowerCase());
 
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+      <div
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 11,
+          background: sportColorSoft(activity.sport),
+          border: "1px solid var(--line)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          color: sportColor(activity.sport),
+        }}
+      >
+        <SportIcon sport={activity.sport} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
       {renaming ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 6px" }}>
           <input
             ref={nameInputRef}
             value={nameInput}
@@ -273,7 +316,7 @@ export function Header({ activity }: { activity: Activity }) {
           </button>
         </div>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "0 0 6px" }}>
           <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>{activity.name}</h1>
           <button
             onClick={() => { setNameInput(activity.name); setRenaming(true); }}
@@ -292,56 +335,167 @@ export function Header({ activity }: { activity: Activity }) {
           >
             {deleteMutation.isPending ? "…" : "✕"}
           </button>
+          <span style={{ width: 1, height: 18, background: "var(--line)", margin: "0 1px" }} />
+          {activity.tags.map((tag) => {
+            const tagId = tagIdByName.get(tag);
+            return (
+              <span
+                key={tag}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--ink2)",
+                  background: tagRgba(tag, 0.1),
+                  border: `1px solid ${tagRgba(tag, 0.3)}`,
+                  padding: "4px 7px 4px 10px",
+                  borderRadius: 20,
+                }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: tagColor(tag), flexShrink: 0 }} />
+                {tag}
+                <button
+                  onClick={() => tagId && removeTag.mutate(tagId)}
+                  disabled={!tagId}
+                  style={{ border: "none", background: "none", color: "var(--ink3)", cursor: "pointer", padding: 0, fontSize: 14, lineHeight: 1, fontWeight: 700 }}
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
+          <div style={{ position: "relative" }} ref={tagMenuRef}>
+            <button
+              onClick={() => setTagMenuOpen((o) => !o)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "4px 11px",
+                borderRadius: 20,
+                cursor: "pointer",
+                color: tagMenuOpen ? "var(--ember)" : "var(--ink3)",
+                border: `1px dashed ${tagMenuOpen ? "var(--ember)" : "var(--line)"}`,
+                background: tagMenuOpen ? "var(--ember-soft)" : "transparent",
+              }}
+            >
+              <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>Tag
+            </button>
+            {tagMenuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 32,
+                  left: 0,
+                  zIndex: 30,
+                  width: 270,
+                  background: "var(--card)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 12,
+                  boxShadow: "0 14px 36px rgba(20,17,15,0.18)",
+                  padding: 13,
+                }}
+              >
+                <input
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newTag.trim()) {
+                      addTag.mutate(newTag.trim());
+                    }
+                  }}
+                  placeholder="Create or search tags…"
+                  autoFocus
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--line)",
+                    background: "var(--elev)",
+                    fontSize: 13,
+                    color: "var(--ink)",
+                    outline: "none",
+                    marginBottom: 12,
+                    boxSizing: "border-box",
+                  }}
+                />
+                {showCreateTag && (
+                  <div
+                    onClick={() => addTag.mutate(tagDraft)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "var(--ember-soft)",
+                      border: "1px solid var(--ember)",
+                      cursor: "pointer",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <span style={{ fontSize: 14, color: "var(--ember)", lineHeight: 1 }}>+</span>
+                    <span style={{ fontSize: 12, color: "var(--ink2)" }}>Create</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ember)" }}>{tagDraft}</span>
+                  </div>
+                )}
+                {filteredTagGroups.map((g) => (
+                  <div key={g.name} style={{ marginBottom: 11 }}>
+                    <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.08em", color: "var(--ink3)", marginBottom: 7 }}>{g.name}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {g.items.map((t) => (
+                        <div
+                          key={t}
+                          onClick={() => addTag.mutate(t)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            fontSize: 12,
+                            fontWeight: 500,
+                            padding: "5px 10px",
+                            borderRadius: 20,
+                            cursor: "pointer",
+                            background: "var(--canvas)",
+                            border: "1px solid var(--line)",
+                            color: "var(--ink2)",
+                          }}
+                        >
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: tagColor(t), flexShrink: 0 }} />
+                          {t}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        {activity.tags.map((tag) => {
-          const tagId = tagIdByName.get(tag);
-          return (
-            <span
-              key={tag}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 12,
-                color: "var(--ink2)",
-                background: "var(--elev)",
-                padding: "4px 10px",
-                borderRadius: 20,
-              }}
-            >
-              {tag}
-              <button
-                onClick={() => tagId && removeTag.mutate(tagId)}
-                disabled={!tagId}
-                style={{ border: "none", background: "none", color: "var(--ink3)", cursor: "pointer", padding: 0, fontSize: 12 }}
-              >
-                ×
-              </button>
-            </span>
-          );
-        })}
-        <input
-          value={newTag}
-          onChange={(e) => setNewTag(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && newTag.trim()) {
-              addTag.mutate(newTag.trim());
-            }
-          }}
-          placeholder="+ Tag"
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <span
           style={{
             fontSize: 12,
-            border: "1px dashed var(--line)",
+            fontWeight: 600,
+            padding: "3px 10px",
             borderRadius: 20,
-            padding: "4px 10px",
-            background: "none",
-            color: "var(--ink)",
-            width: 80,
+            background: sportColor(activity.sport),
+            color: "#fff",
           }}
-        />
+        >
+          {sportLabel(activity.sport)}
+        </span>
+        <span style={{ fontSize: 13, color: "var(--ink3)" }}>
+          {formatDateTime(activity.start_date)} · {activity.source}
+          {activity.device && ` · ${activity.device}`}
+        </span>
+        <HeaderActions activity={activity} />
       </div>
       {linkedRace ? (
         <div style={{ marginTop: 10 }}>
@@ -484,6 +638,7 @@ export function Header({ activity }: { activity: Activity }) {
           + Mark as race
         </button>
       )}
+      </div>
     </div>
   );
 }
