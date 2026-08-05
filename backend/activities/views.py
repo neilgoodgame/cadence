@@ -1,6 +1,6 @@
 from typing import Any
 
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 
 from core.auth_context import get_effective_athlete_id
 from core.cql import compile_ast_to_q, parse, resolve_order_by
+from core.exceptions import ConflictError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
 from uploads.processing import (
@@ -56,6 +57,7 @@ STREAM_CHANNELS = set(SCALAR_STREAM_FIELDS) | {"latlng"}
 STREAM_RESOLUTION_STEP = {"high": 1, "medium": 5, "low": 15}
 
 ACTIVITY_FIELD_MAP = {
+    "date": "start_date",
     "hr": "avg_hr",
     "maxhr": "max_hr",
     "tss": "tss",
@@ -428,8 +430,21 @@ class TagListView(APIView):
     def get(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_read(request, athlete_id)
-        tags = Tag.objects.filter(athlete_id=athlete_id).order_by("name")
+        tags = (
+            Tag.objects.filter(athlete_id=athlete_id).annotate(count=Count("activity_tags")).order_by("-count", "name")
+        )
         return Response({"data": TagSerializer(tags, many=True).data})
+
+
+class TagDetailView(APIView):
+    def delete(self, request: Request, id: str) -> Response:
+        _, athlete_id = get_effective_athlete_id(request)
+        _require_write(request, athlete_id)
+        tag = get_object_or_404(Tag, pk=id, athlete_id=athlete_id)
+        if ActivityTag.objects.filter(tag=tag).exists():
+            raise ConflictError("This tag is still linked to activities.")
+        tag.delete()
+        return Response(status=204)
 
 
 class ActivityTagView(APIView):

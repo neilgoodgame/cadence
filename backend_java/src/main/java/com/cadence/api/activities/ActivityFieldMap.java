@@ -7,6 +7,7 @@ import java.util.Map;
 public final class ActivityFieldMap implements FieldMap {
 
 	private static final Map<String, String> FIELDS = Map.of(
+			"date", "startDate",
 			"hr", "avgHr",
 			"maxhr", "maxHr",
 			"tss", "tss",

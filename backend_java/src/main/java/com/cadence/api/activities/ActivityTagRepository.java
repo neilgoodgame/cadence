@@ -14,4 +14,16 @@ public interface ActivityTagRepository extends JpaRepository<ActivityTag, Long> 
 	Optional<ActivityTag> findByActivityIdAndTagId(String activityId, String tagId);
 
 	boolean existsByActivityIdAndTagId(String activityId, String tagId);
+
+	boolean existsByTagId(String tagId);
+
+	@Query("select at.tag.id as tagId, count(at) as usageCount from ActivityTag at "
+			+ "where at.tag.athlete.id = :athleteId group by at.tag.id")
+	List<TagUsageCount> countByAthleteId(@Param("athleteId") String athleteId);
+
+	interface TagUsageCount {
+		String getTagId();
+
+		long getUsageCount();
+	}
 }

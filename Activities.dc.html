@@ -119,9 +119,22 @@
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:7px;">
           <sc-for list="{{ tagFilters }}" as="t" hint-placeholder-count="10">
-            <div onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</div>
+            <div onClick="{{ t.onClick }}" style="{{ t.style }}"><sc-if value="{{ t.dotStyle }}" hint-placeholder-val="{{ false }}"><span style="{{ t.dotStyle }}"></span></sc-if>{{ t.label }}<span style="{{ t.countStyle }}">{{ t.count }}</span><sc-if value="{{ t.deletable }}" hint-placeholder-val="{{ false }}"><span onClick="{{ t.onDelete }}" title="Delete unused tag" style="border:none;background:none;color:inherit;cursor:pointer;padding:0;font-size:13px;line-height:1;font-weight:700;opacity:0.8;">×</span></sc-if></div>
           </sc-for>
         </div>
+      </div>
+
+      <!-- SORT BAR -->
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:0 2px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Sort by</span>
+        <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;flex-wrap:wrap;">
+          <sc-for list="{{ sortBy }}" as="s" hint-placeholder-count="6">
+            <div onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.label }}<sc-if value="{{ s.active }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;">{{ s.arrow }}</span></sc-if></div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ sortDisabledByQuery }}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:11.5px;color:var(--ink3,#9a958d);">overridden by query <span style="font-family:'JetBrains Mono',monospace;color:#3d7fd6;">{{ queryOrder }}</span></span>
+        </sc-if>
       </div>
 
       <!-- ACTIVITY CARDS -->
@@ -144,7 +157,7 @@
               <sc-if value="{{ a.hasTags }}" hint-placeholder-val="{{ false }}">
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
                   <sc-for list="{{ a.tags }}" as="tg" hint-placeholder-count="2">
-                    <div onClick="{{ tg.onClick }}" style="{{ tg.style }}">{{ tg.label }}</div>
+                    <div onClick="{{ tg.onClick }}" style="{{ tg.style }}"><span style="{{ tg.dotStyle }}"></span>{{ tg.label }}</div>
                   </sc-for>
                 </div>
               </sc-if>
@@ -194,14 +207,37 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900},&quot;weight&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:72,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;}}">
 class Component extends DCLogic {
-  state = { theme: 'lab', sport: 'all', activeTag: null, matchedOnly: false, expanded: {}, query: '' };
+  // unusedTags: mock stand-in for tags that exist in the athlete's catalog (GET /v1/tags)
+  // but aren't currently linked to any activity - the mock data model otherwise only
+  // derives tags from records, so there's no way to represent an orphaned one without this.
+  state = { theme: 'lab', sport: 'all', activeTag: null, matchedOnly: false, expanded: {}, query: '', sortKey: 'date', sortDir: 'desc', unusedTags: ['Stale'] };
 
-  // No user-facing sort control (the real screen has none — CQL `orderby` is the only
-  // way to reorder); default falls back to the list's newest-first order, same as the
-  // API's documented default (-start_date, -id) when no orderby is present in the query.
-  applySort(list) { return [...list].sort((a, b) => b._idx - a._idx); }
+  deleteTag(name) { this.setState(s => ({ unusedTags: s.unusedTags.filter(t => t !== name) })); }
 
-  tagColors = { 'Recovery': '#8b95a1', 'Endurance': '#3d7fd6', 'Long Ride': '#3d7fd6', 'Long Run': '#3d7fd6', 'Tempo': '#2fa66a', 'Sweet Spot': '#2fa66a', 'Threshold': '#f0a02e', 'VO2 Max': '#e0442e', 'Race': '#ec4a26', 'Key session': '#ec4a26', 'Group ride': '#3d7fd6', 'Brick': '#9a6ad0', 'Swim set': '#2fa66a', 'Felt strong': '#2fa66a', 'Felt flat': '#f0a02e', 'Hot day': '#f0823a' };
+  // Fields orderable server-side (ACTIVITY_FIELD_MAP on both backends) - no "pace" here,
+  // there's no stored pace column to sort by. "date" has no real field of its own either;
+  // it maps to _idx since the mock list is already newest-first, same as the real API's
+  // default (-start_date, -id) ordering.
+  sortAccess = { date: a => -a._idx, tss: a => a.tss, distance: a => a.distanceKm, duration: a => a.durationMin, hr: a => a.hrAvg, power: a => a.powerW };
+  applySort(list) {
+    const get = this.sortAccess[this.state.sortKey] || this.sortAccess.date;
+    const dir = this.state.sortDir === 'asc' ? 1 : -1;
+    return [...list].sort((a, b) => {
+      let va = get(a), vb = get(b);
+      va = va == null ? -Infinity : va; vb = vb == null ? -Infinity : vb;
+      if (va < vb) return -1 * dir; if (va > vb) return 1 * dir; return 0;
+    });
+  }
+  setSort(k) { this.setState(s => s.sortKey === k ? { sortDir: s.sortDir === 'asc' ? 'desc' : 'asc' } : { sortKey: k, sortDir: 'desc' }); }
+
+  // deterministic hash -> fixed palette, same as Activity Analysis.dc.html, so a tag's
+  // color is stable and consistent across screens without needing a name lookup table.
+  tagPalette = ['#3d7fd6', '#2fa66a', '#f0a02e', '#e0442e', '#ec4a26', '#9a6ad0', '#8b95a1', '#0d9488', '#f0823a', '#7e858e'];
+  tagColor(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+    return this.tagPalette[Math.abs(hash) % this.tagPalette.length];
+  }
 
   zoneColors = ['#7fcfa6', '#3d7fd6', '#f0a02e', '#e0442e', '#a52f22'];
 
@@ -240,7 +276,6 @@ class Component extends DCLogic {
   ];
 
   rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
-  tagColor(name) { return this.tagColors[name] || '#6f8bb0'; }
 
   // pace field parsing/formatting for the CQL engine (e.g. "pace < 4:30")
   parseT(t) { const p = t.split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; }
@@ -452,12 +487,27 @@ class Component extends DCLogic {
     const at = this.state.activeTag;
 
     // ---- tag filter chips ----
-    // Real Tag rows (GET /v1/tags) carry no auto/manual flag or usage count — flat,
-    // uniformly-styled toggle chips, same as the tag pills on each activity card.
-    const tagNames = Array.from(new Set(recs.flatMap(r => r.allTags))).sort();
-    const chipBase = (active) => ({ fontSize: '13px', fontWeight: 600, padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--elev,#faf9f7)' : 'transparent', border: '1px solid var(--line,#e6e2dc)' });
-    const tagFilters = [{ label: 'All', onClick: () => this.setState({ activeTag: null }), style: chipBase(at === null) }]
-      .concat(tagNames.map(t => ({ label: t, onClick: () => this.setTag(t), style: chipBase(at === t) })));
+    // Real Tag rows (GET /v1/tags) carry a usage count (athlete-scoped, server-computed)
+    // but no auto/manual flag — colored by the same deterministic hash as Activity
+    // Analysis.dc.html, ordered most-used first same as the backend's -count,name.
+    const tagCount = {};
+    recs.forEach(r => r.allTags.forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; }));
+    this.state.unusedTags.forEach(t => { if (!(t in tagCount)) tagCount[t] = 0; });
+    const tagNames = Object.keys(tagCount).sort((a, b) => tagCount[b] - tagCount[a] || a.localeCompare(b));
+    const neutralChip = (active) => ({ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600, padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--elev,#faf9f7)' : 'transparent', border: '1px solid var(--line,#e6e2dc)' });
+    const neutralCountStyle = (active) => ({ fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 600, padding: '0 5px', borderRadius: '20px', background: active ? 'var(--card,#fff)' : 'var(--canvas,#f3f1ee)', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)' });
+    const tagChipStyle = (name, active) => {
+      const c = this.tagColor(name);
+      return { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600, padding: active ? '6px 12px' : '6px 7px 6px 10px', borderRadius: '20px', cursor: 'pointer', color: active ? '#fff' : 'var(--ink2,#6f6b65)', background: active ? c : this.rgba(c, 0.1), border: '1px solid ' + (active ? c : this.rgba(c, 0.3)) };
+    };
+    const tagDotStyle = (name, active) => active ? null : { width: '6px', height: '6px', borderRadius: '50%', background: this.tagColor(name), flexShrink: 0 };
+    const tagCountStyle = (active) => ({ fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 600, padding: '0 5px', borderRadius: '20px', background: active ? 'rgba(255,255,255,0.25)' : 'var(--canvas,#f3f1ee)', color: active ? '#fff' : 'var(--ink3,#9a958d)' });
+    const tagFilters = [{ label: 'All', count: recs.length, dotStyle: null, deletable: false, onClick: () => this.setState({ activeTag: null }), style: neutralChip(at === null), countStyle: neutralCountStyle(at === null) }]
+      .concat(tagNames.map(t => ({
+        label: t, count: tagCount[t], dotStyle: tagDotStyle(t, at === t), deletable: tagCount[t] === 0,
+        onClick: () => this.setTag(t), onDelete: (e) => { e.stopPropagation(); this.deleteTag(t); },
+        style: tagChipStyle(t, at === t), countStyle: tagCountStyle(at === t),
+      })));
 
     // ---- filter ----
     let list = recs;
@@ -470,10 +520,14 @@ class Component extends DCLogic {
     const querySorted = !!q.orderLabel;
     if (!querySorted) list = this.applySort(list);
 
-    // Flat tag pills on each card — real ActivityCard.tsx renders activity.tags with no
-    // auto/manual distinction (that split only exists internally, for auto-tagging logic).
-    const rowTag = (name) => ({ label: name, onClick: () => this.setTag(name),
-      style: { fontSize: '11px', color: 'var(--ink2,#6f6b65)', background: 'var(--elev,#faf9f7)', padding: '2px 8px', borderRadius: '20px', cursor: 'pointer' } });
+    // Colored tag pills on each card, matching ActivityCard.tsx and Activity Analysis.dc.html
+    // — no auto/manual distinction (that split only exists internally, for auto-tagging logic).
+    const rowTag = (name) => {
+      const c = this.tagColor(name);
+      return { label: name, onClick: () => this.setTag(name),
+        dotStyle: { width: '6px', height: '6px', borderRadius: '50%', background: c, flexShrink: 0 },
+        style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 600, color: 'var(--ink2,#6f6b65)', background: this.rgba(c, 0.1), border: '1px solid ' + this.rgba(c, 0.3), padding: '2px 8px 2px 6px', borderRadius: '20px', cursor: 'pointer' } };
+    };
 
     const zoneNames = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
     const activities = list.map(r => {
@@ -537,6 +591,13 @@ class Component extends DCLogic {
       queryOrder: q.orderLabel || null,
       queryHasOrder: !!q.orderLabel,
       queryCount: q.count != null ? q.count : 0,
+      sortBy: [['date', 'Date'], ['tss', 'TSS'], ['distance', 'Distance'], ['duration', 'Duration'], ['hr', 'Avg HR'], ['power', 'Power']].map(([k, label]) => {
+        const active = this.state.sortKey === k && !querySorted;
+        return { label, active, onClick: () => this.setSort(k),
+          style: { display: 'inline-flex', alignItems: 'center', gap: '5px', fontFamily: "'JetBrains Mono',monospace", fontSize: '11.5px', fontWeight: 600, padding: '4px 10px', borderRadius: '7px', cursor: 'pointer', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent', border: '1px solid ' + (active ? 'var(--line,#e6e2dc)' : 'transparent'), boxShadow: active ? '0 1px 2px rgba(0,0,0,0.10)' : 'none' },
+          arrow: this.state.sortDir === 'asc' ? '↑' : '↓' };
+      }),
+      sortDisabledByQuery: querySorted,
       queryExamples: ['avg hr > 140', 'runs tagged race ordered by distance', 'bike and tss > 100', 'distance > 20km and pace < 4:30'].map(label => ({ label, onClick: () => this.setState({ query: label }) })),
       activities, isEmpty: activities.length === 0,
       expandAllLabel: allExpanded ? 'Collapse zones' : 'Expand zones',

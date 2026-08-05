@@ -21,6 +21,19 @@ class TagViewTests(TestCase):
         names = [t["name"] for t in response.json()["data"]]
         self.assertEqual(names, ["Race"])
 
+    def test_list_tags_includes_usage_count_ordered_desc(self):
+        popular = Tag.objects.create(athlete=self.athlete, name="Popular")
+        rare = Tag.objects.create(athlete=self.athlete, name="Rare")
+        a1 = _make_activity(self.athlete)
+        a2 = _make_activity(self.athlete)
+        ActivityTag.objects.create(activity=a1, tag=popular)
+        ActivityTag.objects.create(activity=a2, tag=popular)
+        ActivityTag.objects.create(activity=a1, tag=rare)
+
+        response = _bearer_client(self.athlete).get("/v1/tags")
+        data = response.json()["data"]
+        self.assertEqual([(t["name"], t["count"]) for t in data], [("Popular", 2), ("Rare", 1)])
+
     def test_attach_existing_tag_by_id(self):
         activity = _make_activity(self.athlete)
         tag = Tag.objects.create(athlete=self.athlete, name="Race")
@@ -83,3 +96,37 @@ class TagViewTests(TestCase):
         )
         ActivityTag.objects.create(activity=activity, tag=tag)
         self.assertEqual(client.delete(f"/v1/activities/{activity.id}/tags/{tag.id}").status_code, 403)
+
+    def test_delete_unused_tag(self):
+        tag = Tag.objects.create(athlete=self.athlete, name="Unused")
+
+        response = _bearer_client(self.athlete).delete(f"/v1/tags/{tag.id}")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Tag.objects.filter(id=tag.id).exists())
+
+    def test_delete_tag_still_in_use_conflicts(self):
+        activity = _make_activity(self.athlete)
+        tag = Tag.objects.create(athlete=self.athlete, name="Race")
+        ActivityTag.objects.create(activity=activity, tag=tag)
+
+        response = _bearer_client(self.athlete).delete(f"/v1/tags/{tag.id}")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(Tag.objects.filter(id=tag.id).exists())
+
+    def test_delete_tag_not_found(self):
+        response = _bearer_client(self.athlete).delete("/v1/tags/tag_bogus")
+        self.assertEqual(response.status_code, 404)
+
+    def test_cannot_delete_other_athletes_tag(self):
+        tag = Tag.objects.create(athlete=self.other_athlete, name="Not mine")
+        response = _bearer_client(self.athlete).delete(f"/v1/tags/{tag.id}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_outsider_without_write_cannot_delete_tag(self):
+        tag = Tag.objects.create(athlete=self.athlete, name="Unused")
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.delete(f"/v1/tags/{tag.id}")
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Tag.objects.filter(id=tag.id).exists())

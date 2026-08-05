@@ -106,6 +106,11 @@ export function untagActivity(activityId: string, tagId: string): Promise<void> 
   return apiFetch<void>(`/v1/activities/${activityId}/tags/${tagId}`, { method: "DELETE" });
 }
 
+/** Only allowed when the tag has zero linked activities - the backend 409s otherwise. */
+export function deleteTag(tagId: string): Promise<void> {
+  return apiFetch<void>(`/v1/tags/${tagId}`, { method: "DELETE" });
+}
+
 export function listComments(activityId: string): Promise<DataList<ActivityComment>> {
   return apiFetch<DataList<ActivityComment>>(`/v1/activities/${activityId}/comments`);
 }

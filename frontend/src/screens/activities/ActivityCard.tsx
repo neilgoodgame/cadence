@@ -4,6 +4,7 @@ import { Card } from "../../components/Card";
 import type { Activity, ZoneSet } from "../../api/types";
 import { formatDate, formatDuration } from "../../lib/format";
 import { sportColor, sportLabel } from "../../lib/sportColors";
+import { tagColor, tagRgba } from "../../lib/tagColors";
 import { ZoneBar } from "./ZoneBar";
 
 export function ActivityCard({ activity, hrZones }: { activity: Activity; hrZones: ZoneSet | undefined }) {
@@ -54,8 +55,20 @@ export function ActivityCard({ activity, hrZones }: { activity: Activity; hrZone
               {activity.tags.map((tag) => (
                 <span
                   key={tag}
-                  style={{ fontSize: 11, color: "var(--ink2)", background: "var(--elev)", padding: "2px 8px", borderRadius: 20 }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--ink2)",
+                    background: tagRgba(tag, 0.1),
+                    border: `1px solid ${tagRgba(tag, 0.3)}`,
+                    padding: "2px 8px 2px 6px",
+                    borderRadius: 20,
+                  }}
                 >
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: tagColor(tag), flexShrink: 0 }} />
                   {tag}
                 </span>
               ))}

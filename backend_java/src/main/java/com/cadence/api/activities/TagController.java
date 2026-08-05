@@ -39,7 +39,7 @@ public class TagController {
 	public DataListResponse<TagResponse> listTags() {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
-		return new DataListResponse<>(tagService.listTags(athleteId).stream().map(tagMapper::toResponse).toList());
+		return new DataListResponse<>(tagService.listTagsWithCounts(athleteId));
 	}
 
 	@PostMapping("/v1/activities/{id}/tags")
@@ -58,5 +58,13 @@ public class TagController {
 		Activity activity = activityService.getActivity(id);
 		accessGuard.requireWrite(activity.getAthlete().getId());
 		tagService.detachTag(id, tagId);
+	}
+
+	@DeleteMapping("/v1/tags/{id}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteTag(@PathVariable String id) {
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+		tagService.deleteTag(athleteId, id);
 	}
 }

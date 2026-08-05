@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from django.test import TestCase
 
 from accounts.models import User, UserRelationship
@@ -108,6 +110,16 @@ class ActivityListViewTests(TestCase):
     def test_unknown_sort_field_400(self):
         response = _bearer_client(self.athlete).get("/v1/activities?sort=bogus")
         self.assertEqual(response.status_code, 400)
+
+    def test_sort_by_date_ascending_and_descending(self):
+        _make_activity(self.athlete, name="Earlier", start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC))
+        _make_activity(self.athlete, name="Later", start_date=datetime(2026, 3, 1, 7, 0, tzinfo=UTC))
+
+        desc = _bearer_client(self.athlete).get("/v1/activities?sort=-date")
+        self.assertEqual([a["name"] for a in desc.json()["data"]], ["Later", "Earlier"])
+
+        asc = _bearer_client(self.athlete).get("/v1/activities?sort=date")
+        self.assertEqual([a["name"] for a in asc.json()["data"]], ["Earlier", "Later"])
 
     def test_outsider_without_relationship_forbidden(self):
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
