@@ -12,6 +12,7 @@ dependencies = [
     "cryptography==49.0.0",
     "celery==5.6.3",
     "redis==8.0.1",
+    "ijson==3.5.1",
     "fitparse==1.2.0",
     "gpxpy==1.6.2",
     "lxml==6.1.1",
@@ -87,7 +88,7 @@ strict_equality = true
 django_settings_module = "config.settings"
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "fitparse.*", "oauth2_provider.*"]
+module = ["celery.*", "fitparse.*", "oauth2_provider.*", "ijson.*"]
 ignore_missing_imports = true
 
 # Test modules are still type-checked, just not required to annotate every
