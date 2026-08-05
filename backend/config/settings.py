@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "scheduling",
     "gear",
     "races",
+    "dataexport",
     "webhooks",
     "core",
 ]
@@ -185,6 +186,15 @@ CELERY_TASK_ALWAYS_EAGER = env_bool("CELERY_TASK_ALWAYS_EAGER", False)
 MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024
 MAX_BATCH_FILES = 50000
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
-DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE_BYTES
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# --- Data export/import ---
+# A full-account data export/import file can be much larger than a single activity upload
+# (the real test account's export was already 210MB) - MAX_IMPORT_SIZE_BYTES is enforced
+# explicitly in dataexport/views.py, but DATA_UPLOAD_MAX_MEMORY_SIZE (the Django-wide request
+# body ceiling) has to be raised to at least that value too, or the request gets rejected
+# before dataexport's own check ever runs. MAX_UPLOAD_SIZE_BYTES (activity uploads) is
+# unaffected - it's still enforced on its own in uploads/services.py.
+MAX_IMPORT_SIZE_BYTES = 2 * 1024 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_IMPORT_SIZE_BYTES

@@ -1,0 +1,155 @@
+import gzip
+import json
+from datetime import UTC, date, datetime
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
+from rest_framework.test import APIClient
+
+from accounts.models import User
+from activities.models import Activity, Lap, Record
+from authn.oauth_utils import issue_token_pair
+from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
+from races.models import Race
+from scheduling.models import ScheduledWorkout
+from workouts.models import Workout, WorkoutStep
+
+from .export_writer import write_export
+
+
+def _bearer_client(user, scope="activities:read activities:write coach"):
+    # A local copy, not a cross-app import - matches the existing convention of each app
+    # having its own (uploads/tests/helpers.py, activities/tests/helpers.py both do the same).
+    access_token, _ = issue_token_pair(user, scope=scope)
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token.token}")
+    return client
+
+
+def _make_activity(athlete: User, **kwargs) -> Activity:
+    defaults = {
+        "sport": "run",
+        "environment": "outdoor",
+        "name": "Activity",
+        "start_date": datetime(2026, 1, 1, 7, 0, tzinfo=UTC),
+        "moving_time": 1800,
+        "distance_km": 5.0,
+        "tss": 50,
+    }
+    defaults.update(kwargs)
+    return Activity.objects.create(athlete=athlete, **defaults)
+
+
+def _seed_full_account(athlete: User) -> dict:
+    bike = Bike.objects.create(athlete=athlete, name="Road bike", kind="road")
+    Component.objects.create(bike=bike, name="Chain", limit_km=3000)
+
+    shoe_model = ShoeModel.objects.create(manufacturer="ImportTestCo", model="Roundtrip")
+    smv = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="v1")
+    Shoe.objects.create(athlete=athlete, shoe_model_version=smv, name="Daily trainer")
+
+    workout = Workout.objects.create(created_by=athlete, name="VO2 intervals", sport="run")
+    WorkoutStep.objects.create(workout=workout, order=0, kind="block", end_type="time", duration=300, target_type="hr")
+
+    parent = _make_activity(
+        athlete, sport="multisport", name="Triathlon", start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+    )
+    child = _make_activity(
+        athlete,
+        sport="bike",
+        name="Triathlon Bike Leg",
+        start_date=datetime(2026, 1, 1, 8, 0, tzinfo=UTC),
+        parent_activity=parent,
+        workout=workout,
+    )
+    Lap.objects.create(activity=child, index=0, duration=600, distance_km=5.0)
+    Record.objects.create(activity=child, t=0, ts=child.start_date, power=200, heartrate=140)
+
+    Race.objects.create(athlete=athlete, name="Local 10k", date=date(2026, 1, 1), sport="bike", activity=child)
+    ScheduledWorkout.objects.create(workout=workout, athlete=athlete, date=date(2026, 1, 1), activity=child)
+
+    return {"bike": bike, "workout": workout, "parent": parent, "child": child}
+
+
+class ExportImportRoundTripTests(TestCase):
+    def setUp(self):
+        self.source = User.objects.create_user(email="export-source@example.cc", password="x", name="Source")
+        self.target = User.objects.create_user(email="export-target@example.cc", password="x", name="Target")
+        _seed_full_account(self.source)
+
+    def test_export_then_import_recreates_data_with_remapped_ids(self):
+        source_client = _bearer_client(self.source)
+        start = source_client.post("/v1/export")
+        self.assertEqual(start.status_code, 202)
+        export_id = start.json()["id"]
+
+        status = source_client.get(f"/v1/export/{export_id}").json()
+        self.assertEqual(status["status"], "ready")
+
+        download = source_client.get(f"/v1/export/{export_id}/download")
+        content = b"".join(download.streaming_content)
+
+        target_client = _bearer_client(self.target)
+        upload = target_client.post(
+            "/v1/import", {"file": SimpleUploadedFile("export.json.gz", content)}, format="multipart"
+        )
+        self.assertEqual(upload.status_code, 202)
+        import_id = upload.json()["id"]
+
+        result = target_client.get(f"/v1/import/{import_id}").json()
+        self.assertEqual(result["status"], "ready")
+        counts = result["counts"]
+        self.assertEqual(counts["activities_imported"], 2)
+        self.assertEqual(counts["races_imported"], 1)
+        self.assertEqual(counts["workouts_imported"], 1)
+        self.assertEqual(counts["scheduled_workouts_imported"], 1)
+        self.assertEqual(counts["bikes_imported"], 1)
+        self.assertEqual(counts["shoes_imported"], 1)
+        self.assertEqual(counts["components_imported"], 1)
+        self.assertEqual(counts["items_skipped"], 0)
+
+        imported_child = Activity.objects.get(athlete=self.target, name="Triathlon Bike Leg")
+        imported_parent = Activity.objects.get(athlete=self.target, name="Triathlon")
+        self.assertNotEqual(imported_child.id, self.child_id())
+        self.assertEqual(imported_child.parent_activity_id, imported_parent.id)
+        self.assertIsNotNone(imported_child.workout_id)
+        self.assertEqual(Lap.objects.filter(activity=imported_child).count(), 1)
+        self.assertEqual(Record.objects.filter(activity=imported_child).count(), 1)
+
+        imported_race = Race.objects.get(athlete=self.target)
+        self.assertEqual(imported_race.activity_id, imported_child.id)
+
+        imported_scheduled = ScheduledWorkout.objects.get(athlete=self.target)
+        self.assertEqual(imported_scheduled.activity_id, imported_child.id)
+        self.assertEqual(imported_scheduled.status, "completed")
+
+    def child_id(self):
+        return Activity.objects.get(athlete=self.source, name="Triathlon Bike Leg").id
+
+
+class SportFilterTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="sport-filter@example.cc", password="x", name="Athlete")
+        _seed_full_account(self.athlete)
+        _make_activity(
+            self.athlete, sport="run", name="Standalone Run", start_date=datetime(2026, 1, 2, 7, 0, tzinfo=UTC)
+        )
+
+    def test_bike_filter_excludes_run_and_multisport_parent_but_keeps_matching_leg(self):
+        relative_path = "exports/test/sport-filter.json.gz"
+        write_export(self.athlete.id, "bike", relative_path)
+
+        from django.core.files.storage import default_storage
+
+        with default_storage.open(relative_path, "rb") as raw, gzip.GzipFile(fileobj=raw) as gz:
+            doc = json.loads(gz.read())
+
+        names = {entry["activity"]["name"] for entry in doc["activities"]}
+        self.assertEqual(names, {"Triathlon Bike Leg"})
+        self.assertEqual(len(doc["workouts"]), 0)  # the only workout is sport=run
+        self.assertEqual(len(doc["races"]), 1)  # the seeded race is sport=bike
+        # Equipment is always exported in full, regardless of the sport filter.
+        self.assertEqual(len(doc["equipment"]["bikes"]), 1)
+        self.assertEqual(len(doc["equipment"]["shoes"]), 1)
+
+        default_storage.delete(relative_path)

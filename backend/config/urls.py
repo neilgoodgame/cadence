@@ -23,5 +23,6 @@ urlpatterns = [
     path("", include("races.urls")),
     path("", include("scheduling.urls")),
     path("", include("uploads.urls")),
+    path("", include("dataexport.urls")),
     path("", include("webhooks.urls")),
 ]
