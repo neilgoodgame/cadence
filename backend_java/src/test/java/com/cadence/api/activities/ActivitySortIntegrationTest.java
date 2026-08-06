@@ -76,11 +76,11 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithHr(athlete, "High HR", 170);
 
 		CursorPage<ActivityResponse> desc =
-				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, null, 50);
 		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("High HR", "Low HR", "No HR");
 
 		CursorPage<ActivityResponse> asc =
-				activityService.list(athlete.getId(), "orderby hr asc", null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby hr asc", null, null, null, null, null, null, 50);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Low HR", "High HR", "No HR");
 	}
 
@@ -93,12 +93,12 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithHr(athlete, "No HR B", null);
 
 		CursorPage<ActivityResponse> firstPage =
-				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, 2);
+				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, null, 2);
 		assertThat(firstPage.data()).extracting(ActivityResponse::name).containsExactly("High HR", "Low HR");
 		assertThat(firstPage.hasMore()).isTrue();
 
 		CursorPage<ActivityResponse> secondPage = activityService.list(
-				athlete.getId(), "orderby hr desc", null, null, null, null, firstPage.nextCursor(), 2);
+				athlete.getId(), "orderby hr desc", null, null, null, null, null, firstPage.nextCursor(), 2);
 		assertThat(secondPage.data()).extracting(ActivityResponse::name)
 				.containsExactlyInAnyOrder("No HR A", "No HR B");
 		assertThat(secondPage.hasMore()).isFalse();
