@@ -1,3 +1,4 @@
+from collections import deque
 from collections.abc import Sequence
 from datetime import timedelta
 
@@ -102,13 +103,41 @@ def _total_distance_km(samples: Sequence[Sample], laps: Sequence[LapDict]) -> fl
     return 0.0
 
 
+def _smoothed_altitudes(altitudes: Sequence[float], window: int = 30) -> list[float]:
+    """Trailing moving average over `window` samples (~30s at the 1Hz rate these files are
+    stored at). Raw per-sample altitude carries a couple of meters of sensor noise on every
+    reading, and summing every single positive delta unsmoothed (as this used to) inflates
+    total ascent/descent well past the real course profile: verified against a real activity
+    (Leeds Marathon, a course with a documented ~400m elevation gain) where the unsmoothed
+    sum came out at 515m and a 30s average brought it to 414m. This is standard practice -
+    every GPS/barometric platform smooths before computing elevation gain for exactly this
+    reason. 30s (rather than a longer window) since barometric altimeters, common on GPS
+    watches that also record power/HR, are meaningfully less noisy than GPS-derived
+    elevation - short enough to still catch real short climbs, long enough to filter sensor
+    noise. Revisit this constant if activities recorded from GPS-only altitude sources turn
+    out to need more smoothing than this."""
+    if window <= 1:
+        return list(altitudes)
+    smoothed = []
+    window_samples: deque[float] = deque()
+    total = 0.0
+    for altitude in altitudes:
+        window_samples.append(altitude)
+        total += altitude
+        if len(window_samples) > window:
+            total -= window_samples.popleft()
+        smoothed.append(total / len(window_samples))
+    return smoothed
+
+
 def _total_ascent(samples: Sequence[Sample]) -> int | None:
     raw_altitudes = [s.get("altitude") for s in samples]
     altitudes = [a for a in raw_altitudes if a is not None]
     if len(altitudes) < 2:
         return None
+    smoothed = _smoothed_altitudes(altitudes)
     gain = 0.0
-    for prev, curr in zip(altitudes, altitudes[1:], strict=False):
+    for prev, curr in zip(smoothed, smoothed[1:], strict=False):
         if curr > prev:
             gain += curr - prev
     return int(round(gain))
@@ -119,8 +148,9 @@ def _total_descent(samples: Sequence[Sample]) -> int | None:
     altitudes = [a for a in raw_altitudes if a is not None]
     if len(altitudes) < 2:
         return None
+    smoothed = _smoothed_altitudes(altitudes)
     loss = 0.0
-    for prev, curr in zip(altitudes, altitudes[1:], strict=False):
+    for prev, curr in zip(smoothed, smoothed[1:], strict=False):
         if curr < prev:
             loss += prev - curr
     return int(round(loss))

@@ -42,6 +42,10 @@ class RecomputeActivityStatsViewTests(TestCase):
         self.assertAlmostEqual(body["max_speed"], 28.8, places=1)  # 8.0 m/s -> km/h
         self.assertEqual(body["elevation_min"], 100)
         self.assertEqual(body["elevation_max"], 109)
+        # A 0-9m sawtooth every 10 samples is sensor-noise-scale, not real elevation change -
+        # smoothed, it nets out to near zero rather than summing every micro-fluctuation.
+        self.assertLess(body["ascent"], 20)
+        self.assertLess(body["total_descent"], 20)
         self.assertIsNotNone(body["calories"])
         # All samples at 100% of LTHR (160) -> Z4 Threshold -> 60 min * zone 4 = 240.
         self.assertEqual(body["trimp"], 240.0)

@@ -17,6 +17,7 @@ from uploads.processing import (
     _max,
     _mean,
     _min,
+    _total_ascent,
     _total_descent,
     compute_calories,
     compute_edwards_trimp,
@@ -362,8 +363,9 @@ class RecomputeActivityStatsView(APIView):
             elevation_max = _max(altitude_series)
             activity.elevation_min = round(elevation_min) if elevation_min is not None else None
             activity.elevation_max = round(elevation_max) if elevation_max is not None else None
+            activity.ascent = _total_ascent([{"altitude": a} for a in altitude_series])
             activity.total_descent = _total_descent([{"altitude": a} for a in altitude_series])
-            update_fields.extend(["elevation_min", "elevation_max", "total_descent"])
+            update_fields.extend(["elevation_min", "elevation_max", "ascent", "total_descent"])
 
         calories = compute_calories(power_series, activity.moving_time)
         if calories is not None:

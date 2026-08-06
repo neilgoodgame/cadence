@@ -69,6 +69,10 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(updated.getMaxSpeed()).isCloseTo(28.8, org.assertj.core.data.Offset.offset(0.1));
 		assertThat(updated.getElevationMin()).isEqualTo(100);
 		assertThat(updated.getElevationMax()).isEqualTo(109);
+		// A 0-9m sawtooth every 10 samples is sensor-noise-scale, not real elevation change -
+		// smoothed, it nets out to near zero rather than summing every micro-fluctuation.
+		assertThat(updated.getAscent()).isLessThan(20);
+		assertThat(updated.getTotalDescent()).isLessThan(20);
 		assertThat(updated.getCalories()).isNotNull();
 		// All samples at 100% of LTHR (160) -> Z4 Threshold -> 60 min * zone 4 = 240.
 		assertThat(updated.getTrimp()).isEqualTo(240.0);
