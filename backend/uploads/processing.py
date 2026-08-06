@@ -324,16 +324,22 @@ def compute_edwards_trimp(athlete: User, heartrate_series: Sequence[float | None
     return round(trimp, 1)
 
 
+KJ_PER_KCAL = 4.184
+
+
 def compute_calories(power_series: Sequence[float | None], moving_time_seconds: int) -> int | None:
     """Power-based estimate only: work_kJ / 0.24 (a standard cycling efficiency
-    approximation). Deliberately not falling back to an HR-based estimate for
-    power-less activities, which would be a much rougher guess.
+    approximation) converts mechanical work into metabolic energy expenditure, still in
+    kJ - dividing by KJ_PER_KCAL converts that into kcal. Deliberately not falling back
+    to an HR-based estimate for power-less activities, which would be a much rougher
+    guess.
     """
     avg_power = _mean(power_series)
     if avg_power is None:
         return None
     work_kj = avg_power * moving_time_seconds / 1000
-    return round(work_kj / 0.24)
+    metabolic_kj = work_kj / 0.24
+    return round(metabolic_kj / KJ_PER_KCAL)
 
 
 def training_effect_label(aerobic_training_effect: float | None) -> str:

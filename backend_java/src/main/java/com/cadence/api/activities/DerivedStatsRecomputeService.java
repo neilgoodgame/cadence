@@ -81,7 +81,7 @@ public class DerivedStatsRecomputeService {
 		Double avgPower = mean(powerSeries);
 		if (avgPower != null) {
 			double workKj = avgPower * activity.getMovingTime() / 1000.0;
-			activity.setCalories((int) Math.round(workKj / 0.24));
+			activity.setCalories(UploadCalculations.caloriesFromWorkKj(workKj));
 		}
 
 		List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
