@@ -9,4 +9,6 @@ public interface TagRepository extends JpaRepository<Tag, String> {
 	List<Tag> findByAthleteIdOrderByName(String athleteId);
 
 	Optional<Tag> findByAthleteIdAndNameIgnoreCase(String athleteId, String name);
+
+	Optional<Tag> findByIdAndAthleteId(String id, String athleteId);
 }

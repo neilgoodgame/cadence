@@ -245,6 +245,7 @@ export interface Tag {
   name: string;
   origin: "manual" | "auto";
   color: string;
+  count: number;
 }
 
 export interface FitnessPoint {

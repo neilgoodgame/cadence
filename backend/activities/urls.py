@@ -15,6 +15,7 @@ from .views import (
     RecomputeActivityStatsView,
     RecomputeActivityTssView,
     StreamsView,
+    TagDetailView,
     TagListView,
 )
 
@@ -39,6 +40,7 @@ urlpatterns = [
         name="activity-comment-detail",
     ),
     path("v1/tags", TagListView.as_view(), name="tag-list"),
+    path("v1/tags/<str:id>", TagDetailView.as_view(), name="tag-detail"),
     path("v1/activities/<str:id>/tags", ActivityTagView.as_view(), name="activity-tags"),
     path("v1/activities/<str:id>/tags/<str:tag_id>", ActivityUntagView.as_view(), name="activity-untag"),
 ]

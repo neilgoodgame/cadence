@@ -95,9 +95,13 @@ class LapSerializer(serializers.ModelSerializer):
 
 
 class TagSerializer(serializers.ModelSerializer):
+    # Populated via TagListView's `.annotate(count=Count("activity_tags"))`; falls back to
+    # 0 for instances returned outside that queryset (e.g. the create/attach response).
+    count = serializers.IntegerField(read_only=True, default=0)
+
     class Meta:
         model = Tag
-        fields = ["id", "name", "origin", "color"]
+        fields = ["id", "name", "origin", "color", "count"]
         read_only_fields = ["id", "origin"]
 
 

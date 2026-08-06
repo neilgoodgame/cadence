@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { listActivities, listTags } from "../api/activities";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { deleteTag, listActivities, listTags } from "../api/activities";
 import { listZones } from "../api/athletes";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../api/types";
 import type { Sport } from "../api/types";
+import { tagColor, tagRgba } from "../lib/tagColors";
 import { ActivityCard } from "./activities/ActivityCard";
 
 const CQL_FIELDS: {
@@ -152,6 +153,22 @@ function SearchHelpModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// Fields orderable server-side (ACTIVITY_FIELD_MAP on both backends). "Pace" isn't included -
+// there's no stored pace column to sort by.
+const SORT_FIELDS: { key: string; label: string }[] = [
+  { key: "date", label: "Date" },
+  { key: "tss", label: "TSS" },
+  { key: "distance", label: "Distance" },
+  { key: "duration", label: "Duration" },
+  { key: "hr", label: "Avg HR" },
+  { key: "power", label: "Power" },
+];
+
+// Same "order(ed)? by|sort(ed)? by" recognition as the CQL tokenizer - if the query text
+// supplies its own ordering, that wins server-side regardless of the sort param, so the
+// sort buttons are shown as overridden rather than silently doing nothing.
+const ORDERBY_IN_QUERY = /\b(orderby|order(ed)?\s+by|sort(ed)?\s+by)\b/i;
+
 const SPORT_FILTERS: { value: Sport | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "bike", label: "Ride" },
@@ -180,6 +197,8 @@ export function ActivitiesScreen() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [matchedOnly, setMatchedOnly] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [sortKey, setSortKey] = useState("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const q = useMemo(() => {
@@ -193,15 +212,36 @@ export function ActivitiesScreen() {
     return clauses.join(" AND ") || undefined;
   }, [searchInput, selectedTag]);
 
+  const queryHasOwnOrder = ORDERBY_IN_QUERY.test(searchInput);
+  const sort = `${sortDir === "desc" ? "-" : ""}${sortKey}`;
+
+  function handleSortClick(key: string) {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
+
   const activitiesQuery = useInfiniteQuery({
-    queryKey: ["activities", "list", q, sport],
+    queryKey: ["activities", "list", q, sport, sort],
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-      listActivities({ q, sport: sport === "all" ? undefined : sport, cursor: pageParam, limit: 30 }),
+      listActivities({ q, sort, sport: sport === "all" ? undefined : sport, cursor: pageParam, limit: 30 }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.next_cursor ?? undefined : undefined),
   });
 
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: listTags });
+  const queryClient = useQueryClient();
+  const deleteTagMutation = useMutation({
+    mutationFn: (tagId: string) => deleteTag(tagId),
+    onSuccess: (_data, tagId) => {
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+      const deleted = tagsQuery.data?.data.find((t) => t.id === tagId);
+      if (deleted && selectedTag === deleted.name) setSelectedTag(null);
+    },
+  });
   const zonesQuery = useQuery({
     queryKey: ["zones", user?.id],
     queryFn: () => listZones(user!.id),
@@ -286,15 +326,71 @@ export function ActivitiesScreen() {
 
       {(tagsQuery.data?.data.length ?? 0) > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {tagsQuery.data!.data.map((tag) => (
-            <button
-              key={tag.id}
-              style={chipButton(selectedTag === tag.name)}
-              onClick={() => setSelectedTag(selectedTag === tag.name ? null : tag.name)}
-            >
-              {tag.name}
-            </button>
-          ))}
+          {tagsQuery.data!.data.map((tag) => {
+            const active = selectedTag === tag.name;
+            const color = tagColor(tag.name);
+            const unused = tag.count === 0;
+            return (
+              <span
+                key={tag.id}
+                onClick={() => setSelectedTag(active ? null : tag.name)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  padding: active ? "6px 12px" : "6px 7px 6px 10px",
+                  borderRadius: 20,
+                  cursor: "pointer",
+                  color: active ? "#fff" : "var(--ink2)",
+                  background: active ? color : tagRgba(tag.name, 0.1),
+                  border: `1px solid ${active ? color : tagRgba(tag.name, 0.3)}`,
+                }}
+              >
+                {!active && (
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                )}
+                {tag.name}
+                <span
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    padding: "0 5px",
+                    borderRadius: 20,
+                    background: active ? "rgba(255,255,255,0.25)" : "var(--canvas)",
+                    color: active ? "#fff" : "var(--ink3)",
+                  }}
+                >
+                  {tag.count}
+                </span>
+                {unused && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteTagMutation.mutate(tag.id);
+                    }}
+                    disabled={deleteTagMutation.isPending}
+                    title="Delete unused tag"
+                    style={{
+                      border: "none",
+                      background: "none",
+                      color: active ? "#fff" : "var(--ink3)",
+                      cursor: "pointer",
+                      padding: 0,
+                      fontSize: 13,
+                      lineHeight: 1,
+                      fontWeight: 700,
+                      opacity: deleteTagMutation.isPending ? 0.5 : 0.8,
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            );
+          })}
           {selectedTag && (
             <button style={chipButton(false)} onClick={() => setSelectedTag(null)}>
               Clear ×
@@ -302,6 +398,40 @@ export function ActivitiesScreen() {
           )}
         </div>
       )}
+      {deleteTagMutation.error instanceof ApiError && (
+        <div style={{ fontSize: 13, color: "var(--ember)" }}>{deleteTagMutation.error.message}</div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span
+          style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 10,
+            letterSpacing: "0.06em",
+            color: "var(--ink3)",
+            textTransform: "uppercase",
+          }}
+        >
+          Sort by
+        </span>
+        {SORT_FIELDS.map((f) => {
+          const active = !queryHasOwnOrder && sortKey === f.key;
+          return (
+            <button
+              key={f.key}
+              style={chipButton(active)}
+              disabled={queryHasOwnOrder}
+              onClick={() => handleSortClick(f.key)}
+            >
+              {f.label}
+              {active ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+            </button>
+          );
+        })}
+        {queryHasOwnOrder && (
+          <span style={{ fontSize: 11.5, color: "var(--ink3)" }}>overridden by query</span>
+        )}
+      </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {allActivities.map((activity) => (

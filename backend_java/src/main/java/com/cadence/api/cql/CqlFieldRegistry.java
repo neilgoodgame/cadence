@@ -10,6 +10,7 @@ public final class CqlFieldRegistry {
 	}
 
 	public static final Map<String, FieldSpec> FIELD_SPECS = Map.ofEntries(
+			Map.entry("date", new FieldSpec(false, "date", null)),
 			Map.entry("hr", new FieldSpec(true, "avg HR", "bpm")),
 			Map.entry("maxhr", new FieldSpec(true, "max HR", "bpm")),
 			Map.entry("tss", new FieldSpec(true, "TSS", "")),
@@ -23,6 +24,7 @@ public final class CqlFieldRegistry {
 			Map.entry("tag", new FieldSpec(false, "tag", null)));
 
 	public static final Map<String, String> FIELD_ALIASES = Map.ofEntries(
+			Map.entry("date", "date"),
 			Map.entry("hr", "hr"), Map.entry("bpm", "hr"), Map.entry("heartrate", "hr"),
 			Map.entry("avghr", "hr"), Map.entry("hravg", "hr"),
 			Map.entry("maxhr", "maxhr"), Map.entry("hrmax", "maxhr"),

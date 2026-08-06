@@ -1,4 +1,5 @@
 FIELD_SPECS = {
+    "date": {"num": False, "label": "date"},
     "hr": {"num": True, "label": "avg HR", "unit": "bpm"},
     "maxhr": {"num": True, "label": "max HR", "unit": "bpm"},
     "tss": {"num": True, "label": "TSS", "unit": ""},
@@ -13,6 +14,7 @@ FIELD_SPECS = {
 }
 
 FIELD_ALIASES = {
+    "date": "date",
     "hr": "hr",
     "bpm": "hr",
     "heartrate": "hr",
