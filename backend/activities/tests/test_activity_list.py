@@ -111,6 +111,17 @@ class ActivityListViewTests(TestCase):
         response = _bearer_client(self.athlete).get("/v1/activities?sort=bogus")
         self.assertEqual(response.status_code, 400)
 
+    def test_sort_by_hr_puts_activities_without_hr_data_last_in_both_directions(self):
+        _make_activity(self.athlete, name="No HR", avg_hr=None)
+        _make_activity(self.athlete, name="Low HR", avg_hr=110)
+        _make_activity(self.athlete, name="High HR", avg_hr=170)
+
+        desc = _bearer_client(self.athlete).get("/v1/activities?sort=-hr")
+        self.assertEqual([a["name"] for a in desc.json()["data"]], ["High HR", "Low HR", "No HR"])
+
+        asc = _bearer_client(self.athlete).get("/v1/activities?sort=hr")
+        self.assertEqual([a["name"] for a in asc.json()["data"]], ["Low HR", "High HR", "No HR"])
+
     def test_sort_by_date_ascending_and_descending(self):
         _make_activity(self.athlete, name="Earlier", start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC))
         _make_activity(self.athlete, name="Later", start_date=datetime(2026, 3, 1, 7, 0, tzinfo=UTC))

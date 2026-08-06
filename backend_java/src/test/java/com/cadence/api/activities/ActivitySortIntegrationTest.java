@@ -43,6 +43,16 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		activityRepository.save(activity);
 	}
 
+	private void newActivityWithHr(User athlete, String name, Integer avgHr) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName(name);
+		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		activity.setAvgHr(avgHr);
+		activityRepository.save(activity);
+	}
+
 	@Test
 	void sortByDateAscendingAndDescending() {
 		User athlete = newUser("sort-date-athlete@example.cc");
@@ -56,5 +66,41 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		CursorPage<ActivityResponse> asc =
 				activityService.list(athlete.getId(), "orderby date asc", null, null, null, null, null, 50);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Earlier", "Later");
+	}
+
+	@Test
+	void sortByHrPutsActivitiesWithoutHrDataLastInBothDirections() {
+		User athlete = newUser("sort-hr-athlete@example.cc");
+		newActivityWithHr(athlete, "No HR", null);
+		newActivityWithHr(athlete, "Low HR", 110);
+		newActivityWithHr(athlete, "High HR", 170);
+
+		CursorPage<ActivityResponse> desc =
+				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, 50);
+		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("High HR", "Low HR", "No HR");
+
+		CursorPage<ActivityResponse> asc =
+				activityService.list(athlete.getId(), "orderby hr asc", null, null, null, null, null, 50);
+		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Low HR", "High HR", "No HR");
+	}
+
+	@Test
+	void sortByHrCursorContinuesCorrectlyAcrossNullBoundary() {
+		User athlete = newUser("sort-hr-cursor-athlete@example.cc");
+		newActivityWithHr(athlete, "High HR", 170);
+		newActivityWithHr(athlete, "Low HR", 110);
+		newActivityWithHr(athlete, "No HR A", null);
+		newActivityWithHr(athlete, "No HR B", null);
+
+		CursorPage<ActivityResponse> firstPage =
+				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, 2);
+		assertThat(firstPage.data()).extracting(ActivityResponse::name).containsExactly("High HR", "Low HR");
+		assertThat(firstPage.hasMore()).isTrue();
+
+		CursorPage<ActivityResponse> secondPage = activityService.list(
+				athlete.getId(), "orderby hr desc", null, null, null, null, firstPage.nextCursor(), 2);
+		assertThat(secondPage.data()).extracting(ActivityResponse::name)
+				.containsExactlyInAnyOrder("No HR A", "No HR B");
+		assertThat(secondPage.hasMore()).isFalse();
 	}
 }
