@@ -34,6 +34,15 @@ describe("monthGridDays", () => {
     const days = monthGridDays(2026, 5);
     expect(days.length % 7).toBe(0);
   });
+
+  it("leads with the prior month's days for a month starting on a Saturday", () => {
+    // August 2026 starts on a Saturday, so its first Monday-start week is Jul 27 - Aug 2 -
+    // this is the exact grid the CalendarScreen fetch range must cover (see dateKey usage
+    // in CalendarScreen.tsx replacing the old calendar-month-only fetch range).
+    const days = monthGridDays(2026, 7);
+    expect(dateKey(days[0])).toBe("2026-07-27");
+    expect(dateKey(days[6])).toBe("2026-08-02");
+  });
 });
 
 describe("derivedStatus", () => {

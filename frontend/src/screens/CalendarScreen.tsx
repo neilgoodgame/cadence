@@ -14,12 +14,6 @@ import { ScheduleModal } from "./calendar/ScheduleModal";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-function monthRangeISO(year: number, month: number): { from: string; to: string } {
-  const from = new Date(year, month, 1);
-  const to = new Date(year, month + 1, 0);
-  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
-}
-
 function formatHours(totalSeconds: number): string {
   return `${(totalSeconds / 3600).toFixed(1)}h`;
 }
@@ -107,7 +101,13 @@ export function CalendarScreen() {
   const [addRaceDate, setAddRaceDate] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
-  const { from, to } = monthRangeISO(year, month);
+  // The grid always renders full Monday-start weeks, so it pads out into the leading/
+  // trailing days of adjacent months (see monthGridDays) - the fetch range has to match
+  // that, not just the calendar month, or those adjacent-month cells silently render empty
+  // and drop out of their week's totals.
+  const days = monthGridDays(year, month);
+  const from = dateKey(days[0]);
+  const to = dateKey(days[days.length - 1]);
   const { data: calendarData } = useQuery({ queryKey: ["calendar", from, to], queryFn: () => getCalendar(from, to) });
   const { data: workoutsData } = useQuery({ queryKey: ["workouts"], queryFn: () => listWorkouts() });
   const { data: racesData } = useQuery({ queryKey: ["races"], queryFn: listRaces });
@@ -169,7 +169,6 @@ export function CalendarScreen() {
     return map;
   }, [racesData]);
 
-  const days = monthGridDays(year, month);
   const weeks: Date[][] = [];
   for (let i = 0; i < days.length; i += 7) {
     weeks.push(days.slice(i, i + 7));
