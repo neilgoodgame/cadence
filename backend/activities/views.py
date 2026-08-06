@@ -1,6 +1,7 @@
 from typing import Any
 
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q, Value
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
@@ -68,6 +69,14 @@ ACTIVITY_FIELD_MAP = {
     "environment": "environment",
     "name": "name",
 }
+
+# avg_hr/max_hr/avg_power are nullable (not every activity has HR or power data).
+# Postgres's default NULLS ordering (NULLS FIRST for DESC, NULLS LAST for ASC) would
+# otherwise put activities with no data at the very top of a descending sort - not what
+# "sort by heart rate" means to a user. The value is a sentinel safely outside any real
+# reading for these fields, used to push nulls to the end regardless of direction.
+NULLABLE_SORT_SENTINEL = 100_000
+NULLABLE_SORT_FIELDS = {"avg_hr", "max_hr", "avg_power"}
 
 
 def _tag_filter(value: str) -> Q:
@@ -168,6 +177,18 @@ class ActivityListView(APIView):
                 if mapped is None:
                     raise ValidationError({"sort": f"Unknown sort field '{raw_field}'."})
                 order_field = f"-{mapped}" if sort_param.startswith("-") else mapped
+
+        # Coalescing to a sentinel (rather than a raw nulls_last order_by) because DRF's
+        # CursorPagination only accepts plain field-name strings for `ordering`, not F()
+        # expressions - see NULLABLE_SORT_FIELDS above for why this is needed at all.
+        if order_field:
+            raw_order_field = order_field.lstrip("-")
+            if raw_order_field in NULLABLE_SORT_FIELDS:
+                descending = order_field.startswith("-")
+                annotation = f"{raw_order_field}_sort"
+                sentinel = -1 if descending else NULLABLE_SORT_SENTINEL
+                qs = qs.annotate(**{annotation: Coalesce(raw_order_field, Value(sentinel))})
+                order_field = f"-{annotation}" if descending else annotation
 
         paginator = ActivityCursorPagination()
         if order_field:
