@@ -67,6 +67,23 @@ class TokenizeTests(SimpleTestCase):
         self.assertEqual(tokenize(""), [])
         self.assertEqual(tokenize("   "), [])
 
+    def test_quoted_phrase_stays_one_token(self):
+        self.assertEqual(tokenize('tag "Heat Training"'), ["tag", "heat training"])
+
+    def test_quoted_phrase_is_protected_from_phrase_replacement(self):
+        # Unquoted, "order by" would collapse to the "orderby" keyword (see
+        # test_order_by_synonyms_normalize) - quoting it as a literal tag value must not.
+        self.assertEqual(tokenize('tag "Order By Distance"'), ["tag", "order by distance"])
+
+    def test_quoted_phrase_is_protected_from_stopword_filtering(self):
+        # "the" alone would be dropped as a stop word (see test_stopwords_are_filtered).
+        self.assertEqual(tokenize('tag "The Big Race"'), ["tag", "the big race"])
+
+    def test_multiple_quoted_phrases_in_one_query(self):
+        self.assertEqual(
+            tokenize('tag "Heat Training" or tag "Cold Run"'), ["tag", "heat training", "or", "tag", "cold run"]
+        )
+
 
 class ParseTests(SimpleTestCase):
     def test_empty_query_is_empty_result(self):
@@ -102,6 +119,10 @@ class ParseTests(SimpleTestCase):
         assert result.ast is not None
         self.assertEqual(result.ast["field"], "tag")
         self.assertEqual(result.ast["value"], "long-run")
+
+    def test_tag_field_multi_word_quoted(self):
+        result = parse('tag "Heat Training"')
+        self.assertEqual(result.ast, {"type": "cmp", "field": "tag", "op": "=", "value": "heat training"})
 
     def test_and_chaining(self):
         result = parse("running and indoor")

@@ -2,6 +2,8 @@ package com.cadence.api.cql;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Normalizes a natural-language-ish query into tokens: an ordered list of phrase-level
@@ -26,6 +28,15 @@ public final class CqlTokenizer {
 			{"equal to|equals|\\bequal\\b|\\bis\\b", " = "},
 	};
 
+	private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
+	// Alphabetic prefix (never produced by normalize()'s digit/operator handling, and not
+	// a substring any phrase-replacement rule matches) so a placeholder token like
+	// "cqlquotedphrase3" can never collide with a real token - a bare number like "140"
+	// is all-digits, so prefixing with letters is enough to disambiguate without needing
+	// a control character that has to survive being typed into a browser input.
+	private static final String PLACEHOLDER_PREFIX = "cqlquotedphrase";
+	private static final Pattern PLACEHOLDER = Pattern.compile(Pattern.quote(PLACEHOLDER_PREFIX) + "(\\d+)");
+
 	public static String normalize(String raw) {
 		String s = " " + raw.toLowerCase().replace(",", " ").replace(";", " ") + " ";
 		for (String[] rule : PHRASE_REPLACEMENTS) {
@@ -46,15 +57,35 @@ public final class CqlTokenizer {
 	}
 
 	public static List<String> tokenize(String raw) {
-		String norm = normalize(raw);
+		// Quoted phrases (e.g. `tag "Heat Training"`) are pulled out before normalize()
+		// runs, so the phrase-replacement passes and stop-word filter below - built for
+		// loose natural-language input - can't reach inside and mangle a literal
+		// multi-word value (a tag named "Order By Distance" would otherwise get torn
+		// apart by the "order by" phrase rule). Each quoted phrase collapses to exactly
+		// one token, spaces intact.
+		List<String> quoted = new ArrayList<>();
+		Matcher quoteMatcher = QUOTED.matcher(raw);
+		StringBuilder stashed = new StringBuilder();
+		int last = 0;
+		while (quoteMatcher.find()) {
+			stashed.append(raw, last, quoteMatcher.start());
+			quoted.add(quoteMatcher.group(1).toLowerCase().trim());
+			stashed.append(' ').append(PLACEHOLDER_PREFIX).append(quoted.size() - 1).append(' ');
+			last = quoteMatcher.end();
+		}
+		stashed.append(raw.substring(last));
+
+		String norm = normalize(stashed.toString());
 		if (norm.isEmpty()) {
 			return List.of();
 		}
 		List<String> tokens = new ArrayList<>();
 		for (String t : norm.split(" ")) {
-			if (!t.isEmpty() && !CqlFieldRegistry.STOP_WORDS.contains(t)) {
-				tokens.add(t);
+			if (t.isEmpty() || CqlFieldRegistry.STOP_WORDS.contains(t)) {
+				continue;
 			}
+			Matcher placeholder = PLACEHOLDER.matcher(t);
+			tokens.add(placeholder.matches() ? quoted.get(Integer.parseInt(placeholder.group(1))) : t);
 		}
 		return tokens;
 	}

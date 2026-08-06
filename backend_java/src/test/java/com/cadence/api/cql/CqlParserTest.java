@@ -69,6 +69,12 @@ class CqlParserTest {
 	}
 
 	@Test
+	void tagFilterMultiWordQuoted() {
+		CqlParser.ParseResult result = CqlParser.parse("tag \"Heat Training\"");
+		assertThat(result.ast()).isEqualTo(new CqlNode.Cmp("tag", "=", "heat training"));
+	}
+
+	@Test
 	void orderByWithDirection() {
 		CqlParser.ParseResult result = CqlParser.parse("sport = run orderby tss asc");
 		assertThat(result.order()).isEqualTo(new CqlParser.Order("tss", "asc"));

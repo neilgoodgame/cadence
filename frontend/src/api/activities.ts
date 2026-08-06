@@ -18,6 +18,7 @@ export interface ListActivitiesParams {
   sort?: string;
   sport?: string;
   environment?: string;
+  tag?: string;
   after?: string;
   before?: string;
   limit?: number;

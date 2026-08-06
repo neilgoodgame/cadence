@@ -76,7 +76,7 @@ public class ActivityService {
 	}
 
 	public CursorPage<ActivityResponse> list(String athleteId, String q, Sport sportFilter, Environment environmentFilter,
-			LocalDate after, LocalDate before, String cursor, int limit) {
+			String tagFilter, LocalDate after, LocalDate before, String cursor, int limit) {
 		// Multisport children are reachable via their parent's child_activity_ids, not the list -
 		// showing legs alongside the parent would present the same session twice. Duplicate
 		// recordings are likewise reachable only via their primary's duplicate_activity_ids.
@@ -107,6 +107,13 @@ public class ActivityService {
 		}
 		if (environmentFilter != null) {
 			spec = spec.and((root, query, cb) -> cb.equal(root.get("environment"), environmentFilter));
+		}
+		// Separate from q: the CQL "tag <name>" clause only ever captures a single token as
+		// the value (see CqlGrammarParser), so a multi-word tag name like "Heat Training"
+		// silently loses everything after the first word and matches nothing. The tag filter
+		// chips drive this param directly instead of smuggling the tag name through CQL text.
+		if (tagFilter != null && !tagFilter.isBlank()) {
+			spec = spec.and((root, query, cb) -> new ActivityTagPredicateFactory().forTagName(root, query, cb, tagFilter));
 		}
 		if (after != null) {
 			Instant afterInstant = after.atStartOfDay(ZoneOffset.UTC).toInstant();

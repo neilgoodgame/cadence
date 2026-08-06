@@ -26,7 +26,7 @@ const CQL_FIELDS: {
   { label: "Sport",       aliases: ["sport", "type", "discipline"],    type: "text",    values: "run · bike · swim · row · multisport" },
   { label: "Environment", aliases: ["environment", "env"],             type: "text",    values: "indoor · outdoor" },
   { label: "Name",        aliases: ["name", "title"],                  type: "text" },
-  { label: "Tag",         aliases: ["tag"],                            type: "special", note: "tag <name>  — no operator; combine with AND / OR" },
+  { label: "Tag",         aliases: ["tag"],                            type: "special", note: 'tag <name>  — no operator; quote multi-word names, e.g. tag "Heat Training"; combine with AND / OR' },
 ];
 
 const CQL_EXAMPLES = [
@@ -36,6 +36,7 @@ const CQL_EXAMPLES = [
   { q: "power > 260 env = indoor",            desc: "Strong indoor rides" },
   { q: "name ~ marathon",                     desc: 'Activities with "marathon" in the name' },
   { q: "tag race",                            desc: "All tagged as race" },
+  { q: 'tag "Heat Training"',                 desc: "Multi-word tag name (quoted)" },
   { q: "tag race OR tag parkrun",             desc: "Tagged as race or parkrun" },
   { q: "duration > 120 tss < 100",           desc: "Long but low-stress sessions" },
 ];
@@ -201,16 +202,7 @@ export function ActivitiesScreen() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const q = useMemo(() => {
-    const clauses = [];
-    if (searchInput.trim()) clauses.push(searchInput.trim());
-    // CQL's tag clause is a special grammar rule (parser.py) that takes exactly the bare
-    // word right after "tag" as the value - no operator at all, not even "=". A query like
-    // "tag ~ x" or "tag = x" doesn't error, it just silently fails to match anything, which
-    // is exactly the bug this comment is here to stop someone from reintroducing.
-    if (selectedTag) clauses.push(`tag ${selectedTag}`);
-    return clauses.join(" AND ") || undefined;
-  }, [searchInput, selectedTag]);
+  const q = searchInput.trim() || undefined;
 
   const queryHasOwnOrder = ORDERBY_IN_QUERY.test(searchInput);
   const sort = `${sortDir === "desc" ? "-" : ""}${sortKey}`;
@@ -225,9 +217,19 @@ export function ActivitiesScreen() {
   }
 
   const activitiesQuery = useInfiniteQuery({
-    queryKey: ["activities", "list", q, sport, sort],
+    queryKey: ["activities", "list", q, sport, selectedTag, sort],
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-      listActivities({ q, sort, sport: sport === "all" ? undefined : sport, cursor: pageParam, limit: 30 }),
+      // Deliberately a separate `tag` param, not folded into `q`: CQL's tag clause only
+      // ever captures a single token as the value (parser.py), so a multi-word tag name
+      // silently loses everything after the first word and matches nothing.
+      listActivities({
+        q,
+        sort,
+        sport: sport === "all" ? undefined : sport,
+        tag: selectedTag ?? undefined,
+        cursor: pageParam,
+        limit: 30,
+      }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.next_cursor ?? undefined : undefined),
   });

@@ -56,6 +56,18 @@ class ActivityListViewTests(TestCase):
         names = [a["name"] for a in response.json()["data"]]
         self.assertEqual(names, ["Treadmill"])
 
+    def test_filter_by_tag_query_param_matches_multi_word_tag_name(self):
+        matching = _make_activity(self.athlete, name="Sauna Ride")
+        other = _make_activity(self.athlete, name="Cold Run")
+        tag = Tag.objects.create(athlete=self.athlete, name="Heat Training")
+        ActivityTag.objects.create(activity=matching, tag=tag)
+
+        response = _bearer_client(self.athlete).get("/v1/activities?tag=Heat+Training")
+
+        names = [a["name"] for a in response.json()["data"]]
+        self.assertEqual(names, ["Sauna Ride"])
+        self.assertNotIn(other.name, names)
+
     def test_cql_numeric_filter(self):
         _make_activity(self.athlete, name="Easy", avg_hr=120)
         _make_activity(self.athlete, name="Hard", avg_hr=160)
