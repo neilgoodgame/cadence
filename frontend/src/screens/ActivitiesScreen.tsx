@@ -201,16 +201,7 @@ export function ActivitiesScreen() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const q = useMemo(() => {
-    const clauses = [];
-    if (searchInput.trim()) clauses.push(searchInput.trim());
-    // CQL's tag clause is a special grammar rule (parser.py) that takes exactly the bare
-    // word right after "tag" as the value - no operator at all, not even "=". A query like
-    // "tag ~ x" or "tag = x" doesn't error, it just silently fails to match anything, which
-    // is exactly the bug this comment is here to stop someone from reintroducing.
-    if (selectedTag) clauses.push(`tag ${selectedTag}`);
-    return clauses.join(" AND ") || undefined;
-  }, [searchInput, selectedTag]);
+  const q = searchInput.trim() || undefined;
 
   const queryHasOwnOrder = ORDERBY_IN_QUERY.test(searchInput);
   const sort = `${sortDir === "desc" ? "-" : ""}${sortKey}`;
@@ -225,9 +216,19 @@ export function ActivitiesScreen() {
   }
 
   const activitiesQuery = useInfiniteQuery({
-    queryKey: ["activities", "list", q, sport, sort],
+    queryKey: ["activities", "list", q, sport, selectedTag, sort],
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-      listActivities({ q, sort, sport: sport === "all" ? undefined : sport, cursor: pageParam, limit: 30 }),
+      // Deliberately a separate `tag` param, not folded into `q`: CQL's tag clause only
+      // ever captures a single token as the value (parser.py), so a multi-word tag name
+      // silently loses everything after the first word and matches nothing.
+      listActivities({
+        q,
+        sort,
+        sport: sport === "all" ? undefined : sport,
+        tag: selectedTag ?? undefined,
+        cursor: pageParam,
+        limit: 30,
+      }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.next_cursor ?? undefined : undefined),
   });

@@ -146,6 +146,15 @@ class ActivityListView(APIView):
                 raise ValidationError({"environment": f"Unknown environment '{environment}'."})
             qs = qs.filter(environment=environment)
 
+        # Separate from `q`: the CQL `tag <name>` clause only ever captures a single
+        # token as the value (see core/cql/parser.py), so a multi-word tag name like
+        # "Heat Training" silently loses everything after the first word and matches
+        # nothing. The tag filter chips drive this param directly instead of smuggling
+        # the tag name through CQL text.
+        tag = request.query_params.get("tag")
+        if tag:
+            qs = qs.filter(_tag_filter(tag))
+
         after = request.query_params.get("after")
         if after:
             try:

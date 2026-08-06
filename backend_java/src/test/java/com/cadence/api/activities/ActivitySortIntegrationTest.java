@@ -50,11 +50,11 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivity(athlete, "Later", Instant.parse("2026-03-01T07:00:00Z"));
 
 		CursorPage<ActivityResponse> desc =
-				activityService.list(athlete.getId(), "orderby date desc", null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby date desc", null, null, null, null, null, null, 50);
 		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("Later", "Earlier");
 
 		CursorPage<ActivityResponse> asc =
-				activityService.list(athlete.getId(), "orderby date asc", null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby date asc", null, null, null, null, null, null, 50);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Earlier", "Later");
 	}
 }

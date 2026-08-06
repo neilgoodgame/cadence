@@ -40,6 +40,7 @@ public class ActivityController {
 			@RequestParam(required = false) String sort,
 			@RequestParam(required = false) Sport sport,
 			@RequestParam(required = false) Environment environment,
+			@RequestParam(required = false) String tag,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate after,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate before,
 			@RequestParam(defaultValue = "50") int limit,
@@ -48,7 +49,7 @@ public class ActivityController {
 		accessGuard.requireRead(athleteId);
 		int effectiveLimit = Math.max(1, Math.min(limit, 200));
 		String effectiveQuery = mergeSortIntoQuery(q, sort);
-		return activityService.list(athleteId, effectiveQuery, sport, environment, after, before, cursor, effectiveLimit);
+		return activityService.list(athleteId, effectiveQuery, sport, environment, tag, after, before, cursor, effectiveLimit);
 	}
 
 	@GetMapping("/v1/activities/{id}")
