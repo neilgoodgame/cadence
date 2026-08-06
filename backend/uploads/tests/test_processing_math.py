@@ -6,6 +6,7 @@ from activities.models import Activity
 from ..processing import (
     _best_pace_seconds_per_km,
     _min,
+    _total_ascent,
     _total_descent,
     compute_calories,
     compute_duration_curve,
@@ -117,13 +118,27 @@ class MinTests(SimpleTestCase):
         self.assertIsNone(_min([None, None]))
 
 
-class TotalDescentTests(SimpleTestCase):
-    def test_sums_only_downhill_deltas(self):
-        # Up 10, down 15, up 5 -> only the 15 counts.
-        samples = [{"altitude": a} for a in (100, 110, 95, 100)]
-        self.assertEqual(_total_descent(samples), 15)
+class TotalAscentDescentTests(SimpleTestCase):
+    def test_sensor_noise_on_flat_ground_does_not_accumulate(self):
+        # +/-1m back-and-forth noise around a flat baseline for several minutes - there's no
+        # real net elevation change here. Unsmoothed, this used to sum every single positive
+        # micro-fluctuation (see _smoothed_altitudes' docstring for the real-world case this
+        # was found from: a 515m-vs-actual-~400m Leeds Marathon ascent).
+        noise_cycle = [0, 1, 0, -1]
+        altitudes = [100 + noise_cycle[i % len(noise_cycle)] for i in range(200)]
+        samples = [{"altitude": a} for a in altitudes]
+        self.assertLess(_total_ascent(samples), 10)
+        self.assertLess(_total_descent(samples), 10)
+
+    def test_sustained_climb_survives_smoothing(self):
+        # A genuine, sustained 99.5m climb over 200 samples must still register close to the
+        # true gain - smoothing should filter noise, not real elevation change.
+        altitudes = [100 + i * 0.5 for i in range(200)]
+        samples = [{"altitude": a} for a in altitudes]
+        self.assertGreater(_total_ascent(samples), 80)
 
     def test_fewer_than_two_altitude_samples_returns_none(self):
+        self.assertIsNone(_total_ascent([{"altitude": 100}]))
         self.assertIsNone(_total_descent([{"altitude": 100}]))
         self.assertIsNone(_total_descent([{"altitude": None}, {"altitude": None}]))
 

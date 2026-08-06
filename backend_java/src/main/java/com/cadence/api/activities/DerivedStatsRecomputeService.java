@@ -6,6 +6,7 @@ import com.cadence.api.activities.calc.TssCalculator;
 import com.cadence.api.athletes.ZoneService;
 import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.uploads.UploadCalculations;
 import com.cadence.api.users.User;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +74,8 @@ public class DerivedStatsRecomputeService {
 			Double elevationMax = maxDouble(altitudeSeries);
 			activity.setElevationMin(elevationMin != null ? (int) Math.round(elevationMin) : null);
 			activity.setElevationMax(elevationMax != null ? (int) Math.round(elevationMax) : null);
-			activity.setTotalDescent(totalDescent(altitudeSeries));
+			activity.setAscent(UploadCalculations.totalAscentFromAltitudes(altitudeSeries));
+			activity.setTotalDescent(UploadCalculations.totalDescentFromAltitudes(altitudeSeries));
 		}
 
 		Double avgPower = mean(powerSeries);
@@ -92,23 +94,6 @@ public class DerivedStatsRecomputeService {
 		}
 
 		return activityRepository.save(activity);
-	}
-
-	private Integer totalDescent(List<Double> altitudeSeries) {
-		Double previous = null;
-		double loss = 0;
-		int count = 0;
-		for (Double altitude : altitudeSeries) {
-			if (altitude == null) {
-				continue;
-			}
-			count++;
-			if (previous != null && altitude < previous) {
-				loss += previous - altitude;
-			}
-			previous = altitude;
-		}
-		return count < 2 ? null : (int) Math.round(loss);
 	}
 
 	private Double mean(List<Integer> values) {
