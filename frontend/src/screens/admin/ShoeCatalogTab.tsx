@@ -106,8 +106,12 @@ function CatalogRow({ entry }: { entry: AdminShoeCatalogEntry }) {
             {entry.model}
           </div>
         </div>
-        <span className="mono" style={{ fontSize: 12, color: "var(--ink2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {entry.versions.join(", ")}
+        <span
+          className="mono"
+          title={entry.versions.map((v) => `${v.version} — ${v.usage_count} in use`).join("\n")}
+          style={{ fontSize: 12, color: "var(--ink2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
+          {entry.versions.map((v) => `${v.version}(${v.usage_count})`).join(", ")}
         </span>
         <span style={{ fontSize: 11.5, color: "var(--ink3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {entry.added_by ?? "system"}
