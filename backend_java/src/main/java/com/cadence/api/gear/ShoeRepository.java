@@ -22,4 +22,6 @@ public interface ShoeRepository extends JpaRepository<Shoe, String> {
 	boolean existsByAthleteIdAndNameIgnoreCaseAndIdNot(String athleteId, String name, String excludingId);
 
 	Optional<Shoe> findByIdAndAthleteId(String id, String athleteId);
+
+	boolean existsByShoeModelVersionShoeModelId(String shoeModelId);
 }

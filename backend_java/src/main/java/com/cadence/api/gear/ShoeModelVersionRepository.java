@@ -24,4 +24,11 @@ public interface ShoeModelVersionRepository extends JpaRepository<ShoeModelVersi
 
 	// findFirst - same reasoning as ShoeModelRepository.findFirstByManufacturerAndModel.
 	Optional<ShoeModelVersion> findFirstByShoeModelIdAndVersion(String shoeModelId, String version);
+
+	boolean existsByShoeModelIdAndVersionIgnoreCase(String shoeModelId, String version);
+
+	// Fetched before a whole-model delete (shoe_model_version.shoe_model_id is ON DELETE
+	// RESTRICT, not CASCADE - see V6__gear_catalog.sql), so the service must remove these
+	// explicitly before the ShoeModel row itself.
+	List<ShoeModelVersion> findByShoeModelId(String shoeModelId);
 }

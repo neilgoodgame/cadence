@@ -29,6 +29,11 @@ public interface UserRelationshipRepository extends JpaRepository<UserRelationsh
 	@Query("select r from UserRelationship r join fetch r.owner join fetch r.grantee where r.id = :id")
 	Optional<UserRelationship> findByIdWithUsers(@Param("id") String id);
 
+	// Admin-only: every relationship system-wide, not scoped to one owner - contrast with
+	// findByOwnerIdWithUsersOrderByCreatedDesc above.
+	@Query("select r from UserRelationship r join fetch r.owner join fetch r.grantee order by r.created desc")
+	List<UserRelationship> findAllWithUsersOrderByCreatedDesc();
+
 	@Query("select r from UserRelationship r join fetch r.owner join fetch r.grantee "
 			+ "where r.grantee.id = :granteeId and r.status = com.cadence.api.sharing.ShareStatus.ACTIVE")
 	List<UserRelationship> findByGranteeIdAndStatusActiveWithUsers(@Param("granteeId") String granteeId);

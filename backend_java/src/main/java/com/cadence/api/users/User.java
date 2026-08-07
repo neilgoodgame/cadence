@@ -54,6 +54,11 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "is_coach", nullable = false)
 	private boolean coach = false;
 
+	/** App-level admin flag (the in-app Admin screen) - distinct from any Django-side
+	 * is_staff/is_superuser concept, which has no Java equivalent at all. */
+	@Column(name = "is_admin", nullable = false)
+	private boolean admin = false;
+
 	@Column(name = "is_active", nullable = false)
 	private boolean active = true;
 
@@ -182,6 +187,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setCoach(boolean coach) {
 		this.coach = coach;
+	}
+
+	public boolean isAdmin() {
+		return admin;
+	}
+
+	public void setAdmin(boolean admin) {
+		this.admin = admin;
 	}
 
 	public boolean isActive() {
