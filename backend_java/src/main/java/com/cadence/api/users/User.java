@@ -62,6 +62,15 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "is_active", nullable = false)
 	private boolean active = true;
 
+	// Auto-match naming preferences (WorkoutMatchTasklet) - both default off so existing
+	// device-derived activity names are untouched unless opted in. appendMatchDateToName
+	// only has an effect when renameMatchedActivities is also on.
+	@Column(name = "rename_matched_activities", nullable = false)
+	private boolean renameMatchedActivities = false;
+
+	@Column(name = "append_match_date_to_name", nullable = false)
+	private boolean appendMatchDateToName = false;
+
 	@Column(name = "date_joined", nullable = false)
 	private Instant dateJoined;
 
@@ -203,6 +212,22 @@ public class User extends PrefixedIdEntity {
 
 	public void setActive(boolean active) {
 		this.active = active;
+	}
+
+	public boolean isRenameMatchedActivities() {
+		return renameMatchedActivities;
+	}
+
+	public void setRenameMatchedActivities(boolean renameMatchedActivities) {
+		this.renameMatchedActivities = renameMatchedActivities;
+	}
+
+	public boolean isAppendMatchDateToName() {
+		return appendMatchDateToName;
+	}
+
+	public void setAppendMatchDateToName(boolean appendMatchDateToName) {
+		this.appendMatchDateToName = appendMatchDateToName;
 	}
 
 	public Instant getDateJoined() {
