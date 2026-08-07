@@ -1,9 +1,35 @@
-import type { ZoneSet } from "../api/types";
+import type { Zone, ZoneSet, ZoneType } from "../api/types";
 
 export interface ZoneTime {
   name: string;
   seconds: number;
   fraction: number;
+}
+
+export interface ZoneRange {
+  low: number;
+  /** null = open-ended (pace's easiest zone has no finite slow-end bound). */
+  high: number | null;
+}
+
+/**
+ * The real-unit range a zone's %-of-reference band maps to. For "pace" (seconds/km,
+ * where a *lower* value means a *faster*, harder effort - the opposite of every other
+ * zone type's units), the range comes from the reciprocal (reference / pct) rather than
+ * reference * pct, since %-of-threshold still means the same thing (higher % = harder)
+ * for every zone type.
+ */
+export function zoneRange(zone: Zone, reference: number, type: ZoneType): ZoneRange {
+  if (type === "pace") {
+    return {
+      low: Math.round(reference / (zone.high_pct / 100)),
+      high: zone.low_pct > 0 ? Math.round(reference / (zone.low_pct / 100)) : null,
+    };
+  }
+  return {
+    low: Math.round((zone.low_pct / 100) * reference),
+    high: Math.round((zone.high_pct / 100) * reference),
+  };
 }
 
 /**
