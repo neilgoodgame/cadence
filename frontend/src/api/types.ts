@@ -14,6 +14,12 @@ export interface Athlete {
   best_effort_top_n: number;
   is_coach: boolean;
   is_admin: boolean;
+  /** When an upload auto-matches a scheduled workout, replace the activity's name with the
+   * workout's name instead of leaving the device/default name. */
+  rename_matched_activities: boolean;
+  /** Also appends " - YYYY-MM-DD" to the matched name. Only has an effect when
+   * rename_matched_activities is also true. */
+  append_match_date_to_name: boolean;
 }
 
 export interface TokenResponse {
@@ -178,6 +184,8 @@ export interface AthleteUpdate {
   max_hr?: number;
   resting_hr?: number;
   best_effort_top_n?: number;
+  rename_matched_activities?: boolean;
+  append_match_date_to_name?: boolean;
 }
 
 export interface ActivityComment {
