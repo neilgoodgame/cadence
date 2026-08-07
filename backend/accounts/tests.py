@@ -1,3 +1,6 @@
+from io import StringIO
+
+from django.core.management import CommandError, call_command
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -301,3 +304,31 @@ class CoachViewTests(TestCase):
         response = self.client.get(f"/v1/coach/athletes/{self.athlete.id}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["athlete_id"], self.athlete.id)
+
+
+class GrantAdminCommandTests(TestCase):
+    def test_grants_admin_by_email(self):
+        user = User.objects.create_user(email="future-admin@example.cc", password="x", name="Future Admin")
+        self.assertFalse(user.is_admin)
+
+        call_command("grant_admin", "--email", "future-admin@example.cc", stdout=StringIO())
+
+        user.refresh_from_db()
+        self.assertTrue(user.is_admin)
+
+    def test_revoke_removes_admin(self):
+        user = User.objects.create_user(email="ex-admin@example.cc", password="x", name="Ex Admin", is_admin=True)
+
+        call_command("grant_admin", "--email", "ex-admin@example.cc", "--revoke", stdout=StringIO())
+
+        user.refresh_from_db()
+        self.assertFalse(user.is_admin)
+
+    def test_email_match_is_case_insensitive(self):
+        User.objects.create_user(email="mixed-case@example.cc", password="x", name="Mixed Case")
+        call_command("grant_admin", "--email", "Mixed-Case@Example.cc", stdout=StringIO())
+        self.assertTrue(User.objects.get(email="mixed-case@example.cc").is_admin)
+
+    def test_unknown_email_raises_command_error(self):
+        with self.assertRaises(CommandError):
+            call_command("grant_admin", "--email", "nobody@example.cc", stdout=StringIO())

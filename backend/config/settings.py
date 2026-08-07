@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "workouts",
     "scheduling",
     "gear",
+    "adminapi",
     "races",
     "dataexport",
     "webhooks",

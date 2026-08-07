@@ -18,6 +18,7 @@ urlpatterns = [
     path("", include("authn.urls")),
     path("", include("athletes.urls")),
     path("", include("gear.urls")),
+    path("", include("adminapi.urls")),
     path("", include("workouts.urls")),
     path("", include("activities.urls")),
     path("", include("races.urls")),

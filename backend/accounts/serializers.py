@@ -22,6 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
             "max_hr",
             "resting_hr",
             "is_coach",
+            "is_admin",
             "best_effort_top_n",
         ]
 

@@ -30,6 +30,10 @@ def user_may_write(sub_id: str, athlete_id: str) -> bool:
     ).exists()
 
 
+def user_is_admin(user: Any) -> bool:
+    return bool(user.is_admin)
+
+
 def _target_athlete_id(obj: Any) -> str:
     return str(getattr(obj, "athlete_id", None) or getattr(obj, "owner_id", None) or obj.pk)
 
