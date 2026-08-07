@@ -25,6 +25,9 @@ interface AuthContextValue {
    * use this, not `user.is_coach`, to decide whether to show the context switcher, since
    * `user` itself changes while viewing as someone else. */
   isCoachAccount: boolean;
+  /** Whether the signed-in principal (not the active profile) is a platform admin - same
+   * "pinned to the real principal, not the active profile" rule as isCoachAccount. */
+  isAdminAccount: boolean;
   /** Undetermined until the initial silent-refresh attempt (if any) finishes. */
   isLoading: boolean;
   register: (name: string, email: string, password: string) => Promise<void>;
@@ -46,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [selfId, setSelfId] = useState<string | null>(null);
   const [activeAthleteId, setActiveAthleteId] = useState<string | null>(null);
   const [isCoachAccount, setIsCoachAccount] = useState(false);
+  const [isAdminAccount, setIsAdminAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const queryClient = useQueryClient();
 
@@ -56,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSelfId(null);
     setActiveAthleteId(null);
     setIsCoachAccount(false);
+    setIsAdminAccount(false);
   }, []);
 
   const applyAuthResponse = useCallback((athlete: Athlete, tokens: { access_token: string; refresh_token: string }) => {
@@ -65,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSelfId(athlete.id);
     setActiveAthleteId(null);
     setIsCoachAccount(athlete.is_coach);
+    setIsAdminAccount(athlete.is_admin);
   }, []);
 
   // The backend rotates refresh tokens on use (single-use), so two concurrent callers
@@ -128,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(athlete);
           setSelfId(athlete.id);
           setIsCoachAccount(athlete.is_coach);
+          setIsAdminAccount(athlete.is_admin);
         }
         catch {
           logout();
@@ -182,11 +189,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      user, selfId, activeAthleteId, isCoachAccount, isLoading, register, login, logout, setUser,
+      user, selfId, activeAthleteId, isCoachAccount, isAdminAccount, isLoading, register, login, logout, setUser,
       switchToAthlete, switchToSelf,
     }),
     [
-      user, selfId, activeAthleteId, isCoachAccount, isLoading, register, login, logout, setUser,
+      user, selfId, activeAthleteId, isCoachAccount, isAdminAccount, isLoading, register, login, logout, setUser,
       switchToAthlete, switchToSelf,
     ],
   );

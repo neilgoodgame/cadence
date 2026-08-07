@@ -13,6 +13,7 @@ export interface Athlete {
   resting_hr: number | null;
   best_effort_top_n: number;
   is_coach: boolean;
+  is_admin: boolean;
 }
 
 export interface TokenResponse {
@@ -527,6 +528,46 @@ export interface RaceCreate {
   url?: string | null;
   results_url?: string | null;
   notes?: string;
+}
+
+export interface AdminShoeCatalogEntry {
+  id: string;
+  manufacturer: string;
+  model: string;
+  versions: string[];
+  added_by: string | null;
+}
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  date_joined: string;
+  is_coach: boolean;
+  is_admin: boolean;
+}
+
+export interface AdminUserUpdate {
+  is_coach?: boolean;
+  is_admin?: boolean;
+}
+
+export interface AdminRelationship {
+  id: string;
+  coach_name: string;
+  athlete_name: string;
+  role: ShareRole;
+  granted: string;
+}
+
+export type CatalogAuditAction = "added" | "removed";
+
+export interface CatalogAuditLogEntry {
+  id: string;
+  description: string;
+  action: CatalogAuditAction;
+  by: string | null;
+  created: string;
 }
 
 export type RaceUpdate = Partial<RaceCreate>;

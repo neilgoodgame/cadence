@@ -18,7 +18,8 @@ const NAV_ITEMS = [
 ];
 
 export function AppShell() {
-  const { logout } = useAuth();
+  const { logout, isAdminAccount } = useAuth();
+  const navItems = isAdminAccount ? [...NAV_ITEMS, { label: "Admin", path: "/admin" }] : NAV_ITEMS;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
@@ -38,7 +39,7 @@ export function AppShell() {
         </div>
 
         <nav style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
-          {NAV_ITEMS.map((item) =>
+          {navItems.map((item) =>
             item.path ? (
               <NavLink
                 key={item.label}
