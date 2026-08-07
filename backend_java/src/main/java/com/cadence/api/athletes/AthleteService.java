@@ -65,6 +65,12 @@ public class AthleteService {
 			athlete.setBestEffortTopN(n == 0 ? 0 : Math.max(1, Math.min(50, n)));
 			changed.add("bestEffortTopN");
 		}
+		if (request.renameMatchedActivities() != null) {
+			athlete.setRenameMatchedActivities(request.renameMatchedActivities());
+		}
+		if (request.appendMatchDateToName() != null) {
+			athlete.setAppendMatchDateToName(request.appendMatchDateToName());
+		}
 		userRepository.save(athlete);
 		return zoneService.recomputedZoneTypes(athlete, changed);
 	}
