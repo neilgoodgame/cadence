@@ -530,11 +530,16 @@ export interface RaceCreate {
   notes?: string;
 }
 
+export interface ShoeCatalogVersionUsage {
+  version: string;
+  usage_count: number;
+}
+
 export interface AdminShoeCatalogEntry {
   id: string;
   manufacturer: string;
   model: string;
-  versions: string[];
+  versions: ShoeCatalogVersionUsage[];
   added_by: string | null;
 }
 
