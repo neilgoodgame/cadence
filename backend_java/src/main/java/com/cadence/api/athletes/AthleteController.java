@@ -1,5 +1,6 @@
 package com.cadence.api.athletes;
 
+import com.cadence.api.activities.DerivedStatsRecomputeService;
 import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.athletes.dto.AthleteUpdateResponse;
@@ -13,9 +14,13 @@ import com.cadence.api.users.UserMapper;
 import com.cadence.api.users.UserService;
 import com.cadence.api.users.dto.UserResponse;
 import jakarta.validation.Valid;
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -25,6 +30,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 public class AthleteController {
@@ -35,17 +41,20 @@ public class AthleteController {
 	private final ZoneService zoneService;
 	private final FitnessService fitnessService;
 	private final TssRecomputeService tssRecomputeService;
+	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
 	private final AccessGuard accessGuard;
+	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
 	public AthleteController(UserService userService, UserMapper userMapper, AthleteService athleteService,
 			ZoneService zoneService, FitnessService fitnessService, TssRecomputeService tssRecomputeService,
-			AccessGuard accessGuard) {
+			DerivedStatsRecomputeService derivedStatsRecomputeService, AccessGuard accessGuard) {
 		this.userService = userService;
 		this.userMapper = userMapper;
 		this.athleteService = athleteService;
 		this.zoneService = zoneService;
 		this.fitnessService = fitnessService;
 		this.tssRecomputeService = tssRecomputeService;
+		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -90,6 +99,34 @@ public class AthleteController {
 		User athlete = userService.getById(id);
 		int updated = tssRecomputeService.recomputeForAthlete(athlete);
 		return ResponseEntity.ok(Map.of("updated", updated));
+	}
+
+	@PostMapping(value = "/v1/athletes/{id}/recompute-stats", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public SseEmitter recomputeStats(@PathVariable String id) {
+		accessGuard.requireWrite(id);
+		User athlete = userService.getById(id);
+		SseEmitter emitter = new SseEmitter(600_000L);
+
+		taskExecutor.execute(() -> {
+			try {
+				int updated = derivedStatsRecomputeService.recomputeForAthlete(athlete,
+						(current, total) -> sendProgress(emitter, current, total));
+				emitter.send(SseEmitter.event().name("done").data("{\"updated\":" + updated + "}"));
+				emitter.complete();
+			} catch (Exception e) {
+				emitter.completeWithError(e);
+			}
+		});
+
+		return emitter;
+	}
+
+	private void sendProgress(SseEmitter emitter, int current, int total) {
+		try {
+			emitter.send(SseEmitter.event().data("{\"current\":" + current + ",\"total\":" + total + "}"));
+		} catch (IOException e) {
+			// client disconnected - ignore, the emitter will complete with error naturally
+		}
 	}
 
 	@GetMapping("/v1/athletes/{id}/fitness")

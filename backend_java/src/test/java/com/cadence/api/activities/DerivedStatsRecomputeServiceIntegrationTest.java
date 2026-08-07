@@ -7,6 +7,8 @@ import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -93,5 +95,84 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(updated.getMaxPower()).isNull();
 		assertThat(updated.getAvgCadence()).isNull();
 		assertThat(updated.getCalories()).isNull();
+	}
+
+	private void addRecords(Activity activity, int seconds) {
+		for (int t = 0; t < seconds; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(200);
+			record.setCadence(85);
+			record.setSpeed(8.0);
+			record.setAltitude((double) (100 + (t % 10)));
+			record.setHeartrate(160);
+			recordRepository.save(record);
+		}
+	}
+
+	@Test
+	void recomputeForAthleteBackfillsStatsAcrossAllOfTheirActivities() {
+		User athlete = newAthlete("bulk-backfill@example.cc");
+		Activity first = newActivity(athlete, 3600);
+		addRecords(first, 3600);
+		Activity second = newActivity(athlete, 3600);
+		addRecords(second, 3600);
+
+		int updated = derivedStatsRecomputeService.recomputeForAthlete(athlete, null);
+
+		assertThat(updated).isEqualTo(2);
+		Activity reloadedFirst = activityRepository.findById(first.getId()).orElseThrow();
+		Activity reloadedSecond = activityRepository.findById(second.getId()).orElseThrow();
+		assertThat(reloadedFirst.getMaxPower()).isEqualTo(200);
+		assertThat(reloadedSecond.getMaxPower()).isEqualTo(200);
+		assertThat(reloadedFirst.getCalories()).isNotNull();
+		assertThat(reloadedSecond.getCalories()).isNotNull();
+	}
+
+	@Test
+	void recomputeForAthleteDoesNotTouchOtherAthletesActivities() {
+		User athlete = newAthlete("bulk-mine@example.cc");
+		User otherAthlete = newAthlete("bulk-other@example.cc");
+		Activity otherActivity = newActivity(otherAthlete, 3600);
+
+		int updated = derivedStatsRecomputeService.recomputeForAthlete(athlete, null);
+
+		assertThat(updated).isZero();
+		Activity reloaded = activityRepository.findById(otherActivity.getId()).orElseThrow();
+		assertThat(reloaded.getMaxPower()).isNull();
+	}
+
+	@Test
+	void recomputeForAthleteDoesNotCountActivitiesWithNothingToBackfill() {
+		// No lthr on this athlete, unlike newAthlete()'s default, so TrimpCalculator also
+		// has nothing to compute - otherwise trimp still resolves to a real 0.0 "zero time
+		// in any zone" value (distinct from "nothing to backfill") even with zero records.
+		User athlete = new User();
+		athlete.setEmail("bulk-no-lthr@example.cc");
+		athlete.setName("No LTHR");
+		athlete.setPassword("irrelevant-for-this-test");
+		athlete = userRepository.save(athlete);
+		newActivity(athlete, 3600);
+
+		int updated = derivedStatsRecomputeService.recomputeForAthlete(athlete, null);
+
+		assertThat(updated).isZero();
+	}
+
+	@Test
+	void recomputeForAthleteReportsProgressAfterEachActivity() {
+		User athlete = newAthlete("bulk-progress@example.cc");
+		addRecords(newActivity(athlete, 3600), 3600);
+		addRecords(newActivity(athlete, 3600), 3600);
+		addRecords(newActivity(athlete, 3600), 3600);
+
+		List<int[]> calls = new ArrayList<>();
+		derivedStatsRecomputeService.recomputeForAthlete(athlete, (current, total) -> calls.add(new int[] {current, total}));
+
+		assertThat(calls).hasSize(3);
+		assertThat(calls.get(0)).containsExactly(1, 3);
+		assertThat(calls.get(2)).containsExactly(3, 3);
 	}
 }

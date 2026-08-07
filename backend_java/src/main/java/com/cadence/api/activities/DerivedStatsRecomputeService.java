@@ -8,13 +8,17 @@ import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.uploads.UploadCalculations;
 import com.cadence.api.users.User;
+import com.cadence.api.users.UserRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.function.BiConsumer;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Backfills the extended Activity Analysis stats (max power, cadence, elevation, calories,
@@ -33,26 +37,84 @@ public class DerivedStatsRecomputeService {
 
 	private final ActivityRepository activityRepository;
 	private final RecordRepository recordRepository;
+	private final UserRepository userRepository;
 	private final ZoneService zoneService;
+	private final TransactionTemplate tx;
 
 	public DerivedStatsRecomputeService(ActivityRepository activityRepository, RecordRepository recordRepository,
-			ZoneService zoneService) {
+			UserRepository userRepository, ZoneService zoneService, PlatformTransactionManager tm) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
+		this.userRepository = userRepository;
 		this.zoneService = zoneService;
+		this.tx = new TransactionTemplate(tm);
 	}
 
 	@Transactional
 	public Activity recomputeForActivity(String activityId) {
 		Activity activity = activityRepository.findById(activityId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
-		User athlete = activity.getAthlete();
-		List<Record> records = recordRepository.findByActivityIdOrderByT(activityId);
+		applyBackfill(activity, activity.getAthlete());
+		return activityRepository.save(activity);
+	}
+
+	/** Bulk equivalent of {@link #recomputeForActivity} - backfills every one of the
+	 * athlete's activities (same candidate set TssRecomputeService/BestEffortRecomputeService
+	 * already use) and returns how many actually had data to backfill. Each activity is
+	 * read, backfilled, and saved in its own transaction - same reason
+	 * BestEffortRecomputeService#recomputeAll does, rather than holding one open across
+	 * every activity: an athlete can have thousands of activities, each with its own
+	 * per-second Record rows, and a single multi-minute transaction over all of them risked
+	 * exhausting the connection/heap and crashing the app (seen live against 2,600+
+	 * activities). Calls onProgress(current, total) after each activity. */
+	public int recomputeForAthlete(User athlete, BiConsumer<Integer, Integer> onProgress) {
+		String athleteId = athlete.getId();
+		List<String> ids = tx.execute(status ->
+				activityRepository.findRecomputeCandidates(athleteId).stream().map(Activity::getId).toList());
+		if (ids == null) {
+			return 0;
+		}
+		int updated = 0;
+		for (int i = 0; i < ids.size(); i++) {
+			if (Boolean.TRUE.equals(backfillAndSaveOne(ids.get(i), athleteId))) {
+				updated++;
+			}
+			if (onProgress != null) {
+				onProgress.accept(i + 1, ids.size());
+			}
+		}
+		return updated;
+	}
+
+	private Boolean backfillAndSaveOne(String activityId, String athleteId) {
+		return tx.execute(status -> {
+			Activity activity = activityRepository.findById(activityId).orElse(null);
+			if (activity == null) {
+				return false;
+			}
+			User athlete = userRepository.findById(athleteId).orElse(null);
+			if (athlete == null) {
+				return false;
+			}
+			boolean changed = applyBackfill(activity, athlete);
+			if (changed) {
+				activityRepository.save(activity);
+			}
+			return changed;
+		});
+	}
+
+	/** Mutates {@code activity} in place from its stored Record rows; returns whether
+	 * anything was set (the caller decides whether/how to persist). */
+	private boolean applyBackfill(Activity activity, User athlete) {
+		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+		boolean changed = false;
 
 		List<Integer> powerSeries = records.stream().map(Record::getPower).toList();
 		Integer maxPower = max(powerSeries);
 		if (maxPower != null) {
 			activity.setMaxPower(maxPower);
+			changed = true;
 		}
 
 		List<Integer> cadenceSeries = records.stream().map(Record::getCadence).toList();
@@ -60,12 +122,14 @@ public class DerivedStatsRecomputeService {
 			Double avgCadence = mean(cadenceSeries);
 			activity.setAvgCadence(avgCadence != null ? (int) Math.round(avgCadence) : null);
 			activity.setMaxCadence(max(cadenceSeries));
+			changed = true;
 		}
 
 		List<Double> speedSeries = records.stream().map(Record::getSpeed).toList();
 		Double maxSpeedMs = maxDouble(speedSeries);
 		if (maxSpeedMs != null) {
 			activity.setMaxSpeed(round1(maxSpeedMs * 3.6));
+			changed = true;
 		}
 
 		List<Double> altitudeSeries = records.stream().map(Record::getAltitude).toList();
@@ -76,12 +140,14 @@ public class DerivedStatsRecomputeService {
 			activity.setElevationMax(elevationMax != null ? (int) Math.round(elevationMax) : null);
 			activity.setAscent(UploadCalculations.totalAscentFromAltitudes(altitudeSeries));
 			activity.setTotalDescent(UploadCalculations.totalDescentFromAltitudes(altitudeSeries));
+			changed = true;
 		}
 
 		Double avgPower = mean(powerSeries);
 		if (avgPower != null) {
 			double workKj = avgPower * activity.getMovingTime() / 1000.0;
 			activity.setCalories(UploadCalculations.caloriesFromWorkKj(workKj));
+			changed = true;
 		}
 
 		List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
@@ -91,9 +157,10 @@ public class DerivedStatsRecomputeService {
 		Double trimp = TrimpCalculator.compute(hrSecondsPerZone, hrZones);
 		if (trimp != null) {
 			activity.setTrimp(trimp);
+			changed = true;
 		}
 
-		return activityRepository.save(activity);
+		return changed;
 	}
 
 	private Double mean(List<Integer> values) {

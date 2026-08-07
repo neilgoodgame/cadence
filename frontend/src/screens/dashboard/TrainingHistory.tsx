@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { recomputeTss } from "../../api/athletes";
+import { recomputeStatsStream, recomputeTss } from "../../api/athletes";
 import type { Activity } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
 
@@ -83,6 +83,25 @@ export function TrainingHistory({ activities, athleteId }: { activities: Activit
     mutationFn: () => recomputeTss(athleteId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["activities", "training-history"] }),
   });
+
+  const [statsRecompute, setStatsRecompute] = useState<{
+    running: boolean;
+    current: number;
+    total: number;
+    updated: number | null;
+  }>({ running: false, current: 0, total: 0, updated: null });
+
+  const startStatsRecompute = useCallback(async () => {
+    setStatsRecompute({ running: true, current: 0, total: 0, updated: null });
+    for await (const event of recomputeStatsStream(athleteId)) {
+      if (event.type === "progress") {
+        setStatsRecompute((s) => ({ ...s, current: event.current, total: event.total }));
+      } else {
+        setStatsRecompute({ running: false, current: event.updated, total: event.updated, updated: event.updated });
+        queryClient.invalidateQueries({ queryKey: ["activities"] });
+      }
+    }
+  }, [athleteId, queryClient]);
 
   const today = useMemo(() => new Date(), []);
   const weeks = useMemo(() => buildWeekBlocks(today), [today]);
@@ -187,6 +206,32 @@ export function TrainingHistory({ activities, athleteId }: { activities: Activit
               {recomputeMutation.isPending ? "Recomputing…" : recomputeMutation.isSuccess ? `Updated ${recomputeMutation.data?.updated}` : "Recompute TSS"}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => startStatsRecompute()}
+            disabled={statsRecompute.running}
+            title="Backfill max power, cadence, elevation, calories, and TRIMP for every activity from its stored records"
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "3px 10px",
+              borderRadius: 20,
+              border: "1px solid var(--line)",
+              background: "none",
+              color: "var(--ink3)",
+              cursor: "pointer",
+              opacity: statsRecompute.running ? 0.5 : 1,
+              marginLeft: 8,
+            }}
+          >
+            {statsRecompute.running
+              ? statsRecompute.total > 0
+                ? `Recomputing… ${statsRecompute.current}/${statsRecompute.total}`
+                : "Recomputing…"
+              : statsRecompute.updated != null
+                ? `Updated ${statsRecompute.updated}`
+                : "Recompute Stats"}
+          </button>
         </div>
       </div>
 

@@ -40,39 +40,19 @@ export function excludeActivityFromBestEfforts(athleteId: string, activityId: st
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts/by-activity/${activityId}?kind=${kind}`, { method: "DELETE" });
 }
 
-export type RecomputeEvent =
-  | { type: "progress"; current: number; total: number }
-  | { type: "done"; processed: number };
-
-export async function* recomputeBestEffortsStream(
-  athleteId: string,
-  kind?: BestEffortKind,
-): AsyncGenerator<RecomputeEvent> {
-  const qs = kind ? `?kind=${kind}` : "";
-  const response = await apiFetchStream(
-    `/v1/athletes/${athleteId}/best-efforts/recompute${qs}`,
-    { method: "POST" },
-  );
+async function* sseBlocks(response: Response): AsyncGenerator<{ event: string; data: string }> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 
-  const parseBlock = function* (block: string): Generator<RecomputeEvent> {
+  const parseBlock = function* (block: string): Generator<{ event: string; data: string }> {
     let eventName = "message";
     let data = "";
     for (const line of block.split("\n")) {
       if (line.startsWith("event:")) eventName = line.slice(6).trim();
       else if (line.startsWith("data:")) data = line.slice(5).trim();
     }
-    if (!data) return;
-    try {
-      const parsed = JSON.parse(data);
-      if (eventName === "done") {
-        yield { type: "done", processed: parsed.processed ?? 0 };
-      } else {
-        yield { type: "progress", current: parsed.current ?? 0, total: parsed.total ?? 0 };
-      }
-    } catch { /* ignore malformed */ }
+    if (data) yield { event: eventName, data };
   };
 
   while (true) {
@@ -86,6 +66,40 @@ export async function* recomputeBestEffortsStream(
     }
   }
   if (buffer.trim()) yield* parseBlock(buffer);
+}
+
+export type RecomputeEvent =
+  | { type: "progress"; current: number; total: number }
+  | { type: "done"; processed: number };
+
+export async function* recomputeBestEffortsStream(
+  athleteId: string,
+  kind?: BestEffortKind,
+): AsyncGenerator<RecomputeEvent> {
+  const qs = kind ? `?kind=${kind}` : "";
+  const response = await apiFetchStream(`/v1/athletes/${athleteId}/best-efforts/recompute${qs}`, { method: "POST" });
+  for await (const { event, data } of sseBlocks(response)) {
+    try {
+      const parsed = JSON.parse(data);
+      if (event === "done") yield { type: "done", processed: parsed.processed ?? 0 };
+      else yield { type: "progress", current: parsed.current ?? 0, total: parsed.total ?? 0 };
+    } catch { /* ignore malformed */ }
+  }
+}
+
+export type RecomputeStatsEvent =
+  | { type: "progress"; current: number; total: number }
+  | { type: "done"; updated: number };
+
+export async function* recomputeStatsStream(athleteId: string): AsyncGenerator<RecomputeStatsEvent> {
+  const response = await apiFetchStream(`/v1/athletes/${athleteId}/recompute-stats`, { method: "POST" });
+  for await (const { event, data } of sseBlocks(response)) {
+    try {
+      const parsed = JSON.parse(data);
+      if (event === "done") yield { type: "done", updated: parsed.updated ?? 0 };
+      else yield { type: "progress", current: parsed.current ?? 0, total: parsed.total ?? 0 };
+    } catch { /* ignore malformed */ }
+  }
 }
 
 export function trimBestEfforts(athleteId: string): Promise<void> {
