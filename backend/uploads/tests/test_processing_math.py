@@ -145,8 +145,9 @@ class TotalAscentDescentTests(SimpleTestCase):
 
 class ComputeCaloriesTests(SimpleTestCase):
     def test_power_based_estimate(self):
-        # 200W for 3600s -> 720 kJ of work -> /0.24 efficiency -> 3000 kcal.
-        self.assertEqual(compute_calories([200] * 3600, 3600), 3000)
+        # 200W for 3600s -> 720 kJ of work -> /0.24 efficiency -> 3000 kJ metabolic
+        # energy -> /4.184 kJ-per-kcal -> ~717 kcal.
+        self.assertEqual(compute_calories([200] * 3600, 3600), 717)
 
     def test_no_power_data_returns_none(self):
         self.assertIsNone(compute_calories([None, None], 3600))

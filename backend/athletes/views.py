@@ -191,6 +191,51 @@ class RecomputeAthleteTssView(APIView):
         return Response({"updated": updated})
 
 
+def _recompute_stats_stream(athlete: User) -> Iterator[str]:
+    from uploads.processing import backfill_extended_stats
+
+    candidates = Activity.objects.filter(
+        athlete=athlete,
+        parent_activity__isnull=True,
+    ).exclude(sport__in=("multisport", "transition"))
+
+    activities = list(candidates.order_by("start_date"))
+    total = len(activities)
+    updated = 0
+
+    for i, activity in enumerate(activities):
+        update_fields = backfill_extended_stats(activity, athlete)
+        if update_fields:
+            activity.save(update_fields=update_fields)
+            updated += 1
+        yield f"data: {json.dumps({'current': i + 1, 'total': total})}\n\n"
+
+    yield f"event: done\ndata: {json.dumps({'updated': updated})}\n\n"
+
+
+class RecomputeAthleteStatsView(APIView):
+    """Bulk equivalent of activities.views.RecomputeActivityStatsView - backfills max
+    power, cadence, elevation, calories, and TRIMP across every one of the athlete's
+    activities from stored Record rows, for activities ingested before that computation
+    existed (or, e.g., recorded with a since-fixed formula). Streamed like
+    BestEffortRecomputeView, not a single synchronous response: an athlete can have
+    thousands of activities, each with its own per-second Record rows, and a single
+    multi-minute request with no progress feedback risks a client/proxy timeout with
+    nothing to show for it (seen live on the Java backend's now-fixed synchronous
+    equivalent, against 2,600+ activities).
+    """
+
+    def post(self, request: Request, id: str) -> StreamingHttpResponse:
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        athlete = get_object_or_404(User, pk=id)
+        response = StreamingHttpResponse(_recompute_stats_stream(athlete), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+
 _SPORT_FOR_KIND = {
     "cycling_hr": "bike",
     "cycling_power": "bike",

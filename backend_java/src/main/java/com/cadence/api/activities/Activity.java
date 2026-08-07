@@ -104,7 +104,7 @@ public class Activity extends PrefixedIdEntity {
 	@Column(name = "elevation_max")
 	private Integer elevationMax;
 
-	/** Power-based estimate only (work_kJ / 0.24, a standard cycling efficiency approximation). */
+	/** Power-based estimate only - see {@link com.cadence.api.uploads.UploadCalculations#caloriesFromWorkKj}. */
 	@Column(name = "calories")
 	private Integer calories;
 

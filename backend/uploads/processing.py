@@ -324,16 +324,83 @@ def compute_edwards_trimp(athlete: User, heartrate_series: Sequence[float | None
     return round(trimp, 1)
 
 
+KJ_PER_KCAL = 4.184
+
+
 def compute_calories(power_series: Sequence[float | None], moving_time_seconds: int) -> int | None:
     """Power-based estimate only: work_kJ / 0.24 (a standard cycling efficiency
-    approximation). Deliberately not falling back to an HR-based estimate for
-    power-less activities, which would be a much rougher guess.
+    approximation) converts mechanical work into metabolic energy expenditure, still in
+    kJ - dividing by KJ_PER_KCAL converts that into kcal. Deliberately not falling back
+    to an HR-based estimate for power-less activities, which would be a much rougher
+    guess.
     """
     avg_power = _mean(power_series)
     if avg_power is None:
         return None
     work_kj = avg_power * moving_time_seconds / 1000
-    return round(work_kj / 0.24)
+    metabolic_kj = work_kj / 0.24
+    return round(metabolic_kj / KJ_PER_KCAL)
+
+
+def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
+    """Backfills max power, cadence, max speed, elevation (min/max/ascent/descent),
+    calories, and TRIMP for `activity` from its stored per-second Record rows, rather
+    than re-parsing the original upload file. Shared by the per-activity and per-athlete
+    recompute-stats endpoints. Mutates `activity` in place and returns the field names
+    that changed; the caller is responsible for saving.
+
+    avg_left_balance_pct can NOT be backfilled this way: the FIT left_right_balance field
+    is deliberately never persisted per-sample onto Record (the UI only shows one
+    aggregate split, not a stream - see uploads/parsers/fit.py's _left_balance_pct), so
+    it's simply unrecoverable for anything not re-ingested from the original file.
+    """
+    records = list(activity.records.order_by("t").values("power", "cadence", "speed", "altitude", "heartrate"))
+
+    power_series = [r["power"] for r in records]
+    cadence_series = [r["cadence"] for r in records]
+    speed_series = [r["speed"] for r in records]
+    altitude_series = [r["altitude"] for r in records]
+    hr_series = [r["heartrate"] for r in records]
+
+    update_fields = []
+
+    max_power = _max(power_series)
+    if max_power is not None:
+        activity.max_power = round(max_power)
+        update_fields.append("max_power")
+
+    if any(c is not None for c in cadence_series):
+        avg_cadence = _mean(cadence_series)
+        max_cadence = _max(cadence_series)
+        activity.avg_cadence = round(avg_cadence) if avg_cadence is not None else None
+        activity.max_cadence = round(max_cadence) if max_cadence is not None else None
+        update_fields.extend(["avg_cadence", "max_cadence"])
+
+    max_speed_ms = _max(speed_series)
+    if max_speed_ms is not None:
+        activity.max_speed = round(max_speed_ms * 3.6, 1)
+        update_fields.append("max_speed")
+
+    if any(a is not None for a in altitude_series):
+        elevation_min = _min(altitude_series)
+        elevation_max = _max(altitude_series)
+        activity.elevation_min = round(elevation_min) if elevation_min is not None else None
+        activity.elevation_max = round(elevation_max) if elevation_max is not None else None
+        activity.ascent = _total_ascent([{"altitude": a} for a in altitude_series])
+        activity.total_descent = _total_descent([{"altitude": a} for a in altitude_series])
+        update_fields.extend(["elevation_min", "elevation_max", "ascent", "total_descent"])
+
+    calories = compute_calories(power_series, activity.moving_time)
+    if calories is not None:
+        activity.calories = calories
+        update_fields.append("calories")
+
+    trimp = compute_edwards_trimp(athlete, hr_series)
+    if trimp is not None:
+        activity.trimp = trimp
+        update_fields.append("trimp")
+
+    return update_fields
 
 
 def training_effect_label(aerobic_training_effect: float | None) -> str:

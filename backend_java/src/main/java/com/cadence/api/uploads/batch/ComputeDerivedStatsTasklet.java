@@ -11,6 +11,7 @@ import com.cadence.api.athletes.ZoneService;
 import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.uploads.UploadCalculations;
 import com.cadence.api.uploads.parsing.ParsedActivity;
 import com.cadence.api.users.User;
 import java.util.List;
@@ -136,11 +137,10 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 		}
 
 		if (avgPower != null) {
-			// Power-based estimate only (work_kJ / 0.24, a standard cycling efficiency
-			// approximation) - deliberately not falling back to an HR-based estimate for
-			// power-less activities, which would be a much rougher guess.
+			// Power-based estimate only - deliberately not falling back to an HR-based
+			// estimate for power-less activities, which would be a much rougher guess.
 			double workKj = avgPower * activity.getMovingTime() / 1000.0;
-			activity.setCalories((int) Math.round(workKj / 0.24));
+			activity.setCalories(UploadCalculations.caloriesFromWorkKj(workKj));
 		}
 
 		List<Zone> hrZones = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE).getZones();

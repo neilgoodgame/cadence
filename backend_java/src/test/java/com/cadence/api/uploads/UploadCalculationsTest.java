@@ -47,4 +47,13 @@ class UploadCalculationsTest {
 		assertThat(UploadCalculations.totalAscent(List.of(sample(100)))).isNull();
 		assertThat(UploadCalculations.totalDescent(List.of(sample(100)))).isNull();
 	}
+
+	@Test
+	void caloriesFromWorkKjConvertsMetabolicEnergyToKcal() {
+		// 200W for 3600s -> 720 kJ of work -> /0.24 efficiency -> 3000 kJ metabolic
+		// energy -> /4.184 kJ-per-kcal -> ~717 kcal. Mirrors the Python backend's
+		// uploads/tests/test_processing_math.py::ComputeCaloriesTests.
+		double workKj = 200 * 3600 / 1000.0;
+		assertThat(UploadCalculations.caloriesFromWorkKj(workKj)).isEqualTo(717);
+	}
 }

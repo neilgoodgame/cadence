@@ -12,6 +12,16 @@ public final class UploadCalculations {
 	// ~30s at the 1Hz rate these files are stored at.
 	private static final int ELEVATION_SMOOTHING_WINDOW = 30;
 
+	private static final double KJ_PER_KCAL = 4.184;
+
+	/** work_kJ / 0.24 (a standard cycling efficiency approximation) converts mechanical
+	 * work into metabolic energy expenditure, still in kJ - dividing by KJ_PER_KCAL
+	 * converts that into kcal. */
+	public static int caloriesFromWorkKj(double workKj) {
+		double metabolicKj = workKj / 0.24;
+		return (int) Math.round(metabolicKj / KJ_PER_KCAL);
+	}
+
 	public static int movingTime(List<ParsedActivity.Sample> samples) {
 		if (samples.isEmpty()) {
 			return 0;
