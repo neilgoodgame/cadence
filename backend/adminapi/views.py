@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
@@ -31,7 +31,13 @@ def _require_admin(request: Request) -> User:
 
 
 def _catalog_entry(shoe_model: ShoeModel) -> dict:
-    versions = list(shoe_model.versions.order_by("version").values_list("version", flat=True))
+    # usage_count counts every Shoe referencing that version regardless of its retired flag,
+    # matching the delete-block check below exactly - it should read as "why can't I delete
+    # this", not "how many *active* shoes use it".
+    versions = [
+        {"version": v.version, "usage_count": v.usage_count}
+        for v in shoe_model.versions.annotate(usage_count=Count("shoes")).order_by("version")
+    ]
     return {
         "id": shoe_model.id,
         "manufacturer": shoe_model.manufacturer,
