@@ -166,3 +166,70 @@ class WorkoutMatchingTests(TestCase):
         scheduled.refresh_from_db()
         self.assertEqual(scheduled.status, "planned")
         self.assertIsNone(scheduled.activity_id)
+
+    def test_leaves_name_untouched_by_default(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run")
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 13))
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Morning run",
+            start_date=datetime(2026, 6, 13, 6, 30, tzinfo=UTC),
+        )
+
+        attempt_workout_match(activity, self.athlete)
+
+        activity.refresh_from_db()
+        self.assertEqual(activity.name, "Morning run")
+
+    def test_renames_to_workout_name_when_preference_enabled(self):
+        self.athlete.rename_matched_activities = True
+        self.athlete.save(update_fields=["rename_matched_activities"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run")
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 14))
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Morning run",
+            start_date=datetime(2026, 6, 14, 6, 30, tzinfo=UTC),
+        )
+
+        attempt_workout_match(activity, self.athlete)
+
+        activity.refresh_from_db()
+        self.assertEqual(activity.name, "Tempo run")
+
+    def test_appends_date_only_when_both_preferences_enabled(self):
+        self.athlete.rename_matched_activities = True
+        self.athlete.append_match_date_to_name = True
+        self.athlete.save(update_fields=["rename_matched_activities", "append_match_date_to_name"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run")
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 15))
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Morning run",
+            start_date=datetime(2026, 6, 15, 6, 30, tzinfo=UTC),
+        )
+
+        attempt_workout_match(activity, self.athlete)
+
+        activity.refresh_from_db()
+        self.assertEqual(activity.name, "Tempo run - 2026-06-15")
+
+    def test_append_date_preference_has_no_effect_when_rename_is_off(self):
+        self.athlete.append_match_date_to_name = True
+        self.athlete.save(update_fields=["append_match_date_to_name"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run")
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 16))
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Morning run",
+            start_date=datetime(2026, 6, 16, 6, 30, tzinfo=UTC),
+        )
+
+        attempt_workout_match(activity, self.athlete)
+
+        activity.refresh_from_db()
+        self.assertEqual(activity.name, "Morning run")
