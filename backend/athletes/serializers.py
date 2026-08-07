@@ -22,6 +22,8 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "max_hr",
             "resting_hr",
             "best_effort_top_n",
+            "rename_matched_activities",
+            "append_match_date_to_name",
         ]
         extra_kwargs = {
             field: {"required": False}
@@ -35,6 +37,8 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
                 "lthr",
                 "max_hr",
                 "resting_hr",
+                "rename_matched_activities",
+                "append_match_date_to_name",
             ]
         }
 

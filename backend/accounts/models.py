@@ -48,6 +48,11 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # which gate Django's own built-in /admin/ site and are unrelated to this feature.
     is_admin = models.BooleanField(default=False)
     best_effort_top_n = models.PositiveSmallIntegerField(default=10)
+    # Auto-match naming preferences (uploads/processing.py's attempt_workout_match) - both
+    # default off so existing device-derived activity names are untouched unless opted in.
+    # append_match_date_to_name only has an effect when rename_matched_activities is also on.
+    rename_matched_activities = models.BooleanField(default=False)
+    append_match_date_to_name = models.BooleanField(default=False)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

@@ -11,6 +11,7 @@ from athletes.zones import get_or_create_zone_set, reference_for
 from scheduling.models import ScheduledWorkout
 from scheduling.serializers import ScheduledWorkoutSerializer
 from webhooks.events import fire_event
+from workouts.models import Workout
 
 from .models import Upload
 from .parsers import parse_file
@@ -616,6 +617,17 @@ def update_best_efforts(
             _update_hr_best_efforts(activity, athlete, "running_hr", hr_series)
 
 
+def _matched_activity_name(workout: Workout, activity: Activity, athlete: User) -> str:
+    """athlete.rename_matched_activities's naming - the %Y-%m-%d format matches the
+    device-derived default name this replaces (see the "{sport} on {date}" f-string
+    below in _ingest_activity), so a renamed activity still sorts/reads consistently
+    with any sibling that wasn't matched (or whose athlete has the preference off).
+    """
+    if athlete.append_match_date_to_name:
+        return f"{workout.name} - {activity.start_date:%Y-%m-%d}"
+    return workout.name
+
+
 def attempt_workout_match(activity: Activity, athlete: User) -> None:
     candidate = (
         ScheduledWorkout.objects.filter(
@@ -634,7 +646,11 @@ def attempt_workout_match(activity: Activity, athlete: User) -> None:
     candidate.status = "completed"
     candidate.save(update_fields=["activity", "status"])
     activity.workout = candidate.workout
-    activity.save(update_fields=["workout"])
+    update_fields = ["workout"]
+    if athlete.rename_matched_activities:
+        activity.name = _matched_activity_name(candidate.workout, activity, athlete)
+        update_fields.append("name")
+    activity.save(update_fields=update_fields)
     tag, _created = Tag.objects.get_or_create(athlete=athlete, name="Auto-matched", defaults={"origin": "auto"})
     ActivityTag.objects.get_or_create(activity=activity, tag=tag)
     fire_event("scheduled_workout.matched", athlete.id, ScheduledWorkoutSerializer(candidate).data)
