@@ -24,6 +24,7 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "best_effort_top_n",
             "rename_matched_activities",
             "append_match_date_to_name",
+            "copy_matched_workout_tags",
         ]
         extra_kwargs = {
             field: {"required": False}
@@ -39,6 +40,7 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
                 "resting_hr",
                 "rename_matched_activities",
                 "append_match_date_to_name",
+                "copy_matched_workout_tags",
             ]
         }
 

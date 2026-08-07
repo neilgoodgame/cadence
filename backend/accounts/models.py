@@ -53,6 +53,9 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # append_match_date_to_name only has an effect when rename_matched_activities is also on.
     rename_matched_activities = models.BooleanField(default=False)
     append_match_date_to_name = models.BooleanField(default=False)
+    # Independent of the naming preferences above - copies the matched Workout's tags
+    # (workouts/models.py's Workout.tags, a plain list of names) onto the activity.
+    copy_matched_workout_tags = models.BooleanField(default=False)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

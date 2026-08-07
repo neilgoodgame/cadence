@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 from django.test import TestCase
 
 from accounts.models import User
-from activities.models import Activity, ActivityTag, BestEffort
+from activities.models import Activity, ActivityTag, BestEffort, Tag
 from scheduling.models import ScheduledWorkout
 from workouts.models import Workout
 
@@ -233,3 +233,76 @@ class WorkoutMatchingTests(TestCase):
 
         activity.refresh_from_db()
         self.assertEqual(activity.name, "Morning run")
+
+    def test_does_not_copy_workout_tags_by_default(self):
+        workout = Workout.objects.create(
+            created_by=self.athlete, name="Tempo run", sport="run", tags=["Speedwork", "Race prep"]
+        )
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 17))
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Morning run",
+            start_date=datetime(2026, 6, 17, 6, 30, tzinfo=UTC),
+        )
+
+        attempt_workout_match(activity, self.athlete)
+
+        self.assertFalse(ActivityTag.objects.filter(activity=activity, tag__name="Speedwork").exists())
+
+    def test_copies_workout_tags_when_preference_enabled(self):
+        self.athlete.copy_matched_workout_tags = True
+        self.athlete.save(update_fields=["copy_matched_workout_tags"])
+        workout = Workout.objects.create(
+            created_by=self.athlete, name="Tempo run", sport="run", tags=["Speedwork", "Race prep"]
+        )
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 18))
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Morning run",
+            start_date=datetime(2026, 6, 18, 6, 30, tzinfo=UTC),
+        )
+
+        attempt_workout_match(activity, self.athlete)
+
+        tag_names = set(ActivityTag.objects.filter(activity=activity).values_list("tag__name", flat=True))
+        self.assertEqual(tag_names, {"Auto-matched", "Speedwork", "Race prep"})
+        self.assertEqual(Tag.objects.get(athlete=self.athlete, name="Speedwork").origin, "auto")
+
+    def test_reuses_an_existing_tag_with_the_same_name_instead_of_duplicating(self):
+        self.athlete.copy_matched_workout_tags = True
+        self.athlete.save(update_fields=["copy_matched_workout_tags"])
+        existing = Tag.objects.create(athlete=self.athlete, name="Speedwork", origin="manual")
+        workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run", tags=["Speedwork"])
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 19))
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Morning run",
+            start_date=datetime(2026, 6, 19, 6, 30, tzinfo=UTC),
+        )
+
+        attempt_workout_match(activity, self.athlete)
+
+        self.assertEqual(Tag.objects.filter(athlete=self.athlete, name="Speedwork").count(), 1)
+        self.assertTrue(ActivityTag.objects.filter(activity=activity, tag=existing).exists())
+        existing.refresh_from_db()
+        self.assertEqual(existing.origin, "manual")
+
+    def test_handles_workout_with_no_tags_gracefully(self):
+        self.athlete.copy_matched_workout_tags = True
+        self.athlete.save(update_fields=["copy_matched_workout_tags"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run")
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 20))
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Morning run",
+            start_date=datetime(2026, 6, 20, 6, 30, tzinfo=UTC),
+        )
+
+        attempt_workout_match(activity, self.athlete)
+
+        tag_names = set(ActivityTag.objects.filter(activity=activity).values_list("tag__name", flat=True))
+        self.assertEqual(tag_names, {"Auto-matched"})
