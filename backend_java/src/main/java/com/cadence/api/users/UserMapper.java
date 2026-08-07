@@ -8,5 +8,6 @@ import org.mapstruct.Mapping;
 public interface UserMapper {
 
 	@Mapping(target = "isCoach", source = "coach")
+	@Mapping(target = "isAdmin", source = "admin")
 	UserResponse toResponse(User user);
 }

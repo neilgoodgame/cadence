@@ -13,5 +13,6 @@ public record UserResponse(
 		Integer maxHr,
 		Integer restingHr,
 		int bestEffortTopN,
-		boolean isCoach) {
+		boolean isCoach,
+		boolean isAdmin) {
 }
