@@ -1,11 +1,16 @@
 from rest_framework import serializers
 
 
+class ShoeVersionUsageSerializer(serializers.Serializer):
+    version = serializers.CharField()
+    usage_count = serializers.IntegerField()
+
+
 class AdminShoeCatalogEntrySerializer(serializers.Serializer):
     id = serializers.CharField()
     manufacturer = serializers.CharField()
     model = serializers.CharField()
-    versions = serializers.ListField(child=serializers.CharField())
+    versions = ShoeVersionUsageSerializer(many=True)
     added_by = serializers.CharField(allow_null=True)
 
 

@@ -12,6 +12,10 @@ from .helpers import _bearer_client
 _MANUFACTURER = "Testrunner Co"
 
 
+def _version_strings(entry: dict) -> list[str]:
+    return [v["version"] for v in entry["versions"]]
+
+
 class AdminShoeCatalogTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_user(email="admin@example.cc", password="x", name="Admin", is_admin=True)
@@ -27,7 +31,7 @@ class AdminShoeCatalogTests(TestCase):
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body["manufacturer"], _MANUFACTURER)
-        self.assertEqual(body["versions"], ["4"])
+        self.assertEqual(body["versions"], [{"version": "4", "usage_count": 0}])
 
         self.assertEqual(ShoeModel.objects.count(), before + 1)
         self.assertEqual(CatalogAuditLogEntry.objects.count(), 1)
@@ -46,7 +50,7 @@ class AdminShoeCatalogTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(sorted(response.json()["versions"]), ["2", "3"])
+        self.assertEqual(sorted(_version_strings(response.json())), ["2", "3"])
         self.assertEqual(ShoeModel.objects.count(), before)
 
     def test_post_matches_existing_model_case_insensitively(self):
@@ -82,7 +86,7 @@ class AdminShoeCatalogTests(TestCase):
             f"/v1/admin/shoe-catalog/{shoe_model.id}/versions", {"version": "3"}, format="json"
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(sorted(response.json()["versions"]), ["2", "3"])
+        self.assertEqual(sorted(_version_strings(response.json())), ["2", "3"])
         self.assertEqual(CatalogAuditLogEntry.objects.count(), 1)
 
     def test_add_version_endpoint_rejects_duplicate(self):
@@ -119,6 +123,21 @@ class AdminShoeCatalogTests(TestCase):
         self.assertTrue(ShoeModel.objects.filter(pk=shoe_model.id).exists())
         self.assertTrue(ShoeModelVersion.objects.filter(pk=version.id).exists())
         self.assertEqual(CatalogAuditLogEntry.objects.count(), 0)
+
+    def test_versions_report_usage_count_including_retired_shoes(self):
+        athlete = User.objects.create_user(email="usage-athlete@example.cc", password="x", name="Usage Athlete")
+        shoe_model = ShoeModel.objects.create(manufacturer=_MANUFACTURER, model="Usester", created_by=self.admin)
+        used_version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="1")
+        ShoeModelVersion.objects.create(shoe_model=shoe_model, version="2")
+        Shoe.objects.create(athlete=athlete, shoe_model_version=used_version, name="Daily trainer")
+        Shoe.objects.create(athlete=athlete, shoe_model_version=used_version, name="Retired one", retired=True)
+
+        response = self.client_.get(f"/v1/admin/shoe-catalog?q={_MANUFACTURER.lower()}")
+        entry = next(e for e in response.json()["data"] if e["model"] == "Usester")
+        by_version = {v["version"]: v["usage_count"] for v in entry["versions"]}
+
+        self.assertEqual(by_version["1"], 2)
+        self.assertEqual(by_version["2"], 0)
 
     def test_search_filters_case_insensitively(self):
         ShoeModel.objects.create(manufacturer=_MANUFACTURER, model="Speedster", created_by=self.admin)
