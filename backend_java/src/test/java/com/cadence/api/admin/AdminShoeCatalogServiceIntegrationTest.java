@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.admin.dto.AdminShoeCatalogEntryResponse;
+import com.cadence.api.admin.dto.ShoeCatalogVersionUsage;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.gear.Shoe;
 import com.cadence.api.gear.ShoeModel;
@@ -14,6 +15,9 @@ import com.cadence.api.gear.ShoeRepository;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -50,6 +54,10 @@ class AdminShoeCatalogServiceIntegrationTest extends IntegrationTest {
 		return userRepository.save(user);
 	}
 
+	private static List<String> versionStrings(AdminShoeCatalogEntryResponse response) {
+		return response.versions().stream().map(ShoeCatalogVersionUsage::version).toList();
+	}
+
 	@Test
 	void createOrAppendWithNewManufacturerAndModelCreatesEntryAndAuditRow() {
 		User admin = newAdmin("shoe-new@example.cc");
@@ -58,7 +66,8 @@ class AdminShoeCatalogServiceIntegrationTest extends IntegrationTest {
 		AdminShoeCatalogEntryResponse response = service.createOrAppend(admin.getId(), MANUFACTURER, "Speedster", "4");
 
 		assertThat(response.manufacturer()).isEqualTo(MANUFACTURER);
-		assertThat(response.versions()).containsExactly("4");
+		assertThat(versionStrings(response)).containsExactly("4");
+		assertThat(response.versions().get(0).usageCount()).isZero();
 		assertThat(auditLogService.list()).hasSize((int) auditBefore + 1);
 		assertThat(auditLogService.list().get(0).action()).isEqualTo(CatalogAuditAction.ADDED);
 	}
@@ -78,7 +87,7 @@ class AdminShoeCatalogServiceIntegrationTest extends IntegrationTest {
 
 		AdminShoeCatalogEntryResponse response = service.createOrAppend(admin.getId(), MANUFACTURER, "Speedster2", "3");
 
-		assertThat(response.versions()).containsExactlyInAnyOrder("2", "3");
+		assertThat(versionStrings(response)).containsExactlyInAnyOrder("2", "3");
 	}
 
 	@Test
@@ -97,7 +106,7 @@ class AdminShoeCatalogServiceIntegrationTest extends IntegrationTest {
 		AdminShoeCatalogEntryResponse response =
 				service.createOrAppend(admin.getId(), MANUFACTURER.toLowerCase(), "speedster3", "3");
 
-		assertThat(response.versions()).containsExactlyInAnyOrder("2", "3");
+		assertThat(versionStrings(response)).containsExactlyInAnyOrder("2", "3");
 	}
 
 	@Test
@@ -167,6 +176,48 @@ class AdminShoeCatalogServiceIntegrationTest extends IntegrationTest {
 		assertThat(shoeModelRepository.findById(shoeModelId)).isPresent();
 		assertThat(shoeModelVersionRepository.findByShoeModelId(shoeModelId)).hasSize(1);
 		assertThat(auditLogService.list()).hasSize((int) auditBefore);
+	}
+
+	@Test
+	void versionsReportUsageCountIncludingRetiredShoes() {
+		User admin = newAdmin("shoe-usage-admin@example.cc");
+		User athlete = newAdmin("shoe-usage-athlete@example.cc");
+		ShoeModel shoeModel = new ShoeModel();
+		shoeModel.setManufacturer(MANUFACTURER);
+		shoeModel.setModel("Usester");
+		shoeModel.setCreatedBy(admin);
+		shoeModelRepository.save(shoeModel);
+		ShoeModelVersion usedVersion = new ShoeModelVersion();
+		usedVersion.setShoeModel(shoeModel);
+		usedVersion.setVersion("1");
+		shoeModelVersionRepository.save(usedVersion);
+		ShoeModelVersion unusedVersion = new ShoeModelVersion();
+		unusedVersion.setShoeModel(shoeModel);
+		unusedVersion.setVersion("2");
+		shoeModelVersionRepository.save(unusedVersion);
+
+		Shoe active = new Shoe();
+		active.setAthlete(athlete);
+		active.setShoeModelVersion(usedVersion);
+		active.setName("Daily trainer");
+		shoeRepository.save(active);
+
+		Shoe retired = new Shoe();
+		retired.setAthlete(athlete);
+		retired.setShoeModelVersion(usedVersion);
+		retired.setName("Retired one");
+		retired.setRetired(true);
+		shoeRepository.save(retired);
+
+		AdminShoeCatalogEntryResponse response = service.list(MANUFACTURER.toLowerCase()).stream()
+				.filter(e -> e.model().equals("Usester"))
+				.findFirst()
+				.orElseThrow();
+		Map<String, Long> byVersion = response.versions().stream()
+				.collect(Collectors.toMap(ShoeCatalogVersionUsage::version, ShoeCatalogVersionUsage::usageCount));
+
+		assertThat(byVersion.get("1")).isEqualTo(2L);
+		assertThat(byVersion.get("2")).isZero();
 	}
 
 	@Test

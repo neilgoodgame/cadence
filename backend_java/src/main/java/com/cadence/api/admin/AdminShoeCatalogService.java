@@ -1,12 +1,14 @@
 package com.cadence.api.admin;
 
 import com.cadence.api.admin.dto.AdminShoeCatalogEntryResponse;
+import com.cadence.api.admin.dto.ShoeCatalogVersionUsage;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.gear.ShoeModel;
 import com.cadence.api.gear.ShoeModelRepository;
 import com.cadence.api.gear.ShoeModelVersion;
 import com.cadence.api.gear.ShoeModelVersionRepository;
+import com.cadence.api.gear.ShoeModelVersionRepository.ShoeVersionUsage;
 import com.cadence.api.gear.ShoeRepository;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -14,6 +16,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -111,23 +114,30 @@ public class AdminShoeCatalogService {
 	}
 
 	private AdminShoeCatalogEntryResponse toEntryResponse(ShoeModel shoeModel) {
-		List<String> versions = shoeModelVersionRepository.findByShoeModelId(shoeModel.getId()).stream()
-				.map(ShoeModelVersion::getVersion)
-				.sorted(Comparator.naturalOrder())
+		List<ShoeModelVersion> versions = shoeModelVersionRepository.findByShoeModelId(shoeModel.getId()).stream()
+				.sorted(Comparator.comparing(ShoeModelVersion::getVersion))
 				.toList();
-		return toEntryResponse(shoeModel, versions);
+		return buildResponse(shoeModel, versions);
 	}
 
 	private AdminShoeCatalogEntryResponse toEntryResponse(List<ShoeModelVersion> versionsForModel) {
 		ShoeModel shoeModel = versionsForModel.get(0).getShoeModel();
-		List<String> versions = versionsForModel.stream().map(ShoeModelVersion::getVersion).toList();
-		return toEntryResponse(shoeModel, versions);
+		return buildResponse(shoeModel, versionsForModel);
 	}
 
-	private AdminShoeCatalogEntryResponse toEntryResponse(ShoeModel shoeModel, List<String> versions) {
+	// usageCount counts every Shoe referencing that version regardless of its retired flag,
+	// matching the delete-block check above exactly - it should read as "why can't I delete
+	// this", not "how many *active* shoes use it".
+	private AdminShoeCatalogEntryResponse buildResponse(ShoeModel shoeModel, List<ShoeModelVersion> versions) {
+		Map<String, Long> usageByVersionId = shoeModelVersionRepository.countUsageByShoeModelId(shoeModel.getId())
+				.stream()
+				.collect(Collectors.toMap(ShoeVersionUsage::getShoeModelVersionId, ShoeVersionUsage::getUsageCount));
+		List<ShoeCatalogVersionUsage> versionUsages = versions.stream()
+				.map(v -> new ShoeCatalogVersionUsage(v.getVersion(), usageByVersionId.getOrDefault(v.getId(), 0L)))
+				.toList();
 		String addedBy = shoeModel.getCreatedBy() != null ? shoeModel.getCreatedBy().getName() : null;
 		return new AdminShoeCatalogEntryResponse(
-				shoeModel.getId(), shoeModel.getManufacturer(), shoeModel.getModel(), versions, addedBy);
+				shoeModel.getId(), shoeModel.getManufacturer(), shoeModel.getModel(), versionUsages, addedBy);
 	}
 
 	private String displayName(String manufacturer, String model, String version) {
