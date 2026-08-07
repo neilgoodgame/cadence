@@ -31,4 +31,18 @@ public interface ShoeModelVersionRepository extends JpaRepository<ShoeModelVersi
 	// RESTRICT, not CASCADE - see V6__gear_catalog.sql), so the service must remove these
 	// explicitly before the ShoeModel row itself.
 	List<ShoeModelVersion> findByShoeModelId(String shoeModelId);
+
+	// Admin shoe-catalog view: how many Shoe rows reference each of a model's versions.
+	// LEFT JOIN starting from ShoeModelVersion (not Shoe) so a version with zero shoes still
+	// appears in the result with usageCount 0, rather than being silently absent.
+	@Query("select smv.id as shoeModelVersionId, count(s) as usageCount from ShoeModelVersion smv "
+			+ "left join Shoe s on s.shoeModelVersion = smv "
+			+ "where smv.shoeModel.id = :shoeModelId group by smv.id")
+	List<ShoeVersionUsage> countUsageByShoeModelId(@Param("shoeModelId") String shoeModelId);
+
+	interface ShoeVersionUsage {
+		String getShoeModelVersionId();
+
+		long getUsageCount();
+	}
 }
