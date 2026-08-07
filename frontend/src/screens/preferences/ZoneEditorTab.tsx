@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listZones, replaceZoneSet } from "../../api/athletes";
 import type { Zone, ZoneSet, ZoneType } from "../../api/types";
+import { zoneRange } from "../../lib/zones";
 import { HrZoneGenerator } from "./HrZoneGenerator";
 
 const UNIT_BY_TYPE: Record<ZoneType, string> = {
@@ -71,10 +72,10 @@ function ZoneEditorForm({ athleteId, type, zoneSet }: { athleteId: string; type:
               </td>
               <td className="mono" style={{ padding: "8px 0", color: "var(--ink2)" }}>
                 {zoneSet.reference != null ? (
-                  <>
-                    {Math.round((zone.low_pct / 100) * zoneSet.reference)}–
-                    {Math.round((zone.high_pct / 100) * zoneSet.reference)} {unit}
-                  </>
+                  (() => {
+                    const range = zoneRange(zone, zoneSet.reference, type);
+                    return `${range.low}${range.high != null ? `–${range.high}` : "+"} ${unit}`;
+                  })()
                 ) : (
                   "—"
                 )}
