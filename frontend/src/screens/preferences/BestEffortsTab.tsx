@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateAthlete, recomputeBestEffortsStream, trimBestEfforts } from "../../api/athletes";
+import { updateAthlete, recomputeBestEffortsStream, recomputeStatsStream, trimBestEfforts } from "../../api/athletes";
 import { useAuth } from "../../auth/AuthContext";
 import type { BestEffortKind } from "../../api/types";
 
@@ -65,6 +65,12 @@ export function BestEffortsTab() {
   const [allActivities, setAllActivities] = useState(savedTopN === 0);
   const [topN, setTopN] = useState(savedTopN === 0 ? 10 : savedTopN);
   const [recompute, setRecompute] = useState<RecomputeState>(IDLE);
+  const [statsRecompute, setStatsRecompute] = useState<{
+    running: boolean;
+    current: number;
+    total: number;
+    updated: number | null;
+  }>({ running: false, current: 0, total: 0, updated: null });
   const effectiveTopN = allActivities ? 0 : topN;
 
   const isDecreasing = savedTopN === 0
@@ -103,6 +109,18 @@ export function BestEffortsTab() {
       setRecompute(s => ({ ...s, running: false, error: true }));
     }
   }, [user, effectiveTopN, setUser, qc]);
+
+  const startStatsRecompute = useCallback(async () => {
+    setStatsRecompute({ running: true, current: 0, total: 0, updated: null });
+    for await (const event of recomputeStatsStream(user!.id)) {
+      if (event.type === "progress") {
+        setStatsRecompute(s => ({ ...s, current: event.current, total: event.total }));
+      } else {
+        setStatsRecompute({ running: false, current: event.updated, total: event.updated, updated: event.updated });
+        qc.invalidateQueries({ queryKey: ["activities"] });
+      }
+    }
+  }, [user, qc]);
 
   if (!user) return null;
 
@@ -198,6 +216,33 @@ export function BestEffortsTab() {
         )}
         {recompute.error && (
           <p style={{ fontSize: 13, color: "var(--danger,#e04040)", margin: 0 }}>Recompute failed. Try again.</p>
+        )}
+      </section>
+
+      <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Recompute derived stats</h2>
+        <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0, lineHeight: 1.6 }}>
+          Backfills max power, cadence, elevation, calories, and TRIMP for every activity from its stored
+          records. Use this after an upstream calculation fix, or for activities that never had these
+          stats computed in the first place (e.g. imported activities).
+        </p>
+
+        <button
+          onClick={() => startStatsRecompute()}
+          disabled={statsRecompute.running}
+          style={{ ...btnStyle, alignSelf: "flex-start", opacity: statsRecompute.running ? 0.6 : 1 }}
+        >
+          {statsRecompute.running ? "Working…" : "Recompute all"}
+        </button>
+
+        {statsRecompute.running && statsRecompute.total > 0 && (
+          <ProgressBar current={statsRecompute.current} total={statsRecompute.total} />
+        )}
+        {statsRecompute.running && statsRecompute.total === 0 && (
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>
+        )}
+        {statsRecompute.updated != null && !statsRecompute.running && (
+          <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0 }}>Updated {statsRecompute.updated} activities</p>
         )}
       </section>
     </div>
