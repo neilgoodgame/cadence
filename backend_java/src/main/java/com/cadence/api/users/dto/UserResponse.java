@@ -16,5 +16,6 @@ public record UserResponse(
 		boolean isCoach,
 		boolean isAdmin,
 		boolean renameMatchedActivities,
-		boolean appendMatchDateToName) {
+		boolean appendMatchDateToName,
+		boolean copyMatchedWorkoutTags) {
 }

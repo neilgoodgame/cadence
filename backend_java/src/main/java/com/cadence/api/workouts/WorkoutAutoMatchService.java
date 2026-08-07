@@ -87,6 +87,27 @@ public class WorkoutAutoMatchService {
 			link.setTag(tag);
 			activityTagRepository.save(link);
 		}
+		if (athlete.isCopyMatchedWorkoutTags()) {
+			for (String workoutTagName : workout.getTags()) {
+				if (workoutTagName.isBlank()) {
+					continue;
+				}
+				Tag workoutTag = tagRepository.findByAthleteIdAndNameIgnoreCase(athlete.getId(), workoutTagName)
+						.orElseGet(() -> {
+							Tag created = new Tag();
+							created.setAthlete(athlete);
+							created.setName(workoutTagName);
+							created.setOrigin(TagOrigin.AUTO);
+							return tagRepository.save(created);
+						});
+				if (!activityTagRepository.existsByActivityIdAndTagId(activity.getId(), workoutTag.getId())) {
+					ActivityTag link = new ActivityTag();
+					link.setActivity(activity);
+					link.setTag(workoutTag);
+					activityTagRepository.save(link);
+				}
+			}
+		}
 		eventPublisher.publishEvent(new ScheduledWorkoutMatchedEvent(candidate.getId(), athlete.getId()));
 	}
 

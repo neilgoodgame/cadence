@@ -34,7 +34,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("no-zoneset@example.cc");
 
 		var recomputed = athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null));
 
 		assertThat(recomputed).isEmpty();
 	}
@@ -49,7 +49,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		zoneSetRepository.save(zoneSet);
 
 		var recomputed = athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null));
 
 		assertThat(recomputed).containsExactly(ZoneType.BIKE_POWER);
 	}
@@ -59,7 +59,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("weight@example.cc");
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, 71.5, null, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, 71.5, null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(athlete.getWeightKg()).isEqualTo(71.5);
 	}
@@ -69,7 +69,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("match-prefs@example.cc");
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, null, null, null, null, null, null, null, true, true));
+				new AthleteUpdateRequest(null, null, null, null, null, null, null, null, null, null, true, true, null));
 
 		assertThat(athlete.isRenameMatchedActivities()).isTrue();
 		assertThat(athlete.isAppendMatchDateToName()).isTrue();
@@ -82,9 +82,19 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		userRepository.save(athlete);
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, 71.5, null, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, 71.5, null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(athlete.isRenameMatchedActivities()).isTrue();
 		assertThat(athlete.isAppendMatchDateToName()).isFalse();
+	}
+
+	@Test
+	void updatesCopyMatchedWorkoutTags() {
+		User athlete = newAthlete("copy-tags@example.cc");
+
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, null, null, null, null, null, null, null, null, null, null, true));
+
+		assertThat(athlete.isCopyMatchedWorkoutTags()).isTrue();
 	}
 }

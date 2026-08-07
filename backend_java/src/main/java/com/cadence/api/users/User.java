@@ -71,6 +71,11 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "append_match_date_to_name", nullable = false)
 	private boolean appendMatchDateToName = false;
 
+	/** Independent of the naming preferences above - copies the matched Workout's tags
+	 * (Workout.tags, a plain list of names) onto the activity. */
+	@Column(name = "copy_matched_workout_tags", nullable = false)
+	private boolean copyMatchedWorkoutTags = false;
+
 	@Column(name = "date_joined", nullable = false)
 	private Instant dateJoined;
 
@@ -228,6 +233,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setAppendMatchDateToName(boolean appendMatchDateToName) {
 		this.appendMatchDateToName = appendMatchDateToName;
+	}
+
+	public boolean isCopyMatchedWorkoutTags() {
+		return copyMatchedWorkoutTags;
+	}
+
+	public void setCopyMatchedWorkoutTags(boolean copyMatchedWorkoutTags) {
+		this.copyMatchedWorkoutTags = copyMatchedWorkoutTags;
 	}
 
 	public Instant getDateJoined() {
