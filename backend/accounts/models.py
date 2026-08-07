@@ -44,6 +44,9 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # feature to work at all (zones, TSS); this one isn't, so it stays null until set.
     resting_hr = models.PositiveIntegerField(null=True, blank=True)
     is_coach = models.BooleanField(default=False)
+    # App-level admin flag (the in-app Admin screen) - distinct from is_staff/is_superuser,
+    # which gate Django's own built-in /admin/ site and are unrelated to this feature.
+    is_admin = models.BooleanField(default=False)
     best_effort_top_n = models.PositiveSmallIntegerField(default=10)
 
     is_active = models.BooleanField(default=True)
