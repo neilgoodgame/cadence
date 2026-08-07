@@ -1,0 +1,2 @@
+ALTER TABLE users ADD COLUMN rename_matched_activities BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN append_match_date_to_name BOOLEAN NOT NULL DEFAULT FALSE;

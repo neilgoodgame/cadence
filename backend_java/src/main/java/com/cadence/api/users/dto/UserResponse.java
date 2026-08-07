@@ -14,5 +14,7 @@ public record UserResponse(
 		Integer restingHr,
 		int bestEffortTopN,
 		boolean isCoach,
-		boolean isAdmin) {
+		boolean isAdmin,
+		boolean renameMatchedActivities,
+		boolean appendMatchDateToName) {
 }
