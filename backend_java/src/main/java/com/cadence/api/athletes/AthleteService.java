@@ -71,6 +71,9 @@ public class AthleteService {
 		if (request.appendMatchDateToName() != null) {
 			athlete.setAppendMatchDateToName(request.appendMatchDateToName());
 		}
+		if (request.copyMatchedWorkoutTags() != null) {
+			athlete.setCopyMatchedWorkoutTags(request.copyMatchedWorkoutTags());
+		}
 		userRepository.save(athlete);
 		return zoneService.recomputedZoneTypes(athlete, changed);
 	}

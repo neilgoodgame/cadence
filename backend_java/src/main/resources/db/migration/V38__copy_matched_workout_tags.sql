@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN copy_matched_workout_tags BOOLEAN NOT NULL DEFAULT FALSE;

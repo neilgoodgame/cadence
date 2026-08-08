@@ -12,5 +12,6 @@ public record AthleteUpdateRequest(
 		Integer restingHr,
 		Integer bestEffortTopN,
 		Boolean renameMatchedActivities,
-		Boolean appendMatchDateToName) {
+		Boolean appendMatchDateToName,
+		Boolean copyMatchedWorkoutTags) {
 }
