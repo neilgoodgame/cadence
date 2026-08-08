@@ -265,6 +265,10 @@ class WorkoutMatchListView(APIView):
                     "method": activity_method,
                     "confidence": _closeness(activity.moving_time, workout.duration) if is_auto else None,
                     "compliance": _closeness(activity.tss, workout.tss),
+                    "tss": activity.tss,
+                    "moving_time": activity.moving_time,
+                    "distance_km": activity.distance_km,
+                    "avg_power": activity.avg_power,
                 }
             )
         return Response({"data": WorkoutMatchSerializer(matches, many=True).data})

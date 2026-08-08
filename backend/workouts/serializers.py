@@ -190,3 +190,7 @@ class WorkoutMatchSerializer(serializers.Serializer):
     method = serializers.ChoiceField(choices=["auto", "manual"])
     confidence = serializers.FloatField(allow_null=True)
     compliance = serializers.FloatField(allow_null=True)
+    tss = serializers.IntegerField()
+    moving_time = serializers.IntegerField()
+    distance_km = serializers.FloatField()
+    avg_power = serializers.IntegerField(allow_null=True)

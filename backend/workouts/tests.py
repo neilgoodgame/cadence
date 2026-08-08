@@ -673,6 +673,8 @@ class WorkoutMatchListViewTests(TestCase):
             name="Auto Match",
             start_date=timezone.now(),
             moving_time=1200,
+            distance_km=35.0,
+            avg_power=231,
             tss=33,
             workout=self.workout,
         )
@@ -707,6 +709,10 @@ class WorkoutMatchListViewTests(TestCase):
         self.assertEqual(data[0]["method"], "auto")
         self.assertEqual(data[0]["confidence"], 1.0)
         self.assertEqual(data[0]["compliance"], 1.0)
+        self.assertEqual(data[0]["tss"], 33)
+        self.assertEqual(data[0]["moving_time"], 1200)
+        self.assertEqual(data[0]["distance_km"], 35.0)
+        self.assertEqual(data[0]["avg_power"], 231)
 
     def test_manual_match_has_no_confidence(self):
         response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches?method=manual")
@@ -716,6 +722,7 @@ class WorkoutMatchListViewTests(TestCase):
         self.assertEqual(data[0]["method"], "manual")
         self.assertIsNone(data[0]["confidence"])
         self.assertEqual(data[0]["compliance"], 0.61)
+        self.assertIsNone(data[0]["avg_power"])
 
     def test_invalid_method_returns_400(self):
         response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches?method=bogus")
