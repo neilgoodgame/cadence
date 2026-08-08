@@ -20,6 +20,18 @@ export function formatDate(isoDate: string): string {
   return new Date(isoDate).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 }
 
+/** Compact "duration · distance · power|pace" summary for a linked-activity row, e.g.
+ * "1:15:20 · 35.0 km · 231 W" (power) or "1:05:02 · 13.0 km · 4:02 /km" (pace, when no power). */
+export function formatKeyMetric(activity: { moving_time: number; distance_km: number; avg_power: number | null }): string {
+  const parts = [formatDuration(activity.moving_time), `${activity.distance_km.toFixed(1)} km`];
+  if (activity.avg_power != null) {
+    parts.push(`${Math.round(activity.avg_power)} W`);
+  } else if (activity.distance_km > 0) {
+    parts.push(formatPace(activity.moving_time / activity.distance_km));
+  }
+  return parts.join(" · ");
+}
+
 export function formatDateTime(isoDateTime: string): string {
   return new Date(isoDateTime).toLocaleString(undefined, {
     weekday: "short",

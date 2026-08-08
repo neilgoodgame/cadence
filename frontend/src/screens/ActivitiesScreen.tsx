@@ -4,7 +4,7 @@ import { deleteTag, listActivities, listTags } from "../api/activities";
 import { listZones } from "../api/athletes";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../api/types";
-import type { Sport } from "../api/types";
+import type { Activity, Sport } from "../api/types";
 import { tagColor, tagRgba } from "../lib/tagColors";
 import { ActivityCard } from "./activities/ActivityCard";
 
@@ -257,6 +257,25 @@ export function ActivitiesScreen() {
     return matchedOnly ? flat.filter((a) => a.workout_id != null) : flat;
   }, [activitiesQuery.data, matchedOnly]);
 
+  // Same-page convenience grouping (no extra call) - a workout matched many times across
+  // history will only show siblings present in the currently loaded/filtered result set.
+  const linkedByActivityId = useMemo(() => {
+    const byWorkout = new Map<string, Activity[]>();
+    for (const activity of allActivities) {
+      if (!activity.workout_id) continue;
+      const group = byWorkout.get(activity.workout_id);
+      if (group) group.push(activity);
+      else byWorkout.set(activity.workout_id, [activity]);
+    }
+    const result = new Map<string, Activity[]>();
+    for (const activity of allActivities) {
+      if (!activity.workout_id) continue;
+      const siblings = (byWorkout.get(activity.workout_id) ?? []).filter((a) => a.id !== activity.id);
+      if (siblings.length > 0) result.set(activity.id, siblings);
+    }
+    return result;
+  }, [allActivities]);
+
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -437,7 +456,12 @@ export function ActivitiesScreen() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {allActivities.map((activity) => (
-          <ActivityCard key={activity.id} activity={activity} hrZones={hrZones} />
+          <ActivityCard
+            key={activity.id}
+            activity={activity}
+            hrZones={hrZones}
+            linked={linkedByActivityId.get(activity.id) ?? []}
+          />
         ))}
         {allActivities.length === 0 && !activitiesQuery.isLoading && (
           <div style={{ color: "var(--ink3)", fontSize: 13 }}>No activities match.</div>

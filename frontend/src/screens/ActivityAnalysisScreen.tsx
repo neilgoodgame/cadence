@@ -9,6 +9,7 @@ import { DuplicateBanner, DuplicatesCard } from "./activity-analysis/DuplicatesC
 import { Header } from "./activity-analysis/Header";
 import { HydrationBlock } from "./activity-analysis/HydrationBlock";
 import { LapsTab } from "./activity-analysis/LapsTab";
+import { MatchedWorkoutCard } from "./activity-analysis/MatchedWorkoutCard";
 import { MultisportLegs } from "./activity-analysis/MultisportLegs";
 import { MultisportStreamChart } from "./activity-analysis/MultisportStreamChart";
 import { RouteMap } from "./activity-analysis/RouteMap";
@@ -54,6 +55,7 @@ export function ActivityAnalysisScreen() {
 
       <Header activity={activity} />
       <StatRow activity={activity} />
+      {activity.workout_id && <MatchedWorkoutCard activity={activity} />}
 
       {activity.sport === "multisport" && <MultisportLegs activity={activity} />}
 

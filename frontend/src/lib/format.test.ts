@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatPace } from "./format";
+import { formatDuration, formatKeyMetric, formatPace } from "./format";
 
 describe("formatDuration", () => {
   it("formats under an hour as M:SS", () => {
@@ -22,5 +22,19 @@ describe("formatPace", () => {
 
   it("pads single-digit seconds", () => {
     expect(formatPace(245)).toBe("4:05 /km");
+  });
+});
+
+describe("formatKeyMetric", () => {
+  it("uses power when available", () => {
+    expect(formatKeyMetric({ moving_time: 4520, distance_km: 35.0, avg_power: 231 })).toBe("1:15:20 · 35.0 km · 231 W");
+  });
+
+  it("falls back to pace when there's no power", () => {
+    expect(formatKeyMetric({ moving_time: 3902, distance_km: 13.0, avg_power: null })).toBe("1:05:02 · 13.0 km · 5:00 /km");
+  });
+
+  it("omits the third segment when distance is zero and there's no power", () => {
+    expect(formatKeyMetric({ moving_time: 1800, distance_km: 0, avg_power: null })).toBe("30:00 · 0.0 km");
   });
 });
