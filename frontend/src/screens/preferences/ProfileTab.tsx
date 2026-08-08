@@ -98,6 +98,7 @@ export function ProfileTab() {
     resting_hr: user?.resting_hr ?? undefined,
     rename_matched_activities: user?.rename_matched_activities ?? false,
     append_match_date_to_name: user?.append_match_date_to_name ?? false,
+    copy_matched_workout_tags: user?.copy_matched_workout_tags ?? false,
   });
 
   const mutation = useMutation({
@@ -245,6 +246,20 @@ export function ProfileTab() {
               Also append the date
               <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>
                 e.g. "Tempo run - 2026-06-15" instead of just "Tempo run".
+              </div>
+            </span>
+          </label>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 13, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={form.copy_matched_workout_tags ?? false}
+              onChange={(e) => setForm({ ...form, copy_matched_workout_tags: e.target.checked })}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              Copy the workout's tags to auto-matched activities
+              <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>
+                When an upload matches a scheduled workout, also apply the workout's tags to the activity.
               </div>
             </span>
           </label>

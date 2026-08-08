@@ -20,6 +20,9 @@ export interface Athlete {
   /** Also appends " - YYYY-MM-DD" to the matched name. Only has an effect when
    * rename_matched_activities is also true. */
   append_match_date_to_name: boolean;
+  /** When an upload auto-matches a scheduled workout, also copies the workout's tags onto the
+   * activity. Independent of the naming preferences above. */
+  copy_matched_workout_tags: boolean;
 }
 
 export interface TokenResponse {
@@ -186,6 +189,7 @@ export interface AthleteUpdate {
   best_effort_top_n?: number;
   rename_matched_activities?: boolean;
   append_match_date_to_name?: boolean;
+  copy_matched_workout_tags?: boolean;
 }
 
 export interface ActivityComment {
