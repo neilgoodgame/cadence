@@ -1,15 +1,25 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "../../components/Card";
+import { LinkedActivitiesList, LinkedCountBadge } from "../../components/LinkedActivityRow";
 import type { Activity, ZoneSet } from "../../api/types";
-import { formatDate, formatDuration } from "../../lib/format";
+import { formatDate, formatDuration, formatKeyMetric } from "../../lib/format";
 import { sportColor, sportLabel } from "../../lib/sportColors";
 import { tagColor, tagRgba } from "../../lib/tagColors";
 import { ZoneBar } from "./ZoneBar";
 
-export function ActivityCard({ activity, hrZones }: { activity: Activity; hrZones: ZoneSet | undefined }) {
+export function ActivityCard({
+  activity,
+  hrZones,
+  linked = [],
+}: {
+  activity: Activity;
+  hrZones: ZoneSet | undefined;
+  linked?: Activity[];
+}) {
   const [expanded, setExpanded] = useState(false);
   const navigate = useNavigate();
+  const linkedRows = linked.map((a) => ({ id: a.id, date: formatDate(a.start_date), name: a.name, metric: formatKeyMetric(a), tss: a.tss }));
 
   const summary = [
     `${formatDuration(activity.moving_time)}`,
@@ -83,18 +93,32 @@ export function ActivityCard({ activity, hrZones }: { activity: Activity; hrZone
           <div className="mono" style={{ fontSize: 13, color: "var(--ember)" }}>
             TSS {activity.tss}
           </div>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, cursor: "pointer", padding: 0 }}
-          >
-            {expanded ? "Hide zones" : "Show zones"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {linkedRows.length > 0 && <LinkedCountBadge count={linkedRows.length} />}
+            <button
+              onClick={() => setExpanded(!expanded)}
+              style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, cursor: "pointer", padding: 0 }}
+            >
+              {expanded ? "Hide zones" : "Show zones"}
+            </button>
+          </div>
         </div>
       </div>
 
       {expanded && (
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
           <ZoneBar activityId={activity.id} hrZones={hrZones} />
+          {linkedRows.length > 0 && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+              <div
+                className="mono"
+                style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--ink3)", marginBottom: 10 }}
+              >
+                OTHER ACTIVITIES MATCHED TO THIS WORKOUT
+              </div>
+              <LinkedActivitiesList activities={linkedRows} />
+            </div>
+          )}
         </div>
       )}
     </Card>

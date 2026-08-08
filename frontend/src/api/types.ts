@@ -490,6 +490,10 @@ export interface WorkoutMatch {
   method: WorkoutMatchMethod;
   confidence: number | null;
   compliance: number | null;
+  tss: number;
+  moving_time: number;
+  distance_km: number;
+  avg_power: number | null;
 }
 
 export type TimeOfDay = "AM" | "MID" | "PM";
