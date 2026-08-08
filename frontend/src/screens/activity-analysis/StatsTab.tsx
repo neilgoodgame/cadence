@@ -96,7 +96,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
     activity.avg_cadence != null ||
     activity.max_cadence != null;
   const hasElevationCard =
-    activity.total_descent != null || activity.elevation_min != null || activity.calories != null;
+    activity.ascent != null || activity.total_descent != null || activity.elevation_min != null || activity.calories != null;
 
   if (!hasPowerCard && !hasHrCard && !hasSpeedCadenceCard && !hasElevationCard) {
     return (
@@ -146,6 +146,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
         )}
         {hasElevationCard && (
           <Card title="ELEVATION · ENERGY" color="#2fa66a">
+            <Stat label="Total Ascent" value={activity.ascent} unit="m" />
             <Stat label="Total Descent" value={activity.total_descent} unit="m" />
             <Stat
               label="Elev Range"
