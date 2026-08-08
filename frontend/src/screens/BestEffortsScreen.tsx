@@ -839,7 +839,8 @@ function LongestRidesCard() {
             <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
               {i + 1}
             </span>
-            <span
+            <Link
+              to={`/activities/${a.id}`}
               style={{
                 fontSize: 13,
                 fontWeight: 600,
@@ -847,10 +848,13 @@ function LongestRidesCard() {
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
+                textDecoration: "none",
               }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "underline")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "none")}
             >
               {a.name}
-            </span>
+            </Link>
             <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
               {fmtShortDate(a.start_date)}
             </span>
@@ -920,7 +924,8 @@ function BiggestClimbsCard() {
             <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
               {i + 1}
             </span>
-            <span
+            <Link
+              to={`/activities/${a.id}`}
               style={{
                 fontSize: 13,
                 fontWeight: 600,
@@ -928,10 +933,13 @@ function BiggestClimbsCard() {
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
+                textDecoration: "none",
               }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "underline")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "none")}
             >
               {a.name}
-            </span>
+            </Link>
             <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
               {fmtShortDate(a.start_date)}
             </span>
