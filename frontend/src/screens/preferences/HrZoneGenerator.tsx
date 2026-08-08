@@ -143,6 +143,7 @@ export function HrZoneGenerator({ athleteId }: { athleteId: string }) {
               <tr style={{ textAlign: "left", color: "var(--ink3)", fontSize: 11 }}>
                 <th style={{ paddingBottom: 6 }}>Zone</th>
                 <th style={{ paddingBottom: 6 }}>Range</th>
+                <th style={{ paddingBottom: 6 }}>% Max HR</th>
                 <th style={{ paddingBottom: 6 }}>Description</th>
               </tr>
             </thead>
@@ -154,6 +155,11 @@ export function HrZoneGenerator({ athleteId }: { athleteId: string }) {
                   </td>
                   <td className="mono" style={{ padding: "7px 12px 7px 0", whiteSpace: "nowrap", color: "var(--ink2)" }}>
                     {band.minBpm}–{band.maxBpm} bpm
+                  </td>
+                  <td className="mono" style={{ padding: "7px 12px 7px 0", whiteSpace: "nowrap", color: "var(--ink2)" }}>
+                    {params.maxHr > 0
+                      ? `${Math.round((band.minBpm / params.maxHr) * 100)}–${Math.round((band.maxBpm / params.maxHr) * 100)}%`
+                      : "—"}
                   </td>
                   <td style={{ padding: "7px 0", color: "var(--ink3)", fontSize: 12 }}>{band.description}</td>
                 </tr>
