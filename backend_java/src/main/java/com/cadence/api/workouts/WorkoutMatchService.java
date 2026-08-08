@@ -44,7 +44,8 @@ public class WorkoutMatchService {
 		Double confidence = auto ? closeness(activity.getMovingTime(), workout.getDuration()) : null;
 		Double compliance = closeness(activity.getTss(), workout.getTss());
 		return new WorkoutMatchResponse(activity.getId(), activity.getName(),
-				activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), method, confidence, compliance);
+				activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), method, confidence, compliance,
+				activity.getTss(), activity.getMovingTime(), activity.getDistanceKm(), activity.getAvgPower());
 	}
 
 	private Double closeness(double actual, double planned) {
