@@ -807,14 +807,16 @@ function BikePowerCard({
 const RIDES_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.55fr";
 
 function LongestRidesCard() {
+  const { user } = useAuth();
+  const topN = user?.best_effort_top_n || 10;
   const { data } = useQuery({
-    queryKey: ["activities", "longest-rides"],
-    queryFn: () => listActivities({ sport: "bike", sort: "-distance", limit: 5 }),
+    queryKey: ["activities", "longest-rides", topN],
+    queryFn: () => listActivities({ sport: "bike", sort: "-distance", limit: topN }),
   });
   const rides = data?.data ?? [];
 
   return (
-    <CardShell title="LONGEST RIDES · TOP 5">
+    <CardShell title={`LONGEST RIDES · TOP ${topN}`}>
       <ColHeaders
         cols={["#", "Activity", "Date", "Duration", "Distance", "Elevation"]}
         gridCols={RIDES_GRID}
@@ -837,7 +839,8 @@ function LongestRidesCard() {
             <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
               {i + 1}
             </span>
-            <span
+            <Link
+              to={`/activities/${a.id}`}
               style={{
                 fontSize: 13,
                 fontWeight: 600,
@@ -845,10 +848,13 @@ function LongestRidesCard() {
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
+                textDecoration: "none",
               }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "underline")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "none")}
             >
               {a.name}
-            </span>
+            </Link>
             <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
               {fmtShortDate(a.start_date)}
             </span>
@@ -880,21 +886,25 @@ function LongestRidesCard() {
 const CLIMBS_GRID = "28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr";
 
 function BiggestClimbsCard() {
+  const { user } = useAuth();
+  const topN = user?.best_effort_top_n || 10;
   const { data } = useQuery({
-    queryKey: ["activities", "biggest-climbs"],
+    queryKey: ["activities", "biggest-climbs", topN],
     queryFn: () =>
-      listActivities({ sport: "bike", limit: 50 }).then((r) => ({
+      // No server-side sort-by-ascent field exists, so this pulls a generous pool (the API's
+      // own max page size) and sorts client-side.
+      listActivities({ sport: "bike", limit: 200 }).then((r) => ({
         ...r,
         data: [...r.data]
           .filter((a) => a.ascent != null)
           .sort((a, b) => (b.ascent ?? 0) - (a.ascent ?? 0))
-          .slice(0, 5),
+          .slice(0, topN),
       })),
   });
   const rides = data?.data ?? [];
 
   return (
-    <CardShell title="BIGGEST CLIMBS · ELEVATION GAIN · TOP 5">
+    <CardShell title={`BIGGEST CLIMBS · ELEVATION GAIN · TOP ${topN}`}>
       <ColHeaders cols={["#", "Activity", "Date", "Distance", "Elevation"]} gridCols={CLIMBS_GRID} />
       {rides.length === 0 ? (
         <EmptyRow msg="No climbing data yet." />
@@ -914,7 +924,8 @@ function BiggestClimbsCard() {
             <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
               {i + 1}
             </span>
-            <span
+            <Link
+              to={`/activities/${a.id}`}
               style={{
                 fontSize: 13,
                 fontWeight: 600,
@@ -922,10 +933,13 @@ function BiggestClimbsCard() {
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
+                textDecoration: "none",
               }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "underline")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "none")}
             >
               {a.name}
-            </span>
+            </Link>
             <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
               {fmtShortDate(a.start_date)}
             </span>
