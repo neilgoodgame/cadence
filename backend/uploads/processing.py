@@ -653,6 +653,14 @@ def attempt_workout_match(activity: Activity, athlete: User) -> None:
     activity.save(update_fields=update_fields)
     tag, _created = Tag.objects.get_or_create(athlete=athlete, name="Auto-matched", defaults={"origin": "auto"})
     ActivityTag.objects.get_or_create(activity=activity, tag=tag)
+    if athlete.copy_matched_workout_tags:
+        for workout_tag_name in candidate.workout.tags:
+            if not workout_tag_name.strip():
+                continue
+            workout_tag, _created = Tag.objects.get_or_create(
+                athlete=athlete, name=workout_tag_name, defaults={"origin": "auto"}
+            )
+            ActivityTag.objects.get_or_create(activity=activity, tag=workout_tag)
     fire_event("scheduled_workout.matched", athlete.id, ScheduledWorkoutSerializer(candidate).data)
 
 
