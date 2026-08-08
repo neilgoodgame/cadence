@@ -1,7 +1,7 @@
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { Activity } from "../../api/types";
-import { getStreams } from "../../api/activities";
+import { getActivity, getStreams } from "../../api/activities";
 import { listZones } from "../../api/athletes";
 import { bucketIntoZones } from "../../lib/zones";
 import { formatDuration, formatPace } from "../../lib/format";
@@ -119,12 +119,28 @@ export function WeekCalendar({ activities, athleteId }: { activities: Activity[]
   const totalTimeS = trainingActivities.reduce((s, a) => s + a.moving_time, 0);
   const weekTss = trainingActivities.reduce((s, a) => s + a.tss, 0);
 
-  const runs = trainingActivities.filter((a) => a.sport === "run");
+  // A multisport activity's own sport is "multisport" - its run/bike legs only show up as
+  // separate Activity rows via child_activity_ids, not in the general activities list. Without
+  // this, a triathlon's run/bike portions would silently vanish from the per-sport breakdowns
+  // below even though totalTimeS/weekTss (which use the parent's own aggregate fields) already
+  // account for the full session.
+  const multisportActivities = trainingActivities.filter((a) => a.sport === "multisport");
+  const legQueries = useQueries({
+    queries: multisportActivities.flatMap((a) =>
+      a.child_activity_ids.map((id) => ({
+        queryKey: ["activity", id],
+        queryFn: () => getActivity(id),
+      }))
+    ),
+  });
+  const multisportLegs = legQueries.map((q) => q.data).filter((a): a is Activity => a != null);
+
+  const runs = [...trainingActivities.filter((a) => a.sport === "run"), ...multisportLegs.filter((a) => a.sport === "run")];
   const runDistanceKm = runs.reduce((s, a) => s + a.distance_km, 0);
   const runTimeS = runs.reduce((s, a) => s + a.moving_time, 0);
   const avgPaceSecPerKm = runDistanceKm > 0 ? runTimeS / runDistanceKm : null;
 
-  const rides = trainingActivities.filter((a) => a.sport === "bike");
+  const rides = [...trainingActivities.filter((a) => a.sport === "bike"), ...multisportLegs.filter((a) => a.sport === "bike")];
   const bikeDistanceKm = rides.reduce((s, a) => s + a.distance_km, 0);
   const poweredRides = rides.filter((a) => a.avg_power != null);
   const avgBikePower =
