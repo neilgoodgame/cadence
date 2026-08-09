@@ -29,7 +29,7 @@ jobs:
         uses: actions/setup-java@v5.6.0
         with:
           distribution: temurin
-          java-version: "24"
+          java-version: "25"
           cache: gradle
 
       - name: Run unit tests
@@ -56,7 +56,7 @@ jobs:
         uses: actions/setup-java@v5.6.0
         with:
           distribution: temurin
-          java-version: "24"
+          java-version: "25"
           cache: gradle
 
       # Mirrors entrypoint.sh's one-time keypair generation -- IntegrationTest boots the

@@ -10,7 +10,7 @@ description = "Cadence training platform REST API (Java/Spring Boot implementati
 
 java {
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(24)
+		languageVersion = JavaLanguageVersion.of(25)
 	}
 }
 

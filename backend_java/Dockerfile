@@ -1,4 +1,4 @@
-FROM eclipse-temurin:24-jdk-noble AS build
+FROM eclipse-temurin:25-jdk-noble AS build
 WORKDIR /app
 COPY gradlew ./
 COPY gradle ./gradle
@@ -7,7 +7,7 @@ COPY build.gradle.kts settings.gradle.kts ./
 COPY src ./src
 RUN ./gradlew bootJar --no-daemon -x test
 
-FROM eclipse-temurin:24-jre-noble
+FROM eclipse-temurin:25-jre-noble
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
