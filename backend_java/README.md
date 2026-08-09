@@ -11,7 +11,7 @@ server is running.
 
 ## Architecture
 
-**Stack:** Java 24, Spring Boot 4.1 (Spring Framework 7, Jakarta EE 11), Spring Data JPA
+**Stack:** Java 25, Spring Boot 4.1 (Spring Framework 7, Jakarta EE 11), Spring Data JPA
 + Hibernate 7, Spring Security 7 (Authorization Server is bundled, not a separate
 dependency), Spring Batch 6, Gradle (Kotlin DSL) wrapper, Flyway, PostgreSQL +
 TimescaleDB, MapStruct, springdoc-openapi. No Lombok — entities are plain mutable
@@ -118,7 +118,7 @@ never races a not-yet-committed row. `WebhookDeliveryService` signs each payload
 ## Prerequisites
 
 - Docker + Docker Compose
-- Java 24 (only needed for native, non-Docker development — the Gradle wrapper will
+- Java 25 (only needed for native, non-Docker development — the Gradle wrapper will
   otherwise provision its own toolchain)
 
 ## Installation
