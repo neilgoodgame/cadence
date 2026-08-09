@@ -23,7 +23,7 @@ swaps noted inline.
 | [Git](https://git-scm.com/) | Cloning the repo | — |
 | [Docker + Docker Compose](https://docs.docker.com/get-docker/) | Running either backend | The only hard requirement — both backends run entirely in containers |
 | [Node.js 22](https://nodejs.org/) + npm | Running the frontend | Matches CI (`.github/workflows/frontend.yml`) |
-| Java 24 | *Optional* — native (non-Docker) Java backend dev | The Gradle wrapper provisions its own toolchain if you don't have this |
+| Java 25 | *Optional* — native (non-Docker) Java backend dev | The Gradle wrapper provisions its own toolchain if you don't have this |
 | Python 3.12 + [uv](https://docs.astral.sh/uv/) | *Optional* — native (non-Docker) Django backend dev | `uv` will fetch Python 3.12 for you if needed |
 
 ## 1. Clone the repo
