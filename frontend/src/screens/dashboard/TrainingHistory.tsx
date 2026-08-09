@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import { getActivity } from "../../api/activities";
 import { recomputeTss } from "../../api/athletes";
 import type { Activity } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
@@ -58,9 +59,9 @@ function buildWeekBlocks(today: Date): WeekBlock[] {
   });
 }
 
-function getMetricValue(activities: Activity[], metric: Metric): number {
+function getMetricValue(activities: Activity[], legs: Activity[], metric: Metric): number {
   const nonWalks = activities.filter((a) => a.sport !== "walk");
-  const runs = activities.filter((a) => a.sport === "run");
+  const runs = [...activities.filter((a) => a.sport === "run"), ...legs.filter((a) => a.sport === "run")];
   switch (metric) {
     case "run_distance": return runs.reduce((s, a) => s + a.distance_km, 0);
     case "run_time":     return runs.reduce((s, a) => s + a.moving_time, 0);
@@ -98,17 +99,38 @@ export function TrainingHistory({ activities, athleteId }: { activities: Activit
     [activities, weeks]
   );
 
-  const weeklyValues = useMemo(
-    () => weeklyActivities.map((acts) => getMetricValue(acts, metric)),
-    [weeklyActivities, metric]
+  // A multisport activity's own sport is "multisport" - its run/bike legs only show up as
+  // separate Activity rows via child_activity_ids, not in `activities`. Without this, a
+  // triathlon's run/bike portions would silently vanish from the run/bike-specific metrics
+  // below even though activity_time/TSS (based on the parent's own aggregate fields) already
+  // account for the full session.
+  const multisportActivities = useMemo(() => activities.filter((a) => a.sport === "multisport"), [activities]);
+  const legQueries = useQueries({
+    queries: multisportActivities.flatMap((a) =>
+      a.child_activity_ids.map((id) => ({
+        queryKey: ["activity", id],
+        queryFn: () => getActivity(id),
+      }))
+    ),
+  });
+  const multisportLegs = legQueries.map((q) => q.data).filter((a): a is Activity => a != null);
+
+  const weeklyLegs = weeks.map((week) =>
+    multisportLegs.filter((a) => {
+      const d = a.start_date.slice(0, 10);
+      return d >= week.start && d <= week.end;
+    })
   );
+
+  const weeklyValues = weeklyActivities.map((acts, i) => getMetricValue(acts, weeklyLegs[i], metric));
 
   const maxValue = Math.max(1, ...weeklyValues);
 
   const blockActivities = useMemo(() => weeklyActivities.flat(), [weeklyActivities]);
+  const blockLegs = weeklyLegs.flat();
   const nonWalks = blockActivities.filter((a) => a.sport !== "walk");
-  const runs = blockActivities.filter((a) => a.sport === "run");
-  const rides = blockActivities.filter((a) => a.sport === "bike");
+  const runs = [...blockActivities.filter((a) => a.sport === "run"), ...blockLegs.filter((a) => a.sport === "run")];
+  const rides = [...blockActivities.filter((a) => a.sport === "bike"), ...blockLegs.filter((a) => a.sport === "bike")];
 
   const totalTimeS = nonWalks.reduce((s, a) => s + a.moving_time, 0);
   const totalTss = nonWalks.reduce((s, a) => s + a.tss, 0);

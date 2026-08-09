@@ -159,6 +159,32 @@ export function CalendarScreen() {
     combine: (results) => new Map(results.flatMap((r) => (r.data ? [[r.data.id, r.data] as const] : []))),
   });
 
+  // A multisport activity's own sport is "multisport" - its run leg only shows up as a
+  // separate Activity via child_activity_ids, not as a top-level entry here. Without this,
+  // a triathlon's run portion would silently vanish from each week's RUN total below, even
+  // though ACTUAL TSS/time (which use the parent's own aggregate fields) already account for
+  // the full session.
+  const multisportActivities = [...(calendarData?.unplanned_activities ?? []), ...activityById.values()].filter(
+    (a) => a.sport === "multisport",
+  );
+  const runLegsByParentId = useQueries({
+    queries: multisportActivities.flatMap((a) =>
+      a.child_activity_ids.map((id) => ({ queryKey: ["activity", id], queryFn: () => getActivity(id) })),
+    ),
+    combine: (results) => {
+      const map = new Map<string, Activity[]>();
+      for (const r of results) {
+        const leg = r.data;
+        if (leg?.sport === "run" && leg.parent_activity_id) {
+          const list = map.get(leg.parent_activity_id) ?? [];
+          list.push(leg);
+          map.set(leg.parent_activity_id, list);
+        }
+      }
+      return map;
+    },
+  });
+
   const racesByDate = useMemo(() => {
     const map = new Map<string, Race[]>();
     for (const race of racesData?.data ?? []) {
@@ -183,6 +209,11 @@ export function CalendarScreen() {
       if (activity.sport === "run") {
         totals.runKm += activity.distance_km;
         totals.runSecs += activity.moving_time;
+      } else if (activity.sport === "multisport") {
+        for (const leg of runLegsByParentId.get(activity.id) ?? []) {
+          totals.runKm += leg.distance_km;
+          totals.runSecs += leg.moving_time;
+        }
       }
     }
     for (const day of week) {
