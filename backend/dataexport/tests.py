@@ -15,6 +15,8 @@ from scheduling.models import ScheduledWorkout
 from workouts.models import Workout, WorkoutStep
 
 from .export_writer import write_export
+from .import_reader import read_import
+from .models import DATA_TRANSFER_STEPS
 
 
 def _bearer_client(user, scope="activities:read activities:write coach"):
@@ -194,5 +196,41 @@ class SportFilterTests(TestCase):
 
         race_names = {r["name"] for r in doc["races"]}
         self.assertNotIn("Unlinked, no sport", race_names)
+
+        default_storage.delete(relative_path)
+
+
+class ProgressStepTests(TestCase):
+    """write_export/read_import's on_step callback - the ExportJob/ImportJob.current_step
+    field these feed is what the frontend's progress dialog polls for."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="progress-steps@example.cc", password="x", name="Athlete")
+        _seed_full_account(self.athlete)
+
+    def test_write_export_calls_on_step_for_every_section_in_order(self):
+        relative_path = "exports/test/progress-steps.json.gz"
+        seen: list[str] = []
+
+        write_export(self.athlete.id, None, relative_path, on_step=seen.append)
+
+        self.assertEqual(seen, [key for key, _ in DATA_TRANSFER_STEPS])
+
+        from django.core.files.storage import default_storage
+
+        default_storage.delete(relative_path)
+
+    def test_read_import_calls_on_step_for_every_section_in_order(self):
+        relative_path = "exports/test/progress-steps-source.json.gz"
+        write_export(self.athlete.id, None, relative_path)
+
+        target = User.objects.create_user(email="progress-steps-target@example.cc", password="x", name="Target")
+        seen: list[str] = []
+
+        read_import(target.id, relative_path, on_step=seen.append)
+
+        self.assertEqual(seen, [key for key, _ in DATA_TRANSFER_STEPS])
+
+        from django.core.files.storage import default_storage
 
         default_storage.delete(relative_path)

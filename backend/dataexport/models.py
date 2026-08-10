@@ -10,6 +10,18 @@ STATUS_CHOICES = [
     ("failed", "Failed"),
 ]
 
+# The section order both export_writer.py and import_reader.py process in - shared here so
+# the model's choices, the writer/reader's progress reporting, and the frontend's progress
+# bar all agree on the same 5 steps. "activities" is by far the slowest (laps + full-resolution
+# streams per activity), so a job can sit on it for a while - that's expected, not stalled.
+DATA_TRANSFER_STEPS = [
+    ("equipment", "Equipment"),
+    ("workouts", "Workouts"),
+    ("activities", "Activities"),
+    ("races", "Races"),
+    ("scheduled_workouts", "Scheduled workouts"),
+]
+
 
 class ExportJob(PrefixedIDModel):
     id_prefix = "exp"
@@ -18,6 +30,7 @@ class ExportJob(PrefixedIDModel):
     # outright (see views.ExportView.post), same as the Java backend's ExportJob.
     athlete = models.OneToOneField(User, on_delete=models.CASCADE, related_name="export_job")
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
+    current_step = models.CharField(max_length=20, choices=DATA_TRANSFER_STEPS, blank=True, default="")
     stored_path = models.CharField(max_length=255, blank=True, default="")
     file_size_bytes = models.BigIntegerField(null=True, blank=True)
     error_message = models.CharField(max_length=500, blank=True, default="")
@@ -34,6 +47,7 @@ class ImportJob(PrefixedIDModel):
     # Kept as history, like Upload - not unique per athlete.
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="import_jobs")
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
+    current_step = models.CharField(max_length=20, choices=DATA_TRANSFER_STEPS, blank=True, default="")
     activities_imported = models.IntegerField(default=0)
     races_imported = models.IntegerField(default=0)
     workouts_imported = models.IntegerField(default=0)
