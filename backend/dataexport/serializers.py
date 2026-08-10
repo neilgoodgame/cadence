@@ -8,7 +8,16 @@ class ExportJobSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ExportJob
-        fields = ["id", "object", "status", "file_size_bytes", "error_message", "created_at", "completed_at"]
+        fields = [
+            "id",
+            "object",
+            "status",
+            "current_step",
+            "file_size_bytes",
+            "error_message",
+            "created_at",
+            "completed_at",
+        ]
 
     def get_object(self, obj: ExportJob) -> str:
         return "export"
@@ -31,7 +40,7 @@ class ImportJobSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ImportJob
-        fields = ["id", "object", "status", "counts", "error_message", "created_at", "completed_at"]
+        fields = ["id", "object", "status", "current_step", "counts", "error_message", "created_at", "completed_at"]
 
     def get_object(self, obj: ImportJob) -> str:
         return "import"

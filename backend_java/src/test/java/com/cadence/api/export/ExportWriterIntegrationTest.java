@@ -321,6 +321,56 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		assertThat(seen).containsExactly("equipment", "workouts", "activities", "races", "scheduled_workouts");
 	}
 
+	@Test
+	void sportFilterIncludesALinkedRaceWhoseOwnSportWasNeverSet() throws Exception {
+		// Reproduces linking to an *existing* race via the UI (as opposed to "mark this
+		// activity as a race", which sets sport at creation) - the race's own sport stays
+		// null even though it's now tied to a bike activity.
+		User athlete = newUser("export-linked-race-no-sport@example.cc");
+
+		Activity bikeActivity = new Activity();
+		bikeActivity.setAthlete(athlete);
+		bikeActivity.setSport(Sport.BIKE);
+		bikeActivity.setName("Another Ride");
+		bikeActivity.setStartDate(Instant.parse("2026-03-01T07:00:00Z"));
+		activityRepository.save(bikeActivity);
+
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Linked, sport never set");
+		race.setDate(LocalDate.of(2026, 3, 1));
+		race.setActivity(bikeActivity);
+		raceRepository.save(race);
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
+			exportWriter.write(athlete.getId(), Sport.BIKE, generator);
+		}
+
+		JsonNode root = jsonMapper.readTree(out.toByteArray());
+		assertThat(root.get("races")).hasSize(1);
+		assertThat(root.get("races").get(0).get("name").asText()).isEqualTo("Linked, sport never set");
+	}
+
+	@Test
+	void sportFilterStillExcludesARaceWithNoSportAndNoLinkedActivity() throws Exception {
+		User athlete = newUser("export-unlinked-race-no-sport@example.cc");
+
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Unlinked, no sport");
+		race.setDate(LocalDate.of(2026, 3, 2));
+		raceRepository.save(race);
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
+			exportWriter.write(athlete.getId(), Sport.BIKE, generator);
+		}
+
+		JsonNode root = jsonMapper.readTree(out.toByteArray());
+		assertThat(root.get("races")).isEmpty();
+	}
+
 	private User newUser(String email) {
 		User user = new User();
 		user.setEmail(email);

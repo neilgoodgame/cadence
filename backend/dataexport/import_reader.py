@@ -28,6 +28,7 @@ single workout silently landed in items_skipped until this was traced down.
 import datetime
 import gzip
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import ijson
@@ -42,6 +43,8 @@ from workouts.calculations import compute_chart_preview, compute_duration_and_ts
 from workouts.models import Workout, WorkoutStep
 
 logger = logging.getLogger(__name__)
+
+OnStep = Callable[[str], None]
 
 COUNT_KEYS = [
     "activities_imported",
@@ -408,7 +411,11 @@ def _import_scheduled_workouts(
                 counts["items_skipped"] += 1
 
 
-def read_import(athlete_id: str, stored_path: str) -> dict[str, int]:
+def read_import(athlete_id: str, stored_path: str, on_step: OnStep | None = None) -> dict[str, int]:
+    """`on_step` (if given) is called once per section, right as it starts - see
+    ImportJob.current_step (models.py's DATA_TRANSFER_STEPS) for the fixed 5-step order this
+    walks through, same as export_writer.write_export's on_step (see its docstring for why
+    there's no finer-grained progress within "activities")."""
     counts = dict.fromkeys(COUNT_KEYS, 0)
     bikes_by_old_id: dict[str, str] = {}
     shoes_by_old_id: dict[str, str] = {}
@@ -416,8 +423,16 @@ def read_import(athlete_id: str, stored_path: str) -> dict[str, int]:
     activity_id_map: dict[str, str] = {}
     deferred_links: list[tuple[str, str, bool]] = []
 
+    if on_step:
+        on_step("equipment")
     _import_equipment(athlete_id, stored_path, bikes_by_old_id, shoes_by_old_id, counts)
+
+    if on_step:
+        on_step("workouts")
     _import_workouts(athlete_id, stored_path, workouts_by_old_id, counts)
+
+    if on_step:
+        on_step("activities")
     _import_activities(
         athlete_id,
         stored_path,
@@ -428,7 +443,13 @@ def read_import(athlete_id: str, stored_path: str) -> dict[str, int]:
         deferred_links,
         counts,
     )
+
+    if on_step:
+        on_step("races")
     _import_races(athlete_id, stored_path, activity_id_map, counts)
+
+    if on_step:
+        on_step("scheduled_workouts")
     _import_scheduled_workouts(athlete_id, stored_path, workouts_by_old_id, activity_id_map, counts)
     _resolve_deferred_links(deferred_links, activity_id_map)
 

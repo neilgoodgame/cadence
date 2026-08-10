@@ -169,8 +169,15 @@ public class ExportWriter {
 	private void writeRaces(String athleteId, Sport sportFilter, JsonGenerator generator) {
 		generator.writeArrayPropertyStart("races");
 		for (var race : raceRepository.findByAthleteIdOrderByDateAsc(athleteId)) {
-			// A race with no sport recorded is excluded under a filter - ambiguous otherwise.
-			if (sportFilter == null || sportFilter.equals(race.getSport())) {
+			// A race's own sport can be null even when it's linked to an activity - linking to
+			// an *existing* race (as opposed to "mark this activity as a race", which sets sport
+			// at creation) never backfills it. Fall back to the linked activity's sport so a
+			// sport-scoped export doesn't silently drop these. A race with no sport recorded and
+			// no linked activity to infer one from is still excluded under a filter - ambiguous
+			// otherwise.
+			Sport effectiveSport = race.getSport() != null ? race.getSport()
+					: race.getActivity() != null ? race.getActivity().getSport() : null;
+			if (sportFilter == null || sportFilter.equals(effectiveSport)) {
 				generator.writePOJO(raceService.toResponse(race));
 			}
 		}
