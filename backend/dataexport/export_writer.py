@@ -20,6 +20,7 @@ from typing import Any
 
 from django.core.files.storage import default_storage
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models import Q
 from django.utils import timezone
 
 from activities.models import Activity, Lap, Record
@@ -142,12 +143,15 @@ def _write_activities(gz: gzip.GzipFile, athlete_id: str, sport: str | None) -> 
 
 
 def _write_races(gz: gzip.GzipFile, athlete_id: str, sport: str | None) -> None:
-    qs = Race.objects.filter(athlete_id=athlete_id).order_by("date")
+    qs = Race.objects.filter(athlete_id=athlete_id).select_related("activity").order_by("date")
     if sport:
-        # A race with no sport recorded is excluded under a filter - ambiguous otherwise
-        # (matches the Java backend). Race.sport defaults to "", which never equals a
-        # real sport value, so this falls out of the plain filter with no extra code.
-        qs = qs.filter(sport=sport)
+        # A race's own sport can be blank even when it's linked to an activity - linking to
+        # an *existing* race (as opposed to "mark this activity as a race", which sets sport
+        # at creation) never backfills it. Fall back to the linked activity's sport so a
+        # sport-scoped export doesn't silently drop these. A race with no sport recorded and
+        # no linked activity to infer one from is still excluded under a filter - ambiguous
+        # otherwise (matches the Java backend).
+        qs = qs.filter(Q(sport=sport) | Q(sport="", activity__sport=sport))
     _write_array(gz, (RaceSerializer(r).data for r in qs))
 
 
