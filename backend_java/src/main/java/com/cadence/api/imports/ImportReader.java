@@ -46,6 +46,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.zip.GZIPInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -135,6 +136,18 @@ public class ImportReader {
 	}
 
 	public ImportCounts read(String athleteId, Path file) throws IOException {
+		return read(athleteId, file, step -> { });
+	}
+
+	/** As {@link #read(String, Path)}, but calls {@code onStep} with one of "equipment"/
+	 * "workouts"/"activities"/"races"/"scheduled_workouts" right as each section starts - what a
+	 * progress dialog polls ImportJob.currentStep for. Same "no finer-grained progress within a
+	 * section" reasoning as ExportWriter.write's onStep overload. Unlike ExportWriter, {@code
+	 * onStep} here doesn't need its own REQUIRES_NEW transaction to be visible to a polling
+	 * request - this method isn't itself wrapped in one long transaction (see the class Javadoc:
+	 * it opens many independent short ones via transactionTemplate), so a plain save commits on
+	 * its own already. */
+	public ImportCounts read(String athleteId, Path file, Consumer<String> onStep) throws IOException {
 		// A JPA reference, not a loaded entity - deliberately, so it's safe to reuse across the
 		// many independent short transactions this method opens (see the class Javadoc).
 		User athlete = userRepository.getReferenceById(athleteId);
@@ -152,12 +165,27 @@ public class ImportReader {
 				String field = parser.currentName();
 				parser.nextToken();
 				switch (field) {
-					case "equipment" -> importEquipment(parser, athlete, bikesByOldId, shoesByOldId, counts);
-					case "workouts" -> importWorkouts(parser, athlete, workoutsByOldId, counts);
-					case "activities" -> importActivities(
-							parser, athlete, workoutsByOldId, bikesByOldId, shoesByOldId, activityIdMap, deferredLinks, counts);
-					case "races" -> importRaces(parser, athlete, activityIdMap, counts);
-					case "scheduled_workouts" -> importScheduledWorkouts(parser, athlete, workoutsByOldId, activityIdMap, counts);
+					case "equipment" -> {
+						onStep.accept("equipment");
+						importEquipment(parser, athlete, bikesByOldId, shoesByOldId, counts);
+					}
+					case "workouts" -> {
+						onStep.accept("workouts");
+						importWorkouts(parser, athlete, workoutsByOldId, counts);
+					}
+					case "activities" -> {
+						onStep.accept("activities");
+						importActivities(
+								parser, athlete, workoutsByOldId, bikesByOldId, shoesByOldId, activityIdMap, deferredLinks, counts);
+					}
+					case "races" -> {
+						onStep.accept("races");
+						importRaces(parser, athlete, activityIdMap, counts);
+					}
+					case "scheduled_workouts" -> {
+						onStep.accept("scheduled_workouts");
+						importScheduledWorkouts(parser, athlete, workoutsByOldId, activityIdMap, counts);
+					}
 					default -> parser.skipChildren(); // generated_at, athlete_id - scalars, nothing to walk
 				}
 			}

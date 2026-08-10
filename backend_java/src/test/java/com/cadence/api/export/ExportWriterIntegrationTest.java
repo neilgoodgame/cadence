@@ -308,6 +308,19 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		assertThat(equipment.get("shoes")).hasSize(1);
 	}
 
+	@Test
+	void writeCallsOnStepForEverySectionInOrderEvenWithNoData() throws Exception {
+		User athlete = newUser("export-progress-steps@example.cc");
+
+		List<String> seen = new ArrayList<>();
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
+			exportWriter.write(athlete.getId(), null, generator, seen::add);
+		}
+
+		assertThat(seen).containsExactly("equipment", "workouts", "activities", "races", "scheduled_workouts");
+	}
+
 	private User newUser(String email) {
 		User user = new User();
 		user.setEmail(email);

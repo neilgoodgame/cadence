@@ -110,7 +110,7 @@ public class ExportController {
 
 	private static ExportJobResponse toResponse(ExportJob job) {
 		return new ExportJobResponse(
-				job.getId(), job.getStatus(), job.getFileSizeBytes(), job.getErrorMessage(),
+				job.getId(), job.getStatus(), job.getCurrentStep(), job.getFileSizeBytes(), job.getErrorMessage(),
 				job.getCreatedAt(), job.getCompletedAt());
 	}
 }

@@ -29,13 +29,15 @@ public class ExportService {
 
 	private final ExportJobRepository exportJobRepository;
 	private final ExportWriter exportWriter;
+	private final ExportProgressUpdater progressUpdater;
 	private final CadenceProperties properties;
 	private final JsonMapper jsonMapper;
 
 	public ExportService(ExportJobRepository exportJobRepository, ExportWriter exportWriter,
-			CadenceProperties properties, JsonMapper jsonMapper) {
+			ExportProgressUpdater progressUpdater, CadenceProperties properties, JsonMapper jsonMapper) {
 		this.exportJobRepository = exportJobRepository;
 		this.exportWriter = exportWriter;
+		this.progressUpdater = progressUpdater;
 		this.properties = properties;
 		this.jsonMapper = jsonMapper;
 	}
@@ -53,7 +55,7 @@ public class ExportService {
 			Files.createDirectories(exportsDir);
 			try (JsonGenerator generator = jsonMapper.createGenerator(
 					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(target))), JsonEncoding.UTF8)) {
-				exportWriter.write(athleteId, sportFilter, generator);
+				exportWriter.write(athleteId, sportFilter, generator, step -> progressUpdater.updateStep(jobId, step));
 			}
 			job.setStatus(ExportStatus.READY);
 			job.setFilePath(Path.of(athleteId, "exports", jobId + ".json.gz").toString());

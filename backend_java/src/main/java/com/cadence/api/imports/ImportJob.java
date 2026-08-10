@@ -24,6 +24,11 @@ public class ImportJob extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private ImportStatus status = ImportStatus.QUEUED;
 
+	/** One of ImportReader's fixed section names ("equipment"/"workouts"/"activities"/"races"/
+	 * "scheduled_workouts") - null before processing starts. Same contract as ExportJob.currentStep. */
+	@Column(name = "current_step")
+	private String currentStep;
+
 	@Column(name = "activities_imported", nullable = false)
 	private int activitiesImported;
 
@@ -83,6 +88,14 @@ public class ImportJob extends PrefixedIdEntity {
 
 	public void setStatus(ImportStatus status) {
 		this.status = status;
+	}
+
+	public String getCurrentStep() {
+		return currentStep;
+	}
+
+	public void setCurrentStep(String currentStep) {
+		this.currentStep = currentStep;
 	}
 
 	public int getActivitiesImported() {
