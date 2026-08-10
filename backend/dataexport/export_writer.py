@@ -15,6 +15,7 @@ Record queryset at once - see _build_streams' use of .iterator().
 import gzip
 import json
 import os
+from collections.abc import Callable
 from typing import Any
 
 from django.core.files.storage import default_storage
@@ -31,6 +32,8 @@ from scheduling.models import ScheduledWorkout
 from scheduling.serializers import ScheduledWorkoutSerializer
 from workouts.models import Workout
 from workouts.serializers import WorkoutDetailSerializer
+
+OnStep = Callable[[str], None]
 
 # Same 12 scalar fields (in the same order) as the Java backend's StreamService.SCALAR_FIELDS -
 # always present, filled with None wherever the source data lacks that channel.
@@ -161,14 +164,20 @@ def _ensure_parent_dir(relative_path: str) -> str:
     return full_path
 
 
-def write_export(athlete_id: str, sport: str | None, relative_path: str) -> int:
+def write_export(athlete_id: str, sport: str | None, relative_path: str, on_step: OnStep | None = None) -> int:
     """Writes the gzip file to local disk (via default_storage's path resolution - this
     project's MEDIA_ROOT is local disk, which is what makes true incremental streaming
     writes possible; see the module docstring). Returns the file size in bytes.
 
     Field order matches Java's ExportWriter.write exactly: equipment and workouts (which
     activities reference) before activities, activities (which races/scheduled_workouts
-    reference) before those - dependency order, in case any consumer relies on it.
+    reference) before those - dependency order, in case any consumer relies on it. `on_step`
+    (if given) is called once per section, right as it starts - see ExportJob.current_step
+    (models.py's DATA_TRANSFER_STEPS) for the fixed 5-step order this walks through. There's
+    no finer-grained progress within "activities" (by far the slowest section, since it walks
+    laps + full-resolution streams per activity) - a per-activity callback would mean either an
+    upfront .count() query or DB writes on every single activity, and a coarse "which section"
+    indicator already answers what a progress dialog needs.
     """
     full_path = _ensure_parent_dir(relative_path)
     with gzip.GzipFile(full_path, mode="wb") as gz:
@@ -177,18 +186,28 @@ def write_export(athlete_id: str, sport: str | None, relative_path: str) -> int:
         gz.write(b',"athlete_id":')
         gz.write(_dump(athlete_id))
 
+        if on_step:
+            on_step("equipment")
         gz.write(b',"equipment":')
         _write_equipment(gz, athlete_id)
 
+        if on_step:
+            on_step("workouts")
         gz.write(b',"workouts":')
         _write_workouts(gz, athlete_id, sport)
 
+        if on_step:
+            on_step("activities")
         gz.write(b',"activities":')
         _write_activities(gz, athlete_id, sport)
 
+        if on_step:
+            on_step("races")
         gz.write(b',"races":')
         _write_races(gz, athlete_id, sport)
 
+        if on_step:
+            on_step("scheduled_workouts")
         gz.write(b',"scheduled_workouts":')
         _write_scheduled_workouts(gz, athlete_id, sport)
 
