@@ -3,6 +3,7 @@ import { getImportJob, startImport } from "../../api/dataImport";
 import { downloadExport, getExportJob, startExport } from "../../api/export";
 import type { ImportJob, ExportJob, Sport } from "../../api/types";
 import { usePolling } from "../import/usePolling";
+import { DataTransferProgressDialog } from "./DataTransferProgressDialog";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -46,18 +47,24 @@ function triggerDownload(filename: string, blob: Blob): void {
   URL.revokeObjectURL(url);
 }
 
-function ExportStatus({
+function ExportProgressDialog({
   initial,
-  onReset,
+  onClose,
 }: {
   initial: { data: ExportJob; retryAfterSeconds: number | null };
-  onReset: () => void;
+  onClose: () => void;
 }) {
   const job = usePolling(initial, getExportJob, (j) => j.id, (j) => TERMINAL_STATUSES.has(j.status));
   const [downloading, setDownloading] = useState(false);
 
-  if (job.status === "ready") {
-    return (
+  return (
+    <DataTransferProgressDialog
+      title="Exporting your data"
+      status={job.status}
+      currentStep={job.current_step}
+      errorMessage={job.error_message}
+      onClose={onClose}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <button
           disabled={downloading}
@@ -71,43 +78,18 @@ function ExportStatus({
               setDownloading(false);
             }
           }}
-          style={{
-            border: "none",
-            borderRadius: 8,
-            padding: "9px 16px",
-            fontSize: 14,
-            fontWeight: 600,
-            background: "var(--ember)",
-            color: "#fff",
-          }}
+          style={PRIMARY_BUTTON_STYLE}
         >
           {downloading ? "Downloading…" : "Download export"}
         </button>
-        <span style={{ color: "var(--ink2)", fontSize: 13 }}>
-          Ready{job.completed_at ? ` · ${new Date(job.completed_at).toLocaleString()}` : ""}
-        </span>
-      </div>
-    );
-  }
-
-  if (job.status === "failed") {
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ color: "#e0442e", fontSize: 14 }}>{job.error_message ?? "Export failed."}</span>
         <button
-          onClick={onReset}
-          style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "6px 12px", fontSize: 13, background: "transparent" }}
+          onClick={onClose}
+          style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, background: "transparent", color: "var(--ink)" }}
         >
-          Try again
+          Close
         </button>
       </div>
-    );
-  }
-
-  return (
-    <div style={{ color: "var(--ink2)", fontSize: 14 }}>
-      {job.status === "queued" ? "Queued…" : "Preparing your export…"}
-    </div>
+    </DataTransferProgressDialog>
   );
 }
 
@@ -129,47 +111,30 @@ function ImportCountsSummary({ job }: { job: ImportJob }) {
   );
 }
 
-function ImportStatusView({
+function ImportProgressDialog({
   initial,
-  onReset,
+  onClose,
 }: {
   initial: { data: ImportJob; retryAfterSeconds: number | null };
-  onReset: () => void;
+  onClose: () => void;
 }) {
   const job = usePolling(initial, getImportJob, (j) => j.id, (j) => TERMINAL_STATUSES.has(j.status));
 
-  if (job.status === "ready") {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <ImportCountsSummary job={job} />
-        <button
-          onClick={onReset}
-          style={{ alignSelf: "flex-start", border: "1px solid var(--line)", borderRadius: 8, padding: "6px 12px", fontSize: 13, background: "transparent" }}
-        >
-          Import another file
-        </button>
-      </div>
-    );
-  }
-
-  if (job.status === "failed") {
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ color: "#e0442e", fontSize: 14 }}>{job.error_message ?? "Import failed."}</span>
-        <button
-          onClick={onReset}
-          style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "6px 12px", fontSize: 13, background: "transparent" }}
-        >
-          Try again
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ color: "var(--ink2)", fontSize: 14 }}>
-      {job.status === "queued" ? "Queued…" : "Importing your data…"}
-    </div>
+    <DataTransferProgressDialog
+      title="Importing your data"
+      status={job.status}
+      currentStep={job.current_step}
+      errorMessage={job.error_message}
+      onClose={onClose}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <ImportCountsSummary job={job} />
+        <button onClick={onClose} style={{ ...PRIMARY_BUTTON_STYLE, alignSelf: "flex-start" }}>
+          Done
+        </button>
+      </div>
+    </DataTransferProgressDialog>
   );
 }
 
@@ -186,37 +151,33 @@ function ImportSection() {
         creates new entries - importing the same file twice will create duplicates.
       </p>
 
-      {job ? (
-        <ImportStatusView initial={job} onReset={() => setJob(null)} />
-      ) : (
-        <>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".gz"
-            style={{ display: "none" }}
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (!file) return;
-              setUploading(true);
-              try {
-                setJob(await startImport(file));
-              }
-              finally {
-                setUploading(false);
-              }
-            }}
-          />
-          <button
-            disabled={uploading}
-            onClick={() => fileInputRef.current?.click()}
-            style={PRIMARY_BUTTON_STYLE}
-          >
-            {uploading ? "Uploading…" : "Choose file to import"}
-          </button>
-        </>
-      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".gz"
+        style={{ display: "none" }}
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          setUploading(true);
+          try {
+            setJob(await startImport(file));
+          }
+          finally {
+            setUploading(false);
+          }
+        }}
+      />
+      <button
+        disabled={uploading || !!job}
+        onClick={() => fileInputRef.current?.click()}
+        style={{ ...PRIMARY_BUTTON_STYLE, opacity: uploading || job ? 0.6 : 1 }}
+      >
+        {uploading ? "Uploading…" : "Choose file to import"}
+      </button>
+
+      {job && <ImportProgressDialog initial={job} onClose={() => setJob(null)} />}
     </div>
   );
 }
@@ -236,22 +197,29 @@ export function ExportTab() {
           </p>
         </div>
 
-        {job ? (
-          <ExportStatus initial={job} onReset={() => setJob(null)} />
-        ) : (
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <select value={sport} onChange={(e) => setSport(e.target.value as Sport | "")} style={SELECT_STYLE}>
-              {SPORT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <button onClick={() => startExport(sport || undefined).then(setJob)} style={PRIMARY_BUTTON_STYLE}>
-              Generate export
-            </button>
-          </div>
-        )}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <select
+            value={sport}
+            disabled={!!job}
+            onChange={(e) => setSport(e.target.value as Sport | "")}
+            style={SELECT_STYLE}
+          >
+            {SPORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <button
+            disabled={!!job}
+            onClick={() => startExport(sport || undefined).then(setJob)}
+            style={{ ...PRIMARY_BUTTON_STYLE, opacity: job ? 0.6 : 1 }}
+          >
+            Generate export
+          </button>
+        </div>
+
+        {job && <ExportProgressDialog initial={job} onClose={() => setJob(null)} />}
       </div>
 
       <div style={{ borderTop: "1px solid var(--line)", paddingTop: 20 }}>
