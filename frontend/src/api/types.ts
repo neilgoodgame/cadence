@@ -360,6 +360,11 @@ export interface ExportJob {
   object: "export";
   status: ExportStatus;
   current_step: DataTransferStep | null;
+  // Fine-grained item-level progress within current_step - total_items is null until the
+  // upfront counts query runs (i.e. for the brief "queued" window), then processed_items
+  // climbs from 0 to total_items as the file is written.
+  total_items: number | null;
+  processed_items: number;
   file_size_bytes: number | null;
   error_message: string | null;
   created_at: string;
@@ -384,6 +389,11 @@ export interface ImportJob {
   object: "import";
   status: ImportStatus;
   current_step: DataTransferStep | null;
+  // Mirrors ExportJob's total_items/processed_items - total_items comes from the source
+  // file's own "counts" metadata block, so it's null for a file exported before that field
+  // existed.
+  total_items: number | null;
+  processed_items: number;
   counts: ImportCounts;
   error_message: string | null;
   created_at: string;

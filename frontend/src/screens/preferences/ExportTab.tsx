@@ -62,6 +62,8 @@ function ExportProgressDialog({
       title="Exporting your data"
       status={job.status}
       currentStep={job.current_step}
+      totalItems={job.total_items}
+      processedItems={job.processed_items}
       errorMessage={job.error_message}
       onClose={onClose}
     >
@@ -125,6 +127,8 @@ function ImportProgressDialog({
       title="Importing your data"
       status={job.status}
       currentStep={job.current_step}
+      totalItems={job.total_items}
+      processedItems={job.processed_items}
       errorMessage={job.error_message}
       onClose={onClose}
     >
