@@ -176,27 +176,33 @@ public class ImportReader {
 	}
 
 	/** As {@link #read(String, Path, Consumer)}, but also turns onStep's coarse per-section signal
-	 * into a fine-grained item-level progress bar: {@code onTotal} fires once, by reading the
-	 * source file's own "counts" metadata block (see ExportWriter.computeCounts) - a file exported
-	 * before that field existed has no "counts" key, in which case onTotal is simply never called.
-	 * {@code onProgress} fires with a running cumulative item count (imported or skipped - either
-	 * way the reader has moved past it) as each item across every section is processed, throttled
-	 * (see Progress). Unlike ExportWriter, neither callback here needs its own REQUIRES_NEW
-	 * transaction to be visible to a polling request - this method isn't itself wrapped in one
-	 * long transaction (see the class Javadoc: it opens many independent short ones via
-	 * transactionTemplate), so a plain save commits on its own already. */
+	 * into a fine-grained item-level progress bar *scoped to the current section* - e.g. while
+	 * onStep is "activities", onTotal/onProgress report activities specifically, not a blend
+	 * across every kind of data. {@code onTotal} fires once per section, right after onStep, by
+	 * reading that section's own count from the source file's own "counts" metadata block (see
+	 * ExportWriter.computeCounts) - a file exported before that field existed has no "counts"
+	 * key, in which case onTotal is simply never called. {@code onProgress} fires with a running
+	 * count *reset to 0 at the start of each section* as each item in it is processed (imported
+	 * or skipped - either way the reader has moved past it), throttled (see Progress).
+	 * "equipment" covers bikes+shoes+components combined (one section/one onStep call), so its
+	 * total is the sum of those three. Unlike ExportWriter, neither callback here needs its own
+	 * REQUIRES_NEW transaction to be visible to a polling request - this method isn't itself
+	 * wrapped in one long transaction (see the class Javadoc: it opens many independent short
+	 * ones via transactionTemplate), so a plain save commits on its own already. */
 	public ImportCounts read(String athleteId, Path file, Consumer<String> onStep, IntConsumer onTotal,
 			IntConsumer onProgress) throws IOException {
 		// A JPA reference, not a loaded entity - deliberately, so it's safe to reuse across the
 		// many independent short transactions this method opens (see the class Javadoc).
 		User athlete = userRepository.getReferenceById(athleteId);
 		Counts counts = new Counts();
-		Progress progress = new Progress(onProgress);
 		Map<String, Bike> bikesByOldId = new HashMap<>();
 		Map<String, Shoe> shoesByOldId = new HashMap<>();
 		Map<String, Workout> workoutsByOldId = new HashMap<>();
 		Map<String, String> activityIdMap = new HashMap<>();
 		List<DeferredActivityLink> deferredLinks = new ArrayList<>();
+		// Populated by the "counts" case below, which the writer always emits before any section -
+		// null only for a file exported before that field existed.
+		ExportCounts fileCounts = null;
 
 		try (JsonParser parser = jsonMapper.createParser(
 				new GZIPInputStream(new BufferedInputStream(Files.newInputStream(file))))) {
@@ -205,35 +211,36 @@ public class ImportReader {
 				String field = parser.currentName();
 				parser.nextToken();
 				switch (field) {
-					case "counts" -> {
-						ExportCounts fileCounts = parser.readValueAs(ExportCounts.class);
-						onTotal.accept((int) (fileCounts.activities() + fileCounts.races() + fileCounts.workouts()
-								+ fileCounts.scheduledWorkouts() + fileCounts.bikes() + fileCounts.shoes()
-								+ fileCounts.components()));
-					}
+					case "counts" -> fileCounts = parser.readValueAs(ExportCounts.class);
 					case "equipment" -> {
-						onStep.accept("equipment");
+						Integer total = fileCounts == null ? null
+								: (int) (fileCounts.bikes() + fileCounts.shoes() + fileCounts.components());
+						Progress progress = startSection(onStep, onTotal, onProgress, "equipment", total);
 						importEquipment(parser, athlete, bikesByOldId, shoesByOldId, counts, progress);
 						progress.flush();
 					}
 					case "workouts" -> {
-						onStep.accept("workouts");
+						Progress progress = startSection(
+								onStep, onTotal, onProgress, "workouts", fileCounts == null ? null : (int) fileCounts.workouts());
 						importWorkouts(parser, athlete, workoutsByOldId, counts, progress);
 						progress.flush();
 					}
 					case "activities" -> {
-						onStep.accept("activities");
+						Progress progress = startSection(onStep, onTotal, onProgress, "activities",
+								fileCounts == null ? null : (int) fileCounts.activities());
 						importActivities(parser, athlete, workoutsByOldId, bikesByOldId, shoesByOldId, activityIdMap,
 								deferredLinks, counts, progress);
 						progress.flush();
 					}
 					case "races" -> {
-						onStep.accept("races");
+						Progress progress = startSection(
+								onStep, onTotal, onProgress, "races", fileCounts == null ? null : (int) fileCounts.races());
 						importRaces(parser, athlete, activityIdMap, counts, progress);
 						progress.flush();
 					}
 					case "scheduled_workouts" -> {
-						onStep.accept("scheduled_workouts");
+						Progress progress = startSection(onStep, onTotal, onProgress, "scheduled_workouts",
+								fileCounts == null ? null : (int) fileCounts.scheduledWorkouts());
 						importScheduledWorkouts(parser, athlete, workoutsByOldId, activityIdMap, counts, progress);
 						progress.flush();
 					}
@@ -246,6 +253,15 @@ public class ImportReader {
 
 		return new ImportCounts(counts.activities, counts.races, counts.workouts, counts.scheduledWorkouts,
 				counts.bikes, counts.shoes, counts.components, counts.skipped);
+	}
+
+	private static Progress startSection(
+			Consumer<String> onStep, IntConsumer onTotal, IntConsumer onProgress, String step, Integer total) {
+		onStep.accept(step);
+		if (total != null) {
+			onTotal.accept(total);
+		}
+		return new Progress(onProgress);
 	}
 
 	private void importEquipment(JsonParser parser, User athlete, Map<String, Bike> bikesByOldId,

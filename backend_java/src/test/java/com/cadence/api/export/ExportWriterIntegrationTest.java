@@ -574,18 +574,22 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		activeShoe.setName("Daily trainer");
 		shoeRepository.save(activeShoe);
 
-		List<Integer> totals = new ArrayList<>();
-		List<Integer> progress = new ArrayList<>();
+		// onTotal/onProgress are scoped to the *current* section, not a blend across all of
+		// them - equipment (bike+shoe+component) totals 3, every other section totals 1.
+		List<String> events = new ArrayList<>();
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
-			exportWriter.write(athlete.getId(), null, generator, step -> { }, totals::add, progress::add);
+			exportWriter.write(athlete.getId(), null, generator, step -> events.add("step:" + step),
+					total -> events.add("total:" + total), processed -> events.add("progress:" + processed));
 		}
 
-		assertThat(totals).containsExactly(7);
-		assertThat(progress).isNotEmpty();
-		assertThat(progress).isSorted();
-		assertThat(progress.get(progress.size() - 1)).isEqualTo(7);
+		assertThat(events).containsExactly(
+				"step:equipment", "total:3", "progress:3",
+				"step:workouts", "total:1", "progress:1",
+				"step:activities", "total:1", "progress:1",
+				"step:races", "total:1", "progress:1",
+				"step:scheduled_workouts", "total:1", "progress:1");
 	}
 
 	private User newUser(String email) {

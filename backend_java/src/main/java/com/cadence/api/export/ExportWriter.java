@@ -161,12 +161,16 @@ public class ExportWriter {
 	}
 
 	/** As {@link #write(String, Sport, JsonGenerator, Consumer)}, but also turns onStep's coarse
-	 * per-section signal into a fine-grained item-level progress bar: {@code onTotal} fires once,
-	 * upfront, with the same sum of counts.py's cheap count queries the "counts" file field
-	 * already computes (so this is free - no second query), and {@code onProgress} fires with a
-	 * running cumulative item count as each bike/shoe/component/workout/activity/race/
-	 * scheduled_workout is written, throttled (see Progress) so a multi-thousand-row export
-	 * doesn't turn into a DB write per row. Same persist-independently contract as onStep. */
+	 * per-section signal into a fine-grained item-level progress bar *scoped to the current
+	 * section* - e.g. while onStep is "activities", onTotal/onProgress report activities
+	 * specifically, not a blend across every kind of data. {@code onTotal} fires once per
+	 * section, right after onStep, with that section's own count from computeCounts (the same
+	 * cheap count queries the "counts" file field already computes - so this is free, no second
+	 * query); {@code onProgress} fires with a running count *reset to 0 at the start of each
+	 * section* as each item in it is written, throttled (see Progress) so a multi-thousand-row
+	 * export doesn't turn into a DB write per row. "equipment" covers bikes+shoes+components
+	 * combined (one section/one onStep call), so its total is the sum of those three. Same
+	 * persist-independently contract as onStep. */
 	@Transactional(readOnly = true)
 	public void write(String athleteId, Sport sportFilter, JsonGenerator generator, Consumer<String> onStep,
 			IntConsumer onTotal, IntConsumer onProgress) {
@@ -175,31 +179,40 @@ public class ExportWriter {
 		generator.writeStringProperty("athlete_id", athleteId);
 		ExportCounts counts = computeCounts(athleteId, sportFilter);
 		generator.writePOJOProperty("counts", counts);
-		onTotal.accept((int) (counts.activities() + counts.races() + counts.workouts() + counts.scheduledWorkouts()
-				+ counts.bikes() + counts.shoes() + counts.components()));
-		Progress progress = new Progress(onProgress);
 
 		// Equipment and workouts come before activities (which reference bike/shoe/workout ids),
 		// and activities come before races/scheduled_workouts (which reference activity ids) -
 		// dependency order, so a forward-only streaming importer can resolve id references in one
 		// pass without having to look ahead. See ImportReader for the reader side of this contract.
-		onStep.accept("equipment");
+		Progress progress = startSection(onStep, onTotal, onProgress, "equipment",
+				(int) (counts.bikes() + counts.shoes() + counts.components()));
 		writeEquipment(athleteId, generator, progress);
 		progress.flush();
-		onStep.accept("workouts");
+
+		progress = startSection(onStep, onTotal, onProgress, "workouts", (int) counts.workouts());
 		writeWorkouts(athleteId, sportFilter, generator, progress);
 		progress.flush();
-		onStep.accept("activities");
+
+		progress = startSection(onStep, onTotal, onProgress, "activities", (int) counts.activities());
 		writeActivities(athleteId, sportFilter, generator, progress);
 		progress.flush();
-		onStep.accept("races");
+
+		progress = startSection(onStep, onTotal, onProgress, "races", (int) counts.races());
 		writeRaces(athleteId, sportFilter, generator, progress);
 		progress.flush();
-		onStep.accept("scheduled_workouts");
+
+		progress = startSection(onStep, onTotal, onProgress, "scheduled_workouts", (int) counts.scheduledWorkouts());
 		writeScheduledWorkouts(athleteId, sportFilter, generator, progress);
 		progress.flush();
 
 		generator.writeEndObject();
+	}
+
+	private static Progress startSection(
+			Consumer<String> onStep, IntConsumer onTotal, IntConsumer onProgress, String step, int total) {
+		onStep.accept(step);
+		onTotal.accept(total);
+		return new Progress(onProgress);
 	}
 
 	/** Cheap upfront count queries (no row materialization) for the "counts" metadata block at
