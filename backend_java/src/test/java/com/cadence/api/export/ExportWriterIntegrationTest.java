@@ -592,6 +592,31 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 				"step:scheduled_workouts", "total:1", "progress:1");
 	}
 
+	@Test
+	void exportCarriesFtpSnapshotButStripsSuggestedFtp() throws Exception {
+		User athlete = newUser("export-threshold-snapshot@example.cc");
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName("Ride");
+		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		activity.setFtpSnapshot(200);
+		activity.setSuggestedFtp(260);
+		activityRepository.save(activity);
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
+			exportWriter.write(athlete.getId(), null, generator);
+		}
+
+		JsonNode activityNode = jsonMapper.readTree(out.toByteArray()).get("activities").get(0).get("activity");
+		assertThat(activityNode.get("ftp_snapshot").asInt()).isEqualTo(200);
+		// Nulled out, not omitted (this codebase's Jackson config doesn't drop null fields) -
+		// either way ImportReader.buildActivity never reads suggested_ftp back off the source
+		// JSON at all, so the exact shape doesn't affect round-trip behavior.
+		assertThat(activityNode.get("suggested_ftp").isNull()).isTrue();
+	}
+
 	private User newUser(String email) {
 		User user = new User();
 		user.setEmail(email);

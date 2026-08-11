@@ -444,16 +444,18 @@ public class ImportReader {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
 		activity.setSport(ar.sport());
-		// The export DTO doesn't carry the source activity's own snapshot yet (that lands with
-		// threshold-increase detection), so this always falls back to the *importing* athlete's
-		// current profile - same graceful-degradation shape as export_writer.py/import_reader.py's
-		// "counts" progress metadata for a file that predates a newer field.
+		// Carries over the source activity's own threshold snapshot if the export file has one;
+		// a file exported before that field existed falls back to the *importing* athlete's
+		// current profile - same graceful-degradation shape as the "counts" progress metadata.
 		if (ar.sport() == Sport.BIKE) {
-			activity.setFtpSnapshot(athlete.getFtp());
+			activity.setFtpSnapshot(ar.ftpSnapshot() != null ? ar.ftpSnapshot() : athlete.getFtp());
 		}
 		else if (ar.sport() == Sport.RUN) {
-			activity.setCriticalRunPowerSnapshot(athlete.getCriticalRunPower());
-			activity.setThresholdPaceSnapshot(athlete.getThresholdPace());
+			activity.setCriticalRunPowerSnapshot(
+					ar.criticalRunPowerSnapshot() != null ? ar.criticalRunPowerSnapshot() : athlete.getCriticalRunPower());
+			activity.setThresholdPaceSnapshot(
+					ar.thresholdPaceSnapshot() != null && !ar.thresholdPaceSnapshot().isEmpty()
+							? ar.thresholdPaceSnapshot() : athlete.getThresholdPace());
 		}
 		activity.setEnvironment(ar.environment());
 		activity.setHasGps(ar.hasGps());

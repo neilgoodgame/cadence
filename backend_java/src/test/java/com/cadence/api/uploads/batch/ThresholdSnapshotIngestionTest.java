@@ -60,6 +60,50 @@ class ThresholdSnapshotIngestionTest extends IntegrationTest {
 		assertThat(activity.getFtpSnapshot()).isNull();
 	}
 
+	@Test
+	void runningMarathonSuggestsAFasterThresholdPaceFromASlowStartingPoint() throws Exception {
+		// An outdoor marathon has well over an hour of real GPS pace data - any real pace beats
+		// an intentionally slow (10:00/km) starting threshold_pace.
+		User athlete = new User();
+		athlete.setEmail("threshold-detection-slow-pace@example.cc");
+		athlete.setName("Slow Pace Athlete");
+		athlete.setPassword("irrelevant-for-this-test");
+		athlete.setThresholdPace("10:00");
+		athlete = userRepository.save(athlete);
+
+		Upload upload =
+				uploadService.createSingleUpload(athlete, fitFixture("running_outdoor_marathon.fit"), null, null, null, null);
+		Activity activity = awaitReadyActivity(upload.getId());
+
+		assertThat(activity.getSuggestedThresholdPace()).isNotNull();
+		assertThat(activity.getSuggestedThresholdPace()).isNotEmpty();
+	}
+
+	@Test
+	void runningMarathonSuggestsNothingWhenThresholdPaceIsAlreadyFastEnough() throws Exception {
+		User athlete = new User();
+		athlete.setEmail("threshold-detection-fast-pace@example.cc");
+		athlete.setName("Fast Pace Athlete");
+		athlete.setPassword("irrelevant-for-this-test");
+		athlete.setThresholdPace("2:00"); // faster than any real marathon pace
+		athlete = userRepository.save(athlete);
+
+		Upload upload =
+				uploadService.createSingleUpload(athlete, fitFixture("running_outdoor_marathon.fit"), null, null, null, null);
+		Activity activity = awaitReadyActivity(upload.getId());
+
+		assertThat(activity.getSuggestedThresholdPace()).isEmpty();
+	}
+
+	private MockMultipartFile fitFixture(String name) throws Exception {
+		byte[] fitBytes;
+		try (InputStream in = getClass().getClassLoader().getResourceAsStream("fit-fixtures/" + name)) {
+			assertThat(in).isNotNull();
+			fitBytes = in.readAllBytes();
+		}
+		return new MockMultipartFile("file", name, "application/octet-stream", fitBytes);
+	}
+
 	private Activity awaitReadyActivity(String uploadId) throws InterruptedException {
 		long deadline = System.currentTimeMillis() + Duration.ofSeconds(30).toMillis();
 		while (System.currentTimeMillis() < deadline) {
