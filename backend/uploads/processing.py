@@ -230,6 +230,113 @@ def _best_pace_seconds_per_km(
     return best
 
 
+def _best_pace_seconds_per_km_over_duration(
+    t_series: Sequence[int], distance_km_series: Sequence[float | None], target_seconds: int
+) -> float | None:
+    """The fastest pace sustained over any contiguous span of the activity lasting at least
+    target_seconds - the dual of _best_pace_seconds_per_km (fixed *time* target, variable
+    *distance* window, the opposite shape - same two-pointer scan, same forward-fill-cumulative-
+    distance convention, just swapping which axis is the fixed target). Used to detect a
+    possible new threshold_pace from a sustained effort (e.g. ~1 hour), mirroring
+    _sliding_window_best_avg's duration-based windows for power/HR, which pace can't use
+    directly since pace needs distance, not a flat per-sample value.
+    """
+    cumulative: list[float] = []
+    last = 0.0
+    for d in distance_km_series:
+        if d is not None:
+            last = d
+        cumulative.append(last)
+
+    n = len(cumulative)
+    best: float | None = None
+    left = 0
+    right = 0
+    while left < n:
+        if right < left:
+            right = left
+        while right < n and t_series[right] - t_series[left] < target_seconds:
+            right += 1
+        if right >= n:
+            break
+        duration = t_series[right] - t_series[left]
+        actual_distance = cumulative[right] - cumulative[left]
+        if duration > 0 and actual_distance > 0:
+            pace = duration / actual_distance
+            if best is None or pace < best:
+                best = pace
+        left += 1
+    return best
+
+
+def _mmss_to_seconds(value: str) -> int | None:
+    # A local copy, not a cross-app import of athletes/zones.py's private helper - matches this
+    # file's existing convention of small local helpers (see _sliding_window_best_avg etc.).
+    if not value:
+        return None
+    parts = value.split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        minutes, seconds = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    return minutes * 60 + seconds
+
+
+def _seconds_to_mmss(seconds: float) -> str:
+    total = round(seconds)
+    return f"{total // 60}:{total % 60:02d}"
+
+
+# Bike FTP is conventionally estimated as 95% of best 20-minute power (the "20-minute test").
+FTP_TEST_MULTIPLIER = 0.95
+FTP_TEST_WINDOW_SECONDS = 1200
+# Running threshold (both critical_run_power and threshold_pace) is conventionally estimated
+# directly from a sustained ~1-hour effort - no multiplier, unlike bike's 20-minute test.
+RUNNING_THRESHOLD_WINDOW_SECONDS = 3600
+
+
+def detect_threshold_increase(
+    activity: Activity,
+    power_series: Sequence[float | None],
+    t_series: Sequence[int],
+    distance_km_series: Sequence[float | None],
+) -> None:
+    """Flags activity.suggested_ftp/suggested_critical_run_power/suggested_threshold_pace when
+    this activity's own best effort implies a higher threshold than what's already on record
+    (activity.ftp_snapshot/etc, set at ingest from the athlete's profile - see models.py).
+    Computed directly from this activity's raw streams rather than the persisted BestEffort
+    table, which only gets cycling_power/running_power rows once a threshold is ALREADY set
+    (see compute_kind_best_efforts) - relying on it would silently miss detecting a first-ever
+    threshold. Never suggests a decrease. Caller is responsible for saving `activity`.
+    """
+    if activity.sport == "bike":
+        values = [p if p is not None else 0 for p in power_series]
+        best_20min = _sliding_window_best_avg(values, FTP_TEST_WINDOW_SECONDS)
+        if best_20min is not None:
+            implied_ftp = round(FTP_TEST_MULTIPLIER * best_20min)
+            if implied_ftp > (activity.ftp_snapshot or 0):
+                activity.suggested_ftp = implied_ftp
+
+    elif activity.sport == "run":
+        values = [p if p is not None else 0 for p in power_series]
+        best_60min_power = _sliding_window_best_avg(values, RUNNING_THRESHOLD_WINDOW_SECONDS)
+        if best_60min_power is not None:
+            implied_crp = round(best_60min_power)
+            if implied_crp > (activity.critical_run_power_snapshot or 0):
+                activity.suggested_critical_run_power = implied_crp
+
+        best_60min_pace = _best_pace_seconds_per_km_over_duration(
+            t_series, distance_km_series, RUNNING_THRESHOLD_WINDOW_SECONDS
+        )
+        if best_60min_pace is not None:
+            current_pace_seconds = _mmss_to_seconds(activity.threshold_pace_snapshot)
+            # Pace is "lower is better" - a *faster* (smaller) implied pace is the improvement.
+            if current_pace_seconds is None or best_60min_pace < current_pace_seconds:
+                activity.suggested_threshold_pace = _seconds_to_mmss(best_60min_pace)
+
+
 def compute_duration_curve(series: Sequence[float | None], durations: Sequence[int]) -> dict[str, float]:
     values = [v if v is not None else 0 for v in series]
     points: dict[str, float] = {}
@@ -878,5 +985,14 @@ def _ingest_activity(
         distance_km_series = [s.get("distance_km") for s in samples]
         update_best_efforts(activity, athlete, power_series, t_series, distance_km_series, hr_series)
         attempt_workout_match(activity, athlete)
+
+        detect_threshold_increase(activity, power_series, t_series, distance_km_series)
+        suggested_fields = [
+            f
+            for f in ("suggested_ftp", "suggested_critical_run_power", "suggested_threshold_pace")
+            if getattr(activity, f)
+        ]
+        if suggested_fields:
+            activity.save(update_fields=suggested_fields)
 
     return activity
