@@ -1,5 +1,7 @@
 package com.cadence.api.athletes;
 
+import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.DerivedStatsRecomputeService;
 import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
@@ -7,6 +9,7 @@ import com.cadence.api.athletes.dto.AthleteUpdateResponse;
 import com.cadence.api.athletes.dto.ZoneSetReplaceRequest;
 import com.cadence.api.athletes.dto.ZoneSetReplaceResponse;
 import com.cadence.api.athletes.dto.ZoneSetResponse;
+import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
@@ -42,12 +45,14 @@ public class AthleteController {
 	private final FitnessService fitnessService;
 	private final TssRecomputeService tssRecomputeService;
 	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
+	private final ActivityRepository activityRepository;
 	private final AccessGuard accessGuard;
 	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
 	public AthleteController(UserService userService, UserMapper userMapper, AthleteService athleteService,
 			ZoneService zoneService, FitnessService fitnessService, TssRecomputeService tssRecomputeService,
-			DerivedStatsRecomputeService derivedStatsRecomputeService, AccessGuard accessGuard) {
+			DerivedStatsRecomputeService derivedStatsRecomputeService, ActivityRepository activityRepository,
+			AccessGuard accessGuard) {
 		this.userService = userService;
 		this.userMapper = userMapper;
 		this.athleteService = athleteService;
@@ -55,6 +60,7 @@ public class AthleteController {
 		this.fitnessService = fitnessService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
+		this.activityRepository = activityRepository;
 		this.accessGuard = accessGuard;
 	}
 
@@ -74,11 +80,18 @@ public class AthleteController {
 	}
 
 	@GetMapping("/v1/athletes/{id}/zones")
-	public DataListResponse<ZoneSetResponse> listZones(@PathVariable String id) {
+	public DataListResponse<ZoneSetResponse> listZones(
+			@PathVariable String id, @RequestParam(required = false) String activityId) {
 		accessGuard.requireRead(id);
 		User athlete = userService.getById(id);
+		// Optional: scope bike_power/run_power/pace's reference to one activity's own threshold
+		// snapshot instead of the athlete's current profile - see ZoneService.referenceFor. Must
+		// belong to this same athlete, same ownership check as any other athlete-scoped read.
+		Activity activity = activityId == null ? null
+				: activityRepository.findByIdAndAthleteId(activityId, id)
+						.orElseThrow(() -> new NotFoundException("No such activity."));
 		List<ZoneSetResponse> zones = zoneService.getAllOrCreate(athlete).stream()
-				.map(zs -> new ZoneSetResponse(zs.getType(), zoneService.referenceFor(athlete, zs.getType()), zs.getZones()))
+				.map(zs -> new ZoneSetResponse(zs.getType(), zoneService.referenceFor(athlete, zs.getType(), activity), zs.getZones()))
 				.toList();
 		return new DataListResponse<>(zones);
 	}

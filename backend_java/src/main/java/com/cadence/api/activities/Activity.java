@@ -116,6 +116,32 @@ public class Activity extends PrefixedIdEntity {
 	@Column(name = "avg_left_balance_pct")
 	private Double avgLeftBalancePct;
 
+	/** The athlete's threshold(s) at the moment this activity was created (upload or import) -
+	 * not stored to be edited, just so zones/TSS stay historically accurate instead of moving
+	 * every time the athlete's current profile changes (see ZoneService.referenceFor). Only the
+	 * field(s) relevant to this activity's own sport are ever set (bike -> ftpSnapshot, run ->
+	 * the other two); the other(s) stay null regardless of sport. */
+	@Column(name = "ftp_snapshot")
+	private Integer ftpSnapshot;
+
+	@Column(name = "critical_run_power_snapshot")
+	private Integer criticalRunPowerSnapshot;
+
+	@Column(name = "threshold_pace_snapshot")
+	private String thresholdPaceSnapshot = "";
+
+	/** Set when this activity's own best effort implies a higher threshold than what's on
+	 * record (see ThresholdDetectionService) - cleared (not just recorded elsewhere) once the
+	 * athlete accepts or dismisses it, so this field doubles as "is there a pending suggestion." */
+	@Column(name = "suggested_ftp")
+	private Integer suggestedFtp;
+
+	@Column(name = "suggested_critical_run_power")
+	private Integer suggestedCriticalRunPower;
+
+	@Column(name = "suggested_threshold_pace")
+	private String suggestedThresholdPace = "";
+
 	@Column(name = "start_weight_kg")
 	private Double startWeightKg;
 
@@ -395,6 +421,54 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setAvgLeftBalancePct(Double avgLeftBalancePct) {
 		this.avgLeftBalancePct = avgLeftBalancePct;
+	}
+
+	public Integer getFtpSnapshot() {
+		return ftpSnapshot;
+	}
+
+	public void setFtpSnapshot(Integer ftpSnapshot) {
+		this.ftpSnapshot = ftpSnapshot;
+	}
+
+	public Integer getCriticalRunPowerSnapshot() {
+		return criticalRunPowerSnapshot;
+	}
+
+	public void setCriticalRunPowerSnapshot(Integer criticalRunPowerSnapshot) {
+		this.criticalRunPowerSnapshot = criticalRunPowerSnapshot;
+	}
+
+	public String getThresholdPaceSnapshot() {
+		return thresholdPaceSnapshot;
+	}
+
+	public void setThresholdPaceSnapshot(String thresholdPaceSnapshot) {
+		this.thresholdPaceSnapshot = thresholdPaceSnapshot;
+	}
+
+	public Integer getSuggestedFtp() {
+		return suggestedFtp;
+	}
+
+	public void setSuggestedFtp(Integer suggestedFtp) {
+		this.suggestedFtp = suggestedFtp;
+	}
+
+	public Integer getSuggestedCriticalRunPower() {
+		return suggestedCriticalRunPower;
+	}
+
+	public void setSuggestedCriticalRunPower(Integer suggestedCriticalRunPower) {
+		this.suggestedCriticalRunPower = suggestedCriticalRunPower;
+	}
+
+	public String getSuggestedThresholdPace() {
+		return suggestedThresholdPace;
+	}
+
+	public void setSuggestedThresholdPace(String suggestedThresholdPace) {
+		this.suggestedThresholdPace = suggestedThresholdPace;
 	}
 
 	public Double getStartWeightKg() {
