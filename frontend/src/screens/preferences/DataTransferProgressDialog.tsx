@@ -27,15 +27,18 @@ function ProgressBar({ fraction }: { fraction: number }) {
 }
 
 /** Modal shown while an export/import job is in flight - what kind of data it's currently
- * working on plus a step-based progress bar. Neither backend tracks finer-grained progress
- * within a section (the "activities" section, by far the slowest, has no per-activity
- * counter - see ExportWriter.write's/export_writer.py's docstring for why), so the bar fills
- * in 5 discrete steps rather than smoothly - an honest reflection of what's actually known,
- * not simulated smoothness. */
+ * working on plus a progress bar. `totalItems`/`processedItems` give a real, smooth "N of M
+ * items" fraction (same idea as the FIT-archive-import batch progress bar) when the backend
+ * knows an upfront total; a file exported before that field existed (or the brief window
+ * before the upfront count query has run) has no total, so this falls back to the coarser
+ * step-quantized fraction - an honest reflection of what's actually known, not simulated
+ * smoothness. */
 export function DataTransferProgressDialog({
   title,
   status,
   currentStep,
+  totalItems,
+  processedItems,
   errorMessage,
   onClose,
   children,
@@ -43,13 +46,16 @@ export function DataTransferProgressDialog({
   title: string;
   status: "queued" | "processing" | "ready" | "failed";
   currentStep: DataTransferStep | null;
+  totalItems: number | null;
+  processedItems: number;
   errorMessage?: string | null;
   onClose: () => void;
   children?: React.ReactNode;
 }) {
   const isTerminal = status === "ready" || status === "failed";
   const stepIndex = currentStep ? STEPS.indexOf(currentStep) : -1;
-  const fraction = status === "ready" ? 1 : stepIndex >= 0 ? stepIndex / STEPS.length : 0;
+  const itemFraction = totalItems != null && totalItems > 0 ? Math.min(processedItems / totalItems, 1) : null;
+  const fraction = status === "ready" ? 1 : (itemFraction ?? (stepIndex >= 0 ? stepIndex / STEPS.length : 0));
 
   return (
     <div
@@ -80,8 +86,13 @@ export function DataTransferProgressDialog({
 
         {!isTerminal && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 13, color: "var(--ink2)" }}>
-              {currentStep ? STEP_LABELS[currentStep] : "Starting…"}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13, color: "var(--ink2)" }}>
+              <span>{currentStep ? STEP_LABELS[currentStep] : "Starting…"}</span>
+              {itemFraction != null && (
+                <span className="mono">
+                  {processedItems} of {totalItems}
+                </span>
+              )}
             </div>
             <ProgressBar fraction={fraction} />
           </div>
