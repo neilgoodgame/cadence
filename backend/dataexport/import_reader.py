@@ -88,13 +88,12 @@ def _stream(stored_path: str) -> gzip.GzipFile:
     return gzip.GzipFile(fileobj=default_storage.open(stored_path, "rb"), mode="rb")
 
 
-def _read_total_items(stored_path: str) -> int | None:
+def _read_counts(stored_path: str) -> dict | None:
     """Peeks at the "counts" metadata block near the top of the file (see export_writer.py's
-    _counts) for an upfront item total - a file exported before that field existed has no
-    "counts" key, in which case there's nothing to report and the caller skips on_total."""
+    _counts) for the upfront per-category totals - a file exported before that field existed
+    has no "counts" key, in which case there's nothing to report and the caller skips on_total."""
     with _stream(stored_path) as gz:
-        totals = next(ijson.items(gz, "counts", use_float=True), None)
-    return sum(totals.values()) if totals else None
+        return next(ijson.items(gz, "counts", use_float=True), None)
 
 
 def _find_or_create_shoe_model_version(manufacturer: str, model: str, version: str) -> ShoeModelVersion:
@@ -480,37 +479,43 @@ def read_import(
     """`on_step` (if given) is called once per section, right as it starts - see
     ImportJob.current_step (models.py's DATA_TRANSFER_STEPS) for the fixed 5-step order this
     walks through, same as export_writer.write_export's on_step. `on_total`/`on_progress` (if
-    given) turn that into a fine-grained item-level progress bar, mirroring write_export's:
-    `on_total` fires once, upfront, by peeking at the file's own "counts" metadata block
-    (_read_total_items) rather than re-deriving it - a file exported before that field existed
-    has no "counts" key, in which case on_total is simply never called. `on_progress` fires
-    with a running cumulative item count (imported or skipped - either way the reader has moved
-    past it) as each item across every section is processed, throttled (see _Progress)."""
+    given) turn that into a fine-grained item-level progress bar *scoped to the current
+    section*, mirroring write_export's: `on_total` fires once per section, right after on_step,
+    with that section's own count read from the file's own "counts" metadata block (_read_counts)
+    - a file exported before that field existed has no "counts" key, in which case on_total is
+    simply never called. `on_progress` fires with a running count *reset to 0 at the start of
+    each section* as each item in it is processed (imported or skipped - either way the reader
+    has moved past it), throttled (see _Progress). "equipment" covers bikes+shoes+components
+    combined (one section/one on_step call), so its total is the sum of those three."""
     counts = dict.fromkeys(COUNT_KEYS, 0)
     bikes_by_old_id: dict[str, str] = {}
     shoes_by_old_id: dict[str, str] = {}
     workouts_by_old_id: dict[str, str] = {}
     activity_id_map: dict[str, str] = {}
     deferred_links: list[tuple[str, str, bool]] = []
+    file_counts = _read_counts(stored_path) if on_total else None
 
-    if on_total:
-        total_items = _read_total_items(stored_path)
-        if total_items is not None:
-            on_total(total_items)
-    progress = _Progress(on_progress)
+    def start_section(step: str, total_key: str | None) -> "_Progress":
+        if on_step:
+            on_step(step)
+        if on_total and file_counts is not None:
+            total = (
+                file_counts["bikes"] + file_counts["shoes"] + file_counts["components"]
+                if total_key is None
+                else file_counts[total_key]
+            )
+            on_total(total)
+        return _Progress(on_progress)
 
-    if on_step:
-        on_step("equipment")
+    progress = start_section("equipment", None)
     _import_equipment(athlete_id, stored_path, bikes_by_old_id, shoes_by_old_id, counts, progress)
     progress.flush()
 
-    if on_step:
-        on_step("workouts")
+    progress = start_section("workouts", "workouts")
     _import_workouts(athlete_id, stored_path, workouts_by_old_id, counts, progress)
     progress.flush()
 
-    if on_step:
-        on_step("activities")
+    progress = start_section("activities", "activities")
     _import_activities(
         athlete_id,
         stored_path,
@@ -524,13 +529,11 @@ def read_import(
     )
     progress.flush()
 
-    if on_step:
-        on_step("races")
+    progress = start_section("races", "races")
     _import_races(athlete_id, stored_path, activity_id_map, counts, progress)
     progress.flush()
 
-    if on_step:
-        on_step("scheduled_workouts")
+    progress = start_section("scheduled_workouts", "scheduled_workouts")
     _import_scheduled_workouts(athlete_id, stored_path, workouts_by_old_id, activity_id_map, counts, progress)
     progress.flush()
     _resolve_deferred_links(deferred_links, activity_id_map)

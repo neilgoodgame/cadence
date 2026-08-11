@@ -239,44 +239,70 @@ class ProgressStepTests(TestCase):
 class ProgressItemsTests(TestCase):
     """write_export/read_import's on_total/on_progress callbacks - the ExportJob/ImportJob
     total_items/processed_items fields these feed drive the fine-grained "N of M" progress bar,
-    same pattern as the FIT-archive-import batch progress bar."""
+    same pattern as the FIT-archive-import batch progress bar. Scoped *per section* - e.g. while
+    on_step is "activities", on_total/on_progress report activities specifically, not a blend
+    across every kind of data - so each one resets at the start of every new section."""
 
     def setUp(self):
         self.athlete = User.objects.create_user(email="progress-items@example.cc", password="x", name="Athlete")
         _seed_full_account(self.athlete)
         # _seed_full_account: 2 activities, 1 race, 1 workout, 1 scheduled_workout, 1 bike,
-        # 1 shoe, 1 component = 8 items total.
-        self.expected_total = 8
+        # 1 shoe, 1 component. Equipment is one section (bikes+shoes+components combined) = 3.
+        self.expected_totals_by_step = {
+            "equipment": 3,
+            "workouts": 1,
+            "activities": 2,
+            "races": 1,
+            "scheduled_workouts": 1,
+        }
 
-    def test_write_export_calls_on_total_and_on_progress_reaching_the_total(self):
+    def test_write_export_calls_on_total_and_on_progress_per_section(self):
         relative_path = "exports/test/progress-items.json.gz"
-        totals: list[int] = []
-        progress: list[int] = []
+        events: list[tuple[str, int]] = []
 
-        write_export(self.athlete.id, None, relative_path, on_total=totals.append, on_progress=progress.append)
+        write_export(
+            self.athlete.id,
+            None,
+            relative_path,
+            on_step=lambda step: events.append(("step", step)),
+            on_total=lambda total: events.append(("total", total)),
+            on_progress=lambda processed: events.append(("progress", processed)),
+        )
 
-        self.assertEqual(totals, [self.expected_total])
-        self.assertTrue(progress)
-        self.assertEqual(progress, sorted(progress))  # monotonically non-decreasing
-        self.assertEqual(progress[-1], self.expected_total)
+        for step, total in self.expected_totals_by_step.items():
+            # Each section's on_total fires with just that section's own count, and its final
+            # on_progress (the flush at the section's end) reaches that same count - never a
+            # blend with any other section's items.
+            self.assertIn(("step", step), events)
+            self.assertIn(("total", total), events)
+            step_index = events.index(("step", step))
+            total_index = events.index(("total", total), step_index)
+            self.assertEqual(events[total_index + 1], ("progress", total))
 
         from django.core.files.storage import default_storage
 
         default_storage.delete(relative_path)
 
-    def test_read_import_calls_on_total_and_on_progress_reaching_the_total(self):
+    def test_read_import_calls_on_total_and_on_progress_per_section(self):
         relative_path = "exports/test/progress-items-source.json.gz"
         write_export(self.athlete.id, None, relative_path)
         target = User.objects.create_user(email="progress-items-target@example.cc", password="x", name="Target")
-        totals: list[int] = []
-        progress: list[int] = []
+        events: list[tuple[str, int]] = []
 
-        read_import(target.id, relative_path, on_total=totals.append, on_progress=progress.append)
+        read_import(
+            target.id,
+            relative_path,
+            on_step=lambda step: events.append(("step", step)),
+            on_total=lambda total: events.append(("total", total)),
+            on_progress=lambda processed: events.append(("progress", processed)),
+        )
 
-        self.assertEqual(totals, [self.expected_total])
-        self.assertTrue(progress)
-        self.assertEqual(progress, sorted(progress))
-        self.assertEqual(progress[-1], self.expected_total)
+        for step, total in self.expected_totals_by_step.items():
+            self.assertIn(("step", step), events)
+            self.assertIn(("total", total), events)
+            step_index = events.index(("step", step))
+            total_index = events.index(("total", total), step_index)
+            self.assertEqual(events[total_index + 1], ("progress", total))
 
         from django.core.files.storage import default_storage
 

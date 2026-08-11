@@ -263,12 +263,16 @@ def write_export(
     (which activities reference) before activities, activities (which races/scheduled_workouts
     reference) before those - dependency order, in case any consumer relies on it. `on_step`
     (if given) is called once per section, right as it starts. `on_total`/`on_progress` (if
-    given) turn that into a fine-grained item-level progress bar - `on_total` fires once,
-    upfront, with the same sum of counts.py's .count() queries the "counts" file field already
-    computes (so this is free - no second query), and `on_progress` fires with a running
-    cumulative item count as each bike/shoe/component/workout/activity/race/scheduled_workout
-    is written, throttled (see _Progress) so a multi-thousand-row export doesn't turn into a
-    DB write per row.
+    given) turn that into a fine-grained item-level progress bar *scoped to the current
+    section* - e.g. while `on_step` is "activities", `on_total`/`on_progress` report "how many
+    of this athlete's activities have been written", not a blended count across every kind of
+    data. `on_total` fires once per section, right after `on_step`, with that section's own
+    count from counts.py's .count() queries (the same ones the "counts" file field already
+    computes - so this is free, no second query); `on_progress` fires with a running count
+    *reset to 0 at the start of each section* as each item in it is written, throttled (see
+    _Progress) so a multi-thousand-row export doesn't turn into a DB write per row. "equipment"
+    covers bikes+shoes+components combined (they're one section/one on_step call), so its total
+    is the sum of those three.
     """
     full_path = _ensure_parent_dir(relative_path)
     with gzip.GzipFile(full_path, mode="wb") as gz:
@@ -279,36 +283,35 @@ def write_export(
         counts = _counts(athlete_id, sport)
         gz.write(b',"counts":')
         gz.write(_dump(counts))
-        if on_total:
-            on_total(sum(counts.values()))
-        progress = _Progress(on_progress)
 
-        if on_step:
-            on_step("equipment")
+        def start_section(step: str, total: int) -> "_Progress":
+            if on_step:
+                on_step(step)
+            if on_total:
+                on_total(total)
+            return _Progress(on_progress)
+
+        progress = start_section("equipment", counts["bikes"] + counts["shoes"] + counts["components"])
         gz.write(b',"equipment":')
         _write_equipment(gz, athlete_id, progress)
         progress.flush()
 
-        if on_step:
-            on_step("workouts")
+        progress = start_section("workouts", counts["workouts"])
         gz.write(b',"workouts":')
         _write_workouts(gz, athlete_id, sport, progress)
         progress.flush()
 
-        if on_step:
-            on_step("activities")
+        progress = start_section("activities", counts["activities"])
         gz.write(b',"activities":')
         _write_activities(gz, athlete_id, sport, progress)
         progress.flush()
 
-        if on_step:
-            on_step("races")
+        progress = start_section("races", counts["races"])
         gz.write(b',"races":')
         _write_races(gz, athlete_id, sport, progress)
         progress.flush()
 
-        if on_step:
-            on_step("scheduled_workouts")
+        progress = start_section("scheduled_workouts", counts["scheduled_workouts"])
         gz.write(b',"scheduled_workouts":')
         _write_scheduled_workouts(gz, athlete_id, sport, progress)
         progress.flush()
