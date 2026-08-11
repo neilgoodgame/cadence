@@ -27,12 +27,14 @@ function ProgressBar({ fraction }: { fraction: number }) {
 }
 
 /** Modal shown while an export/import job is in flight - what kind of data it's currently
- * working on plus a progress bar. `totalItems`/`processedItems` give a real, smooth "N of M
- * items" fraction (same idea as the FIT-archive-import batch progress bar) when the backend
- * knows an upfront total; a file exported before that field existed (or the brief window
- * before the upfront count query has run) has no total, so this falls back to the coarser
- * step-quantized fraction - an honest reflection of what's actually known, not simulated
- * smoothness. */
+ * working on plus a progress bar. `totalItems`/`processedItems` are scoped to the *current*
+ * step (backend resets them at each section boundary), giving a real, smooth "N of M" fraction
+ * for whatever's running right now - e.g. "142 of 2714" while on "activities" means 142 of
+ * this athlete's 2714 activities, not a blend with races/workouts/equipment - when the backend
+ * knows that section's upfront total; a file exported before that field existed (or the brief
+ * window before the upfront count query has run) has no total, so this falls back to the
+ * coarser step-quantized fraction - an honest reflection of what's actually known, not
+ * simulated smoothness. */
 export function DataTransferProgressDialog({
   title,
   status,
