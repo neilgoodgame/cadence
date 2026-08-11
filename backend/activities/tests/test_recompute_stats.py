@@ -79,6 +79,33 @@ class RecomputeActivityStatsViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class RecomputeActivityTssViewTests(TestCase):
+    """recompute-tss reads the activity's own threshold snapshot, not the athlete's current
+    profile - the actual bug this feature fixes (see athletes/zones.py::reference_for)."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="tss-recompute@example.cc", password="x", name="Athlete", ftp=300)
+
+    def test_recompute_uses_the_snapshot_not_the_current_ftp(self):
+        activity = _make_activity(
+            self.athlete,
+            sport="bike",
+            moving_time=3600,
+            tss=0,
+            ftp_snapshot=200,
+        )
+        for t in range(3600):
+            Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=200)
+
+        response = _bearer_client(self.athlete).post(f"/v1/activities/{activity.id}/recompute-tss")
+        self.assertEqual(response.status_code, 200)
+        # 200W at a 200W snapshot FTP for a full hour = 100 TSS, not the ~44 a re-rate against
+        # the athlete's current 300 FTP would silently have produced.
+        self.assertEqual(response.json()["tss"], 100)
+        activity.refresh_from_db()
+        self.assertEqual(activity.tss, 100)
+
+
 class RecomputeAthleteStatsViewTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="bulk-athlete@example.cc", password="x", name="Athlete", lthr=160)

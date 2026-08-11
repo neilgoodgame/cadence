@@ -57,7 +57,7 @@ class ZoneSetSerializer(serializers.Serializer):
     zones = ZoneSerializer(many=True)
 
     def get_reference(self, obj: ZoneSet) -> int | None:
-        return reference_for(obj.athlete, obj.type)
+        return reference_for(obj.athlete, obj.type, activity=self.context.get("activity"))
 
 
 class ZoneSetReplaceSerializer(serializers.Serializer):

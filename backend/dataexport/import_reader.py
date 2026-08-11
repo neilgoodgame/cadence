@@ -35,6 +35,7 @@ import ijson
 from django.core.files.storage import default_storage
 from django.utils.dateparse import parse_datetime, parse_duration
 
+from accounts.models import User
 from activities.models import Activity, ActivityTag, Lap, Record, Tag
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
 from races.models import Race
@@ -308,6 +309,9 @@ def _import_activities(
     counts: dict,
     progress: _Progress,
 ) -> None:
+    # Fetched once, outside the per-activity loop - reused as the fallback for any imported
+    # activity whose JSON has no ftp_snapshot/etc. (a file exported before that field existed).
+    importing_athlete = User.objects.only("ftp", "critical_run_power", "threshold_pace").get(pk=athlete_id)
     with _stream(stored_path) as gz:
         for entry in ijson.items(gz, "activities.item", use_float=True):
             ar = entry["activity"]
@@ -319,6 +323,24 @@ def _import_activities(
                 start_date = parse_datetime(ar["start_date"])
                 if start_date is None:
                     raise ValueError(f"Unparseable start_date: {ar['start_date']!r}")
+
+                # Carries over the source activity's own threshold snapshot if the export file
+                # has one; a file exported before that field existed falls back to the
+                # *importing* athlete's current profile (same graceful-degradation pattern as
+                # the "counts" progress metadata - see export_writer.py/import_reader.py).
+                ftp_snapshot = None
+                critical_run_power_snapshot = None
+                threshold_pace_snapshot = ""
+                if ar["sport"] == "bike":
+                    ftp_snapshot = ar.get("ftp_snapshot") or importing_athlete.ftp
+                elif ar["sport"] == "run":
+                    critical_run_power_snapshot = (
+                        ar.get("critical_run_power_snapshot") or importing_athlete.critical_run_power
+                    )
+                    threshold_pace_snapshot = (
+                        ar.get("threshold_pace_snapshot") or importing_athlete.threshold_pace or ""
+                    )
+
                 activity = Activity.objects.create(
                     athlete_id=athlete_id,
                     sport=ar["sport"],
@@ -359,6 +381,9 @@ def _import_activities(
                     workout_id=workouts_by_old_id.get(ar.get("workout_id")),
                     bike_id=bikes_by_old_id.get(ar.get("bike_id")),
                     shoe_id=shoes_by_old_id.get(ar.get("shoe_id")),
+                    ftp_snapshot=ftp_snapshot,
+                    critical_run_power_snapshot=critical_run_power_snapshot,
+                    threshold_pace_snapshot=threshold_pace_snapshot,
                 )
 
                 Lap.objects.bulk_create(

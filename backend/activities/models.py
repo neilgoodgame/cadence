@@ -90,6 +90,20 @@ class Activity(PrefixedIDModel):
     # (dual-sided/balance-capable power meters only - null for everything else, which is
     # most activities). Right % = 100 - this.
     avg_left_balance_pct = models.FloatField(null=True, blank=True)
+    # The athlete's threshold(s) at the moment this activity was created (upload or import) -
+    # not stored to be edited, just so zones/TSS stay historically accurate instead of moving
+    # every time the athlete's current profile changes (see athletes/zones.py::reference_for).
+    # Only the field(s) relevant to this activity's own sport are ever set (bike -> ftp_snapshot,
+    # run -> the other two); the other(s) stay null regardless of sport.
+    ftp_snapshot = models.PositiveIntegerField(null=True, blank=True)
+    critical_run_power_snapshot = models.PositiveIntegerField(null=True, blank=True)
+    threshold_pace_snapshot = models.CharField(max_length=10, blank=True, default="")
+    # Set when this activity's own best effort implies a higher threshold than what's on
+    # record (see threshold_detection.py) - cleared (not just recorded elsewhere) once the
+    # athlete accepts or dismisses it, so this field doubles as "is there a pending suggestion."
+    suggested_ftp = models.PositiveIntegerField(null=True, blank=True)
+    suggested_critical_run_power = models.PositiveIntegerField(null=True, blank=True)
+    suggested_threshold_pace = models.CharField(max_length=10, blank=True, default="")
     workout = models.ForeignKey(Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     bike = models.ForeignKey(Bike, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     shoe = models.ForeignKey(Shoe, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")

@@ -11,7 +11,7 @@ from authn.oauth_utils import issue_token_pair
 from uploads.processing import _trim_kind_window
 
 from .models import ZoneSet
-from .zones import DEFAULT_ZONES
+from .zones import DEFAULT_ZONES, reference_for
 
 
 def _bearer_client(user, scope="activities:read activities:write workouts:write calendar:write coach gear:write"):
@@ -184,6 +184,138 @@ class ZoneSetViewTests(TestCase):
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
         response = client.put(f"/v1/athletes/{self.athlete.id}/zones/bike_power", {"zones": []}, format="json")
         self.assertEqual(response.status_code, 403)
+
+
+class ReferenceForTests(TestCase):
+    """Direct unit coverage of zones.py::reference_for's activity-scoping, independent of the
+    HTTP layer covered by ZoneSetActivityScopeTests below."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="reference-for@example.cc",
+            password="x",
+            name="Athlete",
+            ftp=250,
+            lthr=160,
+            critical_run_power=270,
+            threshold_pace="4:00",
+        )
+
+    def test_without_activity_reads_the_athletes_live_profile(self):
+        self.assertEqual(reference_for(self.athlete, "bike_power"), 250)
+        self.assertEqual(reference_for(self.athlete, "pace"), 240)  # "4:00" -> 240s
+
+    def test_with_activity_reads_that_activitys_snapshot(self):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Old ride", start_date=timezone.now(), ftp_snapshot=200
+        )
+        self.assertEqual(reference_for(self.athlete, "bike_power", activity=activity), 200)
+
+    def test_pace_snapshot_is_parsed_from_mmss_same_as_the_live_field(self):
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Old run",
+            start_date=timezone.now(),
+            threshold_pace_snapshot="4:30",
+        )
+        self.assertEqual(reference_for(self.athlete, "pace", activity=activity), 270)
+
+    def test_heart_rate_ignores_activity_and_always_reads_live(self):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Old ride", start_date=timezone.now(), ftp_snapshot=200
+        )
+        self.assertEqual(reference_for(self.athlete, "heart_rate", activity=activity), 160)
+
+    def test_a_null_snapshot_returns_none_rather_than_falling_back_to_the_live_profile(self):
+        # An activity with no snapshot (e.g. pre-dating this feature and never backfilled)
+        # should read as "unknown," not silently fall back to the athlete's current FTP -
+        # that fallback-to-live behavior is exactly what activity-scoping exists to avoid.
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="No snapshot", start_date=timezone.now()
+        )
+        self.assertIsNone(reference_for(self.athlete, "bike_power", activity=activity))
+
+
+class ZoneSetActivityScopeTests(TestCase):
+    """?activity_id= scopes bike_power/run_power/pace's reference to that activity's own
+    threshold snapshot instead of the athlete's current (possibly since-changed) profile."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="zone-scope@example.cc", password="x", name="Athlete", ftp=250, lthr=160
+        )
+        self.old_bike_activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="bike",
+            name="Old ride",
+            start_date=timezone.now(),
+            ftp_snapshot=200,
+        )
+        # The athlete's FTP has since gone up - the old activity's own snapshot should win.
+        self.athlete.ftp = 250
+        self.athlete.save(update_fields=["ftp"])
+
+    def test_without_activity_id_uses_the_athletes_current_profile(self):
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/zones")
+        bike = next(z for z in response.json()["data"] if z["type"] == "bike_power")
+        self.assertEqual(bike["reference"], 250)
+
+    def test_with_activity_id_uses_that_activitys_own_snapshot(self):
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/zones?activity_id={self.old_bike_activity.id}"
+        )
+        bike = next(z for z in response.json()["data"] if z["type"] == "bike_power")
+        self.assertEqual(bike["reference"], 200)
+
+    def test_heart_rate_reference_is_unaffected_by_activity_id(self):
+        # lthr isn't snapshotted per-activity - always live, with or without activity_id.
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/zones?activity_id={self.old_bike_activity.id}"
+        )
+        hr = next(z for z in response.json()["data"] if z["type"] == "heart_rate")
+        self.assertEqual(hr["reference"], 160)
+
+    def test_activity_id_belonging_to_another_athlete_404s(self):
+        other = User.objects.create_user(email="zone-scope-other@example.cc", password="x", name="Other")
+        other_activity = Activity.objects.create(
+            athlete=other, sport="bike", name="Not yours", start_date=timezone.now(), ftp_snapshot=999
+        )
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/zones?activity_id={other_activity.id}"
+        )
+        self.assertEqual(response.status_code, 404)
+
+
+class RecomputeAthleteTssViewTests(TestCase):
+    """The bulk 'Recompute TSS' action - the actual bug this snapshot feature fixes: it used
+    to silently re-rate every historical activity against the athlete's CURRENT FTP."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="bulk-tss@example.cc", password="x", name="Athlete", ftp=300)
+
+    def test_recompute_uses_each_activitys_own_snapshot_not_the_current_profile(self):
+        from activities.models import Record
+
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="bike",
+            name="Old ride",
+            start_date=timezone.now(),
+            moving_time=3600,
+            tss=0,
+            ftp_snapshot=200,  # what FTP actually was when this ride happened
+        )
+        for t in range(3600):
+            Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=200)
+
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/recompute-tss")
+        self.assertEqual(response.status_code, 200)
+
+        activity.refresh_from_db()
+        # 200W normalized power at a 200W snapshot FTP = 100 TSS for a 1-hour ride - NOT the
+        # ~44 TSS a re-rate against the athlete's current 300 FTP would have silently produced.
+        self.assertEqual(activity.tss, 100)
 
 
 class BestEffortListViewTests(TestCase):

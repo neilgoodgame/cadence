@@ -95,8 +95,11 @@ class BestPaceSecondsPerKmTests(SimpleTestCase):
 
 class ComputeTssTests(TestCase):
     def test_power_based_tss_one_hour_at_ftp_equals_100(self):
-        athlete = User.objects.create_user(email="ftp@example.cc", password="x", name="FTP Athlete", ftp=200)
-        activity = Activity(sport="bike", moving_time=3600)
+        # compute_tss reads the activity's own threshold snapshot, not the athlete's live
+        # profile (see compute_tss's docstring) - athlete.ftp is set too, but only to confirm
+        # it's NOT what gets read.
+        athlete = User.objects.create_user(email="ftp@example.cc", password="x", name="FTP Athlete", ftp=999)
+        activity = Activity(sport="bike", moving_time=3600, ftp_snapshot=200)
         tss = compute_tss(activity, athlete, norm_power=200, heartrate_series=[])
         self.assertEqual(tss, 100)
 

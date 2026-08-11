@@ -95,7 +95,16 @@ class ZoneSetListView(APIView):
         _require_read(request, id)
         athlete = get_object_or_404(User, pk=id)
         zone_sets = [get_or_create_zone_set(athlete, zone_type) for zone_type in ZONE_TYPES]
-        return Response({"data": ZoneSetSerializer(zone_sets, many=True).data})
+
+        # Optional: scope bike_power/run_power/pace's reference to one activity's own threshold
+        # snapshot instead of the athlete's current profile - see zones.py::reference_for. Must
+        # belong to this same athlete, same ownership check as any other athlete-scoped read.
+        activity_id = request.query_params.get("activity_id")
+        activity = None
+        if activity_id:
+            activity = get_object_or_404(Activity, pk=activity_id, athlete_id=id)
+
+        return Response({"data": ZoneSetSerializer(zone_sets, many=True, context={"activity": activity}).data})
 
 
 class ZoneSetDetailView(APIView):

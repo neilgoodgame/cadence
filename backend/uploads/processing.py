@@ -297,11 +297,16 @@ def _hr_based_tss(athlete: User, heartrate_series: Sequence[float | None], movin
 def compute_tss(
     activity: Activity, athlete: User, norm_power: float | None, heartrate_series: Sequence[float | None]
 ) -> int:
+    # Reads the activity's own threshold snapshot, not the athlete's current profile - so
+    # this stays historically accurate whether called at ingest or from an explicit "Recompute
+    # TSS" action (both athlete-level and per-activity - see athletes/views.py and
+    # activities/views.py). `athlete` is still needed below for the HR-based fallback, which has
+    # no per-activity snapshot equivalent (lthr isn't snapshotted - see the plan's Key decisions).
     threshold_power = None
     if activity.sport == "bike":
-        threshold_power = athlete.ftp
+        threshold_power = activity.ftp_snapshot
     elif activity.sport == "run":
-        threshold_power = athlete.critical_run_power
+        threshold_power = activity.critical_run_power_snapshot
 
     power_tss = _power_based_tss(norm_power, threshold_power, activity.moving_time)
     if power_tss is not None:
@@ -732,6 +737,12 @@ def _ingest_activity(
         end_weight_kg=upload.weight_after_kg if parent is None else None,
         fluids_ml=upload.fluids_ml if parent is None else None,
         shoe_id=upload.shoe_id if wears_shoe else None,
+        # Snapshot the athlete's threshold(s) as of right now, so zones/TSS for this activity
+        # stay historically accurate even if the athlete's profile changes later (see
+        # athletes/zones.py::reference_for). Only the field(s) relevant to this sport are set.
+        ftp_snapshot=athlete.ftp if sport == "bike" else None,
+        critical_run_power_snapshot=athlete.critical_run_power if sport == "run" else None,
+        threshold_pace_snapshot=athlete.threshold_pace if sport == "run" else "",
     )
 
     Record.objects.bulk_create(
@@ -785,10 +796,10 @@ def _ingest_activity(
     activity.norm_power = round(norm_power) if norm_power is not None else None
     activity.avg_hr = round(avg_hr) if avg_hr is not None else None
     activity.max_hr = max_hr
-    if norm_power and activity.sport == "bike" and athlete.ftp:
-        activity.intensity = round(norm_power / athlete.ftp, 3)
-    elif norm_power and activity.sport == "run" and athlete.critical_run_power:
-        activity.intensity = round(norm_power / athlete.critical_run_power, 3)
+    if norm_power and activity.sport == "bike" and activity.ftp_snapshot:
+        activity.intensity = round(norm_power / activity.ftp_snapshot, 3)
+    elif norm_power and activity.sport == "run" and activity.critical_run_power_snapshot:
+        activity.intensity = round(norm_power / activity.critical_run_power_snapshot, 3)
     if not is_multisport_parent:
         # The multisport parent's TSS is set by the caller as the sum of its legs'.
         activity.tss = compute_tss(activity, athlete, norm_power, hr_series)

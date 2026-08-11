@@ -106,6 +106,10 @@ class TcxPowerIngestionTests(TestCase):
         self.assertEqual(activity.norm_power, 200)
         self.assertEqual(activity.intensity, 1.0)
         self.assertEqual(activity.tss, 8)  # round(300*200*1 / (200*3600) * 100)
+        # Snapshotted at ingest - a bike activity only gets ftp_snapshot, never the run fields.
+        self.assertEqual(activity.ftp_snapshot, 200)
+        self.assertIsNone(activity.critical_run_power_snapshot)
+        self.assertEqual(activity.threshold_pace_snapshot, "")
 
         curve = DurationCurve.objects.get(activity=activity, metric="power")
         for key in ("5", "15", "30", "60", "300"):
@@ -145,6 +149,8 @@ class RealFitIngestionTests(TestCase):
         self.assertGreater(activity.tss, 0)
         self.assertTrue(DurationCurve.objects.filter(activity=activity, metric="power").exists())
         self.assertTrue(BestEffort.objects.filter(athlete=self.athlete, kind="cycling_power").exists())
+        self.assertEqual(activity.ftp_snapshot, 250)
+        self.assertIsNone(activity.critical_run_power_snapshot)
 
     def test_cycling_indoor_ingests_core_sensor_fields_but_no_avg_air_temp(self):
         activity = self._upload_fixture("cycling_indoor.fit")
@@ -190,6 +196,9 @@ class RealFitIngestionTests(TestCase):
         self.assertIsNotNone(activity.norm_power)
         self.assertGreater(activity.tss, 0)
         self.assertTrue(BestEffort.objects.filter(athlete=self.athlete, kind="running_power").exists())
+        self.assertEqual(activity.critical_run_power_snapshot, 280)
+        self.assertIsNone(activity.ftp_snapshot)
+        self.assertEqual(activity.threshold_pace_snapshot, "")  # athlete never set threshold_pace
 
     def test_running_treadmill_derives_avg_env_fields_from_stryd_and_stores_core_records(self):
         activity = self._upload_fixture("running_treadmill.fit")
