@@ -31,6 +31,11 @@ class ExportJob(PrefixedIDModel):
     athlete = models.OneToOneField(User, on_delete=models.CASCADE, related_name="export_job")
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
     current_step = models.CharField(max_length=20, choices=DATA_TRANSFER_STEPS, blank=True, default="")
+    # Fine-grained item-level progress within current_step - null until export_writer.write_export's
+    # upfront counts query runs (i.e. for the brief "queued" window), then processed_items climbs
+    # from 0 to total_items as the file is written. See export_writer.py's on_total/on_progress.
+    total_items = models.IntegerField(null=True, blank=True)
+    processed_items = models.IntegerField(default=0)
     stored_path = models.CharField(max_length=255, blank=True, default="")
     file_size_bytes = models.BigIntegerField(null=True, blank=True)
     error_message = models.CharField(max_length=500, blank=True, default="")
@@ -48,6 +53,11 @@ class ImportJob(PrefixedIDModel):
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="import_jobs")
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
     current_step = models.CharField(max_length=20, choices=DATA_TRANSFER_STEPS, blank=True, default="")
+    # Mirrors ExportJob's total_items/processed_items - see import_reader.py's on_total/on_progress.
+    # total_items comes from the source file's own "counts" metadata block, so it's null for a
+    # file exported before that field existed (see import_reader._read_total_items).
+    total_items = models.IntegerField(null=True, blank=True)
+    processed_items = models.IntegerField(default=0)
     activities_imported = models.IntegerField(default=0)
     races_imported = models.IntegerField(default=0)
     workouts_imported = models.IntegerField(default=0)

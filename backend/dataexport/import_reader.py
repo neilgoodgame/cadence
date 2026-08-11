@@ -45,6 +45,32 @@ from workouts.models import Workout, WorkoutStep
 logger = logging.getLogger(__name__)
 
 OnStep = Callable[[str], None]
+OnTotal = Callable[[int], None]
+OnProgress = Callable[[int], None]
+
+# Persisting after every single item would mean one DB write per row in a multi-thousand-
+# activity import - throttle to every 20 items (still gives a smooth-looking bar).
+_PROGRESS_INTERVAL = 20
+
+
+class _Progress:
+    """Wraps an `on_progress` callback with throttling. `flush()` bypasses the throttle -
+    called at section boundaries so the persisted count never drifts far behind reality
+    (otherwise a section with, say, 7 items never fires at all, since 7 % 20 != 0)."""
+
+    def __init__(self, on_progress: OnProgress | None):
+        self._on_progress = on_progress
+        self.count = 0
+
+    def tick(self) -> None:
+        self.count += 1
+        if self._on_progress and self.count % _PROGRESS_INTERVAL == 0:
+            self._on_progress(self.count)
+
+    def flush(self) -> None:
+        if self._on_progress:
+            self._on_progress(self.count)
+
 
 COUNT_KEYS = [
     "activities_imported",
@@ -60,6 +86,14 @@ COUNT_KEYS = [
 
 def _stream(stored_path: str) -> gzip.GzipFile:
     return gzip.GzipFile(fileobj=default_storage.open(stored_path, "rb"), mode="rb")
+
+
+def _read_counts(stored_path: str) -> dict | None:
+    """Peeks at the "counts" metadata block near the top of the file (see export_writer.py's
+    _counts) for the upfront per-category totals - a file exported before that field existed
+    has no "counts" key, in which case there's nothing to report and the caller skips on_total."""
+    with _stream(stored_path) as gz:
+        return next(ijson.items(gz, "counts", use_float=True), None)
 
 
 def _find_or_create_shoe_model_version(manufacturer: str, model: str, version: str) -> ShoeModelVersion:
@@ -78,7 +112,12 @@ def _find_or_create_shoe_model_version(manufacturer: str, model: str, version: s
 
 
 def _import_equipment(
-    athlete_id: str, stored_path: str, bikes_by_old_id: dict[str, str], shoes_by_old_id: dict[str, str], counts: dict
+    athlete_id: str,
+    stored_path: str,
+    bikes_by_old_id: dict[str, str],
+    shoes_by_old_id: dict[str, str],
+    counts: dict,
+    progress: _Progress,
 ) -> None:
     with _stream(stored_path) as gz:
         for bike in ijson.items(gz, "equipment.bikes.item", use_float=True):
@@ -95,6 +134,7 @@ def _import_equipment(
             except Exception:
                 logger.warning("Skipped bike import (old id %s)", bike.get("id"), exc_info=True)
                 counts["items_skipped"] += 1
+            progress.tick()
 
     with _stream(stored_path) as gz:
         for shoe in ijson.items(gz, "equipment.shoes.item", use_float=True):
@@ -120,12 +160,14 @@ def _import_equipment(
             except Exception:
                 logger.warning("Skipped shoe import (old id %s)", shoe.get("id"), exc_info=True)
                 counts["items_skipped"] += 1
+            progress.tick()
 
     with _stream(stored_path) as gz:
         for component in ijson.items(gz, "equipment.components.item", use_float=True):
             bike_id = bikes_by_old_id.get(component.get("bike_id"))
             if not bike_id:
                 counts["items_skipped"] += 1
+                progress.tick()
                 continue
             try:
                 Component.objects.create(
@@ -139,6 +181,7 @@ def _import_equipment(
             except Exception:
                 logger.warning("Skipped component import (old id %s)", component.get("id"), exc_info=True)
                 counts["items_skipped"] += 1
+            progress.tick()
 
 
 def _create_steps(workout: Workout, steps: list[dict[str, Any]], parent: WorkoutStep | None = None) -> None:
@@ -176,7 +219,9 @@ def _attach_tag(activity: Activity, athlete_id: str, name: str) -> None:
     ActivityTag.objects.get_or_create(activity=activity, tag=tag)
 
 
-def _import_workouts(athlete_id: str, stored_path: str, workouts_by_old_id: dict[str, str], counts: dict) -> None:
+def _import_workouts(
+    athlete_id: str, stored_path: str, workouts_by_old_id: dict[str, str], counts: dict, progress: _Progress
+) -> None:
     with _stream(stored_path) as gz:
         for workout in ijson.items(gz, "workouts.item", use_float=True):
             try:
@@ -202,6 +247,7 @@ def _import_workouts(athlete_id: str, stored_path: str, workouts_by_old_id: dict
             except Exception:
                 logger.warning("Skipped workout import (old id %s)", workout.get("id"), exc_info=True)
                 counts["items_skipped"] += 1
+            progress.tick()
 
 
 def _build_records(activity: Activity, start_date: datetime.datetime, streams: dict) -> list[Record]:
@@ -260,6 +306,7 @@ def _import_activities(
     activity_id_map: dict[str, str],
     deferred_links: list[tuple[str, str, bool]],
     counts: dict,
+    progress: _Progress,
 ) -> None:
     with _stream(stored_path) as gz:
         for entry in ijson.items(gz, "activities.item", use_float=True):
@@ -344,6 +391,7 @@ def _import_activities(
             except Exception:
                 logger.warning("Skipped activity import (old id %s)", ar.get("id"), exc_info=True)
                 counts["items_skipped"] += 1
+            progress.tick()
 
 
 def _resolve_deferred_links(deferred_links: list[tuple[str, str, bool]], activity_id_map: dict[str, str]) -> None:
@@ -357,7 +405,9 @@ def _resolve_deferred_links(deferred_links: list[tuple[str, str, bool]], activit
             Activity.objects.filter(pk=new_child_id).update(primary_activity_id=new_target_id)
 
 
-def _import_races(athlete_id: str, stored_path: str, activity_id_map: dict[str, str], counts: dict) -> None:
+def _import_races(
+    athlete_id: str, stored_path: str, activity_id_map: dict[str, str], counts: dict, progress: _Progress
+) -> None:
     with _stream(stored_path) as gz:
         for race in ijson.items(gz, "races.item", use_float=True):
             try:
@@ -381,16 +431,23 @@ def _import_races(athlete_id: str, stored_path: str, activity_id_map: dict[str, 
             except Exception:
                 logger.warning("Skipped race import (old id %s)", race.get("id"), exc_info=True)
                 counts["items_skipped"] += 1
+            progress.tick()
 
 
 def _import_scheduled_workouts(
-    athlete_id: str, stored_path: str, workouts_by_old_id: dict[str, str], activity_id_map: dict[str, str], counts: dict
+    athlete_id: str,
+    stored_path: str,
+    workouts_by_old_id: dict[str, str],
+    activity_id_map: dict[str, str],
+    counts: dict,
+    progress: _Progress,
 ) -> None:
     with _stream(stored_path) as gz:
         for scheduled in ijson.items(gz, "scheduled_workouts.item", use_float=True):
             workout_id = workouts_by_old_id.get(scheduled.get("workout_id"))
             if not workout_id:
                 counts["items_skipped"] += 1
+                progress.tick()
                 continue
             try:
                 activity_id = activity_id_map.get(scheduled.get("activity_id"))
@@ -409,30 +466,56 @@ def _import_scheduled_workouts(
             except Exception:
                 logger.warning("Skipped scheduled workout import (old id %s)", scheduled.get("id"), exc_info=True)
                 counts["items_skipped"] += 1
+            progress.tick()
 
 
-def read_import(athlete_id: str, stored_path: str, on_step: OnStep | None = None) -> dict[str, int]:
+def read_import(
+    athlete_id: str,
+    stored_path: str,
+    on_step: OnStep | None = None,
+    on_total: OnTotal | None = None,
+    on_progress: OnProgress | None = None,
+) -> dict[str, int]:
     """`on_step` (if given) is called once per section, right as it starts - see
     ImportJob.current_step (models.py's DATA_TRANSFER_STEPS) for the fixed 5-step order this
-    walks through, same as export_writer.write_export's on_step (see its docstring for why
-    there's no finer-grained progress within "activities")."""
+    walks through, same as export_writer.write_export's on_step. `on_total`/`on_progress` (if
+    given) turn that into a fine-grained item-level progress bar *scoped to the current
+    section*, mirroring write_export's: `on_total` fires once per section, right after on_step,
+    with that section's own count read from the file's own "counts" metadata block (_read_counts)
+    - a file exported before that field existed has no "counts" key, in which case on_total is
+    simply never called. `on_progress` fires with a running count *reset to 0 at the start of
+    each section* as each item in it is processed (imported or skipped - either way the reader
+    has moved past it), throttled (see _Progress). "equipment" covers bikes+shoes+components
+    combined (one section/one on_step call), so its total is the sum of those three."""
     counts = dict.fromkeys(COUNT_KEYS, 0)
     bikes_by_old_id: dict[str, str] = {}
     shoes_by_old_id: dict[str, str] = {}
     workouts_by_old_id: dict[str, str] = {}
     activity_id_map: dict[str, str] = {}
     deferred_links: list[tuple[str, str, bool]] = []
+    file_counts = _read_counts(stored_path) if on_total else None
 
-    if on_step:
-        on_step("equipment")
-    _import_equipment(athlete_id, stored_path, bikes_by_old_id, shoes_by_old_id, counts)
+    def start_section(step: str, total_key: str | None) -> "_Progress":
+        if on_step:
+            on_step(step)
+        if on_total and file_counts is not None:
+            total = (
+                file_counts["bikes"] + file_counts["shoes"] + file_counts["components"]
+                if total_key is None
+                else file_counts[total_key]
+            )
+            on_total(total)
+        return _Progress(on_progress)
 
-    if on_step:
-        on_step("workouts")
-    _import_workouts(athlete_id, stored_path, workouts_by_old_id, counts)
+    progress = start_section("equipment", None)
+    _import_equipment(athlete_id, stored_path, bikes_by_old_id, shoes_by_old_id, counts, progress)
+    progress.flush()
 
-    if on_step:
-        on_step("activities")
+    progress = start_section("workouts", "workouts")
+    _import_workouts(athlete_id, stored_path, workouts_by_old_id, counts, progress)
+    progress.flush()
+
+    progress = start_section("activities", "activities")
     _import_activities(
         athlete_id,
         stored_path,
@@ -442,15 +525,17 @@ def read_import(athlete_id: str, stored_path: str, on_step: OnStep | None = None
         activity_id_map,
         deferred_links,
         counts,
+        progress,
     )
+    progress.flush()
 
-    if on_step:
-        on_step("races")
-    _import_races(athlete_id, stored_path, activity_id_map, counts)
+    progress = start_section("races", "races")
+    _import_races(athlete_id, stored_path, activity_id_map, counts, progress)
+    progress.flush()
 
-    if on_step:
-        on_step("scheduled_workouts")
-    _import_scheduled_workouts(athlete_id, stored_path, workouts_by_old_id, activity_id_map, counts)
+    progress = start_section("scheduled_workouts", "scheduled_workouts")
+    _import_scheduled_workouts(athlete_id, stored_path, workouts_by_old_id, activity_id_map, counts, progress)
+    progress.flush()
     _resolve_deferred_links(deferred_links, activity_id_map)
 
     return counts
