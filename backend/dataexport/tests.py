@@ -236,6 +236,89 @@ class ProgressStepTests(TestCase):
         default_storage.delete(relative_path)
 
 
+class ProgressItemsTests(TestCase):
+    """write_export/read_import's on_total/on_progress callbacks - the ExportJob/ImportJob
+    total_items/processed_items fields these feed drive the fine-grained "N of M" progress bar,
+    same pattern as the FIT-archive-import batch progress bar."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="progress-items@example.cc", password="x", name="Athlete")
+        _seed_full_account(self.athlete)
+        # _seed_full_account: 2 activities, 1 race, 1 workout, 1 scheduled_workout, 1 bike,
+        # 1 shoe, 1 component = 8 items total.
+        self.expected_total = 8
+
+    def test_write_export_calls_on_total_and_on_progress_reaching_the_total(self):
+        relative_path = "exports/test/progress-items.json.gz"
+        totals: list[int] = []
+        progress: list[int] = []
+
+        write_export(self.athlete.id, None, relative_path, on_total=totals.append, on_progress=progress.append)
+
+        self.assertEqual(totals, [self.expected_total])
+        self.assertTrue(progress)
+        self.assertEqual(progress, sorted(progress))  # monotonically non-decreasing
+        self.assertEqual(progress[-1], self.expected_total)
+
+        from django.core.files.storage import default_storage
+
+        default_storage.delete(relative_path)
+
+    def test_read_import_calls_on_total_and_on_progress_reaching_the_total(self):
+        relative_path = "exports/test/progress-items-source.json.gz"
+        write_export(self.athlete.id, None, relative_path)
+        target = User.objects.create_user(email="progress-items-target@example.cc", password="x", name="Target")
+        totals: list[int] = []
+        progress: list[int] = []
+
+        read_import(target.id, relative_path, on_total=totals.append, on_progress=progress.append)
+
+        self.assertEqual(totals, [self.expected_total])
+        self.assertTrue(progress)
+        self.assertEqual(progress, sorted(progress))
+        self.assertEqual(progress[-1], self.expected_total)
+
+        from django.core.files.storage import default_storage
+
+        default_storage.delete(relative_path)
+
+    def test_read_import_skips_on_total_for_a_file_with_no_counts_block(self):
+        # A file exported before the "counts" field existed - on_total should simply never
+        # fire rather than crash or report a bogus 0.
+        import gzip as gzip_module
+
+        from django.core.files.storage import default_storage
+
+        relative_path = "exports/test/progress-items-no-counts.json.gz"
+        full_path = default_storage.path(relative_path)
+        import os
+
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with gzip_module.GzipFile(full_path, mode="wb") as gz:
+            gz.write(
+                json.dumps(
+                    {
+                        "generated_at": "2026-01-01T00:00:00Z",
+                        "athlete_id": self.athlete.id,
+                        "equipment": {"bikes": [], "shoes": [], "components": []},
+                        "workouts": [],
+                        "activities": [],
+                        "races": [],
+                        "scheduled_workouts": [],
+                    }
+                ).encode("utf-8")
+            )
+
+        target = User.objects.create_user(email="progress-items-nocounts@example.cc", password="x", name="Target")
+        totals: list[int] = []
+
+        read_import(target.id, relative_path, on_total=totals.append)
+
+        self.assertEqual(totals, [])
+
+        default_storage.delete(relative_path)
+
+
 class ExportCountsTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="export-counts@example.cc", password="x", name="Athlete")
