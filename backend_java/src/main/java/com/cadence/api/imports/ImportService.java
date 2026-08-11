@@ -40,10 +40,19 @@ public class ImportService {
 			// Unlike ExportService, no REQUIRES_NEW wrapper needed here - runImport isn't itself
 			// transactional (see class Javadoc) and neither is ImportReader.read, so each save
 			// below already commits on its own the moment it runs.
-			ImportCounts counts = importReader.read(athleteId, sourceFile, step -> {
-				job.setCurrentStep(step);
-				importJobRepository.save(job);
-			});
+			ImportCounts counts = importReader.read(athleteId, sourceFile,
+					step -> {
+						job.setCurrentStep(step);
+						importJobRepository.save(job);
+					},
+					total -> {
+						job.setTotalItems(total);
+						importJobRepository.save(job);
+					},
+					processed -> {
+						job.setProcessedItems(processed);
+						importJobRepository.save(job);
+					});
 			job.setActivitiesImported(counts.activitiesImported());
 			job.setRacesImported(counts.racesImported());
 			job.setWorkoutsImported(counts.workoutsImported());

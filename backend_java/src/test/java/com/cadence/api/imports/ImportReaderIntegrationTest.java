@@ -277,4 +277,126 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			Files.deleteIfExists(file);
 		}
 	}
+
+	@Test
+	void readCallsOnTotalAndOnProgressReachingTheFullItemCount() throws Exception {
+		// 1 activity, 1 race, 1 workout, 1 scheduled_workout, 1 bike, 1 shoe, 1 component = 7,
+		// read straight from the source file's own "counts" metadata block (see ExportWriter).
+		User source = newUser("import-progress-items-source@example.cc");
+		User target = newUser("import-progress-items-target@example.cc");
+
+		Bike bike = new Bike();
+		bike.setAthlete(source);
+		bike.setName("Road bike");
+		bike.setKind(BikeKind.ROAD);
+		bike = bikeRepository.save(bike);
+
+		Component component = new Component();
+		component.setBike(bike);
+		component.setName("Chain");
+		componentRepository.save(component);
+
+		ShoeModel shoeModel = new ShoeModel();
+		shoeModel.setManufacturer("ImportProgressCo");
+		shoeModel.setModel("Roundtrip");
+		shoeModel = shoeModelRepository.save(shoeModel);
+		ShoeModelVersion smv = new ShoeModelVersion();
+		smv.setShoeModel(shoeModel);
+		smv.setVersion("v1");
+		smv = shoeModelVersionRepository.save(smv);
+		Shoe shoe = new Shoe();
+		shoe.setAthlete(source);
+		shoe.setShoeModelVersion(smv);
+		shoe.setName("Daily trainer");
+		shoeRepository.save(shoe);
+
+		Workout workout = new Workout();
+		workout.setCreatedBy(source);
+		workout.setName("Tempo Run");
+		workout.setSport(Sport.RUN);
+		workout = workoutRepository.save(workout);
+
+		Activity activity = new Activity();
+		activity.setAthlete(source);
+		activity.setSport(Sport.RUN);
+		activity.setName("Morning Run");
+		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		activity = activityRepository.save(activity);
+
+		Race race = new Race();
+		race.setAthlete(source);
+		race.setName("Local 10k");
+		race.setDate(LocalDate.of(2026, 1, 1));
+		race.setActivity(activity);
+		raceRepository.save(race);
+
+		ScheduledWorkout scheduled = new ScheduledWorkout();
+		scheduled.setWorkout(workout);
+		scheduled.setAthlete(source);
+		scheduled.setDate(LocalDate.of(2026, 1, 1));
+		scheduled.setActivity(activity);
+		scheduledWorkoutRepository.save(scheduled);
+
+		Path file = Files.createTempFile("import-progress-items-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				exportWriter.write(source.getId(), null, generator);
+			}
+
+			List<Integer> totals = new ArrayList<>();
+			List<Integer> progress = new ArrayList<>();
+			importReader.read(target.getId(), file, step -> { }, totals::add, progress::add);
+
+			assertThat(totals).containsExactly(7);
+			assertThat(progress).isNotEmpty();
+			assertThat(progress).isSorted();
+			assertThat(progress.get(progress.size() - 1)).isEqualTo(7);
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
+
+	@Test
+	void readSkipsOnTotalForAFileWithNoCountsBlock() throws Exception {
+		// A file exported before the "counts" field existed - onTotal should simply never fire
+		// rather than crash or report a bogus 0.
+		User target = newUser("import-progress-no-counts-target@example.cc");
+
+		Path file = Files.createTempFile("import-progress-no-counts-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				generator.writeStartObject();
+				generator.writeStringProperty("generated_at", Instant.now().toString());
+				generator.writeStringProperty("athlete_id", "usr_doesnotmatter");
+				generator.writeObjectPropertyStart("equipment");
+				generator.writeArrayPropertyStart("bikes");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("shoes");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("components");
+				generator.writeEndArray();
+				generator.writeEndObject();
+				generator.writeArrayPropertyStart("workouts");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("activities");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("races");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("scheduled_workouts");
+				generator.writeEndArray();
+				generator.writeEndObject();
+			}
+
+			List<Integer> totals = new ArrayList<>();
+			importReader.read(target.getId(), file, step -> { }, totals::add, processed -> { });
+
+			assertThat(totals).isEmpty();
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
 }

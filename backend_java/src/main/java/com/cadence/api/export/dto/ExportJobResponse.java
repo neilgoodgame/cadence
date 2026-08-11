@@ -5,8 +5,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 
 public record ExportJobResponse(
-		String id, ExportStatus status, String currentStep, Long fileSizeBytes, String errorMessage, Instant createdAt,
-		Instant completedAt) {
+		String id, ExportStatus status, String currentStep, Integer totalItems, int processedItems, Long fileSizeBytes,
+		String errorMessage, Instant createdAt, Instant completedAt) {
 
 	@JsonProperty("object")
 	public String object() {

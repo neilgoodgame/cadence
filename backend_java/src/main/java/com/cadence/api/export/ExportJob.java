@@ -30,6 +30,15 @@ public class ExportJob extends PrefixedIdEntity {
 	@Column(name = "current_step")
 	private String currentStep;
 
+	/** Fine-grained item-level progress within currentStep - null until ExportWriter.write's
+	 * upfront counts query runs (i.e. for the brief QUEUED window), then processedItems climbs
+	 * from 0 to totalItems as the file is written. See ExportWriter's onTotal/onProgress. */
+	@Column(name = "total_items")
+	private Integer totalItems;
+
+	@Column(name = "processed_items", nullable = false)
+	private int processedItems;
+
 	/** Relative to the uploads media root, e.g. "usr_xxx/exports/exp_yyy.json.gz" - resolved against cadence.uploads.media-root, same as Upload.storedPath. */
 	@Column(name = "file_path")
 	private String filePath;
@@ -80,6 +89,22 @@ public class ExportJob extends PrefixedIdEntity {
 
 	public void setCurrentStep(String currentStep) {
 		this.currentStep = currentStep;
+	}
+
+	public Integer getTotalItems() {
+		return totalItems;
+	}
+
+	public void setTotalItems(Integer totalItems) {
+		this.totalItems = totalItems;
+	}
+
+	public int getProcessedItems() {
+		return processedItems;
+	}
+
+	public void setProcessedItems(int processedItems) {
+		this.processedItems = processedItems;
 	}
 
 	public String getFilePath() {
