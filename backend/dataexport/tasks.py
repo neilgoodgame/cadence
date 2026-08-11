@@ -18,9 +18,17 @@ def run_export_task(self: Any, export_job_id: str, sport: str | None) -> None:
     def on_step(step: str) -> None:
         ExportJob.objects.filter(pk=job.id).update(current_step=step)
 
+    def on_total(total: int) -> None:
+        ExportJob.objects.filter(pk=job.id).update(total_items=total)
+
+    def on_progress(processed: int) -> None:
+        ExportJob.objects.filter(pk=job.id).update(processed_items=processed)
+
     relative_path = f"exports/{job.athlete_id}/{job.id}.json.gz"
     try:
-        size = write_export(job.athlete_id, sport, relative_path, on_step=on_step)
+        size = write_export(
+            job.athlete_id, sport, relative_path, on_step=on_step, on_total=on_total, on_progress=on_progress
+        )
     except Exception as exc:
         job.status = "failed"
         job.error_message = str(exc)[:500]
@@ -44,8 +52,14 @@ def run_import_task(self: Any, import_job_id: str, stored_path: str) -> None:
     def on_step(step: str) -> None:
         ImportJob.objects.filter(pk=job.id).update(current_step=step)
 
+    def on_total(total: int) -> None:
+        ImportJob.objects.filter(pk=job.id).update(total_items=total)
+
+    def on_progress(processed: int) -> None:
+        ImportJob.objects.filter(pk=job.id).update(processed_items=processed)
+
     try:
-        counts = read_import(job.athlete_id, stored_path, on_step=on_step)
+        counts = read_import(job.athlete_id, stored_path, on_step=on_step, on_total=on_total, on_progress=on_progress)
     except Exception as exc:
         job.status = "failed"
         job.error_message = str(exc)[:500]

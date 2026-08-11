@@ -35,6 +35,32 @@ from workouts.models import Workout
 from workouts.serializers import WorkoutDetailSerializer
 
 OnStep = Callable[[str], None]
+OnTotal = Callable[[int], None]
+OnProgress = Callable[[int], None]
+
+# Persisting after every single item would mean one DB write per row in a multi-thousand-
+# activity export - throttle to every 20 items (still gives a smooth-looking bar).
+_PROGRESS_INTERVAL = 20
+
+
+class _Progress:
+    """Wraps an `on_progress` callback with throttling. `flush()` bypasses the throttle -
+    called at section boundaries so the persisted count never drifts far behind reality
+    (otherwise a section with, say, 7 items never fires at all, since 7 % 20 != 0)."""
+
+    def __init__(self, on_progress: OnProgress | None):
+        self._on_progress = on_progress
+        self.count = 0
+
+    def tick(self) -> None:
+        self.count += 1
+        if self._on_progress and self.count % _PROGRESS_INTERVAL == 0:
+            self._on_progress(self.count)
+
+    def flush(self) -> None:
+        if self._on_progress:
+            self._on_progress(self.count)
+
 
 # Same 12 scalar fields (in the same order) as the Java backend's StreamService.SCALAR_FIELDS -
 # always present, filled with None wherever the source data lacks that channel.
@@ -72,7 +98,7 @@ def _dump(value: Any) -> bytes:
     return json.dumps(value, cls=DjangoJSONEncoder).encode("utf-8")
 
 
-def _write_array(gz: gzip.GzipFile, items: Any) -> None:
+def _write_array(gz: gzip.GzipFile, items: Any, progress: "_Progress | None" = None) -> None:
     gz.write(b"[")
     first = True
     for item in items:
@@ -80,6 +106,8 @@ def _write_array(gz: gzip.GzipFile, items: Any) -> None:
             gz.write(b",")
         first = False
         gz.write(_dump(item))
+        if progress:
+            progress.tick()
     gz.write(b"]")
 
 
@@ -163,25 +191,27 @@ def _counts(athlete_id: str, sport: str | None) -> dict:
     }
 
 
-def _write_equipment(gz: gzip.GzipFile, athlete_id: str) -> None:
+def _write_equipment(gz: gzip.GzipFile, athlete_id: str, progress: "_Progress | None" = None) -> None:
     gz.write(b'{"bikes":')
-    _write_array(gz, (BikeSerializer(b).data for b in _bikes_qs(athlete_id)))
+    _write_array(gz, (BikeSerializer(b).data for b in _bikes_qs(athlete_id)), progress)
 
     gz.write(b',"shoes":')
     shoes = _shoes_qs(athlete_id).select_related("shoe_model_version__shoe_model")
-    _write_array(gz, (ShoeSerializer(s).data for s in shoes))
+    _write_array(gz, (ShoeSerializer(s).data for s in shoes), progress)
 
     gz.write(b',"components":')
-    _write_array(gz, (ComponentSerializer(c).data for c in _components_qs(athlete_id)))
+    _write_array(gz, (ComponentSerializer(c).data for c in _components_qs(athlete_id)), progress)
     gz.write(b"}")
 
 
-def _write_workouts(gz: gzip.GzipFile, athlete_id: str, sport: str | None) -> None:
+def _write_workouts(gz: gzip.GzipFile, athlete_id: str, sport: str | None, progress: "_Progress | None" = None) -> None:
     qs = _workouts_qs(athlete_id, sport).prefetch_related("steps")
-    _write_array(gz, (WorkoutDetailSerializer(w).data for w in qs))
+    _write_array(gz, (WorkoutDetailSerializer(w).data for w in qs), progress)
 
 
-def _write_activities(gz: gzip.GzipFile, athlete_id: str, sport: str | None) -> None:
+def _write_activities(
+    gz: gzip.GzipFile, athlete_id: str, sport: str | None, progress: "_Progress | None" = None
+) -> None:
     gz.write(b"[")
     first = True
     for activity in _activities_qs(athlete_id, sport).iterator(chunk_size=200):
@@ -194,15 +224,19 @@ def _write_activities(gz: gzip.GzipFile, athlete_id: str, sport: str | None) -> 
             "streams": _build_streams(activity),
         }
         gz.write(_dump(entry))
+        if progress:
+            progress.tick()
     gz.write(b"]")
 
 
-def _write_races(gz: gzip.GzipFile, athlete_id: str, sport: str | None) -> None:
-    _write_array(gz, (RaceSerializer(r).data for r in _races_qs(athlete_id, sport)))
+def _write_races(gz: gzip.GzipFile, athlete_id: str, sport: str | None, progress: "_Progress | None" = None) -> None:
+    _write_array(gz, (RaceSerializer(r).data for r in _races_qs(athlete_id, sport)), progress)
 
 
-def _write_scheduled_workouts(gz: gzip.GzipFile, athlete_id: str, sport: str | None) -> None:
-    _write_array(gz, (ScheduledWorkoutSerializer(s).data for s in _scheduled_workouts_qs(athlete_id, sport)))
+def _write_scheduled_workouts(
+    gz: gzip.GzipFile, athlete_id: str, sport: str | None, progress: "_Progress | None" = None
+) -> None:
+    _write_array(gz, (ScheduledWorkoutSerializer(s).data for s in _scheduled_workouts_qs(athlete_id, sport)), progress)
 
 
 def _ensure_parent_dir(relative_path: str) -> str:
@@ -211,7 +245,14 @@ def _ensure_parent_dir(relative_path: str) -> str:
     return full_path
 
 
-def write_export(athlete_id: str, sport: str | None, relative_path: str, on_step: OnStep | None = None) -> int:
+def write_export(
+    athlete_id: str,
+    sport: str | None,
+    relative_path: str,
+    on_step: OnStep | None = None,
+    on_total: OnTotal | None = None,
+    on_progress: OnProgress | None = None,
+) -> int:
     """Writes the gzip file to local disk (via default_storage's path resolution - this
     project's MEDIA_ROOT is local disk, which is what makes true incremental streaming
     writes possible; see the module docstring). Returns the file size in bytes.
@@ -221,12 +262,13 @@ def write_export(athlete_id: str, sport: str | None, relative_path: str, on_step
     what the file contains without having to fully parse it), then equipment and workouts
     (which activities reference) before activities, activities (which races/scheduled_workouts
     reference) before those - dependency order, in case any consumer relies on it. `on_step`
-    (if given) is called once per section, right as it starts - see ExportJob.current_step
-    (models.py's DATA_TRANSFER_STEPS) for the fixed 5-step order this walks through. There's
-    no finer-grained progress within "activities" (by far the slowest section, since it walks
-    laps + full-resolution streams per activity) - a per-activity callback would mean either an
-    upfront .count() query or DB writes on every single activity, and a coarse "which section"
-    indicator already answers what a progress dialog needs.
+    (if given) is called once per section, right as it starts. `on_total`/`on_progress` (if
+    given) turn that into a fine-grained item-level progress bar - `on_total` fires once,
+    upfront, with the same sum of counts.py's .count() queries the "counts" file field already
+    computes (so this is free - no second query), and `on_progress` fires with a running
+    cumulative item count as each bike/shoe/component/workout/activity/race/scheduled_workout
+    is written, throttled (see _Progress) so a multi-thousand-row export doesn't turn into a
+    DB write per row.
     """
     full_path = _ensure_parent_dir(relative_path)
     with gzip.GzipFile(full_path, mode="wb") as gz:
@@ -234,33 +276,42 @@ def write_export(athlete_id: str, sport: str | None, relative_path: str, on_step
         gz.write(_dump(timezone.now().isoformat().replace("+00:00", "Z")))
         gz.write(b',"athlete_id":')
         gz.write(_dump(athlete_id))
+        counts = _counts(athlete_id, sport)
         gz.write(b',"counts":')
-        gz.write(_dump(_counts(athlete_id, sport)))
+        gz.write(_dump(counts))
+        if on_total:
+            on_total(sum(counts.values()))
+        progress = _Progress(on_progress)
 
         if on_step:
             on_step("equipment")
         gz.write(b',"equipment":')
-        _write_equipment(gz, athlete_id)
+        _write_equipment(gz, athlete_id, progress)
+        progress.flush()
 
         if on_step:
             on_step("workouts")
         gz.write(b',"workouts":')
-        _write_workouts(gz, athlete_id, sport)
+        _write_workouts(gz, athlete_id, sport, progress)
+        progress.flush()
 
         if on_step:
             on_step("activities")
         gz.write(b',"activities":')
-        _write_activities(gz, athlete_id, sport)
+        _write_activities(gz, athlete_id, sport, progress)
+        progress.flush()
 
         if on_step:
             on_step("races")
         gz.write(b',"races":')
-        _write_races(gz, athlete_id, sport)
+        _write_races(gz, athlete_id, sport, progress)
+        progress.flush()
 
         if on_step:
             on_step("scheduled_workouts")
         gz.write(b',"scheduled_workouts":')
-        _write_scheduled_workouts(gz, athlete_id, sport)
+        _write_scheduled_workouts(gz, athlete_id, sport, progress)
+        progress.flush()
 
         gz.write(b"}")
     return os.path.getsize(full_path)
