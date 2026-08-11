@@ -129,6 +129,32 @@ class ExportImportRoundTripTests(TestCase):
         return Activity.objects.get(athlete=self.source, name="Triathlon Bike Leg").id
 
 
+class ImportThresholdSnapshotFallbackTests(TestCase):
+    """export_writer.py doesn't write ftp_snapshot/etc. into the file yet (that lands with
+    threshold-increase detection) - until then, import_reader.py falls back to the *importing*
+    athlete's current profile, the same graceful-degradation shape already used for the
+    "counts" progress metadata. Once the export side ships, a real round-trip test should be
+    added alongside it to prove the source's own value carries over instead of this fallback."""
+
+    def test_imported_activity_falls_back_to_the_importing_athletes_current_profile(self):
+        source = User.objects.create_user(email="snapshot-fallback-source@example.cc", password="x", name="Source")
+        target = User.objects.create_user(
+            email="snapshot-fallback-target@example.cc", password="x", name="Target", ftp=222
+        )
+        _make_activity(source, sport="bike", name="Ride")
+
+        relative_path = "exports/test/snapshot-fallback.json.gz"
+        write_export(source.id, None, relative_path)
+        read_import(target.id, relative_path)
+
+        imported = Activity.objects.get(athlete=target, name="Ride")
+        self.assertEqual(imported.ftp_snapshot, 222)
+
+        from django.core.files.storage import default_storage
+
+        default_storage.delete(relative_path)
+
+
 class SportFilterTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="sport-filter@example.cc", password="x", name="Athlete")
