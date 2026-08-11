@@ -403,4 +403,39 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			Files.deleteIfExists(file);
 		}
 	}
+
+	@Test
+	void importedActivityFallsBackToTheImportingAthletesCurrentProfile() throws Exception {
+		// ExportWriter doesn't write ftpSnapshot/etc. into the file yet (that lands with
+		// threshold-increase detection) - until then, ImportReader falls back to the *importing*
+		// athlete's current profile, the same graceful-degradation shape already used for the
+		// "counts" progress metadata.
+		User source = newUser("snapshot-fallback-source@example.cc");
+		User target = newUser("snapshot-fallback-target@example.cc");
+		target.setFtp(222);
+		target = userRepository.save(target);
+
+		Activity ride = new Activity();
+		ride.setAthlete(source);
+		ride.setSport(Sport.BIKE);
+		ride.setName("Ride");
+		ride.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		activityRepository.save(ride);
+
+		Path file = Files.createTempFile("import-snapshot-fallback-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				exportWriter.write(source.getId(), null, generator);
+			}
+
+			importReader.read(target.getId(), file);
+
+			Activity imported = activityRepository.findByAthleteIdOrderByStartDate(target.getId()).get(0);
+			assertThat(imported.getFtpSnapshot()).isEqualTo(222);
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
 }

@@ -87,11 +87,12 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 		activity.setAvgHr(avgHr != null ? (int) Math.round(avgHr) : null);
 		activity.setMaxHr(maxHr);
 
-		if (normPower != null && normPower > 0 && activity.getSport() == Sport.BIKE && athlete.getFtp() != null) {
-			activity.setIntensity(round3(normPower / athlete.getFtp()));
+		if (normPower != null && normPower > 0 && activity.getSport() == Sport.BIKE && activity.getFtpSnapshot() != null) {
+			activity.setIntensity(round3(normPower / activity.getFtpSnapshot()));
 		}
-		else if (normPower != null && normPower > 0 && activity.getSport() == Sport.RUN && athlete.getCriticalRunPower() != null) {
-			activity.setIntensity(round3(normPower / athlete.getCriticalRunPower()));
+		else if (normPower != null && normPower > 0 && activity.getSport() == Sport.RUN
+				&& activity.getCriticalRunPowerSnapshot() != null) {
+			activity.setIntensity(round3(normPower / activity.getCriticalRunPowerSnapshot()));
 		}
 
 		// Stryd-derived, run only (matches the Python backend - a bike's ambient readings
@@ -172,8 +173,8 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 		List<Integer> hrSeries = parsed.samples().stream().map(ParsedActivity.Sample::heartrate).toList();
 
 		Integer thresholdPower = switch (activity.getSport()) {
-			case BIKE -> athlete.getFtp();
-			case RUN -> athlete.getCriticalRunPower();
+			case BIKE -> activity.getFtpSnapshot();
+			case RUN -> activity.getCriticalRunPowerSnapshot();
 			default -> null;
 		};
 		Integer tss = TssCalculator.powerBased(normPower != null ? normPower.doubleValue() : null, thresholdPower,

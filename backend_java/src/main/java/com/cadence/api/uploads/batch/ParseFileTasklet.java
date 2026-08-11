@@ -111,6 +111,16 @@ public class ParseFileTasklet implements Tasklet {
 			Activity activity = new Activity();
 			activity.setAthlete(upload.getAthlete());
 			activity.setSport(parsed.sport());
+			// Snapshot the athlete's threshold(s) as of right now, so zones/TSS for this activity
+			// stay historically accurate even if the athlete's profile changes later (see
+			// ZoneService.referenceFor). Only the field(s) relevant to this sport are set.
+			if (parsed.sport() == Sport.BIKE) {
+				activity.setFtpSnapshot(upload.getAthlete().getFtp());
+			}
+			else if (parsed.sport() == Sport.RUN) {
+				activity.setCriticalRunPowerSnapshot(upload.getAthlete().getCriticalRunPower());
+				activity.setThresholdPaceSnapshot(upload.getAthlete().getThresholdPace());
+			}
 			activity.setEnvironment(parsed.environment());
 			activity.setHasGps(parsed.hasGps());
 			activity.setName(SPORT_LABELS.getOrDefault(parsed.sport(), "Activity") + " on "

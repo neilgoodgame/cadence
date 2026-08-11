@@ -31,6 +31,11 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 
 	List<Activity> findByWorkoutId(String workoutId);
 
+	// Ownership check for the zones endpoint's optional ?activityId= scoping (AthleteController)
+	// - confirms the activity actually belongs to the athlete being queried before using its
+	// threshold snapshot as the zone reference.
+	Optional<Activity> findByIdAndAthleteId(String id, String athleteId);
+
 	// Unlike list()/findRecomputeCandidates, multisport children and duplicate recordings are
 	// NOT filtered out here - a full data export must include every activity row, since silently
 	// dropping them would understate the athlete's own data.

@@ -8,6 +8,7 @@ import com.cadence.api.activities.TagService;
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.LapResponse;
 import com.cadence.api.activities.dto.StreamsResponse;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.export.dto.ActivityExportEntry;
 import com.cadence.api.export.dto.ExportCounts;
 import com.cadence.api.gear.Bike;
@@ -191,9 +192,14 @@ public class ImportReader {
 	 * ones via transactionTemplate), so a plain save commits on its own already. */
 	public ImportCounts read(String athleteId, Path file, Consumer<String> onStep, IntConsumer onTotal,
 			IntConsumer onProgress) throws IOException {
-		// A JPA reference, not a loaded entity - deliberately, so it's safe to reuse across the
-		// many independent short transactions this method opens (see the class Javadoc).
-		User athlete = userRepository.getReferenceById(athleteId);
+		// A fully-loaded, detached entity - not a lazy getReferenceById proxy, which would throw
+		// LazyInitializationException the moment anything reads a field off it (as opposed to
+		// just passing it along as an FK reference) from outside the specific session that
+		// created it, e.g. buildActivity's athlete.getFtp()/etc. below, called from inside a
+		// *different*, later transactionTemplate.execute() block than this line runs in. Once
+		// loaded, its own columns are safe to read from anywhere - no session needed for that,
+		// only for lazy associations (which this class never touches on `athlete`).
+		User athlete = userRepository.findById(athleteId).orElseThrow();
 		Counts counts = new Counts();
 		Map<String, Bike> bikesByOldId = new HashMap<>();
 		Map<String, Shoe> shoesByOldId = new HashMap<>();
@@ -438,6 +444,17 @@ public class ImportReader {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
 		activity.setSport(ar.sport());
+		// The export DTO doesn't carry the source activity's own snapshot yet (that lands with
+		// threshold-increase detection), so this always falls back to the *importing* athlete's
+		// current profile - same graceful-degradation shape as export_writer.py/import_reader.py's
+		// "counts" progress metadata for a file that predates a newer field.
+		if (ar.sport() == Sport.BIKE) {
+			activity.setFtpSnapshot(athlete.getFtp());
+		}
+		else if (ar.sport() == Sport.RUN) {
+			activity.setCriticalRunPowerSnapshot(athlete.getCriticalRunPower());
+			activity.setThresholdPaceSnapshot(athlete.getThresholdPace());
+		}
 		activity.setEnvironment(ar.environment());
 		activity.setHasGps(ar.hasGps());
 		activity.setName(ar.name());

@@ -1,5 +1,6 @@
 package com.cadence.api.athletes;
 
+import com.cadence.api.activities.Activity;
 import com.cadence.api.users.User;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -61,6 +62,24 @@ public class ZoneService {
 			case BIKE_POWER -> athlete.getFtp() != null ? athlete.getFtp().doubleValue() : null;
 			case RUN_POWER -> athlete.getCriticalRunPower() != null ? athlete.getCriticalRunPower().doubleValue() : null;
 			case PACE -> mmssToSeconds(athlete.getThresholdPace());
+		};
+	}
+
+	/** As {@link #referenceFor(User, ZoneType)}, but for BIKE_POWER/RUN_POWER/PACE reads
+	 * {@code activity}'s own threshold snapshot instead of the athlete's current profile, so a
+	 * historic activity's zones stay pinned to what was true when it happened rather than moving
+	 * every time the athlete's current profile changes. HEART_RATE has no per-activity snapshot
+	 * (lthr isn't captured this way) and always reads live, same as the 2-arg overload. */
+	public Double referenceFor(User athlete, ZoneType type, Activity activity) {
+		if (activity == null) {
+			return referenceFor(athlete, type);
+		}
+		return switch (type) {
+			case HEART_RATE -> referenceFor(athlete, type);
+			case BIKE_POWER -> activity.getFtpSnapshot() != null ? activity.getFtpSnapshot().doubleValue() : null;
+			case RUN_POWER -> activity.getCriticalRunPowerSnapshot() != null
+					? activity.getCriticalRunPowerSnapshot().doubleValue() : null;
+			case PACE -> mmssToSeconds(activity.getThresholdPaceSnapshot());
 		};
 	}
 

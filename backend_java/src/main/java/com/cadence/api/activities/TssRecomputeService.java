@@ -61,9 +61,14 @@ public class TssRecomputeService {
 	}
 
 	private int computeTss(Activity activity, User athlete, ZoneSet hrZoneSet, Double hrThreshold) {
+		// Reads the activity's own threshold snapshot, not the athlete's current profile - so
+		// this stays historically accurate whether called at ingest or from an explicit
+		// "Recompute TSS" action (both single-activity and bulk-per-athlete). `athlete` is still
+		// needed below for the HR-based fallback, which has no per-activity snapshot equivalent
+		// (lthr isn't snapshotted - see the plan's Key decisions).
 		Integer thresholdPower = switch (activity.getSport()) {
-			case BIKE -> athlete.getFtp();
-			case RUN -> athlete.getCriticalRunPower();
+			case BIKE -> activity.getFtpSnapshot();
+			case RUN -> activity.getCriticalRunPowerSnapshot();
 			default -> null;
 		};
 
