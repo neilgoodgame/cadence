@@ -27,4 +27,14 @@ public class ExportProgressUpdater {
 	public void updateStep(String jobId, String step) {
 		exportJobRepository.findById(jobId).ifPresent(job -> job.setCurrentStep(step));
 	}
+
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void updateTotal(String jobId, int total) {
+		exportJobRepository.findById(jobId).ifPresent(job -> job.setTotalItems(total));
+	}
+
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void updateProgress(String jobId, int processed) {
+		exportJobRepository.findById(jobId).ifPresent(job -> job.setProcessedItems(processed));
+	}
 }

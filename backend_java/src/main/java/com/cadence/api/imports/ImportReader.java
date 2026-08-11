@@ -9,6 +9,7 @@ import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.LapResponse;
 import com.cadence.api.activities.dto.StreamsResponse;
 import com.cadence.api.export.dto.ActivityExportEntry;
+import com.cadence.api.export.dto.ExportCounts;
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.GearService;
 import com.cadence.api.gear.Shoe;
@@ -47,6 +48,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 import java.util.zip.GZIPInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -135,19 +137,60 @@ public class ImportReader {
 		int skipped;
 	}
 
+	// Persisting after every single item would mean one DB write per row in a multi-thousand-
+	// activity import - throttle to every 20 items (still gives a smooth-looking bar).
+	private static final int PROGRESS_INTERVAL = 20;
+
+	/** Wraps an onProgress callback with throttling. {@link #flush()} bypasses the throttle -
+	 * called at section boundaries so the persisted count never drifts far behind reality
+	 * (otherwise a section with, say, 7 items never fires at all, since 7 % 20 != 0). */
+	private static final class Progress {
+		private final IntConsumer onProgress;
+		private int count;
+
+		Progress(IntConsumer onProgress) {
+			this.onProgress = onProgress;
+		}
+
+		void tick() {
+			count++;
+			if (count % PROGRESS_INTERVAL == 0) {
+				onProgress.accept(count);
+			}
+		}
+
+		void flush() {
+			onProgress.accept(count);
+		}
+	}
+
 	public ImportCounts read(String athleteId, Path file) throws IOException {
-		return read(athleteId, file, step -> { });
+		return read(athleteId, file, step -> { }, total -> { }, processed -> { });
 	}
 
 	/** As {@link #read(String, Path)}, but calls {@code onStep} with one of "equipment"/
 	 * "workouts"/"activities"/"races"/"scheduled_workouts" right as each section starts - what a
-	 * progress dialog polls ImportJob.currentStep for. Same "no finer-grained progress within a
-	 * section" reasoning as ExportWriter.write's onStep overload. Unlike ExportWriter, {@code
-	 * onStep} here doesn't need its own REQUIRES_NEW transaction to be visible to a polling
-	 * request - this method isn't itself wrapped in one long transaction (see the class Javadoc:
-	 * it opens many independent short ones via transactionTemplate), so a plain save commits on
-	 * its own already. */
+	 * progress dialog polls ImportJob.currentStep for. */
 	public ImportCounts read(String athleteId, Path file, Consumer<String> onStep) throws IOException {
+		return read(athleteId, file, onStep, total -> { }, processed -> { });
+	}
+
+	/** As {@link #read(String, Path, Consumer)}, but also turns onStep's coarse per-section signal
+	 * into a fine-grained item-level progress bar *scoped to the current section* - e.g. while
+	 * onStep is "activities", onTotal/onProgress report activities specifically, not a blend
+	 * across every kind of data. {@code onTotal} fires once per section, right after onStep, by
+	 * reading that section's own count from the source file's own "counts" metadata block (see
+	 * ExportWriter.computeCounts) - a file exported before that field existed has no "counts"
+	 * key, in which case onTotal is simply never called. {@code onProgress} fires with a running
+	 * count *reset to 0 at the start of each section* as each item in it is processed (imported
+	 * or skipped - either way the reader has moved past it), throttled (see Progress).
+	 * "equipment" covers bikes+shoes+components combined (one section/one onStep call), so its
+	 * total is the sum of those three. Unlike ExportWriter, neither callback here needs its own
+	 * REQUIRES_NEW transaction to be visible to a polling request - this method isn't itself
+	 * wrapped in one long transaction (see the class Javadoc: it opens many independent short
+	 * ones via transactionTemplate), so a plain save commits on its own already. */
+	public ImportCounts read(String athleteId, Path file, Consumer<String> onStep, IntConsumer onTotal,
+			IntConsumer onProgress) throws IOException {
 		// A JPA reference, not a loaded entity - deliberately, so it's safe to reuse across the
 		// many independent short transactions this method opens (see the class Javadoc).
 		User athlete = userRepository.getReferenceById(athleteId);
@@ -157,6 +200,9 @@ public class ImportReader {
 		Map<String, Workout> workoutsByOldId = new HashMap<>();
 		Map<String, String> activityIdMap = new HashMap<>();
 		List<DeferredActivityLink> deferredLinks = new ArrayList<>();
+		// Populated by the "counts" case below, which the writer always emits before any section -
+		// null only for a file exported before that field existed.
+		ExportCounts fileCounts = null;
 
 		try (JsonParser parser = jsonMapper.createParser(
 				new GZIPInputStream(new BufferedInputStream(Files.newInputStream(file))))) {
@@ -165,26 +211,38 @@ public class ImportReader {
 				String field = parser.currentName();
 				parser.nextToken();
 				switch (field) {
+					case "counts" -> fileCounts = parser.readValueAs(ExportCounts.class);
 					case "equipment" -> {
-						onStep.accept("equipment");
-						importEquipment(parser, athlete, bikesByOldId, shoesByOldId, counts);
+						Integer total = fileCounts == null ? null
+								: (int) (fileCounts.bikes() + fileCounts.shoes() + fileCounts.components());
+						Progress progress = startSection(onStep, onTotal, onProgress, "equipment", total);
+						importEquipment(parser, athlete, bikesByOldId, shoesByOldId, counts, progress);
+						progress.flush();
 					}
 					case "workouts" -> {
-						onStep.accept("workouts");
-						importWorkouts(parser, athlete, workoutsByOldId, counts);
+						Progress progress = startSection(
+								onStep, onTotal, onProgress, "workouts", fileCounts == null ? null : (int) fileCounts.workouts());
+						importWorkouts(parser, athlete, workoutsByOldId, counts, progress);
+						progress.flush();
 					}
 					case "activities" -> {
-						onStep.accept("activities");
-						importActivities(
-								parser, athlete, workoutsByOldId, bikesByOldId, shoesByOldId, activityIdMap, deferredLinks, counts);
+						Progress progress = startSection(onStep, onTotal, onProgress, "activities",
+								fileCounts == null ? null : (int) fileCounts.activities());
+						importActivities(parser, athlete, workoutsByOldId, bikesByOldId, shoesByOldId, activityIdMap,
+								deferredLinks, counts, progress);
+						progress.flush();
 					}
 					case "races" -> {
-						onStep.accept("races");
-						importRaces(parser, athlete, activityIdMap, counts);
+						Progress progress = startSection(
+								onStep, onTotal, onProgress, "races", fileCounts == null ? null : (int) fileCounts.races());
+						importRaces(parser, athlete, activityIdMap, counts, progress);
+						progress.flush();
 					}
 					case "scheduled_workouts" -> {
-						onStep.accept("scheduled_workouts");
-						importScheduledWorkouts(parser, athlete, workoutsByOldId, activityIdMap, counts);
+						Progress progress = startSection(onStep, onTotal, onProgress, "scheduled_workouts",
+								fileCounts == null ? null : (int) fileCounts.scheduledWorkouts());
+						importScheduledWorkouts(parser, athlete, workoutsByOldId, activityIdMap, counts, progress);
+						progress.flush();
 					}
 					default -> parser.skipChildren(); // generated_at, athlete_id - scalars, nothing to walk
 				}
@@ -197,8 +255,17 @@ public class ImportReader {
 				counts.bikes, counts.shoes, counts.components, counts.skipped);
 	}
 
+	private static Progress startSection(
+			Consumer<String> onStep, IntConsumer onTotal, IntConsumer onProgress, String step, Integer total) {
+		onStep.accept(step);
+		if (total != null) {
+			onTotal.accept(total);
+		}
+		return new Progress(onProgress);
+	}
+
 	private void importEquipment(JsonParser parser, User athlete, Map<String, Bike> bikesByOldId,
-			Map<String, Shoe> shoesByOldId, Counts counts) {
+			Map<String, Shoe> shoesByOldId, Counts counts, Progress progress) {
 		while (parser.nextToken() != JsonToken.END_OBJECT) {
 			String field = parser.currentName();
 			parser.nextToken();
@@ -216,6 +283,7 @@ public class ImportReader {
 							counts.skipped++;
 							log.warn("Skipped bike import (old id {}): {}", br.id(), e);
 						}
+						progress.tick();
 					}
 				}
 				case "shoes" -> {
@@ -237,6 +305,7 @@ public class ImportReader {
 							counts.skipped++;
 							log.warn("Skipped shoe import (old id {}): {}", sr.id(), e);
 						}
+						progress.tick();
 					}
 				}
 				case "components" -> {
@@ -245,6 +314,7 @@ public class ImportReader {
 						Bike bike = bikesByOldId.get(cr.bikeId());
 						if (bike == null) {
 							counts.skipped++;
+							progress.tick();
 							continue;
 						}
 						try {
@@ -256,6 +326,7 @@ public class ImportReader {
 							counts.skipped++;
 							log.warn("Skipped component import (old id {}): {}", cr.id(), e);
 						}
+						progress.tick();
 					}
 				}
 				default -> parser.skipChildren();
@@ -280,7 +351,8 @@ public class ImportReader {
 				});
 	}
 
-	private void importWorkouts(JsonParser parser, User athlete, Map<String, Workout> workoutsByOldId, Counts counts) {
+	private void importWorkouts(
+			JsonParser parser, User athlete, Map<String, Workout> workoutsByOldId, Counts counts, Progress progress) {
 		while (parser.nextToken() != JsonToken.END_ARRAY) {
 			WorkoutDetailResponse detail = parser.readValueAs(WorkoutDetailResponse.class);
 			try {
@@ -298,12 +370,13 @@ public class ImportReader {
 				counts.skipped++;
 				log.warn("Skipped workout import (old id {}): {}", detail.workout().id(), e);
 			}
+			progress.tick();
 		}
 	}
 
 	private void importActivities(JsonParser parser, User athlete, Map<String, Workout> workoutsByOldId,
 			Map<String, Bike> bikesByOldId, Map<String, Shoe> shoesByOldId, Map<String, String> activityIdMap,
-			List<DeferredActivityLink> deferredLinks, Counts counts) {
+			List<DeferredActivityLink> deferredLinks, Counts counts, Progress progress) {
 		while (parser.nextToken() != JsonToken.END_ARRAY) {
 			ActivityExportEntry entry = parser.readValueAs(ActivityExportEntry.class);
 			try {
@@ -356,6 +429,7 @@ public class ImportReader {
 				counts.skipped++;
 				log.warn("Skipped activity import (old id {}): {}", entry.activity().id(), e);
 			}
+			progress.tick();
 		}
 	}
 
@@ -493,7 +567,8 @@ public class ImportReader {
 		}
 	}
 
-	private void importRaces(JsonParser parser, User athlete, Map<String, String> activityIdMap, Counts counts) {
+	private void importRaces(
+			JsonParser parser, User athlete, Map<String, String> activityIdMap, Counts counts, Progress progress) {
 		while (parser.nextToken() != JsonToken.END_ARRAY) {
 			RaceResponse rr = parser.readValueAs(RaceResponse.class);
 			try {
@@ -508,16 +583,18 @@ public class ImportReader {
 				counts.skipped++;
 				log.warn("Skipped race import", e);
 			}
+			progress.tick();
 		}
 	}
 
 	private void importScheduledWorkouts(JsonParser parser, User athlete, Map<String, Workout> workoutsByOldId,
-			Map<String, String> activityIdMap, Counts counts) {
+			Map<String, String> activityIdMap, Counts counts, Progress progress) {
 		while (parser.nextToken() != JsonToken.END_ARRAY) {
 			ScheduledWorkoutResponse sr = parser.readValueAs(ScheduledWorkoutResponse.class);
 			Workout workout = workoutsByOldId.get(sr.workoutId());
 			if (workout == null) {
 				counts.skipped++;
+				progress.tick();
 				continue;
 			}
 			try {
@@ -537,6 +614,7 @@ public class ImportReader {
 				counts.skipped++;
 				log.warn("Skipped scheduled workout import", e);
 			}
+			progress.tick();
 		}
 	}
 }
