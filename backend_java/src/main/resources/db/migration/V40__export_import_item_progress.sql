@@ -1,0 +1,4 @@
+ALTER TABLE export_job ADD COLUMN total_items INTEGER;
+ALTER TABLE export_job ADD COLUMN processed_items INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE import_job ADD COLUMN total_items INTEGER;
+ALTER TABLE import_job ADD COLUMN processed_items INTEGER NOT NULL DEFAULT 0;

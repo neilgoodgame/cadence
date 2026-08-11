@@ -32,6 +32,7 @@ import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JsonGenerator;
@@ -54,6 +55,39 @@ import tools.jackson.core.JsonGenerator;
  */
 @Component
 public class ExportWriter {
+
+	// Persisting after every single item would mean one DB write per row in a multi-thousand-
+	// activity export - throttle to every 20 items (still gives a smooth-looking bar).
+	private static final int PROGRESS_INTERVAL = 20;
+
+	/** Wraps an onProgress callback with throttling. {@link #flush()} bypasses the throttle -
+	 * called at section boundaries so the persisted count never drifts far behind reality
+	 * (otherwise a section with, say, 7 items never fires at all, since 7 % 20 != 0). */
+	private static final class Progress {
+		private final IntConsumer onProgress;
+		private int count;
+
+		Progress(IntConsumer onProgress) {
+			this.onProgress = onProgress;
+		}
+
+		void tick() {
+			count++;
+			if (count % PROGRESS_INTERVAL == 0) {
+				onProgress.accept(count);
+			}
+		}
+
+		void tick(int n) {
+			for (int i = 0; i < n; i++) {
+				tick();
+			}
+		}
+
+		void flush() {
+			onProgress.accept(count);
+		}
+	}
 
 	private final ActivityRepository activityRepository;
 	private final ActivityService activityService;
@@ -118,34 +152,52 @@ public class ExportWriter {
 
 	/** As {@link #write(String, Sport, JsonGenerator)}, but calls {@code onStep} with one of
 	 * "equipment"/"workouts"/"activities"/"races"/"scheduled_workouts" right as each section
-	 * starts - what a progress dialog polls ExportJob.currentStep for. There's no finer-grained
-	 * progress within "activities" (by far the slowest section, since it walks laps + full-
-	 * resolution streams per activity): a per-activity callback would mean either an upfront
-	 * count query or a DB write on every single activity, and knowing which section is running
-	 * already answers what the dialog needs. {@code onStep} is expected to persist independently
-	 * of this method's own transaction (see ExportProgressUpdater) - it must not be assumed to
-	 * see the writes this transaction hasn't committed yet, or vice versa. */
+	 * starts - what a progress dialog polls ExportJob.currentStep for. {@code onStep} is expected
+	 * to persist independently of this method's own transaction (see ExportProgressUpdater) - it
+	 * must not be assumed to see the writes this transaction hasn't committed yet, or vice versa. */
 	@Transactional(readOnly = true)
 	public void write(String athleteId, Sport sportFilter, JsonGenerator generator, Consumer<String> onStep) {
+		write(athleteId, sportFilter, generator, onStep, total -> { }, processed -> { });
+	}
+
+	/** As {@link #write(String, Sport, JsonGenerator, Consumer)}, but also turns onStep's coarse
+	 * per-section signal into a fine-grained item-level progress bar: {@code onTotal} fires once,
+	 * upfront, with the same sum of counts.py's cheap count queries the "counts" file field
+	 * already computes (so this is free - no second query), and {@code onProgress} fires with a
+	 * running cumulative item count as each bike/shoe/component/workout/activity/race/
+	 * scheduled_workout is written, throttled (see Progress) so a multi-thousand-row export
+	 * doesn't turn into a DB write per row. Same persist-independently contract as onStep. */
+	@Transactional(readOnly = true)
+	public void write(String athleteId, Sport sportFilter, JsonGenerator generator, Consumer<String> onStep,
+			IntConsumer onTotal, IntConsumer onProgress) {
 		generator.writeStartObject();
 		generator.writeStringProperty("generated_at", Instant.now().toString());
 		generator.writeStringProperty("athlete_id", athleteId);
-		generator.writePOJOProperty("counts", computeCounts(athleteId, sportFilter));
+		ExportCounts counts = computeCounts(athleteId, sportFilter);
+		generator.writePOJOProperty("counts", counts);
+		onTotal.accept((int) (counts.activities() + counts.races() + counts.workouts() + counts.scheduledWorkouts()
+				+ counts.bikes() + counts.shoes() + counts.components()));
+		Progress progress = new Progress(onProgress);
 
 		// Equipment and workouts come before activities (which reference bike/shoe/workout ids),
 		// and activities come before races/scheduled_workouts (which reference activity ids) -
 		// dependency order, so a forward-only streaming importer can resolve id references in one
 		// pass without having to look ahead. See ImportReader for the reader side of this contract.
 		onStep.accept("equipment");
-		writeEquipment(athleteId, generator);
+		writeEquipment(athleteId, generator, progress);
+		progress.flush();
 		onStep.accept("workouts");
-		writeWorkouts(athleteId, sportFilter, generator);
+		writeWorkouts(athleteId, sportFilter, generator, progress);
+		progress.flush();
 		onStep.accept("activities");
-		writeActivities(athleteId, sportFilter, generator);
+		writeActivities(athleteId, sportFilter, generator, progress);
+		progress.flush();
 		onStep.accept("races");
-		writeRaces(athleteId, sportFilter, generator);
+		writeRaces(athleteId, sportFilter, generator, progress);
+		progress.flush();
 		onStep.accept("scheduled_workouts");
-		writeScheduledWorkouts(athleteId, sportFilter, generator);
+		writeScheduledWorkouts(athleteId, sportFilter, generator, progress);
+		progress.flush();
 
 		generator.writeEndObject();
 	}
@@ -167,7 +219,7 @@ public class ExportWriter {
 				shoeRepository.countByAthleteIdAndRetiredFalse(athleteId), componentRepository.countByBikeAthleteId(athleteId));
 	}
 
-	private void writeActivities(String athleteId, Sport sportFilter, JsonGenerator generator) {
+	private void writeActivities(String athleteId, Sport sportFilter, JsonGenerator generator, Progress progress) {
 		// A multisport parent's own sport is MULTISPORT, not e.g. BIKE, so filtering by sport here
 		// naturally excludes multisport parents while still including any matching individual legs -
 		// no special-case code needed. A leg whose parent got excluded this way just carries a
@@ -187,11 +239,12 @@ public class ExportWriter {
 			generator.writePOJO(new ActivityExportEntry(
 					activityService.toResponse(activity), laps, streamService.getStreams(activity, null, "high")));
 			entityManager.clear();
+			progress.tick();
 		}
 		generator.writeEndArray();
 	}
 
-	private void writeRaces(String athleteId, Sport sportFilter, JsonGenerator generator) {
+	private void writeRaces(String athleteId, Sport sportFilter, JsonGenerator generator, Progress progress) {
 		generator.writeArrayPropertyStart("races");
 		for (var race : raceRepository.findByAthleteIdOrderByDateAsc(athleteId)) {
 			// A race's own sport can be null even when it's linked to an activity - linking to
@@ -204,51 +257,57 @@ public class ExportWriter {
 					: race.getActivity() != null ? race.getActivity().getSport() : null;
 			if (sportFilter == null || sportFilter.equals(effectiveSport)) {
 				generator.writePOJO(raceService.toResponse(race));
+				progress.tick();
 			}
 		}
 		generator.writeEndArray();
 	}
 
-	private void writeWorkouts(String athleteId, Sport sportFilter, JsonGenerator generator) {
+	private void writeWorkouts(String athleteId, Sport sportFilter, JsonGenerator generator, Progress progress) {
 		generator.writeArrayPropertyStart("workouts");
 		for (Workout workout : workoutRepository.findByCreatedByIdOrderByIdDesc(athleteId)) {
 			if (sportFilter == null || sportFilter.equals(workout.getSport())) {
 				generator.writePOJO(new WorkoutDetailResponse(
 						workoutMapper.toResponse(workout), workoutMapper.toStepTree(workout.getSteps())));
+				progress.tick();
 			}
 		}
 		generator.writeEndArray();
 	}
 
-	private void writeScheduledWorkouts(String athleteId, Sport sportFilter, JsonGenerator generator) {
+	private void writeScheduledWorkouts(String athleteId, Sport sportFilter, JsonGenerator generator, Progress progress) {
 		generator.writeArrayPropertyStart("scheduled_workouts");
 		for (var scheduled : scheduledWorkoutRepository.findByAthleteIdOrderByDate(athleteId)) {
 			if (sportFilter == null || sportFilter.equals(scheduled.getWorkout().getSport())) {
 				generator.writePOJO(schedulingMapper.toResponse(scheduled));
+				progress.tick();
 			}
 		}
 		generator.writeEndArray();
 	}
 
-	private void writeEquipment(String athleteId, JsonGenerator generator) {
+	private void writeEquipment(String athleteId, JsonGenerator generator, Progress progress) {
 		List<Bike> bikes = gearService.listBikes(athleteId);
 
 		generator.writeObjectPropertyStart("equipment");
 
 		List<BikeResponse> bikeResponses = bikes.stream().map(gearService::toBikeResponse).toList();
 		generator.writePOJOProperty("bikes", bikeResponses);
+		progress.tick(bikeResponses.size());
 
 		// Shoe/Component have no retired flag of their own to filter here; listShoes already
 		// excludes retired shoes (findByAthleteIdAndRetiredFalseOrderByIdDesc) - matches the
 		// "active gear only" scope for this export.
 		List<ShoeResponse> shoeResponses = shoeService.listShoes(athleteId).stream().map(shoeService::toResponse).toList();
 		generator.writePOJOProperty("shoes", shoeResponses);
+		progress.tick(shoeResponses.size());
 
 		List<ComponentResponse> componentResponses = bikes.stream()
 				.flatMap(bike -> componentRepository.findByBikeId(bike.getId()).stream())
 				.map(gearMapper::toResponse)
 				.toList();
 		generator.writePOJOProperty("components", componentResponses);
+		progress.tick(componentResponses.size());
 
 		generator.writeEndObject();
 	}

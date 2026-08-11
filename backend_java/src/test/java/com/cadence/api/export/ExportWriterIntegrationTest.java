@@ -517,6 +517,77 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		assertThat(counts.get("bikes").asInt()).isEqualTo(1);
 	}
 
+	@Test
+	void onTotalAndOnProgressReachTheFullItemCount() throws Exception {
+		// Same seed shape as countsReflectTheFullUnfilteredAccount - 1 activity, 1 race, 1
+		// workout, 1 scheduled_workout, 1 bike, 1 active shoe (retired excluded), 1 component = 7.
+		User athlete = newUser("export-progress-items@example.cc");
+
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("Morning Run");
+		activity.setStartDate(Instant.parse("2026-04-01T07:00:00Z"));
+		activityRepository.save(activity);
+
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Local 10k");
+		race.setDate(LocalDate.of(2026, 4, 1));
+		raceRepository.save(race);
+
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Tempo Run");
+		workout.setSport(Sport.RUN);
+		workoutRepository.save(workout);
+
+		ScheduledWorkout scheduled = new ScheduledWorkout();
+		scheduled.setWorkout(workout);
+		scheduled.setAthlete(athlete);
+		scheduled.setDate(LocalDate.of(2026, 4, 5));
+		scheduledWorkoutRepository.save(scheduled);
+
+		Bike bike = new Bike();
+		bike.setAthlete(athlete);
+		bike.setName("Gravel bike");
+		bike.setKind(BikeKind.GRAVEL);
+		bike = bikeRepository.save(bike);
+
+		Component component = new Component();
+		component.setBike(bike);
+		component.setName("Chain");
+		componentRepository.save(component);
+
+		ShoeModel shoeModel = new ShoeModel();
+		shoeModel.setManufacturer("ProgressCo");
+		shoeModel.setModel("Runner");
+		shoeModel = shoeModelRepository.save(shoeModel);
+		ShoeModelVersion shoeModelVersion = new ShoeModelVersion();
+		shoeModelVersion.setShoeModel(shoeModel);
+		shoeModelVersion.setVersion("v1");
+		shoeModelVersion = shoeModelVersionRepository.save(shoeModelVersion);
+
+		Shoe activeShoe = new Shoe();
+		activeShoe.setAthlete(athlete);
+		activeShoe.setShoeModelVersion(shoeModelVersion);
+		activeShoe.setName("Daily trainer");
+		shoeRepository.save(activeShoe);
+
+		List<Integer> totals = new ArrayList<>();
+		List<Integer> progress = new ArrayList<>();
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
+			exportWriter.write(athlete.getId(), null, generator, step -> { }, totals::add, progress::add);
+		}
+
+		assertThat(totals).containsExactly(7);
+		assertThat(progress).isNotEmpty();
+		assertThat(progress).isSorted();
+		assertThat(progress.get(progress.size() - 1)).isEqualTo(7);
+	}
+
 	private User newUser(String email) {
 		User user = new User();
 		user.setEmail(email);

@@ -29,6 +29,15 @@ public class ImportJob extends PrefixedIdEntity {
 	@Column(name = "current_step")
 	private String currentStep;
 
+	/** Mirrors ExportJob's totalItems/processedItems - see ImportReader's onTotal/onProgress.
+	 * totalItems comes from the source file's own "counts" metadata block, so it's null for a
+	 * file exported before that field existed. */
+	@Column(name = "total_items")
+	private Integer totalItems;
+
+	@Column(name = "processed_items", nullable = false)
+	private int processedItems;
+
 	@Column(name = "activities_imported", nullable = false)
 	private int activitiesImported;
 
@@ -96,6 +105,22 @@ public class ImportJob extends PrefixedIdEntity {
 
 	public void setCurrentStep(String currentStep) {
 		this.currentStep = currentStep;
+	}
+
+	public Integer getTotalItems() {
+		return totalItems;
+	}
+
+	public void setTotalItems(Integer totalItems) {
+		this.totalItems = totalItems;
+	}
+
+	public int getProcessedItems() {
+		return processedItems;
+	}
+
+	public void setProcessedItems(int processedItems) {
+		this.processedItems = processedItems;
 	}
 
 	public int getActivitiesImported() {

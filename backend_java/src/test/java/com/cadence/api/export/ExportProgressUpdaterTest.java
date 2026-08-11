@@ -44,4 +44,30 @@ class ExportProgressUpdaterTest extends IntegrationTest {
 		// in flight.
 		exportProgressUpdater.updateStep("exp_doesnotexist", "activities");
 	}
+
+	@Test
+	void updateTotalAndUpdateProgressPersistImmediately() {
+		User athlete = new User();
+		athlete.setEmail("export-progress-updater-items@example.cc");
+		athlete.setName("Athlete");
+		athlete.setPassword("irrelevant-for-this-test");
+		athlete = userRepository.save(athlete);
+
+		ExportJob job = new ExportJob();
+		job.setAthlete(athlete);
+		job = exportJobRepository.save(job);
+
+		exportProgressUpdater.updateTotal(job.getId(), 42);
+		exportProgressUpdater.updateProgress(job.getId(), 7);
+
+		ExportJob reloaded = exportJobRepository.findById(job.getId()).orElseThrow();
+		assertThat(reloaded.getTotalItems()).isEqualTo(42);
+		assertThat(reloaded.getProcessedItems()).isEqualTo(7);
+	}
+
+	@Test
+	void updateTotalAndUpdateProgressAreNoOpsForAnUnknownJobId() {
+		exportProgressUpdater.updateTotal("exp_doesnotexist", 42);
+		exportProgressUpdater.updateProgress("exp_doesnotexist", 7);
+	}
 }
