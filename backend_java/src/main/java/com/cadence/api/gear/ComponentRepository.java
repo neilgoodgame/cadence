@@ -12,6 +12,9 @@ public interface ComponentRepository extends JpaRepository<Component, String> {
 
 	int countByBikeId(String bikeId);
 
+	// Export's "counts" metadata block - across every bike the athlete owns.
+	long countByBikeAthleteId(String athleteId);
+
 	/**
 	 * Eagerly fetches the owning bike and athlete in one query - callers immediately walk
 	 * {@code component.getBike().getAthlete().getId()} for a permission check, and that
