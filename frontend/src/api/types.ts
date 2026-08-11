@@ -351,10 +351,15 @@ export type UploadStatus = "queued" | "processing" | "ready" | "failed" | "dupli
 
 export type ExportStatus = "queued" | "processing" | "ready" | "failed";
 
+// The 5 sections both export_writer.py/ExportWriter.java and import_reader.py/ImportReader.java
+// process in - null before processing starts (or once a job reaches a terminal status).
+export type DataTransferStep = "equipment" | "workouts" | "activities" | "races" | "scheduled_workouts";
+
 export interface ExportJob {
   id: string;
   object: "export";
   status: ExportStatus;
+  current_step: DataTransferStep | null;
   file_size_bytes: number | null;
   error_message: string | null;
   created_at: string;
@@ -378,6 +383,7 @@ export interface ImportJob {
   id: string;
   object: "import";
   status: ImportStatus;
+  current_step: DataTransferStep | null;
   counts: ImportCounts;
   error_message: string | null;
   created_at: string;
