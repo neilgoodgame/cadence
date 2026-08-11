@@ -234,3 +234,67 @@ class ProgressStepTests(TestCase):
         from django.core.files.storage import default_storage
 
         default_storage.delete(relative_path)
+
+
+class ExportCountsTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="export-counts@example.cc", password="x", name="Athlete")
+        _seed_full_account(self.athlete)
+
+    def test_unfiltered_export_counts_match_the_full_seeded_account(self):
+        relative_path = "exports/test/counts-full.json.gz"
+        write_export(self.athlete.id, None, relative_path)
+
+        from django.core.files.storage import default_storage
+
+        with default_storage.open(relative_path, "rb") as raw, gzip.GzipFile(fileobj=raw) as gz:
+            doc = json.loads(gz.read())
+
+        self.assertEqual(
+            doc["counts"],
+            {
+                "activities": 2,
+                "races": 1,
+                "workouts": 1,
+                "scheduled_workouts": 1,
+                "bikes": 1,
+                "shoes": 1,
+                "components": 1,
+            },
+        )
+        # And they genuinely match what's in the rest of the same file, not just a hardcoded number.
+        self.assertEqual(doc["counts"]["activities"], len(doc["activities"]))
+        self.assertEqual(doc["counts"]["races"], len(doc["races"]))
+        self.assertEqual(doc["counts"]["workouts"], len(doc["workouts"]))
+        self.assertEqual(doc["counts"]["scheduled_workouts"], len(doc["scheduled_workouts"]))
+        self.assertEqual(doc["counts"]["bikes"], len(doc["equipment"]["bikes"]))
+        self.assertEqual(doc["counts"]["shoes"], len(doc["equipment"]["shoes"]))
+        self.assertEqual(doc["counts"]["components"], len(doc["equipment"]["components"]))
+
+        default_storage.delete(relative_path)
+
+    def test_sport_filtered_export_counts_reflect_the_filtered_scope(self):
+        relative_path = "exports/test/counts-bike.json.gz"
+        write_export(self.athlete.id, "bike", relative_path)
+
+        from django.core.files.storage import default_storage
+
+        with default_storage.open(relative_path, "rb") as raw, gzip.GzipFile(fileobj=raw) as gz:
+            doc = json.loads(gz.read())
+
+        # Multisport parent excluded (own sport is "multisport"), workout/scheduled_workout are
+        # sport=run so drop to 0 - equipment stays full regardless of the filter.
+        self.assertEqual(
+            doc["counts"],
+            {
+                "activities": 1,
+                "races": 1,
+                "workouts": 0,
+                "scheduled_workouts": 0,
+                "bikes": 1,
+                "shoes": 1,
+                "components": 1,
+            },
+        )
+
+        default_storage.delete(relative_path)
