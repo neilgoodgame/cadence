@@ -87,7 +87,7 @@ public class ImportController {
 				job.getActivitiesImported(), job.getRacesImported(), job.getWorkoutsImported(),
 				job.getScheduledWorkoutsImported(), job.getBikesImported(), job.getShoesImported(),
 				job.getComponentsImported(), job.getItemsSkipped());
-		return new ImportJobResponse(job.getId(), job.getStatus(), counts, job.getErrorMessage(),
+		return new ImportJobResponse(job.getId(), job.getStatus(), job.getCurrentStep(), counts, job.getErrorMessage(),
 				job.getCreatedAt(), job.getCompletedAt());
 	}
 }

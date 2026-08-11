@@ -23,6 +23,13 @@ public class ExportJob extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private ExportStatus status = ExportStatus.QUEUED;
 
+	/** One of ExportWriter's fixed section names ("equipment"/"workouts"/"activities"/"races"/
+	 * "scheduled_workouts") - null before processing starts. Lets a progress dialog show which
+	 * kind of data is currently being worked on; see ExportWriter.write's Javadoc for why there's
+	 * no finer-grained progress within a section. */
+	@Column(name = "current_step")
+	private String currentStep;
+
 	/** Relative to the uploads media root, e.g. "usr_xxx/exports/exp_yyy.json.gz" - resolved against cadence.uploads.media-root, same as Upload.storedPath. */
 	@Column(name = "file_path")
 	private String filePath;
@@ -65,6 +72,14 @@ public class ExportJob extends PrefixedIdEntity {
 
 	public void setStatus(ExportStatus status) {
 		this.status = status;
+	}
+
+	public String getCurrentStep() {
+		return currentStep;
+	}
+
+	public void setCurrentStep(String currentStep) {
+		this.currentStep = currentStep;
 	}
 
 	public String getFilePath() {

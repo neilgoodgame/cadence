@@ -309,6 +309,19 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void writeCallsOnStepForEverySectionInOrderEvenWithNoData() throws Exception {
+		User athlete = newUser("export-progress-steps@example.cc");
+
+		List<String> seen = new ArrayList<>();
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
+			exportWriter.write(athlete.getId(), null, generator, seen::add);
+		}
+
+		assertThat(seen).containsExactly("equipment", "workouts", "activities", "races", "scheduled_workouts");
+	}
+
+	@Test
 	void sportFilterIncludesALinkedRaceWhoseOwnSportWasNeverSet() throws Exception {
 		// Reproduces linking to an *existing* race via the UI (as opposed to "mark this
 		// activity as a race", which sets sport at creation) - the race's own sport stays

@@ -37,7 +37,13 @@ public class ImportService {
 
 		String athleteId = job.getAthlete().getId();
 		try {
-			ImportCounts counts = importReader.read(athleteId, sourceFile);
+			// Unlike ExportService, no REQUIRES_NEW wrapper needed here - runImport isn't itself
+			// transactional (see class Javadoc) and neither is ImportReader.read, so each save
+			// below already commits on its own the moment it runs.
+			ImportCounts counts = importReader.read(athleteId, sourceFile, step -> {
+				job.setCurrentStep(step);
+				importJobRepository.save(job);
+			});
 			job.setActivitiesImported(counts.activitiesImported());
 			job.setRacesImported(counts.racesImported());
 			job.setWorkoutsImported(counts.workoutsImported());

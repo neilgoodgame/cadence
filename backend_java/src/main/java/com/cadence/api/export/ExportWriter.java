@@ -28,6 +28,7 @@ import com.cadence.api.workouts.dto.WorkoutDetailResponse;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JsonGenerator;
@@ -95,9 +96,30 @@ public class ExportWriter {
 	/** {@code sportFilter} narrows activities/races/workouts/scheduled_workouts to one discipline;
 	 * {@code null} exports everything, unchanged from before this filter existed. Equipment is
 	 * always exported in full either way - it's small, and shoes have no sport of their own to
-	 * filter by. */
+	 * filter by.
+	 *
+	 * <p>Annotated independently rather than just delegating to the 4-arg overload below: a
+	 * same-class call to that overload wouldn't go through this bean's transactional proxy
+	 * (Spring AOP self-invocation), silently dropping {@code @Transactional} and breaking every
+	 * lazy association this class relies on being resolvable - caught by
+	 * ExportWriterIntegrationTest failing with LazyInitializationException the first time this
+	 * was missed. */
 	@Transactional(readOnly = true)
 	public void write(String athleteId, Sport sportFilter, JsonGenerator generator) {
+		write(athleteId, sportFilter, generator, step -> { });
+	}
+
+	/** As {@link #write(String, Sport, JsonGenerator)}, but calls {@code onStep} with one of
+	 * "equipment"/"workouts"/"activities"/"races"/"scheduled_workouts" right as each section
+	 * starts - what a progress dialog polls ExportJob.currentStep for. There's no finer-grained
+	 * progress within "activities" (by far the slowest section, since it walks laps + full-
+	 * resolution streams per activity): a per-activity callback would mean either an upfront
+	 * count query or a DB write on every single activity, and knowing which section is running
+	 * already answers what the dialog needs. {@code onStep} is expected to persist independently
+	 * of this method's own transaction (see ExportProgressUpdater) - it must not be assumed to
+	 * see the writes this transaction hasn't committed yet, or vice versa. */
+	@Transactional(readOnly = true)
+	public void write(String athleteId, Sport sportFilter, JsonGenerator generator, Consumer<String> onStep) {
 		generator.writeStartObject();
 		generator.writeStringProperty("generated_at", Instant.now().toString());
 		generator.writeStringProperty("athlete_id", athleteId);
@@ -106,10 +128,15 @@ public class ExportWriter {
 		// and activities come before races/scheduled_workouts (which reference activity ids) -
 		// dependency order, so a forward-only streaming importer can resolve id references in one
 		// pass without having to look ahead. See ImportReader for the reader side of this contract.
+		onStep.accept("equipment");
 		writeEquipment(athleteId, generator);
+		onStep.accept("workouts");
 		writeWorkouts(athleteId, sportFilter, generator);
+		onStep.accept("activities");
 		writeActivities(athleteId, sportFilter, generator);
+		onStep.accept("races");
 		writeRaces(athleteId, sportFilter, generator);
+		onStep.accept("scheduled_workouts");
 		writeScheduledWorkouts(athleteId, sportFilter, generator);
 
 		generator.writeEndObject();

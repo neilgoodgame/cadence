@@ -44,6 +44,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
 import org.junit.jupiter.api.Test;
@@ -240,6 +241,37 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			assertThat(importedScheduled).hasSize(1);
 			assertThat(importedScheduled.get(0).getActivity().getId()).isEqualTo(importedChild.getId());
 			assertThat(importedScheduled.get(0).getWorkout().getId()).isEqualTo(importedWorkouts.get(0).getId());
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
+
+	@Test
+	void readCallsOnStepForEverySectionInOrderEvenWithNoData() throws Exception {
+		User source = new User();
+		source.setEmail("import-progress-steps-source@example.cc");
+		source.setName("Source");
+		source.setPassword("irrelevant-for-this-test");
+		source = userRepository.save(source);
+
+		User target = new User();
+		target.setEmail("import-progress-steps-target@example.cc");
+		target.setName("Target");
+		target.setPassword("irrelevant-for-this-test");
+		target = userRepository.save(target);
+
+		Path file = Files.createTempFile("import-progress-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				exportWriter.write(source.getId(), null, generator);
+			}
+
+			List<String> seen = new ArrayList<>();
+			importReader.read(target.getId(), file, seen::add);
+
+			assertThat(seen).containsExactly("equipment", "workouts", "activities", "races", "scheduled_workouts");
 		}
 		finally {
 			Files.deleteIfExists(file);
