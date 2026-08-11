@@ -13,6 +13,11 @@ public interface ScheduledWorkoutRepository extends JpaRepository<ScheduledWorko
 
 	List<ScheduledWorkout> findByAthleteIdOrderByDate(String athleteId);
 
+	// Export's "counts" metadata block.
+	long countByAthleteId(String athleteId);
+
+	long countByAthleteIdAndWorkoutSport(String athleteId, com.cadence.api.common.domain.Sport sport);
+
 	@Query("select s from ScheduledWorkout s where s.athlete.id = :athleteId and s.date = :date "
 			+ "and s.status = com.cadence.api.scheduling.ScheduledWorkoutStatus.PLANNED and s.activity is null "
 			+ "and s.workout.sport = :sport order by s.id")

@@ -9,10 +9,13 @@ import com.cadence.api.activities.StreamService;
 import com.cadence.api.activities.dto.LapResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.export.dto.ActivityExportEntry;
+import com.cadence.api.export.dto.ExportCounts;
 import com.cadence.api.gear.Bike;
+import com.cadence.api.gear.BikeRepository;
 import com.cadence.api.gear.ComponentRepository;
 import com.cadence.api.gear.GearMapper;
 import com.cadence.api.gear.GearService;
+import com.cadence.api.gear.ShoeRepository;
 import com.cadence.api.gear.ShoeService;
 import com.cadence.api.gear.dto.BikeResponse;
 import com.cadence.api.gear.dto.ComponentResponse;
@@ -65,6 +68,8 @@ public class ExportWriter {
 	private final SchedulingMapper schedulingMapper;
 	private final GearService gearService;
 	private final ShoeService shoeService;
+	private final BikeRepository bikeRepository;
+	private final ShoeRepository shoeRepository;
 	private final ComponentRepository componentRepository;
 	private final GearMapper gearMapper;
 	private final EntityManager entityManager;
@@ -73,8 +78,8 @@ public class ExportWriter {
 			LapMapper lapMapper, StreamService streamService, RaceRepository raceRepository, RaceService raceService,
 			WorkoutRepository workoutRepository, WorkoutMapper workoutMapper,
 			ScheduledWorkoutRepository scheduledWorkoutRepository, SchedulingMapper schedulingMapper,
-			GearService gearService, ShoeService shoeService, ComponentRepository componentRepository, GearMapper gearMapper,
-			EntityManager entityManager) {
+			GearService gearService, ShoeService shoeService, BikeRepository bikeRepository, ShoeRepository shoeRepository,
+			ComponentRepository componentRepository, GearMapper gearMapper, EntityManager entityManager) {
 		this.activityRepository = activityRepository;
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
@@ -88,6 +93,8 @@ public class ExportWriter {
 		this.schedulingMapper = schedulingMapper;
 		this.gearService = gearService;
 		this.shoeService = shoeService;
+		this.bikeRepository = bikeRepository;
+		this.shoeRepository = shoeRepository;
 		this.componentRepository = componentRepository;
 		this.gearMapper = gearMapper;
 		this.entityManager = entityManager;
@@ -123,6 +130,7 @@ public class ExportWriter {
 		generator.writeStartObject();
 		generator.writeStringProperty("generated_at", Instant.now().toString());
 		generator.writeStringProperty("athlete_id", athleteId);
+		generator.writePOJOProperty("counts", computeCounts(athleteId, sportFilter));
 
 		// Equipment and workouts come before activities (which reference bike/shoe/workout ids),
 		// and activities come before races/scheduled_workouts (which reference activity ids) -
@@ -140,6 +148,23 @@ public class ExportWriter {
 		writeScheduledWorkouts(athleteId, sportFilter, generator);
 
 		generator.writeEndObject();
+	}
+
+	/** Cheap upfront count queries (no row materialization) for the "counts" metadata block at
+	 * the top of the file - the same filtered scope each writeX method below uses. */
+	private ExportCounts computeCounts(String athleteId, Sport sportFilter) {
+		long activities = sportFilter == null ? activityRepository.countByAthleteId(athleteId)
+				: activityRepository.countByAthleteIdAndSport(athleteId, sportFilter);
+		long races = sportFilter == null ? raceRepository.countByAthleteId(athleteId)
+				: raceRepository.countByAthleteIdAndEffectiveSport(athleteId, sportFilter);
+		long workouts = sportFilter == null ? workoutRepository.countByCreatedById(athleteId)
+				: workoutRepository.countByCreatedByIdAndSport(athleteId, sportFilter);
+		long scheduledWorkouts = sportFilter == null ? scheduledWorkoutRepository.countByAthleteId(athleteId)
+				: scheduledWorkoutRepository.countByAthleteIdAndWorkoutSport(athleteId, sportFilter);
+		// Equipment is always exported in full, regardless of the sport filter - it's small, and
+		// shoes have no sport of their own to filter by.
+		return new ExportCounts(activities, races, workouts, scheduledWorkouts, bikeRepository.countByAthleteId(athleteId),
+				shoeRepository.countByAthleteIdAndRetiredFalse(athleteId), componentRepository.countByBikeAthleteId(athleteId));
 	}
 
 	private void writeActivities(String athleteId, Sport sportFilter, JsonGenerator generator) {

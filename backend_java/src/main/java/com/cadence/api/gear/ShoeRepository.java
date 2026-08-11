@@ -17,6 +17,9 @@ public interface ShoeRepository extends JpaRepository<Shoe, String> {
 	@Query("select s from Shoe s join fetch s.shoeModelVersion smv join fetch smv.shoeModel where s.id = :id")
 	Optional<Shoe> findByIdWithCatalog(@Param("id") String id);
 
+	// Export's "counts" metadata block - active gear only, matching findByAthleteIdAndRetiredFalseOrderByIdDesc's scope.
+	long countByAthleteIdAndRetiredFalse(String athleteId);
+
 	boolean existsByAthleteIdAndNameIgnoreCase(String athleteId, String name);
 
 	boolean existsByAthleteIdAndNameIgnoreCaseAndIdNot(String athleteId, String name, String excludingId);

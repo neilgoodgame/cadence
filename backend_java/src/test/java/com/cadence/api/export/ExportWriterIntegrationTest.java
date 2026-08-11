@@ -371,6 +371,152 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		assertThat(root.get("races")).isEmpty();
 	}
 
+	@Test
+	void countsReflectTheFullUnfilteredAccount() throws Exception {
+		User athlete = newUser("export-counts-full@example.cc");
+
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("Morning Run");
+		activity.setStartDate(Instant.parse("2026-04-01T07:00:00Z"));
+		activityRepository.save(activity);
+
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Local 10k");
+		race.setDate(LocalDate.of(2026, 4, 1));
+		raceRepository.save(race);
+
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Tempo Run");
+		workout.setSport(Sport.RUN);
+		workoutRepository.save(workout);
+
+		ScheduledWorkout scheduled = new ScheduledWorkout();
+		scheduled.setWorkout(workout);
+		scheduled.setAthlete(athlete);
+		scheduled.setDate(LocalDate.of(2026, 4, 5));
+		scheduledWorkoutRepository.save(scheduled);
+
+		Bike bike = new Bike();
+		bike.setAthlete(athlete);
+		bike.setName("Gravel bike");
+		bike.setKind(BikeKind.GRAVEL);
+		bike = bikeRepository.save(bike);
+
+		Component component = new Component();
+		component.setBike(bike);
+		component.setName("Chain");
+		componentRepository.save(component);
+
+		ShoeModel shoeModel = new ShoeModel();
+		shoeModel.setManufacturer("CountsCo");
+		shoeModel.setModel("Runner");
+		shoeModel = shoeModelRepository.save(shoeModel);
+		ShoeModelVersion shoeModelVersion = new ShoeModelVersion();
+		shoeModelVersion.setShoeModel(shoeModel);
+		shoeModelVersion.setVersion("v1");
+		shoeModelVersion = shoeModelVersionRepository.save(shoeModelVersion);
+
+		Shoe activeShoe = new Shoe();
+		activeShoe.setAthlete(athlete);
+		activeShoe.setShoeModelVersion(shoeModelVersion);
+		activeShoe.setName("Daily trainer");
+		shoeRepository.save(activeShoe);
+
+		Shoe retiredShoe = new Shoe();
+		retiredShoe.setAthlete(athlete);
+		retiredShoe.setShoeModelVersion(shoeModelVersion);
+		retiredShoe.setName("Old racers");
+		retiredShoe.setRetired(true);
+		shoeRepository.save(retiredShoe);
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
+			exportWriter.write(athlete.getId(), null, generator);
+		}
+
+		JsonNode root = jsonMapper.readTree(out.toByteArray());
+		JsonNode counts = root.get("counts");
+		assertThat(counts.get("activities").asInt()).isEqualTo(1);
+		assertThat(counts.get("races").asInt()).isEqualTo(1);
+		assertThat(counts.get("workouts").asInt()).isEqualTo(1);
+		assertThat(counts.get("scheduled_workouts").asInt()).isEqualTo(1);
+		assertThat(counts.get("bikes").asInt()).isEqualTo(1);
+		assertThat(counts.get("shoes").asInt()).isEqualTo(1); // retired excluded
+		assertThat(counts.get("components").asInt()).isEqualTo(1);
+
+		// Genuinely matches the rest of the same file, not just a hardcoded number.
+		assertThat(counts.get("activities").asInt()).isEqualTo(root.get("activities").size());
+		assertThat(counts.get("races").asInt()).isEqualTo(root.get("races").size());
+		assertThat(counts.get("workouts").asInt()).isEqualTo(root.get("workouts").size());
+		assertThat(counts.get("scheduled_workouts").asInt()).isEqualTo(root.get("scheduled_workouts").size());
+		assertThat(counts.get("bikes").asInt()).isEqualTo(root.get("equipment").get("bikes").size());
+		assertThat(counts.get("shoes").asInt()).isEqualTo(root.get("equipment").get("shoes").size());
+		assertThat(counts.get("components").asInt()).isEqualTo(root.get("equipment").get("components").size());
+	}
+
+	@Test
+	void countsReflectTheSportFilteredScope() throws Exception {
+		User athlete = newUser("export-counts-filtered@example.cc");
+
+		Activity bikeActivity = new Activity();
+		bikeActivity.setAthlete(athlete);
+		bikeActivity.setSport(Sport.BIKE);
+		bikeActivity.setName("Ride");
+		bikeActivity.setStartDate(Instant.parse("2026-04-02T07:00:00Z"));
+		activityRepository.save(bikeActivity);
+
+		Activity runActivity = new Activity();
+		runActivity.setAthlete(athlete);
+		runActivity.setSport(Sport.RUN);
+		runActivity.setName("Run");
+		runActivity.setStartDate(Instant.parse("2026-04-03T07:00:00Z"));
+		activityRepository.save(runActivity);
+
+		Race bikeRace = new Race();
+		bikeRace.setAthlete(athlete);
+		bikeRace.setName("Crit");
+		bikeRace.setSport(Sport.BIKE);
+		bikeRace.setDate(LocalDate.of(2026, 4, 2));
+		raceRepository.save(bikeRace);
+
+		Race runRace = new Race();
+		runRace.setAthlete(athlete);
+		runRace.setName("5k");
+		runRace.setSport(Sport.RUN);
+		runRace.setDate(LocalDate.of(2026, 4, 3));
+		raceRepository.save(runRace);
+
+		Workout runWorkout = new Workout();
+		runWorkout.setCreatedBy(athlete);
+		runWorkout.setName("Tempo");
+		runWorkout.setSport(Sport.RUN);
+		workoutRepository.save(runWorkout);
+
+		Bike bike = new Bike();
+		bike.setAthlete(athlete);
+		bike.setName("Road bike");
+		bike.setKind(BikeKind.ROAD);
+		bikeRepository.save(bike);
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
+			exportWriter.write(athlete.getId(), Sport.BIKE, generator);
+		}
+
+		JsonNode root = jsonMapper.readTree(out.toByteArray());
+		JsonNode counts = root.get("counts");
+		assertThat(counts.get("activities").asInt()).isEqualTo(1);
+		assertThat(counts.get("races").asInt()).isEqualTo(1);
+		assertThat(counts.get("workouts").asInt()).isEqualTo(0);
+		assertThat(counts.get("scheduled_workouts").asInt()).isEqualTo(0);
+		// Equipment stays full regardless of the filter.
+		assertThat(counts.get("bikes").asInt()).isEqualTo(1);
+	}
+
 	private User newUser(String email) {
 		User user = new User();
 		user.setEmail(email);

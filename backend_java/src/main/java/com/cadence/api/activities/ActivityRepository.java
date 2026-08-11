@@ -41,6 +41,12 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	// See ExportWriter.writeActivities.
 	List<Activity> findByAthleteIdAndSportOrderByStartDate(String athleteId, com.cadence.api.common.domain.Sport sport);
 
+	// Export's "counts" metadata block - same filtered scope as the two finders above, just a
+	// count instead of materializing every row.
+	long countByAthleteId(String athleteId);
+
+	long countByAthleteIdAndSport(String athleteId, com.cadence.api.common.domain.Sport sport);
+
 	@Query("select a from Activity a where a.athlete.id = :athleteId and a.parentActivity is null and a.primaryActivity is null")
 	List<Activity> findRecomputeCandidates(@Param("athleteId") String athleteId);
 
