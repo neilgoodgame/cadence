@@ -438,4 +438,40 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			Files.deleteIfExists(file);
 		}
 	}
+
+	@Test
+	void importCarriesOverTheSourceActivitysOwnSnapshotNotTheImportingAthletesProfile() throws Exception {
+		User source = newUser("snapshot-roundtrip-source@example.cc");
+		source.setFtp(500);
+		source = userRepository.save(source);
+		User target = newUser("snapshot-roundtrip-target@example.cc");
+		target.setFtp(999);
+		target = userRepository.save(target);
+
+		Activity ride = new Activity();
+		ride.setAthlete(source);
+		ride.setSport(Sport.BIKE);
+		ride.setName("Old ride");
+		ride.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		ride.setFtpSnapshot(222); // what FTP actually was when this ride happened
+		activityRepository.save(ride);
+
+		Path file = Files.createTempFile("import-snapshot-roundtrip-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				exportWriter.write(source.getId(), null, generator);
+			}
+
+			importReader.read(target.getId(), file);
+
+			Activity imported = activityRepository.findByAthleteIdOrderByStartDate(target.getId()).get(0);
+			// 222 (the source ride's own snapshot) - not the source's current 500, and not the
+			// importing athlete's current 999.
+			assertThat(imported.getFtpSnapshot()).isEqualTo(222);
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
 }

@@ -133,6 +133,50 @@ class CalculatorsTest {
 		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKm(t, series, 2.0)).isCloseTo(60.0, within(0.001));
 	}
 
+	// The dual of the bestPace* tests above: fixed *time* target, variable *distance* window,
+	// instead of fixed distance/variable time.
+
+	@Test
+	void bestPaceOverDurationConstantPaceReturnsThatPace() {
+		// 1 km every 60 seconds, sustained for a full hour -> 60 sec/km throughout.
+		List<Double> series = new ArrayList<>();
+		for (int i = 0; i <= 3600; i++) {
+			series.add(i / 60.0);
+		}
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKmOverDuration(indices(series.size()), series, 3600))
+				.isCloseTo(60.0, within(0.1));
+	}
+
+	@Test
+	void bestPaceOverDurationReturnsNullWhenTargetDurationIsNeverReached() {
+		List<Double> series = new ArrayList<>();
+		for (int i = 0; i < 100; i++) {
+			series.add(i / 60.0); // only ~99 seconds of data
+		}
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKmOverDuration(indices(series.size()), series, 3600))
+				.isNull();
+	}
+
+	@Test
+	void bestPaceOverDurationUsesRealElapsedTimeNotSampleIndexForSparseRecording() {
+		// 10 km covered over samples at t=0 and t=3600 (real elapsed time exactly one hour)
+		// must come out as 360 sec/km.
+		List<Integer> t = List.of(0, 3600);
+		List<Double> series = List.of(0.0, 10.0);
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKmOverDuration(t, series, 3600))
+				.isCloseTo(360.0, within(0.001));
+	}
+
+	@Test
+	void bestPaceOverDurationForwardFillsGapsInsteadOfTreatingThemAsAReset() {
+		List<Integer> t = indices(3601);
+		List<Double> series = new ArrayList<>(Collections.nCopies(3601, null));
+		series.set(0, 0.0);
+		series.set(3600, 60.0); // 60 km in one hour -> 60 sec/km, everything in between missing
+		assertThat(PaceBestEffortCalculator.bestPaceSecondsPerKmOverDuration(t, series, 3600))
+				.isCloseTo(60.0, within(0.001));
+	}
+
 	@Test
 	void powerBasedTssAtThresholdForOneHourIsOneHundred() {
 		Integer tss = TssCalculator.powerBased(200.0, 200, 3600);

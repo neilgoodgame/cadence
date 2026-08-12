@@ -3,6 +3,7 @@ package com.cadence.api.uploads.batch;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.BestEffortComputeService;
+import com.cadence.api.activities.ThresholdDetectionService;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.uploads.parsing.ParsedActivity;
 import com.cadence.api.users.User;
@@ -20,12 +21,14 @@ public class BestEffortTasklet implements Tasklet {
 	private final UploadJobContextRegistry contextRegistry;
 	private final ActivityRepository activityRepository;
 	private final BestEffortComputeService computeService;
+	private final ThresholdDetectionService thresholdDetectionService;
 
 	public BestEffortTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
-			BestEffortComputeService computeService) {
+			BestEffortComputeService computeService, ThresholdDetectionService thresholdDetectionService) {
 		this.contextRegistry = contextRegistry;
 		this.activityRepository = activityRepository;
 		this.computeService = computeService;
+		this.thresholdDetectionService = thresholdDetectionService;
 	}
 
 	@Override
@@ -46,6 +49,12 @@ public class BestEffortTasklet implements Tasklet {
 			List<Integer> tSeries = segment.parsed().samples().stream()
 					.map(ParsedActivity.Sample::t).toList();
 			computeService.computeForActivity(activity, athlete, powerSeries, hrSeries, tSeries, distanceSeries);
+
+			thresholdDetectionService.detect(activity, powerSeries, tSeries, distanceSeries);
+			if (activity.getSuggestedFtp() != null || activity.getSuggestedCriticalRunPower() != null
+					|| (activity.getSuggestedThresholdPace() != null && !activity.getSuggestedThresholdPace().isEmpty())) {
+				activityRepository.save(activity);
+			}
 		}
 		return RepeatStatus.FINISHED;
 	}
