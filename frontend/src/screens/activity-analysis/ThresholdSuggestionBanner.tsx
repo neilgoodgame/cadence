@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { applyThresholdSuggestion, type ThresholdSuggestionField } from "../../api/activities";
+import { applyThresholdSuggestion, recomputeActivityThresholds, type ThresholdSuggestionField } from "../../api/activities";
 import type { Activity } from "../../api/types";
+
+// Detection (and so the "outdated zones" flag) only ever applies to these two sports.
+const DETECTABLE_SPORTS = new Set(["bike", "run"]);
 
 interface Row {
   field: ThresholdSuggestionField;
@@ -41,16 +44,37 @@ const BUTTON_STYLE: React.CSSProperties = {
   color: "var(--ink2)",
 };
 
-/** Shown above the tabs when this activity's own best effort implies a higher threshold than
- * what's on record (see the backend's ThresholdDetectionService/detect_threshold_increase) - up
- * to two rows for a run (critical_run_power and threshold_pace are detected independently), at
- * most one for a bike (ftp). Accepting updates the athlete's profile *and* this activity's own
- * snapshot; dismissing just clears the suggestion - either way it's gone for good (a later,
- * larger effort can still set it again). */
+const ROW_STYLE: React.CSSProperties = {
+  fontSize: 13,
+  color: "var(--ink2)",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  background: "var(--elev)",
+  border: "1px solid var(--line)",
+  borderRadius: 8,
+  padding: "8px 12px",
+};
+
+/** Shown above the tabs, in one of three states: (1) this activity's own best effort implies a
+ * higher threshold than what's on record (see the backend's ThresholdDetectionService/
+ * detect_threshold_increase) - up to two rows for a run (critical_run_power and threshold_pace
+ * are detected independently), at most one for a bike (ftp); accepting updates the athlete's
+ * profile *and* this activity's own snapshot, dismissing just clears the suggestion, either way
+ * it's gone for good (a later, larger effort can still set it again). (2) detection has never run
+ * on this activity at all (predates the feature, or was imported, which also skips detection) -
+ * a single row offering to check now, via recompute-thresholds. (3) neither - nothing renders.
+ * States 1 and 2 can't overlap in practice: a suggestion only ever appears as a side effect of a
+ * detection pass, which is exactly what marks the activity checked. */
 export function ThresholdSuggestionBanner({ activity }: { activity: Activity }) {
   const queryClient = useQueryClient();
   const [busyField, setBusyField] = useState<ThresholdSuggestionField | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const invalidateActivity = (updated: Activity) => {
+    queryClient.setQueryData(["activity", activity.id], updated);
+    queryClient.invalidateQueries({ queryKey: ["zones", activity.athlete_id, activity.id] });
+  };
 
   const mutate = useMutation({
     mutationFn: ({ field, accept }: { field: ThresholdSuggestionField; accept: boolean }) =>
@@ -60,35 +84,41 @@ export function ThresholdSuggestionBanner({ activity }: { activity: Activity }) 
       setError(null);
     },
     onError: (e: Error) => setError(e.message),
-    onSettled: () => {
-      setBusyField(null);
-      queryClient.invalidateQueries({ queryKey: ["activity", activity.id] });
-      queryClient.invalidateQueries({ queryKey: ["zones", activity.athlete_id, activity.id] });
-    },
+    onSuccess: invalidateActivity,
+    onSettled: () => setBusyField(null),
+  });
+
+  const checkMutation = useMutation({
+    mutationFn: () => recomputeActivityThresholds(activity.id),
+    onMutate: () => setError(null),
+    onError: (e: Error) => setError(e.message),
+    onSuccess: invalidateActivity,
   });
 
   const rows = rowsFor(activity);
-  if (rows.length === 0) {
+  const showStaleFlag = rows.length === 0 && !activity.threshold_checked && DETECTABLE_SPORTS.has(activity.sport);
+  if (rows.length === 0 && !showStaleFlag) {
     return null;
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {showStaleFlag && (
+        <div style={ROW_STYLE}>
+          <span style={{ flex: 1 }}>
+            This activity predates automatic threshold detection, so its zones may be based on outdated values.
+          </span>
+          <button
+            onClick={() => checkMutation.mutate()}
+            disabled={checkMutation.isPending}
+            style={{ ...BUTTON_STYLE, background: "var(--ember)", color: "#fff", border: "none", cursor: checkMutation.isPending ? "wait" : "pointer" }}
+          >
+            {checkMutation.isPending ? "Checking…" : "Check for updates"}
+          </button>
+        </div>
+      )}
       {rows.map((row) => (
-        <div
-          key={row.field}
-          style={{
-            fontSize: 13,
-            color: "var(--ink2)",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            background: "var(--elev)",
-            border: "1px solid var(--line)",
-            borderRadius: 8,
-            padding: "8px 12px",
-          }}
-        >
+        <div key={row.field} style={ROW_STYLE}>
           <span style={{ flex: 1 }}>{row.text}</span>
           <button
             onClick={() => mutate.mutate({ field: row.field, accept: true })}

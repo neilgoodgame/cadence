@@ -80,6 +80,14 @@ export function applyThresholdSuggestion(
   });
 }
 
+/** Re-runs threshold-increase detection against this activity's stored records and marks it
+ * threshold_checked (see ThresholdSuggestionBanner) - detection normally only runs once, at
+ * ingest, so this lets an activity that predates the feature (or was imported) get evaluated
+ * retroactively. */
+export function recomputeActivityThresholds(id: string): Promise<Activity> {
+  return apiFetch<Activity>(`/v1/activities/${id}/recompute-thresholds`, { method: "POST" });
+}
+
 export function deleteAllActivities(): Promise<void> {
   return apiFetch<void>("/v1/activities", { method: "DELETE" });
 }
