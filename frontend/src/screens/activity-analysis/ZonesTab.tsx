@@ -13,6 +13,28 @@ function powerZoneType(activity: Activity): ZoneType {
   return activity.sport === "run" ? "run_power" : "bike_power";
 }
 
+/** The threshold values this activity's zones are actually computed from - the power/pace
+ * ones come from this activity's own snapshot (see reference_for), LTHR is always live since
+ * heart-rate zones never activity-scope. */
+function referenceSummary(activity: Activity, lthr: number | null): string | null {
+  const parts: string[] = [];
+  if (activity.sport === "run") {
+    if (activity.critical_run_power_snapshot != null) {
+      parts.push(`Critical power ${activity.critical_run_power_snapshot}W`);
+    }
+    if (activity.threshold_pace_snapshot) {
+      parts.push(`Threshold pace ${activity.threshold_pace_snapshot}/km`);
+    }
+  }
+  else if (activity.ftp_snapshot != null) {
+    parts.push(`FTP ${activity.ftp_snapshot}W`);
+  }
+  if (lthr != null) {
+    parts.push(`LTHR ${lthr}bpm`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function ZoneList({
   title,
   athleteId,
@@ -95,25 +117,41 @@ function ZoneList({
 }
 
 export function ZonesTab({ activity, athleteId }: { activity: Activity; athleteId: string }) {
+  // Same queryKey as each ZoneList's own fetch below, so react-query serves this from the
+  // same cache entry rather than firing a second request.
+  const zonesQuery = useQuery({
+    queryKey: ["zones", athleteId, activity.id],
+    queryFn: () => listZones(athleteId, activity.id),
+  });
+  const lthr = zonesQuery.data?.data.find((z) => z.type === "heart_rate")?.reference ?? null;
+  const summary = referenceSummary(activity, lthr);
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-      <ZoneList
-        title="Power zones"
-        athleteId={athleteId}
-        activityId={activity.id}
-        channel="power"
-        zoneType={powerZoneType(activity)}
-        unit="W"
-      />
-      <ZoneList
-        title="Heart rate zones"
-        athleteId={athleteId}
-        activityId={activity.id}
-        channel="heartrate"
-        zoneType="heart_rate"
-        unit="bpm"
-      />
-      <HeatStrainCard activityId={activity.id} />
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {summary && (
+        <div className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>
+          Zones based on: {summary}
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <ZoneList
+          title="Power zones"
+          athleteId={athleteId}
+          activityId={activity.id}
+          channel="power"
+          zoneType={powerZoneType(activity)}
+          unit="W"
+        />
+        <ZoneList
+          title="Heart rate zones"
+          athleteId={athleteId}
+          activityId={activity.id}
+          channel="heartrate"
+          zoneType="heart_rate"
+          unit="bpm"
+        />
+        <HeatStrainCard activityId={activity.id} />
+      </div>
     </div>
   );
 }
