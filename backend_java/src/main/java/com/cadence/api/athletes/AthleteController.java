@@ -3,13 +3,16 @@ package com.cadence.api.athletes;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.DerivedStatsRecomputeService;
+import com.cadence.api.activities.ThresholdRecomputeService;
 import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.athletes.dto.AthleteUpdateResponse;
 import com.cadence.api.athletes.dto.ZoneSetReplaceRequest;
 import com.cadence.api.athletes.dto.ZoneSetReplaceResponse;
 import com.cadence.api.athletes.dto.ZoneSetResponse;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
@@ -45,14 +48,15 @@ public class AthleteController {
 	private final FitnessService fitnessService;
 	private final TssRecomputeService tssRecomputeService;
 	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
+	private final ThresholdRecomputeService thresholdRecomputeService;
 	private final ActivityRepository activityRepository;
 	private final AccessGuard accessGuard;
 	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
 	public AthleteController(UserService userService, UserMapper userMapper, AthleteService athleteService,
 			ZoneService zoneService, FitnessService fitnessService, TssRecomputeService tssRecomputeService,
-			DerivedStatsRecomputeService derivedStatsRecomputeService, ActivityRepository activityRepository,
-			AccessGuard accessGuard) {
+			DerivedStatsRecomputeService derivedStatsRecomputeService, ThresholdRecomputeService thresholdRecomputeService,
+			ActivityRepository activityRepository, AccessGuard accessGuard) {
 		this.userService = userService;
 		this.userMapper = userMapper;
 		this.athleteService = athleteService;
@@ -60,6 +64,7 @@ public class AthleteController {
 		this.fitnessService = fitnessService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
+		this.thresholdRecomputeService = thresholdRecomputeService;
 		this.activityRepository = activityRepository;
 		this.accessGuard = accessGuard;
 	}
@@ -140,6 +145,37 @@ public class AthleteController {
 		} catch (IOException e) {
 			// client disconnected - ignore, the emitter will complete with error naturally
 		}
+	}
+
+	/** Bulk counterpart to ActivityController.recomputeThresholds - re-runs threshold-increase
+	 * detection across the athlete's bike/run activities (the only sports it ever applies to),
+	 * optionally narrowed by sport/date range, so activities that predate the feature (or were
+	 * imported, which also skips detection) can be checked in bulk. */
+	@PostMapping(value = "/v1/athletes/{id}/recompute-thresholds", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public SseEmitter recomputeThresholds(@PathVariable String id,
+			@RequestParam(required = false) Sport sport,
+			@RequestParam(required = false) LocalDate after,
+			@RequestParam(required = false) LocalDate before) {
+		accessGuard.requireWrite(id);
+		if (sport != null && sport != Sport.BIKE && sport != Sport.RUN) {
+			throw new ValidationException("Must be one of bike, run.", "sport");
+		}
+		User athlete = userService.getById(id);
+		SseEmitter emitter = new SseEmitter(600_000L);
+
+		taskExecutor.execute(() -> {
+			try {
+				ThresholdRecomputeService.Summary summary = thresholdRecomputeService.recomputeAll(
+						athlete, sport, after, before, (current, total) -> sendProgress(emitter, current, total));
+				emitter.send(SseEmitter.event().name("done")
+						.data("{\"checked\":" + summary.checked() + ",\"flagged\":" + summary.flagged() + "}"));
+				emitter.complete();
+			} catch (Exception e) {
+				emitter.completeWithError(e);
+			}
+		});
+
+		return emitter;
 	}
 
 	@GetMapping("/v1/athletes/{id}/fitness")
