@@ -3,6 +3,7 @@ from typing import Any
 from django.db.models import Count, Exists, OuterRef, Q, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -309,15 +310,23 @@ class RecomputeActivityTssView(APIView):
 
 
 class ActivityThresholdSuggestionView(APIView):
-    """POST /v1/activities/<id>/threshold-suggestion {"field": ..., "accept": bool} - accept or
-    dismiss a threshold increase detected from this activity's own best effort (see
-    uploads/processing.py::detect_threshold_increase). Accepting updates the athlete's profile
-    *and* this activity's own snapshot (the effort that revealed the new threshold is itself
-    re-rated against it, not just future activities), then recomputes this activity's TSS/
-    intensity so its own numbers reflect the change too - skipped for threshold_pace, which
-    neither TSS nor intensity are derived from anywhere in this codebase. Dismissing just clears
-    the suggestion. Either way the suggested_* field is consumed - it never re-appears for the
-    same activity/value; a later, larger effort can still set it again."""
+    """POST /v1/activities/<id>/threshold-suggestion {"field": ..., "accept": bool,
+    "update_profile": bool} - accept or dismiss a threshold increase detected from this
+    activity's own best effort (see uploads/processing.py::detect_threshold_increase).
+
+    Accepting always updates this activity's own snapshot (the effort that revealed the new
+    threshold is itself re-rated against it) and recomputes its TSS/intensity - skipped for
+    threshold_pace, which neither TSS nor intensity are derived from anywhere in this codebase.
+    It ALSO updates the athlete's profile, but only when update_profile is true, and only for an
+    activity within MAX_PROFILE_UPDATE_AGE_DAYS - a suggestion from years-old activity shouldn't
+    silently redefine the athlete's *current* profile, even though the activity's own numbers are
+    still worth correcting. Requesting update_profile=True for an activity past the cutoff is
+    rejected with 400 rather than silently downgraded, so the caller's request always means what
+    it says.
+
+    Dismissing just clears the suggestion. Either way the suggested_* field is consumed - it
+    never re-appears for the same activity/value; a later, larger effort can still set it again.
+    """
 
     # field -> (suggested column, snapshot column, athlete profile column)
     FIELD_MAP = {
@@ -325,6 +334,8 @@ class ActivityThresholdSuggestionView(APIView):
         "critical_run_power": ("suggested_critical_run_power", "critical_run_power_snapshot", "critical_run_power"),
         "threshold_pace": ("suggested_threshold_pace", "threshold_pace_snapshot", "threshold_pace"),
     }
+
+    MAX_PROFILE_UPDATE_AGE_DAYS = 365
 
     def post(self, request: Request, id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
@@ -334,10 +345,13 @@ class ActivityThresholdSuggestionView(APIView):
 
         field = request.data.get("field")
         accept = request.data.get("accept")
+        update_profile = request.data.get("update_profile")
         if field not in self.FIELD_MAP:
             raise ValidationError({"field": "Must be one of ftp, critical_run_power, threshold_pace."})
         if not isinstance(accept, bool):
             raise ValidationError({"accept": "Must be a boolean."})
+        if accept and not isinstance(update_profile, bool):
+            raise ValidationError({"update_profile": "Must be a boolean."})
 
         suggested_field, snapshot_field, athlete_field = self.FIELD_MAP[field]
         suggested_value = getattr(activity, suggested_field)
@@ -347,8 +361,12 @@ class ActivityThresholdSuggestionView(APIView):
         update_fields = [suggested_field]
         if accept:
             athlete = activity.athlete
-            setattr(athlete, athlete_field, suggested_value)
-            athlete.save(update_fields=[athlete_field])
+            if update_profile:
+                age_days = (timezone.now() - activity.start_date).days
+                if age_days > self.MAX_PROFILE_UPDATE_AGE_DAYS:
+                    raise ValidationError({"update_profile": "This activity is too old to update your profile from."})
+                setattr(athlete, athlete_field, suggested_value)
+                athlete.save(update_fields=[athlete_field])
             setattr(activity, snapshot_field, suggested_value)
             update_fields.append(snapshot_field)
 
