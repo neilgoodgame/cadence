@@ -13,7 +13,12 @@ from core.cql import compile_ast_to_q, parse, resolve_order_by
 from core.exceptions import ConflictError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
-from uploads.processing import backfill_extended_stats, compute_normalized_power, compute_tss
+from uploads.processing import (
+    backfill_extended_stats,
+    compute_normalized_power,
+    compute_tss,
+    detect_threshold_increase,
+)
 from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
 from workouts.inference import infer_workout
@@ -361,6 +366,35 @@ class ActivityThresholdSuggestionView(APIView):
 
         # Clear the suggestion either way - accepted (consumed) or dismissed (rejected).
         setattr(activity, suggested_field, "" if isinstance(suggested_value, str) else None)
+        activity.save(update_fields=update_fields)
+        return Response(ActivitySerializer(activity).data)
+
+
+class RecomputeActivityThresholdsView(APIView):
+    """POST /v1/activities/<id>/recompute-thresholds - re-runs detect_threshold_increase against
+    this activity's own stored Records and marks it threshold_checked. Detection normally only
+    runs once, at ingest - this lets an activity that predates the feature (or was imported,
+    which also never runs detection) get evaluated retroactively, so the banner's "this
+    activity's zones may be based on outdated values" flag can be resolved."""
+
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        records = activity.records.order_by("t").values_list("t", "power", "distance_km")
+        t_series = [r[0] for r in records]
+        power_series = [r[1] for r in records]
+        distance_km_series = [r[2] for r in records]
+
+        detect_threshold_increase(activity, power_series, t_series, distance_km_series)
+        activity.threshold_checked = True
+        update_fields = ["threshold_checked"] + [
+            f
+            for f in ("suggested_ftp", "suggested_critical_run_power", "suggested_threshold_pace")
+            if getattr(activity, f)
+        ]
         activity.save(update_fields=update_fields)
         return Response(ActivitySerializer(activity).data)
 

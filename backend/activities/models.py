@@ -104,6 +104,12 @@ class Activity(PrefixedIDModel):
     suggested_ftp = models.PositiveIntegerField(null=True, blank=True)
     suggested_critical_run_power = models.PositiveIntegerField(null=True, blank=True)
     suggested_threshold_pace = models.CharField(max_length=10, blank=True, default="")
+    # Whether detect_threshold_increase has ever run on this activity. False for activities
+    # ingested before that feature existed (no backfill - legacy activities are correctly
+    # "not yet checked" by default) and for imported activities (import never runs detection).
+    # Distinguishes "checked, found nothing" from "never checked" - suggested_* alone can't,
+    # since both leave it empty. See RecomputeActivityThresholdsView for the retroactive check.
+    threshold_checked = models.BooleanField(default=False)
     workout = models.ForeignKey(Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     bike = models.ForeignKey(Bike, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     shoe = models.ForeignKey(Shoe, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")

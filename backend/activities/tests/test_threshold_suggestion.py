@@ -127,6 +127,57 @@ class ActivityThresholdSuggestionViewTests(TestCase):
         self.assertEqual(self.athlete.threshold_pace, "4:00")
 
 
+class RecomputeActivityThresholdsViewTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="recompute-thresholds@example.cc", password="x", name="Athlete", ftp=200
+        )
+        self.outsider = User.objects.create_user(
+            email="recompute-thresholds-outsider@example.cc", password="x", name="Outsider"
+        )
+
+    def _make_bike_activity_with_records(self, power, **kwargs):
+        defaults = {"sport": "bike", "moving_time": 1200, "ftp_snapshot": 200, "threshold_checked": False}
+        defaults.update(kwargs)
+        activity = _make_activity(self.athlete, **defaults)
+        for t in range(1200):
+            Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=power)
+        return activity
+
+    def test_legacy_activity_never_checked_finds_a_suggestion(self):
+        # 300W for the full 20-minute window implies FTP = round(0.95 * 300) = 285, well above
+        # the 200 on record.
+        activity = self._make_bike_activity_with_records(power=300)
+        self.assertFalse(activity.threshold_checked)
+
+        response = _bearer_client(self.athlete).post(f"/v1/activities/{activity.id}/recompute-thresholds")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["threshold_checked"])
+        self.assertEqual(body["suggested_ftp"], 285)
+
+        activity.refresh_from_db()
+        self.assertTrue(activity.threshold_checked)
+        self.assertEqual(activity.suggested_ftp, 285)
+
+    def test_checked_but_no_suggestion_still_flips_the_flag(self):
+        # 150W never exceeds the 200W already on record - no suggestion, but "checked" is still
+        # true afterwards, distinguishing "checked, found nothing" from "never checked."
+        activity = self._make_bike_activity_with_records(power=150)
+
+        response = _bearer_client(self.athlete).post(f"/v1/activities/{activity.id}/recompute-thresholds")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["threshold_checked"])
+        self.assertIsNone(body["suggested_ftp"])
+
+    def test_outsider_cannot_trigger_a_recompute(self):
+        activity = self._make_bike_activity_with_records(power=300)
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.post(f"/v1/activities/{activity.id}/recompute-thresholds")
+        self.assertEqual(response.status_code, 403)
+
+
 class ExportIncludesSnapshotButNotSuggestedFieldsTests(TestCase):
     def test_export_carries_ftp_snapshot_but_strips_suggested_ftp(self):
         from django.core.files.storage import default_storage
@@ -140,6 +191,7 @@ class ExportIncludesSnapshotButNotSuggestedFieldsTests(TestCase):
             name="Ride",
             ftp_snapshot=200,
             suggested_ftp=260,
+            threshold_checked=True,
             start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC),
         )
 
@@ -155,6 +207,7 @@ class ExportIncludesSnapshotButNotSuggestedFieldsTests(TestCase):
         activity_data = doc["activities"][0]["activity"]
         self.assertEqual(activity_data["ftp_snapshot"], 200)
         self.assertNotIn("suggested_ftp", activity_data)
+        self.assertNotIn("threshold_checked", activity_data)
 
         default_storage.delete(relative_path)
 
@@ -175,6 +228,7 @@ class ImportCarriesOverTheSourceActivitysRealSnapshotTests(TestCase):
             sport="bike",
             name="Ride",
             ftp_snapshot=222,
+            threshold_checked=True,
             start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC),
         )
 
@@ -185,6 +239,9 @@ class ImportCarriesOverTheSourceActivitysRealSnapshotTests(TestCase):
         imported = Activity.objects.get(athlete=target, name="Ride")
         # 222, not the importing athlete's own 999 - the export now carries the real value.
         self.assertEqual(imported.ftp_snapshot, 222)
+        # threshold_checked isn't exported - a freshly-imported row starts "not yet checked"
+        # regardless of whether the source row had already been checked.
+        self.assertFalse(imported.threshold_checked)
 
         from django.core.files.storage import default_storage
 

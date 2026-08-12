@@ -232,6 +232,7 @@ class ThresholdSuggestionIngestionTests(TestCase):
 
         self.assertIsNotNone(activity.suggested_ftp)
         self.assertGreater(activity.suggested_ftp, 200)
+        self.assertTrue(activity.threshold_checked)
 
     def test_cycling_indoor_suggests_nothing_when_ftp_is_already_high_enough(self):
         athlete = User.objects.create_user(email="high-ftp@example.cc", password="x", name="High FTP Athlete", ftp=400)
@@ -243,3 +244,5 @@ class ThresholdSuggestionIngestionTests(TestCase):
         activity = Activity.objects.get(pk=poll["activity_id"])
 
         self.assertIsNone(activity.suggested_ftp)
+        # Still marked checked - "no suggestion" and "never checked" must stay distinguishable.
+        self.assertTrue(activity.threshold_checked)

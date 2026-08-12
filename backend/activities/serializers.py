@@ -48,6 +48,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "suggested_ftp",
             "suggested_critical_run_power",
             "suggested_threshold_pace",
+            "threshold_checked",
             "start_weight_kg",
             "end_weight_kg",
             "fluids_ml",
