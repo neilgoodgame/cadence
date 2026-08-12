@@ -54,13 +54,15 @@ public class ActivityThresholdSuggestionService {
 	private final RecordRepository recordRepository;
 	private final UserRepository userRepository;
 	private final ZoneService zoneService;
+	private final ThresholdDetectionService thresholdDetectionService;
 
 	public ActivityThresholdSuggestionService(ActivityRepository activityRepository, RecordRepository recordRepository,
-			UserRepository userRepository, ZoneService zoneService) {
+			UserRepository userRepository, ZoneService zoneService, ThresholdDetectionService thresholdDetectionService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.userRepository = userRepository;
 		this.zoneService = zoneService;
+		this.thresholdDetectionService = thresholdDetectionService;
 	}
 
 	@Transactional
@@ -89,6 +91,24 @@ public class ActivityThresholdSuggestionService {
 		}
 
 		ops.suggestedClearer().accept(activity);
+		return activityRepository.save(activity);
+	}
+
+	/** Re-runs {@link ThresholdDetectionService#detect} against this activity's own stored
+	 * {@link Record} rows and marks it checked - detection normally only runs once, at ingest,
+	 * so this lets an activity that predates the feature (or was imported, which also never runs
+	 * detection) get evaluated retroactively. */
+	@Transactional
+	public Activity recomputeThresholds(String activityId) {
+		Activity activity = activityRepository.findById(activityId)
+				.orElseThrow(() -> new NotFoundException("No such activity."));
+		List<Record> records = recordRepository.findByActivityIdOrderByT(activityId);
+		List<Integer> powerSeries = records.stream().map(Record::getPower).toList();
+		List<Integer> tSeries = records.stream().map(Record::getT).toList();
+		List<Double> distanceKmSeries = records.stream().map(Record::getDistanceKm).toList();
+
+		thresholdDetectionService.detect(activity, powerSeries, tSeries, distanceKmSeries);
+		activity.setThresholdChecked(true);
 		return activityRepository.save(activity);
 	}
 

@@ -51,10 +51,8 @@ public class BestEffortTasklet implements Tasklet {
 			computeService.computeForActivity(activity, athlete, powerSeries, hrSeries, tSeries, distanceSeries);
 
 			thresholdDetectionService.detect(activity, powerSeries, tSeries, distanceSeries);
-			if (activity.getSuggestedFtp() != null || activity.getSuggestedCriticalRunPower() != null
-					|| (activity.getSuggestedThresholdPace() != null && !activity.getSuggestedThresholdPace().isEmpty())) {
-				activityRepository.save(activity);
-			}
+			activity.setThresholdChecked(true);
+			activityRepository.save(activity);
 		}
 		return RepeatStatus.FINISHED;
 	}

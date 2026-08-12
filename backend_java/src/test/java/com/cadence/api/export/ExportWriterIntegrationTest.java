@@ -602,6 +602,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
 		activity.setFtpSnapshot(200);
 		activity.setSuggestedFtp(260);
+		activity.setThresholdChecked(true);
 		activityRepository.save(activity);
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -615,6 +616,10 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		// either way ImportReader.buildActivity never reads suggested_ftp back off the source
 		// JSON at all, so the exact shape doesn't affect round-trip behavior.
 		assertThat(activityNode.get("suggested_ftp").isNull()).isTrue();
+		// threshold_checked is the same kind of transient bookkeeping - forced false in the
+		// export even though this row genuinely had it true, so re-importing it always starts
+		// "not yet checked."
+		assertThat(activityNode.get("threshold_checked").asBoolean()).isFalse();
 	}
 
 	private User newUser(String email) {

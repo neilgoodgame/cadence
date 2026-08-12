@@ -108,6 +108,14 @@ public class ActivityController {
 		return activityService.toResponse(updated);
 	}
 
+	@PostMapping("/v1/activities/{id}/recompute-thresholds")
+	public ActivityResponse recomputeThresholds(@PathVariable String id) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		Activity updated = thresholdSuggestionService.recomputeThresholds(id);
+		return activityService.toResponse(updated);
+	}
+
 	@DeleteMapping("/v1/activities/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void deleteActivity(@PathVariable String id) {

@@ -142,6 +142,14 @@ public class Activity extends PrefixedIdEntity {
 	@Column(name = "suggested_threshold_pace")
 	private String suggestedThresholdPace = "";
 
+	/** Whether ThresholdDetectionService has ever run on this activity. False for activities
+	 * ingested before that feature existed (no backfill - legacy activities are correctly
+	 * "not yet checked" by default) and for imported activities (import never runs detection).
+	 * Distinguishes "checked, found nothing" from "never checked" - suggested* alone can't,
+	 * since both leave it empty/null. See ActivityThresholdSuggestionService.recomputeThresholds. */
+	@Column(name = "threshold_checked", nullable = false)
+	private boolean thresholdChecked = false;
+
 	@Column(name = "start_weight_kg")
 	private Double startWeightKg;
 
@@ -469,6 +477,14 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setSuggestedThresholdPace(String suggestedThresholdPace) {
 		this.suggestedThresholdPace = suggestedThresholdPace;
+	}
+
+	public boolean isThresholdChecked() {
+		return thresholdChecked;
+	}
+
+	public void setThresholdChecked(boolean thresholdChecked) {
+		this.thresholdChecked = thresholdChecked;
 	}
 
 	public Double getStartWeightKg() {
