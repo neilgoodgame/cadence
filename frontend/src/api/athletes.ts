@@ -106,6 +106,40 @@ export function trimBestEfforts(athleteId: string): Promise<void> {
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts/trim`, { method: "POST" });
 }
 
+export type RecomputeThresholdsEvent =
+  | { type: "progress"; current: number; total: number }
+  | { type: "done"; checked: number; flagged: number };
+
+export interface RecomputeThresholdsFilters {
+  sport?: "bike" | "run";
+  after?: string;
+  before?: string;
+}
+
+/** Bulk counterpart to applyThresholdSuggestion's per-activity check (see
+ * ThresholdSuggestionBanner) - re-runs threshold-increase detection across every matching
+ * activity, so a legacy/imported activity doesn't need to be opened individually. */
+export async function* recomputeThresholdsStream(
+  athleteId: string,
+  filters: RecomputeThresholdsFilters = {},
+): AsyncGenerator<RecomputeThresholdsEvent> {
+  const params = new URLSearchParams();
+  if (filters.sport) params.set("sport", filters.sport);
+  if (filters.after) params.set("after", filters.after);
+  if (filters.before) params.set("before", filters.before);
+  const query = params.toString();
+  const response = await apiFetchStream(`/v1/athletes/${athleteId}/recompute-thresholds${query ? `?${query}` : ""}`, {
+    method: "POST",
+  });
+  for await (const { event, data } of sseBlocks(response)) {
+    try {
+      const parsed = JSON.parse(data);
+      if (event === "done") yield { type: "done", checked: parsed.checked ?? 0, flagged: parsed.flagged ?? 0 };
+      else yield { type: "progress", current: parsed.current ?? 0, total: parsed.total ?? 0 };
+    } catch { /* ignore malformed */ }
+  }
+}
+
 export function listBestEfforts(
   athleteId: string,
   kind: BestEffortKind,
