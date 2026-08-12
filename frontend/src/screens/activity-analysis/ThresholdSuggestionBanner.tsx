@@ -6,6 +6,17 @@ import type { Activity } from "../../api/types";
 // Detection (and so the "outdated zones" flag) only ever applies to these two sports.
 const DETECTABLE_SPORTS = new Set(["bike", "run"]);
 
+// Mirrors the backend's MAX_PROFILE_UPDATE_AGE_DAYS (ActivityThresholdSuggestionView/Service) -
+// a local copy, not a shared import, matching this codebase's convention for small duplicated
+// constants (see e.g. the mm:ss helpers). Purely advisory here: the backend independently
+// re-validates the same cutoff, so a mismatch would just show the wrong button, not break anything.
+const MAX_PROFILE_UPDATE_AGE_DAYS = 365;
+
+function isRecentEnoughForProfileUpdate(activity: Activity): boolean {
+  const ageDays = (Date.now() - new Date(activity.start_date).getTime()) / (1000 * 60 * 60 * 24);
+  return ageDays <= MAX_PROFILE_UPDATE_AGE_DAYS;
+}
+
 interface Row {
   field: ThresholdSuggestionField;
   text: string;
@@ -59,17 +70,21 @@ const ROW_STYLE: React.CSSProperties = {
 /** Shown above the tabs, in one of three states: (1) this activity's own best effort implies a
  * higher threshold than what's on record (see the backend's ThresholdDetectionService/
  * detect_threshold_increase) - up to two rows for a run (critical_run_power and threshold_pace
- * are detected independently), at most one for a bike (ftp); accepting updates the athlete's
- * profile *and* this activity's own snapshot, dismissing just clears the suggestion, either way
- * it's gone for good (a later, larger effort can still set it again). (2) detection has never run
- * on this activity at all (predates the feature, or was imported, which also skips detection) -
- * a single row offering to check now, via recompute-thresholds. (3) neither - nothing renders.
+ * are detected independently), at most one for a bike (ftp). Accepting always updates this
+ * activity's own snapshot; it offers "Update my profile" (also updates the athlete's live
+ * profile) when the activity is recent, or "Update this activity" (snapshot only - the profile
+ * isn't touched) when it's not - a suggestion from a years-old activity shouldn't silently
+ * redefine the athlete's current profile. Dismissing just clears the suggestion, either way it's
+ * gone for good (a later, larger effort can still set it again). (2) detection has never run on
+ * this activity at all (predates the feature, or was imported, which also skips detection) - a
+ * single row offering to check now, via recompute-thresholds. (3) neither - nothing renders.
  * States 1 and 2 can't overlap in practice: a suggestion only ever appears as a side effect of a
  * detection pass, which is exactly what marks the activity checked. */
 export function ThresholdSuggestionBanner({ activity }: { activity: Activity }) {
   const queryClient = useQueryClient();
   const [busyField, setBusyField] = useState<ThresholdSuggestionField | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const recentEnough = isRecentEnoughForProfileUpdate(activity);
 
   const invalidateActivity = (updated: Activity) => {
     queryClient.setQueryData(["activity", activity.id], updated);
@@ -77,8 +92,8 @@ export function ThresholdSuggestionBanner({ activity }: { activity: Activity }) 
   };
 
   const mutate = useMutation({
-    mutationFn: ({ field, accept }: { field: ThresholdSuggestionField; accept: boolean }) =>
-      applyThresholdSuggestion(activity.id, field, accept),
+    mutationFn: ({ field, accept, updateProfile }: { field: ThresholdSuggestionField; accept: boolean; updateProfile: boolean }) =>
+      applyThresholdSuggestion(activity.id, field, accept, updateProfile),
     onMutate: ({ field }) => {
       setBusyField(field);
       setError(null);
@@ -119,16 +134,23 @@ export function ThresholdSuggestionBanner({ activity }: { activity: Activity }) 
       )}
       {rows.map((row) => (
         <div key={row.field} style={ROW_STYLE}>
-          <span style={{ flex: 1 }}>{row.text}</span>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+            <span>{row.text}</span>
+            {!recentEnough && (
+              <span style={{ fontSize: 11, color: "var(--ink3)" }}>
+                This activity is over a year old, so only its own zones will update - your profile is unaffected.
+              </span>
+            )}
+          </div>
           <button
-            onClick={() => mutate.mutate({ field: row.field, accept: true })}
+            onClick={() => mutate.mutate({ field: row.field, accept: true, updateProfile: recentEnough })}
             disabled={busyField !== null}
             style={{ ...BUTTON_STYLE, background: "var(--ember)", color: "#fff", border: "none", cursor: busyField ? "wait" : "pointer" }}
           >
-            Update my profile
+            {recentEnough ? "Update my profile" : "Update this activity"}
           </button>
           <button
-            onClick={() => mutate.mutate({ field: row.field, accept: false })}
+            onClick={() => mutate.mutate({ field: row.field, accept: false, updateProfile: false })}
             disabled={busyField !== null}
             style={{ ...BUTTON_STYLE, cursor: busyField ? "wait" : "pointer" }}
           >

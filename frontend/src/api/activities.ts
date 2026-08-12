@@ -67,16 +67,20 @@ export function recomputeActivityStats(id: string): Promise<Activity> {
 export type ThresholdSuggestionField = "ftp" | "critical_run_power" | "threshold_pace";
 
 /** Accept or dismiss a threshold increase detected from this activity's own best effort (see
- * ThresholdSuggestionBanner). Accepting updates the athlete's profile *and* this activity's own
- * snapshot, then recomputes its TSS/intensity. Dismissing just clears the suggestion. */
+ * ThresholdSuggestionBanner). Accepting always updates this activity's own snapshot and
+ * recomputes its TSS/intensity; it also updates the athlete's profile, but only when
+ * updateProfile is true (the backend independently re-validates that this activity is recent
+ * enough for a profile update - see ActivityThresholdSuggestionView/Service). Dismissing just
+ * clears the suggestion. */
 export function applyThresholdSuggestion(
   id: string,
   field: ThresholdSuggestionField,
   accept: boolean,
+  updateProfile: boolean,
 ): Promise<Activity> {
   return apiFetch<Activity>(`/v1/activities/${id}/threshold-suggestion`, {
     method: "POST",
-    body: { field, accept },
+    body: { field, accept, update_profile: updateProfile },
   });
 }
 
