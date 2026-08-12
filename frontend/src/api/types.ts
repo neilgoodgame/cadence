@@ -165,6 +165,11 @@ export interface Activity {
   suggested_ftp: number | null;
   suggested_critical_run_power: number | null;
   suggested_threshold_pace: string;
+  /** Whether threshold-increase detection has ever run on this activity - false for activities
+   * that predate the feature (or were imported, which also never runs detection), so
+   * ThresholdSuggestionBanner can flag "zones may be based on outdated values" and offer a
+   * retroactive check via recomputeActivityThresholds. */
+  threshold_checked: boolean;
   start_weight_kg: number | null;
   end_weight_kg: number | null;
   fluids_ml: number | null;
