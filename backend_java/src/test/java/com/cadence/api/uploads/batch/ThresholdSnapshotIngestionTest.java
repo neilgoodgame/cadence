@@ -77,6 +77,7 @@ class ThresholdSnapshotIngestionTest extends IntegrationTest {
 
 		assertThat(activity.getSuggestedThresholdPace()).isNotNull();
 		assertThat(activity.getSuggestedThresholdPace()).isNotEmpty();
+		assertThat(activity.isThresholdChecked()).isTrue();
 	}
 
 	@Test
@@ -93,6 +94,8 @@ class ThresholdSnapshotIngestionTest extends IntegrationTest {
 		Activity activity = awaitReadyActivity(upload.getId());
 
 		assertThat(activity.getSuggestedThresholdPace()).isEmpty();
+		// Still marked checked - "no suggestion" and "never checked" must stay distinguishable.
+		assertThat(activity.isThresholdChecked()).isTrue();
 	}
 
 	private MockMultipartFile fitFixture(String name) throws Exception {

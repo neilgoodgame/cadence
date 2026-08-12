@@ -250,7 +250,7 @@ public class ExportWriter {
 			// "high" resolution == no downsampling (StreamService.getStreams step=1 default) - a
 			// full data export shouldn't quietly thin out the athlete's own recorded data.
 			generator.writePOJO(new ActivityExportEntry(
-					activityService.toResponse(activity).withoutSuggestedThresholds(), laps,
+					activityService.toResponse(activity).withoutTransientThresholdState(), laps,
 					streamService.getStreams(activity, null, "high")));
 			entityManager.clear();
 			progress.tick();

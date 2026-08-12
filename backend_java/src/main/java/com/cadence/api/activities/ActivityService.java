@@ -64,6 +64,7 @@ public class ActivityService {
 				activity.getCalories(), activity.getTrimp(), activity.getAvgLeftBalancePct(),
 				activity.getFtpSnapshot(), activity.getCriticalRunPowerSnapshot(), activity.getThresholdPaceSnapshot(),
 				activity.getSuggestedFtp(), activity.getSuggestedCriticalRunPower(), activity.getSuggestedThresholdPace(),
+				activity.isThresholdChecked(),
 				activity.getStartWeightKg(), activity.getEndWeightKg(), activity.getFluidsMl(),
 				activity.getAvgAirTemp(), activity.getAvgHumidity(),
 				activity.getAerobicTrainingEffect(), activity.getAnaerobicTrainingEffect(), activity.getTrainingEffectLabel(),

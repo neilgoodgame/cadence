@@ -136,4 +136,53 @@ class ActivityThresholdSuggestionServiceIntegrationTest extends IntegrationTest 
 		String id = activity.getId();
 		assertThatThrownBy(() -> service.apply(id, "lthr", true)).isInstanceOf(ValidationException.class);
 	}
+
+	private Activity newBikeActivityWithRecordsAtPower(User athlete, int ftpSnapshot, int power) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName("Legacy ride");
+		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		activity.setMovingTime(1200);
+		activity.setFtpSnapshot(ftpSnapshot);
+		activity.setThresholdChecked(false);
+		activity = activityRepository.save(activity);
+
+		for (int t = 0; t < 1200; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), Instant.parse("2026-01-01T07:00:00Z").plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(power);
+			recordRepository.save(record);
+		}
+		return activity;
+	}
+
+	@Test
+	void recomputeThresholdsFindsASuggestionOnANeverCheckedActivity() {
+		// 300W for the full 20-minute window implies FTP = round(0.95 * 300) = 285, well above
+		// the 200 on record.
+		User athlete = newAthlete("recompute-thresholds-found@example.cc", 200);
+		Activity activity = newBikeActivityWithRecordsAtPower(athlete, 200, 300);
+		assertThat(activity.isThresholdChecked()).isFalse();
+
+		Activity updated = service.recomputeThresholds(activity.getId());
+
+		assertThat(updated.isThresholdChecked()).isTrue();
+		assertThat(updated.getSuggestedFtp()).isEqualTo(285);
+	}
+
+	@Test
+	void recomputeThresholdsStillFlipsTheFlagWhenNothingIsFound() {
+		// 150W never exceeds the 200W already on record - no suggestion, but "checked" still
+		// flips true, distinguishing "checked, found nothing" from "never checked."
+		User athlete = newAthlete("recompute-thresholds-nothing@example.cc", 200);
+		Activity activity = newBikeActivityWithRecordsAtPower(athlete, 200, 150);
+
+		Activity updated = service.recomputeThresholds(activity.getId());
+
+		assertThat(updated.isThresholdChecked()).isTrue();
+		assertThat(updated.getSuggestedFtp()).isNull();
+	}
 }
