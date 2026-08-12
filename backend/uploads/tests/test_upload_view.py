@@ -214,3 +214,32 @@ class RealFitIngestionTests(TestCase):
         response = client.patch(f"/v1/activities/{activity.id}", {"avg_air_temp": 99.0}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertAlmostEqual(response.json()["avg_air_temp"], 20.8, places=1)
+
+
+class ThresholdSuggestionIngestionTests(TestCase):
+    """detect_threshold_increase (uploads/processing.py) wired into the real ingestion
+    pipeline, end to end - not just unit-tested against synthetic series."""
+
+    def test_cycling_indoor_suggests_a_higher_ftp_from_a_low_starting_point(self):
+        # cycling_indoor.fit's best 20-minute power comfortably implies an FTP above 200.
+        athlete = User.objects.create_user(email="low-ftp@example.cc", password="x", name="Low FTP Athlete", ftp=200)
+        content = (FIXTURES_DIR / "cycling_indoor.fit").read_bytes()
+        client = _bearer_client(athlete)
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("ride.fit", content)}, format="multipart")
+        upload_id = response.json()["id"]
+        poll = client.get(f"/v1/uploads/{upload_id}").json()
+        activity = Activity.objects.get(pk=poll["activity_id"])
+
+        self.assertIsNotNone(activity.suggested_ftp)
+        self.assertGreater(activity.suggested_ftp, 200)
+
+    def test_cycling_indoor_suggests_nothing_when_ftp_is_already_high_enough(self):
+        athlete = User.objects.create_user(email="high-ftp@example.cc", password="x", name="High FTP Athlete", ftp=400)
+        content = (FIXTURES_DIR / "cycling_indoor.fit").read_bytes()
+        client = _bearer_client(athlete)
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("ride.fit", content)}, format="multipart")
+        upload_id = response.json()["id"]
+        poll = client.get(f"/v1/uploads/{upload_id}").json()
+        activity = Activity.objects.get(pk=poll["activity_id"])
+
+        self.assertIsNone(activity.suggested_ftp)

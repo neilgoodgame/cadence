@@ -303,6 +303,68 @@ class RecomputeActivityTssView(APIView):
         return Response(ActivitySerializer(activity).data)
 
 
+class ActivityThresholdSuggestionView(APIView):
+    """POST /v1/activities/<id>/threshold-suggestion {"field": ..., "accept": bool} - accept or
+    dismiss a threshold increase detected from this activity's own best effort (see
+    uploads/processing.py::detect_threshold_increase). Accepting updates the athlete's profile
+    *and* this activity's own snapshot (the effort that revealed the new threshold is itself
+    re-rated against it, not just future activities), then recomputes this activity's TSS/
+    intensity so its own numbers reflect the change too - skipped for threshold_pace, which
+    neither TSS nor intensity are derived from anywhere in this codebase. Dismissing just clears
+    the suggestion. Either way the suggested_* field is consumed - it never re-appears for the
+    same activity/value; a later, larger effort can still set it again."""
+
+    # field -> (suggested column, snapshot column, athlete profile column)
+    FIELD_MAP = {
+        "ftp": ("suggested_ftp", "ftp_snapshot", "ftp"),
+        "critical_run_power": ("suggested_critical_run_power", "critical_run_power_snapshot", "critical_run_power"),
+        "threshold_pace": ("suggested_threshold_pace", "threshold_pace_snapshot", "threshold_pace"),
+    }
+
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        field = request.data.get("field")
+        accept = request.data.get("accept")
+        if field not in self.FIELD_MAP:
+            raise ValidationError({"field": "Must be one of ftp, critical_run_power, threshold_pace."})
+        if not isinstance(accept, bool):
+            raise ValidationError({"accept": "Must be a boolean."})
+
+        suggested_field, snapshot_field, athlete_field = self.FIELD_MAP[field]
+        suggested_value = getattr(activity, suggested_field)
+        if not suggested_value:
+            raise ConflictError("No pending suggestion for that field.")
+
+        update_fields = [suggested_field]
+        if accept:
+            athlete = activity.athlete
+            setattr(athlete, athlete_field, suggested_value)
+            athlete.save(update_fields=[athlete_field])
+            setattr(activity, snapshot_field, suggested_value)
+            update_fields.append(snapshot_field)
+
+            if field in ("ftp", "critical_run_power"):
+                power_series = list(activity.records.order_by("t").values_list("power", flat=True))
+                hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
+                norm_power = (
+                    compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
+                )
+                threshold = getattr(activity, snapshot_field)
+                if norm_power and threshold:
+                    activity.intensity = round(norm_power / threshold, 3)
+                activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
+                update_fields.extend(["intensity", "tss"])
+
+        # Clear the suggestion either way - accepted (consumed) or dismissed (rejected).
+        setattr(activity, suggested_field, "" if isinstance(suggested_value, str) else None)
+        activity.save(update_fields=update_fields)
+        return Response(ActivitySerializer(activity).data)
+
+
 class RecomputeActivityStatsView(APIView):
     """Single-activity wrapper around uploads.processing.backfill_extended_stats - see
     RecomputeAthleteStatsView (athletes/views.py) for the per-athlete bulk equivalent.
