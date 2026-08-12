@@ -1,6 +1,12 @@
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateAthlete, recomputeBestEffortsStream, recomputeStatsStream, trimBestEfforts } from "../../api/athletes";
+import {
+  updateAthlete,
+  recomputeBestEffortsStream,
+  recomputeStatsStream,
+  recomputeThresholdsStream,
+  trimBestEfforts,
+} from "../../api/athletes";
 import { useAuth } from "../../auth/AuthContext";
 import type { BestEffortKind } from "../../api/types";
 
@@ -71,6 +77,16 @@ export function BestEffortsTab() {
     total: number;
     updated: number | null;
   }>({ running: false, current: 0, total: 0, updated: null });
+  const [thresholdSport, setThresholdSport] = useState<"" | "bike" | "run">("");
+  const [thresholdAfter, setThresholdAfter] = useState("");
+  const [thresholdBefore, setThresholdBefore] = useState("");
+  const [thresholdRecompute, setThresholdRecompute] = useState<{
+    running: boolean;
+    current: number;
+    total: number;
+    checked: number | null;
+    flagged: number | null;
+  }>({ running: false, current: 0, total: 0, checked: null, flagged: null });
   const effectiveTopN = allActivities ? 0 : topN;
 
   const isDecreasing = savedTopN === 0
@@ -121,6 +137,22 @@ export function BestEffortsTab() {
       }
     }
   }, [user, qc]);
+
+  const startThresholdRecompute = useCallback(async () => {
+    setThresholdRecompute({ running: true, current: 0, total: 0, checked: null, flagged: null });
+    for await (const event of recomputeThresholdsStream(user!.id, {
+      sport: thresholdSport || undefined,
+      after: thresholdAfter || undefined,
+      before: thresholdBefore || undefined,
+    })) {
+      if (event.type === "progress") {
+        setThresholdRecompute(s => ({ ...s, current: event.current, total: event.total }));
+      } else {
+        setThresholdRecompute({ running: false, current: event.checked, total: event.checked, checked: event.checked, flagged: event.flagged });
+        qc.invalidateQueries({ queryKey: ["activities"] });
+      }
+    }
+  }, [user, qc, thresholdSport, thresholdAfter, thresholdBefore]);
 
   if (!user) return null;
 
@@ -243,6 +275,70 @@ export function BestEffortsTab() {
         )}
         {statsRecompute.updated != null && !statsRecompute.running && (
           <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0 }}>Updated {statsRecompute.updated} activities</p>
+        )}
+      </section>
+
+      <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Check for threshold updates</h2>
+        <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0, lineHeight: 1.6 }}>
+          Checks whether each activity's own best effort implies a higher FTP, critical running power,
+          or threshold pace than what's on record - the same check a single activity's "Check for
+          updates" banner runs, applied across many at once. Useful for activities that predate that
+          feature, or were imported.
+        </p>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <select
+            value={thresholdSport}
+            onChange={e => setThresholdSport(e.target.value as "" | "bike" | "run")}
+            disabled={thresholdRecompute.running}
+            style={{ ...inputStyle, width: "auto" }}
+          >
+            <option value="">All sports</option>
+            <option value="bike">Bike</option>
+            <option value="run">Run</option>
+          </select>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink2)" }}>
+            From
+            <input
+              type="date"
+              value={thresholdAfter}
+              onChange={e => setThresholdAfter(e.target.value)}
+              disabled={thresholdRecompute.running}
+              style={{ ...inputStyle, width: "auto" }}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink2)" }}>
+            To
+            <input
+              type="date"
+              value={thresholdBefore}
+              onChange={e => setThresholdBefore(e.target.value)}
+              disabled={thresholdRecompute.running}
+              style={{ ...inputStyle, width: "auto" }}
+            />
+          </label>
+        </div>
+
+        <button
+          onClick={() => startThresholdRecompute()}
+          disabled={thresholdRecompute.running}
+          style={{ ...btnStyle, alignSelf: "flex-start", opacity: thresholdRecompute.running ? 0.6 : 1 }}
+        >
+          {thresholdRecompute.running ? "Checking…" : "Check now"}
+        </button>
+
+        {thresholdRecompute.running && thresholdRecompute.total > 0 && (
+          <ProgressBar current={thresholdRecompute.current} total={thresholdRecompute.total} />
+        )}
+        {thresholdRecompute.running && thresholdRecompute.total === 0 && (
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>
+        )}
+        {thresholdRecompute.checked != null && !thresholdRecompute.running && (
+          <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0 }}>
+            Checked {thresholdRecompute.checked} activities — {thresholdRecompute.flagged}{" "}
+            {thresholdRecompute.flagged === 1 ? "has" : "have"} a new threshold suggestion.
+          </p>
         )}
       </section>
     </div>
