@@ -152,6 +152,19 @@ export interface Activity {
   trimp: number | null;
   /** Mean % of power from the left leg (dual-sided power meters only). Right % is 100 minus this. */
   avg_left_balance_pct: number | null;
+  /** The athlete's threshold(s) as of when this activity was created - zones/TSS for this
+   * activity are computed against these, not the athlete's current profile, so they stay
+   * historically accurate. Only the field(s) relevant to this activity's own sport are ever
+   * set (bike -> ftp_snapshot, run -> the other two). */
+  ftp_snapshot: number | null;
+  critical_run_power_snapshot: number | null;
+  threshold_pace_snapshot: string;
+  /** Set when this activity's own best effort implies a higher threshold than what's on
+   * record - see ThresholdSuggestionBanner. Cleared once accepted or dismissed, empty string
+   * for pace / null for the power fields when there's nothing pending. */
+  suggested_ftp: number | null;
+  suggested_critical_run_power: number | null;
+  suggested_threshold_pace: string;
   start_weight_kg: number | null;
   end_weight_kg: number | null;
   fluids_ml: number | null;

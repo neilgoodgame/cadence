@@ -28,7 +28,13 @@ function ZoneList({
   zoneType: ZoneType;
   unit: string;
 }) {
-  const zonesQuery = useQuery({ queryKey: ["zones", athleteId], queryFn: () => listZones(athleteId) });
+  // Scoped to this activity's own threshold snapshot, not the athlete's current profile - see
+  // listZones. Harmless to pass for the heart_rate zone list too: the backend only ever
+  // activity-scopes bike_power/run_power/pace, heart_rate always reads live regardless.
+  const zonesQuery = useQuery({
+    queryKey: ["zones", athleteId, activityId],
+    queryFn: () => listZones(athleteId, activityId),
+  });
   const streamsQuery = useQuery({
     queryKey: ["activity-streams-zones", activityId, channel],
     queryFn: () => getStreams(activityId, [channel], "medium"),

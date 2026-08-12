@@ -114,8 +114,11 @@ export function listBestEfforts(
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts?kind=${kind}&period=${period}`);
 }
 
-export function listZones(athleteId: string): Promise<DataList<ZoneSet>> {
-  return apiFetch<DataList<ZoneSet>>(`/v1/athletes/${athleteId}/zones`);
+/** With `activityId`, bike_power/run_power/pace's reference comes from that activity's own
+ * threshold snapshot instead of the athlete's current profile - see ZonesTab.tsx. */
+export function listZones(athleteId: string, activityId?: string): Promise<DataList<ZoneSet>> {
+  const query = activityId ? `?activity_id=${activityId}` : "";
+  return apiFetch<DataList<ZoneSet>>(`/v1/athletes/${athleteId}/zones${query}`);
 }
 
 export function replaceZoneSet(

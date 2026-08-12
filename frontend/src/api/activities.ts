@@ -64,6 +64,22 @@ export function recomputeActivityStats(id: string): Promise<Activity> {
   return apiFetch<Activity>(`/v1/activities/${id}/recompute-stats`, { method: "POST" });
 }
 
+export type ThresholdSuggestionField = "ftp" | "critical_run_power" | "threshold_pace";
+
+/** Accept or dismiss a threshold increase detected from this activity's own best effort (see
+ * ThresholdSuggestionBanner). Accepting updates the athlete's profile *and* this activity's own
+ * snapshot, then recomputes its TSS/intensity. Dismissing just clears the suggestion. */
+export function applyThresholdSuggestion(
+  id: string,
+  field: ThresholdSuggestionField,
+  accept: boolean,
+): Promise<Activity> {
+  return apiFetch<Activity>(`/v1/activities/${id}/threshold-suggestion`, {
+    method: "POST",
+    body: { field, accept },
+  });
+}
+
 export function deleteAllActivities(): Promise<void> {
   return apiFetch<void>("/v1/activities", { method: "DELETE" });
 }
