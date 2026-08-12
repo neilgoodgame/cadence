@@ -987,12 +987,12 @@ def _ingest_activity(
         attempt_workout_match(activity, athlete)
 
         detect_threshold_increase(activity, power_series, t_series, distance_km_series)
-        suggested_fields = [
+        activity.threshold_checked = True
+        update_fields = ["threshold_checked"] + [
             f
             for f in ("suggested_ftp", "suggested_critical_run_power", "suggested_threshold_pace")
             if getattr(activity, f)
         ]
-        if suggested_fields:
-            activity.save(update_fields=suggested_fields)
+        activity.save(update_fields=update_fields)
 
     return activity

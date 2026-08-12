@@ -209,12 +209,19 @@ def _write_workouts(gz: gzip.GzipFile, athlete_id: str, sport: str | None, progr
     _write_array(gz, (WorkoutDetailSerializer(w).data for w in qs), progress)
 
 
-# Deliberately never exported: transient, in-app-only state (a pending threshold-increase
-# suggestion) rather than data describing the activity itself - re-importing a file shouldn't
-# resurrect an already-accepted-or-dismissed suggestion on a brand-new row. ftp_snapshot/
+# Deliberately never exported: transient, in-app-only bookkeeping (a pending threshold-increase
+# suggestion, and whether detection has ever run) rather than data describing the activity
+# itself - re-importing a file shouldn't resurrect an already-accepted-or-dismissed suggestion on
+# a brand-new row, and a freshly-imported row should start out "not yet checked" like any other
+# row import creates, not inherit whatever was true in the source account. ftp_snapshot/
 # critical_run_power_snapshot/threshold_pace_snapshot ARE exported (ActivitySerializer already
 # includes them) - those describe what actually happened, same as every other stat field.
-_SUGGESTED_THRESHOLD_FIELDS = ("suggested_ftp", "suggested_critical_run_power", "suggested_threshold_pace")
+_TRANSIENT_ACTIVITY_FIELDS = (
+    "suggested_ftp",
+    "suggested_critical_run_power",
+    "suggested_threshold_pace",
+    "threshold_checked",
+)
 
 
 def _write_activities(
@@ -227,7 +234,7 @@ def _write_activities(
             gz.write(b",")
         first = False
         activity_data = ActivitySerializer(activity).data
-        for field in _SUGGESTED_THRESHOLD_FIELDS:
+        for field in _TRANSIENT_ACTIVITY_FIELDS:
             activity_data.pop(field, None)
         entry = {
             "activity": activity_data,
