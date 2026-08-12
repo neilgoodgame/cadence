@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from django.test import TestCase
 
@@ -185,3 +185,99 @@ class RecomputeAthleteStatsViewTests(TestCase):
         self.assertEqual(len(progress_events), 3)
         self.assertEqual(progress_events[0], {"current": 1, "total": 3})
         self.assertEqual(progress_events[-1], {"current": 3, "total": 3})
+
+
+class RecomputeAthleteThresholdsViewTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="bulk-threshold-athlete@example.cc", password="x", name="Athlete", ftp=200
+        )
+        self.outsider = User.objects.create_user(
+            email="bulk-threshold-outsider@example.cc", password="x", name="Outsider"
+        )
+
+    def _make_bike_activity(self, power, **kwargs):
+        defaults = {
+            "sport": "bike",
+            "moving_time": 1200,
+            "ftp_snapshot": 200,
+            "threshold_checked": False,
+            "start_date": datetime(2026, 1, 1, 7, 0, tzinfo=UTC),
+        }
+        defaults.update(kwargs)
+        activity = _make_activity(self.athlete, **defaults)
+        for t in range(1200):
+            Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=power)
+        return activity
+
+    def test_flags_activities_whose_effort_implies_a_higher_threshold(self):
+        # 300W for the full 20-minute window implies FTP = round(0.95 * 300) = 285, above the
+        # 200 on record; 150W never does.
+        strong = self._make_bike_activity(300)
+        weak = self._make_bike_activity(150, name="Easy ride")
+
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/recompute-thresholds")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_final_stream_event(response), {"checked": 2, "flagged": 1})
+
+        strong.refresh_from_db()
+        weak.refresh_from_db()
+        self.assertEqual(strong.suggested_ftp, 285)
+        self.assertTrue(strong.threshold_checked)
+        self.assertIsNone(weak.suggested_ftp)
+        self.assertTrue(weak.threshold_checked)  # checked either way, even with no suggestion
+
+    def test_sport_filter_narrows_candidates(self):
+        bike = self._make_bike_activity(300)
+        run = _make_activity(
+            self.athlete, sport="run", threshold_checked=False, start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        )
+
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/recompute-thresholds?sport=bike")
+        self.assertEqual(_final_stream_event(response)["checked"], 1)
+
+        bike.refresh_from_db()
+        run.refresh_from_db()
+        self.assertTrue(bike.threshold_checked)
+        self.assertFalse(run.threshold_checked)  # outside the filter - untouched
+
+    def test_date_range_narrows_candidates(self):
+        old = self._make_bike_activity(300, start_date=datetime(2020, 1, 1, 7, 0, tzinfo=UTC))
+        recent = self._make_bike_activity(300, start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC), name="Recent")
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/athletes/{self.athlete.id}/recompute-thresholds?after=2025-01-01"
+        )
+        self.assertEqual(_final_stream_event(response)["checked"], 1)
+
+        old.refresh_from_db()
+        recent.refresh_from_db()
+        self.assertFalse(old.threshold_checked)
+        self.assertTrue(recent.threshold_checked)
+
+    def test_non_bike_run_sports_are_never_candidates(self):
+        swim = _make_activity(
+            self.athlete, sport="swim", threshold_checked=False, start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        )
+
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/recompute-thresholds")
+        self.assertEqual(_final_stream_event(response)["checked"], 0)
+
+        swim.refresh_from_db()
+        self.assertFalse(swim.threshold_checked)
+
+    def test_invalid_sport_is_rejected(self):
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/recompute-thresholds?sport=swim")
+        self.assertEqual(response.status_code, 400)
+
+    def test_invalid_date_is_rejected(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/athletes/{self.athlete.id}/recompute-thresholds?after=not-a-date"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_outsider_cannot_bulk_recompute(self):
+        self._make_bike_activity(300)
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.post(f"/v1/athletes/{self.athlete.id}/recompute-thresholds")
+        self.assertEqual(response.status_code, 403)

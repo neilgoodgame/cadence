@@ -245,6 +245,83 @@ class RecomputeAthleteStatsView(APIView):
         return response
 
 
+_THRESHOLD_DETECTABLE_SPORTS = ("bike", "run")
+_SUGGESTED_FIELDS = ("suggested_ftp", "suggested_critical_run_power", "suggested_threshold_pace")
+
+
+def _recompute_thresholds_stream(
+    athlete: User, sport: str | None, after: str | None, before: str | None
+) -> Iterator[str]:
+    from uploads.processing import detect_threshold_increase
+
+    candidates = Activity.objects.filter(
+        athlete=athlete,
+        parent_activity__isnull=True,
+        sport__in=_THRESHOLD_DETECTABLE_SPORTS,
+    )
+    if sport:
+        candidates = candidates.filter(sport=sport)
+    if after:
+        candidates = candidates.filter(start_date__date__gte=after)
+    if before:
+        candidates = candidates.filter(start_date__date__lte=before)
+
+    activities = list(candidates.order_by("start_date"))
+    total = len(activities)
+    flagged = 0
+
+    for i, activity in enumerate(activities):
+        records = activity.records.order_by("t").values_list("t", "power", "distance_km")
+        t_series = [r[0] for r in records]
+        power_series = [r[1] for r in records]
+        distance_km_series = [r[2] for r in records]
+
+        detect_threshold_increase(activity, power_series, t_series, distance_km_series)
+        activity.threshold_checked = True
+        set_fields = [f for f in _SUGGESTED_FIELDS if getattr(activity, f)]
+        if set_fields:
+            flagged += 1
+        activity.save(update_fields=["threshold_checked", *set_fields])
+        yield f"data: {json.dumps({'current': i + 1, 'total': total})}\n\n"
+
+    yield f"event: done\ndata: {json.dumps({'checked': total, 'flagged': flagged})}\n\n"
+
+
+class RecomputeAthleteThresholdsView(APIView):
+    """Bulk equivalent of activities.views.RecomputeActivityThresholdsView - re-runs
+    detect_threshold_increase across every one of the athlete's bike/run activities (the only
+    sports it ever applies to), optionally narrowed by sport/date range, so activities that
+    predate the feature (or were imported, which also skips detection) can be checked in bulk
+    rather than one at a time. Streamed like RecomputeAthleteStatsView, for the same reason -
+    an athlete can have thousands of activities and a single synchronous request risks a
+    client/proxy timeout with no progress feedback."""
+
+    def post(self, request: Request, id: str) -> StreamingHttpResponse:
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        athlete = get_object_or_404(User, pk=id)
+
+        sport = request.query_params.get("sport")
+        if sport and sport not in _THRESHOLD_DETECTABLE_SPORTS:
+            raise ValidationError({"sport": "Must be one of bike, run."})
+
+        after = request.query_params.get("after")
+        if after and parse_date(after) is None:
+            raise ValidationError({"after": "Expected ISO date (YYYY-MM-DD)."})
+
+        before = request.query_params.get("before")
+        if before and parse_date(before) is None:
+            raise ValidationError({"before": "Expected ISO date (YYYY-MM-DD)."})
+
+        response = StreamingHttpResponse(
+            _recompute_thresholds_stream(athlete, sport, after, before), content_type="text/event-stream"
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+
 _SPORT_FOR_KIND = {
     "cycling_hr": "bike",
     "cycling_power": "bike",
