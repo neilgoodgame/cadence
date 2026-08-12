@@ -16,6 +16,7 @@ import { RouteMap } from "./activity-analysis/RouteMap";
 import { StatRow } from "./activity-analysis/StatRow";
 import { StatsTab } from "./activity-analysis/StatsTab";
 import { StreamChart } from "./activity-analysis/StreamChart";
+import { ThresholdSuggestionBanner } from "./activity-analysis/ThresholdSuggestionBanner";
 import { ZonesTab } from "./activity-analysis/ZonesTab";
 
 type Tab = "stats" | "laps" | "zones" | "curves";
@@ -52,6 +53,7 @@ export function ActivityAnalysisScreen() {
         </div>
       )}
       {activity.primary_activity_id && <DuplicateBanner activity={activity} />}
+      <ThresholdSuggestionBanner activity={activity} />
 
       <Header activity={activity} />
       <StatRow activity={activity} />
