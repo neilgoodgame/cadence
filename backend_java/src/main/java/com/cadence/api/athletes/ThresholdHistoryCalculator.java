@@ -8,6 +8,7 @@ import com.cadence.api.activities.calc.DurationCurveCalculator;
 import com.cadence.api.activities.calc.PaceBestEffortCalculator;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.users.User;
+import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -49,10 +50,13 @@ public class ThresholdHistoryCalculator {
 
 	private final ActivityRepository activityRepository;
 	private final RecordRepository recordRepository;
+	private final EntityManager entityManager;
 
-	public ThresholdHistoryCalculator(ActivityRepository activityRepository, RecordRepository recordRepository) {
+	public ThresholdHistoryCalculator(ActivityRepository activityRepository, RecordRepository recordRepository,
+			EntityManager entityManager) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
+		this.entityManager = entityManager;
 	}
 
 	private static Sport sportFor(ThresholdField field) {
@@ -152,15 +156,15 @@ public class ThresholdHistoryCalculator {
 		Candidate best = null;
 		for (Activity activity : activities) {
 			Double implied = impliedValue(activity, field);
-			if (implied == null) {
-				continue;
-			}
-			if (!withinSanityBand(implied, referenceValue, athlete.getThresholdSanityPct())) {
-				continue;
-			}
-			if (best == null || isBetter(field, implied, best.impliedValue())) {
+			if (implied != null && withinSanityBand(implied, referenceValue, athlete.getThresholdSanityPct())
+					&& (best == null || isBetter(field, implied, best.impliedValue()))) {
 				best = new Candidate(activity.getId(), dateOf(activity), implied);
 			}
+			// Load-bearing, not cosmetic (see ExportWriter's Javadoc for the same pattern):
+			// Hibernate's persistence context pins every Activity and Record loaded here for the
+			// life of the enclosing transaction. Bounded to ~windowDays worth of activities, but
+			// a prolific athlete's trailing window can still be large enough to matter.
+			entityManager.clear();
 		}
 		return best;
 	}
@@ -216,6 +220,14 @@ public class ThresholdHistoryCalculator {
 			}
 			current++;
 			onProgress.accept(current, total);
+			// Load-bearing, not cosmetic (see ExportWriter's Javadoc for the same pattern):
+			// Hibernate's persistence context pins every Activity and Record loaded here for the
+			// life of the enclosing @Transactional call. Unlike currentWindowValue, this walks an
+			// athlete's *entire* history - thousands of activities and millions of Record rows
+			// for a long-established account - so without this the identity map grows unbounded
+			// and OOMs the JVM well before the replay finishes (found live: crashed the backend
+			// container on every attempt against a real account with 700+ activities per sport).
+			entityManager.clear();
 		}
 		return entries;
 	}
