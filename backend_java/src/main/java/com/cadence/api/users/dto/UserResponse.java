@@ -13,6 +13,8 @@ public record UserResponse(
 		Integer maxHr,
 		Integer restingHr,
 		int bestEffortTopN,
+		int thresholdWindowDays,
+		int thresholdSanityPct,
 		boolean isCoach,
 		boolean isAdmin,
 		boolean renameMatchedActivities,

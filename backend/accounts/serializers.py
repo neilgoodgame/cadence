@@ -24,6 +24,8 @@ class UserSerializer(serializers.ModelSerializer):
             "is_coach",
             "is_admin",
             "best_effort_top_n",
+            "threshold_window_days",
+            "threshold_sanity_pct",
             "rename_matched_activities",
             "append_match_date_to_name",
             "copy_matched_workout_tags",
