@@ -28,8 +28,16 @@ export function parsePace(value: string): number | null {
   return minutes * 60 + seconds;
 }
 
-export function formatDate(isoDate: string): string {
-  return new Date(isoDate).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+/** `includeYear` defaults to false to keep existing call sites' compact format (activity/workout
+ * rows, which are almost always recent) - pass true for views that can span multiple years, e.g.
+ * a full history ledger, where "Thu, Aug 13" alone is ambiguous. */
+export function formatDate(isoDate: string, includeYear = false): string {
+  return new Date(isoDate).toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    ...(includeYear ? { year: "numeric" } : {}),
+  });
 }
 
 /** Compact "duration · distance · power|pace" summary for a linked-activity row, e.g.

@@ -70,7 +70,7 @@ export function ThresholdHistoryScreen() {
               <span className="mono" style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>
                 {formatValue(field, entry.value)}
               </span>
-              <span style={{ fontSize: 12, color: "var(--ink3)" }}>Effective from {formatDate(entry.effective_from)}</span>
+              <span style={{ fontSize: 12, color: "var(--ink3)" }}>Effective from {formatDate(entry.effective_from, true)}</span>
             </div>
             {entry.source_activity_id && (
               <Link to={`/activities/${entry.source_activity_id}`} style={{ fontSize: 12, color: "var(--ember)", fontWeight: 600 }}>
