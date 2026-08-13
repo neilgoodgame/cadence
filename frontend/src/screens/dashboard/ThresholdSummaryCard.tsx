@@ -19,6 +19,18 @@ function formatValue(field: ThresholdFieldName, value: number | string): string 
   return field === "threshold_pace" ? `${value}/km` : String(value);
 }
 
+// Mirrors the backend's own is_stale/isStale comparison (days between effective_from and today,
+// vs threshold_window_days) so this always agrees with when the "Aged out of window" notice
+// takes over. Parses effective_from as local midnight, not new Date(isoDate)'s UTC-midnight
+// default, to avoid the off-by-one near midnight that bit WeekCalendar's date bucketing before.
+function daysRemaining(effectiveFrom: string, windowDays: number): number {
+  const effective = new Date(`${effectiveFrom}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const elapsedDays = Math.round((today.getTime() - effective.getTime()) / 86_400_000);
+  return windowDays - elapsedDays;
+}
+
 // Pace is seconds/km - a *lower* value is the improvement, the opposite of the two power fields.
 function deltaLabel(field: ThresholdFieldName, entry: ThresholdSummaryEntry): string | null {
   if (entry.value == null || entry.previous_value == null) return null;
@@ -43,6 +55,9 @@ function FieldCard({ field, label, unit, entry }: { field: ThresholdFieldName; l
     onSuccess: (updated) => qc.setQueryData(["thresholds", user!.id], updated),
   });
   const delta = deltaLabel(field, entry);
+  const remaining = !entry.stale && entry.value != null && entry.effective_from
+    ? daysRemaining(entry.effective_from, user!.threshold_window_days)
+    : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -56,6 +71,11 @@ function FieldCard({ field, label, unit, entry }: { field: ThresholdFieldName; l
         {unit && entry.value != null && <span style={{ fontSize: 13, fontWeight: 500, color: "var(--ink2)" }}>{unit}</span>}
       </div>
       {delta && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{delta}</div>}
+      {remaining != null && (
+        <div style={{ fontSize: 11, color: "var(--ink3)" }}>
+          Valid for {remaining} more day{remaining === 1 ? "" : "s"}
+        </div>
+      )}
       {entry.stale && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
           <span style={{ fontSize: 11, color: "var(--ember)" }}>
