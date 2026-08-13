@@ -166,6 +166,20 @@ export function BestEffortsTab() {
     }
   }, [user, qc]);
 
+  const anyFieldRunning = Object.values(fieldRecompute).some(s => s.running);
+  const [regenerateAllStep, setRegenerateAllStep] = useState<number | null>(null);
+
+  // Runs the existing per-field rebuild sequentially for all three fields - each field's own
+  // card shows its own live progress bar as its turn comes up, so no separate progress UI is
+  // needed here beyond the step counter on the button itself.
+  const startAllFieldsRecompute = useCallback(async () => {
+    for (let i = 0; i < THRESHOLD_FIELDS.length; i++) {
+      setRegenerateAllStep(i);
+      await startFieldRecompute(THRESHOLD_FIELDS[i].field);
+    }
+    setRegenerateAllStep(null);
+  }, [startFieldRecompute]);
+
   if (!user) return null;
 
   return (
@@ -332,6 +346,23 @@ export function BestEffortsTab() {
           replay it under the new settings.
         </p>
 
+        <div>
+          <button
+            onClick={() => startAllFieldsRecompute()}
+            disabled={anyFieldRunning}
+            style={{ ...btnStyle, alignSelf: "flex-start", opacity: regenerateAllStep !== null ? 0.6 : 1 }}
+          >
+            {regenerateAllStep !== null
+              ? `Regenerating all… (${regenerateAllStep + 1}/${THRESHOLD_FIELDS.length})`
+              : "Regenerate all from oldest"}
+          </button>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: "6px 0 0" }}>
+            Rebuilds all three fields from scratch, one after another. Useful after a bulk import,
+            since the rolling-window algorithm replays activities oldest-first and a bulk import
+            doesn't guarantee that order.
+          </p>
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {THRESHOLD_FIELDS.map(({ field, label }) => {
             const state = fieldRecompute[field];
@@ -341,7 +372,7 @@ export function BestEffortsTab() {
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
                   <button
                     onClick={() => startFieldRecompute(field)}
-                    disabled={state.running}
+                    disabled={state.running || regenerateAllStep !== null}
                     style={{ ...btnStyle, padding: "6px 12px", fontSize: 12, opacity: state.running ? 0.6 : 1 }}
                   >
                     {state.running ? "Rebuilding…" : "Rebuild from oldest"}
