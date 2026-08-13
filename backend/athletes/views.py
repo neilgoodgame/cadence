@@ -2,6 +2,7 @@ import json
 from collections.abc import Iterator
 from datetime import timedelta
 
+from django.db import transaction
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -21,7 +22,7 @@ from core.permissions import user_may_read, user_may_write
 
 from .models import ThresholdHistory, ZoneSet
 from .serializers import AthleteUpdateSerializer, FitnessPointSerializer, ZoneSetReplaceSerializer, ZoneSetSerializer
-from .threshold_history import is_stale, rebuild_history_stream, refresh_field
+from .threshold_history import FIELD_SPORT, is_stale, rebuild_history_stream, record_manual_value, refresh_field
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for, zone_types_affected_by
 
 # 4w/16w match BEST_EFFORT_TRIM_PERIOD_DAYS in uploads/processing.py exactly - the Best Efforts
@@ -81,7 +82,15 @@ class AthleteDetailView(APIView):
 
         serializer = AthleteUpdateSerializer(athlete, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        with transaction.atomic():
+            serializer.save()
+            # A manually-entered threshold functions as an initial value (or a correction) just
+            # like any other ledger entry - see threshold_history.py::record_manual_value. The
+            # Preferences form resubmits every field on every save regardless of whether it was
+            # edited, so record_manual_value's own no-op-if-unchanged check is load-bearing here.
+            for field in FIELD_SPORT:
+                if field in serializer.validated_data:
+                    record_manual_value(athlete, field, serializer.validated_data[field])
 
         recomputed = zone_types_affected_by(serializer.validated_data.keys())
         existing = set(ZoneSet.objects.filter(athlete=athlete, type__in=recomputed).values_list("type", flat=True))

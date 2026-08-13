@@ -297,6 +297,36 @@ def recompute_for_activity(activity: Activity) -> None:
             _recompute_and_record(athlete, field, as_of=activity.start_date.date())
 
 
+def record_manual_value(athlete: User, field: str, raw_value: int | str, as_of: date | None = None) -> bool:
+    """The athlete directly declared this value via their profile (PATCH /v1/athletes/<id>) -
+    trusted unconditionally (no sanity-band check, no window search: an explicit choice, not a
+    computed candidate), effective from today. Behaves exactly like any other ledger entry from
+    here on: ages out after threshold_window_days like any other, and can be superseded by a
+    later qualifying activity or another manual edit. A no-op if the submitted value matches
+    what's already current (e.g. re-saving the profile form without touching this field - the
+    frontend always resubmits every field). Doesn't touch athlete.<field> itself - the caller
+    (AthleteUpdateSerializer.save()) already wrote that as part of the same request."""
+    implied_value = _mmss_to_seconds(raw_value) if field == "threshold_pace" else raw_value
+    if not implied_value:
+        return False
+    latest = _latest_entry(athlete, field)
+    latest_value = None
+    if latest is not None:
+        latest_value = _mmss_to_seconds(latest.value_pace) if field == "threshold_pace" else latest.value_numeric
+    if latest_value == implied_value:
+        return False
+    value_numeric, value_pace = (None, raw_value) if field == "threshold_pace" else (raw_value, "")
+    ThresholdHistory.objects.create(
+        athlete=athlete,
+        field=field,
+        value_numeric=value_numeric,
+        value_pace=value_pace,
+        source_activity=None,
+        effective_from=as_of or date.today(),
+    )
+    return True
+
+
 def refresh_field(athlete: User, field: str) -> bool:
     """Manual on-demand recompute (the dashboard's "this value is stale - refresh now" action) -
     the same cheap current-window computation as the ingest hook, just athlete-triggered rather

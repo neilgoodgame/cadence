@@ -173,6 +173,74 @@ class ImportThresholdHistoryTests(TestCase):
 
         default_storage.delete(relative_path)
 
+    def test_a_manually_entered_value_round_trips_with_no_source_activity(self):
+        # source_activity=None (see threshold_history.py::record_manual_value) - not a malformed
+        # or unmapped reference, so this must NOT be treated as a dangling link and skipped.
+        source = User.objects.create_user(email="threshold-manual-source@example.cc", password="x", name="Source")
+        target = User.objects.create_user(email="threshold-manual-target@example.cc", password="x", name="Target")
+        ThresholdHistory.objects.create(
+            athlete=source, field="ftp", value_numeric=260, source_activity=None, effective_from=date(2026, 1, 1)
+        )
+
+        relative_path = "exports/test/threshold-history-manual-roundtrip.json.gz"
+        write_export(source.id, None, relative_path)
+        counts = read_import(target.id, relative_path)
+
+        self.assertEqual(counts["threshold_history_imported"], 1)
+        self.assertEqual(counts["items_skipped"], 0)
+        imported_entry = ThresholdHistory.objects.get(athlete=target)
+        self.assertEqual(imported_entry.value_numeric, 260)
+        self.assertIsNone(imported_entry.source_activity_id)
+
+        from django.core.files.storage import default_storage
+
+        default_storage.delete(relative_path)
+
+    def test_a_dangling_source_activity_reference_is_still_skipped(self):
+        # Unlike a manual entry (source_activity_id absent from the row entirely), this row HAS a
+        # source_activity_id but no matching activity appears anywhere in the file - genuinely
+        # unmappable (e.g. that specific activity failed to import), must still be skipped rather
+        # than silently imported as a "manual" entry.
+        import os
+
+        from django.core.files.storage import default_storage
+
+        target = User.objects.create_user(email="threshold-dangling-target@example.cc", password="x", name="Target")
+        relative_path = "exports/test/threshold-history-dangling.json.gz"
+        full_path = default_storage.path(relative_path)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with gzip.GzipFile(full_path, mode="wb") as gz:
+            gz.write(
+                json.dumps(
+                    {
+                        "generated_at": "2026-01-01T00:00:00Z",
+                        "athlete_id": "someone",
+                        "equipment": {"bikes": [], "shoes": [], "components": []},
+                        "workouts": [],
+                        "activities": [],
+                        "races": [],
+                        "scheduled_workouts": [],
+                        "threshold_history": [
+                            {
+                                "field": "ftp",
+                                "value_numeric": 260,
+                                "value_pace": "",
+                                "source_activity_id": "act_doesnotexist",
+                                "effective_from": "2026-01-01",
+                            }
+                        ],
+                    }
+                ).encode("utf-8")
+            )
+
+        counts = read_import(target.id, relative_path)
+
+        self.assertEqual(counts["threshold_history_imported"], 0)
+        self.assertEqual(counts["items_skipped"], 1)
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=target).count(), 0)
+
+        default_storage.delete(relative_path)
+
     def test_a_file_exported_before_this_feature_existed_imports_with_an_empty_ledger(self):
         # No "threshold_history" key at all in the source document - the pre-feature shape.
         import os
