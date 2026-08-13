@@ -1,6 +1,12 @@
-"""Reads one athlete's exported data file back in, creating brand-new rows with fresh ids
-(an import never updates or matches existing data - re-importing the same file twice
-creates duplicates, same policy as the Java backend).
+"""Reads one athlete's exported data file back in, creating brand-new rows with fresh ids -
+except activities, which are deduplicated against the target athlete's existing ones by
+(date, sport, distance_km, moving_time) before creating a row, so re-importing an athlete's
+own already-existing data (e.g. testing the export/import round trip against a live account)
+doesn't silently duplicate every activity. Deliberately not `name`: a matched activity gets
+renamed from its device-default name to the workout's name (see uploads/processing.py), so
+the export and the athlete's current copy can legitimately have different names for the same
+real activity. Everything else (races, workouts, gear, ...) keeps the original create-fresh
+policy, same as the Java backend.
 
 Mirrors backend_java's ImportReader (backend_java/src/main/java/com/cadence/api/imports/
 ImportReader.java) section for section - equipment and workouts first (activities
@@ -310,6 +316,17 @@ def _import_activities(
     counts: dict,
     progress: _Progress,
 ) -> None:
+    # Preloaded once, not queried per-activity: (date, sport, distance_km, moving_time) ->
+    # existing activity id, so a re-import against an athlete who already has this data maps
+    # straight to the existing row instead of creating a duplicate. Updated as new activities
+    # are created below too, in case the export itself contains a same-key pair.
+    existing_by_key: dict[tuple, str] = {
+        (a.start_date.date(), a.sport, a.distance_km, a.moving_time): a.id
+        for a in Activity.objects.filter(athlete_id=athlete_id).only(
+            "id", "start_date", "sport", "distance_km", "moving_time"
+        )
+    }
+
     with _stream(stored_path) as gz:
         for entry in ijson.items(gz, "activities.item", use_float=True):
             ar = entry["activity"]
@@ -321,6 +338,17 @@ def _import_activities(
                 start_date = parse_datetime(ar["start_date"])
                 if start_date is None:
                     raise ValueError(f"Unparseable start_date: {ar['start_date']!r}")
+
+                key = (start_date.date(), ar["sport"], ar.get("distance_km") or 0, ar.get("moving_time") or 0)
+                existing_id = existing_by_key.get(key)
+                if existing_id:
+                    # Map the export's old id straight to the existing activity so later
+                    # entries that reference it (multisport legs, deferred parent/child links)
+                    # still resolve correctly, instead of silently dropping those links.
+                    activity_id_map[ar["id"]] = existing_id
+                    counts["items_skipped"] += 1
+                    progress.tick()
+                    continue
 
                 activity = Activity.objects.create(
                     athlete_id=athlete_id,
@@ -386,6 +414,7 @@ def _import_activities(
                     _attach_tag(activity, athlete_id, tag_name)
 
                 activity_id_map[ar["id"]] = activity.id
+                existing_by_key[key] = activity.id
                 if ar.get("parent_activity_id"):
                     deferred_links.append((activity.id, ar["parent_activity_id"], True))
                 if ar.get("primary_activity_id"):

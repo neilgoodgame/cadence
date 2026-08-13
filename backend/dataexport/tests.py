@@ -141,6 +141,86 @@ class ExportImportRoundTripTests(TestCase):
         return Activity.objects.get(athlete=self.source, name="Triathlon Bike Leg").id
 
 
+class ImportActivityDedupTests(TestCase):
+    """Activities are deduplicated against the target athlete's existing ones by
+    (date, sport, distance_km, moving_time) before creating a row - re-importing an athlete's
+    own already-existing data (e.g. testing the export/import round trip against a live
+    account) shouldn't duplicate every activity. Found live: exactly this corrupted a real
+    account's activity history.
+
+    Deliberately seeds only plain activities, not _seed_full_account's full equipment/workout
+    set - re-importing a shoe/bike the athlete already has hits an unrelated, pre-existing gap
+    (equipment import isn't savepoint-isolated per item, so a unique-constraint conflict
+    aborts the whole transaction) that's out of scope for this fix."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="dedup-target@example.cc", password="x", name="Dedup")
+        self.run = _make_activity(
+            self.athlete,
+            sport="run",
+            name="Morning run",
+            start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC),
+            moving_time=1800,
+            distance_km=5.0,
+        )
+        self.ride = _make_activity(
+            self.athlete,
+            sport="bike",
+            name="Evening ride",
+            start_date=datetime(2026, 1, 2, 18, 0, tzinfo=UTC),
+            moving_time=3600,
+            distance_km=30.0,
+        )
+
+    def _export_then_import_into_self(self) -> dict:
+        client = _bearer_client(self.athlete)
+        start = client.post("/v1/export")
+        export_id = start.json()["id"]
+        client.get(f"/v1/export/{export_id}")
+        download = client.get(f"/v1/export/{export_id}/download")
+        content = b"".join(download.streaming_content)
+
+        upload = client.post("/v1/import", {"file": SimpleUploadedFile("export.json.gz", content)}, format="multipart")
+        import_id = upload.json()["id"]
+        result = client.get(f"/v1/import/{import_id}").json()
+        self.assertEqual(result["status"], "ready")
+        return result["counts"]
+
+    def test_reimporting_the_same_athletes_own_export_does_not_duplicate_activities(self):
+        before_count = Activity.objects.filter(athlete=self.athlete).count()
+
+        counts = self._export_then_import_into_self()
+
+        self.assertEqual(counts["activities_imported"], 0)
+        self.assertEqual(counts["items_skipped"], 2)  # both matched an existing activity
+        self.assertEqual(Activity.objects.filter(athlete=self.athlete).count(), before_count)
+
+    def test_an_activity_that_no_longer_matches_is_reimported_not_deduped(self):
+        client = _bearer_client(self.athlete)
+        start = client.post("/v1/export")
+        export_id = start.json()["id"]
+        client.get(f"/v1/export/{export_id}")
+        download = client.get(f"/v1/export/{export_id}/download")
+        content = b"".join(download.streaming_content)
+
+        # self.run's own copy changed after the export was taken - the exported (stale) version
+        # of it no longer matches anything currently on the athlete's account, so it must import
+        # as a new activity rather than being silently treated as a duplicate.
+        self.run.distance_km = 8.0
+        self.run.save(update_fields=["distance_km"])
+        before_count = Activity.objects.filter(athlete=self.athlete).count()
+
+        upload = client.post("/v1/import", {"file": SimpleUploadedFile("export.json.gz", content)}, format="multipart")
+        import_id = upload.json()["id"]
+        result = client.get(f"/v1/import/{import_id}").json()
+        self.assertEqual(result["status"], "ready")
+        counts = result["counts"]
+
+        self.assertEqual(counts["activities_imported"], 1)  # the run - no longer matches
+        self.assertEqual(counts["items_skipped"], 1)  # the ride - still matches
+        self.assertEqual(Activity.objects.filter(athlete=self.athlete).count(), before_count + 1)
+
+
 class ImportThresholdHistoryTests(TestCase):
     """threshold_history entries carry the source athlete's own historical values verbatim -
     imported activities' zones should reflect what was actually true when they happened, not get
