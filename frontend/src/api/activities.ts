@@ -41,6 +41,23 @@ export function listActivities(params: ListActivitiesParams = {}): Promise<List<
   return apiFetch<List<Activity>>(`/v1/activities${toQueryString(params)}`);
 }
 
+/** Pages through every activity matching `params`, ignoring any `limit`/`cursor` passed in -
+ * ActivityController hard-caps a single page at 200 (`Math.min(limit, 200)`) regardless of what's
+ * requested, so a date-bounded query for an aggregate view (e.g. the dashboard's 16-week training
+ * history) silently drops the oldest activities once an athlete has more than 200 within the
+ * window - found live: a real account with 259 activities in its 16-week window had the oldest
+ * ~4 weeks render as empty bars, since the single-page fetch kept only the 200 most recent. */
+export async function listAllActivities(params: Omit<ListActivitiesParams, "limit" | "cursor">): Promise<Activity[]> {
+  const all: Activity[] = [];
+  let cursor: string | undefined;
+  do {
+    const page: List<Activity> = await listActivities({ ...params, cursor, limit: 200 });
+    all.push(...page.data);
+    cursor = page.has_more ? (page.next_cursor ?? undefined) : undefined;
+  } while (cursor);
+  return all;
+}
+
 export function getActivity(id: string): Promise<Activity> {
   return apiFetch<Activity>(`/v1/activities/${id}`);
 }

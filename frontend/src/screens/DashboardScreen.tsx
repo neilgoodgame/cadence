@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthContext";
 import { getFitness } from "../api/athletes";
-import { listActivities } from "../api/activities";
+import { listActivities, listAllActivities } from "../api/activities";
 import { getContexts } from "../api/auth";
 import { Card } from "../components/Card";
 import { CoachingSection } from "./dashboard/CoachingSection";
@@ -12,10 +12,20 @@ import { NextRaceCard } from "./dashboard/NextRaceCard";
 import { WeekCalendar } from "./dashboard/WeekCalendar";
 import { TrainingHistory } from "./dashboard/TrainingHistory";
 
+// new Date(...).toISOString().slice(0,10) reads back the *UTC* calendar date - for a UTC+ user,
+// local midnight is still the previous day in UTC, silently shifting these date-range boundaries
+// back by a day (same class of bug already fixed once in WeekCalendar.tsx's own localIso()).
+function localIso(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function isoDaysAgo(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return localIso(d);
 }
 
 function historyWindow(): { after: string; before: string } {
@@ -28,13 +38,12 @@ function historyWindow(): { after: string; before: string } {
   after.setDate(thisMonday.getDate() - 112); // 16 weeks back
   const before = new Date(thisMonday);
   before.setDate(thisMonday.getDate() - 1);  // last Sunday (inclusive)
-  return { after: after.toISOString().slice(0, 10), before: before.toISOString().slice(0, 10) };
+  return { after: localIso(after), before: localIso(before) };
 }
-
-const { after: historyAfter, before: historyBefore } = historyWindow();
 
 export function DashboardScreen() {
   const { user, isCoachAccount } = useAuth();
+  const { after: historyAfter, before: historyBefore } = useMemo(() => historyWindow(), []);
 
   const fitnessQuery = useQuery({
     queryKey: ["fitness", user?.id],
@@ -54,7 +63,11 @@ export function DashboardScreen() {
 
   const historyActivitiesQuery = useQuery({
     queryKey: ["activities", "training-history", historyAfter],
-    queryFn: () => listActivities({ after: historyAfter, before: historyBefore, limit: 200 }),
+    // Not listActivities({ limit: 200 }) - the backend hard-caps a single page at 200
+    // regardless of what's requested, so a busy account can have more activities than that
+    // within the 16-week window alone (found live: 259 for the real test account), silently
+    // dropping the oldest weeks. listAllActivities pages through everything in range.
+    queryFn: () => listAllActivities({ after: historyAfter, before: historyBefore }),
     enabled: !!user,
   });
 
@@ -70,7 +83,7 @@ export function DashboardScreen() {
   const points = fitnessQuery.data?.data ?? [];
 
   const activities = useMemo(() => activitiesQuery.data?.data ?? [], [activitiesQuery.data]);
-  const historyActivities = useMemo(() => historyActivitiesQuery.data?.data ?? [], [historyActivitiesQuery.data]);
+  const historyActivities = useMemo(() => historyActivitiesQuery.data ?? [], [historyActivitiesQuery.data]);
 
   const weekTss = useMemo(() => {
     const cutoff = isoDaysAgo(7);
