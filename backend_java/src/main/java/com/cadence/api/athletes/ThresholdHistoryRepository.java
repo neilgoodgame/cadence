@@ -5,6 +5,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHistory, Long> {
 
@@ -36,5 +39,16 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	// previously defines your FTP" indicator.
 	List<ThresholdHistory> findBySourceActivityId(String activityId);
 
-	void deleteByAthleteIdAndField(String athleteId, ThresholdField field);
+	// A plain `deleteBy...` derived method loads matching rows into the persistence context and
+	// only marks them for removal there - the DELETE isn't actually issued until the next flush.
+	// ThresholdHistoryCalculator.replayFullHistory (called right after this, inside the same
+	// rebuildHistory transaction) calls entityManager.clear() after every activity to bound
+	// memory on large replays (see its own Javadoc) - clear() discards pending unflushed removals
+	// along with everything else, so the old rows silently survived and every rebuild appended a
+	// fresh duplicate copy of the ledger instead of replacing it (found live: a real account's
+	// ledger had exact triplicate rows after three rebuilds). A bulk @Modifying query executes
+	// immediately against the database, same convention as RecordRepository.deleteByAthleteId.
+	@Modifying
+	@Query("delete from ThresholdHistory t where t.athlete.id = :athleteId and t.field = :field")
+	void deleteByAthleteIdAndField(@Param("athleteId") String athleteId, @Param("field") ThresholdField field);
 }
