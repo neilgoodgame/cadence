@@ -3,7 +3,6 @@ from typing import Any
 from django.db.models import Count, Exists, OuterRef, Q, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -14,12 +13,7 @@ from core.cql import compile_ast_to_q, parse, resolve_order_by
 from core.exceptions import ConflictError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
-from uploads.processing import (
-    backfill_extended_stats,
-    compute_normalized_power,
-    compute_tss,
-    detect_threshold_increase,
-)
+from uploads.processing import backfill_extended_stats, compute_normalized_power, compute_tss
 from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
 from workouts.inference import infer_workout
@@ -306,114 +300,6 @@ class RecomputeActivityTssView(APIView):
         norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
         activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
         activity.save(update_fields=["tss"])
-        return Response(ActivitySerializer(activity).data)
-
-
-class ActivityThresholdSuggestionView(APIView):
-    """POST /v1/activities/<id>/threshold-suggestion {"field": ..., "accept": bool,
-    "update_profile": bool} - accept or dismiss a threshold increase detected from this
-    activity's own best effort (see uploads/processing.py::detect_threshold_increase).
-
-    Accepting always updates this activity's own snapshot (the effort that revealed the new
-    threshold is itself re-rated against it) and recomputes its TSS/intensity - skipped for
-    threshold_pace, which neither TSS nor intensity are derived from anywhere in this codebase.
-    It ALSO updates the athlete's profile, but only when update_profile is true, and only for an
-    activity within MAX_PROFILE_UPDATE_AGE_DAYS - a suggestion from years-old activity shouldn't
-    silently redefine the athlete's *current* profile, even though the activity's own numbers are
-    still worth correcting. Requesting update_profile=True for an activity past the cutoff is
-    rejected with 400 rather than silently downgraded, so the caller's request always means what
-    it says.
-
-    Dismissing just clears the suggestion. Either way the suggested_* field is consumed - it
-    never re-appears for the same activity/value; a later, larger effort can still set it again.
-    """
-
-    # field -> (suggested column, snapshot column, athlete profile column)
-    FIELD_MAP = {
-        "ftp": ("suggested_ftp", "ftp_snapshot", "ftp"),
-        "critical_run_power": ("suggested_critical_run_power", "critical_run_power_snapshot", "critical_run_power"),
-        "threshold_pace": ("suggested_threshold_pace", "threshold_pace_snapshot", "threshold_pace"),
-    }
-
-    MAX_PROFILE_UPDATE_AGE_DAYS = 365
-
-    def post(self, request: Request, id: str) -> Response:
-        activity = get_object_or_404(Activity, pk=id)
-        sub, _ = get_effective_athlete_id(request)
-        if not user_may_write(sub, activity.athlete_id):
-            raise PermissionDenied("You do not have write access to that athlete's data.")
-
-        field = request.data.get("field")
-        accept = request.data.get("accept")
-        update_profile = request.data.get("update_profile")
-        if field not in self.FIELD_MAP:
-            raise ValidationError({"field": "Must be one of ftp, critical_run_power, threshold_pace."})
-        if not isinstance(accept, bool):
-            raise ValidationError({"accept": "Must be a boolean."})
-        if accept and not isinstance(update_profile, bool):
-            raise ValidationError({"update_profile": "Must be a boolean."})
-
-        suggested_field, snapshot_field, athlete_field = self.FIELD_MAP[field]
-        suggested_value = getattr(activity, suggested_field)
-        if not suggested_value:
-            raise ConflictError("No pending suggestion for that field.")
-
-        update_fields = [suggested_field]
-        if accept:
-            athlete = activity.athlete
-            if update_profile:
-                age_days = (timezone.now() - activity.start_date).days
-                if age_days > self.MAX_PROFILE_UPDATE_AGE_DAYS:
-                    raise ValidationError({"update_profile": "This activity is too old to update your profile from."})
-                setattr(athlete, athlete_field, suggested_value)
-                athlete.save(update_fields=[athlete_field])
-            setattr(activity, snapshot_field, suggested_value)
-            update_fields.append(snapshot_field)
-
-            if field in ("ftp", "critical_run_power"):
-                power_series = list(activity.records.order_by("t").values_list("power", flat=True))
-                hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
-                norm_power = (
-                    compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
-                )
-                threshold = getattr(activity, snapshot_field)
-                if norm_power and threshold:
-                    activity.intensity = round(norm_power / threshold, 3)
-                activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
-                update_fields.extend(["intensity", "tss"])
-
-        # Clear the suggestion either way - accepted (consumed) or dismissed (rejected).
-        setattr(activity, suggested_field, "" if isinstance(suggested_value, str) else None)
-        activity.save(update_fields=update_fields)
-        return Response(ActivitySerializer(activity).data)
-
-
-class RecomputeActivityThresholdsView(APIView):
-    """POST /v1/activities/<id>/recompute-thresholds - re-runs detect_threshold_increase against
-    this activity's own stored Records and marks it threshold_checked. Detection normally only
-    runs once, at ingest - this lets an activity that predates the feature (or was imported,
-    which also never runs detection) get evaluated retroactively, so the banner's "this
-    activity's zones may be based on outdated values" flag can be resolved."""
-
-    def post(self, request: Request, id: str) -> Response:
-        activity = get_object_or_404(Activity, pk=id)
-        sub, _ = get_effective_athlete_id(request)
-        if not user_may_write(sub, activity.athlete_id):
-            raise PermissionDenied("You do not have write access to that athlete's data.")
-
-        records = activity.records.order_by("t").values_list("t", "power", "distance_km")
-        t_series = [r[0] for r in records]
-        power_series = [r[1] for r in records]
-        distance_km_series = [r[2] for r in records]
-
-        detect_threshold_increase(activity, power_series, t_series, distance_km_series)
-        activity.threshold_checked = True
-        update_fields = ["threshold_checked"] + [
-            f
-            for f in ("suggested_ftp", "suggested_critical_run_power", "suggested_threshold_pace")
-            if getattr(activity, f)
-        ]
-        activity.save(update_fields=update_fields)
         return Response(ActivitySerializer(activity).data)
 
 

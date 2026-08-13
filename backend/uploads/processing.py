@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from activities.models import Activity, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
+from athletes.threshold_history import recompute_for_activity
 from athletes.zones import get_or_create_zone_set, reference_for
 from scheduling.models import ScheduledWorkout
 from scheduling.serializers import ScheduledWorkoutSerializer
@@ -230,113 +231,6 @@ def _best_pace_seconds_per_km(
     return best
 
 
-def _best_pace_seconds_per_km_over_duration(
-    t_series: Sequence[int], distance_km_series: Sequence[float | None], target_seconds: int
-) -> float | None:
-    """The fastest pace sustained over any contiguous span of the activity lasting at least
-    target_seconds - the dual of _best_pace_seconds_per_km (fixed *time* target, variable
-    *distance* window, the opposite shape - same two-pointer scan, same forward-fill-cumulative-
-    distance convention, just swapping which axis is the fixed target). Used to detect a
-    possible new threshold_pace from a sustained effort (e.g. ~1 hour), mirroring
-    _sliding_window_best_avg's duration-based windows for power/HR, which pace can't use
-    directly since pace needs distance, not a flat per-sample value.
-    """
-    cumulative: list[float] = []
-    last = 0.0
-    for d in distance_km_series:
-        if d is not None:
-            last = d
-        cumulative.append(last)
-
-    n = len(cumulative)
-    best: float | None = None
-    left = 0
-    right = 0
-    while left < n:
-        if right < left:
-            right = left
-        while right < n and t_series[right] - t_series[left] < target_seconds:
-            right += 1
-        if right >= n:
-            break
-        duration = t_series[right] - t_series[left]
-        actual_distance = cumulative[right] - cumulative[left]
-        if duration > 0 and actual_distance > 0:
-            pace = duration / actual_distance
-            if best is None or pace < best:
-                best = pace
-        left += 1
-    return best
-
-
-def _mmss_to_seconds(value: str) -> int | None:
-    # A local copy, not a cross-app import of athletes/zones.py's private helper - matches this
-    # file's existing convention of small local helpers (see _sliding_window_best_avg etc.).
-    if not value:
-        return None
-    parts = value.split(":")
-    if len(parts) != 2:
-        return None
-    try:
-        minutes, seconds = int(parts[0]), int(parts[1])
-    except ValueError:
-        return None
-    return minutes * 60 + seconds
-
-
-def _seconds_to_mmss(seconds: float) -> str:
-    total = round(seconds)
-    return f"{total // 60}:{total % 60:02d}"
-
-
-# Bike FTP is conventionally estimated as 95% of best 20-minute power (the "20-minute test").
-FTP_TEST_MULTIPLIER = 0.95
-FTP_TEST_WINDOW_SECONDS = 1200
-# Running threshold (both critical_run_power and threshold_pace) is conventionally estimated
-# directly from a sustained ~1-hour effort - no multiplier, unlike bike's 20-minute test.
-RUNNING_THRESHOLD_WINDOW_SECONDS = 3600
-
-
-def detect_threshold_increase(
-    activity: Activity,
-    power_series: Sequence[float | None],
-    t_series: Sequence[int],
-    distance_km_series: Sequence[float | None],
-) -> None:
-    """Flags activity.suggested_ftp/suggested_critical_run_power/suggested_threshold_pace when
-    this activity's own best effort implies a higher threshold than what's already on record
-    (activity.ftp_snapshot/etc, set at ingest from the athlete's profile - see models.py).
-    Computed directly from this activity's raw streams rather than the persisted BestEffort
-    table, which only gets cycling_power/running_power rows once a threshold is ALREADY set
-    (see compute_kind_best_efforts) - relying on it would silently miss detecting a first-ever
-    threshold. Never suggests a decrease. Caller is responsible for saving `activity`.
-    """
-    if activity.sport == "bike":
-        values = [p if p is not None else 0 for p in power_series]
-        best_20min = _sliding_window_best_avg(values, FTP_TEST_WINDOW_SECONDS)
-        if best_20min is not None:
-            implied_ftp = round(FTP_TEST_MULTIPLIER * best_20min)
-            if implied_ftp > (activity.ftp_snapshot or 0):
-                activity.suggested_ftp = implied_ftp
-
-    elif activity.sport == "run":
-        values = [p if p is not None else 0 for p in power_series]
-        best_60min_power = _sliding_window_best_avg(values, RUNNING_THRESHOLD_WINDOW_SECONDS)
-        if best_60min_power is not None:
-            implied_crp = round(best_60min_power)
-            if implied_crp > (activity.critical_run_power_snapshot or 0):
-                activity.suggested_critical_run_power = implied_crp
-
-        best_60min_pace = _best_pace_seconds_per_km_over_duration(
-            t_series, distance_km_series, RUNNING_THRESHOLD_WINDOW_SECONDS
-        )
-        if best_60min_pace is not None:
-            current_pace_seconds = _mmss_to_seconds(activity.threshold_pace_snapshot)
-            # Pace is "lower is better" - a *faster* (smaller) implied pace is the improvement.
-            if current_pace_seconds is None or best_60min_pace < current_pace_seconds:
-                activity.suggested_threshold_pace = _seconds_to_mmss(best_60min_pace)
-
-
 def compute_duration_curve(series: Sequence[float | None], durations: Sequence[int]) -> dict[str, float]:
     values = [v if v is not None else 0 for v in series]
     points: dict[str, float] = {}
@@ -404,16 +298,28 @@ def _hr_based_tss(athlete: User, heartrate_series: Sequence[float | None], movin
 def compute_tss(
     activity: Activity, athlete: User, norm_power: float | None, heartrate_series: Sequence[float | None]
 ) -> int:
-    # Reads the activity's own threshold snapshot, not the athlete's current profile - so
-    # this stays historically accurate whether called at ingest or from an explicit "Recompute
-    # TSS" action (both athlete-level and per-activity - see athletes/views.py and
-    # activities/views.py). `athlete` is still needed below for the HR-based fallback, which has
-    # no per-activity snapshot equivalent (lthr isn't snapshotted - see the plan's Key decisions).
+    # Reads the ThresholdHistory value effective as of this activity's own date (via
+    # reference_for), not the athlete's current profile - so this stays historically accurate
+    # whether called at ingest or from an explicit "Recompute TSS" action (both athlete-level and
+    # per-activity - see athletes/views.py and activities/views.py). `athlete` is still needed
+    # below for the HR-based fallback, which has no per-activity history equivalent (lthr isn't
+    # rolling-window derived - see the plan's Key decisions).
+    #
+    # If no ledger entry is effective yet (e.g. this athlete's very first activity, before any
+    # qualifying effort has established one), fall back to the athlete's live profile value -
+    # TSS should reflect the best available evidence, even if that's just a manually-entered
+    # FTP with no qualifying activity behind it yet. reference_for(athlete, zone_type) alone
+    # (no activity) is still strict/None-returning for the Zones tab display - this fallback is
+    # local to TSS, not a change to reference_for's own contract.
     threshold_power = None
     if activity.sport == "bike":
-        threshold_power = activity.ftp_snapshot
+        threshold_power = reference_for(athlete, "bike_power", activity)
+        if threshold_power is None:
+            threshold_power = reference_for(athlete, "bike_power")
     elif activity.sport == "run":
-        threshold_power = activity.critical_run_power_snapshot
+        threshold_power = reference_for(athlete, "run_power", activity)
+        if threshold_power is None:
+            threshold_power = reference_for(athlete, "run_power")
 
     power_tss = _power_based_tss(norm_power, threshold_power, activity.moving_time)
     if power_tss is not None:
@@ -844,12 +750,6 @@ def _ingest_activity(
         end_weight_kg=upload.weight_after_kg if parent is None else None,
         fluids_ml=upload.fluids_ml if parent is None else None,
         shoe_id=upload.shoe_id if wears_shoe else None,
-        # Snapshot the athlete's threshold(s) as of right now, so zones/TSS for this activity
-        # stay historically accurate even if the athlete's profile changes later (see
-        # athletes/zones.py::reference_for). Only the field(s) relevant to this sport are set.
-        ftp_snapshot=athlete.ftp if sport == "bike" else None,
-        critical_run_power_snapshot=athlete.critical_run_power if sport == "run" else None,
-        threshold_pace_snapshot=athlete.threshold_pace if sport == "run" else "",
     )
 
     Record.objects.bulk_create(
@@ -903,15 +803,10 @@ def _ingest_activity(
     activity.norm_power = round(norm_power) if norm_power is not None else None
     activity.avg_hr = round(avg_hr) if avg_hr is not None else None
     activity.max_hr = max_hr
-    if norm_power and activity.sport == "bike" and activity.ftp_snapshot:
-        activity.intensity = round(norm_power / activity.ftp_snapshot, 3)
-    elif norm_power and activity.sport == "run" and activity.critical_run_power_snapshot:
-        activity.intensity = round(norm_power / activity.critical_run_power_snapshot, 3)
-    if not is_multisport_parent:
-        # The multisport parent's TSS is set by the caller as the sum of its legs'.
-        activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
+    # intensity/tss are computed further down, after threshold history has had a chance to
+    # recompute from this same activity's own effort - see the comment there.
 
-    update_fields = ["avg_power", "norm_power", "avg_hr", "max_hr", "intensity", "tss"]
+    update_fields = ["avg_power", "norm_power", "avg_hr", "max_hr"]
     if activity.sport == "run":
         air_temp_series = [s.get("air_temp") for s in samples]
         humidity_series = [s.get("humidity") for s in samples]
@@ -975,8 +870,6 @@ def _ingest_activity(
         activity.training_effect_label = training_effect_label(aerobic_te)
         update_fields.extend(["aerobic_training_effect", "anaerobic_training_effect", "training_effect_label"])
 
-    activity.save(update_fields=update_fields)
-
     if not is_multisport_parent:
         # Duration curves and best efforts compare like-for-like within a sport, and no
         # multisport workouts exist to match - the parent's legs handle all three instead.
@@ -986,13 +879,26 @@ def _ingest_activity(
         update_best_efforts(activity, athlete, power_series, t_series, distance_km_series, hr_series)
         attempt_workout_match(activity, athlete)
 
-        detect_threshold_increase(activity, power_series, t_series, distance_km_series)
-        activity.threshold_checked = True
-        update_fields = ["threshold_checked"] + [
-            f
-            for f in ("suggested_ftp", "suggested_critical_run_power", "suggested_threshold_pace")
-            if getattr(activity, f)
-        ]
-        activity.save(update_fields=update_fields)
+        # Recompute threshold history BEFORE intensity/TSS below, so that if this activity's own
+        # effort raises the athlete's current threshold, this same activity is rated against the
+        # new value too - not just future ones (see athletes/threshold_history.py).
+        recompute_for_activity(activity)
+
+        # Same live-profile fallback as compute_tss below, for the same reason: before any
+        # qualifying effort has established a ledger entry, intensity should still reflect the
+        # athlete's manually-declared threshold rather than being left unset.
+        if norm_power and activity.sport == "bike":
+            ftp = reference_for(athlete, "bike_power", activity) or reference_for(athlete, "bike_power")
+            if ftp:
+                activity.intensity = round(norm_power / ftp, 3)
+        elif norm_power and activity.sport == "run":
+            critical_run_power = reference_for(athlete, "run_power", activity) or reference_for(athlete, "run_power")
+            if critical_run_power:
+                activity.intensity = round(norm_power / critical_run_power, 3)
+        # The multisport parent's TSS is set by the caller as the sum of its legs'.
+        activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
+        update_fields.extend(["intensity", "tss"])
+
+    activity.save(update_fields=update_fields)
 
     return activity

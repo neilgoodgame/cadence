@@ -19,8 +19,9 @@ from core.auth_context import get_effective_athlete_id
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 from core.permissions import user_may_read, user_may_write
 
-from .models import ZoneSet
+from .models import ThresholdHistory, ZoneSet
 from .serializers import AthleteUpdateSerializer, FitnessPointSerializer, ZoneSetReplaceSerializer, ZoneSetSerializer
+from .threshold_history import is_stale, rebuild_history_stream, refresh_field
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for, zone_types_affected_by
 
 # 4w/16w match BEST_EFFORT_TRIM_PERIOD_DAYS in uploads/processing.py exactly - the Best Efforts
@@ -245,77 +246,120 @@ class RecomputeAthleteStatsView(APIView):
         return response
 
 
-_THRESHOLD_DETECTABLE_SPORTS = ("bike", "run")
-_SUGGESTED_FIELDS = ("suggested_ftp", "suggested_critical_run_power", "suggested_threshold_pace")
+_THRESHOLD_FIELDS = ("ftp", "critical_run_power", "threshold_pace")
 
 
-def _recompute_thresholds_stream(
-    athlete: User, sport: str | None, after: str | None, before: str | None
-) -> Iterator[str]:
-    from uploads.processing import detect_threshold_increase
-
-    candidates = Activity.objects.filter(
-        athlete=athlete,
-        parent_activity__isnull=True,
-        sport__in=_THRESHOLD_DETECTABLE_SPORTS,
-    )
-    if sport:
-        candidates = candidates.filter(sport=sport)
-    if after:
-        candidates = candidates.filter(start_date__date__gte=after)
-    if before:
-        candidates = candidates.filter(start_date__date__lte=before)
-
-    activities = list(candidates.order_by("start_date"))
-    total = len(activities)
-    flagged = 0
-
-    for i, activity in enumerate(activities):
-        records = activity.records.order_by("t").values_list("t", "power", "distance_km")
-        t_series = [r[0] for r in records]
-        power_series = [r[1] for r in records]
-        distance_km_series = [r[2] for r in records]
-
-        detect_threshold_increase(activity, power_series, t_series, distance_km_series)
-        activity.threshold_checked = True
-        set_fields = [f for f in _SUGGESTED_FIELDS if getattr(activity, f)]
-        if set_fields:
-            flagged += 1
-        activity.save(update_fields=["threshold_checked", *set_fields])
-        yield f"data: {json.dumps({'current': i + 1, 'total': total})}\n\n"
-
-    yield f"event: done\ndata: {json.dumps({'checked': total, 'flagged': flagged})}\n\n"
+def _validate_threshold_field(field: str | None) -> str:
+    if field not in _THRESHOLD_FIELDS:
+        raise ValidationError({"field": "Must be one of ftp, critical_run_power, threshold_pace."})
+    return field
 
 
-class RecomputeAthleteThresholdsView(APIView):
-    """Bulk equivalent of activities.views.RecomputeActivityThresholdsView - re-runs
-    detect_threshold_increase across every one of the athlete's bike/run activities (the only
-    sports it ever applies to), optionally narrowed by sport/date range, so activities that
-    predate the feature (or were imported, which also skips detection) can be checked in bulk
-    rather than one at a time. Streamed like RecomputeAthleteStatsView, for the same reason -
-    an athlete can have thousands of activities and a single synchronous request risks a
-    client/proxy timeout with no progress feedback."""
+def _threshold_summary_for_field(athlete: User, field: str) -> dict:
+    entries = list(ThresholdHistory.objects.filter(athlete=athlete, field=field).order_by("-effective_from")[:2])
+    if not entries:
+        return {
+            "value": None,
+            "previous_value": None,
+            "source_activity_id": None,
+            "effective_from": None,
+            "stale": True,
+        }
+    current, previous = entries[0], entries[1] if len(entries) > 1 else None
+
+    def _value(entry: ThresholdHistory) -> int | str:
+        return entry.value_pace if field == "threshold_pace" else entry.value_numeric
+
+    return {
+        "value": _value(current),
+        "previous_value": _value(previous) if previous is not None else None,
+        "source_activity_id": current.source_activity_id,
+        "effective_from": current.effective_from,
+        "stale": is_stale(athlete, field),
+    }
+
+
+class AthleteThresholdsView(APIView):
+    """GET /v1/athletes/<id>/thresholds - current FTP/critical_run_power/threshold_pace plus
+    each one's previous value and whether its source activity has aged out of the athlete's
+    rolling window (see athletes/threshold_history.py). A plain cache read plus a date
+    comparison - no recompute happens here, so it's cheap enough for the dashboard to call on
+    every view. A stale field is never silently corrected; the dashboard offers a manual
+    refresh (see RefreshThresholdView) instead."""
+
+    def get(self, request: Request, id: str) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        athlete = get_object_or_404(User, pk=id)
+        return Response({field: _threshold_summary_for_field(athlete, field) for field in _THRESHOLD_FIELDS})
+
+
+class ThresholdHistoryListView(APIView):
+    """GET /v1/athletes/<id>/threshold-history?field=... - the full ledger for one field, most
+    recent first, each entry linking to the activity whose effort set it. Backs the history
+    screen the dashboard's per-field links lead to."""
+
+    def get(self, request: Request, id: str) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        athlete = get_object_or_404(User, pk=id)
+        field = _validate_threshold_field(request.query_params.get("field"))
+
+        entries = ThresholdHistory.objects.filter(athlete=athlete, field=field).order_by("-effective_from")
+        data = [
+            {
+                "value": entry.value_pace if field == "threshold_pace" else entry.value_numeric,
+                "source_activity_id": entry.source_activity_id,
+                "effective_from": entry.effective_from,
+            }
+            for entry in entries
+        ]
+        return Response({"field": field, "data": data})
+
+
+class RefreshThresholdView(APIView):
+    """POST /v1/athletes/<id>/thresholds/refresh?field=... - the dashboard's manual "refresh
+    now" action for a stale field: re-runs the same cheap current-window computation the ingest
+    hook uses, on demand rather than waiting for the next activity. Returns the updated summary
+    for every field (same shape as AthleteThresholdsView), since a manual refresh is rare enough
+    that recomputing all three is negligible and simplest for the frontend to consume."""
+
+    def post(self, request: Request, id: str) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        athlete = get_object_or_404(User, pk=id)
+        field = _validate_threshold_field(request.query_params.get("field"))
+
+        refresh_field(athlete, field)
+        athlete.refresh_from_db()
+        return Response({f: _threshold_summary_for_field(athlete, f) for f in _THRESHOLD_FIELDS})
+
+
+def _recompute_threshold_history_stream(athlete: User, field: str) -> Iterator[str]:
+    for current, total in rebuild_history_stream(athlete, field):
+        yield f"data: {json.dumps({'current': current, 'total': total})}\n\n"
+    yield f"event: done\ndata: {json.dumps({'field': field})}\n\n"
+
+
+class RecomputeThresholdHistoryView(APIView):
+    """POST /v1/athletes/<id>/recompute-threshold-history?field=... - rebuilds the entire
+    history ledger for one field from scratch, replaying the athlete's activities oldest-first
+    (see athletes/threshold_history.py::rebuild_history_stream). For bootstrapping history on an
+    existing account, or after changing the window/sanity-check settings. Streamed like the
+    other bulk recomputes - an athlete can have thousands of activities."""
 
     def post(self, request: Request, id: str) -> StreamingHttpResponse:
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, id):
             raise PermissionDenied("You do not have write access to that athlete's data.")
         athlete = get_object_or_404(User, pk=id)
-
-        sport = request.query_params.get("sport")
-        if sport and sport not in _THRESHOLD_DETECTABLE_SPORTS:
-            raise ValidationError({"sport": "Must be one of bike, run."})
-
-        after = request.query_params.get("after")
-        if after and parse_date(after) is None:
-            raise ValidationError({"after": "Expected ISO date (YYYY-MM-DD)."})
-
-        before = request.query_params.get("before")
-        if before and parse_date(before) is None:
-            raise ValidationError({"before": "Expected ISO date (YYYY-MM-DD)."})
+        field = _validate_threshold_field(request.query_params.get("field"))
 
         response = StreamingHttpResponse(
-            _recompute_thresholds_stream(athlete, sport, after, before), content_type="text/event-stream"
+            _recompute_threshold_history_stream(athlete, field), content_type="text/event-stream"
         )
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"

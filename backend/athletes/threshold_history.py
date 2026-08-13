@@ -9,12 +9,14 @@ endpoint, the bulk rebuild endpoint) are responsible for persisting the results.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 from accounts.models import User
 from activities.models import Activity
+
+from .models import ThresholdHistory
 
 FIELD_SPORT = {
     "ftp": "bike",
@@ -185,25 +187,25 @@ def current_window_value(athlete: User, field: str, as_of: date | None = None) -
     return best
 
 
-def replay_full_history(athlete: User, field: str) -> list[ThresholdHistoryEntry]:
-    """Rebuilds the full history ledger for one field by replaying the athlete's activities
-    oldest-first, applying the same windowed-best-with-sanity-filter rule as current_window_value
-    but incrementally over time - a date-windowed sliding-window-maximum problem (not count-
-    windowed): `window` is a monotonic list of not-yet-expired, not-yet-dominated candidates, kept
-    ordered so the front is always the current best (mirrors the classic sliding-window-maximum
-    deque trick - candidates it dominates can never become the max again while it's still in the
-    window, so they're safe to drop the moment a stronger, more recent one arrives).
-
-    Used only by the bulk "recompute history from oldest" tool - current_window_value is what
-    ingest/refresh use day to day.
-    """
+def _replay_full_history_into(
+    athlete: User, field: str, entries_out: list[ThresholdHistoryEntry]
+) -> Iterator[tuple[int, int]]:
+    """The actual replay loop, shared by replay_full_history (silently exhausted) and
+    rebuild_history_stream (surfaced as SSE progress) - appends to `entries_out` in place
+    (rather than returning a list directly) so a generator can also yield (current, total)
+    progress after each activity without needing a separate non-generator code path to stay in
+    sync. A date-windowed sliding-window-maximum problem (not count-windowed): `window` is a
+    monotonic list of not-yet-expired, not-yet-dominated candidates, kept ordered so the front is
+    always the current best (mirrors the classic sliding-window-maximum deque trick - candidates
+    it dominates can never become the max again while it's still in the window, so they're safe
+    to drop the moment a stronger, more recent one arrives)."""
     activities = list(Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field]).order_by("start_date"))
+    total = len(activities)
 
-    entries: list[ThresholdHistoryEntry] = []
     window: list[Candidate] = []
     current_value: float | None = None
 
-    for activity in activities:
+    for i, activity in enumerate(activities):
         activity_date = activity.start_date.date()
         cutoff = activity_date - timedelta(days=athlete.threshold_window_days)
         window = [c for c in window if c.date > cutoff]
@@ -219,10 +221,123 @@ def replay_full_history(athlete: User, field: str) -> list[ThresholdHistoryEntry
         if new_value != current_value:
             current_value = new_value
             if best is not None:
-                entries.append(
+                entries_out.append(
                     ThresholdHistoryEntry(
                         field=field, value=new_value, activity_id=best.activity_id, effective_from=best.date
                     )
                 )
+        yield i + 1, total
 
+
+def replay_full_history(athlete: User, field: str) -> list[ThresholdHistoryEntry]:
+    """Rebuilds the full history ledger for one field by replaying the athlete's activities
+    oldest-first, applying the same windowed-best-with-sanity-filter rule as current_window_value
+    but incrementally over time - see _replay_full_history_into. Used only by the bulk "recompute
+    history from oldest" tool - current_window_value is what ingest/refresh use day to day.
+    """
+    entries: list[ThresholdHistoryEntry] = []
+    for _ in _replay_full_history_into(athlete, field, entries):
+        pass
     return entries
+
+
+def _latest_entry(athlete: User, field: str) -> ThresholdHistory | None:
+    return ThresholdHistory.objects.filter(athlete=athlete, field=field).order_by("-effective_from").first()
+
+
+def _record_candidate(athlete: User, field: str, candidate: Candidate) -> None:
+    """Writes a new ThresholdHistory row for `candidate` and updates the athlete's cached
+    profile value to match. Caller is responsible for confirming this candidate actually
+    represents a change worth recording."""
+    if field == "threshold_pace":
+        value_numeric, value_pace = None, _seconds_to_mmss(candidate.implied_value)
+    else:
+        value_numeric, value_pace = round(candidate.implied_value), ""
+    ThresholdHistory.objects.create(
+        athlete=athlete,
+        field=field,
+        value_numeric=value_numeric,
+        value_pace=value_pace,
+        source_activity_id=candidate.activity_id,
+        effective_from=candidate.date,
+    )
+    setattr(athlete, field, value_pace if field == "threshold_pace" else value_numeric)
+    athlete.save(update_fields=[field])
+
+
+def _recompute_and_record(athlete: User, field: str, as_of: date | None = None) -> bool:
+    """Runs current_window_value and records it as a new ThresholdHistory entry if it differs
+    from the latest one on file. Returns whether anything actually changed. Shared by
+    recompute_for_activity (activity-triggered, as_of that activity's own date) and
+    refresh_field (athlete-triggered, as_of today)."""
+    candidate = current_window_value(athlete, field, as_of=as_of)
+    if candidate is None:
+        return False
+    latest = _latest_entry(athlete, field)
+    latest_value = None
+    if latest is not None:
+        latest_value = _mmss_to_seconds(latest.value_pace) if field == "threshold_pace" else latest.value_numeric
+    if latest_value == candidate.implied_value:
+        return False
+    _record_candidate(athlete, field, candidate)
+    return True
+
+
+def recompute_for_activity(activity: Activity) -> None:
+    """Checks whether `activity`'s own effort changes the athlete's current window value for
+    each field relevant to its sport (bike -> ftp; run -> critical_run_power and
+    threshold_pace), writing a new ThresholdHistory entry (and updating the athlete's cached
+    profile value) if so. Called at ingest/import time - see
+    uploads/processing.py::_ingest_activity and dataexport/import_reader.py. A no-op for every
+    other sport, same as detection always was.
+    """
+    athlete = activity.athlete
+    for field, sport in FIELD_SPORT.items():
+        if sport == activity.sport:
+            _recompute_and_record(athlete, field, as_of=activity.start_date.date())
+
+
+def refresh_field(athlete: User, field: str) -> bool:
+    """Manual on-demand recompute (the dashboard's "this value is stale - refresh now" action) -
+    the same cheap current-window computation as the ingest hook, just athlete-triggered rather
+    than tied to a specific new activity. Returns whether the value actually changed."""
+    return _recompute_and_record(athlete, field)
+
+
+def is_stale(athlete: User, field: str, as_of: date | None = None) -> bool:
+    """Whether the current entry's source activity has aged out of the trailing window - a
+    plain date comparison, not a recompute, so it's cheap enough to call on every read (e.g. the
+    dashboard). True with no entry at all (nothing to be current)."""
+    as_of = as_of or date.today()
+    latest = _latest_entry(athlete, field)
+    if latest is None:
+        return True
+    return (as_of - latest.effective_from).days > athlete.threshold_window_days
+
+
+def rebuild_history_stream(athlete: User, field: str) -> Iterator[tuple[int, int]]:
+    """The bulk 'recompute history from oldest' tool - replaces the entire ledger for one field
+    with a fresh replay, then syncs the athlete's cached profile value to the result (or clears
+    it if the athlete has no qualifying activities for this field at all). Yields (current,
+    total) progress after each activity processed, for the SSE bulk-rebuild endpoint."""
+    ThresholdHistory.objects.filter(athlete=athlete, field=field).delete()
+    entries: list[ThresholdHistoryEntry] = []
+    yield from _replay_full_history_into(athlete, field, entries)
+
+    ThresholdHistory.objects.bulk_create(
+        ThresholdHistory(
+            athlete=athlete,
+            field=field,
+            value_numeric=None if field == "threshold_pace" else round(entry.value),
+            value_pace=_seconds_to_mmss(entry.value) if field == "threshold_pace" else "",
+            source_activity_id=entry.activity_id,
+            effective_from=entry.effective_from,
+        )
+        for entry in entries
+    )
+    current = entries[-1].value if entries else None
+    if field == "threshold_pace":
+        setattr(athlete, field, _seconds_to_mmss(current) if current is not None else "")
+    else:
+        setattr(athlete, field, round(current) if current is not None else None)
+    athlete.save(update_fields=[field])

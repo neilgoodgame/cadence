@@ -12,7 +12,7 @@ STATUS_CHOICES = [
 
 # The section order both export_writer.py and import_reader.py process in - shared here so
 # the model's choices, the writer/reader's progress reporting, and the frontend's progress
-# bar all agree on the same 5 steps. "activities" is by far the slowest (laps + full-resolution
+# bar all agree on the same 6 steps. "activities" is by far the slowest (laps + full-resolution
 # streams per activity), so a job can sit on it for a while - that's expected, not stalled.
 DATA_TRANSFER_STEPS = [
     ("equipment", "Equipment"),
@@ -20,6 +20,7 @@ DATA_TRANSFER_STEPS = [
     ("activities", "Activities"),
     ("races", "Races"),
     ("scheduled_workouts", "Scheduled workouts"),
+    ("threshold_history", "Threshold history"),
 ]
 
 
@@ -62,6 +63,7 @@ class ImportJob(PrefixedIDModel):
     races_imported = models.IntegerField(default=0)
     workouts_imported = models.IntegerField(default=0)
     scheduled_workouts_imported = models.IntegerField(default=0)
+    threshold_history_imported = models.IntegerField(default=0)
     bikes_imported = models.IntegerField(default=0)
     shoes_imported = models.IntegerField(default=0)
     components_imported = models.IntegerField(default=0)

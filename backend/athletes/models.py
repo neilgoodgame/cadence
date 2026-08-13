@@ -47,9 +47,8 @@ class ThresholdHistory(models.Model):
 
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="threshold_history")
     field = models.CharField(max_length=20, choices=THRESHOLD_FIELD_CHOICES)
-    # Dual-typed like the fields this replaces (Activity.ftp_snapshot vs threshold_pace_snapshot,
-    # User.ftp vs threshold_pace): value_numeric for ftp/critical_run_power, value_pace ("M:SS")
-    # for threshold_pace - only one is ever populated, matching which `field` this row is.
+    # Dual-typed like User.ftp vs threshold_pace: value_numeric for ftp/critical_run_power,
+    # value_pace ("M:SS") for threshold_pace - only one is ever populated, matching `field`.
     value_numeric = models.PositiveIntegerField(null=True, blank=True)
     value_pace = models.CharField(max_length=10, blank=True, default="")
     source_activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="threshold_history")

@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from activities.models import Activity, Lap, Record
+from athletes.models import ThresholdHistory
 from authn.oauth_utils import issue_token_pair
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
 from races.models import Race
@@ -70,7 +71,11 @@ def _seed_full_account(athlete: User) -> dict:
     Race.objects.create(athlete=athlete, name="Local 10k", date=date(2026, 1, 1), sport="bike", activity=child)
     ScheduledWorkout.objects.create(workout=workout, athlete=athlete, date=date(2026, 1, 1), activity=child)
 
-    return {"bike": bike, "workout": workout, "parent": parent, "child": child}
+    threshold_entry = ThresholdHistory.objects.create(
+        athlete=athlete, field="ftp", value_numeric=250, source_activity=child, effective_from=date(2026, 1, 1)
+    )
+
+    return {"bike": bike, "workout": workout, "parent": parent, "child": child, "threshold_entry": threshold_entry}
 
 
 class ExportImportRoundTripTests(TestCase):
@@ -108,6 +113,7 @@ class ExportImportRoundTripTests(TestCase):
         self.assertEqual(counts["bikes_imported"], 1)
         self.assertEqual(counts["shoes_imported"], 1)
         self.assertEqual(counts["components_imported"], 1)
+        self.assertEqual(counts["threshold_history_imported"], 1)
         self.assertEqual(counts["items_skipped"], 0)
 
         imported_child = Activity.objects.get(athlete=self.target, name="Triathlon Bike Leg")
@@ -117,6 +123,12 @@ class ExportImportRoundTripTests(TestCase):
         self.assertIsNotNone(imported_child.workout_id)
         self.assertEqual(Lap.objects.filter(activity=imported_child).count(), 1)
         self.assertEqual(Record.objects.filter(activity=imported_child).count(), 1)
+
+        imported_threshold_entry = ThresholdHistory.objects.get(athlete=self.target)
+        self.assertEqual(imported_threshold_entry.field, "ftp")
+        self.assertEqual(imported_threshold_entry.value_numeric, 250)
+        self.assertEqual(imported_threshold_entry.source_activity_id, imported_child.id)
+        self.assertEqual(imported_threshold_entry.effective_from, date(2026, 1, 1))
 
         imported_race = Race.objects.get(athlete=self.target)
         self.assertEqual(imported_race.activity_id, imported_child.id)
@@ -129,28 +141,66 @@ class ExportImportRoundTripTests(TestCase):
         return Activity.objects.get(athlete=self.source, name="Triathlon Bike Leg").id
 
 
-class ImportThresholdSnapshotFallbackTests(TestCase):
-    """export_writer.py doesn't write ftp_snapshot/etc. into the file yet (that lands with
-    threshold-increase detection) - until then, import_reader.py falls back to the *importing*
-    athlete's current profile, the same graceful-degradation shape already used for the
-    "counts" progress metadata. Once the export side ships, a real round-trip test should be
-    added alongside it to prove the source's own value carries over instead of this fallback."""
+class ImportThresholdHistoryTests(TestCase):
+    """threshold_history entries carry the source athlete's own historical values verbatim -
+    imported activities' zones should reflect what was actually true when they happened, not get
+    re-derived against the importing athlete's own (possibly unrelated) fitness."""
 
-    def test_imported_activity_falls_back_to_the_importing_athletes_current_profile(self):
-        source = User.objects.create_user(email="snapshot-fallback-source@example.cc", password="x", name="Source")
+    def test_imported_activity_carries_over_the_sources_own_historical_value_unchanged(self):
+        source = User.objects.create_user(email="threshold-history-source@example.cc", password="x", name="Source")
         target = User.objects.create_user(
-            email="snapshot-fallback-target@example.cc", password="x", name="Target", ftp=222
+            email="threshold-history-target@example.cc", password="x", name="Target", ftp=222
         )
-        _make_activity(source, sport="bike", name="Ride")
+        activity = _make_activity(source, sport="bike", name="Ride")
+        ThresholdHistory.objects.create(
+            athlete=source, field="ftp", value_numeric=250, source_activity=activity, effective_from=date(2026, 1, 1)
+        )
 
-        relative_path = "exports/test/snapshot-fallback.json.gz"
+        relative_path = "exports/test/threshold-history-roundtrip.json.gz"
         write_export(source.id, None, relative_path)
         read_import(target.id, relative_path)
 
-        imported = Activity.objects.get(athlete=target, name="Ride")
-        self.assertEqual(imported.ftp_snapshot, 222)
+        imported_activity = Activity.objects.get(athlete=target, name="Ride")
+        imported_entry = ThresholdHistory.objects.get(athlete=target)
+        self.assertEqual(imported_entry.field, "ftp")
+        self.assertEqual(imported_entry.value_numeric, 250)
+        self.assertEqual(imported_entry.source_activity_id, imported_activity.id)
+        # The target's own live ftp is untouched by the import - only the ledger is populated.
+        target.refresh_from_db()
+        self.assertEqual(target.ftp, 222)
 
         from django.core.files.storage import default_storage
+
+        default_storage.delete(relative_path)
+
+    def test_a_file_exported_before_this_feature_existed_imports_with_an_empty_ledger(self):
+        # No "threshold_history" key at all in the source document - the pre-feature shape.
+        import os
+
+        from django.core.files.storage import default_storage
+
+        target = User.objects.create_user(email="threshold-history-pre-feature@example.cc", password="x", name="Target")
+        relative_path = "exports/test/threshold-history-pre-feature.json.gz"
+        full_path = default_storage.path(relative_path)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with gzip.GzipFile(full_path, mode="wb") as gz:
+            gz.write(
+                json.dumps(
+                    {
+                        "generated_at": "2026-01-01T00:00:00Z",
+                        "athlete_id": "someone",
+                        "equipment": {"bikes": [], "shoes": [], "components": []},
+                        "workouts": [],
+                        "activities": [],
+                        "races": [],
+                        "scheduled_workouts": [],
+                    }
+                ).encode("utf-8")
+            )
+
+        counts = read_import(target.id, relative_path)
+        self.assertEqual(counts["threshold_history_imported"], 0)
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=target).count(), 0)
 
         default_storage.delete(relative_path)
 
@@ -273,13 +323,15 @@ class ProgressItemsTests(TestCase):
         self.athlete = User.objects.create_user(email="progress-items@example.cc", password="x", name="Athlete")
         _seed_full_account(self.athlete)
         # _seed_full_account: 2 activities, 1 race, 1 workout, 1 scheduled_workout, 1 bike,
-        # 1 shoe, 1 component. Equipment is one section (bikes+shoes+components combined) = 3.
+        # 1 shoe, 1 component, 1 threshold_history entry. Equipment is one section
+        # (bikes+shoes+components combined) = 3.
         self.expected_totals_by_step = {
             "equipment": 3,
             "workouts": 1,
             "activities": 2,
             "races": 1,
             "scheduled_workouts": 1,
+            "threshold_history": 1,
         }
 
     def test_write_export_calls_on_total_and_on_progress_per_section(self):
@@ -392,6 +444,7 @@ class ExportCountsTests(TestCase):
                 "races": 1,
                 "workouts": 1,
                 "scheduled_workouts": 1,
+                "threshold_history": 1,
                 "bikes": 1,
                 "shoes": 1,
                 "components": 1,
@@ -402,6 +455,7 @@ class ExportCountsTests(TestCase):
         self.assertEqual(doc["counts"]["races"], len(doc["races"]))
         self.assertEqual(doc["counts"]["workouts"], len(doc["workouts"]))
         self.assertEqual(doc["counts"]["scheduled_workouts"], len(doc["scheduled_workouts"]))
+        self.assertEqual(doc["counts"]["threshold_history"], len(doc["threshold_history"]))
         self.assertEqual(doc["counts"]["bikes"], len(doc["equipment"]["bikes"]))
         self.assertEqual(doc["counts"]["shoes"], len(doc["equipment"]["shoes"]))
         self.assertEqual(doc["counts"]["components"], len(doc["equipment"]["components"]))
@@ -418,7 +472,8 @@ class ExportCountsTests(TestCase):
             doc = json.loads(gz.read())
 
         # Multisport parent excluded (own sport is "multisport"), workout/scheduled_workout are
-        # sport=run so drop to 0 - equipment stays full regardless of the filter.
+        # sport=run so drop to 0 - the ftp threshold_history entry maps to sport=bike so it
+        # stays 1 - equipment stays full regardless of the filter.
         self.assertEqual(
             doc["counts"],
             {
@@ -426,6 +481,7 @@ class ExportCountsTests(TestCase):
                 "races": 1,
                 "workouts": 0,
                 "scheduled_workouts": 0,
+                "threshold_history": 1,
                 "bikes": 1,
                 "shoes": 1,
                 "components": 1,
