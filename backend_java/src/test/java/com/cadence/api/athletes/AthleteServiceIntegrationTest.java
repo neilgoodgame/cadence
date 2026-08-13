@@ -6,6 +6,8 @@ import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -20,6 +22,9 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private ZoneSetRepository zoneSetRepository;
+
+	@Autowired
+	private ThresholdHistoryRepository thresholdHistoryRepository;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -96,5 +101,49 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 				new AthleteUpdateRequest(null, null, null, null, null, null, null, null, null, null, null, null, true));
 
 		assertThat(athlete.isCopyMatchedWorkoutTags()).isTrue();
+	}
+
+	@Test
+	void updatingFtpCreatesAManualLedgerEntry() {
+		User athlete = newAthlete("manual-ledger@example.cc");
+
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null));
+
+		List<ThresholdHistory> entries = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDesc(
+				athlete.getId(), ThresholdField.FTP);
+		assertThat(entries).hasSize(1);
+		assertThat(entries.get(0).getValueNumeric()).isEqualTo(280);
+		assertThat(entries.get(0).getSourceActivity()).isNull();
+		assertThat(entries.get(0).getEffectiveFrom()).isEqualTo(LocalDate.now());
+	}
+
+	@Test
+	void resubmittingTheSameValueDoesNotDuplicateTheLedgerEntry() {
+		// The Preferences form resubmits every field on every save regardless of whether it was
+		// actually edited - re-saving with the athlete's existing ftp must not insert a second entry.
+		User athlete = newAthlete("manual-ledger-resubmit@example.cc");
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null));
+
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, 70.0, 280, null, null, null, null, null, null, null, null, null));
+
+		assertThat(thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), ThresholdField.FTP)).hasSize(1);
+	}
+
+	@Test
+	void updatingThresholdPaceCreatesAManualLedgerEntry() {
+		User athlete = newAthlete("manual-ledger-pace@example.cc");
+
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, null, null, null, "3:45", null, null, null, null, null, null, null));
+
+		List<ThresholdHistory> entries = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDesc(
+				athlete.getId(), ThresholdField.THRESHOLD_PACE);
+		assertThat(entries).hasSize(1);
+		assertThat(entries.get(0).getValuePace()).isEqualTo("3:45");
+		assertThat(entries.get(0).getSourceActivity()).isNull();
 	}
 }
