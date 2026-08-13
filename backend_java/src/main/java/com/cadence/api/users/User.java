@@ -51,6 +51,20 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "best_effort_top_n", nullable = false)
 	private int bestEffortTopN = 10;
 
+	/** Rolling-window threshold determination (see com.cadence.api.athletes.ThresholdHistoryService):
+	 * ftp/criticalRunPower/thresholdPace above are each the best qualifying effort within the
+	 * trailing thresholdWindowDays - not a one-way ratchet, a value drops automatically once its
+	 * source activity ages out of the window. 112 days = 16 weeks, matching this codebase's
+	 * existing "16w" best-efforts period bucket. */
+	@Column(name = "threshold_window_days", nullable = false)
+	private int thresholdWindowDays = 112;
+
+	/** A candidate activity whose implied value deviates from the athlete's then-current value by
+	 * more than this percentage is treated as an outlier (e.g. corrupt power-meter data) and
+	 * excluded from consideration. */
+	@Column(name = "threshold_sanity_pct", nullable = false)
+	private int thresholdSanityPct = 30;
+
 	@Column(name = "is_coach", nullable = false)
 	private boolean coach = false;
 
@@ -193,6 +207,22 @@ public class User extends PrefixedIdEntity {
 
 	public void setBestEffortTopN(int bestEffortTopN) {
 		this.bestEffortTopN = bestEffortTopN;
+	}
+
+	public int getThresholdWindowDays() {
+		return thresholdWindowDays;
+	}
+
+	public void setThresholdWindowDays(int thresholdWindowDays) {
+		this.thresholdWindowDays = thresholdWindowDays;
+	}
+
+	public int getThresholdSanityPct() {
+		return thresholdSanityPct;
+	}
+
+	public void setThresholdSanityPct(int thresholdSanityPct) {
+		this.thresholdSanityPct = thresholdSanityPct;
 	}
 
 	public boolean isCoach() {
