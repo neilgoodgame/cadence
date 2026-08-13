@@ -1,6 +1,13 @@
 import type { DataTransferStep } from "../../api/types";
 
-const STEPS: DataTransferStep[] = ["equipment", "workouts", "activities", "races", "scheduled_workouts"];
+const STEPS: DataTransferStep[] = [
+  "equipment",
+  "workouts",
+  "activities",
+  "races",
+  "scheduled_workouts",
+  "threshold_history",
+];
 
 const STEP_LABELS: Record<DataTransferStep, string> = {
   equipment: "Equipment (bikes, shoes, components)",
@@ -8,6 +15,7 @@ const STEP_LABELS: Record<DataTransferStep, string> = {
   activities: "Activities (streams + laps - this is the slow part)",
   races: "Races",
   scheduled_workouts: "Scheduled workouts",
+  threshold_history: "Threshold history",
 };
 
 function ProgressBar({ fraction }: { fraction: number }) {

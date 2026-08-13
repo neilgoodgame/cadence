@@ -7,6 +7,7 @@ import { getContexts } from "../api/auth";
 import { Card } from "../components/Card";
 import { CoachingSection } from "./dashboard/CoachingSection";
 import { StatCardsRow } from "./dashboard/StatCardsRow";
+import { ThresholdSummaryCard } from "./dashboard/ThresholdSummaryCard";
 import { NextRaceCard } from "./dashboard/NextRaceCard";
 import { WeekCalendar } from "./dashboard/WeekCalendar";
 import { TrainingHistory } from "./dashboard/TrainingHistory";
@@ -87,6 +88,8 @@ export function DashboardScreen() {
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>Welcome back, {user.name}.</h1>
 
       <StatCardsRow points={points} weekTss={weekTss} />
+
+      <ThresholdSummaryCard />
 
       <NextRaceCard />
 

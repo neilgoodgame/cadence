@@ -7,6 +7,12 @@ export interface Athlete {
   ftp: number | null;
   critical_run_power: number | null;
   threshold_pace: string | null;
+  /** Trailing window (days) a threshold's best qualifying effort must fall within to count -
+   * default 112 (16 weeks). */
+  threshold_window_days: number;
+  /** Per-candidate outlier filter: an effort implying more than this % deviation from the
+   * then-current value is excluded (e.g. corrupt power-meter data) - default 30. */
+  threshold_sanity_pct: number;
   lthr: number | null;
   max_hr: number | null;
   /** Optional - only used for the Karvonen heart-rate-reserve % stat on Activity Analysis. */
@@ -113,6 +119,45 @@ export interface DataList<T> {
   data: T[];
 }
 
+export type ThresholdFieldName = "ftp" | "critical_run_power" | "threshold_pace";
+
+/** One row this activity is the source of - see Activity.threshold_history. */
+export interface ThresholdHistoryEntry {
+  field: ThresholdFieldName;
+  /** Watts for ftp/critical_run_power, "M:SS" for threshold_pace. */
+  value: number | string;
+  is_current: boolean;
+}
+
+/** One field's current state - GET /v1/athletes/{id}/thresholds. */
+export interface ThresholdSummaryEntry {
+  value: number | string | null;
+  previous_value: number | string | null;
+  source_activity_id: string | null;
+  effective_from: string | null;
+  /** The source activity has aged out of the trailing window - surfaced, never silently
+   * auto-corrected. Recomputes on the next activity, or via a manual refresh. */
+  stale: boolean;
+}
+
+export interface ThresholdsSummary {
+  ftp: ThresholdSummaryEntry;
+  critical_run_power: ThresholdSummaryEntry;
+  threshold_pace: ThresholdSummaryEntry;
+}
+
+/** One row of the full ledger for a field - GET /v1/athletes/{id}/threshold-history?field=... */
+export interface ThresholdHistoryPoint {
+  value: number | string;
+  source_activity_id: string | null;
+  effective_from: string;
+}
+
+export interface ThresholdHistoryResponse {
+  field: ThresholdFieldName;
+  data: ThresholdHistoryPoint[];
+}
+
 export interface Activity {
   id: string;
   athlete_id: string;
@@ -152,24 +197,10 @@ export interface Activity {
   trimp: number | null;
   /** Mean % of power from the left leg (dual-sided power meters only). Right % is 100 minus this. */
   avg_left_balance_pct: number | null;
-  /** The athlete's threshold(s) as of when this activity was created - zones/TSS for this
-   * activity are computed against these, not the athlete's current profile, so they stay
-   * historically accurate. Only the field(s) relevant to this activity's own sport are ever
-   * set (bike -> ftp_snapshot, run -> the other two). */
-  ftp_snapshot: number | null;
-  critical_run_power_snapshot: number | null;
-  threshold_pace_snapshot: string;
-  /** Set when this activity's own best effort implies a higher threshold than what's on
-   * record - see ThresholdSuggestionBanner. Cleared once accepted or dismissed, empty string
-   * for pace / null for the power fields when there's nothing pending. */
-  suggested_ftp: number | null;
-  suggested_critical_run_power: number | null;
-  suggested_threshold_pace: string;
-  /** Whether threshold-increase detection has ever run on this activity - false for activities
-   * that predate the feature (or were imported, which also never runs detection), so
-   * ThresholdSuggestionBanner can flag "zones may be based on outdated values" and offer a
-   * retroactive check via recomputeActivityThresholds. */
-  threshold_checked: boolean;
+  /** Every ThresholdHistory ledger entry this activity is (or was) the source of - empty for
+   * the vast majority of activities. `is_current` is false once a later activity's effort has
+   * superseded this one for the same field. See ThresholdHistoryIndicator. */
+  threshold_history: ThresholdHistoryEntry[];
   start_weight_kg: number | null;
   end_weight_kg: number | null;
   fluids_ml: number | null;
@@ -201,6 +232,8 @@ export interface AthleteUpdate {
   ftp?: number;
   critical_run_power?: number;
   threshold_pace?: string;
+  threshold_window_days?: number;
+  threshold_sanity_pct?: number;
   lthr?: number;
   max_hr?: number;
   resting_hr?: number;
@@ -369,9 +402,15 @@ export type UploadStatus = "queued" | "processing" | "ready" | "failed" | "dupli
 
 export type ExportStatus = "queued" | "processing" | "ready" | "failed";
 
-// The 5 sections both export_writer.py/ExportWriter.java and import_reader.py/ImportReader.java
+// The 6 sections both export_writer.py/ExportWriter.java and import_reader.py/ImportReader.java
 // process in - null before processing starts (or once a job reaches a terminal status).
-export type DataTransferStep = "equipment" | "workouts" | "activities" | "races" | "scheduled_workouts";
+export type DataTransferStep =
+  | "equipment"
+  | "workouts"
+  | "activities"
+  | "races"
+  | "scheduled_workouts"
+  | "threshold_history";
 
 export interface ExportJob {
   id: string;
@@ -396,6 +435,7 @@ export interface ImportCounts {
   races_imported: number;
   workouts_imported: number;
   scheduled_workouts_imported: number;
+  threshold_history_imported: number;
   bikes_imported: number;
   shoes_imported: number;
   components_imported: number;

@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { getStreams } from "../../api/activities";
 import { listZones } from "../../api/athletes";
 import { bucketIntoZones } from "../../lib/zones";
-import { formatDuration } from "../../lib/format";
-import type { Activity, ZoneType } from "../../api/types";
+import { formatDuration, formatPace } from "../../lib/format";
+import type { Activity, ZoneSet, ZoneType } from "../../api/types";
 import { HeatStrainCard } from "./HeatStrainCard";
 
 const RESOLUTION_SECONDS = 5; // "medium" resolution steps every 5th sample
@@ -13,21 +13,24 @@ function powerZoneType(activity: Activity): ZoneType {
   return activity.sport === "run" ? "run_power" : "bike_power";
 }
 
-/** The threshold values this activity's zones are actually computed from - the power/pace
- * ones come from this activity's own snapshot (see reference_for), LTHR is always live since
- * heart-rate zones never activity-scope. */
-function referenceSummary(activity: Activity, lthr: number | null): string | null {
+/** The threshold values this activity's zones are actually computed from - the power/pace ones
+ * come from the ThresholdHistory ledger entry effective as of this activity's own date (via
+ * listZones' activity-scoped `reference`, see reference_for), LTHR is always live since
+ * heart-rate zones never activity-scope. `null` reference means no ledger entry was effective
+ * yet at this activity's own date, not "unknown" from a fetch that hasn't resolved. */
+function referenceSummary(activity: Activity, zones: ZoneSet[] | undefined, lthr: number | null): string | null {
   const parts: string[] = [];
+  const referenceFor = (type: ZoneType) => zones?.find((z) => z.type === type)?.reference;
+
   if (activity.sport === "run") {
-    if (activity.critical_run_power_snapshot != null) {
-      parts.push(`Critical power ${activity.critical_run_power_snapshot}W`);
-    }
-    if (activity.threshold_pace_snapshot) {
-      parts.push(`Threshold pace ${activity.threshold_pace_snapshot}/km`);
-    }
+    const criticalRunPower = referenceFor("run_power");
+    if (criticalRunPower != null) parts.push(`Critical power ${criticalRunPower}W`);
+    const thresholdPace = referenceFor("pace");
+    if (thresholdPace != null) parts.push(`Threshold pace ${formatPace(thresholdPace)}`);
   }
-  else if (activity.ftp_snapshot != null) {
-    parts.push(`FTP ${activity.ftp_snapshot}W`);
+  else {
+    const ftp = referenceFor("bike_power");
+    if (ftp != null) parts.push(`FTP ${ftp}W`);
   }
   if (lthr != null) {
     parts.push(`LTHR ${lthr}bpm`);
@@ -124,7 +127,7 @@ export function ZonesTab({ activity, athleteId }: { activity: Activity; athleteI
     queryFn: () => listZones(athleteId, activity.id),
   });
   const lthr = zonesQuery.data?.data.find((z) => z.type === "heart_rate")?.reference ?? null;
-  const summary = referenceSummary(activity, lthr);
+  const summary = referenceSummary(activity, zonesQuery.data?.data, lthr);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
