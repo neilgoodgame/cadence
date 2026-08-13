@@ -335,8 +335,11 @@ public class ExportWriter {
 				: thresholdHistoryRepository.findByAthleteIdAndFieldInOrderByEffectiveFrom(athleteId, thresholdFieldsFor(sportFilter));
 		generator.writeArrayPropertyStart("threshold_history");
 		for (ThresholdHistory entry : entries) {
+			// getSourceActivity() is null for a manually-entered value (see
+			// ThresholdHistoryService.recordManualValue) - not sourced from any activity.
+			String sourceActivityId = entry.getSourceActivity() != null ? entry.getSourceActivity().getId() : null;
 			generator.writePOJO(new ThresholdHistoryExportEntry(entry.getField(), entry.getValueNumeric(),
-					entry.getValuePace(), entry.getSourceActivity().getId(), entry.getEffectiveFrom()));
+					entry.getValuePace(), sourceActivityId, entry.getEffectiveFrom()));
 			progress.tick();
 		}
 		generator.writeEndArray();

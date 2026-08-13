@@ -45,8 +45,10 @@ public class ThresholdHistory {
 	@Column(name = "value_pace", nullable = false)
 	private String valuePace = "";
 
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "source_activity_id", nullable = false)
+	// Null for a manually-entered value (see ThresholdHistoryService.recordManualValue) - the
+	// athlete declared it directly via their profile, not from a specific activity's effort.
+	@ManyToOne(fetch = FetchType.LAZY, optional = true)
+	@JoinColumn(name = "source_activity_id", nullable = true)
 	private Activity sourceActivity;
 
 	@Column(name = "effective_from", nullable = false)

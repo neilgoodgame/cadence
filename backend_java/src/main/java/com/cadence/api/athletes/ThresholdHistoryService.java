@@ -100,6 +100,44 @@ public class ThresholdHistoryService {
 		return recomputeAndRecord(athlete, field, null);
 	}
 
+	/** The athlete directly declared this value via their profile (PATCH /v1/athletes/{id}) -
+	 * trusted unconditionally (no sanity-band check, no window search: an explicit choice, not a
+	 * computed candidate), effective from today. Behaves exactly like any other ledger entry from
+	 * here on: ages out after thresholdWindowDays like any other, and can be superseded by a
+	 * later qualifying activity or another manual edit. A no-op if the submitted value matches
+	 * what's already current (e.g. re-saving the profile form without touching this field - the
+	 * frontend always resubmits every field). Doesn't touch the athlete's live field itself - the
+	 * caller (AthleteService.updateProfile) already wrote that as part of the same request. */
+	@Transactional
+	public boolean recordManualValue(User athlete, ThresholdField field, Integer valueNumeric, String valuePace) {
+		Double implied = field == ThresholdField.THRESHOLD_PACE
+				? mmssToSeconds(valuePace)
+				: (valueNumeric != null ? valueNumeric.doubleValue() : null);
+		if (implied == null || implied == 0) {
+			return false;
+		}
+		ThresholdHistory latest = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), field).orElse(null);
+		Double latestValue = latest == null ? null
+				: field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(latest.getValuePace()) : latest.getValueNumeric().doubleValue();
+		if (Objects.equals(latestValue, implied)) {
+			return false;
+		}
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(athlete);
+		entry.setField(field);
+		entry.setSourceActivity(null);
+		entry.setEffectiveFrom(LocalDate.now());
+		if (field == ThresholdField.THRESHOLD_PACE) {
+			entry.setValuePace(valuePace);
+		}
+		else {
+			entry.setValueNumeric(valueNumeric);
+		}
+		thresholdHistoryRepository.save(entry);
+		return true;
+	}
+
 	private boolean recomputeAndRecord(User athlete, ThresholdField field, LocalDate asOf) {
 		Candidate candidate = calculator.currentWindowValue(athlete, field, asOf);
 		if (candidate == null) {
@@ -189,6 +227,11 @@ public class ThresholdHistoryService {
 		return field == ThresholdField.THRESHOLD_PACE ? entry.getValuePace() : entry.getValueNumeric();
 	}
 
+	// Null for a manually-entered value (see recordManualValue) - not sourced from any activity.
+	private static String sourceActivityIdOf(ThresholdHistory entry) {
+		return entry.getSourceActivity() != null ? entry.getSourceActivity().getId() : null;
+	}
+
 	/** GET /v1/athletes/{id}/thresholds' per-field entry: current + previous value, and whether
 	 * the current one has aged out of the window. */
 	public ThresholdSummaryEntry summaryFor(User athlete, ThresholdField field) {
@@ -201,14 +244,14 @@ public class ThresholdHistoryService {
 		ThresholdHistory previous = entries.size() > 1 ? entries.get(1) : null;
 		boolean stale = ChronoUnit.DAYS.between(current.getEffectiveFrom(), LocalDate.now()) > athlete.getThresholdWindowDays();
 		return new ThresholdSummaryEntry(valueOf(field, current), previous != null ? valueOf(field, previous) : null,
-				current.getSourceActivity().getId(), current.getEffectiveFrom(), stale);
+				sourceActivityIdOf(current), current.getEffectiveFrom(), stale);
 	}
 
 	/** GET /v1/athletes/{id}/threshold-history?field=... - the full ledger, most recent first. */
 	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field) {
 		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), field).stream()
 				.map(entry -> new ThresholdHistoryEntryResponse(
-						valueOf(field, entry), entry.getSourceActivity().getId(), entry.getEffectiveFrom()))
+						valueOf(field, entry), sourceActivityIdOf(entry), entry.getEffectiveFrom()))
 				.toList();
 	}
 }

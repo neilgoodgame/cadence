@@ -652,8 +652,15 @@ public class ImportReader {
 			JsonParser parser, User athlete, Map<String, String> activityIdMap, Counts counts, Progress progress) {
 		while (parser.nextToken() != JsonToken.END_ARRAY) {
 			ThresholdHistoryExportEntry entry = parser.readValueAs(ThresholdHistoryExportEntry.class);
-			String newActivityId = entry.sourceActivityId() != null ? activityIdMap.get(entry.sourceActivityId()) : null;
-			if (newActivityId == null || entry.effectiveFrom() == null) {
+			// A row with no sourceActivityId at all is a manually-entered value (see
+			// ThresholdHistoryService.recordManualValue), not a malformed or unmapped reference -
+			// it imports with sourceActivity=null, same as it was on the source athlete. Only a
+			// row that *had* a source activity but whose id isn't in activityIdMap (that activity
+			// failed to import, or wasn't included in a sport-filtered export) is a genuinely
+			// dangling reference and gets skipped.
+			String rawSourceActivityId = entry.sourceActivityId();
+			String newActivityId = rawSourceActivityId != null ? activityIdMap.get(rawSourceActivityId) : null;
+			if (entry.effectiveFrom() == null || (rawSourceActivityId != null && newActivityId == null)) {
 				counts.skipped++;
 				progress.tick();
 				continue;
@@ -665,7 +672,7 @@ public class ImportReader {
 					row.setField(entry.field());
 					row.setValueNumeric(entry.valueNumeric());
 					row.setValuePace(entry.valuePace() != null ? entry.valuePace() : "");
-					row.setSourceActivity(activityRepository.getReferenceById(newActivityId));
+					row.setSourceActivity(newActivityId != null ? activityRepository.getReferenceById(newActivityId) : null);
 					row.setEffectiveFrom(entry.effectiveFrom());
 					thresholdHistoryRepository.save(row);
 				});

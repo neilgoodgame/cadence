@@ -476,6 +476,91 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void aManuallyEnteredValueRoundTripsWithNoSourceActivity() throws Exception {
+		// sourceActivity=null (see ThresholdHistoryService.recordManualValue) - not a malformed
+		// or unmapped reference, so this must NOT be treated as a dangling link and skipped.
+		User source = newUser("threshold-manual-roundtrip-source@example.cc");
+		User target = newUser("threshold-manual-roundtrip-target@example.cc");
+
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(source);
+		entry.setField(ThresholdField.FTP);
+		entry.setValueNumeric(260);
+		entry.setSourceActivity(null);
+		entry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		thresholdHistoryRepository.save(entry);
+
+		Path file = Files.createTempFile("import-threshold-manual-roundtrip-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				exportWriter.write(source.getId(), null, generator);
+			}
+
+			ImportCounts counts = importReader.read(target.getId(), file);
+
+			assertThat(counts.thresholdHistoryImported()).isEqualTo(1);
+			assertThat(counts.itemsSkipped()).isZero();
+			ThresholdHistory imported = thresholdHistoryRepository
+					.findByAthleteIdAndFieldOrderByEffectiveFromDesc(target.getId(), ThresholdField.FTP).get(0);
+			assertThat(imported.getValueNumeric()).isEqualTo(260);
+			assertThat(imported.getSourceActivity()).isNull();
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
+
+	@Test
+	void aDanglingSourceActivityReferenceIsStillSkipped() throws Exception {
+		// Unlike a manual entry (sourceActivityId absent from the row entirely), this row HAS a
+		// sourceActivityId but no matching activity appears anywhere in the file - genuinely
+		// unmappable (e.g. that specific activity failed to import), must still be skipped
+		// rather than silently imported as a "manual" entry.
+		User target = newUser("threshold-dangling-target@example.cc");
+		Path file = Files.createTempFile("import-threshold-dangling-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				generator.writeStartObject();
+				generator.writeStringProperty("generated_at", Instant.now().toString());
+				generator.writeStringProperty("athlete_id", "usr_doesnotmatter");
+				generator.writeObjectPropertyStart("equipment");
+				generator.writeArrayPropertyStart("bikes");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("shoes");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("components");
+				generator.writeEndArray();
+				generator.writeEndObject();
+				generator.writeArrayPropertyStart("workouts");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("activities");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("races");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("scheduled_workouts");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("threshold_history");
+				generator.writePOJO(new com.cadence.api.export.dto.ThresholdHistoryExportEntry(
+						ThresholdField.FTP, 260, "", "act_doesnotexist", LocalDate.of(2026, 1, 1)));
+				generator.writeEndArray();
+				generator.writeEndObject();
+			}
+
+			ImportCounts counts = importReader.read(target.getId(), file);
+
+			assertThat(counts.thresholdHistoryImported()).isZero();
+			assertThat(counts.itemsSkipped()).isEqualTo(1);
+			assertThat(thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDesc(
+					target.getId(), ThresholdField.FTP)).isEmpty();
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
+
+	@Test
 	void aFileExportedBeforeThisFeatureExistedImportsWithAnEmptyLedger() throws Exception {
 		// No "threshold_history" key at all in the source document - the pre-feature shape.
 		User target = newUser("threshold-history-pre-feature-target@example.cc");

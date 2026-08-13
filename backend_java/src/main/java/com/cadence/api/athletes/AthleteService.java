@@ -14,10 +14,12 @@ public class AthleteService {
 
 	private final UserRepository userRepository;
 	private final ZoneService zoneService;
+	private final ThresholdHistoryService thresholdHistoryService;
 
-	public AthleteService(UserRepository userRepository, ZoneService zoneService) {
+	public AthleteService(UserRepository userRepository, ZoneService zoneService, ThresholdHistoryService thresholdHistoryService) {
 		this.userRepository = userRepository;
 		this.zoneService = zoneService;
+		this.thresholdHistoryService = thresholdHistoryService;
 	}
 
 	/** Applies the patch and returns the zone types to report as recomputed - see {@link ZoneService#recomputedZoneTypes}. */
@@ -36,17 +38,24 @@ public class AthleteService {
 			athlete.setWeightKg(request.weightKg());
 			changed.add("weightKg");
 		}
+		// A manually-entered threshold functions as an initial value (or a correction) just like
+		// any other ledger entry - see ThresholdHistoryService.recordManualValue. The Preferences
+		// form resubmits every field on every save regardless of whether it was edited, so
+		// recordManualValue's own no-op-if-unchanged check is load-bearing here.
 		if (request.ftp() != null) {
 			athlete.setFtp(request.ftp());
 			changed.add("ftp");
+			thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, request.ftp(), null);
 		}
 		if (request.criticalRunPower() != null) {
 			athlete.setCriticalRunPower(request.criticalRunPower());
 			changed.add("criticalRunPower");
+			thresholdHistoryService.recordManualValue(athlete, ThresholdField.CRITICAL_RUN_POWER, request.criticalRunPower(), null);
 		}
 		if (request.thresholdPace() != null) {
 			athlete.setThresholdPace(request.thresholdPace());
 			changed.add("thresholdPace");
+			thresholdHistoryService.recordManualValue(athlete, ThresholdField.THRESHOLD_PACE, null, request.thresholdPace());
 		}
 		if (request.lthr() != null) {
 			athlete.setLthr(request.lthr());
