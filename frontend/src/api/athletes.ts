@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchStream } from "./client";
+import { toQueryString } from "./activities";
 import type {
   Athlete,
   AthleteUpdate,
@@ -8,6 +9,9 @@ import type {
   BestEffortPeriod,
   DataList,
   FitnessPoint,
+  ThresholdFieldName,
+  ThresholdHistoryResponse,
+  ThresholdsSummary,
   Zone,
   ZoneSet,
   ZoneSetUpdateResponse,
@@ -106,35 +110,47 @@ export function trimBestEfforts(athleteId: string): Promise<void> {
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts/trim`, { method: "POST" });
 }
 
-export type RecomputeThresholdsEvent =
-  | { type: "progress"; current: number; total: number }
-  | { type: "done"; checked: number; flagged: number };
-
-export interface RecomputeThresholdsFilters {
-  sport?: "bike" | "run";
-  after?: string;
-  before?: string;
+/** Current + previous value and staleness for all three fields at once - the dashboard widget's
+ * summary read. No recompute - stale just means "will update on the next activity, or refresh
+ * below." */
+export function getThresholds(athleteId: string): Promise<ThresholdsSummary> {
+  return apiFetch<ThresholdsSummary>(`/v1/athletes/${athleteId}/thresholds`);
 }
 
-/** Bulk counterpart to applyThresholdSuggestion's per-activity check (see
- * ThresholdSuggestionBanner) - re-runs threshold-increase detection across every matching
- * activity, so a legacy/imported activity doesn't need to be opened individually. */
-export async function* recomputeThresholdsStream(
-  athleteId: string,
-  filters: RecomputeThresholdsFilters = {},
-): AsyncGenerator<RecomputeThresholdsEvent> {
-  const params = new URLSearchParams();
-  if (filters.sport) params.set("sport", filters.sport);
-  if (filters.after) params.set("after", filters.after);
-  if (filters.before) params.set("before", filters.before);
-  const query = params.toString();
-  const response = await apiFetchStream(`/v1/athletes/${athleteId}/recompute-thresholds${query ? `?${query}` : ""}`, {
+/** The full ledger for one field, most recent first - backs the history screen the dashboard
+ * widget's per-field links lead to. */
+export function getThresholdHistory(athleteId: string, field: ThresholdFieldName): Promise<ThresholdHistoryResponse> {
+  return apiFetch<ThresholdHistoryResponse>(`/v1/athletes/${athleteId}/threshold-history${toQueryString({ field })}`);
+}
+
+/** The dashboard's "this will update on your next activity, or refresh now" manual action -
+ * synchronous, cheap (a single current-window scan for one field, same as the ingest hook).
+ * Returns the same shape as getThresholds, for all three fields. */
+export function refreshThreshold(athleteId: string, field: ThresholdFieldName): Promise<ThresholdsSummary> {
+  return apiFetch<ThresholdsSummary>(`/v1/athletes/${athleteId}/thresholds/refresh${toQueryString({ field })}`, {
     method: "POST",
   });
+}
+
+export type RecomputeThresholdHistoryEvent =
+  | { type: "progress"; current: number; total: number }
+  | { type: "done"; total: number };
+
+/** Rebuilds the entire history ledger for one field from scratch, replaying the athlete's
+ * activities oldest-first - for bootstrapping history on an existing account, or after changing
+ * the window/sanity-% settings below. */
+export async function* recomputeThresholdHistoryStream(
+  athleteId: string,
+  field: ThresholdFieldName,
+): AsyncGenerator<RecomputeThresholdHistoryEvent> {
+  const response = await apiFetchStream(
+    `/v1/athletes/${athleteId}/recompute-threshold-history${toQueryString({ field })}`,
+    { method: "POST" },
+  );
   for await (const { event, data } of sseBlocks(response)) {
     try {
       const parsed = JSON.parse(data);
-      if (event === "done") yield { type: "done", checked: parsed.checked ?? 0, flagged: parsed.flagged ?? 0 };
+      if (event === "done") yield { type: "done", total: parsed.total ?? 0 };
       else yield { type: "progress", current: parsed.current ?? 0, total: parsed.total ?? 0 };
     } catch { /* ignore malformed */ }
   }
@@ -148,8 +164,9 @@ export function listBestEfforts(
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts?kind=${kind}&period=${period}`);
 }
 
-/** With `activityId`, bike_power/run_power/pace's reference comes from that activity's own
- * threshold snapshot instead of the athlete's current profile - see ZonesTab.tsx. */
+/** With `activityId`, bike_power/run_power/pace's reference comes from the ThresholdHistory
+ * ledger entry effective as of that activity's own date, instead of the athlete's current
+ * profile - see ZonesTab.tsx. */
 export function listZones(athleteId: string, activityId?: string): Promise<DataList<ZoneSet>> {
   const query = activityId ? `?activity_id=${activityId}` : "";
   return apiFetch<DataList<ZoneSet>>(`/v1/athletes/${athleteId}/zones${query}`);

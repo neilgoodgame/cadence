@@ -4,11 +4,17 @@ import {
   updateAthlete,
   recomputeBestEffortsStream,
   recomputeStatsStream,
-  recomputeThresholdsStream,
+  recomputeThresholdHistoryStream,
   trimBestEfforts,
 } from "../../api/athletes";
 import { useAuth } from "../../auth/AuthContext";
-import type { BestEffortKind } from "../../api/types";
+import type { BestEffortKind, ThresholdFieldName } from "../../api/types";
+
+const THRESHOLD_FIELDS: { field: ThresholdFieldName; label: string }[] = [
+  { field: "ftp", label: "FTP" },
+  { field: "critical_run_power", label: "Critical running power" },
+  { field: "threshold_pace", label: "Threshold pace" },
+];
 
 const KINDS: { kind: BestEffortKind; label: string }[] = [
   { kind: "running_hr", label: "Running HR" },
@@ -77,16 +83,14 @@ export function BestEffortsTab() {
     total: number;
     updated: number | null;
   }>({ running: false, current: 0, total: 0, updated: null });
-  const [thresholdSport, setThresholdSport] = useState<"" | "bike" | "run">("");
-  const [thresholdAfter, setThresholdAfter] = useState("");
-  const [thresholdBefore, setThresholdBefore] = useState("");
-  const [thresholdRecompute, setThresholdRecompute] = useState<{
-    running: boolean;
-    current: number;
-    total: number;
-    checked: number | null;
-    flagged: number | null;
-  }>({ running: false, current: 0, total: 0, checked: null, flagged: null });
+  const [windowDays, setWindowDays] = useState(user?.threshold_window_days ?? 112);
+  const [sanityPct, setSanityPct] = useState(user?.threshold_sanity_pct ?? 30);
+  const IDLE_FIELD_RECOMPUTE = { running: false, current: 0, total: 0, result: null as number | null };
+  const [fieldRecompute, setFieldRecompute] = useState<Record<ThresholdFieldName, typeof IDLE_FIELD_RECOMPUTE>>({
+    ftp: IDLE_FIELD_RECOMPUTE,
+    critical_run_power: IDLE_FIELD_RECOMPUTE,
+    threshold_pace: IDLE_FIELD_RECOMPUTE,
+  });
   const effectiveTopN = allActivities ? 0 : topN;
 
   const isDecreasing = savedTopN === 0
@@ -138,21 +142,29 @@ export function BestEffortsTab() {
     }
   }, [user, qc]);
 
-  const startThresholdRecompute = useCallback(async () => {
-    setThresholdRecompute({ running: true, current: 0, total: 0, checked: null, flagged: null });
-    for await (const event of recomputeThresholdsStream(user!.id, {
-      sport: thresholdSport || undefined,
-      after: thresholdAfter || undefined,
-      before: thresholdBefore || undefined,
-    })) {
+  const thresholdSettingsMutation = useMutation({
+    mutationFn: async () => {
+      const updated = await updateAthlete(user!.id, {
+        threshold_window_days: windowDays,
+        threshold_sanity_pct: sanityPct,
+      });
+      setUser(updated);
+    },
+  });
+
+  const startFieldRecompute = useCallback(async (field: ThresholdFieldName) => {
+    setFieldRecompute(s => ({ ...s, [field]: { running: true, current: 0, total: 0, result: null } }));
+    for await (const event of recomputeThresholdHistoryStream(user!.id, field)) {
       if (event.type === "progress") {
-        setThresholdRecompute(s => ({ ...s, current: event.current, total: event.total }));
+        setFieldRecompute(s => ({ ...s, [field]: { ...s[field], current: event.current, total: event.total } }));
       } else {
-        setThresholdRecompute({ running: false, current: event.checked, total: event.checked, checked: event.checked, flagged: event.flagged });
+        setFieldRecompute(s => ({ ...s, [field]: { running: false, current: event.total, total: event.total, result: event.total } }));
         qc.invalidateQueries({ queryKey: ["activities"] });
+        qc.invalidateQueries({ queryKey: ["thresholds", user!.id] });
+        qc.invalidateQueries({ queryKey: ["threshold-history", user!.id, field] });
       }
     }
-  }, [user, qc, thresholdSport, thresholdAfter, thresholdBefore]);
+  }, [user, qc]);
 
   if (!user) return null;
 
@@ -279,67 +291,75 @@ export function BestEffortsTab() {
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Check for threshold updates</h2>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Threshold history</h2>
         <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0, lineHeight: 1.6 }}>
-          Checks whether each activity's own best effort implies a higher FTP, critical running power,
-          or threshold pace than what's on record - the same check a single activity's "Check for
-          updates" banner runs, applied across many at once. Useful for activities that predate that
-          feature, or were imported.
+          FTP, critical running power, and threshold pace are each the best qualifying effort
+          within a trailing window, so they can go down as an old best effort ages out, not just
+          up. A candidate effort that deviates too far from your current value (e.g. corrupt
+          power-meter data) is excluded automatically.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink2)" }}>
+            Window (days)
+            <input
+              type="number" min={1} max={365} value={windowDays}
+              onChange={e => setWindowDays(Math.max(1, Number(e.target.value)))}
+              style={inputStyle}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink2)" }}>
+            Sanity limit (%)
+            <input
+              type="number" min={1} max={100} value={sanityPct}
+              onChange={e => setSanityPct(Math.max(1, Number(e.target.value)))}
+              style={inputStyle}
+            />
+          </label>
+          <button
+            onClick={() => thresholdSettingsMutation.mutate()}
+            disabled={
+              thresholdSettingsMutation.isPending
+              || (windowDays === user.threshold_window_days && sanityPct === user.threshold_sanity_pct)
+            }
+            style={btnStyle}
+          >
+            {thresholdSettingsMutation.isPending ? "Saving…" : "Save"}
+          </button>
+          {thresholdSettingsMutation.isSuccess && <span style={{ fontSize: 13, color: "var(--ink3)" }}>Saved</span>}
+        </div>
+        <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>
+          Changing these doesn't retroactively update your history - rebuild a field below to
+          replay it under the new settings.
         </p>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <select
-            value={thresholdSport}
-            onChange={e => setThresholdSport(e.target.value as "" | "bike" | "run")}
-            disabled={thresholdRecompute.running}
-            style={{ ...inputStyle, width: "auto" }}
-          >
-            <option value="">All sports</option>
-            <option value="bike">Bike</option>
-            <option value="run">Run</option>
-          </select>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink2)" }}>
-            From
-            <input
-              type="date"
-              value={thresholdAfter}
-              onChange={e => setThresholdAfter(e.target.value)}
-              disabled={thresholdRecompute.running}
-              style={{ ...inputStyle, width: "auto" }}
-            />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink2)" }}>
-            To
-            <input
-              type="date"
-              value={thresholdBefore}
-              onChange={e => setThresholdBefore(e.target.value)}
-              disabled={thresholdRecompute.running}
-              style={{ ...inputStyle, width: "auto" }}
-            />
-          </label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {THRESHOLD_FIELDS.map(({ field, label }) => {
+            const state = fieldRecompute[field];
+            return (
+              <div key={field} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 14px", borderRadius: 8, background: "var(--elev)", border: "1px solid var(--line)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
+                  <button
+                    onClick={() => startFieldRecompute(field)}
+                    disabled={state.running}
+                    style={{ ...btnStyle, padding: "6px 12px", fontSize: 12, opacity: state.running ? 0.6 : 1 }}
+                  >
+                    {state.running ? "Rebuilding…" : "Rebuild from oldest"}
+                  </button>
+                </div>
+                {state.running && state.total > 0 && <ProgressBar current={state.current} total={state.total} />}
+                {state.running && state.total === 0 && (
+                  <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>
+                )}
+                {state.result != null && !state.running && (
+                  <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>
+                    {state.result === 0 ? "No qualifying efforts found." : `Ledger rebuilt — ${state.result} change${state.result === 1 ? "" : "s"} recorded.`}
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
-
-        <button
-          onClick={() => startThresholdRecompute()}
-          disabled={thresholdRecompute.running}
-          style={{ ...btnStyle, alignSelf: "flex-start", opacity: thresholdRecompute.running ? 0.6 : 1 }}
-        >
-          {thresholdRecompute.running ? "Checking…" : "Check now"}
-        </button>
-
-        {thresholdRecompute.running && thresholdRecompute.total > 0 && (
-          <ProgressBar current={thresholdRecompute.current} total={thresholdRecompute.total} />
-        )}
-        {thresholdRecompute.running && thresholdRecompute.total === 0 && (
-          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>
-        )}
-        {thresholdRecompute.checked != null && !thresholdRecompute.running && (
-          <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0 }}>
-            Checked {thresholdRecompute.checked} activities — {thresholdRecompute.flagged}{" "}
-            {thresholdRecompute.flagged === 1 ? "has" : "have"} a new threshold suggestion.
-          </p>
-        )}
       </section>
     </div>
   );

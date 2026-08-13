@@ -102,6 +102,7 @@ function ImportCountsSummary({ job }: { job: ImportJob }) {
     [counts.races_imported, "races"],
     [counts.workouts_imported, "workouts"],
     [counts.scheduled_workouts_imported, "scheduled workouts"],
+    [counts.threshold_history_imported, "threshold history entries"],
     [counts.bikes_imported + counts.shoes_imported + counts.components_imported, "equipment items"],
   ] as const;
   return (

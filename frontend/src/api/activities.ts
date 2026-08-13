@@ -26,7 +26,7 @@ export interface ListActivitiesParams {
   [key: string]: string | number | undefined;
 }
 
-function toQueryString(params: Record<string, string | number | boolean | undefined>): string {
+export function toQueryString(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) {
@@ -62,34 +62,6 @@ export function recomputeActivityTss(id: string): Promise<Activity> {
  * (never persisted per-sample - see the backend's recompute-stats view docstring). */
 export function recomputeActivityStats(id: string): Promise<Activity> {
   return apiFetch<Activity>(`/v1/activities/${id}/recompute-stats`, { method: "POST" });
-}
-
-export type ThresholdSuggestionField = "ftp" | "critical_run_power" | "threshold_pace";
-
-/** Accept or dismiss a threshold increase detected from this activity's own best effort (see
- * ThresholdSuggestionBanner). Accepting always updates this activity's own snapshot and
- * recomputes its TSS/intensity; it also updates the athlete's profile, but only when
- * updateProfile is true (the backend independently re-validates that this activity is recent
- * enough for a profile update - see ActivityThresholdSuggestionView/Service). Dismissing just
- * clears the suggestion. */
-export function applyThresholdSuggestion(
-  id: string,
-  field: ThresholdSuggestionField,
-  accept: boolean,
-  updateProfile: boolean,
-): Promise<Activity> {
-  return apiFetch<Activity>(`/v1/activities/${id}/threshold-suggestion`, {
-    method: "POST",
-    body: { field, accept, update_profile: updateProfile },
-  });
-}
-
-/** Re-runs threshold-increase detection against this activity's stored records and marks it
- * threshold_checked (see ThresholdSuggestionBanner) - detection normally only runs once, at
- * ingest, so this lets an activity that predates the feature (or was imported) get evaluated
- * retroactively. */
-export function recomputeActivityThresholds(id: string): Promise<Activity> {
-  return apiFetch<Activity>(`/v1/activities/${id}/recompute-thresholds`, { method: "POST" });
 }
 
 export function deleteAllActivities(): Promise<void> {
