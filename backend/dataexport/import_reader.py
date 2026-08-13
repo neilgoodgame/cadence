@@ -486,15 +486,21 @@ def _import_threshold_history(
     existed has no "threshold_history" section at all - those activities simply end up with no
     history entries (zones with no activity-scoped reference), same graceful degradation as any
     other schema-evolution gap in this reader.
+
+    A row with no source_activity_id at all is a manually-entered value (see
+    threshold_history.py::record_manual_value), not a malformed or unmapped reference - it
+    imports with source_activity=None, same as it was on the source athlete. Only a row that
+    *had* a source activity but whose id isn't in activity_id_map (that activity failed to
+    import, or wasn't included in a sport-filtered export) is a genuinely dangling reference and
+    gets skipped.
     """
     entries: list[ThresholdHistory] = []
     with _stream(stored_path) as gz:
         for row in ijson.items(gz, "threshold_history.item", use_float=True):
-            new_activity_id = activity_id_map.get(row.get("source_activity_id"))
+            raw_source_activity_id = row.get("source_activity_id")
+            new_activity_id = activity_id_map.get(raw_source_activity_id) if raw_source_activity_id else None
             effective_from = parse_date(row["effective_from"]) if row.get("effective_from") else None
-            if not new_activity_id or effective_from is None:
-                # The source activity failed to import (or the row is malformed) - skip rather
-                # than create a dangling reference.
+            if effective_from is None or (raw_source_activity_id and not new_activity_id):
                 counts["items_skipped"] += 1
                 progress.tick()
                 continue

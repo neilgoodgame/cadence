@@ -51,7 +51,11 @@ class ThresholdHistory(models.Model):
     # value_pace ("M:SS") for threshold_pace - only one is ever populated, matching `field`.
     value_numeric = models.PositiveIntegerField(null=True, blank=True)
     value_pace = models.CharField(max_length=10, blank=True, default="")
-    source_activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="threshold_history")
+    # Null for a manually-entered value (see threshold_history.py::record_manual_value) - the
+    # athlete declared it directly via their profile, not from a specific activity's effort.
+    source_activity = models.ForeignKey(
+        Activity, on_delete=models.CASCADE, related_name="threshold_history", null=True, blank=True
+    )
     effective_from = models.DateField()
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -11,7 +11,7 @@ from authn.oauth_utils import issue_token_pair
 from uploads.processing import _trim_kind_window
 
 from .models import ThresholdHistory, ZoneSet
-from .threshold_history import current_window_value, replay_full_history
+from .threshold_history import current_window_value, is_stale, record_manual_value, replay_full_history
 from .zones import DEFAULT_ZONES, reference_for
 
 
@@ -62,6 +62,35 @@ class AthleteDetailViewTests(TestCase):
         self.assertEqual(response.json()["ftp"], 280)
         self.athlete.refresh_from_db()
         self.assertEqual(self.athlete.ftp, 280)
+
+    def test_updating_a_threshold_creates_a_manual_ledger_entry(self):
+        response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
+        self.assertEqual(response.status_code, 200)
+
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertEqual(entry.value_numeric, 280)
+        self.assertIsNone(entry.source_activity_id)
+        self.assertEqual(entry.effective_from, date.today())
+
+    def test_resubmitting_the_same_value_does_not_duplicate_the_ledger_entry(self):
+        # The Preferences form resubmits every field on every save regardless of whether it was
+        # actually edited - re-saving with the athlete's existing ftp=250 must not insert a
+        # second entry.
+        client = _bearer_client(self.athlete)
+        client.patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
+        client.patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280, "weight_kg": 70.0}, format="json")
+
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").count(), 1)
+
+    def test_updating_threshold_pace_creates_a_manual_ledger_entry(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_pace": "3:45"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="threshold_pace")
+        self.assertEqual(entry.value_pace, "3:45")
+        self.assertIsNone(entry.source_activity_id)
 
     def test_update_with_no_existing_zone_set_reports_no_recompute(self):
         response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
@@ -754,3 +783,64 @@ class ThresholdHistoryAlgorithmTests(TestCase):
 
         self.assertEqual(len(entries), len(powers))
         self.assertEqual(entries[-1].value, round(0.95 * powers[-1]))
+
+
+class RecordManualValueTests(TestCase):
+    """record_manual_value - a manually-entered threshold (see AthleteDetailView.patch) is
+    trusted unconditionally and functions as an initial value (or a correction) exactly like any
+    other ledger entry from that point on."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="manual-threshold@example.cc", password="x", name="Athlete")
+
+    def test_seeds_the_initial_value_when_no_entry_exists(self):
+        changed = record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 1))
+
+        self.assertTrue(changed)
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertEqual(entry.value_numeric, 250)
+        self.assertIsNone(entry.source_activity)
+        self.assertEqual(entry.effective_from, date(2026, 6, 1))
+
+    def test_no_op_when_the_value_matches_the_latest_entry(self):
+        record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 1))
+
+        changed = record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 15))
+
+        self.assertFalse(changed)
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").count(), 1)
+
+    def test_records_a_correction_even_though_it_is_a_decrease(self):
+        # No sanity-band check for a manual entry - a human directly declaring a number is
+        # trusted, unlike an automatically-detected candidate that needs outlier protection.
+        record_manual_value(self.athlete, "ftp", 300, as_of=date(2026, 6, 1))
+
+        changed = record_manual_value(self.athlete, "ftp", 180, as_of=date(2026, 6, 15))
+
+        self.assertTrue(changed)
+        entry = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").order_by("-effective_from").first()
+        self.assertEqual(entry.value_numeric, 180)
+
+    def test_threshold_pace_stores_the_mmss_string(self):
+        changed = record_manual_value(self.athlete, "threshold_pace", "4:15", as_of=date(2026, 6, 1))
+
+        self.assertTrue(changed)
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="threshold_pace")
+        self.assertEqual(entry.value_pace, "4:15")
+        self.assertIsNone(entry.value_numeric)
+
+    def test_a_manual_entry_becomes_the_activity_scoped_reference_going_forward(self):
+        record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 1))
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Ride", start_date=datetime(2026, 6, 10, 7, 0, tzinfo=UTC)
+        )
+
+        self.assertEqual(reference_for(self.athlete, "bike_power", activity=activity), 250)
+
+    def test_a_manual_entry_becomes_stale_after_the_window(self):
+        self.athlete.threshold_window_days = 112
+        self.athlete.save(update_fields=["threshold_window_days"])
+        record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 1, 1))
+
+        self.assertFalse(is_stale(self.athlete, "ftp", as_of=date(2026, 4, 1)))  # 90 days later
+        self.assertTrue(is_stale(self.athlete, "ftp", as_of=date(2026, 5, 1)))  # 120 days later
