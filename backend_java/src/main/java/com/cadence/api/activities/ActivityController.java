@@ -104,7 +104,15 @@ public class ActivityController {
 		if (!(acceptValue instanceof Boolean accept)) {
 			throw new ValidationException("Must be a boolean.", "accept");
 		}
-		Activity updated = thresholdSuggestionService.apply(id, field, accept);
+		boolean updateProfile = false;
+		if (accept) {
+			Object updateProfileValue = body.get("update_profile");
+			if (!(updateProfileValue instanceof Boolean updateProfileBoolean)) {
+				throw new ValidationException("Must be a boolean.", "update_profile");
+			}
+			updateProfile = updateProfileBoolean;
+		}
+		Activity updated = thresholdSuggestionService.apply(id, field, accept, updateProfile);
 		return activityService.toResponse(updated);
 	}
 

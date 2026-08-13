@@ -10,6 +10,8 @@ import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -19,14 +21,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Accept or dismiss a threshold increase detected from an activity's own best effort (see
- * {@link ThresholdDetectionService}). Accepting updates the athlete's profile <em>and</em> this
- * activity's own snapshot (the effort that revealed the new threshold is itself re-rated
- * against it, not just future activities), then recomputes this activity's TSS/intensity so its
- * own numbers reflect the change too - skipped for thresholdPace, which neither TSS nor
- * intensity is derived from anywhere in this codebase. Dismissing just clears the suggestion.
+ * {@link ThresholdDetectionService}). Accepting always updates this activity's own snapshot (the
+ * effort that revealed the new threshold is itself re-rated against it) and recomputes its TSS/
+ * intensity - skipped for thresholdPace, which neither TSS nor intensity is derived from anywhere
+ * in this codebase. It also updates the athlete's profile, but only when {@code updateProfile} is
+ * true AND the activity is within {@link #MAX_PROFILE_UPDATE_AGE_DAYS} - a suggestion from a
+ * years-old activity shouldn't silently redefine the athlete's <em>current</em> profile, even
+ * though the activity's own numbers are still worth correcting. Requesting
+ * {@code updateProfile=true} for an activity past the cutoff is rejected rather than silently
+ * downgraded, so the caller's request always means what it says. Dismissing just clears the
+ * suggestion.
  */
 @Service
 public class ActivityThresholdSuggestionService {
+
+	private static final int MAX_PROFILE_UPDATE_AGE_DAYS = 365;
 
 	/** field name -> (suggested-value getter, snapshot setter, athlete-profile setter, suggested-clearer) */
 	private record FieldOps(Function<Activity, Object> suggestedGetter, BiConsumer<Activity, Object> snapshotSetter,
@@ -66,7 +75,7 @@ public class ActivityThresholdSuggestionService {
 	}
 
 	@Transactional
-	public Activity apply(String activityId, String field, boolean accept) {
+	public Activity apply(String activityId, String field, boolean accept, boolean updateProfile) {
 		Activity activity = activityRepository.findById(activityId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
 		FieldOps ops = FIELD_OPS.get(field);
@@ -81,8 +90,14 @@ public class ActivityThresholdSuggestionService {
 
 		if (accept) {
 			User athlete = activity.getAthlete();
-			ops.athleteSetter().accept(athlete, suggestedValue);
-			userRepository.save(athlete);
+			if (updateProfile) {
+				long ageDays = Duration.between(activity.getStartDate(), Instant.now()).toDays();
+				if (ageDays > MAX_PROFILE_UPDATE_AGE_DAYS) {
+					throw new ValidationException("This activity is too old to update your profile from.", "update_profile");
+				}
+				ops.athleteSetter().accept(athlete, suggestedValue);
+				userRepository.save(athlete);
+			}
 			ops.snapshotSetter().accept(activity, suggestedValue);
 
 			if (!"threshold_pace".equals(field)) {
