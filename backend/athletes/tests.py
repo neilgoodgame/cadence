@@ -5,12 +5,13 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User, UserRelationship
-from activities.models import Activity, BestEffort
+from activities.models import Activity, BestEffort, Record
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 from uploads.processing import _trim_kind_window
 
 from .models import ZoneSet
+from .threshold_history import current_window_value, replay_full_history
 from .zones import DEFAULT_ZONES, reference_for
 
 
@@ -583,3 +584,154 @@ class FitnessListViewTests(TestCase):
     def test_outsider_forbidden(self):
         response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/fitness")
         self.assertEqual(response.status_code, 403)
+
+
+class ThresholdHistoryAlgorithmTests(TestCase):
+    """current_window_value/replay_full_history (threshold_history.py) - the pure rolling-window
+    algorithm, tested independently of any endpoint. Default threshold_window_days=112,
+    threshold_sanity_pct=30 unless a test overrides them."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="threshold-history@example.cc", password="x", name="Athlete", ftp=200
+        )
+
+    def _make_power_activity(self, sport, start_date, power, duration_seconds=1200, name="Ride"):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport=sport, name=name, start_date=start_date, moving_time=duration_seconds
+        )
+        for t in range(duration_seconds):
+            Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+        return activity
+
+    def _make_pace_activity(self, start_date, pace_seconds_per_km, duration_seconds=3600, name="Run"):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name=name, start_date=start_date, moving_time=duration_seconds
+        )
+        for t in range(duration_seconds + 1):
+            Record.objects.create(
+                activity=activity, t=t, ts=start_date + timedelta(seconds=t), distance_km=t / pace_seconds_per_km
+            )
+        return activity
+
+    # --- current_window_value ---
+
+    def test_picks_best_qualifying_activity_within_window(self):
+        # Both within the default 30% sanity band around the athlete's ftp=200 (140-260) - this
+        # test is about picking the best *qualifying* candidate, not sanity filtering.
+        self._make_power_activity("bike", datetime(2026, 5, 1, 7, 0, tzinfo=UTC), power=230)
+        strong = self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=250)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.activity_id, strong.id)
+        self.assertEqual(candidate.implied_value, round(0.95 * 250))
+
+    def test_ignores_activities_outside_window(self):
+        self._make_power_activity("bike", datetime(2025, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        recent = self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=250)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertEqual(candidate.activity_id, recent.id)
+
+    def test_ignores_wrong_sport(self):
+        self._make_power_activity("run", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=500)  # not a bike ride
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertIsNone(candidate)
+
+    def test_short_activity_does_not_qualify(self):
+        # 10 minutes - shorter than the 20-minute FTP test window.
+        self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=400, duration_seconds=600)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertIsNone(candidate)
+
+    def test_excludes_outlier_via_sanity_check(self):
+        # Athlete's current FTP is 200 - a 20-minute effort implying ~401 (100%+ higher, well
+        # past the default 30% sanity band) is treated as implausible (e.g. corrupt power data).
+        self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=422)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertIsNone(candidate)
+
+    def test_first_ever_value_has_no_sanity_check(self):
+        athlete = User.objects.create_user(email="threshold-history-fresh@example.cc", password="x", name="Fresh")
+        start_date = datetime(2026, 5, 15, 7, 0, tzinfo=UTC)
+        activity = Activity.objects.create(
+            athlete=athlete, sport="bike", name="Ride", start_date=start_date, moving_time=1200
+        )
+        for t in range(1200):
+            Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=500)
+
+        candidate = current_window_value(athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertIsNotNone(candidate)  # no reference yet - nothing to sanity-check against
+        self.assertEqual(candidate.implied_value, round(0.95 * 500))
+
+    def test_pace_lower_is_better(self):
+        self.athlete.threshold_pace = "5:00"
+        self.athlete.save(update_fields=["threshold_pace"])
+        self._make_pace_activity(datetime(2026, 5, 1, 7, 0, tzinfo=UTC), pace_seconds_per_km=280)  # 4:40/km
+        faster = self._make_pace_activity(datetime(2026, 5, 15, 7, 0, tzinfo=UTC), pace_seconds_per_km=270)  # 4:30/km
+
+        candidate = current_window_value(self.athlete, "threshold_pace", as_of=date(2026, 6, 1))
+
+        self.assertEqual(candidate.activity_id, faster.id)
+        self.assertAlmostEqual(candidate.implied_value, 270, delta=1)
+
+    # --- replay_full_history ---
+
+    def test_replay_builds_ledger_of_changes_over_time(self):
+        first = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=210)
+        second = self._make_power_activity("bike", datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=230)
+
+        entries = replay_full_history(self.athlete, "ftp")
+
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0].activity_id, first.id)
+        self.assertEqual(entries[0].value, round(0.95 * 210))
+        self.assertEqual(entries[1].activity_id, second.id)
+        self.assertEqual(entries[1].value, round(0.95 * 230))
+
+    def test_replay_drops_value_when_source_ages_out(self):
+        strong = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=250)
+        # >112 days later - the earlier ride has aged out of the window by the time this weaker
+        # (but still plausible - within the sanity band) one is processed, so it becomes the new,
+        # lower current value.
+        weak = self._make_power_activity("bike", datetime(2026, 8, 1, 7, 0, tzinfo=UTC), power=220)
+
+        entries = replay_full_history(self.athlete, "ftp")
+
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0].activity_id, strong.id)
+        self.assertEqual(entries[1].activity_id, weak.id)
+        self.assertLess(entries[1].value, entries[0].value)
+
+    def test_replay_excludes_outlier_from_ledger(self):
+        self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=210)
+        self._make_power_activity("bike", datetime(2026, 1, 15, 7, 0, tzinfo=UTC), power=500)  # implausible spike
+
+        entries = replay_full_history(self.athlete, "ftp")
+
+        self.assertEqual(len(entries), 1)  # the spike never enters the ledger
+
+    def test_replay_gradual_improvement_not_blocked_by_cumulative_sanity_check(self):
+        # Each step is a plausible jump from the *previous* step, but the total change across all
+        # steps (200 -> 285, +42.5%) would fail a naive "vs. the original value" sanity check -
+        # checking each candidate against the running reference (not the very first value) must
+        # not block genuine, gradual improvement like this.
+        start_date = datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        powers = [210, 240, 270, 300]
+        for i, power in enumerate(powers):
+            self._make_power_activity("bike", start_date + timedelta(days=30 * i), power=power)
+
+        entries = replay_full_history(self.athlete, "ftp")
+
+        self.assertEqual(len(entries), len(powers))
+        self.assertEqual(entries[-1].value, round(0.95 * powers[-1]))

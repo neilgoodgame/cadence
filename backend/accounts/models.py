@@ -48,6 +48,16 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # which gate Django's own built-in /admin/ site and are unrelated to this feature.
     is_admin = models.BooleanField(default=False)
     best_effort_top_n = models.PositiveSmallIntegerField(default=10)
+    # Rolling-window threshold determination (see athletes/threshold_history.py): ftp/
+    # critical_run_power/threshold_pace above are each the best qualifying effort within the
+    # trailing threshold_window_days - not a one-way ratchet, a value drops automatically once
+    # its source activity ages out of the window. 112 days = 16 weeks, matching this codebase's
+    # existing "16w" best-efforts period bucket (athletes/views.py's BEST_EFFORT_PERIOD_DAYS).
+    threshold_window_days = models.PositiveSmallIntegerField(default=112)
+    # A candidate activity whose implied value deviates from the athlete's then-current value by
+    # more than this percentage is treated as an outlier (e.g. corrupt power-meter data) and
+    # excluded from consideration - see threshold_history.py's _within_sanity_band.
+    threshold_sanity_pct = models.PositiveSmallIntegerField(default=30)
     # Auto-match naming preferences (uploads/processing.py's attempt_workout_match) - both
     # default off so existing device-derived activity names are untouched unless opted in.
     # append_match_date_to_name only has an effect when rename_matched_activities is also on.
