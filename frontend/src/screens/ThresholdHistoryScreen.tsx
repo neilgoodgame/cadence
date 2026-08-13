@@ -40,8 +40,8 @@ export function ThresholdHistoryScreen() {
   const entries = historyQuery.data?.data ?? [];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 560 }}>
-      <div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ maxWidth: 560 }}>
         <Link to="/" style={{ fontSize: 13, color: "var(--ink3)" }}>
           &larr; Back to dashboard
         </Link>
@@ -53,7 +53,7 @@ export function ThresholdHistoryScreen() {
       {historyQuery.isLoading && <div style={{ color: "var(--ink3)" }}>Loading…</div>}
 
       {!historyQuery.isLoading && entries.length === 0 && (
-        <div style={{ color: "var(--ink3)", fontSize: 13 }}>
+        <div style={{ color: "var(--ink3)", fontSize: 13, maxWidth: 560 }}>
           No history yet - this fills in as qualifying activities are uploaded, or via a bulk
           rebuild in Preferences &rsaquo; Best efforts.
         </div>
@@ -65,7 +65,7 @@ export function ThresholdHistoryScreen() {
         </Card>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 560 }}>
         {entries.map((entry, i) => (
           <div
             key={`${entry.effective_from}-${i}`}

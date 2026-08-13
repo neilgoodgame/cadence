@@ -5,9 +5,11 @@ import { useMemo } from "react";
 import { formatPace, parsePace } from "../lib/format";
 import type { ThresholdFieldName, ThresholdHistoryPoint } from "../api/types";
 
-const WIDTH = 520;
-const HEIGHT = 200;
-const MARGIN = { top: 10, right: 12, bottom: 24, left: 44 };
+// Wide aspect ratio for a full-width card - the SVG scales via viewBox + width:100%, so these
+// just fix the ratio, not the literal rendered size.
+const WIDTH = 1200;
+const HEIGHT = 260;
+const MARGIN = { top: 10, right: 12, bottom: 24, left: 60 };
 
 interface Point {
   date: Date;
@@ -21,7 +23,7 @@ function numericValue(field: ThresholdFieldName, value: number | string): number
 }
 
 function formatTick(field: ThresholdFieldName, value: number): string {
-  return field === "threshold_pace" ? formatPace(value).replace(" /km", "") : String(Math.round(value));
+  return field === "threshold_pace" ? formatPace(value) : `${Math.round(value)}W`;
 }
 
 export function ThresholdHistoryChart({ field, points }: { field: ThresholdFieldName; points: ThresholdHistoryPoint[] }) {
@@ -90,7 +92,7 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
           </g>
         ))}
 
-        <path d={stepLine(chartPoints) ?? ""} fill="none" stroke="var(--ember, #e0703d)" strokeWidth={2} />
+        <path d={stepLine(chartPoints) ?? ""} fill="none" stroke="var(--ember, #e0703d)" strokeWidth={1.25} />
 
         {xTicks.map((tick) => (
           <text key={tick.toISOString()} x={x(tick)} y={innerHeight + 16} textAnchor="middle" fontSize={10} fill="var(--ink3)">
