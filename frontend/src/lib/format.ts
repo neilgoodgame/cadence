@@ -16,6 +16,18 @@ export function formatPace(secondsPerKm: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")} /km`;
 }
 
+/** "M:SS" -> seconds per km, or null if unparseable. The inverse of formatPace (minus the
+ * " /km" suffix) - for turning a stored/returned pace string (e.g. ThresholdSummaryEntry.value)
+ * back into a number for arithmetic, matching the backend's own mmss<->seconds convention. */
+export function parsePace(value: string): number | null {
+  const parts = value.split(":");
+  if (parts.length !== 2) return null;
+  const minutes = Number(parts[0]);
+  const seconds = Number(parts[1]);
+  if (Number.isNaN(minutes) || Number.isNaN(seconds)) return null;
+  return minutes * 60 + seconds;
+}
+
 export function formatDate(isoDate: string): string {
   return new Date(isoDate).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 }

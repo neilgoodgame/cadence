@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatKeyMetric, formatPace } from "./format";
+import { formatDuration, formatKeyMetric, formatPace, parsePace } from "./format";
 
 describe("formatDuration", () => {
   it("formats under an hour as M:SS", () => {
@@ -22,6 +22,21 @@ describe("formatPace", () => {
 
   it("pads single-digit seconds", () => {
     expect(formatPace(245)).toBe("4:05 /km");
+  });
+});
+
+describe("parsePace", () => {
+  it("parses M:SS to seconds per km", () => {
+    expect(parsePace("4:30")).toBe(270);
+  });
+
+  it("round-trips with formatPace (minus the /km suffix)", () => {
+    expect(parsePace("4:05")).toBe(245);
+  });
+
+  it("returns null for an unparseable string", () => {
+    expect(parsePace("not a pace")).toBeNull();
+    expect(parsePace("")).toBeNull();
   });
 });
 
