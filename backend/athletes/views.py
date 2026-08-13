@@ -339,9 +339,15 @@ class RefreshThresholdView(APIView):
 
 
 def _recompute_threshold_history_stream(athlete: User, field: str) -> Iterator[str]:
+    # `field` is only ever used to filter/branch, never echoed back into the emitted text -
+    # same convention as the sibling _recompute_stream's `kind` above, which keeps a validated
+    # but still request-controlled string out of the response body entirely (CodeQL flags the
+    # dataflow from request.query_params through here as a reflected-XSS pattern even though
+    # _validate_threshold_field's whitelist check already makes it safe).
+    total = 0
     for current, total in rebuild_history_stream(athlete, field):
         yield f"data: {json.dumps({'current': current, 'total': total})}\n\n"
-    yield f"event: done\ndata: {json.dumps({'field': field})}\n\n"
+    yield f"event: done\ndata: {json.dumps({'total': total})}\n\n"
 
 
 class RecomputeThresholdHistoryView(APIView):
