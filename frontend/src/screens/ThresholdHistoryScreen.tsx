@@ -1,7 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getThresholdHistory } from "../api/athletes";
-import { formatDate, formatPace } from "../lib/format";
+import { formatDate } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import type { ThresholdFieldName } from "../api/types";
 
@@ -11,8 +11,11 @@ const FIELD_LABELS: Record<ThresholdFieldName, string> = {
   threshold_pace: "Threshold pace",
 };
 
+// entry.value is already "M:SS" for threshold_pace (matches the backend's value_pace field
+// verbatim) - not seconds, so it's displayed as-is rather than run through formatPace (which
+// expects a number of seconds, not a string - Number("4:30") is NaN).
 function formatValue(field: ThresholdFieldName, value: number | string): string {
-  return field === "threshold_pace" ? formatPace(Number(value)) : `${value}W`;
+  return field === "threshold_pace" ? `${value}/km` : `${value}W`;
 }
 
 /** The full ledger for one threshold field, most recent first - reachable only via the

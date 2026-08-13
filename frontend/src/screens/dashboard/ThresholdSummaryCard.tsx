@@ -2,7 +2,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getThresholds, refreshThreshold } from "../../api/athletes";
 import { Card } from "../../components/Card";
-import { formatPace } from "../../lib/format";
+import { formatPace, parsePace } from "../../lib/format";
 import { useAuth } from "../../auth/AuthContext";
 import type { ThresholdFieldName, ThresholdSummaryEntry } from "../../api/types";
 
@@ -12,18 +12,26 @@ const FIELDS: { field: ThresholdFieldName; label: string; unit: string }[] = [
   { field: "threshold_pace", label: "Threshold pace", unit: "" },
 ];
 
+// ThresholdSummaryEntry.value is already "M:SS" for threshold_pace (matches the backend's
+// value_pace field verbatim) - not seconds, so it's displayed as-is rather than run through
+// formatPace (which expects a number of seconds, not a string).
 function formatValue(field: ThresholdFieldName, value: number | string): string {
-  return field === "threshold_pace" ? formatPace(Number(value)) : String(value);
+  return field === "threshold_pace" ? `${value}/km` : String(value);
 }
 
 // Pace is seconds/km - a *lower* value is the improvement, the opposite of the two power fields.
 function deltaLabel(field: ThresholdFieldName, entry: ThresholdSummaryEntry): string | null {
   if (entry.value == null || entry.previous_value == null) return null;
-  const delta = Number(entry.value) - Number(entry.previous_value);
-  if (delta === 0) return "No change";
   if (field === "threshold_pace") {
+    const current = parsePace(String(entry.value));
+    const previous = parsePace(String(entry.previous_value));
+    if (current == null || previous == null) return null;
+    const delta = current - previous;
+    if (delta === 0) return "No change";
     return `${delta < 0 ? "▼" : "▲"} ${formatPace(Math.abs(delta))} vs previous`;
   }
+  const delta = Number(entry.value) - Number(entry.previous_value);
+  if (delta === 0) return "No change";
   return `${delta > 0 ? "+" : ""}${delta}W vs previous`;
 }
 
