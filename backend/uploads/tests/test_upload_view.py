@@ -5,6 +5,8 @@ from django.test import TestCase
 
 from accounts.models import User
 from activities.models import Activity, BestEffort, DurationCurve, Lap, Record
+from athletes.models import ThresholdHistory
+from athletes.zones import reference_for
 
 from ..fixtures_helpers import build_gpx, build_tcx
 from .helpers import FIXTURES_DIR, _bearer_client, _delegated_client
@@ -106,10 +108,10 @@ class TcxPowerIngestionTests(TestCase):
         self.assertEqual(activity.norm_power, 200)
         self.assertEqual(activity.intensity, 1.0)
         self.assertEqual(activity.tss, 8)  # round(300*200*1 / (200*3600) * 100)
-        # Snapshotted at ingest - a bike activity only gets ftp_snapshot, never the run fields.
-        self.assertEqual(activity.ftp_snapshot, 200)
-        self.assertIsNone(activity.critical_run_power_snapshot)
-        self.assertEqual(activity.threshold_pace_snapshot, "")
+        # 300s is well short of the 20-minute FTP-test window - too short to qualify for a
+        # threshold-history entry, so this activity's own effective threshold resolves to
+        # nothing (no evidence exists yet for this fresh athlete).
+        self.assertIsNone(reference_for(athlete, "bike_power", activity))
 
         curve = DurationCurve.objects.get(activity=activity, metric="power")
         for key in ("5", "15", "30", "60", "300"):
@@ -149,8 +151,13 @@ class RealFitIngestionTests(TestCase):
         self.assertGreater(activity.tss, 0)
         self.assertTrue(DurationCurve.objects.filter(activity=activity, metric="power").exists())
         self.assertTrue(BestEffort.objects.filter(athlete=self.athlete, kind="cycling_power").exists())
-        self.assertEqual(activity.ftp_snapshot, 250)
-        self.assertIsNone(activity.critical_run_power_snapshot)
+        # A real, sufficiently-long ride creates a threshold-history entry sourced from this
+        # activity's own effort - the exact value depends on the fixture's real power data, so
+        # just check it resolved to something rather than hardcoding the number.
+        ftp = reference_for(self.athlete, "bike_power", activity)
+        self.assertIsNotNone(ftp)
+        self.assertGreater(ftp, 0)
+        self.assertIsNone(reference_for(self.athlete, "run_power", activity))
 
     def test_cycling_indoor_ingests_core_sensor_fields_but_no_avg_air_temp(self):
         activity = self._upload_fixture("cycling_indoor.fit")
@@ -196,9 +203,10 @@ class RealFitIngestionTests(TestCase):
         self.assertIsNotNone(activity.norm_power)
         self.assertGreater(activity.tss, 0)
         self.assertTrue(BestEffort.objects.filter(athlete=self.athlete, kind="running_power").exists())
-        self.assertEqual(activity.critical_run_power_snapshot, 280)
-        self.assertIsNone(activity.ftp_snapshot)
-        self.assertEqual(activity.threshold_pace_snapshot, "")  # athlete never set threshold_pace
+        critical_run_power = reference_for(self.athlete, "run_power", activity)
+        self.assertIsNotNone(critical_run_power)
+        self.assertGreater(critical_run_power, 0)
+        self.assertIsNone(reference_for(self.athlete, "bike_power", activity))
 
     def test_running_treadmill_derives_avg_env_fields_from_stryd_and_stores_core_records(self):
         activity = self._upload_fixture("running_treadmill.fit")
@@ -216,33 +224,59 @@ class RealFitIngestionTests(TestCase):
         self.assertAlmostEqual(response.json()["avg_air_temp"], 20.8, places=1)
 
 
-class ThresholdSuggestionIngestionTests(TestCase):
-    """detect_threshold_increase (uploads/processing.py) wired into the real ingestion
-    pipeline, end to end - not just unit-tested against synthetic series."""
+class ThresholdHistoryIngestionTests(TestCase):
+    """recompute_for_activity (athletes/threshold_history.py) wired into the real ingestion
+    pipeline, end to end - not just unit-tested against synthetic series (see
+    athletes.tests.ThresholdHistoryAlgorithmTests for the algorithm's own thorough unit
+    coverage). Uses build_tcx for exact, controlled power values - a real FIT fixture's implied
+    value isn't something to hardcode assertions against."""
 
-    def test_cycling_indoor_suggests_a_higher_ftp_from_a_low_starting_point(self):
-        # cycling_indoor.fit's best 20-minute power comfortably implies an FTP above 200.
-        athlete = User.objects.create_user(email="low-ftp@example.cc", password="x", name="Low FTP Athlete", ftp=200)
-        content = (FIXTURES_DIR / "cycling_indoor.fit").read_bytes()
+    def test_a_qualifying_ride_creates_a_threshold_history_entry_sourced_from_it(self):
+        athlete = User.objects.create_user(email="threshold-ingest@example.cc", password="x", name="Athlete", ftp=200)
+        start = datetime(2026, 6, 20, 7, 0, tzinfo=UTC)
+        # Exactly the 20-minute FTP-test window at 220W implies FTP = round(0.95*220) = 209 - a
+        # plausible ~4.5% bump from the athlete's existing 200, well within the default 30%
+        # sanity band.
+        content = build_tcx(start, sport="Biking", duration_s=1200, power=220, hr=140, distance_m=6000)
         client = _bearer_client(athlete)
-        response = client.post("/v1/activities", {"file": SimpleUploadedFile("ride.fit", content)}, format="multipart")
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("ride.tcx", content)}, format="multipart")
         upload_id = response.json()["id"]
         poll = client.get(f"/v1/uploads/{upload_id}").json()
         activity = Activity.objects.get(pk=poll["activity_id"])
 
-        self.assertIsNotNone(activity.suggested_ftp)
-        self.assertGreater(activity.suggested_ftp, 200)
-        self.assertTrue(activity.threshold_checked)
+        entry = ThresholdHistory.objects.get(athlete=athlete, field="ftp")
+        self.assertEqual(entry.value_numeric, 209)
+        self.assertEqual(entry.source_activity_id, activity.id)
 
-    def test_cycling_indoor_suggests_nothing_when_ftp_is_already_high_enough(self):
-        athlete = User.objects.create_user(email="high-ftp@example.cc", password="x", name="High FTP Athlete", ftp=400)
-        content = (FIXTURES_DIR / "cycling_indoor.fit").read_bytes()
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.ftp, 209)
+
+    def test_too_short_a_ride_creates_no_entry(self):
+        athlete = User.objects.create_user(
+            email="threshold-ingest-short@example.cc", password="x", name="Athlete", ftp=200
+        )
+        start = datetime(2026, 6, 20, 7, 0, tzinfo=UTC)
+        content = build_tcx(start, sport="Biking", duration_s=300, power=220, hr=140, distance_m=1500)
         client = _bearer_client(athlete)
-        response = client.post("/v1/activities", {"file": SimpleUploadedFile("ride.fit", content)}, format="multipart")
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("ride.tcx", content)}, format="multipart")
         upload_id = response.json()["id"]
-        poll = client.get(f"/v1/uploads/{upload_id}").json()
-        activity = Activity.objects.get(pk=poll["activity_id"])
+        client.get(f"/v1/uploads/{upload_id}")
 
-        self.assertIsNone(activity.suggested_ftp)
-        # Still marked checked - "no suggestion" and "never checked" must stay distinguishable.
-        self.assertTrue(activity.threshold_checked)
+        self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete, field="ftp").exists())
+
+    def test_an_implausible_outlier_is_rejected(self):
+        athlete = User.objects.create_user(
+            email="threshold-ingest-outlier@example.cc", password="x", name="Athlete", ftp=200
+        )
+        start = datetime(2026, 6, 20, 7, 0, tzinfo=UTC)
+        # 500W implies FTP ~475 - a 137% jump, well past the default 30% sanity band (likely
+        # corrupt power data, e.g. a sensor fault).
+        content = build_tcx(start, sport="Biking", duration_s=1200, power=500, hr=170, distance_m=12000)
+        client = _bearer_client(athlete)
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("ride.tcx", content)}, format="multipart")
+        upload_id = response.json()["id"]
+        client.get(f"/v1/uploads/{upload_id}")
+
+        self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete, field="ftp").exists())
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.ftp, 200)  # unchanged

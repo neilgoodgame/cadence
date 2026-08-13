@@ -9,6 +9,7 @@ class ActivitySerializer(serializers.ModelSerializer):
     tags = serializers.SerializerMethodField()
     child_activity_ids = serializers.SerializerMethodField()
     duplicate_activity_ids = serializers.SerializerMethodField()
+    threshold_history = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
@@ -42,13 +43,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "calories",
             "trimp",
             "avg_left_balance_pct",
-            "ftp_snapshot",
-            "critical_run_power_snapshot",
-            "threshold_pace_snapshot",
-            "suggested_ftp",
-            "suggested_critical_run_power",
-            "suggested_threshold_pace",
-            "threshold_checked",
+            "threshold_history",
             "start_weight_kg",
             "end_weight_kg",
             "fluids_ml",
@@ -81,6 +76,21 @@ class ActivitySerializer(serializers.ModelSerializer):
         if obj.primary_activity_id:
             return []
         return list(obj.duplicate_activities.order_by("start_date").values_list("id", flat=True))
+
+    def get_threshold_history(self, obj: Activity) -> list[dict]:
+        # Every ThresholdHistory entry this activity is the source of - empty for the vast
+        # majority of activities. is_current distinguishes "this is still the latest entry for
+        # that field" from "since superseded by a later, different activity."
+        from athletes.models import ThresholdHistory
+
+        result = []
+        for entry in obj.threshold_history.all():
+            is_current = not ThresholdHistory.objects.filter(
+                athlete_id=obj.athlete_id, field=entry.field, effective_from__gt=entry.effective_from
+            ).exists()
+            value = entry.value_pace if entry.field == "threshold_pace" else entry.value_numeric
+            result.append({"field": entry.field, "value": value, "is_current": is_current})
+        return result
 
 
 class ActivityUpdateSerializer(serializers.Serializer):

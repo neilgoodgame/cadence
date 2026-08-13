@@ -30,6 +30,7 @@ class ImportCountsSerializer(serializers.Serializer):
     races_imported = serializers.IntegerField()
     workouts_imported = serializers.IntegerField()
     scheduled_workouts_imported = serializers.IntegerField()
+    threshold_history_imported = serializers.IntegerField()
     bikes_imported = serializers.IntegerField()
     shoes_imported = serializers.IntegerField()
     components_imported = serializers.IntegerField()

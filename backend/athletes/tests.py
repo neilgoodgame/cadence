@@ -10,7 +10,7 @@ from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 from uploads.processing import _trim_kind_window
 
-from .models import ZoneSet
+from .models import ThresholdHistory, ZoneSet
 from .threshold_history import current_window_value, replay_full_history
 from .zones import DEFAULT_ZONES, reference_for
 
@@ -206,54 +206,72 @@ class ReferenceForTests(TestCase):
         self.assertEqual(reference_for(self.athlete, "bike_power"), 250)
         self.assertEqual(reference_for(self.athlete, "pace"), 240)  # "4:00" -> 240s
 
-    def test_with_activity_reads_that_activitys_snapshot(self):
+    def test_with_activity_reads_the_ledger_entry_effective_at_that_time(self):
         activity = Activity.objects.create(
-            athlete=self.athlete, sport="bike", name="Old ride", start_date=timezone.now(), ftp_snapshot=200
+            athlete=self.athlete, sport="bike", name="Old ride", start_date=timezone.now()
+        )
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=200,
+            source_activity=activity,
+            effective_from=activity.start_date.date(),
         )
         self.assertEqual(reference_for(self.athlete, "bike_power", activity=activity), 200)
 
-    def test_pace_snapshot_is_parsed_from_mmss_same_as_the_live_field(self):
-        activity = Activity.objects.create(
+    def test_pace_entry_is_parsed_from_mmss_same_as_the_live_field(self):
+        activity = Activity.objects.create(athlete=self.athlete, sport="run", name="Old run", start_date=timezone.now())
+        ThresholdHistory.objects.create(
             athlete=self.athlete,
-            sport="run",
-            name="Old run",
-            start_date=timezone.now(),
-            threshold_pace_snapshot="4:30",
+            field="threshold_pace",
+            value_pace="4:30",
+            source_activity=activity,
+            effective_from=activity.start_date.date(),
         )
         self.assertEqual(reference_for(self.athlete, "pace", activity=activity), 270)
 
     def test_heart_rate_ignores_activity_and_always_reads_live(self):
         activity = Activity.objects.create(
-            athlete=self.athlete, sport="bike", name="Old ride", start_date=timezone.now(), ftp_snapshot=200
+            athlete=self.athlete, sport="bike", name="Old ride", start_date=timezone.now()
+        )
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=200,
+            source_activity=activity,
+            effective_from=activity.start_date.date(),
         )
         self.assertEqual(reference_for(self.athlete, "heart_rate", activity=activity), 160)
 
-    def test_a_null_snapshot_returns_none_rather_than_falling_back_to_the_live_profile(self):
-        # An activity with no snapshot (e.g. pre-dating this feature and never backfilled)
-        # should read as "unknown," not silently fall back to the athlete's current FTP -
-        # that fallback-to-live behavior is exactly what activity-scoping exists to avoid.
+    def test_no_ledger_entry_returns_none_rather_than_falling_back_to_the_live_profile(self):
+        # An activity with no history entry effective at its own date (e.g. predating this
+        # feature) should read as "unknown," not silently fall back to the athlete's current
+        # FTP - that fallback-to-live behavior is exactly what activity-scoping exists to avoid.
         activity = Activity.objects.create(
-            athlete=self.athlete, sport="bike", name="No snapshot", start_date=timezone.now()
+            athlete=self.athlete, sport="bike", name="No history", start_date=timezone.now()
         )
         self.assertIsNone(reference_for(self.athlete, "bike_power", activity=activity))
 
 
 class ZoneSetActivityScopeTests(TestCase):
-    """?activity_id= scopes bike_power/run_power/pace's reference to that activity's own
-    threshold snapshot instead of the athlete's current (possibly since-changed) profile."""
+    """?activity_id= scopes bike_power/run_power/pace's reference to the ledger entry effective
+    at that activity's own date instead of the athlete's current (possibly since-changed) profile."""
 
     def setUp(self):
         self.athlete = User.objects.create_user(
             email="zone-scope@example.cc", password="x", name="Athlete", ftp=250, lthr=160
         )
         self.old_bike_activity = Activity.objects.create(
-            athlete=self.athlete,
-            sport="bike",
-            name="Old ride",
-            start_date=timezone.now(),
-            ftp_snapshot=200,
+            athlete=self.athlete, sport="bike", name="Old ride", start_date=timezone.now()
         )
-        # The athlete's FTP has since gone up - the old activity's own snapshot should win.
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=200,
+            source_activity=self.old_bike_activity,
+            effective_from=self.old_bike_activity.start_date.date(),
+        )
+        # The athlete's FTP has since gone up - the old activity's own ledger entry should win.
         self.athlete.ftp = 250
         self.athlete.save(update_fields=["ftp"])
 
@@ -262,7 +280,7 @@ class ZoneSetActivityScopeTests(TestCase):
         bike = next(z for z in response.json()["data"] if z["type"] == "bike_power")
         self.assertEqual(bike["reference"], 250)
 
-    def test_with_activity_id_uses_that_activitys_own_snapshot(self):
+    def test_with_activity_id_uses_that_activitys_own_ledger_entry(self):
         response = _bearer_client(self.athlete).get(
             f"/v1/athletes/{self.athlete.id}/zones?activity_id={self.old_bike_activity.id}"
         )
@@ -270,7 +288,7 @@ class ZoneSetActivityScopeTests(TestCase):
         self.assertEqual(bike["reference"], 200)
 
     def test_heart_rate_reference_is_unaffected_by_activity_id(self):
-        # lthr isn't snapshotted per-activity - always live, with or without activity_id.
+        # lthr has no history ledger of its own - always live, with or without activity_id.
         response = _bearer_client(self.athlete).get(
             f"/v1/athletes/{self.athlete.id}/zones?activity_id={self.old_bike_activity.id}"
         )
@@ -280,7 +298,7 @@ class ZoneSetActivityScopeTests(TestCase):
     def test_activity_id_belonging_to_another_athlete_404s(self):
         other = User.objects.create_user(email="zone-scope-other@example.cc", password="x", name="Other")
         other_activity = Activity.objects.create(
-            athlete=other, sport="bike", name="Not yours", start_date=timezone.now(), ftp_snapshot=999
+            athlete=other, sport="bike", name="Not yours", start_date=timezone.now()
         )
         response = _bearer_client(self.athlete).get(
             f"/v1/athletes/{self.athlete.id}/zones?activity_id={other_activity.id}"
@@ -289,23 +307,24 @@ class ZoneSetActivityScopeTests(TestCase):
 
 
 class RecomputeAthleteTssViewTests(TestCase):
-    """The bulk 'Recompute TSS' action - the actual bug this snapshot feature fixes: it used
+    """The bulk 'Recompute TSS' action - the actual bug this ledger feature fixes: it used
     to silently re-rate every historical activity against the athlete's CURRENT FTP."""
 
     def setUp(self):
         self.athlete = User.objects.create_user(email="bulk-tss@example.cc", password="x", name="Athlete", ftp=300)
 
-    def test_recompute_uses_each_activitys_own_snapshot_not_the_current_profile(self):
+    def test_recompute_uses_each_activitys_own_historical_value_not_the_current_profile(self):
         from activities.models import Record
 
         activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Old ride", start_date=timezone.now(), moving_time=3600, tss=0
+        )
+        ThresholdHistory.objects.create(
             athlete=self.athlete,
-            sport="bike",
-            name="Old ride",
-            start_date=timezone.now(),
-            moving_time=3600,
-            tss=0,
-            ftp_snapshot=200,  # what FTP actually was when this ride happened
+            field="ftp",
+            value_numeric=200,  # what FTP actually was when this ride happened
+            source_activity=activity,
+            effective_from=activity.start_date.date(),
         )
         for t in range(3600):
             Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=200)
@@ -314,7 +333,7 @@ class RecomputeAthleteTssViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
         activity.refresh_from_db()
-        # 200W normalized power at a 200W snapshot FTP = 100 TSS for a 1-hour ride - NOT the
+        # 200W normalized power at a 200W historical FTP = 100 TSS for a 1-hour ride - NOT the
         # ~44 TSS a re-rate against the athlete's current 300 FTP would have silently produced.
         self.assertEqual(activity.tss, 100)
 

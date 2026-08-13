@@ -183,6 +183,7 @@ def _counts(athlete_id: str, sport: str | None) -> dict:
         "races": _races_qs(athlete_id, sport).count(),
         "workouts": _workouts_qs(athlete_id, sport).count(),
         "scheduled_workouts": _scheduled_workouts_qs(athlete_id, sport).count(),
+        "threshold_history": _threshold_history_qs(athlete_id, sport).count(),
         # Equipment is always exported in full, regardless of the sport filter - it's small,
         # and shoes have no sport of their own to filter by.
         "bikes": _bikes_qs(athlete_id).count(),
@@ -209,19 +210,11 @@ def _write_workouts(gz: gzip.GzipFile, athlete_id: str, sport: str | None, progr
     _write_array(gz, (WorkoutDetailSerializer(w).data for w in qs), progress)
 
 
-# Deliberately never exported: transient, in-app-only bookkeeping (a pending threshold-increase
-# suggestion, and whether detection has ever run) rather than data describing the activity
-# itself - re-importing a file shouldn't resurrect an already-accepted-or-dismissed suggestion on
-# a brand-new row, and a freshly-imported row should start out "not yet checked" like any other
-# row import creates, not inherit whatever was true in the source account. ftp_snapshot/
-# critical_run_power_snapshot/threshold_pace_snapshot ARE exported (ActivitySerializer already
-# includes them) - those describe what actually happened, same as every other stat field.
-_TRANSIENT_ACTIVITY_FIELDS = (
-    "suggested_ftp",
-    "suggested_critical_run_power",
-    "suggested_threshold_pace",
-    "threshold_checked",
-)
+# threshold_history (ActivitySerializer's computed field - which ThresholdHistory entries this
+# activity is the source of) is deliberately stripped from the per-activity payload: it's
+# re-derivable from the top-level "threshold_history" section's own source_activity_id links, so
+# embedding it here too would just be duplicated data.
+_TRANSIENT_ACTIVITY_FIELDS = ("threshold_history",)
 
 
 def _write_activities(
@@ -245,6 +238,35 @@ def _write_activities(
         if progress:
             progress.tick()
     gz.write(b"]")
+
+
+_SPORT_FOR_THRESHOLD_FIELD = {"ftp": "bike", "critical_run_power": "run", "threshold_pace": "run"}
+
+
+def _threshold_history_qs(athlete_id: str, sport: str | None):
+    from athletes.models import ThresholdHistory
+
+    qs = ThresholdHistory.objects.filter(athlete_id=athlete_id).order_by("effective_from")
+    if sport:
+        fields = [f for f, s in _SPORT_FOR_THRESHOLD_FIELD.items() if s == sport]
+        qs = qs.filter(field__in=fields)
+    return qs
+
+
+def _write_threshold_history(
+    gz: gzip.GzipFile, athlete_id: str, sport: str | None, progress: "_Progress | None" = None
+) -> None:
+    entries = (
+        {
+            "field": entry.field,
+            "value_numeric": entry.value_numeric,
+            "value_pace": entry.value_pace,
+            "source_activity_id": entry.source_activity_id,
+            "effective_from": entry.effective_from,
+        }
+        for entry in _threshold_history_qs(athlete_id, sport)
+    )
+    _write_array(gz, entries, progress)
 
 
 def _write_races(gz: gzip.GzipFile, athlete_id: str, sport: str | None, progress: "_Progress | None" = None) -> None:
@@ -332,6 +354,11 @@ def write_export(
         progress = start_section("scheduled_workouts", counts["scheduled_workouts"])
         gz.write(b',"scheduled_workouts":')
         _write_scheduled_workouts(gz, athlete_id, sport, progress)
+        progress.flush()
+
+        progress = start_section("threshold_history", counts["threshold_history"])
+        gz.write(b',"threshold_history":')
+        _write_threshold_history(gz, athlete_id, sport, progress)
         progress.flush()
 
         gz.write(b"}")

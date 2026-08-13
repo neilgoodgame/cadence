@@ -33,10 +33,10 @@ from typing import Any
 
 import ijson
 from django.core.files.storage import default_storage
-from django.utils.dateparse import parse_datetime, parse_duration
+from django.utils.dateparse import parse_date, parse_datetime, parse_duration
 
-from accounts.models import User
 from activities.models import Activity, ActivityTag, Lap, Record, Tag
+from athletes.models import ThresholdHistory
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
 from races.models import Race
 from scheduling.models import ScheduledWorkout
@@ -81,6 +81,7 @@ COUNT_KEYS = [
     "bikes_imported",
     "shoes_imported",
     "components_imported",
+    "threshold_history_imported",
     "items_skipped",
 ]
 
@@ -309,9 +310,6 @@ def _import_activities(
     counts: dict,
     progress: _Progress,
 ) -> None:
-    # Fetched once, outside the per-activity loop - reused as the fallback for any imported
-    # activity whose JSON has no ftp_snapshot/etc. (a file exported before that field existed).
-    importing_athlete = User.objects.only("ftp", "critical_run_power", "threshold_pace").get(pk=athlete_id)
     with _stream(stored_path) as gz:
         for entry in ijson.items(gz, "activities.item", use_float=True):
             ar = entry["activity"]
@@ -323,23 +321,6 @@ def _import_activities(
                 start_date = parse_datetime(ar["start_date"])
                 if start_date is None:
                     raise ValueError(f"Unparseable start_date: {ar['start_date']!r}")
-
-                # Carries over the source activity's own threshold snapshot if the export file
-                # has one; a file exported before that field existed falls back to the
-                # *importing* athlete's current profile (same graceful-degradation pattern as
-                # the "counts" progress metadata - see export_writer.py/import_reader.py).
-                ftp_snapshot = None
-                critical_run_power_snapshot = None
-                threshold_pace_snapshot = ""
-                if ar["sport"] == "bike":
-                    ftp_snapshot = ar.get("ftp_snapshot") or importing_athlete.ftp
-                elif ar["sport"] == "run":
-                    critical_run_power_snapshot = (
-                        ar.get("critical_run_power_snapshot") or importing_athlete.critical_run_power
-                    )
-                    threshold_pace_snapshot = (
-                        ar.get("threshold_pace_snapshot") or importing_athlete.threshold_pace or ""
-                    )
 
                 activity = Activity.objects.create(
                     athlete_id=athlete_id,
@@ -381,9 +362,6 @@ def _import_activities(
                     workout_id=workouts_by_old_id.get(ar.get("workout_id")),
                     bike_id=bikes_by_old_id.get(ar.get("bike_id")),
                     shoe_id=shoes_by_old_id.get(ar.get("shoe_id")),
-                    ftp_snapshot=ftp_snapshot,
-                    critical_run_power_snapshot=critical_run_power_snapshot,
-                    threshold_pace_snapshot=threshold_pace_snapshot,
                 )
 
                 Lap.objects.bulk_create(
@@ -494,6 +472,47 @@ def _import_scheduled_workouts(
             progress.tick()
 
 
+def _import_threshold_history(
+    athlete_id: str, stored_path: str, activity_id_map: dict[str, str], counts: dict, progress: _Progress
+) -> None:
+    """Carries over the source athlete's own threshold-history ledger, re-linked to the newly-
+    created activity ids - the *only* way an imported activity's own zones stay historically
+    accurate now that there's no per-activity snapshot column to fall back to (see
+    export_writer.py's _write_threshold_history). Deliberately does NOT run the windowed
+    recompute (athletes/threshold_history.py::recompute_for_activity) against these activities
+    or touch the importing athlete's own live profile/ledger - an imported activity's own zones
+    should reflect what was actually true for that effort when it happened, not get re-derived
+    against a possibly-unrelated athlete's current fitness. A file exported before this feature
+    existed has no "threshold_history" section at all - those activities simply end up with no
+    history entries (zones with no activity-scoped reference), same graceful degradation as any
+    other schema-evolution gap in this reader.
+    """
+    entries: list[ThresholdHistory] = []
+    with _stream(stored_path) as gz:
+        for row in ijson.items(gz, "threshold_history.item", use_float=True):
+            new_activity_id = activity_id_map.get(row.get("source_activity_id"))
+            effective_from = parse_date(row["effective_from"]) if row.get("effective_from") else None
+            if not new_activity_id or effective_from is None:
+                # The source activity failed to import (or the row is malformed) - skip rather
+                # than create a dangling reference.
+                counts["items_skipped"] += 1
+                progress.tick()
+                continue
+            entries.append(
+                ThresholdHistory(
+                    athlete_id=athlete_id,
+                    field=row["field"],
+                    value_numeric=row.get("value_numeric"),
+                    value_pace=row.get("value_pace") or "",
+                    source_activity_id=new_activity_id,
+                    effective_from=effective_from,
+                )
+            )
+            counts["threshold_history_imported"] += 1
+            progress.tick()
+    ThresholdHistory.objects.bulk_create(entries, batch_size=500)
+
+
 def read_import(
     athlete_id: str,
     stored_path: str,
@@ -502,7 +521,7 @@ def read_import(
     on_progress: OnProgress | None = None,
 ) -> dict[str, int]:
     """`on_step` (if given) is called once per section, right as it starts - see
-    ImportJob.current_step (models.py's DATA_TRANSFER_STEPS) for the fixed 5-step order this
+    ImportJob.current_step (models.py's DATA_TRANSFER_STEPS) for the fixed 6-step order this
     walks through, same as export_writer.write_export's on_step. `on_total`/`on_progress` (if
     given) turn that into a fine-grained item-level progress bar *scoped to the current
     section*, mirroring write_export's: `on_total` fires once per section, right after on_step,
@@ -527,7 +546,9 @@ def read_import(
             total = (
                 file_counts["bikes"] + file_counts["shoes"] + file_counts["components"]
                 if total_key is None
-                else file_counts[total_key]
+                # .get(..., 0), not [...]: a file exported before the "threshold_history"
+                # section existed has a "counts" block without that key.
+                else file_counts.get(total_key, 0)
             )
             on_total(total)
         return _Progress(on_progress)
@@ -562,5 +583,9 @@ def read_import(
     _import_scheduled_workouts(athlete_id, stored_path, workouts_by_old_id, activity_id_map, counts, progress)
     progress.flush()
     _resolve_deferred_links(deferred_links, activity_id_map)
+
+    progress = start_section("threshold_history", "threshold_history")
+    _import_threshold_history(athlete_id, stored_path, activity_id_map, counts, progress)
+    progress.flush()
 
     return counts

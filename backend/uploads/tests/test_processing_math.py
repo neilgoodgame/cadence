@@ -1,11 +1,13 @@
+from datetime import UTC, date, datetime
+
 from django.test import SimpleTestCase, TestCase
 
 from accounts.models import User
 from activities.models import Activity
+from athletes.models import ThresholdHistory
 
 from ..processing import (
     _best_pace_seconds_per_km,
-    _best_pace_seconds_per_km_over_duration,
     _min,
     _total_ascent,
     _total_descent,
@@ -14,7 +16,6 @@ from ..processing import (
     compute_edwards_trimp,
     compute_normalized_power,
     compute_tss,
-    detect_threshold_increase,
     training_effect_label,
 )
 
@@ -95,105 +96,30 @@ class BestPaceSecondsPerKmTests(SimpleTestCase):
         self.assertAlmostEqual(_best_pace_seconds_per_km(t, series, 2.0), 60.0, places=3)
 
 
-class BestPaceSecondsPerKmOverDurationTests(SimpleTestCase):
-    """The dual of BestPaceSecondsPerKmTests above: fixed *time* target, variable *distance*
-    window, instead of fixed distance/variable time."""
-
-    def test_constant_pace_returns_that_pace(self):
-        # 1 km every 60 seconds, sustained for a full hour -> 60 sec/km throughout.
-        series = [i / 60 for i in range(3601)]
-        t = list(range(len(series)))
-        self.assertAlmostEqual(_best_pace_seconds_per_km_over_duration(t, series, 3600), 60.0, places=1)
-
-    def test_returns_none_when_target_duration_is_never_reached(self):
-        series = [i / 60 for i in range(100)]  # only ~99 seconds of data
-        t = list(range(len(series)))
-        self.assertIsNone(_best_pace_seconds_per_km_over_duration(t, series, 3600))
-
-    def test_uses_real_elapsed_time_not_sample_index_for_sparse_recording(self):
-        # 10 km covered over samples at t=0 and t=3600 (real elapsed time exactly one hour)
-        # must come out as 360 sec/km.
-        t = [0, 3600]
-        series = [0, 10.0]
-        self.assertAlmostEqual(_best_pace_seconds_per_km_over_duration(t, series, 3600), 360.0, places=3)
-
-    def test_forward_fills_gaps_instead_of_treating_them_as_a_reset(self):
-        t = list(range(3601))
-        series = [None] * 3601
-        series[0] = 0.0
-        series[3600] = 60.0  # 60 km in one hour -> 60 sec/km, with everything in between missing
-        self.assertAlmostEqual(_best_pace_seconds_per_km_over_duration(t, series, 3600), 60.0, places=3)
-
-
-class DetectThresholdIncreaseTests(TestCase):
-    """detect_threshold_increase - the actual detection formulas: bike FTP is 95% of the best
-    20-minute power, run critical_run_power/threshold_pace come directly from the best 60-minute
-    effort. Only ever suggests an *increase* (or, for pace, a *faster* time)."""
-
-    def test_bike_suggests_ftp_at_95_percent_of_best_20min_power(self):
-        activity = Activity(sport="bike", ftp_snapshot=200)
-        # A steady 280W for the full 20-minute window -> implied FTP = round(0.95 * 280) = 266.
-        power_series = [280] * 1200
-        detect_threshold_increase(activity, power_series, list(range(1200)), [None] * 1200)
-        self.assertEqual(activity.suggested_ftp, 266)
-
-    def test_bike_does_not_suggest_a_decrease(self):
-        activity = Activity(sport="bike", ftp_snapshot=300)
-        power_series = [200] * 1200  # implies ~190W FTP - well below the 300 snapshot
-        detect_threshold_increase(activity, power_series, list(range(1200)), [None] * 1200)
-        self.assertIsNone(activity.suggested_ftp)
-
-    def test_bike_activity_shorter_than_the_20min_window_suggests_nothing(self):
-        activity = Activity(sport="bike", ftp_snapshot=200)
-        power_series = [280] * 600  # only 10 minutes
-        detect_threshold_increase(activity, power_series, list(range(600)), [None] * 600)
-        self.assertIsNone(activity.suggested_ftp)
-
-    def test_run_suggests_critical_run_power_directly_from_best_60min_power(self):
-        activity = Activity(sport="run", critical_run_power_snapshot=250)
-        power_series = [300] * 3600
-        detect_threshold_increase(activity, power_series, list(range(3600)), [None] * 3600)
-        self.assertEqual(activity.suggested_critical_run_power, 300)
-
-    def test_run_suggests_threshold_pace_from_best_60min_pace(self):
-        activity = Activity(sport="run", threshold_pace_snapshot="4:30")
-        t = list(range(3601))
-        distance_km_series = [None] * 3601
-        distance_km_series[0] = 0.0
-        distance_km_series[3600] = 15.0  # 15km in an hour -> 240 sec/km -> "4:00"
-        detect_threshold_increase(activity, [None] * 3601, t, distance_km_series)
-        self.assertEqual(activity.suggested_threshold_pace, "4:00")
-
-    def test_run_does_not_suggest_a_slower_pace(self):
-        activity = Activity(sport="run", threshold_pace_snapshot="4:00")
-        t = list(range(3601))
-        distance_km_series = [None] * 3601
-        distance_km_series[0] = 0.0
-        distance_km_series[3600] = 12.0  # 300 sec/km ("5:00") - slower than the 4:00 snapshot
-        detect_threshold_increase(activity, [None] * 3601, t, distance_km_series)
-        self.assertEqual(activity.suggested_threshold_pace, "")
-
-    def test_multisport_and_other_sports_never_suggest_anything(self):
-        activity = Activity(sport="swim")
-        detect_threshold_increase(activity, [300] * 3600, list(range(3600)), [None] * 3600)
-        self.assertIsNone(activity.suggested_ftp)
-        self.assertIsNone(activity.suggested_critical_run_power)
-        self.assertEqual(activity.suggested_threshold_pace, "")
-
-
 class ComputeTssTests(TestCase):
     def test_power_based_tss_one_hour_at_ftp_equals_100(self):
-        # compute_tss reads the activity's own threshold snapshot, not the athlete's live
-        # profile (see compute_tss's docstring) - athlete.ftp is set too, but only to confirm
-        # it's NOT what gets read.
+        # compute_tss reads the ThresholdHistory value effective as of the activity's own date
+        # (via reference_for), not the athlete's live profile - athlete.ftp is set too, but only
+        # to confirm it's NOT what gets read.
         athlete = User.objects.create_user(email="ftp@example.cc", password="x", name="FTP Athlete", ftp=999)
-        activity = Activity(sport="bike", moving_time=3600, ftp_snapshot=200)
+        activity = Activity.objects.create(
+            athlete=athlete, sport="bike", moving_time=3600, start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        )
+        ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=200,
+            source_activity=activity,
+            effective_from=date(2025, 12, 1),
+        )
         tss = compute_tss(activity, athlete, norm_power=200, heartrate_series=[])
         self.assertEqual(tss, 100)
 
     def test_hr_based_fallback_uses_zone_midpoint(self):
         athlete = User.objects.create_user(email="lthr@example.cc", password="x", name="LTHR Athlete", lthr=160)
-        activity = Activity(sport="bike", moving_time=3600)
+        activity = Activity.objects.create(
+            athlete=athlete, sport="bike", moving_time=3600, start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        )
         tss = compute_tss(activity, athlete, norm_power=None, heartrate_series=[160] * 3600)
         # All samples sit at exactly 100% of LTHR -> Z4 Threshold (91-105%),
         # whose midpoint is 98% -> a full hour there is 98 hrTSS exactly.
