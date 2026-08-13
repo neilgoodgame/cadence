@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.Record;
+import com.cadence.api.activities.RecordId;
+import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
@@ -26,6 +29,8 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 	@Autowired
 	private ActivityRepository activityRepository;
 	@Autowired
+	private RecordRepository recordRepository;
+	@Autowired
 	private ThresholdHistoryRepository thresholdHistoryRepository;
 	@Autowired
 	private ZoneService zoneService;
@@ -36,6 +41,28 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		user.setName("Test Athlete");
 		user.setPassword("irrelevant-for-this-test");
 		return userRepository.save(user);
+	}
+
+	// Mirrors ThresholdHistoryCalculatorTest's own helper - a local copy rather than a
+	// cross-test-class import, matching this codebase's existing convention (see
+	// ThresholdHistoryCalculator.mmssToSeconds's comment for the same reasoning).
+	private Activity newPowerActivity(User owner, Instant startDate, int power, int durationSeconds) {
+		Activity activity = new Activity();
+		activity.setAthlete(owner);
+		activity.setSport(Sport.BIKE);
+		activity.setName("Ride");
+		activity.setStartDate(startDate);
+		activity.setMovingTime(durationSeconds);
+		activity = activityRepository.save(activity);
+		for (int t = 0; t < durationSeconds; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), startDate.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(power);
+			recordRepository.save(record);
+		}
+		return activity;
 	}
 
 	@Test
@@ -105,5 +132,26 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		activity = activityRepository.save(activity);
 
 		assertThat(zoneService.referenceFor(athlete, ZoneType.BIKE_POWER, activity)).isEqualTo(250.0);
+	}
+
+	// Regression test for a real bug found live: deleteByAthleteIdAndField used to be a plain
+	// Spring Data derived method, whose removal is only pending in the persistence context until
+	// the next flush - but replayFullHistory's entityManager.clear() (called right after, inside
+	// this same transaction) discards pending unflushed operations along with everything else, so
+	// the old rows never actually got deleted and every rebuild appended a duplicate copy of the
+	// whole ledger on top of the last one.
+	@Test
+	void rebuildingTwiceReplacesTheLedgerInsteadOfDuplicatingIt() {
+		User athlete = newAthlete("rebuild-idempotent@example.cc");
+		newPowerActivity(athlete, Instant.parse("2024-01-01T00:00:00Z"), 200, 1200);
+		newPowerActivity(athlete, Instant.parse("2024-02-01T00:00:00Z"), 250, 1200);
+
+		int firstCount = thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+		int secondCount = thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+
+		assertThat(firstCount).isEqualTo(2);
+		assertThat(secondCount).isEqualTo(firstCount);
+		assertThat(thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), ThresholdField.FTP)).hasSize(2);
 	}
 }
