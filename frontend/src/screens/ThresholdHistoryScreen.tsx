@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { getThresholdHistory } from "../api/athletes";
 import { formatDate } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
+import { Card } from "../components/Card";
+import { ThresholdHistoryChart } from "./ThresholdHistoryChart";
 import type { ThresholdFieldName } from "../api/types";
 
 const FIELD_LABELS: Record<ThresholdFieldName, string> = {
@@ -55,6 +57,12 @@ export function ThresholdHistoryScreen() {
           No history yet - this fills in as qualifying activities are uploaded, or via a bulk
           rebuild in Preferences &rsaquo; Best efforts.
         </div>
+      )}
+
+      {entries.length > 0 && (
+        <Card>
+          <ThresholdHistoryChart field={field} points={entries} />
+        </Card>
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
