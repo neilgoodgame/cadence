@@ -3,16 +3,15 @@ package com.cadence.api.athletes;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.DerivedStatsRecomputeService;
-import com.cadence.api.activities.ThresholdRecomputeService;
 import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.athletes.dto.AthleteUpdateResponse;
+import com.cadence.api.athletes.dto.ThresholdHistoryListResponse;
+import com.cadence.api.athletes.dto.ThresholdSummaryEntry;
 import com.cadence.api.athletes.dto.ZoneSetReplaceRequest;
 import com.cadence.api.athletes.dto.ZoneSetReplaceResponse;
 import com.cadence.api.athletes.dto.ZoneSetResponse;
-import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
-import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
@@ -48,14 +47,14 @@ public class AthleteController {
 	private final FitnessService fitnessService;
 	private final TssRecomputeService tssRecomputeService;
 	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
-	private final ThresholdRecomputeService thresholdRecomputeService;
+	private final ThresholdHistoryService thresholdHistoryService;
 	private final ActivityRepository activityRepository;
 	private final AccessGuard accessGuard;
 	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
 	public AthleteController(UserService userService, UserMapper userMapper, AthleteService athleteService,
 			ZoneService zoneService, FitnessService fitnessService, TssRecomputeService tssRecomputeService,
-			DerivedStatsRecomputeService derivedStatsRecomputeService, ThresholdRecomputeService thresholdRecomputeService,
+			DerivedStatsRecomputeService derivedStatsRecomputeService, ThresholdHistoryService thresholdHistoryService,
 			ActivityRepository activityRepository, AccessGuard accessGuard) {
 		this.userService = userService;
 		this.userMapper = userMapper;
@@ -64,7 +63,7 @@ public class AthleteController {
 		this.fitnessService = fitnessService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
-		this.thresholdRecomputeService = thresholdRecomputeService;
+		this.thresholdHistoryService = thresholdHistoryService;
 		this.activityRepository = activityRepository;
 		this.accessGuard = accessGuard;
 	}
@@ -147,28 +146,52 @@ public class AthleteController {
 		}
 	}
 
-	/** Bulk counterpart to ActivityController.recomputeThresholds - re-runs threshold-increase
-	 * detection across the athlete's bike/run activities (the only sports it ever applies to),
-	 * optionally narrowed by sport/date range, so activities that predate the feature (or were
-	 * imported, which also skips detection) can be checked in bulk. */
-	@PostMapping(value = "/v1/athletes/{id}/recompute-thresholds", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-	public SseEmitter recomputeThresholds(@PathVariable String id,
-			@RequestParam(required = false) Sport sport,
-			@RequestParam(required = false) LocalDate after,
-			@RequestParam(required = false) LocalDate before) {
+	/** The current value + previous value + staleness for all three fields at once - what the
+	 * dashboard widget reads. No recompute - stale just means "will update on the next activity,
+	 * or refresh below." */
+	@GetMapping("/v1/athletes/{id}/thresholds")
+	public Map<String, ThresholdSummaryEntry> getThresholds(@PathVariable String id) {
+		accessGuard.requireRead(id);
+		User athlete = userService.getById(id);
+		return Map.of(
+				ThresholdField.FTP.wireValue(), thresholdHistoryService.summaryFor(athlete, ThresholdField.FTP),
+				ThresholdField.CRITICAL_RUN_POWER.wireValue(), thresholdHistoryService.summaryFor(athlete, ThresholdField.CRITICAL_RUN_POWER),
+				ThresholdField.THRESHOLD_PACE.wireValue(), thresholdHistoryService.summaryFor(athlete, ThresholdField.THRESHOLD_PACE));
+	}
+
+	/** The full ledger for one field, most recent first - backs the history screen the dashboard
+	 * widget's per-field links lead to. */
+	@GetMapping("/v1/athletes/{id}/threshold-history")
+	public ThresholdHistoryListResponse getThresholdHistory(@PathVariable String id, @RequestParam ThresholdField field) {
+		accessGuard.requireRead(id);
+		User athlete = userService.getById(id);
+		return new ThresholdHistoryListResponse(field, thresholdHistoryService.ledgerFor(athlete, field));
+	}
+
+	/** The dashboard's "this will update on your next activity, or refresh now" manual action -
+	 * synchronous, cheap (a single current-window scan for one field, same as the ingest hook). */
+	@PostMapping("/v1/athletes/{id}/thresholds/refresh")
+	public Map<String, ThresholdSummaryEntry> refreshThreshold(@PathVariable String id, @RequestParam ThresholdField field) {
 		accessGuard.requireWrite(id);
-		if (sport != null && sport != Sport.BIKE && sport != Sport.RUN) {
-			throw new ValidationException("Must be one of bike, run.", "sport");
-		}
+		User athlete = userService.getById(id);
+		thresholdHistoryService.refreshField(athlete, field);
+		return getThresholds(id);
+	}
+
+	/** Rebuilds the entire history ledger for one field from scratch, replaying the athlete's
+	 * activities oldest-first (see ThresholdHistoryService.rebuildHistory). For bootstrapping
+	 * history on an existing account, or after changing the window/sanity-check settings. */
+	@PostMapping(value = "/v1/athletes/{id}/recompute-threshold-history", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public SseEmitter recomputeThresholdHistory(@PathVariable String id, @RequestParam ThresholdField field) {
+		accessGuard.requireWrite(id);
 		User athlete = userService.getById(id);
 		SseEmitter emitter = new SseEmitter(600_000L);
 
 		taskExecutor.execute(() -> {
 			try {
-				ThresholdRecomputeService.Summary summary = thresholdRecomputeService.recomputeAll(
-						athlete, sport, after, before, (current, total) -> sendProgress(emitter, current, total));
-				emitter.send(SseEmitter.event().name("done")
-						.data("{\"checked\":" + summary.checked() + ",\"flagged\":" + summary.flagged() + "}"));
+				int total = thresholdHistoryService.rebuildHistory(
+						athlete, field, (current, totalCount) -> sendProgress(emitter, current, totalCount));
+				emitter.send(SseEmitter.event().name("done").data("{\"total\":" + total + "}"));
 				emitter.complete();
 			} catch (Exception e) {
 				emitter.completeWithError(e);

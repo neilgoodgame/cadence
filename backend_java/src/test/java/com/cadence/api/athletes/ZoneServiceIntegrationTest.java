@@ -9,11 +9,13 @@ import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-/** referenceFor's activity-scoping: bike_power/run_power/pace read the activity's own threshold
- * snapshot when given one, instead of the athlete's current (possibly since-changed) profile. */
+/** referenceFor's activity-scoping: bike_power/run_power/pace look up the ThresholdHistory
+ * ledger entry effective as of the activity's own date when given one, instead of the athlete's
+ * current (possibly since-changed) profile. */
 class ZoneServiceIntegrationTest extends IntegrationTest {
 
 	@Autowired
@@ -22,6 +24,8 @@ class ZoneServiceIntegrationTest extends IntegrationTest {
 	private UserRepository userRepository;
 	@Autowired
 	private ActivityRepository activityRepository;
+	@Autowired
+	private ThresholdHistoryRepository thresholdHistoryRepository;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -50,24 +54,34 @@ class ZoneServiceIntegrationTest extends IntegrationTest {
 		assertThat(zoneService.referenceFor(athlete, ZoneType.PACE)).isEqualTo(240.0); // "4:00" -> 240s
 	}
 
+	private ThresholdHistory newEntry(User athlete, ThresholdField field, Activity activity, Integer valueNumeric,
+			String valuePace) {
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(athlete);
+		entry.setField(field);
+		entry.setValueNumeric(valueNumeric);
+		entry.setValuePace(valuePace != null ? valuePace : "");
+		entry.setSourceActivity(activity);
+		entry.setEffectiveFrom(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
+		return thresholdHistoryRepository.save(entry);
+	}
+
 	@Test
-	void withActivityReadsThatActivitysSnapshot() {
-		User athlete = newAthlete("zone-reference-snapshot@example.cc");
+	void withActivityReadsTheLedgerEntryEffectiveAtThatTime() {
+		User athlete = newAthlete("zone-reference-ledger@example.cc");
 		Activity activity = newActivity(athlete, Sport.BIKE);
-		activity.setFtpSnapshot(200);
-		activity = activityRepository.save(activity);
+		newEntry(athlete, ThresholdField.FTP, activity, 200, null);
 
 		assertThat(zoneService.referenceFor(athlete, ZoneType.BIKE_POWER, activity)).isEqualTo(200.0);
-		// The athlete's live profile still says 250 - proves the snapshot, not the live value, won.
+		// The athlete's live profile still says 250 - proves the ledger entry, not the live value, won.
 		assertThat(zoneService.referenceFor(athlete, ZoneType.BIKE_POWER)).isEqualTo(250.0);
 	}
 
 	@Test
-	void paceSnapshotIsParsedFromMmssSameAsTheLiveField() {
+	void paceEntryIsParsedFromMmssSameAsTheLiveField() {
 		User athlete = newAthlete("zone-reference-pace@example.cc");
 		Activity activity = newActivity(athlete, Sport.RUN);
-		activity.setThresholdPaceSnapshot("4:30");
-		activity = activityRepository.save(activity);
+		newEntry(athlete, ThresholdField.THRESHOLD_PACE, activity, null, "4:30");
 
 		assertThat(zoneService.referenceFor(athlete, ZoneType.PACE, activity)).isEqualTo(270.0);
 	}
@@ -76,17 +90,16 @@ class ZoneServiceIntegrationTest extends IntegrationTest {
 	void heartRateIgnoresActivityAndAlwaysReadsLive() {
 		User athlete = newAthlete("zone-reference-hr@example.cc");
 		Activity activity = newActivity(athlete, Sport.BIKE);
-		activity.setFtpSnapshot(200);
-		activity = activityRepository.save(activity);
+		newEntry(athlete, ThresholdField.FTP, activity, 200, null);
 
 		assertThat(zoneService.referenceFor(athlete, ZoneType.HEART_RATE, activity)).isEqualTo(160.0);
 	}
 
 	@Test
-	void aNullSnapshotReturnsNullRatherThanFallingBackToTheLiveProfile() {
-		// An activity with no snapshot (e.g. pre-dating this feature and never backfilled)
-		// should read as "unknown," not silently fall back to the athlete's current FTP - that
-		// fallback-to-live behavior is exactly what activity-scoping exists to avoid.
+	void noLedgerEntryReturnsNullRatherThanFallingBackToTheLiveProfile() {
+		// An activity with no history entry effective at its own date (e.g. predating this
+		// feature) should read as "unknown," not silently fall back to the athlete's current
+		// FTP - that fallback-to-live behavior is exactly what activity-scoping exists to avoid.
 		User athlete = newAthlete("zone-reference-null@example.cc");
 		Activity activity = newActivity(athlete, Sport.BIKE);
 

@@ -2,7 +2,6 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.common.domain.Sport;
-import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.CursorPage;
 import com.cadence.api.security.AccessGuard;
 import java.time.LocalDate;
@@ -25,16 +24,13 @@ public class ActivityController {
 	private final ActivityService activityService;
 	private final TssRecomputeService tssRecomputeService;
 	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
-	private final ActivityThresholdSuggestionService thresholdSuggestionService;
 	private final AccessGuard accessGuard;
 
 	public ActivityController(ActivityService activityService, TssRecomputeService tssRecomputeService,
-			DerivedStatsRecomputeService derivedStatsRecomputeService,
-			ActivityThresholdSuggestionService thresholdSuggestionService, AccessGuard accessGuard) {
+			DerivedStatsRecomputeService derivedStatsRecomputeService, AccessGuard accessGuard) {
 		this.activityService = activityService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
-		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -93,35 +89,6 @@ public class ActivityController {
 		accessGuard.requireWrite(activity.getAthlete().getId());
 		derivedStatsRecomputeService.recomputeForActivity(id);
 		return activityService.toResponse(activityService.getActivity(id));
-	}
-
-	@PostMapping("/v1/activities/{id}/threshold-suggestion")
-	public ActivityResponse applyThresholdSuggestion(@PathVariable String id, @RequestBody Map<String, Object> body) {
-		Activity activity = activityService.getActivity(id);
-		accessGuard.requireWrite(activity.getAthlete().getId());
-		String field = (String) body.get("field");
-		Object acceptValue = body.get("accept");
-		if (!(acceptValue instanceof Boolean accept)) {
-			throw new ValidationException("Must be a boolean.", "accept");
-		}
-		boolean updateProfile = false;
-		if (accept) {
-			Object updateProfileValue = body.get("update_profile");
-			if (!(updateProfileValue instanceof Boolean updateProfileBoolean)) {
-				throw new ValidationException("Must be a boolean.", "update_profile");
-			}
-			updateProfile = updateProfileBoolean;
-		}
-		Activity updated = thresholdSuggestionService.apply(id, field, accept, updateProfile);
-		return activityService.toResponse(updated);
-	}
-
-	@PostMapping("/v1/activities/{id}/recompute-thresholds")
-	public ActivityResponse recomputeThresholds(@PathVariable String id) {
-		Activity activity = activityService.getActivity(id);
-		accessGuard.requireWrite(activity.getAthlete().getId());
-		Activity updated = thresholdSuggestionService.recomputeThresholds(id);
-		return activityService.toResponse(updated);
 	}
 
 	@DeleteMapping("/v1/activities/{id}")

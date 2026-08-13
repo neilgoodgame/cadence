@@ -12,14 +12,12 @@ public record ActivityResponse(
 		Integer avgPower, Integer normPower, Double intensity, int tss, Integer avgHr, Integer maxHr, Integer ascent,
 		Integer maxPower, Integer avgCadence, Integer maxCadence, Double maxSpeed, Integer totalDescent,
 		Integer elevationMin, Integer elevationMax, Integer calories, Double trimp, Double avgLeftBalancePct,
-		// The athlete's threshold(s) as of when this activity was created - see Activity's
-		// Javadoc. suggestedFtp/etc and thresholdChecked are transient in-app state (a pending
-		// detected increase, and whether detection has ever run - see ThresholdDetectionService),
-		// deliberately stripped before export (see
-		// ExportWriter.writeActivities/ActivityResponse.withoutTransientThresholdState).
-		Integer ftpSnapshot, Integer criticalRunPowerSnapshot, String thresholdPaceSnapshot,
-		Integer suggestedFtp, Integer suggestedCriticalRunPower, String suggestedThresholdPace,
-		boolean thresholdChecked,
+		// Every ThresholdHistory row this activity is (or was) the source of - see
+		// ActivityThresholdHistoryEntry. Empty for the vast majority of activities. Deliberately
+		// stripped before export (see ExportWriter.writeActivities/withoutTransientThresholdState):
+		// re-derivable from the top-level "threshold_history" section's own sourceActivityId links,
+		// so embedding it here too would just be duplicated data.
+		List<ActivityThresholdHistoryEntry> thresholdHistory,
 		Double startWeightKg, Double endWeightKg, Integer fluidsMl, Double avgAirTemp, Integer avgHumidity,
 		Double aerobicTrainingEffect, Double anaerobicTrainingEffect, String trainingEffectLabel,
 		List<String> tags, String workoutId, String bikeId, String shoeId,
@@ -36,9 +34,8 @@ public record ActivityResponse(
 				id, athleteId, sport, environment, hasGps, name, startDate, source, device, movingTime, distanceKm,
 				distanceSource, avgPower, normPower, intensity, tss, avgHr, maxHr, ascent, maxPower, avgCadence,
 				maxCadence, maxSpeed, totalDescent, elevationMin, elevationMax, calories, trimp, avgLeftBalancePct,
-				ftpSnapshot, criticalRunPowerSnapshot, thresholdPaceSnapshot, null, null, "", false, startWeightKg,
-				endWeightKg, fluidsMl, avgAirTemp, avgHumidity, aerobicTrainingEffect, anaerobicTrainingEffect,
-				trainingEffectLabel, tags, workoutId, bikeId, shoeId, parentActivityId, childActivityIds,
-				primaryActivityId, duplicateActivityIds);
+				List.of(), startWeightKg, endWeightKg, fluidsMl, avgAirTemp, avgHumidity, aerobicTrainingEffect,
+				anaerobicTrainingEffect, trainingEffectLabel, tags, workoutId, bikeId, shoeId, parentActivityId,
+				childActivityIds, primaryActivityId, duplicateActivityIds);
 	}
 }

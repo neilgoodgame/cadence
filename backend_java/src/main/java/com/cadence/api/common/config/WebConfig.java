@@ -3,6 +3,7 @@ package com.cadence.api.common.config;
 import com.cadence.api.activities.BestEffortKind;
 import com.cadence.api.activities.DurationCurveMetric;
 import com.cadence.api.activities.Environment;
+import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.uploads.OnDuplicate;
@@ -55,6 +56,12 @@ public class WebConfig implements WebMvcConfigurer {
 			@Override
 			public OnDuplicate convert(String source) {
 				return OnDuplicate.fromWireValue(source);
+			}
+		});
+		registry.addConverter(new Converter<String, ThresholdField>() {
+			@Override
+			public ThresholdField convert(String source) {
+				return ThresholdField.fromWireValue(source);
 			}
 		});
 	}

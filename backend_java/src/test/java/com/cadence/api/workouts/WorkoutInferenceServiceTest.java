@@ -16,9 +16,9 @@ import org.junit.jupiter.api.Test;
 /** Same worked examples as backend/workouts/tests.py - keeps both inference implementations honest against each other. */
 class WorkoutInferenceServiceTest {
 
-	// referenceFor() reads straight off the User entity and never touches the repository, so a
-	// real ZoneService wired to a null repository is safe to use here.
-	private final WorkoutInferenceService service = new WorkoutInferenceService(new ZoneService(null));
+	// referenceFor() reads straight off the User entity and never touches either repository, so a
+	// real ZoneService wired to null repositories is safe to use here.
+	private final WorkoutInferenceService service = new WorkoutInferenceService(new ZoneService(null, null));
 
 	private static WorkoutInferenceService.Node.LeafCandidate leaf(int duration, TargetType targetType, Double pct) {
 		return new WorkoutInferenceService.Node.LeafCandidate(duration, targetType, pct);

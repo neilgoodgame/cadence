@@ -7,9 +7,13 @@ import com.cadence.api.activities.LapMapper;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.StreamService;
 import com.cadence.api.activities.dto.LapResponse;
+import com.cadence.api.athletes.ThresholdField;
+import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.export.dto.ActivityExportEntry;
 import com.cadence.api.export.dto.ExportCounts;
+import com.cadence.api.export.dto.ThresholdHistoryExportEntry;
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.BikeRepository;
 import com.cadence.api.gear.ComponentRepository;
@@ -106,14 +110,24 @@ public class ExportWriter {
 	private final ShoeRepository shoeRepository;
 	private final ComponentRepository componentRepository;
 	private final GearMapper gearMapper;
+	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final EntityManager entityManager;
+
+	// A field maps to exactly one sport - ftp -> bike, the other two -> run - same mapping
+	// ThresholdHistoryCalculator.sportFor uses (duplicated rather than shared: that one's
+	// private, and this is a small enough mapping that a local copy matches this codebase's own
+	// established convention over reaching into another class's implementation detail).
+	private static final java.util.Map<Sport, java.util.List<ThresholdField>> THRESHOLD_FIELDS_FOR_SPORT = java.util.Map.of(
+			Sport.BIKE, java.util.List.of(ThresholdField.FTP),
+			Sport.RUN, java.util.List.of(ThresholdField.CRITICAL_RUN_POWER, ThresholdField.THRESHOLD_PACE));
 
 	public ExportWriter(ActivityRepository activityRepository, ActivityService activityService, LapRepository lapRepository,
 			LapMapper lapMapper, StreamService streamService, RaceRepository raceRepository, RaceService raceService,
 			WorkoutRepository workoutRepository, WorkoutMapper workoutMapper,
 			ScheduledWorkoutRepository scheduledWorkoutRepository, SchedulingMapper schedulingMapper,
 			GearService gearService, ShoeService shoeService, BikeRepository bikeRepository, ShoeRepository shoeRepository,
-			ComponentRepository componentRepository, GearMapper gearMapper, EntityManager entityManager) {
+			ComponentRepository componentRepository, GearMapper gearMapper,
+			ThresholdHistoryRepository thresholdHistoryRepository, EntityManager entityManager) {
 		this.activityRepository = activityRepository;
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
@@ -131,7 +145,14 @@ public class ExportWriter {
 		this.shoeRepository = shoeRepository;
 		this.componentRepository = componentRepository;
 		this.gearMapper = gearMapper;
+		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.entityManager = entityManager;
+	}
+
+	private static java.util.List<ThresholdField> thresholdFieldsFor(Sport sportFilter) {
+		return sportFilter == null
+				? java.util.List.of(ThresholdField.values())
+				: THRESHOLD_FIELDS_FOR_SPORT.getOrDefault(sportFilter, java.util.List.of());
 	}
 
 	/** {@code sportFilter} narrows activities/races/workouts/scheduled_workouts to one discipline;
@@ -205,6 +226,10 @@ public class ExportWriter {
 		writeScheduledWorkouts(athleteId, sportFilter, generator, progress);
 		progress.flush();
 
+		progress = startSection(onStep, onTotal, onProgress, "threshold_history", (int) counts.thresholdHistory());
+		writeThresholdHistory(athleteId, sportFilter, generator, progress);
+		progress.flush();
+
 		generator.writeEndObject();
 	}
 
@@ -226,10 +251,14 @@ public class ExportWriter {
 				: workoutRepository.countByCreatedByIdAndSport(athleteId, sportFilter);
 		long scheduledWorkouts = sportFilter == null ? scheduledWorkoutRepository.countByAthleteId(athleteId)
 				: scheduledWorkoutRepository.countByAthleteIdAndWorkoutSport(athleteId, sportFilter);
+		long thresholdHistory = sportFilter == null
+				? thresholdHistoryRepository.countByAthleteId(athleteId)
+				: thresholdHistoryRepository.countByAthleteIdAndFieldIn(athleteId, thresholdFieldsFor(sportFilter));
 		// Equipment is always exported in full, regardless of the sport filter - it's small, and
 		// shoes have no sport of their own to filter by.
-		return new ExportCounts(activities, races, workouts, scheduledWorkouts, bikeRepository.countByAthleteId(athleteId),
-				shoeRepository.countByAthleteIdAndRetiredFalse(athleteId), componentRepository.countByBikeAthleteId(athleteId));
+		return new ExportCounts(activities, races, workouts, scheduledWorkouts, thresholdHistory,
+				bikeRepository.countByAthleteId(athleteId), shoeRepository.countByAthleteIdAndRetiredFalse(athleteId),
+				componentRepository.countByBikeAthleteId(athleteId));
 	}
 
 	private void writeActivities(String athleteId, Sport sportFilter, JsonGenerator generator, Progress progress) {
@@ -296,6 +325,19 @@ public class ExportWriter {
 				generator.writePOJO(schedulingMapper.toResponse(scheduled));
 				progress.tick();
 			}
+		}
+		generator.writeEndArray();
+	}
+
+	private void writeThresholdHistory(String athleteId, Sport sportFilter, JsonGenerator generator, Progress progress) {
+		List<ThresholdHistory> entries = sportFilter == null
+				? thresholdHistoryRepository.findByAthleteIdOrderByEffectiveFrom(athleteId)
+				: thresholdHistoryRepository.findByAthleteIdAndFieldInOrderByEffectiveFrom(athleteId, thresholdFieldsFor(sportFilter));
+		generator.writeArrayPropertyStart("threshold_history");
+		for (ThresholdHistory entry : entries) {
+			generator.writePOJO(new ThresholdHistoryExportEntry(entry.getField(), entry.getValueNumeric(),
+					entry.getValuePace(), entry.getSourceActivity().getId(), entry.getEffectiveFrom()));
+			progress.tick();
 		}
 		generator.writeEndArray();
 	}
