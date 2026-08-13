@@ -12,6 +12,9 @@ import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.TagService;
 import com.cadence.api.activities.dto.ActivityResponse;
+import com.cadence.api.athletes.ThresholdField;
+import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.export.ExportWriter;
 import com.cadence.api.gear.Bike;
@@ -93,6 +96,8 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 	private ShoeModelVersionRepository shoeModelVersionRepository;
 	@Autowired
 	private TagService tagService;
+	@Autowired
+	private ThresholdHistoryRepository thresholdHistoryRepository;
 
 	private User newUser(String email) {
 		User user = new User();
@@ -193,6 +198,14 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 		scheduled.setActivity(child);
 		scheduledWorkoutRepository.save(scheduled);
 
+		ThresholdHistory thresholdEntry = new ThresholdHistory();
+		thresholdEntry.setAthlete(source);
+		thresholdEntry.setField(ThresholdField.THRESHOLD_PACE);
+		thresholdEntry.setValuePace("4:30");
+		thresholdEntry.setSourceActivity(child);
+		thresholdEntry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		thresholdHistoryRepository.save(thresholdEntry);
+
 		Path file = Files.createTempFile("import-test", ".json.gz");
 		try {
 			try (JsonGenerator generator = jsonMapper.createGenerator(
@@ -209,6 +222,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			assertThat(counts.bikesImported()).isEqualTo(1);
 			assertThat(counts.shoesImported()).isEqualTo(1);
 			assertThat(counts.componentsImported()).isEqualTo(1);
+			assertThat(counts.thresholdHistoryImported()).isEqualTo(1);
 			assertThat(counts.itemsSkipped()).isZero();
 
 			List<Activity> imported = activityRepository.findByAthleteIdOrderByStartDate(target.getId());
@@ -241,6 +255,12 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			assertThat(importedScheduled).hasSize(1);
 			assertThat(importedScheduled.get(0).getActivity().getId()).isEqualTo(importedChild.getId());
 			assertThat(importedScheduled.get(0).getWorkout().getId()).isEqualTo(importedWorkouts.get(0).getId());
+
+			List<ThresholdHistory> importedThresholdHistory = thresholdHistoryRepository.findBySourceActivityId(importedChild.getId());
+			assertThat(importedThresholdHistory).hasSize(1);
+			assertThat(importedThresholdHistory.get(0).getField()).isEqualTo(ThresholdField.THRESHOLD_PACE);
+			assertThat(importedThresholdHistory.get(0).getValuePace()).isEqualTo("4:30");
+			assertThat(importedThresholdHistory.get(0).getAthlete().getId()).isEqualTo(target.getId());
 		}
 		finally {
 			Files.deleteIfExists(file);
@@ -271,7 +291,8 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			List<String> seen = new ArrayList<>();
 			importReader.read(target.getId(), file, seen::add);
 
-			assertThat(seen).containsExactly("equipment", "workouts", "activities", "races", "scheduled_workouts");
+			assertThat(seen).containsExactly(
+					"equipment", "workouts", "activities", "races", "scheduled_workouts", "threshold_history");
 		}
 		finally {
 			Files.deleteIfExists(file);
@@ -355,7 +376,8 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 					"step:workouts", "total:1", "progress:1",
 					"step:activities", "total:1", "progress:1",
 					"step:races", "total:1", "progress:1",
-					"step:scheduled_workouts", "total:1", "progress:1");
+					"step:scheduled_workouts", "total:1", "progress:1",
+					"step:threshold_history", "total:0", "progress:0");
 		}
 		finally {
 			Files.deleteIfExists(file);
@@ -405,13 +427,12 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void importedActivityFallsBackToTheImportingAthletesCurrentProfile() throws Exception {
-		// ExportWriter doesn't write ftpSnapshot/etc. into the file yet (that lands with
-		// threshold-increase detection) - until then, ImportReader falls back to the *importing*
-		// athlete's current profile, the same graceful-degradation shape already used for the
-		// "counts" progress metadata.
-		User source = newUser("snapshot-fallback-source@example.cc");
-		User target = newUser("snapshot-fallback-target@example.cc");
+	void importedActivityCarriesOverTheSourcesOwnHistoricalValueUnchanged() throws Exception {
+		// threshold_history entries carry the source athlete's own historical values verbatim -
+		// imported activities' zones should reflect what was actually true when they happened,
+		// not get re-derived against the importing athlete's own (possibly unrelated) fitness.
+		User source = newUser("threshold-history-roundtrip-source@example.cc");
+		User target = newUser("threshold-history-roundtrip-target@example.cc");
 		target.setFtp(222);
 		target = userRepository.save(target);
 
@@ -420,9 +441,17 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 		ride.setSport(Sport.BIKE);
 		ride.setName("Ride");
 		ride.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
-		activityRepository.save(ride);
+		ride = activityRepository.save(ride);
 
-		Path file = Files.createTempFile("import-snapshot-fallback-test", ".json.gz");
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(source);
+		entry.setField(ThresholdField.FTP);
+		entry.setValueNumeric(250);
+		entry.setSourceActivity(ride);
+		entry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		thresholdHistoryRepository.save(entry);
+
+		Path file = Files.createTempFile("import-threshold-history-roundtrip-test", ".json.gz");
 		try {
 			try (JsonGenerator generator = jsonMapper.createGenerator(
 					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
@@ -431,8 +460,15 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 
 			importReader.read(target.getId(), file);
 
-			Activity imported = activityRepository.findByAthleteIdOrderByStartDate(target.getId()).get(0);
-			assertThat(imported.getFtpSnapshot()).isEqualTo(222);
+			Activity importedActivity = activityRepository.findByAthleteIdOrderByStartDate(target.getId()).get(0);
+			List<ThresholdHistory> importedEntries = thresholdHistoryRepository.findBySourceActivityId(importedActivity.getId());
+			assertThat(importedEntries).hasSize(1);
+			assertThat(importedEntries.get(0).getField()).isEqualTo(ThresholdField.FTP);
+			assertThat(importedEntries.get(0).getValueNumeric()).isEqualTo(250);
+
+			// The target's own live ftp is untouched by the import - only the ledger is populated.
+			User reloadedTarget = userRepository.findById(target.getId()).orElseThrow();
+			assertThat(reloadedTarget.getFtp()).isEqualTo(222);
 		}
 		finally {
 			Files.deleteIfExists(file);
@@ -440,35 +476,38 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void importCarriesOverTheSourceActivitysOwnSnapshotNotTheImportingAthletesProfile() throws Exception {
-		User source = newUser("snapshot-roundtrip-source@example.cc");
-		source.setFtp(500);
-		source = userRepository.save(source);
-		User target = newUser("snapshot-roundtrip-target@example.cc");
-		target.setFtp(999);
-		target = userRepository.save(target);
+	void aFileExportedBeforeThisFeatureExistedImportsWithAnEmptyLedger() throws Exception {
+		// No "threshold_history" key at all in the source document - the pre-feature shape.
+		User target = newUser("threshold-history-pre-feature-target@example.cc");
 
-		Activity ride = new Activity();
-		ride.setAthlete(source);
-		ride.setSport(Sport.BIKE);
-		ride.setName("Old ride");
-		ride.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
-		ride.setFtpSnapshot(222); // what FTP actually was when this ride happened
-		activityRepository.save(ride);
-
-		Path file = Files.createTempFile("import-snapshot-roundtrip-test", ".json.gz");
+		Path file = Files.createTempFile("import-threshold-history-pre-feature-test", ".json.gz");
 		try {
 			try (JsonGenerator generator = jsonMapper.createGenerator(
 					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
-				exportWriter.write(source.getId(), null, generator);
+				generator.writeStartObject();
+				generator.writeStringProperty("generated_at", Instant.now().toString());
+				generator.writeStringProperty("athlete_id", "usr_doesnotmatter");
+				generator.writeObjectPropertyStart("equipment");
+				generator.writeArrayPropertyStart("bikes");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("shoes");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("components");
+				generator.writeEndArray();
+				generator.writeEndObject();
+				generator.writeArrayPropertyStart("workouts");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("activities");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("races");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("scheduled_workouts");
+				generator.writeEndArray();
+				generator.writeEndObject();
 			}
 
-			importReader.read(target.getId(), file);
-
-			Activity imported = activityRepository.findByAthleteIdOrderByStartDate(target.getId()).get(0);
-			// 222 (the source ride's own snapshot) - not the source's current 500, and not the
-			// importing athlete's current 999.
-			assertThat(imported.getFtpSnapshot()).isEqualTo(222);
+			ImportCounts counts = importReader.read(target.getId(), file);
+			assertThat(counts.thresholdHistoryImported()).isZero();
 		}
 		finally {
 			Files.deleteIfExists(file);

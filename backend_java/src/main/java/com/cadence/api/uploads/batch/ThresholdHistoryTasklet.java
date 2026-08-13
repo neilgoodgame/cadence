@@ -2,11 +2,8 @@ package com.cadence.api.uploads.batch;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
-import com.cadence.api.activities.BestEffortComputeService;
+import com.cadence.api.athletes.ThresholdHistoryService;
 import com.cadence.api.common.error.NotFoundException;
-import com.cadence.api.uploads.parsing.ParsedActivity;
-import com.cadence.api.users.User;
-import java.util.List;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
@@ -14,18 +11,24 @@ import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Runs right after records are loaded and before {@link ComputeDerivedStatsTasklet} - so if this
+ * activity's own effort raises (or, once an old best-effort ages out, lowers) the athlete's
+ * current window value, this same activity's own TSS/intensity is rated against the new value
+ * too, not just future ones. See ThresholdHistoryService.recomputeForActivity.
+ */
 @Component
-public class BestEffortTasklet implements Tasklet {
+public class ThresholdHistoryTasklet implements Tasklet {
 
 	private final UploadJobContextRegistry contextRegistry;
 	private final ActivityRepository activityRepository;
-	private final BestEffortComputeService computeService;
+	private final ThresholdHistoryService thresholdHistoryService;
 
-	public BestEffortTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
-			BestEffortComputeService computeService) {
+	public ThresholdHistoryTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
+			ThresholdHistoryService thresholdHistoryService) {
 		this.contextRegistry = contextRegistry;
 		this.activityRepository = activityRepository;
-		this.computeService = computeService;
+		this.thresholdHistoryService = thresholdHistoryService;
 	}
 
 	@Override
@@ -36,17 +39,7 @@ public class BestEffortTasklet implements Tasklet {
 		for (UploadJobContext.Segment segment : context.getSegments()) {
 			Activity activity = activityRepository.findById(segment.activityId())
 					.orElseThrow(() -> new NotFoundException("No such activity."));
-			User athlete = activity.getAthlete();
-			List<Integer> powerSeries = segment.parsed().samples().stream()
-					.map(ParsedActivity.Sample::power).toList();
-			List<Integer> hrSeries = segment.parsed().samples().stream()
-					.map(ParsedActivity.Sample::heartrate).toList();
-			List<Double> distanceSeries = segment.parsed().samples().stream()
-					.map(ParsedActivity.Sample::distanceKm).toList();
-			List<Integer> tSeries = segment.parsed().samples().stream()
-					.map(ParsedActivity.Sample::t).toList();
-			computeService.computeForActivity(activity, athlete, powerSeries, hrSeries, tSeries, distanceSeries);
-			activityRepository.save(activity);
+			thresholdHistoryService.recomputeForActivity(activity);
 		}
 		return RepeatStatus.FINISHED;
 	}

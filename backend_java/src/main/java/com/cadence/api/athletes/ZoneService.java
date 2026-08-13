@@ -2,6 +2,8 @@ package com.cadence.api.athletes;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.users.User;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -26,9 +28,11 @@ public class ZoneService {
 			new Zone("Z5 VO2max", 106, 150));
 
 	private final ZoneSetRepository zoneSetRepository;
+	private final ThresholdHistoryRepository thresholdHistoryRepository;
 
-	public ZoneService(ZoneSetRepository zoneSetRepository) {
+	public ZoneService(ZoneSetRepository zoneSetRepository, ThresholdHistoryRepository thresholdHistoryRepository) {
 		this.zoneSetRepository = zoneSetRepository;
+		this.thresholdHistoryRepository = thresholdHistoryRepository;
 	}
 
 	public ZoneSet getOrCreate(User athlete, ZoneType type) {
@@ -65,22 +69,29 @@ public class ZoneService {
 		};
 	}
 
-	/** As {@link #referenceFor(User, ZoneType)}, but for BIKE_POWER/RUN_POWER/PACE reads
-	 * {@code activity}'s own threshold snapshot instead of the athlete's current profile, so a
-	 * historic activity's zones stay pinned to what was true when it happened rather than moving
-	 * every time the athlete's current profile changes. HEART_RATE has no per-activity snapshot
-	 * (lthr isn't captured this way) and always reads live, same as the 2-arg overload. */
+	/** As {@link #referenceFor(User, ZoneType)}, but for BIKE_POWER/RUN_POWER/PACE looks up the
+	 * ThresholdHistory ledger entry effective as of {@code activity}'s own date instead of the
+	 * athlete's current profile, so a historic activity's zones stay pinned to what was true when
+	 * it happened rather than moving every time the athlete's current profile changes. Returns
+	 * null (not a fallback to the live profile) when no ledger entry is effective yet - "unknown"
+	 * is the correct answer, not a guess. HEART_RATE has no ledger of its own (lthr isn't rolling-
+	 * window derived) and always reads live, same as the 2-arg overload. */
 	public Double referenceFor(User athlete, ZoneType type, Activity activity) {
-		if (activity == null) {
+		if (activity == null || type == ZoneType.HEART_RATE) {
 			return referenceFor(athlete, type);
 		}
-		return switch (type) {
-			case HEART_RATE -> referenceFor(athlete, type);
-			case BIKE_POWER -> activity.getFtpSnapshot() != null ? activity.getFtpSnapshot().doubleValue() : null;
-			case RUN_POWER -> activity.getCriticalRunPowerSnapshot() != null
-					? activity.getCriticalRunPowerSnapshot().doubleValue() : null;
-			case PACE -> mmssToSeconds(activity.getThresholdPaceSnapshot());
+		ThresholdField field = switch (type) {
+			case BIKE_POWER -> ThresholdField.FTP;
+			case RUN_POWER -> ThresholdField.CRITICAL_RUN_POWER;
+			case PACE -> ThresholdField.THRESHOLD_PACE;
+			case HEART_RATE -> throw new IllegalStateException("unreachable");
 		};
+		LocalDate asOf = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
+		return thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(athlete.getId(), field, asOf)
+				.map(entry -> field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(entry.getValuePace())
+						: entry.getValueNumeric().doubleValue())
+				.orElse(null);
 	}
 
 	/**

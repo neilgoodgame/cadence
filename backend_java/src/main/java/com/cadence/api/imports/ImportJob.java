@@ -50,6 +50,9 @@ public class ImportJob extends PrefixedIdEntity {
 	@Column(name = "scheduled_workouts_imported", nullable = false)
 	private int scheduledWorkoutsImported;
 
+	@Column(name = "threshold_history_imported", nullable = false)
+	private int thresholdHistoryImported;
+
 	@Column(name = "bikes_imported", nullable = false)
 	private int bikesImported;
 
@@ -153,6 +156,14 @@ public class ImportJob extends PrefixedIdEntity {
 
 	public void setScheduledWorkoutsImported(int scheduledWorkoutsImported) {
 		this.scheduledWorkoutsImported = scheduledWorkoutsImported;
+	}
+
+	public int getThresholdHistoryImported() {
+		return thresholdHistoryImported;
+	}
+
+	public void setThresholdHistoryImported(int thresholdHistoryImported) {
+		this.thresholdHistoryImported = thresholdHistoryImported;
 	}
 
 	public int getBikesImported() {

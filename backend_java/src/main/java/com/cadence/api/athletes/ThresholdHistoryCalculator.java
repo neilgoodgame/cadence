@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
@@ -176,11 +177,20 @@ public class ThresholdHistoryCalculator {
 	 * <p>Used only by the bulk "recompute history from oldest" tool - currentWindowValue is what
 	 * ingest/refresh use day to day. */
 	public List<ThresholdHistoryEntry> replayFullHistory(User athlete, ThresholdField field) {
+		return replayFullHistory(athlete, field, (current, total) -> { });
+	}
+
+	/** As {@link #replayFullHistory(User, ThresholdField)}, but calls {@code onProgress(current,
+	 * total)} after each activity is considered - what the bulk rebuild endpoint's SSE progress
+	 * reads. */
+	public List<ThresholdHistoryEntry> replayFullHistory(User athlete, ThresholdField field, BiConsumer<Integer, Integer> onProgress) {
 		List<Activity> activities = activityRepository.findByAthleteIdAndSportOrderByStartDate(athlete.getId(), sportFor(field));
 
 		List<ThresholdHistoryEntry> entries = new ArrayList<>();
 		List<Candidate> window = new ArrayList<>();
 		Double currentValue = null;
+		int total = activities.size();
+		int current = 0;
 
 		for (Activity activity : activities) {
 			LocalDate activityDate = dateOf(activity);
@@ -204,6 +214,8 @@ public class ThresholdHistoryCalculator {
 					entries.add(new ThresholdHistoryEntry(field, newValue, best.activityId(), best.date()));
 				}
 			}
+			current++;
+			onProgress.accept(current, total);
 		}
 		return entries;
 	}

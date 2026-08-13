@@ -8,9 +8,12 @@ import com.cadence.api.activities.TagService;
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.LapResponse;
 import com.cadence.api.activities.dto.StreamsResponse;
-import com.cadence.api.common.domain.Sport;
+import com.cadence.api.athletes.ThresholdField;
+import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.export.dto.ActivityExportEntry;
 import com.cadence.api.export.dto.ExportCounts;
+import com.cadence.api.export.dto.ThresholdHistoryExportEntry;
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.GearService;
 import com.cadence.api.gear.Shoe;
@@ -101,13 +104,15 @@ public class ImportReader {
 	private final JdbcBatchItemWriter<RecordRow> recordItemWriter;
 	private final JsonMapper jsonMapper;
 	private final UserRepository userRepository;
+	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final TransactionTemplate transactionTemplate;
 
 	public ImportReader(GearService gearService, ShoeService shoeService, ShoeModelRepository shoeModelRepository,
 			ShoeModelVersionRepository shoeModelVersionRepository, WorkoutService workoutService, RaceService raceService,
 			SchedulingService schedulingService, TagService tagService, ActivityRepository activityRepository,
 			LapRepository lapRepository, JdbcBatchItemWriter<RecordRow> recordItemWriter, JsonMapper jsonMapper,
-			UserRepository userRepository, PlatformTransactionManager transactionManager) {
+			UserRepository userRepository, ThresholdHistoryRepository thresholdHistoryRepository,
+			PlatformTransactionManager transactionManager) {
 		this.gearService = gearService;
 		this.shoeService = shoeService;
 		this.shoeModelRepository = shoeModelRepository;
@@ -121,6 +126,7 @@ public class ImportReader {
 		this.recordItemWriter = recordItemWriter;
 		this.jsonMapper = jsonMapper;
 		this.userRepository = userRepository;
+		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 	}
 
@@ -132,6 +138,7 @@ public class ImportReader {
 		int races;
 		int workouts;
 		int scheduledWorkouts;
+		int thresholdHistory;
 		int bikes;
 		int shoes;
 		int components;
@@ -250,6 +257,12 @@ public class ImportReader {
 						importScheduledWorkouts(parser, athlete, workoutsByOldId, activityIdMap, counts, progress);
 						progress.flush();
 					}
+					case "threshold_history" -> {
+						Progress progress = startSection(onStep, onTotal, onProgress, "threshold_history",
+								fileCounts == null ? null : (int) fileCounts.thresholdHistory());
+						importThresholdHistory(parser, athlete, activityIdMap, counts, progress);
+						progress.flush();
+					}
 					default -> parser.skipChildren(); // generated_at, athlete_id - scalars, nothing to walk
 				}
 			}
@@ -258,7 +271,7 @@ public class ImportReader {
 		resolveDeferredLinks(deferredLinks, activityIdMap);
 
 		return new ImportCounts(counts.activities, counts.races, counts.workouts, counts.scheduledWorkouts,
-				counts.bikes, counts.shoes, counts.components, counts.skipped);
+				counts.thresholdHistory, counts.bikes, counts.shoes, counts.components, counts.skipped);
 	}
 
 	private static Progress startSection(
@@ -444,19 +457,6 @@ public class ImportReader {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
 		activity.setSport(ar.sport());
-		// Carries over the source activity's own threshold snapshot if the export file has one;
-		// a file exported before that field existed falls back to the *importing* athlete's
-		// current profile - same graceful-degradation shape as the "counts" progress metadata.
-		if (ar.sport() == Sport.BIKE) {
-			activity.setFtpSnapshot(ar.ftpSnapshot() != null ? ar.ftpSnapshot() : athlete.getFtp());
-		}
-		else if (ar.sport() == Sport.RUN) {
-			activity.setCriticalRunPowerSnapshot(
-					ar.criticalRunPowerSnapshot() != null ? ar.criticalRunPowerSnapshot() : athlete.getCriticalRunPower());
-			activity.setThresholdPaceSnapshot(
-					ar.thresholdPaceSnapshot() != null && !ar.thresholdPaceSnapshot().isEmpty()
-							? ar.thresholdPaceSnapshot() : athlete.getThresholdPace());
-		}
 		activity.setEnvironment(ar.environment());
 		activity.setHasGps(ar.hasGps());
 		activity.setName(ar.name());
@@ -632,6 +632,48 @@ public class ImportReader {
 			catch (Exception e) {
 				counts.skipped++;
 				log.warn("Skipped scheduled workout import", e);
+			}
+			progress.tick();
+		}
+	}
+
+	/** Carries over the source athlete's own threshold-history ledger, re-linked to the newly-
+	 * created activity ids - the only way an imported activity's own zones stay historically
+	 * accurate now that there's no per-activity snapshot column to fall back to (see
+	 * ExportWriter.writeThresholdHistory). Deliberately does NOT run the windowed recompute
+	 * (ThresholdHistoryService.recomputeForActivity) against these activities or touch the
+	 * importing athlete's own live profile/ledger - an imported activity's own zones should
+	 * reflect what was actually true for that effort when it happened, not get re-derived against
+	 * a possibly-unrelated athlete's current fitness. A file exported before this feature existed
+	 * has no "threshold_history" section at all - those activities simply end up with no history
+	 * entries (zones with no activity-scoped reference), same graceful degradation as any other
+	 * schema-evolution gap in this reader. */
+	private void importThresholdHistory(
+			JsonParser parser, User athlete, Map<String, String> activityIdMap, Counts counts, Progress progress) {
+		while (parser.nextToken() != JsonToken.END_ARRAY) {
+			ThresholdHistoryExportEntry entry = parser.readValueAs(ThresholdHistoryExportEntry.class);
+			String newActivityId = entry.sourceActivityId() != null ? activityIdMap.get(entry.sourceActivityId()) : null;
+			if (newActivityId == null || entry.effectiveFrom() == null) {
+				counts.skipped++;
+				progress.tick();
+				continue;
+			}
+			try {
+				transactionTemplate.executeWithoutResult(status -> {
+					ThresholdHistory row = new ThresholdHistory();
+					row.setAthlete(athlete);
+					row.setField(entry.field());
+					row.setValueNumeric(entry.valueNumeric());
+					row.setValuePace(entry.valuePace() != null ? entry.valuePace() : "");
+					row.setSourceActivity(activityRepository.getReferenceById(newActivityId));
+					row.setEffectiveFrom(entry.effectiveFrom());
+					thresholdHistoryRepository.save(row);
+				});
+				counts.thresholdHistory++;
+			}
+			catch (Exception e) {
+				counts.skipped++;
+				log.warn("Skipped threshold history import", e);
 			}
 			progress.tick();
 		}

@@ -1,6 +1,10 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.ActivityResponse;
+import com.cadence.api.activities.dto.ActivityThresholdHistoryEntry;
+import com.cadence.api.athletes.ThresholdField;
+import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -28,15 +32,18 @@ public class ActivityService {
 	private final RecordRepository recordRepository;
 	private final ActivityCursorPagination pagination;
 	private final WorkoutService workoutService;
+	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final ActivityFieldMap fieldMap = new ActivityFieldMap();
 
 	public ActivityService(ActivityRepository activityRepository, ActivityTagRepository activityTagRepository,
-			RecordRepository recordRepository, ActivityCursorPagination pagination, WorkoutService workoutService) {
+			RecordRepository recordRepository, ActivityCursorPagination pagination, WorkoutService workoutService,
+			ThresholdHistoryRepository thresholdHistoryRepository) {
 		this.activityRepository = activityRepository;
 		this.activityTagRepository = activityTagRepository;
 		this.recordRepository = recordRepository;
 		this.pagination = pagination;
 		this.workoutService = workoutService;
+		this.thresholdHistoryRepository = thresholdHistoryRepository;
 	}
 
 	public Activity getActivity(String id) {
@@ -62,9 +69,7 @@ public class ActivityService {
 				activity.getMaxPower(), activity.getAvgCadence(), activity.getMaxCadence(), activity.getMaxSpeed(),
 				activity.getTotalDescent(), activity.getElevationMin(), activity.getElevationMax(),
 				activity.getCalories(), activity.getTrimp(), activity.getAvgLeftBalancePct(),
-				activity.getFtpSnapshot(), activity.getCriticalRunPowerSnapshot(), activity.getThresholdPaceSnapshot(),
-				activity.getSuggestedFtp(), activity.getSuggestedCriticalRunPower(), activity.getSuggestedThresholdPace(),
-				activity.isThresholdChecked(),
+				thresholdHistoryFor(activity),
 				activity.getStartWeightKg(), activity.getEndWeightKg(), activity.getFluidsMl(),
 				activity.getAvgAirTemp(), activity.getAvgHumidity(),
 				activity.getAerobicTrainingEffect(), activity.getAnaerobicTrainingEffect(), activity.getTrainingEffectLabel(),
@@ -76,6 +81,23 @@ public class ActivityService {
 				childIds,
 				activity.getPrimaryActivity() != null ? activity.getPrimaryActivity().getId() : null,
 				duplicateIds);
+	}
+
+	/** Every ThresholdHistory row this activity is (or was) the source of - empty for the vast
+	 * majority of activities. isCurrent is true when this is still the latest entry for its field
+	 * (not yet superseded by a later, more recent effort). */
+	private List<ActivityThresholdHistoryEntry> thresholdHistoryFor(Activity activity) {
+		List<ThresholdHistory> sourced = thresholdHistoryRepository.findBySourceActivityId(activity.getId());
+		return sourced.stream()
+				.map(entry -> {
+					ThresholdHistory latest = thresholdHistoryRepository
+							.findFirstByAthleteIdAndFieldOrderByEffectiveFromDesc(activity.getAthlete().getId(), entry.getField())
+							.orElse(null);
+					boolean isCurrent = latest != null && latest.getId().equals(entry.getId());
+					Object value = entry.getField() == ThresholdField.THRESHOLD_PACE ? entry.getValuePace() : entry.getValueNumeric();
+					return new ActivityThresholdHistoryEntry(entry.getField(), value, isCurrent);
+				})
+				.toList();
 	}
 
 	public CursorPage<ActivityResponse> list(String athleteId, String q, Sport sportFilter, Environment environmentFilter,

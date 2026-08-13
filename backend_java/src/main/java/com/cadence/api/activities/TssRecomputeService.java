@@ -61,16 +61,19 @@ public class TssRecomputeService {
 	}
 
 	private int computeTss(Activity activity, User athlete, ZoneSet hrZoneSet, Double hrThreshold) {
-		// Reads the activity's own threshold snapshot, not the athlete's current profile - so
-		// this stays historically accurate whether called at ingest or from an explicit
-		// "Recompute TSS" action (both single-activity and bulk-per-athlete). `athlete` is still
-		// needed below for the HR-based fallback, which has no per-activity snapshot equivalent
-		// (lthr isn't snapshotted - see the plan's Key decisions).
-		Integer thresholdPower = switch (activity.getSport()) {
-			case BIKE -> activity.getFtpSnapshot();
-			case RUN -> activity.getCriticalRunPowerSnapshot();
+		// Reads the ThresholdHistory entry effective as of the activity's own date, not the
+		// athlete's current profile - so this stays historically accurate whether called at
+		// ingest or from an explicit "Recompute TSS" action (both single-activity and
+		// bulk-per-athlete). Falls back to the athlete's live profile value when no ledger entry
+		// is effective yet (e.g. before any qualifying effort exists) - same convention as
+		// ComputeDerivedStatsTasklet. `athlete` is still needed below for the HR-based fallback,
+		// which has no ledger equivalent (lthr isn't rolling-window derived).
+		Double thresholdPowerDouble = switch (activity.getSport()) {
+			case BIKE -> referenceForOrLive(athlete, ZoneType.BIKE_POWER, activity);
+			case RUN -> referenceForOrLive(athlete, ZoneType.RUN_POWER, activity);
 			default -> null;
 		};
+		Integer thresholdPower = thresholdPowerDouble != null ? (int) Math.round(thresholdPowerDouble) : null;
 
 		// Load records once; recompute normPower from stored per-second power rather than the
 		// activity-level stat (which may be corrupt if Garmin's native power field overrode
@@ -88,5 +91,10 @@ public class TssRecomputeService {
 		List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
 		Map<String, Integer> secondsPerZone = TssCalculator.secondsPerZone(hrSeries, hrZoneSet.getZones(), hrThreshold);
 		return TssCalculator.hrBased(secondsPerZone, hrZoneSet.getZones());
+	}
+
+	private Double referenceForOrLive(User athlete, ZoneType type, Activity activity) {
+		Double value = zoneService.referenceFor(athlete, type, activity);
+		return value != null ? value : zoneService.referenceFor(athlete, type);
 	}
 }

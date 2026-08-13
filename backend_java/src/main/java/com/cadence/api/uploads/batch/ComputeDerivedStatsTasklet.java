@@ -87,12 +87,22 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 		activity.setAvgHr(avgHr != null ? (int) Math.round(avgHr) : null);
 		activity.setMaxHr(maxHr);
 
-		if (normPower != null && normPower > 0 && activity.getSport() == Sport.BIKE && activity.getFtpSnapshot() != null) {
-			activity.setIntensity(round3(normPower / activity.getFtpSnapshot()));
+		// Ledger entry effective as of this activity's own date, falling back to the athlete's
+		// live profile value if none is effective yet (e.g. before any qualifying effort has
+		// established one) - intensity should still reflect the best available evidence rather
+		// than being left unset. zoneService.referenceFor(athlete, type) alone (no activity) stays
+		// strict/null-returning for the Zones tab display; this fallback is local to intensity/TSS.
+		if (normPower != null && normPower > 0 && activity.getSport() == Sport.BIKE) {
+			Double ftp = referenceForOrLive(athlete, ZoneType.BIKE_POWER, activity);
+			if (ftp != null) {
+				activity.setIntensity(round3(normPower / ftp));
+			}
 		}
-		else if (normPower != null && normPower > 0 && activity.getSport() == Sport.RUN
-				&& activity.getCriticalRunPowerSnapshot() != null) {
-			activity.setIntensity(round3(normPower / activity.getCriticalRunPowerSnapshot()));
+		else if (normPower != null && normPower > 0 && activity.getSport() == Sport.RUN) {
+			Double criticalRunPower = referenceForOrLive(athlete, ZoneType.RUN_POWER, activity);
+			if (criticalRunPower != null) {
+				activity.setIntensity(round3(normPower / criticalRunPower));
+			}
 		}
 
 		// Stryd-derived, run only (matches the Python backend - a bike's ambient readings
@@ -167,16 +177,24 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 		}
 	}
 
+	/** Ledger entry effective as of {@code activity}'s own date, falling back to the athlete's
+	 * live profile value when none is effective yet - see the comment in applySeriesStats. */
+	private Double referenceForOrLive(User athlete, ZoneType type, Activity activity) {
+		Double value = zoneService.referenceFor(athlete, type, activity);
+		return value != null ? value : zoneService.referenceFor(athlete, type);
+	}
+
 	private int computeTss(Activity activity, ParsedActivity parsed) {
 		User athlete = activity.getAthlete();
 		Integer normPower = activity.getNormPower();
 		List<Integer> hrSeries = parsed.samples().stream().map(ParsedActivity.Sample::heartrate).toList();
 
-		Integer thresholdPower = switch (activity.getSport()) {
-			case BIKE -> activity.getFtpSnapshot();
-			case RUN -> activity.getCriticalRunPowerSnapshot();
+		Double thresholdPowerDouble = switch (activity.getSport()) {
+			case BIKE -> referenceForOrLive(athlete, ZoneType.BIKE_POWER, activity);
+			case RUN -> referenceForOrLive(athlete, ZoneType.RUN_POWER, activity);
 			default -> null;
 		};
+		Integer thresholdPower = thresholdPowerDouble != null ? (int) Math.round(thresholdPowerDouble) : null;
 		Integer tss = TssCalculator.powerBased(normPower != null ? normPower.doubleValue() : null, thresholdPower,
 				activity.getMovingTime());
 		if (tss == null) {

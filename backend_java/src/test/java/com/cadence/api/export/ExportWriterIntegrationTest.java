@@ -9,6 +9,9 @@ import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
+import com.cadence.api.athletes.ThresholdField;
+import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.BikeKind;
@@ -75,6 +78,8 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 	private ShoeModelRepository shoeModelRepository;
 	@Autowired
 	private ShoeModelVersionRepository shoeModelVersionRepository;
+	@Autowired
+	private ThresholdHistoryRepository thresholdHistoryRepository;
 	@Autowired
 	private JsonMapper jsonMapper;
 
@@ -318,7 +323,8 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 			exportWriter.write(athlete.getId(), null, generator, seen::add);
 		}
 
-		assertThat(seen).containsExactly("equipment", "workouts", "activities", "races", "scheduled_workouts");
+		assertThat(seen).containsExactly(
+				"equipment", "workouts", "activities", "races", "scheduled_workouts", "threshold_history");
 	}
 
 	@Test
@@ -380,7 +386,15 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		activity.setSport(Sport.RUN);
 		activity.setName("Morning Run");
 		activity.setStartDate(Instant.parse("2026-04-01T07:00:00Z"));
-		activityRepository.save(activity);
+		activity = activityRepository.save(activity);
+
+		ThresholdHistory thresholdEntry = new ThresholdHistory();
+		thresholdEntry.setAthlete(athlete);
+		thresholdEntry.setField(ThresholdField.THRESHOLD_PACE);
+		thresholdEntry.setValuePace("4:30");
+		thresholdEntry.setSourceActivity(activity);
+		thresholdEntry.setEffectiveFrom(LocalDate.of(2026, 4, 1));
+		thresholdHistoryRepository.save(thresholdEntry);
 
 		Race race = new Race();
 		race.setAthlete(athlete);
@@ -444,6 +458,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		assertThat(counts.get("races").asInt()).isEqualTo(1);
 		assertThat(counts.get("workouts").asInt()).isEqualTo(1);
 		assertThat(counts.get("scheduled_workouts").asInt()).isEqualTo(1);
+		assertThat(counts.get("threshold_history").asInt()).isEqualTo(1);
 		assertThat(counts.get("bikes").asInt()).isEqualTo(1);
 		assertThat(counts.get("shoes").asInt()).isEqualTo(1); // retired excluded
 		assertThat(counts.get("components").asInt()).isEqualTo(1);
@@ -453,6 +468,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		assertThat(counts.get("races").asInt()).isEqualTo(root.get("races").size());
 		assertThat(counts.get("workouts").asInt()).isEqualTo(root.get("workouts").size());
 		assertThat(counts.get("scheduled_workouts").asInt()).isEqualTo(root.get("scheduled_workouts").size());
+		assertThat(counts.get("threshold_history").asInt()).isEqualTo(root.get("threshold_history").size());
 		assertThat(counts.get("bikes").asInt()).isEqualTo(root.get("equipment").get("bikes").size());
 		assertThat(counts.get("shoes").asInt()).isEqualTo(root.get("equipment").get("shoes").size());
 		assertThat(counts.get("components").asInt()).isEqualTo(root.get("equipment").get("components").size());
@@ -467,14 +483,31 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		bikeActivity.setSport(Sport.BIKE);
 		bikeActivity.setName("Ride");
 		bikeActivity.setStartDate(Instant.parse("2026-04-02T07:00:00Z"));
-		activityRepository.save(bikeActivity);
+		bikeActivity = activityRepository.save(bikeActivity);
 
 		Activity runActivity = new Activity();
 		runActivity.setAthlete(athlete);
 		runActivity.setSport(Sport.RUN);
 		runActivity.setName("Run");
 		runActivity.setStartDate(Instant.parse("2026-04-03T07:00:00Z"));
-		activityRepository.save(runActivity);
+		runActivity = activityRepository.save(runActivity);
+
+		// ftp -> bike, threshold_pace -> run - the sport filter below should keep only the former.
+		ThresholdHistory ftpEntry = new ThresholdHistory();
+		ftpEntry.setAthlete(athlete);
+		ftpEntry.setField(ThresholdField.FTP);
+		ftpEntry.setValueNumeric(250);
+		ftpEntry.setSourceActivity(bikeActivity);
+		ftpEntry.setEffectiveFrom(LocalDate.of(2026, 4, 2));
+		thresholdHistoryRepository.save(ftpEntry);
+
+		ThresholdHistory paceEntry = new ThresholdHistory();
+		paceEntry.setAthlete(athlete);
+		paceEntry.setField(ThresholdField.THRESHOLD_PACE);
+		paceEntry.setValuePace("4:30");
+		paceEntry.setSourceActivity(runActivity);
+		paceEntry.setEffectiveFrom(LocalDate.of(2026, 4, 3));
+		thresholdHistoryRepository.save(paceEntry);
 
 		Race bikeRace = new Race();
 		bikeRace.setAthlete(athlete);
@@ -513,6 +546,8 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		assertThat(counts.get("races").asInt()).isEqualTo(1);
 		assertThat(counts.get("workouts").asInt()).isEqualTo(0);
 		assertThat(counts.get("scheduled_workouts").asInt()).isEqualTo(0);
+		// Only the ftp entry (sourced from the bike activity) survives the bike filter.
+		assertThat(counts.get("threshold_history").asInt()).isEqualTo(1);
 		// Equipment stays full regardless of the filter.
 		assertThat(counts.get("bikes").asInt()).isEqualTo(1);
 	}
@@ -589,37 +624,44 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 				"step:workouts", "total:1", "progress:1",
 				"step:activities", "total:1", "progress:1",
 				"step:races", "total:1", "progress:1",
-				"step:scheduled_workouts", "total:1", "progress:1");
+				"step:scheduled_workouts", "total:1", "progress:1",
+				"step:threshold_history", "total:0", "progress:0");
 	}
 
 	@Test
-	void exportCarriesFtpSnapshotButStripsSuggestedFtp() throws Exception {
-		User athlete = newUser("export-threshold-snapshot@example.cc");
+	void exportWritesTheThresholdHistorySectionAndStripsItFromThePerActivityPayload() throws Exception {
+		User athlete = newUser("export-threshold-history@example.cc");
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
 		activity.setSport(Sport.BIKE);
 		activity.setName("Ride");
 		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
-		activity.setFtpSnapshot(200);
-		activity.setSuggestedFtp(260);
-		activity.setThresholdChecked(true);
-		activityRepository.save(activity);
+		activity = activityRepository.save(activity);
+
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(athlete);
+		entry.setField(ThresholdField.FTP);
+		entry.setValueNumeric(200);
+		entry.setSourceActivity(activity);
+		entry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		thresholdHistoryRepository.save(entry);
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		try (JsonGenerator generator = jsonMapper.createGenerator(out)) {
 			exportWriter.write(athlete.getId(), null, generator);
 		}
 
-		JsonNode activityNode = jsonMapper.readTree(out.toByteArray()).get("activities").get(0).get("activity");
-		assertThat(activityNode.get("ftp_snapshot").asInt()).isEqualTo(200);
-		// Nulled out, not omitted (this codebase's Jackson config doesn't drop null fields) -
-		// either way ImportReader.buildActivity never reads suggested_ftp back off the source
-		// JSON at all, so the exact shape doesn't affect round-trip behavior.
-		assertThat(activityNode.get("suggested_ftp").isNull()).isTrue();
-		// threshold_checked is the same kind of transient bookkeeping - forced false in the
-		// export even though this row genuinely had it true, so re-importing it always starts
-		// "not yet checked."
-		assertThat(activityNode.get("threshold_checked").asBoolean()).isFalse();
+		JsonNode root = jsonMapper.readTree(out.toByteArray());
+		assertThat(root.get("threshold_history")).hasSize(1);
+		JsonNode entryNode = root.get("threshold_history").get(0);
+		assertThat(entryNode.get("field").asText()).isEqualTo("ftp");
+		assertThat(entryNode.get("value_numeric").asInt()).isEqualTo(200);
+		assertThat(entryNode.get("source_activity_id").asText()).isEqualTo(activity.getId());
+
+		// Re-derivable from the top-level section's own sourceActivityId link, so embedding it
+		// on the per-activity payload too would just be duplicated data.
+		JsonNode activityNode = root.get("activities").get(0).get("activity");
+		assertThat(activityNode.get("threshold_history")).isEmpty();
 	}
 
 	private User newUser(String email) {
