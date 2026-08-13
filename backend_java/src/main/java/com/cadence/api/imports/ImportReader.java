@@ -11,6 +11,7 @@ import com.cadence.api.activities.dto.StreamsResponse;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.export.dto.ActivityExportEntry;
 import com.cadence.api.export.dto.ExportCounts;
 import com.cadence.api.export.dto.ThresholdHistoryExportEntry;
@@ -47,6 +48,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -66,8 +69,12 @@ import tools.jackson.core.JsonToken;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Reads one athlete's exported data file back in, creating brand-new rows with fresh ids (an
- * import never updates or matches existing data - see the plan doc for why).
+ * Reads one athlete's exported data file back in, creating brand-new rows with fresh ids - except
+ * activities, which are deduplicated against the target athlete's existing ones by
+ * {@link ActivityDedupKey} (date, sport, distance, moving time) before creating a row, so
+ * re-importing an athlete's own already-existing data doesn't silently duplicate every activity.
+ * Everything else (races, workouts, gear, ...) keeps the original create-fresh policy - see the
+ * plan doc for why.
  *
  * <p>Deliberately not one big {@code @Transactional} method: that's exactly the mistake that
  * OOM'd {@code ExportWriter} on the read side (see its Javadoc) - here on the write side, holding
@@ -131,6 +138,22 @@ public class ImportReader {
 	}
 
 	private record DeferredActivityLink(String newChildId, String oldTargetId, boolean isParent) {
+	}
+
+	// Deliberately not `name`: a matched activity gets renamed from its device-default name to
+	// the workout's name (see uploads' matching step), so the export and the athlete's current
+	// copy can legitimately have different names for the same real activity.
+	private record ActivityDedupKey(LocalDate date, Sport sport, double distanceKm, int movingTime) {
+		static ActivityDedupKey of(Activity activity) {
+			return new ActivityDedupKey(
+					activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), activity.getSport(),
+					activity.getDistanceKm(), activity.getMovingTime());
+		}
+
+		static ActivityDedupKey of(ActivityResponse ar) {
+			return new ActivityDedupKey(
+					ar.startDate().atZone(ZoneOffset.UTC).toLocalDate(), ar.sport(), ar.distanceKm(), ar.movingTime());
+		}
 	}
 
 	private static final class Counts {
@@ -396,9 +419,31 @@ public class ImportReader {
 	private void importActivities(JsonParser parser, User athlete, Map<String, Workout> workoutsByOldId,
 			Map<String, Bike> bikesByOldId, Map<String, Shoe> shoesByOldId, Map<String, String> activityIdMap,
 			List<DeferredActivityLink> deferredLinks, Counts counts, Progress progress) {
+		// Preloaded once, not queried per-activity: dedup key -> existing activity id, so a
+		// re-import against an athlete who already has this data maps straight to the existing
+		// row instead of creating a duplicate (found live: exactly this corrupted a real
+		// account's activity history). Updated as new activities are created below too, in case
+		// the export itself contains a same-key pair.
+		Map<ActivityDedupKey, String> existingByKey = new HashMap<>();
+		for (Activity existing : activityRepository.findByAthleteIdOrderByStartDate(athlete.getId())) {
+			existingByKey.put(ActivityDedupKey.of(existing), existing.getId());
+		}
+
 		while (parser.nextToken() != JsonToken.END_ARRAY) {
 			ActivityExportEntry entry = parser.readValueAs(ActivityExportEntry.class);
 			try {
+				ActivityDedupKey key = ActivityDedupKey.of(entry.activity());
+				String existingId = existingByKey.get(key);
+				if (existingId != null) {
+					// Map the export's old id straight to the existing activity so later entries
+					// that reference it (multisport legs, deferred parent/child links) still
+					// resolve correctly, instead of silently dropping those links.
+					activityIdMap.put(entry.activity().id(), existingId);
+					counts.skipped++;
+					progress.tick();
+					continue;
+				}
+
 				String newId = transactionTemplate.execute(status -> {
 					Activity activity = buildActivity(entry.activity(), athlete, workoutsByOldId, bikesByOldId, shoesByOldId);
 					activity = activityRepository.save(activity);
@@ -436,6 +481,7 @@ public class ImportReader {
 				});
 
 				activityIdMap.put(entry.activity().id(), newId);
+				existingByKey.put(key, newId);
 				if (entry.activity().parentActivityId() != null) {
 					deferredLinks.add(new DeferredActivityLink(newId, entry.activity().parentActivityId(), true));
 				}
