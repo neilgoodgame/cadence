@@ -268,6 +268,86 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void reimportingTheSameAthletesOwnExportDoesNotDuplicateActivities() throws IOException {
+		// Found live: re-importing an athlete's own already-existing data (e.g. testing the
+		// export/import round trip against a live account) silently duplicated every activity,
+		// since import never matched against what the target already had.
+		User athlete = newUser("dedup-target@example.cc");
+		Activity run = new Activity();
+		run.setAthlete(athlete);
+		run.setSport(Sport.RUN);
+		run.setName("Morning run");
+		run.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		run.setMovingTime(1800);
+		run.setDistanceKm(5.0);
+		activityRepository.save(run);
+
+		Activity ride = new Activity();
+		ride.setAthlete(athlete);
+		ride.setSport(Sport.BIKE);
+		ride.setName("Evening ride");
+		ride.setStartDate(Instant.parse("2026-01-02T18:00:00Z"));
+		ride.setMovingTime(3600);
+		ride.setDistanceKm(30.0);
+		activityRepository.save(ride);
+
+		int before = activityRepository.findByAthleteIdOrderByStartDate(athlete.getId()).size();
+
+		Path file = Files.createTempFile("import-dedup-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				exportWriter.write(athlete.getId(), null, generator);
+			}
+
+			ImportCounts counts = importReader.read(athlete.getId(), file);
+
+			assertThat(counts.activitiesImported()).isZero();
+			assertThat(counts.itemsSkipped()).isEqualTo(2);
+			assertThat(activityRepository.findByAthleteIdOrderByStartDate(athlete.getId())).hasSize(before);
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
+
+	@Test
+	void anActivityThatNoLongerMatchesIsReimportedNotDeduped() throws IOException {
+		User athlete = newUser("dedup-changed-target@example.cc");
+		Activity run = new Activity();
+		run.setAthlete(athlete);
+		run.setSport(Sport.RUN);
+		run.setName("Morning run");
+		run.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		run.setMovingTime(1800);
+		run.setDistanceKm(5.0);
+		run = activityRepository.save(run);
+
+		Path file = Files.createTempFile("import-dedup-changed-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				exportWriter.write(athlete.getId(), null, generator);
+			}
+
+			// The athlete's own copy changed after the export was taken - the exported (stale)
+			// version no longer matches anything currently on the account, so it must import as
+			// a new activity rather than being silently treated as a duplicate.
+			run.setDistanceKm(8.0);
+			activityRepository.save(run);
+			int before = activityRepository.findByAthleteIdOrderByStartDate(athlete.getId()).size();
+
+			ImportCounts counts = importReader.read(athlete.getId(), file);
+
+			assertThat(counts.activitiesImported()).isEqualTo(1);
+			assertThat(activityRepository.findByAthleteIdOrderByStartDate(athlete.getId())).hasSize(before + 1);
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
+
+	@Test
 	void readCallsOnStepForEverySectionInOrderEvenWithNoData() throws Exception {
 		User source = new User();
 		source.setEmail("import-progress-steps-source@example.cc");
