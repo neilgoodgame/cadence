@@ -40,7 +40,9 @@ class ActivityThresholdSuggestionViewTests(TestCase):
         activity = self._make_bike_activity_with_records()
 
         response = _bearer_client(self.athlete).post(
-            f"/v1/activities/{activity.id}/threshold-suggestion", {"field": "ftp", "accept": True}, format="json"
+            f"/v1/activities/{activity.id}/threshold-suggestion",
+            {"field": "ftp", "accept": True, "update_profile": True},
+            format="json",
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -75,7 +77,9 @@ class ActivityThresholdSuggestionViewTests(TestCase):
     def test_no_pending_suggestion_returns_409(self):
         activity = _make_activity(self.athlete, sport="bike", ftp_snapshot=200)  # suggested_ftp left null
         response = _bearer_client(self.athlete).post(
-            f"/v1/activities/{activity.id}/threshold-suggestion", {"field": "ftp", "accept": True}, format="json"
+            f"/v1/activities/{activity.id}/threshold-suggestion",
+            {"field": "ftp", "accept": True, "update_profile": True},
+            format="json",
         )
         self.assertEqual(response.status_code, 409)
 
@@ -114,7 +118,7 @@ class ActivityThresholdSuggestionViewTests(TestCase):
         )
         response = _bearer_client(self.athlete).post(
             f"/v1/activities/{activity.id}/threshold-suggestion",
-            {"field": "threshold_pace", "accept": True},
+            {"field": "threshold_pace", "accept": True, "update_profile": True},
             format="json",
         )
         self.assertEqual(response.status_code, 200)
@@ -125,6 +129,60 @@ class ActivityThresholdSuggestionViewTests(TestCase):
 
         self.athlete.refresh_from_db()
         self.assertEqual(self.athlete.threshold_pace, "4:00")
+
+    def test_missing_update_profile_boolean_is_rejected_when_accepting(self):
+        activity = self._make_bike_activity_with_records()
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{activity.id}/threshold-suggestion", {"field": "ftp", "accept": True}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_update_profile_false_only_updates_the_activity_snapshot(self):
+        # Old enough that update_profile=True would be rejected (see the test below) - but
+        # update_profile=False should work regardless of age, since it never touches the profile.
+        activity = self._make_bike_activity_with_records(
+            start_date=datetime(2020, 1, 1, 7, 0, tzinfo=UTC),
+        )
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{activity.id}/threshold-suggestion",
+            {"field": "ftp", "accept": True, "update_profile": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["ftp_snapshot"], 260)
+        self.assertIsNone(body["suggested_ftp"])
+
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 200)  # unchanged
+
+        activity.refresh_from_db()
+        self.assertEqual(activity.ftp_snapshot, 260)  # this activity's own snapshot still updates
+        self.assertIsNone(activity.suggested_ftp)
+        # 260W at a 260W (newly-accepted) snapshot FTP for a full hour = 100 TSS - still
+        # recomputed even though the profile wasn't touched.
+        self.assertEqual(activity.tss, 100)
+
+    def test_update_profile_true_rejected_for_old_activity(self):
+        activity = self._make_bike_activity_with_records(
+            start_date=datetime(2020, 1, 1, 7, 0, tzinfo=UTC),
+        )
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{activity.id}/threshold-suggestion",
+            {"field": "ftp", "accept": True, "update_profile": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+        # Nothing mutated - the age check runs before any write.
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 200)
+
+        activity.refresh_from_db()
+        self.assertEqual(activity.ftp_snapshot, 200)
+        self.assertEqual(activity.suggested_ftp, 260)
 
 
 class RecomputeActivityThresholdsViewTests(TestCase):
