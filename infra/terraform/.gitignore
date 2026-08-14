@@ -1,0 +1,21 @@
+# Local Terraform working state - never commit this. The bootstrap config
+# is the one exception that uses local state at all (see bootstrap/main.tf);
+# everything else uses the S3 backend and won't even produce these locally.
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Provider plugin cache - re-downloaded by `terraform init` from the lock
+# file, no need to version it.
+.terraform/
+
+# Terraform variable files commonly carry secrets - keep .tfvars out by
+# default; an *.tfvars.example with placeholder values is fine to commit.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Never commit a plan file - it's a binary snapshot that can embed secret
+# values pulled from state/data sources.
+*.tfplan
