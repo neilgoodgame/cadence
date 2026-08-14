@@ -17,7 +17,8 @@ space, credential plumbing) that the plan document doesn't cover. See
 | Domain | `cadence.bioinform.co.uk` (frontend), `api.cadence.bioinform.co.uk` (API) | The account's only Route 53 hosted zone is `bioinform.co.uk` - the `cadence.cc` in the code's `JWT_ISSUER` default is just a placeholder, not a domain actually owned in this account. |
 | IaC tool | Terraform | Team already uses it at work; this doubles as a learning exercise. |
 | Environments | One to start (`staging`) | Learn on a low-stakes environment first; copy the proven pattern to add `production` later once comfortable. |
-| Database | RDS PostgreSQL + community `timescaledb` extension | Plan's default recommendation (§4) - least-change path from local dev, nothing in the current migrations needs Timescale's commercial-only features. |
+| Database | ~~RDS PostgreSQL + community `timescaledb` extension~~ **RDS PostgreSQL + native declarative partitioning** | Plan §4's recommendation is **factually wrong** - verified against AWS's own docs (RDS parameter group `shared_preload_libraries` allowed values, the RDS PostgreSQL extensions overview, the authoritative RDS PostgreSQL Release Notes extension list, and Aurora PostgreSQL's equivalent list): `timescaledb` isn't supported on any AWS-managed PostgreSQL, standard RDS or Aurora, any version. Decided 2026-08-15: replace the one hypertable (`activities_record`) with native Postgres range partitioning instead, dropping TimescaleDB everywhere (local dev image too, for parity - see the reasoning below). Rejected alternatives: self-managed TimescaleDB on EC2 (ongoing patch/backup/HA burden), Timescale Cloud (separate vendor bill) - both real options, but native partitioning was preferred since the app's actual Timescale usage is already minimal (confirmed: no compression policies, no continuous aggregates in the current migrations - just the partitioning itself). |
+| Native-partitioning migration sequencing | **Own PR, before resuming AWS database work** | User will do a full data export of the local dev DB first (low-stakes since this is pre-launch/test-account data, but a real hassle to re-import ~2,600 activities/9M+ rows by hand if skipped) - see `AWS_MIGRATION_PLAN.md`'s upcoming §4 correction for the actual migration mechanics (create the new partitioned table, backfill-copy every row, swap/rename, drop the old hypertable). Step 3 (RDS) below is **blocked** until this PR lands. |
 | RDS never has a public IP or internet route | Confirmed | Matches the plan's networking design (§7) - see `NETWORK_ARCHITECTURE.md`. |
 | Ad-hoc DB access (debugging/admin queries) | SSM Session Manager port-forwarding, not AWS Client VPN | Client VPN has a fixed ~$72/mo cost (confirmed: $0.10/hr per subnet association, billed whether or not anyone's connected) plus certificate-authority setup, for "always on network access" this solo/low-frequency use case doesn't need. SSM port-forwarding (via a stoppable bastion or `ecs execute-command` into a running task) is IAM-controlled, per-session, and has near-zero idle cost. To be built alongside Step 3's RDS setup. |
 | NAT Gateway count | Single, in every environment including production (not just staging) | ~$33/mo saved per environment, ongoing - not a staging-only shortcut. Tradeoff: both AZs' private subnets share one AZ's outbound path. Upgrade path (one-line toggle, purely additive, no downtime) documented in `NETWORK_ARCHITECTURE.md`'s "Upgrading to per-AZ NAT Gateways". |
@@ -140,4 +141,15 @@ that needs to be treated carefully (never committed, never shared in chat).
 
 Console check: **IAM → Users → `cadence-terraform`** → Permissions tab.
 
-## Next: Step 3 - Compute, load balancer, database
+## Blocked: dropping TimescaleDB before Step 3
+
+Discovered while starting Step 3 (RDS): `timescaledb` isn't supported on
+RDS or Aurora PostgreSQL at all (see the Decisions table above). Rather
+than route around it inside this infra build, that's a real schema change
+belonging in its own PR against the main app repo - dropping TimescaleDB
+from local dev too (same reasoning as keeping the two backends in strict
+parity: prod and dev must run the same migrations, or they silently
+drift). User is doing a full data export of the local dev DB first as a
+safety net before that PR touches `activities_record`.
+
+**Step 3 (RDS, ECS, ALB, SSM DB access) resumes once that PR is merged.**
