@@ -43,6 +43,7 @@ PACE_BEST_EFFORT_DISTANCES_KM = [
     ("1km", 1.0),
     ("5km", 5.0),
     ("10km", 10.0),
+    ("10mile", 16.0934),
     ("half_marathon", 21.0975),
     ("30km", 30.0),
     ("marathon", 42.195),

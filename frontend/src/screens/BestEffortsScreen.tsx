@@ -47,6 +47,8 @@ function windowToSeconds(w: string): number {
 
 function windowToKm(w: string): number {
   if (/marathon/i.test(w)) return /half/i.test(w) ? 21.097 : 42.195;
+  const mile = w.match(/^([\d.]+)\s*mile/i);
+  if (mile) return parseFloat(mile[1]) * 1.609344;
   const m = w.match(/^([\d.]+)\s*km/i);
   return m ? parseFloat(m[1]) : 0;
 }
