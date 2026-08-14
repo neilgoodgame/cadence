@@ -107,11 +107,14 @@ class Component extends DCLogic {
       ['threshold_pace_s', 'int', true, [], 'seconds per km'],
       ['lthr', 'int', true, [], 'bpm'],
       ['max_hr', 'int', true, [], 'bpm'],
+      ['threshold_window_days', 'int', false, [], '112 · trailing window a best effort must fall within to count, see threshold_history'],
+      ['threshold_sanity_pct', 'int', false, [], "30 · outlier filter % - a candidate deviating more than this from the athlete's current value is excluded"],
       ['is_coach', 'bool', false, [], 'false · gates coaching features'],
       ['created_at', 'timestamptz', false, [], 'now()'],
     ], invariants: [
       'email is unique, case-insensitive (citext or lower() unique index).',
       'A user is always an athlete; is_coach only adds the ability to be a grantee with role=coach.',
+      'ftp/critical_run_power/threshold_pace_s are a live cache of threshold_history’s latest row per field - see threshold_history for how they change over time.',
     ]},
     { name: 'user_relationship', domain: 'identity', note: 'owner → grantee access grant', cols: [
       ['id', 'uuid', false, ['pk'], 'gen_random_uuid()'],
@@ -135,8 +138,24 @@ class Component extends DCLogic {
       ['ref_value', 'numeric', false, ['derived'], 'from user threshold for type'],
     ], invariants: [
       'UNIQUE (user_id, type) — one set per zone type per user.',
-      'ref_value is derived: LTHR / FTP / critical_run_power / threshold_pace by type.',
+      'ref_value is derived: LTHR / FTP / critical_run_power / threshold_pace by type - for bike_power/run_power/pace this reads threshold_history (the athlete-scoped current value, or an activity-scoped historical value when computing zones for a past activity), not the live user column directly.',
       'Boundaries stored as % of ref_value; absolute values computed on read.',
+    ]},
+    { name: 'threshold_history', domain: 'identity', note: 'ledger — every value change for ftp/critical_run_power/threshold_pace', cols: [
+      ['id', 'uuid', false, ['pk'], ''],
+      ['user_id', 'uuid', false, ['fk'], '→ user.id'],
+      ['field', 'enum', false, [], 'ftp | critical_run_power | threshold_pace'],
+      ['value_numeric', 'int', true, [], 'watts · set only when field ≠ threshold_pace'],
+      ['value_pace', 'text', true, [], "mm:ss · set only when field = threshold_pace"],
+      ['source_activity_id', 'uuid', true, ['fk'], '→ activity.id · ON DELETE CASCADE · null for a manually-entered value'],
+      ['effective_from', 'date', false, [], ''],
+    ], invariants: [
+      'One row per (user, field) *change*, not one row per activity - most activities imply no change and write nothing.',
+      'Exactly one of value_numeric/value_pace is set, by field.',
+      'source_activity_id is null exactly when the value was entered manually via PATCH /v1/athletes/{id}, not derived from any activity - trusted unconditionally (no outlier check), unlike an activity-derived candidate.',
+      'The current value for (user, field) is the row with the latest effective_from; user.ftp/critical_run_power/threshold_pace_s and zone_set.ref_value are both kept in sync from it, not the other way around.',
+      'A value is FTP/critical_run_power/threshold_pace’s best qualifying effort within the trailing user.threshold_window_days, so it can drop as an old effort ages out, not just rise. "Stale" (surfaced for a manual refresh, never silently corrected) means today − effective_from > threshold_window_days with nothing newer to replace it.',
+      'An activity-derived candidate must fall within user.threshold_sanity_pct of the then-current value to be recorded (excludes e.g. corrupt power-meter data) - a manual entry has no such check.',
     ]},
 
     { name: 'activity', domain: 'core', note: 'the hub', cols: [

@@ -133,6 +133,10 @@ class Component extends DCLogic {
       ['id', 'uuid', 'pk'], ['owner_user_id', 'fk', 'fk', 'user'], ['grantee_user_id', 'fk', 'fk', 'user'],
       ['role', 'viewer|coach'], ['status', 'pending|active'],
       ['compliance', 'done/plan'], ['tsb', 'form'], ['flags', 'int'] ] },
+    { id: 'threshold_history', domain: 'identity', note: 'ledger — one row per value change', fields: [
+      ['id', 'uuid', 'pk'], ['user_id', 'fk', 'fk', 'user'],
+      ['field', 'ftp|crp|pace'], ['value_numeric', 'watts?'], ['value_pace', 'mm:ss?'],
+      ['source_activity_id', 'fk?', 'fk', 'activity'], ['effective_from', 'date'] ] },
 
     { id: 'activity', domain: 'core', note: 'hub', fields: [
       ['id', 'uuid', 'pk'], ['athlete_id', 'fk', 'fk', 'user'], ['sport', 'bike|run|swim|walk|row|multi'],
@@ -210,7 +214,7 @@ class Component extends DCLogic {
 
   // graph grid placement [col,row]
   pos = {
-    user: [0, 1], zone_set: [0, 2], user_relationship: [0, 3],
+    user: [0, 1], zone_set: [0, 2], user_relationship: [0, 3], threshold_history: [0, 4],
     best_effort: [1, 0], activity_tag: [1, 4],
     lap: [2, 0], duration_curve: [1, 2], activity: [2, 2], record: [2, 4],
     tag: [1, 3], scheduled_workout: [3, 3], workout: [4, 2], workout_step: [4, 1], workout_folder: [3, 2],
@@ -223,6 +227,8 @@ class Component extends DCLogic {
     ['user', 'user_relationship', '1:N', 'own'],
     ['user', 'activity', '1:N', 'own'],
     ['user', 'zone_set', '1:N', 'own'],
+    ['user', 'threshold_history', '1:N', 'own'],
+    ['threshold_history', 'activity', 'N:1', 'ref'],
     ['user', 'best_effort', '1:N', 'own'],
     ['user', 'bike', '1:N', 'own'],
     ['user', 'shoe', '1:N', 'own'],

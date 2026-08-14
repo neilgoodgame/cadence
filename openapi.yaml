@@ -1356,9 +1356,19 @@ paths:
                 name: { type: string }
                 age: { type: integer }
                 weight_kg: { type: number, description: Used for the Avg Watts/kg stat on Activity Analysis. }
-                ftp: { type: integer, description: Functional threshold power (W). }
-                critical_run_power: { type: integer, description: Critical running power (W). }
-                threshold_pace: { type: string, description: "mm:ss per km." }
+                ftp:
+                  type: integer
+                  description: >
+                    Functional threshold power (W). A manually-entered value is
+                    recorded as a new threshold_history entry unconditionally (no
+                    outlier check - an explicit human declaration, not a computed
+                    candidate) and ages out after threshold_window_days like any
+                    other entry. A no-op if it matches the latest ledger entry
+                    already, since this form resubmits every field on every save.
+                critical_run_power: { type: integer, description: Critical running power (W). Same threshold_history semantics as ftp. }
+                threshold_pace: { type: string, description: "mm:ss per km. Same threshold_history semantics as ftp." }
+                threshold_window_days: { type: integer, description: See the User schema. }
+                threshold_sanity_pct: { type: integer, description: See the User schema. }
                 lthr: { type: integer, description: Lactate threshold HR (bpm). }
                 max_hr: { type: integer }
                 resting_hr:
@@ -1380,6 +1390,56 @@ paths:
                       zones_recomputed:
                         type: array
                         items: { type: string }
+
+  /v1/athletes/{id}/thresholds:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Athletes & zones]
+      summary: Threshold summary
+      operationId: getThresholds
+      description: >
+        Current + previous value and staleness for ftp, critical_run_power, and
+        threshold_pace - what the dashboard's threshold widget reads. No recompute
+        here; stale just means "will update on the next activity, or via a manual
+        refresh."
+      responses:
+        "200":
+          description: Threshold summary for all three fields.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ftp: { $ref: "#/components/schemas/ThresholdSummaryEntry" }
+                  critical_run_power: { $ref: "#/components/schemas/ThresholdSummaryEntry" }
+                  threshold_pace: { $ref: "#/components/schemas/ThresholdSummaryEntry" }
+
+  /v1/athletes/{id}/threshold-history:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Athletes & zones]
+      summary: Threshold history ledger
+      operationId: getThresholdHistory
+      description: The full history for one field, most recent first.
+      parameters:
+        - name: field
+          in: query
+          required: true
+          schema: { type: string, enum: [ftp, critical_run_power, threshold_pace] }
+      responses:
+        "200":
+          description: The ledger for the requested field.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  field: { type: string, enum: [ftp, critical_run_power, threshold_pace] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ThresholdHistoryEntry" }
 
   /v1/athletes/{id}/zones:
     parameters:
@@ -2268,6 +2328,22 @@ components:
         ftp: { type: integer, example: 265 }
         critical_run_power: { type: integer, example: 285 }
         threshold_pace: { type: string, example: "4:00" }
+        threshold_window_days:
+          type: integer
+          default: 112
+          description: >
+            Trailing window (days) a threshold's best qualifying effort must fall
+            within to count - see GET /v1/athletes/{id}/thresholds. Default 112 (16
+            weeks).
+          example: 112
+        threshold_sanity_pct:
+          type: integer
+          default: 30
+          description: >
+            Per-candidate outlier filter - an effort implying more than this %
+            deviation from the then-current value is excluded (e.g. corrupt
+            power-meter data).
+          example: 30
         lthr: { type: integer, example: 155 }
         max_hr: { type: integer, example: 186 }
         resting_hr:
@@ -2864,6 +2940,45 @@ components:
         ctl: { type: number, description: Fitness (chronic training load)., example: 62 }
         atl: { type: number, description: Fatigue (acute training load)., example: 71 }
         tsb: { type: number, description: Form (training stress balance = CTL − ATL)., example: -9 }
+
+    ThresholdSummaryEntry:
+      type: object
+      description: >
+        One field's current state - the best qualifying effort within the trailing
+        threshold_window_days, so a value can drop as an old best effort ages out,
+        not just rise. A manually-entered value (see PATCH /v1/athletes/{id})
+        functions the same way from the moment it's set.
+      properties:
+        value:
+          oneOf: [{ type: number }, { type: string }, { type: "null" }]
+          description: Watts for ftp/critical_run_power, "mm:ss" for threshold_pace. Null if nothing has ever qualified.
+          example: 265
+        previous_value:
+          oneOf: [{ type: number }, { type: string }, { type: "null" }]
+          example: 262
+        source_activity_id:
+          type: [string, "null"]
+          description: Null for a manually-entered value, not sourced from any activity.
+          example: act_9f2a7c
+        effective_from: { type: [string, "null"], format: date }
+        stale:
+          type: boolean
+          description: >
+            The current entry's source has aged out of the trailing window with
+            nothing yet to replace it - surfaced for a manual refresh (POST
+            /v1/athletes/{id}/thresholds/refresh), never silently corrected. True
+            with no entry at all.
+          example: false
+
+    ThresholdHistoryEntry:
+      type: object
+      description: One ledger row - a value that was effective from a given date until superseded.
+      properties:
+        value:
+          oneOf: [{ type: number }, { type: string }]
+          example: 265
+        source_activity_id: { type: [string, "null"], example: act_9f2a7c }
+        effective_from: { type: string, format: date }
 
     ShareRole:
       type: string
