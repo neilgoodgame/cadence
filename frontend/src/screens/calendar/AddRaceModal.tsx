@@ -7,6 +7,7 @@ const SPORTS = ["run", "bike", "swim", "multisport"];
 const RUN_PRESETS: { label: string; km: number }[] = [
   { label: "5K", km: 5 },
   { label: "10K", km: 10 },
+  { label: "10 Mile", km: 16.0934 },
   { label: "Half", km: 21.0975 },
   { label: "Marathon", km: 42.195 },
   { label: "50K", km: 50 },
