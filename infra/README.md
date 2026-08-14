@@ -4,7 +4,8 @@ A step-by-step record of migrating Cadence to AWS, kept as we go. See
 `AWS_MIGRATION_PLAN.md` (repo root) for the full architectural analysis this
 is executing against - this file is the narrower "what we actually did and
 why" log, including the small real-world snags (expired sessions, disk
-space, credential plumbing) that the plan document doesn't cover.
+space, credential plumbing) that the plan document doesn't cover. See
+`NETWORK_ARCHITECTURE.md` for the target network diagram and traffic flow.
 
 ## Decisions made
 
@@ -17,6 +18,8 @@ space, credential plumbing) that the plan document doesn't cover.
 | IaC tool | Terraform | Team already uses it at work; this doubles as a learning exercise. |
 | Environments | One to start (`staging`) | Learn on a low-stakes environment first; copy the proven pattern to add `production` later once comfortable. |
 | Database | RDS PostgreSQL + community `timescaledb` extension | Plan's default recommendation (§4) - least-change path from local dev, nothing in the current migrations needs Timescale's commercial-only features. |
+| RDS never has a public IP or internet route | Confirmed | Matches the plan's networking design (§7) - see `NETWORK_ARCHITECTURE.md`. |
+| Ad-hoc DB access (debugging/admin queries) | SSM Session Manager port-forwarding, not AWS Client VPN | Client VPN has a fixed ~$72/mo cost (confirmed: $0.10/hr per subnet association, billed whether or not anyone's connected) plus certificate-authority setup, for "always on network access" this solo/low-frequency use case doesn't need. SSM port-forwarding (via a stoppable bastion or `ecs execute-command` into a running task) is IAM-controlled, per-session, and has near-zero idle cost. To be built alongside Step 3's RDS setup. |
 
 ## Layout
 
@@ -80,4 +83,60 @@ wastes an hour if undocumented):
   needs `-auto-approve` here instead (only after reviewing `plan`'s output
   first, never blind).
 
-## Next: Step 2 - Networking (VPC)
+## Step 2 - Networking (VPC)
+
+**What & why:** see `NETWORK_ARCHITECTURE.md` for the full diagram, traffic
+flow, and component-by-component rationale (styled after AWS's own
+Prescriptive Guidance docs). Short version: a dedicated VPC (not the
+account's default), 2 Availability Zones, public subnets for the ALB/NAT
+Gateway, private subnets for ECS/RDS, one NAT Gateway (staging: cost over
+redundancy).
+
+`modules/vpc/` is the reusable building block; `envs/staging/main.tf` calls
+it with `environment = "staging"`, `single_nat_gateway = true`. `terraform
+plan` reviewed: 18 resources to create (1 VPC, 1 IGW, 4 subnets, 1 NAT
+Gateway + EIP, 3 route tables, 3 routes, 6 route table associations), 0
+changed, 0 destroyed - matches the target diagram exactly.
+
+**Applied 2026-08-15**: `vpc-000f87250add86796`, 4 subnets
+(`subnet-00cf0b2fcf858719a`/`subnet-0117996c558413f3a` public,
+`subnet-08e1c2bc8109e6827`/`subnet-0cc7d9ea047abc07d` private), NAT Gateway
+`nat-0c7d5201969261592` (took ~1m24s to reach "Available" - normal for NAT
+Gateway creation). All 18 resources matched the plan exactly. (Applying
+this needed Step 2.5 below first - `terraform init` for this config hit the
+same credential issue Step 1 did.)
+
+Console check: **VPC → Your VPCs** → `cadence-staging-vpc`; **VPC →
+Subnets** for the 4 subnets; **VPC → NAT Gateways** → `nat-0c7d5201969261592`.
+
+## Step 2.5 - long-lived Terraform credentials
+
+`aws login`'s browser-based session kept expiring mid-work (its refresh
+token appears short-lived, and there's no `--duration` flag to extend it).
+For a personal, single-operator learning account, the standard fix is a
+dedicated IAM user for Terraform to run as, with a static access key -
+simpler than fighting session expiry, at the cost of a long-lived secret
+that needs to be treated carefully (never committed, never shared in chat).
+
+- `infra/terraform/bootstrap/iam.tf` creates the `cadence-terraform` IAM
+  user (applied via the still-working `neil` session at the time), with
+  `PowerUserAccess` + `IAMFullAccess` attached - broader than a hand-scoped
+  policy, deliberately: this is a single-owner account with no other
+  tenants to isolate from, and a narrower policy would need constant
+  iteration as new services get touched through the rest of this build.
+  Revisit if this account ever stops being single-owner.
+- The access key itself was **not** created via Terraform -
+  `aws_iam_access_key` would store the secret value in Terraform state in
+  plain text, a well-known leak vector. Created out-of-band instead:
+  `aws iam create-access-key` piped straight into `aws configure set` for
+  a new `cadence-terraform` CLI profile, so the secret only ever touched
+  two `aws` CLI processes talking to each other - never this chat, never a
+  file that persists past the one-line pipeline.
+- Every `provider "aws" { profile = ... }` block and every `backend "s3" {
+  profile = ... }` block (the two are configured independently - easy to
+  fix one and forget the other, which is exactly what happened once) now
+  points at `cadence-terraform` instead of `neil`.
+
+Console check: **IAM → Users → `cadence-terraform`** → Permissions tab.
+
+## Next: Step 3 - Compute, load balancer, database

@@ -21,7 +21,7 @@ terraform {
 
 provider "aws" {
   region  = "eu-west-2"
-  profile = "neil"
+  profile = "cadence-terraform"
 }
 
 resource "aws_s3_bucket" "tf_state" {
