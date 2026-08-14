@@ -109,10 +109,10 @@
       <!-- THRESHOLDS -->
       <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;">
         <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Thresholds</div>
-        <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">Best qualifying effort within your trailing window</div>
+        <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ activeThreshold.subtitle }}</div>
 
         <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:10px;padding:3px;margin:16px 0 20px;width:fit-content;">
-          <sc-for list="{{ thresholdTabs }}" as="tt" hint-placeholder-count="3">
+          <sc-for list="{{ thresholdTabs }}" as="tt" hint-placeholder-count="4">
             <div onClick="{{ tt.onClick }}" style="{{ tt.style }}">{{ tt.label }}</div>
           </sc-for>
         </div>
@@ -129,7 +129,9 @@
             <div onClick="{{ activeThreshold.onRefresh }}" style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid var(--line,#e6e2dc);background:transparent;color:var(--ink2,#6f6b65);cursor:pointer;">Refresh</div>
           </div>
         </sc-if>
-        <a href="ThresholdHistory.dc.html" style="display:inline-block;margin-top:10px;font-size:12px;color:var(--ember,#ec4a26);font-weight:600;text-decoration:none;">View history</a>
+        <sc-if value="{{ activeThreshold.hasHistory }}" hint-placeholder-val="{{ true }}">
+          <a href="ThresholdHistory.dc.html" style="display:inline-block;margin-top:10px;font-size:12px;color:var(--ember,#ec4a26);font-weight:600;text-decoration:none;">View history</a>
+        </sc-if>
 
         <div onClick="{{ toggleZones }}" style="display:flex;align-items:center;gap:5px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line,#e6e2dc);font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;width:fit-content;">
           <span style="{{ zonesChevronStyle }}">&#9656;</span>{{ zonesToggleLabel }}
@@ -500,10 +502,23 @@ class Component extends DCLogic {
     { field: 'ftp', label: 'FTP', unit: 'W', value: 265, previous: 262, effectiveDaysAgo: 34, stale: false },
     { field: 'critical_run_power', label: 'Critical running power', unit: 'W', value: 285, previous: 291, effectiveDaysAgo: 61, stale: false },
     { field: 'threshold_pace', label: 'Threshold pace', unit: '', value: '4:00', previous: '4:06', effectiveDaysAgo: 118, stale: true },
+    // LTHR isn't part of the rolling threshold-history ledger in the real app (ThresholdField
+    // only covers ftp/critical_run_power/threshold_pace) - just a plain profile value, so no
+    // delta/validity/stale/history for it, unlike the other three.
+    { field: 'lthr', label: 'Heart rate', unit: 'bpm', value: 155 },
   ];
 
   buildThresholds() {
+    const windowSubtitle = 'Best qualifying effort within your trailing window';
     const computed = this.thresholdsData.map(t => {
+      if (t.field === 'lthr') {
+        // No delta/validity/stale/history - see thresholdsData's comment on this entry.
+        return {
+          field: t.field, label: t.label, value: t.value, unit: t.unit, hasUnit: !!t.unit,
+          hasDelta: false, isValid: false, isStale: false, hasHistory: false,
+          subtitle: 'Set manually in your profile',
+        };
+      }
       const isPace = t.field === 'threshold_pace';
       const deltaText = (() => {
         if (t.value === t.previous) return 'No change';
@@ -519,10 +534,11 @@ class Component extends DCLogic {
       return {
         field: t.field, label: t.label, value: t.value, unit: t.unit, hasUnit: !!t.unit,
         hasDelta: !stale, delta: deltaText,
-        isValid: !stale, isStale: stale,
+        isValid: !stale, isStale: stale, hasHistory: true,
         daysRemaining, dayPlural: daysRemaining === 1 ? '' : 's',
         staleLabel: 'Aged out of window',
         onRefresh: () => {},
+        subtitle: windowSubtitle,
       };
     });
 
@@ -543,7 +559,7 @@ class Component extends DCLogic {
     // computeZone(), the same computation the Preferences zone editor uses, just read-only here.
     // Named activeZoneRows/activeZoneRefLabel (not zoneRows/zoneRefLabel) so this doesn't
     // collide with the Preferences modal's own zone editor keys once renderVals() merges both.
-    const ZONE_TYPE_FOR_FIELD = { ftp: 'bike', critical_run_power: 'run', threshold_pace: 'pace' };
+    const ZONE_TYPE_FOR_FIELD = { ftp: 'bike', critical_run_power: 'run', threshold_pace: 'pace', lthr: 'hr' };
     const zone = this.computeZone(ZONE_TYPE_FOR_FIELD[active.field]);
     const zonesExpanded = this.state.zonesExpanded;
 
