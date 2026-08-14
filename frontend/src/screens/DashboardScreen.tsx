@@ -9,6 +9,7 @@ import { CoachingSection } from "./dashboard/CoachingSection";
 import { StatCardsRow } from "./dashboard/StatCardsRow";
 import { ThresholdSummaryCard } from "./dashboard/ThresholdSummaryCard";
 import { NextRaceCard } from "./dashboard/NextRaceCard";
+import { UpcomingWorkoutsCard } from "./dashboard/UpcomingWorkoutsCard";
 import { WeekCalendar } from "./dashboard/WeekCalendar";
 import { TrainingHistory } from "./dashboard/TrainingHistory";
 
@@ -105,6 +106,8 @@ export function DashboardScreen() {
       <ThresholdSummaryCard />
 
       <NextRaceCard />
+
+      <UpcomingWorkoutsCard />
 
       <Card>
         <WeekCalendar activities={activities} athleteId={user.id} />
