@@ -220,6 +220,40 @@
                   </sc-for>
                 </div>
               </div>
+
+              <div>
+                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:10px;">Threshold history</div>
+                <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);margin-bottom:14px;">FTP, critical running power, and threshold pace are each the best qualifying effort within a trailing window, so they can go down as an old best effort ages out, not just up. A candidate effort that deviates too far from your current value (e.g. corrupt power-meter data) is excluded automatically.</div>
+                <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
+                  <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">WINDOW (DAYS)</label><input class="prefn" style="width:80px;" type="number" value="{{ thrWindowDays }}" onInput="{{ onThrWindow }}"/></div>
+                  <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">SANITY LIMIT (%)</label><input class="prefn" style="width:80px;" type="number" value="{{ thrSanityPct }}" onInput="{{ onThrSanity }}"/></div>
+                  <div onClick="{{ saveThrSettings }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Save</div>
+                </div>
+                <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:18px;">Changing these doesn't retroactively update your history - rebuild a field below to replay it under the new settings.</div>
+
+                <div style="margin-bottom:14px;">
+                  <div onClick="{{ regenerateAll }}" style="display:inline-block;padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">{{ regenerateAllLabel }}</div>
+                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:6px;">Rebuilds all three fields from scratch, one after another. Useful after a bulk import, since the rolling-window algorithm replays activities oldest-first and a bulk import doesn't guarantee that order.</div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <sc-for list="{{ thrFields }}" as="f" hint-placeholder-count="3">
+                    <div style="display:flex;flex-direction:column;gap:6px;padding:10px 14px;border-radius:9px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);">
+                      <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ f.label }}</span>
+                        <div onClick="{{ f.onRebuild }}" style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">{{ f.btnLabel }}</div>
+                      </div>
+                      <sc-if value="{{ f.running }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;flex-direction:column;gap:6px;">
+                          <div style="height:6px;border-radius:3px;background:var(--line,#e6e2dc);overflow:hidden;"><div style="{{ f.barStyle }}"></div></div>
+                          <span style="font-size:12px;color:var(--ink3,#9a958d);">{{ f.progressLabel }}</span>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ f.hasResult }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ f.resultLabel }}</div></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
             </div>
           </sc-if>
 
@@ -343,6 +377,15 @@ class Component extends DCLogic {
     ],
     hrGen: { method: 'coggan', restingHr: '', lthr: '155', maxHr: '186' },
     bestEfforts: { allActivities: false, topN: 10, recomputing: null },
+    thresholdHistory: {
+      windowDays: 112, sanityPct: 30,
+      fields: {
+        ftp: { running: false, current: 0, total: 0, result: null },
+        critical_run_power: { running: false, current: 0, total: 0, result: null },
+        threshold_pace: { running: false, current: 0, total: 0, result: null },
+      },
+    },
+    thresholdRegenStep: null,
     races: [
       { id: 'r1', name: 'City Marathon', date: '2026-10-11', sport: 'Run', distanceKm: 42.2, goalTime: '3:15:00', resultTime: null, when: 'upcoming' },
       { id: 'r2', name: 'Half Iron Lakeside', date: '2026-05-03', sport: 'Multisport', distanceKm: null, goalTime: '5:10:00', resultTime: '5:07:42', when: 'past' },
@@ -459,6 +502,45 @@ class Component extends DCLogic {
     this._reTt = setTimeout(() => this.setState(s => ({ bestEfforts: { ...s.bestEfforts, recomputing: null } })), 900);
   }
 
+  // ---- threshold history (BestEffortsTab.tsx's "Threshold history" section) - the real
+  // activity totals/rebuilt-change counts from the account this feature was verified against,
+  // so the demo numbers aren't arbitrary.
+  THRESHOLD_FIELD_SPECS = {
+    ftp: { label: 'FTP', total: 731, result: 29 },
+    critical_run_power: { label: 'Critical running power', total: 1044, result: 33 },
+    threshold_pace: { label: 'Threshold pace', total: 1044, result: 38 },
+  };
+  onThrSetting(k) { return (e) => { const v = Math.max(1, Number(e.target.value) || 1); this.setState(s => ({ thresholdHistory: { ...s.thresholdHistory, [k]: v } })); }; }
+  saveThrSettings() { }
+
+  startFieldRebuild(key, onDone) {
+    const spec = this.THRESHOLD_FIELD_SPECS[key];
+    this.setState(s => ({ thresholdHistory: { ...s.thresholdHistory, fields: { ...s.thresholdHistory.fields, [key]: { running: true, current: 0, total: spec.total, result: null } } } }));
+    const steps = 10;
+    let tick = 0;
+    const iv = setInterval(() => {
+      tick++;
+      if (tick >= steps) {
+        clearInterval(iv);
+        this.setState(s => ({ thresholdHistory: { ...s.thresholdHistory, fields: { ...s.thresholdHistory.fields, [key]: { running: false, current: spec.total, total: spec.total, result: spec.result } } } }));
+        if (onDone) onDone();
+        return;
+      }
+      const current = Math.round(spec.total * (tick / steps));
+      this.setState(s => ({ thresholdHistory: { ...s.thresholdHistory, fields: { ...s.thresholdHistory.fields, [key]: { ...s.thresholdHistory.fields[key], current } } } }));
+    }, 130);
+  }
+
+  regenerateAllThresholds() {
+    const order = ['ftp', 'critical_run_power', 'threshold_pace'];
+    const runNext = (i) => {
+      if (i >= order.length) { this.setState({ thresholdRegenStep: null }); return; }
+      this.setState({ thresholdRegenStep: i });
+      this.startFieldRebuild(order[i], () => runNext(i + 1));
+    };
+    runNext(0);
+  }
+
   paceToSec(str) { const p = String(str).split(':').map(Number); return p.length === 2 ? p[0] * 60 + p[1] : (parseFloat(str) || 0); }
   secToPace(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return m + ':' + String(s).padStart(2, '0'); }
 
@@ -541,6 +623,26 @@ class Component extends DCLogic {
       onClick: () => this.recomputeBestEfforts(label),
     }));
 
+    // ---- threshold history ----
+    const th = this.state.thresholdHistory;
+    const thrFields = Object.keys(this.THRESHOLD_FIELD_SPECS).map(key => {
+      const spec = this.THRESHOLD_FIELD_SPECS[key];
+      const fs = th.fields[key];
+      const pct = fs.total > 0 ? Math.round(fs.current / fs.total * 100) : 0;
+      return {
+        label: spec.label,
+        running: fs.running,
+        btnLabel: fs.running ? 'Rebuilding…' : 'Rebuild from oldest',
+        onRebuild: () => this.startFieldRebuild(key),
+        barStyle: { height: '100%', width: pct + '%', background: 'var(--ember,#ec4a26)', borderRadius: '3px', transition: 'width 0.2s' },
+        progressLabel: fs.current + ' / ' + fs.total + ' activities',
+        hasResult: fs.result != null && !fs.running,
+        resultLabel: fs.result === 0 ? 'No qualifying efforts found.' : ('Ledger rebuilt — ' + fs.result + ' change' + (fs.result === 1 ? '' : 's') + ' recorded.'),
+      };
+    });
+    const regenStep = this.state.thresholdRegenStep;
+    const regenerateAllLabel = regenStep != null ? ('Regenerating all… (' + (regenStep + 1) + '/3)') : 'Regenerate all from oldest';
+
     // ---- races ----
     const racesUpcoming = this.state.races.filter(r => r.when === 'upcoming').map(raceRow => ({
       name: raceRow.name,
@@ -598,6 +700,10 @@ class Component extends DCLogic {
       allEffortsBoxStyle: { width: '16px', height: '16px', borderRadius: '5px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: be.allActivities ? 'none' : '1.5px solid var(--line,#e6e2dc)', background: be.allActivities ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)' },
       toggleAllEfforts: () => this.toggleAllEfforts(), onTopN: (e) => this.onTopN(e),
       saveBestEfforts: () => this.saveBestEfforts(), recomputeAll: () => this.recomputeBestEfforts(),
+      thrWindowDays: th.windowDays, thrSanityPct: th.sanityPct,
+      onThrWindow: this.onThrSetting('windowDays'), onThrSanity: this.onThrSetting('sanityPct'),
+      saveThrSettings: () => this.saveThrSettings(),
+      thrFields, regenerateAllLabel, regenerateAll: () => this.regenerateAllThresholds(),
       racesUpcoming, racesPast,
       pName: p.name, pAge: p.age, pFtp: p.ftp, pCp: p.cp, pThrPace: p.thrPace, pLthr: p.lthr, pMaxHr: p.maxHr,
       onName: this.onPref('name'), onAge: this.onPref('age'), onFtp: this.onPref('ftp'), onCp: this.onPref('cp'), onThrPace: this.onPref('thrPace'), onLthr: this.onPref('lthr'), onMaxHr: this.onPref('maxHr'),
