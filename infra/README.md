@@ -20,6 +20,7 @@ space, credential plumbing) that the plan document doesn't cover. See
 | Database | RDS PostgreSQL + community `timescaledb` extension | Plan's default recommendation (§4) - least-change path from local dev, nothing in the current migrations needs Timescale's commercial-only features. |
 | RDS never has a public IP or internet route | Confirmed | Matches the plan's networking design (§7) - see `NETWORK_ARCHITECTURE.md`. |
 | Ad-hoc DB access (debugging/admin queries) | SSM Session Manager port-forwarding, not AWS Client VPN | Client VPN has a fixed ~$72/mo cost (confirmed: $0.10/hr per subnet association, billed whether or not anyone's connected) plus certificate-authority setup, for "always on network access" this solo/low-frequency use case doesn't need. SSM port-forwarding (via a stoppable bastion or `ecs execute-command` into a running task) is IAM-controlled, per-session, and has near-zero idle cost. To be built alongside Step 3's RDS setup. |
+| NAT Gateway count | Single, in every environment including production (not just staging) | ~$33/mo saved per environment, ongoing - not a staging-only shortcut. Tradeoff: both AZs' private subnets share one AZ's outbound path. Upgrade path (one-line toggle, purely additive, no downtime) documented in `NETWORK_ARCHITECTURE.md`'s "Upgrading to per-AZ NAT Gateways". |
 
 ## Layout
 

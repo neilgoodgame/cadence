@@ -120,10 +120,17 @@ NAT Gateway at all.
   — the VPC's one attachment point to the internet. Only the public
   subnets' route table points at it.
 - **[NAT Gateway](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html)**
-  — gives the private subnets outbound-only internet access. `staging` runs
-  a single NAT Gateway (cost over redundancy — see `infra/README.md` Step
-  2); a production environment would add one per AZ so an AZ outage doesn't
-  take down every private subnet's outbound path at once.
+  — gives the private subnets outbound-only internet access. Every
+  environment, including production, runs a **single** NAT Gateway
+  (`single_nat_gateway = true`) — a deliberate, ongoing cost choice (~$33/mo
+  saved per environment), not just a staging shortcut. The tradeoff: both
+  AZs' private subnets currently share one NAT Gateway, so if the AZ it
+  lives in has a problem, outbound internet access (OAuth callbacks,
+  webhook delivery, pulling container images) breaks for *every* private
+  subnet, not just that AZ's. Inbound traffic and the DB connection between
+  ECS and RDS are unaffected either way — this only touches the ECS tasks'
+  own outbound calls. See "Upgrading to per-AZ NAT Gateways" below if this
+  tradeoff ever needs revisiting.
 - **Public subnets** (one per AZ) — host the Application Load Balancer and
   the NAT Gateway. Nothing else needs to live here.
 - **Private subnets** (one per AZ) — host the ECS Fargate tasks and the RDS
@@ -153,8 +160,39 @@ NAT Gateway at all.
   public; `10.20.10.0/24`, `10.20.11.0/24` for private — the `.10`/`.11`
   offset is purely a naming convenience to keep the two tiers visually
   distinguishable in the console, not a technical requirement).
-- **Why 2 AZs even for one environment**: subnets themselves are free:
-  spanning 2 AZs from the start means RDS Multi-AZ and a 2-task ECS service
-  can both be turned on later without a network redesign — only the NAT
-  Gateway count (§ above) is deliberately kept to a cost-vs-redundancy
-  tradeoff per environment.
+- **Why 2 AZs even for one environment**: subnets themselves are free.
+  Spanning 2 AZs from the start means the ALB is automatically redundant
+  (AWS provisions a node per associated subnet, no extra config), and RDS
+  Multi-AZ / a multi-task ECS service can both be turned on later without a
+  network redesign — those two are separate, explicit choices on top of the
+  network, not something the subnet layout gives you for free. NAT Gateway
+  redundancy is the one exception kept deliberately single, in every
+  environment — see below.
+
+## Upgrading to per-AZ NAT Gateways
+
+Kept single (`single_nat_gateway = true`) in every environment, including
+production, as an ongoing cost choice (~$33/mo saved per environment) —
+see the NAT Gateway entry above for the tradeoff this accepts. If that
+tradeoff ever needs revisiting (real production traffic makes the
+single-AZ outbound dependency an actual risk, not just a theoretical one):
+
+1. In `infra/terraform/envs/<environment>/main.tf`, change
+   `single_nat_gateway = true` to `single_nat_gateway = false` on the `vpc`
+   module call.
+2. `terraform plan` — because of how `modules/vpc/main.tf` is written
+   (`nat_gateway_count = var.single_nat_gateway ? 1 : var.az_count`, and
+   each private route table already points at
+   `aws_nat_gateway.this[count.index % local.nat_gateway_count]`), this is
+   purely additive for the AZ that doesn't have one yet: a new EIP + NAT
+   Gateway created in that AZ's public subnet, and that AZ's private route
+   table's single route updated to point at its own new NAT Gateway instead
+   of the shared one. The AZ that already has a NAT Gateway is untouched -
+   nothing gets destroyed or recreated.
+3. `terraform apply`. Expect a similar ~1-2 minute wait for the new NAT
+   Gateway to reach "Available", same as Step 2's original one.
+4. Update this file's "Current build status" note and `infra/README.md`'s
+   Decisions table once applied, same as every other step in this build.
+
+No application code, security group, or ECS/RDS configuration needs to
+change for this - it's purely a networking-layer change.
