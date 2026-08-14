@@ -106,6 +106,28 @@
         </sc-for>
       </div>
 
+      <!-- THRESHOLD SUMMARY -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;">
+        <sc-for list="{{ thresholds }}" as="t" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink3,#9a958d);font-weight:600;">{{ t.label }}</div>
+            <div style="display:flex;align-items:baseline;gap:6px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;color:var(--ink,#1b1a18);">{{ t.value }}</span>
+              <sc-if value="{{ t.hasUnit }}" hint-placeholder-val="{{ true }}"><span style="font-size:13px;font-weight:500;color:var(--ink2,#6f6b65);">{{ t.unit }}</span></sc-if>
+            </div>
+            <sc-if value="{{ t.hasDelta }}" hint-placeholder-val="{{ true }}"><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ t.delta }}</div></sc-if>
+            <sc-if value="{{ t.isValid }}" hint-placeholder-val="{{ true }}"><div style="font-size:11px;color:var(--ink3,#9a958d);">Valid for {{ t.daysRemaining }} more day{{ t.dayPlural }}</div></sc-if>
+            <sc-if value="{{ t.isStale }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+                <span style="font-size:11px;color:var(--ember,#ec4a26);">{{ t.staleLabel }}</span>
+                <div onClick="{{ t.onRefresh }}" style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;border:1px solid var(--line,#e6e2dc);background:transparent;color:var(--ink2,#6f6b65);cursor:pointer;">Refresh</div>
+              </div>
+            </sc-if>
+            <a href="ThresholdHistory.dc.html" style="font-size:12px;color:var(--ember,#ec4a26);font-weight:600;margin-top:4px;text-decoration:none;">View history</a>
+          </div>
+        </sc-for>
+      </div>
+
       <!-- NEXT RACE CARD -->
       <div onClick="{{ openRace }}" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-radius:12px;border:1px solid var(--ember,#ec4a26);background:var(--card,#fff);cursor:pointer;">
         <div>
@@ -446,6 +468,43 @@ class Component extends DCLogic {
 
   model = this.build();
 
+  // ---- threshold summary (ThresholdSummaryCard.tsx) - each field is the best qualifying
+  // effort within a trailing window (thresholdWindowDays, default 112), so it can go down as
+  // an old best effort ages out, not just up. A stale value (source aged out of the window,
+  // no automatic replacement yet) shows a manual refresh instead of "valid for N days".
+  thresholdWindowDays = 112;
+  thresholdsData = [
+    { field: 'ftp', label: 'FTP', unit: 'W', value: 265, previous: 262, effectiveDaysAgo: 34, stale: false },
+    { field: 'critical_run_power', label: 'Critical running power', unit: 'W', value: 285, previous: 291, effectiveDaysAgo: 61, stale: false },
+    { field: 'threshold_pace', label: 'Threshold pace', unit: '', value: '4:00', previous: '4:06', effectiveDaysAgo: 118, stale: true },
+  ];
+
+  buildThresholds() {
+    const thresholds = this.thresholdsData.map(t => {
+      const isPace = t.field === 'threshold_pace';
+      const deltaText = (() => {
+        if (t.value === t.previous) return 'No change';
+        if (isPace) {
+          const d = this.paceToSec(t.value) - this.paceToSec(t.previous);
+          return (d < 0 ? '▼ ' : '▲ ') + this.secToPace(Math.abs(d)) + ' vs previous';
+        }
+        const d = t.value - t.previous;
+        return (d > 0 ? '+' : '') + d + 'W vs previous';
+      })();
+      const daysRemaining = this.thresholdWindowDays - t.effectiveDaysAgo;
+      const stale = t.stale || daysRemaining < 0;
+      return {
+        label: t.label, value: t.value, unit: t.unit, hasUnit: !!t.unit,
+        hasDelta: !stale, delta: deltaText,
+        isValid: !stale, isStale: stale,
+        daysRemaining, dayPlural: daysRemaining === 1 ? '' : 's',
+        staleLabel: 'Aged out of window',
+        onRefresh: () => {},
+      };
+    });
+    return { thresholds };
+  }
+
   // ---- next race (NextRaceCard.tsx) ----
   race = { name: 'City Marathon', date: '2026-10-04', sport: 'Run', distanceKm: 42.2, goalTime: '3:15:00' };
 
@@ -634,6 +693,7 @@ class Component extends DCLogic {
       cockpitBtn: t === 'cockpit' ? segActive : segIdle,
       dayBtn: t === 'day' ? segActive : segIdle,
       ...this.model,
+      ...this.buildThresholds(),
       ...this.buildRace(),
       ...this.buildWeek(),
       ...this.buildHistory(),

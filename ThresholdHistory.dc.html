@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:rgba(140,150,160,0.4);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- SIDEBAR -->
+  <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 26px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
+      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</a>
+      <a href="Activities.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</a>
+      <a href="Activity Analysis.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>Analysis</a>
+      <a href="Calendar.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</a>
+      <a href="Workout Designer.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</a>
+      <a href="Import.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</a>
+    </div>
+    <div style="margin-top:auto;padding:16px 16px 20px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div data-screen-label="threshold-history" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <div style="padding:22px 32px 64px;display:flex;flex-direction:column;gap:20px;">
+
+      <!-- reachable only via the Dashboard's threshold cards' "View history" link (not in the
+           sidebar nav) - matches ThresholdHistoryScreen.tsx. A field switcher stands in for the
+           real screen's :field route param, so one mockup covers all three fields. -->
+      <div style="max-width:560px;">
+        <a href="Dashboard.dc.html" style="font-size:13px;color:var(--ink3,#9a958d);text-decoration:none;">&larr; Back to dashboard</a>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px;">
+          <h1 style="font-size:22px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">{{ fieldLabel }} history</h1>
+          <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+            <sc-for list="{{ fieldTabs }}" as="ft" hint-placeholder-count="3">
+              <div onClick="{{ ft.onClick }}" style="{{ ft.style }}">{{ ft.label }}</div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHART -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;">
+        <svg width="100%" viewBox="0 0 1200 260" role="img">
+          <g transform="translate(60,10)">
+            <sc-for list="{{ yTicks }}" as="yt" hint-placeholder-count="4">
+              <g>
+                <rect style="{{ yt.lineStyle }}"></rect>
+                <text style="{{ yt.textStyle }}">{{ yt.label }}</text>
+              </g>
+            </sc-for>
+            <path style="{{ chartPathStyle }}"></path>
+            <sc-for list="{{ xTicks }}" as="xt" hint-placeholder-count="5">
+              <text style="{{ xt.textStyle }}">{{ xt.label }}</text>
+            </sc-for>
+          </g>
+        </svg>
+      </div>
+
+      <!-- LEDGER -->
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:560px;">
+        <sc-for list="{{ ledger }}" as="e" hint-placeholder-count="12">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:8px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);">
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;color:var(--ink,#1b1a18);">{{ e.value }}</span>
+              <span style="font-size:12px;color:var(--ink3,#9a958d);">Effective from {{ e.date }}</span>
+            </div>
+            <sc-if value="{{ e.hasSource }}" hint-placeholder-val="{{ true }}">
+              <a href="Activity Analysis.dc.html" style="font-size:12px;color:var(--ember,#ec4a26);font-weight:600;text-decoration:none;">View activity</a>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', field: 'ftp' };
+
+  // Fixed "today" anchor so the mock renders identically on every load - matches Dashboard.dc.html.
+  today = new Date(2026, 6, 29);
+  mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  // Most-recent-first, matching the real ledger API's ordering - a threshold value is a step
+  // function (constant, then jumps on the next qualifying effort), spanning real multi-year
+  // account history.
+  FIELD_DATA = {
+    ftp: {
+      label: 'FTP', unit: 'W', lowerIsBetter: false,
+      entries: [
+        ['2026-04-28', 265, true], ['2026-02-06', 258, true], ['2025-11-07', 250, true],
+        ['2025-07-31', 245, true], ['2025-04-06', 252, true], ['2025-01-02', 238, true],
+        ['2024-08-09', 244, true], ['2024-02-03', 235, true], ['2023-08-09', 240, true],
+        ['2023-01-12', 210, true], ['2022-08-21', 195, true], ['2022-03-12', 180, false],
+      ],
+    },
+    critical_run_power: {
+      label: 'Critical running power', unit: 'W', lowerIsBetter: false,
+      entries: [
+        ['2026-04-29', 285, true], ['2026-01-24', 276, true], ['2025-09-16', 291, true],
+        ['2025-06-21', 268, true], ['2025-02-19', 272, true], ['2024-09-19', 264, true],
+        ['2024-03-24', 270, true], ['2023-09-03', 278, true], ['2023-03-01', 262, true],
+        ['2022-10-17', 247, true], ['2021-10-17', 220, false],
+      ],
+    },
+    threshold_pace: {
+      label: 'Threshold pace', unit: '/km', lowerIsBetter: true,
+      entries: [
+        ['2026-05-10', '4:00', true], ['2026-01-24', '4:06', true], ['2025-09-04', '4:15', true],
+        ['2025-04-26', '4:22', true], ['2024-11-25', '4:31', true], ['2024-07-02', '4:19', true],
+        ['2024-01-11', '4:36', true], ['2023-06-07', '4:44', true], ['2022-12-29', '4:58', true],
+        ['2022-03-25', '5:12', false], ['2021-10-17', '5:28', false],
+      ],
+    },
+  };
+  fieldOrder = ['ftp', 'critical_run_power', 'threshold_pace'];
+
+  paceToSec(str) { const p = String(str).split(':').map(Number); return p.length === 2 ? p[0] * 60 + p[1] : (parseFloat(str) || 0); }
+  secToPace(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return m + ':' + String(s).padStart(2, '0'); }
+
+  buildChart() {
+    const spec = this.FIELD_DATA[this.state.field];
+    const numeric = (v) => spec.unit === '/km' ? this.paceToSec(v) : v;
+    const chronological = [...spec.entries].reverse().map(([date, value]) => ({
+      date: new Date(date + 'T00:00:00'), value: numeric(value),
+    }));
+    const last = chronological[chronological.length - 1];
+    const points = this.today > last.date ? [...chronological, { date: this.today, value: last.value }] : chronological;
+
+    const innerWidth = 1128, innerHeight = 226;
+    const minDate = points[0].date.getTime(), maxDate = points[points.length - 1].date.getTime();
+    const x = (d) => maxDate > minDate ? ((d.getTime() - minDate) / (maxDate - minDate)) * innerWidth : 0;
+
+    const values = points.map(p => p.value);
+    const minV = Math.min(...values), maxV = Math.max(...values);
+    const pad = (maxV - minV) * 0.15 || Math.max(1, maxV * 0.05);
+    const lo = minV - pad, hi = maxV + pad;
+    const y = (v) => {
+      const t = (v - lo) / (hi - lo);
+      return spec.lowerIsBetter ? t * innerHeight : innerHeight - t * innerHeight;
+    };
+
+    let d = 'M ' + x(points[0].date).toFixed(1) + ' ' + y(points[0].value).toFixed(1);
+    for (let i = 1; i < points.length; i++) {
+      d += ' H ' + x(points[i].date).toFixed(1) + ' V ' + y(points[i].value).toFixed(1);
+    }
+
+    const fmtTick = (v) => spec.unit === '/km' ? this.secToPace(v) + ' /km' : Math.round(v) + spec.unit;
+    // support.js's {{ }} binding only compiles into `style` objects (like every other card's
+    // barStyle/valStyle elsewhere in this codebase) - it doesn't bind raw SVG geometry
+    // attributes (x1/y1/d/...), confirmed live (they rendered as the literal "{{ ... }}"
+    // string). Using the CSS-stylable SVG2 properties instead (x/y/width/height on rect, d on
+    // path, x/y on text) - all supported in a Chromium-based renderer - keeps this on the same
+    // style-object binding path as everything else here.
+    const yTicks = [0, 1, 2, 3].map(i => {
+      const v = lo + (hi - lo) * (i / 3);
+      const yPx = y(v);
+      return {
+        label: fmtTick(v),
+        lineStyle: { x: '0px', y: (yPx - 0.5) + 'px', width: innerWidth + 'px', height: '1px', fill: 'var(--line,#e6e2dc)' },
+        textStyle: { x: '-8px', y: yPx + 'px', textAnchor: 'end', dominantBaseline: 'middle', fontSize: '10px', fill: 'var(--ink3,#9a958d)' },
+      };
+    });
+    const xTickCount = 5;
+    const xTicks = [];
+    for (let i = 0; i < xTickCount; i++) {
+      const t = minDate + (maxDate - minDate) * (i / (xTickCount - 1));
+      const dt = new Date(t);
+      const xPx = (t - minDate) / (maxDate - minDate) * innerWidth;
+      xTicks.push({
+        label: this.mo[dt.getMonth()] + ' ' + dt.getFullYear(),
+        textStyle: { x: xPx + 'px', y: '242px', textAnchor: 'middle', fontSize: '10px', fill: 'var(--ink3,#9a958d)' },
+      });
+    }
+    const chartPathStyle = { d: "path('" + d + "')", fill: 'none', stroke: 'var(--ember,#ec4a26)', strokeWidth: '1.25px' };
+
+    return { chartPathStyle, yTicks, xTicks };
+  }
+
+  buildLedger() {
+    const spec = this.FIELD_DATA[this.state.field];
+    const ledger = spec.entries.map(([date, value, hasSource]) => {
+      const d = new Date(date + 'T00:00:00');
+      return {
+        value: spec.unit === '/km' ? value + ' /km' : value + spec.unit,
+        date: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ', ' + this.mo[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear(),
+        hasSource,
+      };
+    });
+    return { ledger };
+  }
+
+  renderVals() {
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const t = this.state.theme;
+    const palettes = { lab, cockpit, day };
+    const seg = (a) => ({ flex: 1, textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: a ? 'var(--card,#fff)' : 'transparent', boxShadow: a ? '0 1px 2px rgba(0,0,0,0.18)' : 'none' });
+
+    const fieldTabStyle = (active) => ({ padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', color: active ? '#fff' : 'var(--ink3,#9a958d)', background: active ? 'var(--ember,#ec4a26)' : 'none' });
+    const fieldTabs = this.fieldOrder.map(k => ({
+      label: this.FIELD_DATA[k].label, onClick: () => this.setState({ field: k }),
+      style: fieldTabStyle(this.state.field === k),
+    }));
+
+    return {
+      themeVars: palettes[t] || lab,
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }),
+      setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(t === 'lab'), cockpitBtn: seg(t === 'cockpit'), dayBtn: seg(t === 'day'),
+      fieldLabel: this.FIELD_DATA[this.state.field].label,
+      fieldTabs,
+      ...this.buildChart(),
+      ...this.buildLedger(),
+    };
+  }
+}
+</script>
+</body>
+</html>
