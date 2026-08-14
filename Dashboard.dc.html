@@ -168,6 +168,33 @@
         </div>
       </div>
 
+      <!-- UPCOMING WORKOUTS -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Upcoming workouts</div>
+          <a href="Workout Library.dc.html" style="font-size:13px;font-weight:600;color:var(--ember,#ec4a26);text-decoration:none;">Library →</a>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <sc-for list="{{ upcomingWorkouts }}" as="w" hint-placeholder-count="3">
+            <a href="Workout Designer.dc.html" style="{{ w.rowStyle }}">
+              <div style="{{ w.dateBoxStyle }}">
+                <div style="{{ w.dowStyle }}">{{ w.dow }}</div>
+                <div style="{{ w.dateNumStyle }}">{{ w.dateNum }}</div>
+              </div>
+              <div style="{{ w.sportDotStyle }}"></div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ w.name }}</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);margin-top:1px;">{{ w.meta }}</div>
+              </div>
+              <div style="{{ w.tssBadgeStyle }}">{{ w.tss }} TSS</div>
+            </a>
+          </sc-for>
+          <sc-if value="{{ noUpcomingWorkouts }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;color:var(--ink3,#9a958d);padding:8px 6px;">No workouts scheduled — plan one in the Workout Designer.</div>
+          </sc-if>
+        </div>
+      </div>
+
       <!-- THIS WEEK -->
       <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;">
         <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);margin:0 0 14px;">This week</div>
@@ -585,6 +612,32 @@ class Component extends DCLogic {
     return { nextRace: { name: r.name, meta, days, weeksLabel }, openRace: () => {} };
   }
 
+  // ---- upcoming workouts (next scheduled sessions from the Workout Designer/Library) ----
+  upcomingWorkoutsData = [
+    { date: '2026-07-30', name: 'Threshold 3×10', sport: 'bike', dur: '50:00', tss: 71, targetLabel: '95% FTP' },
+    { date: '2026-07-31', name: '5×5min Run VO2', sport: 'run', dur: '50:00', tss: 68, targetLabel: '105% CP' },
+    { date: '2026-08-02', name: 'Progressive Long Run', sport: 'run', dur: '1:45:00', tss: 82, targetLabel: '50→95% CP' },
+  ];
+  buildUpcoming() {
+    const C = { bike: '#3d7fd6', run: '#ec4a26', walk: '#8b95a1' };
+    const dow3 = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const upcomingWorkouts = this.upcomingWorkoutsData.map(w => {
+      const d = new Date(w.date + 'T00:00:00');
+      return {
+        dow: dow3[d.getDay()], dateNum: d.getDate(), name: w.name,
+        meta: w.dur + ' · ' + w.targetLabel,
+        tss: w.tss,
+        rowStyle: { display: 'flex', alignItems: 'center', gap: '14px', padding: '10px 6px', borderRadius: '10px', textDecoration: 'none', cursor: 'pointer' },
+        dateBoxStyle: { width: '40px', flexShrink: 0, textAlign: 'center' },
+        dowStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--ink3,#9a958d)' },
+        dateNumStyle: { fontSize: '17px', fontWeight: 800, color: 'var(--ink,#1b1a18)', lineHeight: '1.15' },
+        sportDotStyle: { width: '4px', height: '32px', borderRadius: '3px', flexShrink: 0, background: C[w.sport] },
+        tssBadgeStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11.5px', fontWeight: 700, color: 'var(--ink2,#6f6b65)', flexShrink: 0 },
+      };
+    });
+    return { upcomingWorkouts, noUpcomingWorkouts: upcomingWorkouts.length === 0 };
+  }
+
   // ---- this week (WeekCalendar.tsx) — fixed to match the live screen's current data ----
   weekStatsData = [
     { label: 'Training time', value: '13:22:50' }, { label: 'TSS', value: '948' }, null,
@@ -763,6 +816,7 @@ class Component extends DCLogic {
       ...this.model,
       ...this.buildThresholds(),
       ...this.buildRace(),
+      ...this.buildUpcoming(),
       ...this.buildWeek(),
       ...this.buildHistory(),
       ...this.buildPrefs(),
