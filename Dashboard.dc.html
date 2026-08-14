@@ -106,26 +106,53 @@
         </sc-for>
       </div>
 
-      <!-- THRESHOLD SUMMARY -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;">
-        <sc-for list="{{ thresholds }}" as="t" hint-placeholder-count="3">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink3,#9a958d);font-weight:600;">{{ t.label }}</div>
-            <div style="display:flex;align-items:baseline;gap:6px;">
-              <span style="font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;color:var(--ink,#1b1a18);">{{ t.value }}</span>
-              <sc-if value="{{ t.hasUnit }}" hint-placeholder-val="{{ true }}"><span style="font-size:13px;font-weight:500;color:var(--ink2,#6f6b65);">{{ t.unit }}</span></sc-if>
-            </div>
-            <sc-if value="{{ t.hasDelta }}" hint-placeholder-val="{{ true }}"><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ t.delta }}</div></sc-if>
-            <sc-if value="{{ t.isValid }}" hint-placeholder-val="{{ true }}"><div style="font-size:11px;color:var(--ink3,#9a958d);">Valid for {{ t.daysRemaining }} more day{{ t.dayPlural }}</div></sc-if>
-            <sc-if value="{{ t.isStale }}" hint-placeholder-val="{{ false }}">
-              <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
-                <span style="font-size:11px;color:var(--ember,#ec4a26);">{{ t.staleLabel }}</span>
-                <div onClick="{{ t.onRefresh }}" style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;border:1px solid var(--line,#e6e2dc);background:transparent;color:var(--ink2,#6f6b65);cursor:pointer;">Refresh</div>
-              </div>
-            </sc-if>
-            <a href="ThresholdHistory.dc.html" style="font-size:12px;color:var(--ember,#ec4a26);font-weight:600;margin-top:4px;text-decoration:none;">View history</a>
+      <!-- THRESHOLDS -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;">
+        <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Thresholds</div>
+        <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ activeThreshold.subtitle }}</div>
+
+        <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:10px;padding:3px;margin:16px 0 20px;width:fit-content;">
+          <sc-for list="{{ thresholdTabs }}" as="tt" hint-placeholder-count="4">
+            <div onClick="{{ tt.onClick }}" style="{{ tt.style }}">{{ tt.label }}</div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:600;color:var(--ink,#1b1a18);">{{ activeThreshold.value }}</span>
+          <sc-if value="{{ activeThreshold.hasUnit }}" hint-placeholder-val="{{ true }}"><span style="font-size:14px;font-weight:500;color:var(--ink2,#6f6b65);">{{ activeThreshold.unit }}</span></sc-if>
+        </div>
+        <sc-if value="{{ activeThreshold.hasDelta }}" hint-placeholder-val="{{ true }}"><div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:4px;">{{ activeThreshold.delta }}</div></sc-if>
+        <sc-if value="{{ activeThreshold.isValid }}" hint-placeholder-val="{{ true }}"><div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">Valid for {{ activeThreshold.daysRemaining }} more day{{ activeThreshold.dayPlural }}</div></sc-if>
+        <sc-if value="{{ activeThreshold.isStale }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <span style="font-size:12px;color:var(--ember,#ec4a26);">{{ activeThreshold.staleLabel }}</span>
+            <div onClick="{{ activeThreshold.onRefresh }}" style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid var(--line,#e6e2dc);background:transparent;color:var(--ink2,#6f6b65);cursor:pointer;">Refresh</div>
           </div>
-        </sc-for>
+        </sc-if>
+        <sc-if value="{{ activeThreshold.hasHistory }}" hint-placeholder-val="{{ true }}">
+          <a href="ThresholdHistory.dc.html" style="display:inline-block;margin-top:10px;font-size:12px;color:var(--ember,#ec4a26);font-weight:600;text-decoration:none;">View history</a>
+        </sc-if>
+
+        <div onClick="{{ toggleZones }}" style="display:flex;align-items:center;gap:5px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line,#e6e2dc);font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;width:fit-content;">
+          <span style="{{ zonesChevronStyle }}">&#9656;</span>{{ zonesToggleLabel }}
+        </div>
+        <sc-if value="{{ zonesExpanded }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:12px;">
+            <div style="font-size:11px;color:var(--ink3,#9a958d);margin-bottom:10px;">{{ activeZoneRefLabel }}</div>
+            <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:6px;">
+              <sc-for list="{{ activeZoneRows }}" as="z" hint-placeholder-count="5">
+                <div style="{{ z.barStyle }}"></div>
+              </sc-for>
+            </div>
+            <sc-for list="{{ activeZoneRows }}" as="z" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px;border-top:1px solid var(--line,#e6e2dc);">
+                <span style="width:8px;height:8px;border-radius:2px;flex-shrink:0;background:{{ z.color }};"></span>
+                <span style="flex:1;color:var(--ink,#1b1a18);">{{ z.name }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ z.range }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
       </div>
 
       <!-- NEXT RACE CARD -->
@@ -352,7 +379,7 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900},&quot;weight&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:72,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;}}">
 class Component extends DCLogic {
-  state = { theme: 'lab', trainingMetric: 'run_distance', recomputeDone: false, prefsOpen: false, prefsTab: 'profile', ctxOpen: false,
+  state = { theme: 'lab', trainingMetric: 'run_distance', recomputeDone: false, prefsOpen: false, prefsTab: 'profile', ctxOpen: false, thresholdTab: 'ftp', zonesExpanded: false,
     prefs: { name: 'Neil Goodgame', age: 34, ftp: 265, cp: 285, thrPace: '4:00', lthr: 155, maxHr: 186 },
     zones: {
       hr: [
@@ -367,9 +394,7 @@ class Component extends DCLogic {
         { name: 'Z2 Endurance', lo: 56, hi: 75, color: '#3d7fd6' },
         { name: 'Z3 Tempo', lo: 76, hi: 90, color: '#2fa66a' },
         { name: 'Z4 Threshold', lo: 91, hi: 105, color: '#f0a02e' },
-        { name: 'Z5 VO2 Max', lo: 106, hi: 120, color: '#ec4a26' },
-        { name: 'Z6 Anaerobic', lo: 121, hi: 150, color: '#e0442e' },
-        { name: 'Z7 Neuromuscular', lo: 151, hi: null, color: '#9a6ad0' },
+        { name: 'Z5 VO2 Max', lo: 106, hi: null, color: '#e0442e' },
       ],
       run: [
         { name: 'Z1 Easy', lo: 0, hi: 80, color: '#8b95a1' },
@@ -477,10 +502,23 @@ class Component extends DCLogic {
     { field: 'ftp', label: 'FTP', unit: 'W', value: 265, previous: 262, effectiveDaysAgo: 34, stale: false },
     { field: 'critical_run_power', label: 'Critical running power', unit: 'W', value: 285, previous: 291, effectiveDaysAgo: 61, stale: false },
     { field: 'threshold_pace', label: 'Threshold pace', unit: '', value: '4:00', previous: '4:06', effectiveDaysAgo: 118, stale: true },
+    // LTHR isn't part of the rolling threshold-history ledger in the real app (ThresholdField
+    // only covers ftp/critical_run_power/threshold_pace) - just a plain profile value, so no
+    // delta/validity/stale/history for it, unlike the other three.
+    { field: 'lthr', label: 'Heart rate', unit: 'bpm', value: 155 },
   ];
 
   buildThresholds() {
-    const thresholds = this.thresholdsData.map(t => {
+    const windowSubtitle = 'Best qualifying effort within your trailing window';
+    const computed = this.thresholdsData.map(t => {
+      if (t.field === 'lthr') {
+        // No delta/validity/stale/history - see thresholdsData's comment on this entry.
+        return {
+          field: t.field, label: t.label, value: t.value, unit: t.unit, hasUnit: !!t.unit,
+          hasDelta: false, isValid: false, isStale: false, hasHistory: false,
+          subtitle: 'Set manually in your profile',
+        };
+      }
       const isPace = t.field === 'threshold_pace';
       const deltaText = (() => {
         if (t.value === t.previous) return 'No change';
@@ -494,15 +532,45 @@ class Component extends DCLogic {
       const daysRemaining = this.thresholdWindowDays - t.effectiveDaysAgo;
       const stale = t.stale || daysRemaining < 0;
       return {
-        label: t.label, value: t.value, unit: t.unit, hasUnit: !!t.unit,
+        field: t.field, label: t.label, value: t.value, unit: t.unit, hasUnit: !!t.unit,
         hasDelta: !stale, delta: deltaText,
-        isValid: !stale, isStale: stale,
+        isValid: !stale, isStale: stale, hasHistory: true,
         daysRemaining, dayPlural: daysRemaining === 1 ? '' : 's',
         staleLabel: 'Aged out of window',
         onRefresh: () => {},
+        subtitle: windowSubtitle,
       };
     });
-    return { thresholds };
+
+    // A tab per field, switching which one's full detail (value, delta, validity/stale state)
+    // is shown below - a zone range doesn't apply to a single threshold value, so unlike the
+    // Preferences zone editor's segmented bar, the tabs pick a field first, then the actual
+    // zones for *that* field's zone type are available below, collapsed by default.
+    const activeField = this.state.thresholdTab;
+    const active = computed.find(t => t.field === activeField) || computed[0];
+    const tabStyle = (isActive) => ({ padding: '7px 14px', borderRadius: '7px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: isActive ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: isActive ? 'var(--card,#fff)' : 'transparent', boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+    const thresholdTabs = computed.map(t => ({
+      label: t.label,
+      onClick: () => this.setState({ thresholdTab: t.field }),
+      style: tabStyle(t.field === active.field),
+    }));
+
+    // Each threshold field has a corresponding zone type (bike_power/run_power/pace) - reuses
+    // computeZone(), the same computation the Preferences zone editor uses, just read-only here.
+    // Named activeZoneRows/activeZoneRefLabel (not zoneRows/zoneRefLabel) so this doesn't
+    // collide with the Preferences modal's own zone editor keys once renderVals() merges both.
+    const ZONE_TYPE_FOR_FIELD = { ftp: 'bike', critical_run_power: 'run', threshold_pace: 'pace', lthr: 'hr' };
+    const zone = this.computeZone(ZONE_TYPE_FOR_FIELD[active.field]);
+    const zonesExpanded = this.state.zonesExpanded;
+
+    return {
+      thresholdTabs, activeThreshold: active,
+      activeZoneRows: zone.zoneRows, activeZoneRefLabel: zone.zoneRefLabel,
+      zonesExpanded,
+      zonesToggleLabel: zonesExpanded ? 'Hide zones' : 'Show zones',
+      zonesChevronStyle: { display: 'inline-block', fontSize: '9px', transform: zonesExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' },
+      toggleZones: () => this.setState(s => ({ zonesExpanded: !s.zonesExpanded })),
+    };
   }
 
   // ---- next race (NextRaceCard.tsx) ----
