@@ -178,8 +178,36 @@ throughput limit, not a partitioning/query-plan issue (confirmed:
 `backend/athletes/views.py` and the Dockerfile's gunicorn command were
 untouched by the TimescaleDB-removal PR). Worked around for this
 verification by invoking `_recompute_stream` directly via
-`manage.py shell`, bypassing gunicorn entirely. Worth a follow-up PR
-(raise `--timeout`, or move this to a proper Celery-backed async job)
-- not blocking, not in scope here.
+`manage.py shell`, bypassing gunicorn entirely. **Fixed properly in a
+follow-up PR** (#225, merged) - converted to a Celery job + polling,
+same pattern as uploads/exports/imports. Verified against the real
+restored account: 2,606/2,606 processed, no timeout.
 
-**Step 3 (RDS, ECS, ALB, SSM DB access) resumes now.**
+## Step 3 - RDS
+
+**What & why:** plain RDS PostgreSQL 16, no custom parameter group -
+native table partitioning needs no special server config, unlike the
+TimescaleDB extension the original plan assumed (see the Decisions
+table). `modules/rds/` follows the same pattern as `modules/vpc/`:
+`aws_db_subnet_group` spanning the private subnets, a security group
+with **zero ingress rules for now** (nothing should reach RDS until
+the ECS service exists - that one rule gets added at the root module
+level once both this and the ECS module exist), and the
+`aws_db_instance` itself.
+
+Key choices: `db.t4g.micro`, single-AZ (`multi_az = false`), gp3
+storage with autoscaling (20GB initial → 100GB ceiling, matching
+`AWS_MIGRATION_PLAN.md` §4.1's reasoning), `manage_master_user_password
+= true` (RDS creates and rotates the master password in Secrets
+Manager - the actual value never appears in this Terraform config or
+state), `skip_final_snapshot = true` (staging: easy to tear down/
+recreate while learning; would flip to `false` + `deletion_protection
+= true` for production).
+
+**Applied 2026-08-15**: `cadence-staging.c5ygo26aqlnu.eu-west-2.rds.amazonaws.com:5432`,
+status `available`, Postgres 16.14. Took ~6 minutes to provision (normal
+for RDS). Console check: **RDS → Databases → `cadence-staging`**
+(Configuration tab); **Secrets Manager → Secrets** for the
+auto-created master password secret.
+
+## Next: Step 3 continued - ECS, ALB, SSM DB access
