@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from accounts.models import User
 
-from .models import ZoneSet
+from .models import BestEffortRecomputeJob, ZoneSet
 from .zones import reference_for
 
 
@@ -69,3 +69,24 @@ class FitnessPointSerializer(serializers.Serializer):
     ctl = serializers.FloatField()
     atl = serializers.FloatField()
     tsb = serializers.FloatField()
+
+
+class BestEffortRecomputeJobSerializer(serializers.ModelSerializer):
+    object = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BestEffortRecomputeJob
+        fields = [
+            "id",
+            "object",
+            "status",
+            "kind",
+            "total_items",
+            "processed_items",
+            "error_message",
+            "created_at",
+            "completed_at",
+        ]
+
+    def get_object(self, obj: BestEffortRecomputeJob) -> str:
+        return "best_effort_recompute_job"

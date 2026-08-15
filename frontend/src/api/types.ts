@@ -458,6 +458,21 @@ export interface ImportJob {
   completed_at: string | null;
 }
 
+export type BestEffortRecomputeStatus = "queued" | "processing" | "ready" | "failed";
+
+export interface BestEffortRecomputeJob {
+  id: string;
+  object: "best_effort_recompute_job";
+  status: BestEffortRecomputeStatus;
+  // "" (server sends blank, not null) means "all kinds".
+  kind: BestEffortKind | "";
+  total_items: number | null;
+  processed_items: number;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
 export interface Upload {
   id: string;
   object: "upload";
