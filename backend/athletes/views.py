@@ -20,8 +20,15 @@ from core.auth_context import get_effective_athlete_id
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 from core.permissions import user_may_read, user_may_write
 
-from .models import ThresholdHistory, ZoneSet
-from .serializers import AthleteUpdateSerializer, FitnessPointSerializer, ZoneSetReplaceSerializer, ZoneSetSerializer
+from .models import BestEffortRecomputeJob, ThresholdHistory, ZoneSet
+from .serializers import (
+    AthleteUpdateSerializer,
+    BestEffortRecomputeJobSerializer,
+    FitnessPointSerializer,
+    ZoneSetReplaceSerializer,
+    ZoneSetSerializer,
+)
+from .tasks import run_best_effort_recompute
 from .threshold_history import FIELD_SPORT, is_stale, rebuild_history_stream, record_manual_value, refresh_field
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for, zone_types_affected_by
 
@@ -381,15 +388,6 @@ class RecomputeThresholdHistoryView(APIView):
         return response
 
 
-_SPORT_FOR_KIND = {
-    "cycling_hr": "bike",
-    "cycling_power": "bike",
-    "running_hr": "run",
-    "running_pace": "run",
-    "running_power": "run",
-}
-
-
 class BestEffortExcludeView(APIView):
     def delete(self, request: Request, id: str, activity_id: str) -> Response:
         _require_read(request, id)
@@ -402,42 +400,13 @@ class BestEffortExcludeView(APIView):
         return Response(status=204)
 
 
-def _recompute_stream(athlete: User, kind: str | None) -> Iterator[str]:
-    from uploads.processing import compute_kind_best_efforts, update_best_efforts
-
-    qs = BestEffort.objects.filter(athlete=athlete)
-    if kind:
-        qs = qs.filter(kind=kind)
-    qs.delete()
-
-    candidates = Activity.objects.filter(
-        athlete=athlete,
-        parent_activity__isnull=True,
-    ).exclude(sport__in=("multisport", "transition"))
-    if kind:
-        candidates = candidates.filter(sport=_SPORT_FOR_KIND[kind])
-
-    activities = list(candidates.order_by("start_date"))
-    total = len(activities)
-
-    for i, activity in enumerate(activities):
-        records = list(activity.records.order_by("t"))
-        if records:
-            power_series = [r.power for r in records]
-            hr_series = [r.heartrate for r in records]
-            t_series = [r.t for r in records]
-            distance_series = [r.distance_km for r in records]
-            if kind:
-                compute_kind_best_efforts(activity, athlete, kind, power_series, t_series, distance_series, hr_series)
-            else:
-                update_best_efforts(activity, athlete, power_series, t_series, distance_series, hr_series)
-        yield f"data: {json.dumps({'current': i + 1, 'total': total})}\n\n"
-
-    yield f"event: done\ndata: {json.dumps({'processed': total})}\n\n"
-
-
 class BestEffortRecomputeView(APIView):
-    def post(self, request: Request, id: str) -> StreamingHttpResponse:
+    # Runs via Celery + polling, not a synchronous StreamingHttpResponse (the original
+    # implementation) - a full account (thousands of activities) can take longer than
+    # gunicorn's sync-worker timeout, which streaming alone doesn't avoid since the
+    # request is still held open for the whole duration either way. See
+    # athletes/tasks.py's run_best_effort_recompute for the actual work.
+    def post(self, request: Request, id: str) -> Response:
         _require_write(request, id)
         athlete = get_object_or_404(User, pk=id)
         kind = request.query_params.get("kind") or None
@@ -445,12 +414,24 @@ class BestEffortRecomputeView(APIView):
             raise ValidationError(
                 {"kind": "Must be one of cycling_hr, cycling_power, running_hr, running_pace, running_power."}
             )
-        response = StreamingHttpResponse(
-            _recompute_stream(athlete, kind),
-            content_type="text/event-stream",
-        )
-        response["Cache-Control"] = "no-cache"
-        response["X-Accel-Buffering"] = "no"
+
+        job = BestEffortRecomputeJob.objects.create(athlete=athlete, kind=kind or "")
+        run_best_effort_recompute.delay(job.id)
+
+        response = Response(BestEffortRecomputeJobSerializer(job).data, status=202)
+        response["Location"] = f"/v1/athletes/{id}/best-efforts/recompute/{job.id}"
+        response["Retry-After"] = "5"
+        return response
+
+
+class BestEffortRecomputeJobDetailView(APIView):
+    def get(self, request: Request, id: str, job_id: str) -> Response:
+        job = get_object_or_404(BestEffortRecomputeJob, pk=job_id, athlete_id=id)
+        _require_read(request, job.athlete_id)
+
+        response = Response(BestEffortRecomputeJobSerializer(job).data)
+        if job.status in ("queued", "processing"):
+            response["Retry-After"] = "5"
         return response
 
 

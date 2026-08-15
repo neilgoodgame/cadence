@@ -1,7 +1,18 @@
 from django.db import models
 
 from accounts.models import User
-from activities.models import Activity
+from activities.models import Activity, BestEffort
+from core.models import PrefixedIDModel
+
+# Same shape as dataexport.models.STATUS_CHOICES - duplicated rather than imported since
+# this is a different domain (best-effort recompute, not the export/import file transfer
+# job family) and it's only 4 tuples.
+STATUS_CHOICES = [
+    ("queued", "Queued"),
+    ("processing", "Processing"),
+    ("ready", "Ready"),
+    ("failed", "Failed"),
+]
 
 ZONE_TYPE_CHOICES = [
     ("heart_rate", "Heart rate"),
@@ -68,3 +79,35 @@ class ThresholdHistory(models.Model):
     def __str__(self) -> str:
         value = self.value_numeric if self.value_numeric is not None else self.value_pace
         return f"{self.athlete_id} {self.field}={value} as of {self.effective_from}"
+
+
+class BestEffortRecomputeJob(PrefixedIDModel):
+    """Tracks an in-progress "recompute best efforts" run - see athletes/tasks.py's
+    run_best_effort_recompute. Runs via Celery rather than synchronously (the original
+    implementation was a StreamingHttpResponse generator) because a full account
+    (thousands of activities) can take longer than gunicorn's sync-worker timeout; the
+    frontend polls this row for progress instead, same pattern as dataexport's
+    ExportJob/ImportJob.
+    """
+
+    id_prefix = "ber"
+
+    # Kept as history, like ImportJob - not unique per athlete (recompute can be re-run,
+    # e.g. after new activities land).
+    athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="best_effort_recompute_jobs")
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
+    # Blank means "all kinds" - mirrors the original endpoint's optional ?kind= query param.
+    kind = models.CharField(max_length=20, choices=BestEffort.KIND_CHOICES, blank=True, default="")
+    # Null until the candidate-activity count is known, then climbs to total_items - same
+    # shape as ExportJob/ImportJob's total_items/processed_items.
+    total_items = models.IntegerField(null=True, blank=True)
+    processed_items = models.IntegerField(default=0)
+    error_message = models.CharField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.athlete_id} best-effort recompute ({self.status})"

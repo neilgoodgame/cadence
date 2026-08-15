@@ -10,7 +10,7 @@ from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 from uploads.processing import _trim_kind_window
 
-from .models import ThresholdHistory, ZoneSet
+from .models import BestEffortRecomputeJob, ThresholdHistory, ZoneSet
 from .threshold_history import current_window_value, is_stale, record_manual_value, replay_full_history
 from .zones import DEFAULT_ZONES, reference_for
 
@@ -844,3 +844,85 @@ class RecordManualValueTests(TestCase):
 
         self.assertFalse(is_stale(self.athlete, "ftp", as_of=date(2026, 4, 1)))  # 90 days later
         self.assertTrue(is_stale(self.athlete, "ftp", as_of=date(2026, 5, 1)))  # 120 days later
+
+
+class BestEffortRecomputeJobViewTests(TestCase):
+    """The recompute endpoint runs via a Celery job + polling, not a synchronous
+    StreamingHttpResponse (see athletes/tasks.py's run_best_effort_recompute) - a full
+    account can take longer than gunicorn's sync-worker timeout otherwise. Under
+    CELERY_TASK_ALWAYS_EAGER (settings_test.py), .delay() runs synchronously, so the job
+    is already terminal by the time the POST response returns - these tests exercise the
+    real end-to-end path (view -> task -> DB), not a mocked one."""
+
+    def setUp(self):
+        # ftp is required: _update_power_best_efforts only runs for cycling_power when
+        # athlete.ftp is set (see uploads/processing.py's compute_kind_best_efforts).
+        self.athlete = User.objects.create_user(email="ber-athlete@example.cc", password="x", name="Athlete", ftp=250)
+        self.outsider = User.objects.create_user(email="ber-outsider@example.cc", password="x", name="Outsider")
+
+        # A full hour, matching RecomputeAthleteTssViewTests' convention - the shortest
+        # cycling_power window is 5s, but fewer than ~300+ continuous seconds risks missing
+        # the 5min window by an off-by-one on t's span rather than testing anything real.
+        self.activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Ride", start_date=timezone.now(), moving_time=3600
+        )
+        for t in range(3600):
+            Record.objects.create(
+                activity=self.activity, t=t, ts=self.activity.start_date + timedelta(seconds=t), power=250
+            )
+
+    def test_start_returns_202_and_the_job_completes_synchronously_under_eager_mode(self):
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/best-efforts/recompute")
+
+        self.assertEqual(response.status_code, 202)
+        body = response.json()
+        self.assertEqual(body["object"], "best_effort_recompute_job")
+        self.assertIn("Location", response.headers)
+
+        job = BestEffortRecomputeJob.objects.get(pk=body["id"])
+        self.assertEqual(job.status, "ready")
+        self.assertEqual(job.processed_items, 1)
+        self.assertEqual(job.total_items, 1)
+        self.assertIsNotNone(job.completed_at)
+        self.assertTrue(BestEffort.objects.filter(athlete=self.athlete, activity=self.activity).exists())
+
+    def test_polling_the_job_returns_its_current_state(self):
+        start = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/best-efforts/recompute")
+        job_id = start.json()["id"]
+
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/best-efforts/recompute/{job_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ready")
+        # Terminal jobs don't ask the poller to keep going.
+        self.assertNotIn("Retry-After", response.headers)
+
+    def test_kind_scopes_which_activities_and_best_efforts_get_recomputed(self):
+        run = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Run", start_date=timezone.now(), moving_time=3600
+        )
+        for t in range(3600):
+            Record.objects.create(activity=run, t=t, ts=run.start_date + timedelta(seconds=t), heartrate=150)
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/athletes/{self.athlete.id}/best-efforts/recompute?kind=cycling_power"
+        )
+        job = BestEffortRecomputeJob.objects.get(pk=response.json()["id"])
+
+        self.assertEqual(job.kind, "cycling_power")
+        self.assertEqual(job.total_items, 1)  # only the bike activity, not the run
+        self.assertTrue(BestEffort.objects.filter(athlete=self.athlete, kind="cycling_power").exists())
+        self.assertFalse(BestEffort.objects.filter(athlete=self.athlete, kind="running_hr").exists())
+
+    def test_invalid_kind_400(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/athletes/{self.athlete.id}/best-efforts/recompute?kind=not-a-real-kind"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_outsider_cannot_start_or_poll(self):
+        start = _bearer_client(self.outsider).post(f"/v1/athletes/{self.athlete.id}/best-efforts/recompute")
+        self.assertEqual(start.status_code, 403)
+
+        job = BestEffortRecomputeJob.objects.create(athlete=self.athlete)
+        poll = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts/recompute/{job.id}")
+        self.assertEqual(poll.status_code, 403)
