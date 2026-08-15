@@ -432,8 +432,8 @@ result.
   Same external behavior (`cad_at_*`/`cad_rt_*` tokens, same grant types), different
   internal storage model entirely.
 - **`record` primary key.** Java uses a composite `(activity_id, ts)` key on the
-  TimescaleDB hypertable directly — no surrogate id, since nothing ever looks up a record
-  by its own id. Python keeps a `bigint` surrogate `id` alongside the hypertable
+  natively partitioned `record` table directly — no surrogate id, since nothing ever
+  looks up a record by its own id. Python keeps a `bigint` surrogate `id` alongside the
   partitioning column.
 
 ## Tables that exist on only one side

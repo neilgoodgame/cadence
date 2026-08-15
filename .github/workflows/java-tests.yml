@@ -72,7 +72,7 @@ jobs:
           rm keys/jwt_private_pkcs1.pem
 
       # No services: block needed -- IntegrationTest (see support/IntegrationTest.java)
-      # starts its own Postgres/TimescaleDB via Testcontainers against the runner's
+      # starts its own Postgres via Testcontainers against the runner's
       # already-running Docker daemon, the same way it does locally.
       - name: Run integration tests
         if: steps.filter.outputs.backend_java == 'true'

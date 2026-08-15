@@ -20,7 +20,7 @@ flowchart TB
         CW["Celery worker<br/>(Python only)"]
     end
 
-    DB[("TimescaleDB<br/>(Postgres 16 + extension)<br/>one instance per backend, locally")]
+    DB[("PostgreSQL 16<br/>(native partitioning on Record)<br/>one instance per backend, locally")]
     RD[("Redis<br/>(Python only — Celery broker)")]
     MEDIA[("Local filesystem volume<br/>uploaded FIT/GPX/TCX + JWT keypair")]
     WEBHOOK["Third-party webhook endpoints"]
@@ -58,7 +58,7 @@ Django's, not because the schemas have diverged.
 | Domain | Entities | Notes |
 |---|---|---|
 | **Identity & access** | `User`, `UserRelationship`, `PersonalAccessToken` | `UserRelationship` (owner → grantee, `role: viewer\|coach`, `status: pending\|active`) is the single mechanism behind both "share my data with a viewer" and "let this coach manage me" — same table, no separate coaching-specific schema. |
-| **Activities** | `Activity`, `Lap`, `Record` (1Hz stream, TimescaleDB hypertable), `DurationCurve`, `BestEffort`, `Tag`/`ActivityTag` | The one place a Timescale-specific feature (hypertable partitioning on `ts`) is actually used — see `AWS_MIGRATION_PLAN.md` §4. |
+| **Activities** | `Activity`, `Lap`, `Record` (1Hz stream, natively RANGE-partitioned on `ts`), `DurationCurve`, `BestEffort`, `Tag`/`ActivityTag` | The one table in the system that's partitioned — see `AWS_MIGRATION_PLAN.md` §4 for why (previously a TimescaleDB hypertable, moved to native partitioning once TimescaleDB was confirmed unsupported on AWS RDS/Aurora). |
 | **Athletes** | `ZoneSet` | HR/power/pace zone definitions, computed from profile thresholds (FTP, LTHR, threshold pace, etc.). |
 | **Workouts** | `Workout`, `WorkoutFolder`, `WorkoutStep` | `WorkoutStep` is a tree: leaf steps carry `target_low`/`target_high` as ramp *start*/*end* values (not min/max), plus `repeat` groups that nest. |
 | **Scheduling** | `ScheduledWorkout` | Links a `Workout` to a calendar date/assignee; resolves to `activity_id` once the planned session is actually completed (auto-matched via lap-structure inference, or manually). |
@@ -438,11 +438,14 @@ A few things in this schema that aren't self-explanatory from the diagram
 alone:
 
 - **`Record` has no surrogate `id`** — its primary key is the composite
-  `(activity_id, ts)`, and it's the one hypertable in the system
-  (partitioned on `ts`, 1-day chunks — 1,444 chunk tables in the local dev
-  DB alone). Every other table is a normal (non-partitioned) Postgres
-  table. See `AWS_MIGRATION_PLAN.md` §4 for why this table specifically
-  drove the TimescaleDB choice.
+  `(activity_id, ts)`, and it's the one natively partitioned table in the
+  system (RANGE-partitioned on `ts`, monthly partitions plus a `DEFAULT`
+  catch-all — see `backend_java/src/main/resources/db/migration/
+  V10__records.sql`+`V11__record_partitions.sql` or the equivalent Django
+  migration `0003_record_native_partitioning.py`). Every other table is a
+  normal (non-partitioned) Postgres table. Previously a TimescaleDB
+  hypertable — moved to native partitioning once TimescaleDB was confirmed
+  unsupported on AWS RDS/Aurora; see `AWS_MIGRATION_PLAN.md` §4.
 - **`Activity` has two different self-referential FKs, and they're
   mutually exclusive by application-level validation** (not a DB
   constraint): `parent_activity_id` links a multisport/transition leg to
@@ -895,15 +898,19 @@ both can run simultaneously — Python on 8000/5432/6379, Java on
 8080/5433):
 
 - **Python** (`docker-compose.yml` + `docker-compose.dev.yml`): `db`
-  (TimescaleDB), `redis`, `backend` (gunicorn in prod-shape / `runserver`
-  in dev), `celery-worker`. `entrypoint.sh` generates the JWT keypair on
-  first boot (idempotent — skips if the key file already exists), runs
-  migrations, then writes a `.ready` sentinel file that `celery-worker`'s
-  entrypoint blocks on before starting, so the worker never runs against
-  an unmigrated schema.
-- **Java** (`backend_java/docker-compose.yml`): `db` (TimescaleDB, own
-  instance — `cadence_java`, not shared with Python), `backend` only — no
-  worker service, consistent with §5's in-process ingestion model.
+  (plain PostgreSQL 16), `redis`, `backend` (gunicorn in prod-shape /
+  `runserver` in dev), `celery-worker` (runs with `-B`, embedding the beat
+  scheduler for the one periodic task, `ensure_record_partitions` — see
+  §4's schema note; no separate beat service, not warranted for one task).
+  `entrypoint.sh` generates the JWT keypair on first boot (idempotent —
+  skips if the key file already exists), runs migrations, then writes a
+  `.ready` sentinel file that `celery-worker`'s entrypoint blocks on before
+  starting, so the worker never runs against an unmigrated schema.
+- **Java** (`backend_java/docker-compose.yml`): `db` (plain PostgreSQL 16,
+  own instance — `cadence_java`, not shared with Python), `backend` only —
+  no worker service, consistent with §5's in-process ingestion model
+  (`PartitionMaintenanceService`'s `@Scheduled` task runs in-process inside
+  `backend` too, same reasoning).
 
 Both mount `jwt_keys` and `media` as named volumes, not bind mounts, in the
 production-shape compose file; the dev override adds source bind-mounts

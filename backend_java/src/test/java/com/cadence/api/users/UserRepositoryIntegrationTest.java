@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * The first test in the "integration" bucket - proves the whole chain works, not just that a
- * mock returns what it's told to: a real Testcontainers Postgres/TimescaleDB boots, every Flyway
+ * mock returns what it's told to: a real Testcontainers Postgres boots, every Flyway
  * migration applies against it (so this also catches migration errors no unit test ever could),
  * Hibernate validates its entity mappings against that real schema, and a save/find round-trips
  * through an actual connection.

@@ -43,7 +43,7 @@ cp .env.example .env        # defaults work out of the box for local dev
 docker compose up -d
 ```
 
-This starts two containers: `db` (TimescaleDB, host port **5433**) and `backend` (Spring
+This starts two containers: `db` (PostgreSQL 16, host port **5433**) and `backend` (Spring
 Boot API on `http://localhost:8080`). First boot generates a JWT signing keypair and
 runs Flyway migrations automatically.
 

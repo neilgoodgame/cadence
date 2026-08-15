@@ -62,10 +62,14 @@ curves / best-effort upserts → bulk-inserts `Record`/`Lap` rows → creates th
 `queued`/`processing`. `POST /v1/activities/batch` does the same per-file inside a `.zip`,
 fanning out as a Celery `group` under one `UploadBatch`.
 
-### TimescaleDB
+### Native table partitioning
 
-`Record` (the 1Hz time-series table) is a Timescale **hypertable**, partitioned on a
-`ts` column by 1-day chunks (`activities/migrations/0003_record_hypertable.py`). It's
+`Record` (the 1Hz time-series table) is **natively RANGE-partitioned** on `ts`, monthly
+partitions plus a `DEFAULT` catch-all (`activities/migrations/
+0003_record_native_partitioning.py`) — not TimescaleDB, which isn't supported on AWS
+RDS/Aurora (see `AWS_MIGRATION_PLAN.md` §4). A Celery beat task (`activities/tasks.py`'s
+`ensure_record_partitions`, run monthly via `CELERY_BEAT_SCHEDULE`) keeps rolling the
+partition range forward, since Postgres has no automatic partition creation. It's
 otherwise a normal Django model — ingestion always uses
 `Record.objects.bulk_create(batch_size=...)`, never row-at-a-time `.save()`.
 
@@ -95,7 +99,7 @@ cp .env.example .env        # defaults work out of the box for local dev
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
-This builds and starts four containers: `db` (TimescaleDB), `redis`, `backend` (Django
+This builds and starts four containers: `db` (PostgreSQL 16), `redis`, `backend` (Django
 on `http://localhost:8000`), and `celery-worker`. On first boot the `backend` container
 generates an RSA keypair for JWT signing (`keys/jwt_private.pem` / `jwt_public.pem`,
 persisted in a named volume) and runs `manage.py migrate` before anything else starts —
@@ -135,7 +139,7 @@ Unit tests need no external services at all:
 uv run pytest -m unit -q
 ```
 
-Integration tests need a real Postgres/TimescaleDB connection (no SQLite fallback), so
+Integration tests need a real Postgres connection (no SQLite fallback), so
 bring up the `db` service first:
 
 ```bash

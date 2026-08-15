@@ -24,8 +24,8 @@ section is just the subset relevant to an AWS move.
 |---|---|
 | **Python backend** | Django 6 + DRF, `gunicorn`, served on :8000. OAuth2 (django-oauth-toolkit) + scoped delegated JWTs (RS256, key pair on disk). |
 | **Java backend** | Spring Boot 4 / Java 24, parity port of the same API, served on :8080. Same JWT scheme, own key pair. Uses Spring Batch **in-process** (not a queue) for upload ingestion — no separate worker process, no Redis dependency — but jobs are deliberately serialized onto a single virtual thread, one file at a time, not concurrent (see `ARCHITECTURE.md` §5.2). |
-| **Celery worker (Python only)** | Separate container, consumes Redis-backed queue: `process_upload` (parses FIT/GPX/TCX, computes streams/laps/best-efforts/TSS) and `deliver_webhook` (signed outbound POST with retry/backoff). |
-| **Database** | TimescaleDB (Postgres 16 + extension), one instance per backend locally. `activities_record` (1 Hz stream data: HR/power/cadence/etc. per second per activity) is a **real hypertable**, partitioned on `ts`, created via raw SQL migration (`CREATE EXTENSION timescaledb; SELECT create_hypertable(...)`). This is the one piece of infra that isn't "just Postgres." |
+| **Celery worker (Python only)** | Separate container, consumes Redis-backed queue: `process_upload` (parses FIT/GPX/TCX, computes streams/laps/best-efforts/TSS) and `deliver_webhook` (signed outbound POST with retry/backoff). Also runs an embedded beat scheduler (`-B` flag) for one periodic task, `ensure_record_partitions` (see the Database row below). |
+| **Database** | Plain PostgreSQL 16, one instance per backend locally. `activities_record`/`record` (1 Hz stream data: HR/power/cadence/etc. per second per activity) is **natively RANGE-partitioned on `ts`**, monthly partitions plus a `DEFAULT` catch-all, created via raw SQL migration. A small scheduled task in each backend keeps rolling the forward edge of the partition range ahead over time (Postgres has no automatic partition creation the way TimescaleDB's hypertables did — this app previously used TimescaleDB for that, dropped in favor of native partitioning once it was confirmed unsupported on AWS RDS/Aurora; see §4). |
 | **Redis** | Celery broker + result backend (Python only; unused by Java). |
 | **File storage** | Django `default_storage`, currently `FileSystemStorage` on a Docker volume (`/app/media`). Uploaded raw files live at `uploads/{athlete_id}/{upload_id}_{filename}`. |
 | **JWT signing keys** | RSA keypair generated on first container boot by `entrypoint.sh`, written to a Docker volume (`/app/keys`), shared read-only by the Celery worker (which waits on a `.ready` sentinel file). Not currently a secret-management pattern — it's "generate once, persist on disk." |
@@ -45,7 +45,7 @@ real options rather than assuming either.
 | `backend` (Django, gunicorn) | ECS Fargate service (or EKS) behind ALB | Stateless, horizontally scalable as-is. |
 | `celery-worker` | ECS Fargate service, separate task definition, no ALB target | Scales independently of the API; see §5 for the Lambda alternative. |
 | `backend_java` | ECS Fargate service behind ALB | No worker service needed — ingestion runs in-process. |
-| Postgres/TimescaleDB | **RDS for PostgreSQL with the `timescaledb` extension**, or Timescale Cloud, or self-managed on EC2 | See §4 — this is the one non-default decision. |
+| Postgres | **RDS for PostgreSQL**, with the app's own native table partitioning (not a Timescale extension — unsupported on RDS/Aurora, see §4) | Same connection string shape, same migrations as local dev. |
 | Redis | ElastiCache for Redis (Python only) | Only needed if Celery-on-containers is kept; drop entirely if ingestion moves to Lambda+SQS (§5). |
 | `media` volume | S3 bucket (`cadence-uploads-{env}`), private, SSE-S3 or SSE-KMS | Requires a small code change — see §5.3. |
 | JWT keypair volume | Secrets Manager (private key) + either Secrets Manager or a public config value (public key/JWKS) | Generate once via a one-off script or CDK custom resource, not at container boot. |
@@ -94,52 +94,47 @@ running-cost is what matters.
 This is ultimately a product/team call, not a technical one — see the open
 question in §11.
 
-## 4. Database: TimescaleDB on AWS
+## 4. Database: native partitioning on RDS (corrected 2026-08-15 — see below)
 
-The `activities_record` hypertable is the one place the app depends on
-Timescale specifically (partition-by-time chunking for 1 Hz stream data),
-not just "Postgres." Three real options:
+**This section originally recommended "RDS + the community `timescaledb`
+extension" as option 1. That recommendation was wrong** — verified directly
+against AWS's own documentation while starting the actual RDS provisioning
+step (RDS parameter group `shared_preload_libraries` allowed values, the RDS
+PostgreSQL extensions overview, the authoritative RDS PostgreSQL Release
+Notes extension list, and Aurora PostgreSQL's equivalent list): `timescaledb`
+is not supported on **any** AWS-managed PostgreSQL — not standard RDS, not
+Aurora, any version. It simply isn't in the binary AWS ships; this isn't a
+permissions restriction (`rds.allowed_extensions`) that can be worked
+around.
 
-1. **RDS for PostgreSQL with the community `timescaledb` extension enabled**
-   (`shared_preload_libraries` includes `timescaledb`, available on RDS
-   Postgres 13+). This is the path of least change — same connection string
-   shape, same migrations, `CREATE EXTENSION timescaledb` already runs as
-   part of the existing Django/Flyway migrations.
-   - **Limits to know before committing**: RDS only supports Timescale's
-     **Apache-2 community edition** — no multi-node distributed hypertables,
-     and some enterprise features (certain compression/continuous-aggregate
-     conveniences) are unavailable or require manual SQL rather than
-     Timescale's own tooling/UI. For this app's scale (per-activity 1Hz
-     streams, not a fleet-wide telemetry firehose), the community edition is
-     almost certainly sufficient.
-   - Standard RDS operational wins apply: automated backups, PITR, Multi-AZ
-     failover, read replicas, managed patching.
+The `activities_record`/`record` hypertable was the one place either backend
+depended on Timescale being present at all — a full codebase audit found no
+`time_bucket()`, no compression policies, no retention policies, no
+continuous aggregates anywhere in either backend. The fix: **native Postgres
+declarative `RANGE` partitioning on `ts`**, dropped in as its own PR
+(`drop-timescaledb-native-partitioning`) before this AWS migration's Step 3
+resumed — see `infra/README.md` for the full build log of that decision, and
+that PR's migrations (`backend/activities/migrations/
+0003_record_native_partitioning.py`, `backend_java/src/main/resources/db/
+migration/V10__records.sql`+`V11__record_partitions.sql`) for the actual
+implementation: monthly partitions, a `DEFAULT` catch-all partition as a
+safety net, and a small scheduled task in each backend
+(`activities/tasks.py`'s `ensure_record_partitions` / Java's
+`PartitionMaintenanceService`) that keeps rolling the forward edge of the
+partition range ahead over time, since Postgres has no automatic partition
+creation the way Timescale does.
 
-2. **Timescale Cloud** (Timescale's own managed service, itself hosted on
-   AWS). Gives you the full commercial feature set (native compression
-   jobs, continuous aggregates, tiered storage to S3 for cold chunks) and
-   Timescale's own support line.
-   - Downsides: another vendor relationship/bill outside AWS's own
-     consolidated billing, data egress if you ever need to move it, and
-     it's a service AWS doesn't operate — outages/support are Timescale's,
-     not AWS's.
-
-3. **Self-managed on EC2 (or EKS)** running the full TimescaleDB image
-   (same one used locally: `timescale/timescaledb:latest-pg16`). Full
-   feature parity with local dev, but now you own patching, backups, HA
-   failover, and monitoring yourself — the exact operational burden RDS
-   exists to remove. Only worth it if a specific enterprise Timescale
-   feature is a hard requirement.
-
-**Recommendation**: start with **RDS + community `timescaledb` extension**
-(option 1). It's a same-day migration from what's running locally (same
-image family's engine, same extension, same migration files), gets you
-RDS's managed backup/failover/patching, and nothing in the current codebase
-(checked: only one hypertable, no continuous aggregates, no compression
-policies in the migrations) uses a Timescale feature RDS can't provide.
-Revisit Timescale Cloud only if/when stream-data volume grows enough that
-native compression or tiered storage becomes a real cost lever — that's a
-data-volume-triggered decision, not a day-one one.
+Net effect for this section's original three-option framing: option 1 (RDS)
+is still correct — RDS remains the right database service — just with native
+partitioning instead of the Timescale extension, which needed no code that
+wasn't already being written for the AWS move anyway. Options 2 (Timescale
+Cloud) and 3 (self-managed EC2) are no longer necessary — both existed
+specifically to keep the Timescale extension available, which the app no
+longer depends on. Plain **RDS for PostgreSQL, with the app's own native
+partitioning** gets every operational win those two options exist for
+elsewhere in this plan (automated backups, PITR, Multi-AZ failover, managed
+patching) with no extra vendor relationship and no self-managed operational
+burden.
 
 ### 4.1 Underlying storage volume
 
@@ -168,10 +163,10 @@ IOPS (io2):
   primary mechanism.
 - **The actual long-term lever is data volume, not disk type**: if
   stream-data growth ever becomes a real cost driver, the fix is a
-  retention/compression policy on old chunks (native TimescaleDB
-  compression, or a rollup-and-drop-raw-rows policy for activities past a
-  certain age) — the same trigger that would justify revisiting Timescale
-  Cloud above — not a bigger or faster disk.
+  retention policy — dropping (or archiving to S3) whole old partitions past
+  a certain age, which native partitioning makes cheap (`DROP TABLE
+  activities_record_p202601` on a partition is instant, unlike deleting the
+  equivalent rows one by one) — not a bigger or faster disk.
 - **Backups are separate**: RDS automated snapshots land in S3, managed by
   AWS as part of the RDS service — not a volume you provision or size
   yourself.
@@ -390,7 +385,7 @@ touching AWS):
 
 **Phase 1 — lift-and-shift** (prove the stack works in AWS with minimal
 behavior change):
-- Provision VPC, RDS (with `timescaledb` extension), ElastiCache (if
+- Provision VPC, RDS (native partitioning, no extension needed), ElastiCache (if
   Celery is kept for now), ECR, ECS cluster, ALB, S3+CloudFront for the
   frontend, Secrets Manager/SSM entries — via IaC.
 - Deploy exactly what runs locally today, containers unchanged apart from
@@ -434,7 +429,7 @@ actual traffic/data volume.
 
 | Item | Staging (minimal) | Production (small) |
 |---|---|---|
-| RDS Postgres/Timescale (single instance, Multi-AZ in prod only) | `db.t4g.micro`, single-AZ: ~$15–25/mo | `db.t4g.medium`, Multi-AZ: ~$140–180/mo |
+| RDS Postgres (single instance, Multi-AZ in prod only) | `db.t4g.micro`, single-AZ: ~$15–25/mo | `db.t4g.medium`, Multi-AZ: ~$140–180/mo |
 | ECS Fargate — Python API (0.5 vCPU/1GB, 1 task staging / 2 tasks prod) | ~$15/mo | ~$60–70/mo |
 | ECS Fargate — Java API (1 vCPU/2GB, if run in parallel) | ~$30/mo | ~$120–140/mo |
 | ECS Fargate — Celery worker (0.5 vCPU/1GB, if kept vs Lambda) | ~$15/mo | ~$30–35/mo |
@@ -511,9 +506,9 @@ table above: somewhere past a few thousand active users).
   (per the README) — decide an S3 lifecycle policy (e.g. transition
   unlinked-but-undeleted uploads to Infrequent Access or Glacier after N
   days) so this doesn't become an unbounded-growth cost surprise. Separately,
-  if 1Hz stream-data volume grows large enough to matter, TimescaleDB's own
-  chunk-based cold-tiering (moving old chunks to cheaper storage) is a
-  later lever — only relevant at a scale this app isn't at yet.
+  if 1Hz stream-data volume grows large enough to matter, dropping or
+  archiving old `activities_record`/`record` partitions (§4.1) is a later
+  lever — only relevant at a scale this app isn't at yet.
 - **Multi-tenancy/scale ceiling**: nothing in the current schema or infra
   plan assumes single-tenant isolation beyond row-level `athlete_id`
   scoping — fine at this scale, but if "coach with many athletes" usage
@@ -545,9 +540,10 @@ table above: somewhere past a few thousand active users).
    maintenance × two, double the on-call surface). §3 leans toward Java
    for infra simplicity if forced to pick, but Python's faster iteration
    speed may matter more if the app is still actively growing features.
-2. **RDS+extension vs Timescale Cloud** (§4) — recommended default is RDS,
-   revisit only if a specific commercial Timescale feature becomes a hard
-   requirement.
+2. ~~RDS+extension vs Timescale Cloud~~ **Resolved 2026-08-15**: moot — the
+   `timescaledb` extension isn't supported on RDS/Aurora at all (§4), so the
+   app moved to native Postgres partitioning instead. No longer an open
+   decision.
 3. **Timeline for Phase 3's ingestion split** (§5/§10 Phase 3) — shape
    depends on decision 1: Lambda-on-SQS if Python, a second same-image ECS
    service if Java (both driven by the same real concern — a Garmin

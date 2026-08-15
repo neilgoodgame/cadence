@@ -4,14 +4,13 @@ import org.junit.jupiter.api.Tag;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Extend this for any test that needs a real Spring context and/or database - it boots the
- * actual app context against a Testcontainers Postgres/TimescaleDB instance (same image as
- * {@code docker-compose.yml}, so the {@code timescaledb} extension and {@code create_hypertable}
- * in the Flyway migrations actually apply, not just plain Postgres) and runs every real
- * migration on startup, exercising the schema for real rather than mocking JPA.
+ * actual app context against a Testcontainers Postgres instance (same image as
+ * {@code docker-compose.yml}) and runs every real migration on startup, including the native
+ * partitioning DDL in {@code V10}/{@code V11}, exercising the schema for real rather than
+ * mocking JPA.
  *
  * <p>{@code @Tag("integration")} is {@code @Inherited}, so every subclass is tagged without
  * needing its own annotation - same property the Python backend's {@code conftest.py} gets from
@@ -34,8 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 public abstract class IntegrationTest {
 
 	@ServiceConnection
-	static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
-			DockerImageName.parse("timescale/timescaledb:latest-pg16").asCompatibleSubstituteFor("postgres"));
+	static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16");
 
 	static {
 		POSTGRES.start();
