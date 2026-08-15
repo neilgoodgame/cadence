@@ -21,3 +21,7 @@ output "db_master_user_secret_arn" {
 output "db_security_group_id" {
   value = module.rds.security_group_id
 }
+
+output "ecr_repository_url" {
+  value = module.ecr.repository_url
+}

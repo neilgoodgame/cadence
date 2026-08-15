@@ -15,6 +15,12 @@ module "rds" {
   # modules/rds/variables.tf (db.t4g.micro, single-AZ, skip_final_snapshot = true).
 }
 
+module "ecr" {
+  source = "../../modules/ecr"
+
+  name = "backend-java"
+}
+
 module "bastion" {
   source = "../../modules/bastion"
 

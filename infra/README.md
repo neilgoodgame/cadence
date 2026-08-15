@@ -270,4 +270,40 @@ Console check: **EC2 → Instances → `cadence-staging-bastion`**;
 **Systems Manager → Fleet Manager** to see it listed as a managed
 instance once running.
 
+## Step 3 - ECR
+
+**What & why:** one ECR repo per backend (`cadence-backend-java`),
+**not per environment** - the same built image (tagged by git SHA)
+gets deployed to staging then production, rather than rebuilt per
+environment. `image_tag_mutability = "IMMUTABLE"` (a given tag always
+points at the same image, no silent overwrites), `scan_on_push = true`
+(Well-Architected: catch known CVEs before deploying), and a lifecycle
+policy keeping the last 10 tagged images + expiring untagged ones
+after 1 day (unbounded image accumulation is a real, silent cost
+creep otherwise).
+
+**Applied and image pushed 2026-08-15**:
+`423351912929.dkr.ecr.eu-west-2.amazonaws.com/cadence-backend-java`,
+tags `latest` and `sha-b2831b1` (matching `main`'s tip at the time).
+Built for **ARM64/Graviton** - matches the bastion, ~20% cheaper than
+x86 Fargate for equivalent specs, and this is an Apple Silicon Mac so
+it builds natively with no emulation.
+
+**Two snags, both worth remembering for the next manual push:**
+- `docker buildx build` in recent Docker versions attaches
+  provenance/SBOM attestations by default, producing an OCI manifest
+  list ECR's registry rejected outright (`400 Bad Request` on the
+  manifest commit, no other detail). Fix: `--provenance=false
+  --sbom=false` on the build.
+- The first (failed) push attempt still partially registered the
+  `sha-b2831b1` tag against the attestation-manifest's digest before
+  erroring - and `IMMUTABLE` tag mutability then correctly refused to
+  let the retry reassign that same tag to the real image's digest.
+  Fix: `aws ecr batch-delete-image` on the stale tag, then push again
+  clean. (This is the mutability setting doing exactly its job - a
+  genuine accidental overwrite would be blocked the same way, which is
+  the point.)
+
+Console check: **ECR → Repositories → `cadence-backend-java`**.
+
 ## Next: Step 3 continued - ECS, ALB
