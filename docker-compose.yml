@@ -1,6 +1,6 @@
 services:
   db:
-    image: timescale/timescaledb:latest-pg16
+    image: postgres:16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-cadence}
@@ -48,7 +48,9 @@ services:
   celery-worker:
     build: ./backend
     restart: unless-stopped
-    command: celery -A config worker --loglevel=info
+    # -B embeds the beat scheduler in this same process (see settings.py's
+    # CELERY_BEAT_SCHEDULE) - a separate beat service isn't warranted for one task.
+    command: celery -A config worker --loglevel=info -B
     env_file: .env
     environment:
       POSTGRES_HOST: db

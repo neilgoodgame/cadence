@@ -170,15 +170,17 @@ class ActivityTag(models.Model):
 
 
 class Record(models.Model):
-    """The 1 Hz time-series stream. A TimescaleDB hypertable partitioned on `ts`
-    (see the 0002 migration's raw-SQL conversion) — `t` (seconds offset from
-    activity.start_date) is kept alongside `ts` purely for convenient ordering/
-    indexing without re-deriving it from the activity on every read.
+    """The 1 Hz time-series stream. A natively RANGE-partitioned table on `ts`
+    (see the 0003 migration's raw-SQL table recreation, plus activities/tasks.py's
+    ensure_record_partitions for rolling the partition range forward over time) —
+    `t` (seconds offset from activity.start_date) is kept alongside `ts` purely for
+    convenient ordering/indexing without re-deriving it from the activity on every
+    read.
 
     Never fetched by its own id, so the surrogate BigAutoField's uniqueness is
-    dropped in favor of (activity, ts) once the hypertable conversion runs —
-    Timescale requires every unique/PK constraint to include the partitioning
-    column, and id-alone can't satisfy that.
+    dropped in favor of (activity, ts) once the partitioning migration runs —
+    Postgres requires every unique/PK constraint on a partitioned table to include
+    the partitioning column, and id-alone can't satisfy that.
     """
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="records")

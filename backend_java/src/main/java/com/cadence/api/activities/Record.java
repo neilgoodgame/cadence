@@ -9,7 +9,7 @@ import jakarta.persistence.MapsId;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
-/** The 1 Hz stream. See {@link RecordId} for why there's no surrogate id - this is the TimescaleDB hypertable. */
+/** The 1 Hz stream. See {@link RecordId} for why there's no surrogate id - this is the natively partitioned table. */
 @Entity
 @Table(name = "record")
 public class Record {
