@@ -152,4 +152,34 @@ parity: prod and dev must run the same migrations, or they silently
 drift). User is doing a full data export of the local dev DB first as a
 safety net before that PR touches `activities_record`.
 
-**Step 3 (RDS, ECS, ALB, SSM DB access) resumes once that PR is merged.**
+**Resolved 2026-08-15**: PR #224 merged. Both local dev databases were
+wiped and rebuilt on the new native-partitioned schema, then fully
+restored via the app's own export/import feature (validating it as a
+real DR mechanism, not just a backup that sits unused):
+
+- **Java**: 9,348,679 records, 2,634 activities, 1,003 best efforts.
+  0 rows landed in the `DEFAULT` catch-all partition - the 10-year-back/
+  6-month-forward range fully covers the real data.
+- **Django**: same row counts (9,348,679 records, 2,634 activities),
+  1,049 best efforts, also 0 rows in `DEFAULT`. Along the way, cleaned
+  up 2 duplicate test accounts created during CORS-related registration
+  troubleshooting (`CORS_ALLOWED_ORIGINS` needed the frontend's actual
+  dev-server port added - a local-env snag, not a code bug).
+
+**Found one real pre-existing bug while restoring, unrelated to this
+migration** - flagging here since it surfaced from actually exercising
+the app end-to-end for the first time against a full-scale (~2,634
+activity) account: `POST /v1/athletes/{id}/best-efforts/recompute`
+(`backend/athletes/views.py`'s `_recompute_stream`) times out against
+gunicorn's default 30s sync-worker limit (`backend/Dockerfile`'s `CMD`
+has no `--timeout` override) when recomputing a full large account via
+the streaming HTTP endpoint - a Python ORM-object-instantiation
+throughput limit, not a partitioning/query-plan issue (confirmed:
+`backend/athletes/views.py` and the Dockerfile's gunicorn command were
+untouched by the TimescaleDB-removal PR). Worked around for this
+verification by invoking `_recompute_stream` directly via
+`manage.py shell`, bypassing gunicorn entirely. Worth a follow-up PR
+(raise `--timeout`, or move this to a proper Celery-backed async job)
+- not blocking, not in scope here.
+
+**Step 3 (RDS, ECS, ALB, SSM DB access) resumes now.**
