@@ -1,5 +1,5 @@
 -- No surrogate id: (activity_id, ts) is already the natural unique key the data dictionary
--- requires, it already includes the partitioning column TimescaleDB will need, and an
+-- requires, it already includes the range-partitioning column (see V11), and an
 -- immutable 1 Hz fact table has no real use for one anyway - nothing ever fetches a Record
 -- by its own id, only by activity_id + time range.
 CREATE TABLE record (
@@ -16,4 +16,4 @@ CREATE TABLE record (
     distance_km   DOUBLE PRECISION,
 
     PRIMARY KEY (activity_id, ts)
-);
+) PARTITION BY RANGE (ts);

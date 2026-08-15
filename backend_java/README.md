@@ -5,7 +5,7 @@ A second, fully independent implementation of the Cadence REST API — same cont
 but written idiomatically for Java/Spring rather than transliterated from it. It ingests
 `.fit` / `.gpx` / `.tcx` activity files, derives power/HR metrics (normalized power,
 TSS, duration curves, best efforts), and exposes them over a JSON API with OAuth2/JWT
-delegated auth. Own Postgres/TimescaleDB instance, own containers — the two backends
+delegated auth. Own Postgres instance, own containers — the two backends
 don't share a database and can run side by side. Browsable at `/schema/docs` once the
 server is running.
 
@@ -13,8 +13,8 @@ server is running.
 
 **Stack:** Java 25, Spring Boot 4.1 (Spring Framework 7, Jakarta EE 11), Spring Data JPA
 + Hibernate 7, Spring Security 7 (Authorization Server is bundled, not a separate
-dependency), Spring Batch 6, Gradle (Kotlin DSL) wrapper, Flyway, PostgreSQL +
-TimescaleDB, MapStruct, springdoc-openapi. No Lombok — entities are plain mutable
+dependency), Spring Batch 6, Gradle (Kotlin DSL) wrapper, Flyway, PostgreSQL,
+MapStruct, springdoc-openapi. No Lombok — entities are plain mutable
 classes (Hibernate requires that), DTOs are records throughout.
 
 **One Gradle module, package-per-feature** (`src/main/java/com/cadence/api/`), each
@@ -86,13 +86,16 @@ concurrent uploads produced cross-contaminated `Record` rows before this fix). B
 partitioning, since each file is independently retryable/failable — not what
 partitioning is designed for.
 
-### TimescaleDB
+### Native table partitioning
 
-`Record` (the 1 Hz stream) is a Timescale **hypertable**, partitioned on a `ts` column
-by 1-day chunks (`V10`/`V11` migrations). It uses a composite `(activity_id, ts)`
-primary key instead of a surrogate id (`activities/RecordId.java`) — that pair is
-already the natural unique key the schema needs, already includes the partitioning
-column, and nothing ever fetches a `Record` by its own id anyway.
+`Record` is **natively RANGE-partitioned** on a `ts` column, monthly partitions plus a
+`DEFAULT` catch-all (`V10`/`V11` migrations) — not TimescaleDB, which isn't supported
+on AWS RDS/Aurora (see `../AWS_MIGRATION_PLAN.md` §4). A `@Scheduled` task
+(`PartitionMaintenanceService`, runs monthly) keeps rolling the partition range
+forward, since Postgres has no automatic partition creation. It uses a composite
+`(activity_id, ts)` primary key instead of a surrogate id (`activities/RecordId.java`)
+— that pair is already the natural unique key the schema needs, already includes the
+partitioning column, and nothing ever fetches a `Record` by its own id anyway.
 
 ### CQL (the `q` query language)
 
@@ -130,7 +133,7 @@ cp .env.example .env        # defaults work out of the box for local dev
 docker compose up -d
 ```
 
-This builds and starts two containers: `db` (TimescaleDB, host port **5433** — offset
+This builds and starts two containers: `db` (PostgreSQL 16, host port **5433** — offset
 from the Python stack's 5432 so both can run at once) and `backend` (the Spring Boot API
 on `http://localhost:8080` — offset from the Python stack's 8000). There's no separate
 worker container: Spring Batch jobs and webhook retries run in-process on virtual
@@ -175,7 +178,7 @@ Unit tests need no external services at all:
 ./gradlew unitTest
 ```
 
-Integration tests need Docker — Testcontainers starts a real Postgres/TimescaleDB
+Integration tests need Docker — Testcontainers starts a real Postgres
 container per run (same image as `docker-compose.yml`) and every Flyway migration applies
 against it for real, so this also catches migration errors no unit test ever could:
 

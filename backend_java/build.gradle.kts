@@ -81,7 +81,7 @@ tasks.register<Test>("unitTest") {
 
 tasks.register<Test>("integrationTest") {
 	group = "verification"
-	description = "Runs tests tagged @Tag(\"integration\") - needs Docker (Testcontainers starts a real Postgres/TimescaleDB)."
+	description = "Runs tests tagged @Tag(\"integration\") - needs Docker (Testcontainers starts a real Postgres)."
 	testClassesDirs = sourceSets.test.get().output.classesDirs
 	classpath = sourceSets.test.get().runtimeClasspath
 	useJUnitPlatform {

@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import overload
 
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -182,6 +183,15 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TASK_ALWAYS_EAGER = env_bool("CELERY_TASK_ALWAYS_EAGER", False)
+
+# Runs embedded in celery-worker (docker-compose.yml's `-B` flag), not a separate
+# beat service - this is the only periodic task in the app, doesn't warrant one.
+CELERY_BEAT_SCHEDULE = {
+    "ensure-record-partitions": {
+        "task": "activities.tasks.ensure_record_partitions",
+        "schedule": crontab(day_of_month=1, hour=0, minute=0),
+    },
+}
 
 # --- Uploads ---
 MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024

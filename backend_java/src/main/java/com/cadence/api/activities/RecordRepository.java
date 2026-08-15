@@ -8,9 +8,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface RecordRepository extends JpaRepository<Record, RecordId> {
 
-	// record is a TimescaleDB hypertable in ~1000 time-based chunks that can't be pruned by
-	// activity_id, so the per-activity FK cascade visits every chunk. Deleting an account's
-	// activities through the cascade therefore means thousands of chunk-wide deletes in one
+	// record is range-partitioned on ts into ~126 monthly partitions that can't be pruned by
+	// activity_id, so the per-activity FK cascade visits every partition. Deleting an account's
+	// activities through the cascade therefore means dozens of partition-wide deletes in one
 	// transaction - enough to take the database down. This clears the athlete's records in a
 	// single set-based statement so the cascades afterwards find nothing left to do.
 	@Modifying

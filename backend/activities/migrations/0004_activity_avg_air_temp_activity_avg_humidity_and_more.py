@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('activities', '0003_record_hypertable'),
+        ('activities', '0003_record_native_partitioning'),
     ]
 
     operations = [
