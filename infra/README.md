@@ -22,6 +22,7 @@ space, credential plumbing) that the plan document doesn't cover. See
 | RDS never has a public IP or internet route | Confirmed | Matches the plan's networking design (§7) - see `NETWORK_ARCHITECTURE.md`. |
 | Ad-hoc DB access (debugging/admin queries) | SSM Session Manager port-forwarding, not AWS Client VPN | Client VPN has a fixed ~$72/mo cost (confirmed: $0.10/hr per subnet association, billed whether or not anyone's connected) plus certificate-authority setup, for "always on network access" this solo/low-frequency use case doesn't need. SSM port-forwarding (via a stoppable bastion or `ecs execute-command` into a running task) is IAM-controlled, per-session, and has near-zero idle cost. To be built alongside Step 3's RDS setup. |
 | NAT Gateway count | Single, in every environment including production (not just staging) | ~$33/mo saved per environment, ongoing - not a staging-only shortcut. Tradeoff: both AZs' private subnets share one AZ's outbound path. Upgrade path (one-line toggle, purely additive, no downtime) documented in `NETWORK_ARCHITECTURE.md`'s "Upgrading to per-AZ NAT Gateways". |
+| First-admin bootstrap on Java in AWS | SSM bastion + direct `UPDATE users SET is_admin = true` | Django has `grant_admin` (a documented management command); Java, the chosen production backend, has no equivalent CLI mechanism. Building it just for a one-time bootstrap wasn't worth the effort - the SSM bastion (built for general ad-hoc DB access anyway) solves it directly. Worth adding a real `grant_admin`-equivalent to the Java side eventually, not urgent. |
 
 ## Layout
 
@@ -210,4 +211,63 @@ for RDS). Console check: **RDS → Databases → `cadence-staging`**
 (Configuration tab); **Secrets Manager → Secrets** for the
 auto-created master password secret.
 
-## Next: Step 3 continued - ECS, ALB, SSM DB access
+## Step 3 - SSM bastion (ad-hoc DB access, moved up)
+
+**What & why:** brought forward from its original place in the plan
+(alongside ECS) because a real, concrete need showed up first: with no
+self-service way to become the first in-app admin (Django has
+`grant_admin`, a documented "one-off bootstrap path, run manually
+against each environment" - `backend/accounts/management/commands/
+grant_admin.py`; **Java, the chosen production backend, has no
+equivalent**), the only way to bootstrap the first admin in AWS is a
+direct SQL `UPDATE users SET is_admin = true WHERE email = ...` -
+which needs DB access that doesn't require the app to be deployed yet
+either.
+
+`modules/bastion/`: one `t4g.micro` EC2 instance (Amazon Linux 2023,
+ARM/Graviton - AMI pulled from the public SSM parameter
+`/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64`,
+not hardcoded), **zero ingress rules** (SSM doesn't need any - the
+agent makes an *outbound* connection to AWS Systems Manager, and `aws
+ssm start-session` tunnels through that; nothing on the internet can
+ever open a connection *to* this instance), IAM role with just
+`AmazonSSMManagedInstanceCore` attached. The one new cross-module
+wire-up: an `aws_security_group_rule` in `envs/staging/main.tf` adding
+the bastion's security group as an allowed source on RDS's - the first
+of what will eventually be two such rules (ECS gets its own, later).
+
+**Two real snags, both AWS API charset restrictions** (worth keeping
+here since they're not obvious from the error message alone): security
+group descriptions only allow `a-zA-Z0-9. _-:/()#,@[]+=&;{}!$*` - no
+`→` arrows (hit this in a route description) and **no apostrophes**
+(hit this in "SSM doesn't need any" - AWS's error message doesn't
+mention apostrophes specifically, it just lists the allowed set, so
+it's easy to miss on a quick read). Neither restriction applies to
+Terraform's own `description` fields on `variable`/`output` blocks -
+those are local documentation, never sent to any AWS API.
+
+**Applied and verified 2026-08-15**: instance `i-073b678e1bcd4b9b8`,
+SSM agent online within ~10s of boot. Verified the actual tunnel
+end-to-end (not just "resources exist"): `aws ssm start-session
+--document-name AWS-StartPortForwardingSessionToRemoteHost` to forward
+local port 15432 to the RDS endpoint's 5432, then a raw TCP connect
+test (`nc -zv localhost 15432`) confirmed the full path - local
+machine → SSM session → bastion → RDS security group → Postgres port.
+Deliberately stopped short of an authenticated `psql` connection here:
+that needs the RDS master password from Secrets Manager, which should
+never be fetched into this kind of session (matches the general
+principle in `CLAUDE.md`'s Secret Safety section, even without a
+specific secrets-manager skill loaded) - that step is for whoever
+actually runs the bootstrap, on their own machine, once there's a real
+`users` table to update.
+
+The instance is **stopped by default between uses** (`aws ec2
+stop-instances`) - billed only while running, and a `t4g.micro` is
+cheap enough (~$6/mo) that leaving it running is also a defensible
+choice if the stop/start friction isn't worth it day to day.
+
+Console check: **EC2 → Instances → `cadence-staging-bastion`**;
+**Systems Manager → Fleet Manager** to see it listed as a managed
+instance once running.
+
+## Next: Step 3 continued - ECS, ALB
