@@ -23,6 +23,7 @@ space, credential plumbing) that the plan document doesn't cover. See
 | Ad-hoc DB access (debugging/admin queries) | SSM Session Manager port-forwarding, not AWS Client VPN | Client VPN has a fixed ~$72/mo cost (confirmed: $0.10/hr per subnet association, billed whether or not anyone's connected) plus certificate-authority setup, for "always on network access" this solo/low-frequency use case doesn't need. SSM port-forwarding (via a stoppable bastion or `ecs execute-command` into a running task) is IAM-controlled, per-session, and has near-zero idle cost. To be built alongside Step 3's RDS setup. |
 | NAT Gateway count | Single, in every environment including production (not just staging) | ~$33/mo saved per environment, ongoing - not a staging-only shortcut. Tradeoff: both AZs' private subnets share one AZ's outbound path. Upgrade path (one-line toggle, purely additive, no downtime) documented in `NETWORK_ARCHITECTURE.md`'s "Upgrading to per-AZ NAT Gateways". |
 | First-admin bootstrap on Java in AWS | SSM bastion + direct `UPDATE users SET is_admin = true` | Django has `grant_admin` (a documented management command); Java, the chosen production backend, has no equivalent CLI mechanism. Building it just for a one-time bootstrap wasn't worth the effort - the SSM bastion (built for general ad-hoc DB access anyway) solves it directly. Worth adding a real `grant_admin`-equivalent to the Java side eventually, not urgent. |
+| `/app/media` on Fargate | EFS mount, not S3 | Found while writing the ECS task definition: the Java backend has **no S3 storage code at all** - `UploadIngestService`/`ExportService`/`ImportController` all resolve plain local filesystem paths via `CadenceProperties.uploads().mediaRoot()`, unlike `AWS_MIGRATION_PLAN.md`'s Phase 1 assumption. On Fargate's ephemeral disk that would silently lose uploaded activity files and pending export/import artifacts on every deploy/restart. EFS needs zero app code changes (still a POSIX path) and unblocks ECS today; a real S3-backed storage abstraction can still land later as its own PR. |
 
 ## Layout
 
@@ -306,4 +307,282 @@ it builds natively with no emulation.
 
 Console check: **ECR → Repositories → `cadence-backend-java`**.
 
-## Next: Step 3 continued - ECS, ALB
+## Step 3 continued - JWT keys, OAuth secret, EFS, ALB, ECS
+
+**What & why:** the last pieces to actually run the Java backend.
+
+- **JWT signing keypair**: generated locally with the exact same `openssl
+  genrsa` / `pkcs8` / `rsa -pubout` sequence `entrypoint.sh` already uses for
+  local dev (PR #228), then uploaded straight into a single Secrets Manager
+  secret (`cadence-staging-jwt-keys`, JSON with `jwt_private_key_pem` /
+  `jwt_public_key_pem` keys) without the key material ever landing in a file
+  I read or a shell variable I could see - `openssl` wrote straight to temp
+  files, `jq --rawfile` built the JSON from those files, `aws secretsmanager
+  create-secret --secret-string file://...` uploaded it, then the temp dir
+  was shredded. Same secret-handling discipline as the RDS master password.
+- **OAuth first-party client secret**: `OAUTH_FIRST_PARTY_CLIENT_SECRET` (used
+  as the first-party OAuth client's credential, `FirstPartyClientConfig.java`)
+  was still on its `dev-only-secret-change-me` default - a real value needed
+  generating for staging. The generate+upload one-liner got blocked by this
+  session's sandbox classifier (secret creation is understandably sensitive),
+  so it was run by hand instead of by me - `cadence-staging-oauth-first-party-client-secret`,
+  a plain string secret (not JSON, unlike the JWT one).
+- **`/app/media` → EFS, not S3**: see the decisions table above. New `efs`
+  module - one filesystem, a mount target per private subnet, an access
+  point scoped to `/media` with a fixed POSIX owner (the container runs as
+  root, matching the Dockerfile), IAM-authorized access (`iam = "ENABLED"`
+  on the volume's `authorization_config`, plus a scoped
+  `elasticfilesystem:ClientMount`/`ClientWrite` policy on the ECS task role)
+  layered on top of the security-group-level NFS rule, not instead of it.
+- **ALB**: new `alb` module - internet-facing, HTTP-only listener on port 80
+  for now. Port 443 is open on the security group already so adding the
+  HTTPS listener later (once ACM + the `cadence.bioinform.co.uk` Route 53
+  record happen) needs no SG change, just the listener resource itself.
+  Target group uses `target_type = "ip"` (required for Fargate's `awsvpc`
+  networking - there's no EC2 instance to register by ID) and health-checks
+  `/healthz`.
+- **ECS**: new `ecs` module - Fargate cluster, ARM64/Graviton task definition
+  (matches the bastion and the already-pushed image), two IAM roles (execution
+  role: ECR pull + CloudWatch Logs + `secretsmanager:GetSecretValue` scoped to
+  exactly the 3 secrets used, not a blanket grant; task role: the EFS IAM
+  policy above, nothing else - the app makes no other AWS API calls today).
+  `POSTGRES_PASSWORD`, `JWT_PRIVATE_KEY_PEM`, `JWT_PUBLIC_KEY_PEM`, and
+  `OAUTH_FIRST_PARTY_CLIENT_SECRET` come in as task-definition `secrets`
+  (resolved by the execution role before the container starts, never touching
+  Terraform state); everything else (`POSTGRES_HOST`/`DB`/`USER`,
+  `JWT_KID`/`ISSUER`/`AUDIENCE`, `CORS_ALLOWED_ORIGINS`) is a plain
+  `environment` entry. `JWT_ISSUER` is set to the real
+  `https://api.cadence.bioinform.co.uk`, not the `.env.example` placeholder.
+  `CORS_ALLOWED_ORIGINS` points at local dev (`localhost:5173`/`3000`) for
+  now, **not `"*"`** - `SecurityConfig.java` sets `allowCredentials(true)`,
+  and Spring throws at request time if `allowedOrigins` contains `"*"`
+  together with credentials enabled; this gets updated to the real deployed
+  frontend origin once that step happens.
+- Three cross-module security group rules added at the root, same pattern as
+  the existing RDS-from-bastion rule: **ALB → ECS** (8080), **ECS → RDS**
+  (5432, mirrors the bastion's rule), **ECS → EFS** (2049/NFS).
+- **Caught before deploying, not after**: the ECR image already pushed
+  (`sha-b2831b1`) predates PR #228 - deploying it as-is would have put the
+  *old* `entrypoint.sh` on Fargate, silently reintroducing the exact
+  ephemeral-JWT-key bug that PR was written to fix. Rebuilt and pushed a
+  fresh image at `main`'s current tip, `sha-359a20b` (which **is** PR #228's
+  merge commit) - that's the tag the task definition actually references.
+  The `latest` tag failed to re-push with the same `400 Bad Request` as the
+  first ECR snag above - expected this time: `IMMUTABLE` mutability
+  correctly refuses to reassign `latest` to a new digest, so from here on
+  only SHA tags get used, `latest` is left stale/unused rather than fought.
+
+**Applied 2026-08-16**: `terraform apply` - 22 resources added, 0 changed, 0
+destroyed, nothing pre-existing touched. Verified end to end, not just "the
+apply succeeded":
+
+- ECS task reached `RUNNING`, ALB target reached `healthy` within ~50s of
+  target registration.
+- CloudWatch logs show all **45** Flyway migrations applying cleanly against
+  the fresh RDS database (this is the schema's first-ever run outside local
+  dev), Hibernate connecting, Tomcat starting on 8080, `Started
+  CadenceApiApplication in 50.968 seconds` - no errors, no exceptions.
+  Startup succeeding at all is itself proof the JWT keys came through
+  correctly: the JWT signing-key bean is constructed at boot from the files
+  `entrypoint.sh` writes from `JWT_PRIVATE_KEY_PEM`/`JWT_PUBLIC_KEY_PEM`, so a
+  malformed or missing key would have crashed startup, not logged a warning.
+- `curl http://cadence-staging-111844535.eu-west-2.elb.amazonaws.com/healthz`
+  → `{"status":"ok"}`, HTTP 200 - the full path (internet → ALB → target
+  group → ECS task → Spring Boot) confirmed working, not just individual
+  resources existing.
+
+Minor, non-blocking observation from the logs: SpringDoc's `/schema` and
+`/schema/docs` (Swagger UI) endpoints are enabled by default and logged their
+own warning about that. Worth disabling for a real production environment
+later (`springdoc.api-docs.enabled=false`); not urgent for staging.
+
+Console check: **ECS → Clusters → `cadence-staging`**;
+**EC2 → Load Balancers → `cadence-staging`**; **CloudWatch → Log groups →
+`/ecs/cadence-staging-backend`**.
+
+## Incident: RDS master password exposed, and a real health-check bug found while fixing it
+
+While setting up the first-admin bootstrap (SSM bastion tunnel + direct SQL,
+per the decisions table above), the RDS master password ended up printed to
+the terminal and relayed back into this session's transcript - a genuine
+secret exposure, not a near-miss. Root cause: the instruction given was to
+pipe `get-secret-value` into a Python one-liner that **printed** the
+password, when the actual intent was for it to stay inside the user's own
+shell. Piping a secret to anything that prints it defeats the entire point of
+"don't let it pass through the assistant's context," regardless of how many
+hops are in between - noted here so the same mistake isn't repeated.
+
+**Remediation, immediately:**
+1. `aws secretsmanager rotate-secret` on the RDS-managed secret - triggers
+   AWS's own rotation Lambda (this is what `manage_master_user_password =
+   true` sets up automatically), which generates a new random password and
+   updates it on the RDS instance directly. Neither old nor new password
+   value needed to pass through the assistant for this - rotation is a
+   control-plane action, not a read.
+2. Confirmed via `describe-secret` that `AWSCURRENT` moved to the new
+   version before doing anything else.
+
+**Knock-on effect, found and fixed as part of the same incident:** the
+already-running ECS task had the *old* password baked into its environment
+(task secrets resolve once at container start, not live), so it needed a
+`force-new-deployment` to pick up the rotated value. That deployment then
+**failed twice** - not because of the password, but because
+`aws_ecs_service.backend` never set `health_check_grace_period_seconds`
+(Terraform default: `0`). This Spring Boot app's cold boot (Flyway +
+Hibernate + Spring Security all initializing) took 50-72 seconds across the
+real observed deploys, comfortably past the ALB target group's own
+`unhealthy_threshold` window - so with no grace period, ECS started counting
+health-check failures against every fresh task the instant it registered,
+and killed two in a row for "failing" checks they were never actually given
+time to pass. The very first deployment (Step 3's initial apply) happened to
+avoid this only because there was no old task competing for the deployment's
+health-check window at the time. Fixed with `health_check_grace_period_seconds
+= 180` on the ECS service (`infra/terraform/modules/ecs/main.tf`) - applied,
+and the next deployment attempt passed cleanly.
+
+**End state, verified:** rotated password confirmed live (Flyway/Hibernate
+connected, migrations validated against it), grace period fix applied,
+`force-new-deployment` completed with the new task healthy and the old one
+drained, `/healthz` returns `200` through the ALB again.
+
+## Step 3 continued - first-admin bootstrap
+
+**Done**: registered a real account via `POST /v1/auth/register` against the
+live ALB, then `UPDATE users SET is_admin = true WHERE email = ...` over the
+SSM bastion tunnel - via DBeaver rather than `psql` (not installed locally),
+same principle either way: the DB password went straight from
+`get-secret-value` into the client's password field, never printed to a
+terminal or pasted back into this session.
+
+One more thing worth remembering for next time: `aws ssm start-session
+--document-name AWS-StartPortForwardingSessionToRemoteHost` spawns a
+long-lived `session-manager-plugin` child process that actually holds the
+forwarded port - killing the parent `aws` CLI invocation (e.g. `pkill -f "aws
+ssm start-session..."`) does **not** stop it. Tearing the tunnel down cleanly
+needs `lsof -nP -iTCP:<port> -sTCP:LISTEN` to find the real PID, then killing
+that.
+
+Bastion stopped again afterward (`aws ec2 stop-instances`), matching Step 3's
+stated default-stopped pattern.
+
+## Step 4 - DNS/ACM (real HTTPS for the API)
+
+**What & why:** `api.cadence.bioinform.co.uk` with a real, trusted TLS cert,
+replacing the raw ALB hostname/HTTP-only setup from Step 3.
+
+- New `acm` module: DNS-validated `aws_acm_certificate` for
+  `api.cadence.bioinform.co.uk` + the Route 53 validation `CNAME` +
+  `aws_acm_certificate_validation` (this resource doesn't return until
+  validation actually completes, so anything downstream that references its
+  `certificate_arn` output is guaranteed a usable cert, not a pending one).
+  Deliberately **not** shared with the future frontend's CloudFront cert -
+  CloudFront requires its certificate to live in `us-east-1` regardless of
+  where everything else runs, so that's a separate cert requested during the
+  frontend step, not a SAN added here.
+- `alb` module: added an HTTPS listener (443, `ELBSecurityPolicy-TLS13-1-2-2021-06`,
+  forwards to the existing target group) and changed the HTTP listener (80)
+  from forwarding to redirecting to HTTPS instead.
+- Root module: `data "aws_route53_zone"` for the account's `bioinform.co.uk`
+  zone, and an alias `A` record (`api.cadence.bioinform.co.uk` → the ALB) -
+  an alias, not a CNAME, since Route 53 alias records are free of the
+  extra-lookup/apex-record restrictions a plain CNAME would have here and the
+  ALB has no fixed IP for a normal `A` record to point at.
+
+**Caught before applying:** the first draft of the `alb` security group also
+changed its top-level `description` string (cosmetic only). That field is
+`ForceNew` on `aws_security_group` (unlike individual ingress/egress rule
+descriptions, which update in place) - `terraform plan` showed it would
+force-replace the already-live ALB security group for a wording change.
+Reverted that one line before applying; the plan dropped from `2 destroy` to
+`0 destroy`.
+
+**Applied 2026-08-16**: 5 added, 2 changed, 0 destroyed. One non-fatal
+provider warning during apply (`target_group_arn cannot be specified when
+type is redirect`, "will be an error in a future release") turned out to be
+cosmetic - a follow-up `terraform plan` showed **no drift**, and live testing
+confirmed the actual behavior is correct regardless:
+`curl http://api.cadence.bioinform.co.uk/healthz` → `301` to the same path
+over HTTPS, `curl https://api.cadence.bioinform.co.uk/healthz` → `200`,
+trusted cert (no `-k` needed). `JWT_ISSUER` (set to this exact URL back in
+Step 3, before the domain even resolved) now matches reality.
+
+Console check: **Certificate Manager → `api.cadence.bioinform.co.uk`**
+(status Issued); **Route 53 → Hosted zones → `bioinform.co.uk`** (the new `A`
+alias + validation `CNAME`); **EC2 → Load Balancers → `cadence-staging` →
+Listeners** (80 redirect, 443 forward).
+
+## Step 5 - Frontend (S3 + CloudFront)
+
+**What & why:** `cadence.bioinform.co.uk` serving the React SPA build, private
+S3 bucket behind CloudFront (Origin Access Control, not a public bucket or S3
+website endpoint), matching `AWS_MIGRATION_PLAN.md`'s target architecture.
+
+- New `frontend` module: private `aws_s3_bucket` (public access fully
+  blocked), `aws_cloudfront_origin_access_control` + distribution (AWS-managed
+  `Managed-CachingOptimized` cache policy via a data source, not a hardcoded
+  policy ID), bucket policy scoped to exactly this one distribution's ARN via
+  `AWS:SourceArn`. SPA client-side routing (react-router) handled via
+  CloudFront `custom_error_response` - 403 and 404 both rewrite to
+  `/index.html` with a `200`, since a route like `/athletes/123` has no
+  matching S3 object and a private bucket returns 403 (no `ListBucket`
+  rights) rather than a clean 404.
+- **CloudFront's certificate must live in `us-east-1`** regardless of where
+  everything else runs - a hard AWS constraint, not a choice. Added a second,
+  aliased `aws.us_east_1` provider (`providers.tf`) and called the existing
+  `acm` module a second time (`module.acm_frontend`) with it - **not** a SAN
+  added to the API's existing eu-west-2 cert, which CloudFront couldn't use
+  regardless of region. This required the `acm` module to declare an explicit
+  `configuration_aliases` block (`versions.tf`) so Terraform stops treating
+  the provider as implicit - once added, *every* call to that module needs an
+  explicit `providers = { aws = ... }`, including the original API one.
+- Root: alias `A` record for `cadence.bioinform.co.uk` → the CloudFront
+  distribution's own `domain_name`/`hosted_zone_id` outputs (not the
+  well-known fixed CloudFront zone ID constant - the resource already exposes
+  it, so no reason to hardcode).
+- `CORS_ALLOWED_ORIGINS` updated to `https://cadence.bioinform.co.uk` +
+  local dev origins (kept, so local frontend can still target the staging
+  backend). This is a `container_definitions` change, and ECS task
+  definitions are **immutable** - Terraform correctly modeled it as
+  destroy-then-create of the *Terraform resource* even though AWS itself
+  just adds a new revision (old revisions aren't deleted); the ECS service
+  then updates in place to point at the new revision and rolls a fresh
+  deployment automatically, no separate `force-new-deployment` needed since
+  the task definition genuinely changed this time.
+
+**Applied 2026-08-16**: 10 added, 1 changed, 1 destroyed (the task definition
+replacement). ECS deployment rolled out cleanly on the first try (the
+`health_check_grace_period_seconds` fix from the earlier incident held).
+
+**Build + deploy, done by hand (not yet part of `terraform apply` - no CI
+pipeline exists yet):**
+```
+cd frontend
+npm ci
+VITE_API_BASE_URL=https://api.cadence.bioinform.co.uk npm run build
+aws s3 sync dist/ s3://cadence-staging-frontend-423351912929 --delete
+aws cloudfront create-invalidation --distribution-id E20TKS0GHWLARX --paths '/*'
+```
+
+**Verified end to end, not just "the apply succeeded":**
+- `https://api.cadence.bioinform.co.uk/healthz` still `200` after the ECS
+  redeploy.
+- A real CORS preflight (`OPTIONS` with `Origin:
+  https://cadence.bioinform.co.uk`) against `/v1/auth/register` returned
+  `access-control-allow-origin: https://cadence.bioinform.co.uk` and
+  `access-control-allow-credentials: true` - confirms a real browser at the
+  deployed frontend origin can actually call the API, not just that the env
+  var is set.
+- `https://cadence.bioinform.co.uk/` → `200`, `text/html`, real page content.
+- `https://cadence.bioinform.co.uk/some/deep/route/...` (no matching S3
+  object) → `200` via the SPA fallback, not a raw `403`/`404`.
+- The built JS bundle contains `api.cadence.bioinform.co.uk` - confirms
+  `VITE_API_BASE_URL` was actually baked in at build time, not left as a
+  dev default.
+
+Console check: **S3 → `cadence-staging-frontend-423351912929`**; **CloudFront
+→ Distributions → `E20TKS0GHWLARX`**; **Certificate Manager (us-east-1
+region!) → `cadence.bioinform.co.uk`**.
+
+## Next: a CI/CD pipeline for the frontend build+sync+invalidate steps above
+(currently manual), and eventually a `production` environment copying this
+same proven module set
