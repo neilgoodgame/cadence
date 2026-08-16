@@ -115,7 +115,7 @@ resource "aws_security_group" "ecs" {
   vpc_id      = var.vpc_id
 
   egress {
-    description = "Allow all outbound (ECR/CloudWatch/Secrets Manager over the internet via the NAT gateway, plus RDS/EFS within the VPC)"
+    description = "Allow all outbound (ECR/CloudWatch/Secrets Manager directly over the internet - this task has its own public IP, no NAT gateway - plus RDS/EFS within the VPC)"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -214,9 +214,9 @@ resource "aws_ecs_service" "backend" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = var.private_subnet_ids
+    subnets          = var.subnet_ids
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = false
+    assign_public_ip = var.assign_public_ip
   }
 
   load_balancer {

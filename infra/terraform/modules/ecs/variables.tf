@@ -6,8 +6,15 @@ variable "vpc_id" {
   type = string
 }
 
-variable "private_subnet_ids" {
-  type = list(string)
+variable "subnet_ids" {
+  description = "With NAT off (the staging default), these should be public subnets and assign_public_ip should be true - the task still can't be reached directly, its security group only allows ingress from the ALB's."
+  type        = list(string)
+}
+
+variable "assign_public_ip" {
+  description = "True when subnet_ids are public subnets and NAT is off - see subnet_ids' description."
+  type        = bool
+  default     = false
 }
 
 variable "ecr_repository_url" {

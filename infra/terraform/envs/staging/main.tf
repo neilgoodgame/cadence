@@ -2,7 +2,7 @@ module "vpc" {
   source = "../../modules/vpc"
 
   environment        = "staging"
-  single_nat_gateway = true # staging: cost over redundancy - see infra/README.md Step 2
+  enable_nat_gateway = false # ECS task + bastion get public IPs instead - see modules/vpc/variables.tf and infra/README.md's cost section
 }
 
 module "rds" {
@@ -24,9 +24,9 @@ module "ecr" {
 module "bastion" {
   source = "../../modules/bastion"
 
-  environment       = "staging"
-  vpc_id            = module.vpc.vpc_id
-  private_subnet_id = module.vpc.private_subnet_ids[0]
+  environment = "staging"
+  vpc_id      = module.vpc.vpc_id
+  subnet_id   = module.vpc.public_subnet_ids[0] # public subnet, NAT is off - see modules/bastion/variables.tf
 }
 
 # The one ingress rule RDS's security group needs for the bastion - defined here,
@@ -104,9 +104,10 @@ data "aws_secretsmanager_secret" "oauth_client_secret" {
 module "ecs" {
   source = "../../modules/ecs"
 
-  environment        = "staging"
-  vpc_id             = module.vpc.vpc_id
-  private_subnet_ids = module.vpc.private_subnet_ids
+  environment      = "staging"
+  vpc_id           = module.vpc.vpc_id
+  subnet_ids       = module.vpc.public_subnet_ids # NAT is off - see modules/vpc/variables.tf's enable_nat_gateway
+  assign_public_ip = true
 
   ecr_repository_url = module.ecr.repository_url
   image_tag          = "sha-359a20b" # main's tip incl. PR #228 (JWT keys fix) - see infra/README.md's Step 3 continued section.

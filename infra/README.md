@@ -583,22 +583,54 @@ Console check: **S3 → `cadence-staging-frontend-423351912929`**; **CloudFront
 → Distributions → `E20TKS0GHWLARX`**; **Certificate Manager (us-east-1
 region!) → `cadence.bioinform.co.uk`**.
 
+## Step 6 - Removed the NAT Gateway
+
+**What & why:** the NAT Gateway's only real consumers were the ECS task
+(ECR pull, Secrets Manager, CloudWatch Logs) and the bastion (SSM agent
+registration) - RDS and EFS never needed outbound internet at all. Both of
+those consumers can just get a public IP directly instead: a public subnet
+means "has an internet route," not "open to the internet" - both are still
+locked down entirely by their own security groups (ECS: ingress only from
+the ALB's SG; bastion: zero ingress rules, SSM's connection model is
+outbound-initiated only). Checked and rejected the alternative (VPC interface
+endpoints for ECR/Secrets Manager/CloudWatch Logs instead of NAT) - it
+actually costs *more* here, ~$29/mo for the ~4 endpoints needed, since NAT's
+per-GB charge was never the expensive part at this data volume, its flat
+hourly fee is.
+
+- `vpc` module: `enable_nat_gateway` (default `true`, set `false` for
+  staging) - kept as a toggle, not deleted, for a future environment that
+  genuinely needs private-subnet-only egress. Private subnets now have no
+  route to the internet in either direction - more isolated than before,
+  since RDS/EFS (all that's left in them) never used it anyway.
+- `bastion` module: `private_subnet_id` renamed to `subnet_id` (now points
+  at a public subnet).
+- `ecs` module: `private_subnet_ids` renamed to `subnet_ids`, new
+  `assign_public_ip` variable (`true` for staging).
+
+**Applied 2026-08-16**: 1 added, 2 changed, 5 destroyed (NAT Gateway + its
+EIP + both private routes; the bastion instance itself - subnet is `ForceNew`
+on `aws_instance`, EC2 instances can't move subnets in place, so it was
+destroyed and recreated, coming back up **running** rather than stopped -
+stopped again right after). Verified: ECS deployment reached `COMPLETED`
+cleanly on its new public-subnet placement, boot logs show no errors (ECR
+pull/Secrets Manager/CloudWatch Logs all working over the task's own public
+IP), `https://api.cadence.bioinform.co.uk/healthz` still `200`.
+
 ## Cost estimate and the start/stop script
 
 **Estimate** (priced from AWS's Price List API, eu-west-2, not yet confirmed
-against actual billing - Cost Explorer has a 24-48h lag): roughly
-**$90-100/month** for this environment as continuously running. Breakdown -
-NAT Gateway $36.50, ALB ~$19-25 (hourly + LCU), Fargate task $16.59, RDS
-$13.14 instance + $2.66 storage, everything else (Secrets Manager, Route 53,
-EFS/S3/CloudFront, bastion EBS) under $5 combined.
+against actual billing - Cost Explorer has a 24-48h lag), **after** removing
+the NAT Gateway above: roughly **$55-65/month** continuously running -
+ALB ~$19-25 (hourly + LCU), Fargate task $16.59, RDS $13.14 instance + $2.66
+storage, everything else (Secrets Manager, Route 53, EFS/S3/CloudFront,
+bastion EBS) under $5 combined. (Before removing NAT: ~$90-100/month - NAT's
+flat $36.50/mo was the single biggest line item.)
 
-For a real usage pattern of ~10 min/day, most of that is idle capacity - NAT
-Gateway and the ALB are billed hourly regardless of traffic and **have no
-stop state** (only delete-and-recreate, which would churn DNS/ACM/target-group
-state for no real savings at this data volume - the VPC-endpoints-instead-of-
-NAT alternative was checked and actually costs *more* here, ~$29/mo for the
-~4 endpoints needed, since NAT's per-GB charge isn't what's expensive, its
-flat hourly fee is). RDS and the ECS task **can** be stopped between uses:
+For a real usage pattern of ~10 min/day, the ALB is still fixed cost
+regardless of traffic and **has no stop state** (only delete-and-recreate,
+which would churn DNS/ACM/target-group state for no real savings). RDS and
+the ECS task **can** be stopped between uses:
 
 ```
 infra/scripts/staging-env.sh start   # RDS start (waits for available) + ECS to 1 task (waits for steady state)
@@ -606,12 +638,14 @@ infra/scripts/staging-env.sh stop    # ECS to 0 tasks + RDS stop
 infra/scripts/staging-env.sh status  # current state of both
 ```
 
-Stopping both drops the achievable range to **~$60-65/month**. One real
-gotcha baked into the script's own output: AWS auto-restarts a stopped RDS
-instance after 7 days - if this environment goes untouched that long, it
-silently starts billing instance-hours again until stopped once more.
-Deliberately does **not** touch the bastion (already has its own established
-stop/start habit) or attempt anything with NAT/ALB.
+Stopping both drops the floor to **~$25-30/month** (ALB + RDS storage +
+everything-else, plus a few cents of actual Fargate/RDS instance-hours for
+the real ~10 min/day of use). One real gotcha baked into the script's own
+output: AWS auto-restarts a stopped RDS instance after 7 days - if this
+environment goes untouched that long, it silently starts billing
+instance-hours again until stopped once more. Deliberately does **not**
+touch the bastion (already has its own established stop/start habit) or
+attempt anything with the ALB.
 
 ## Next: a CI/CD pipeline for the frontend build+sync+invalidate steps above
 (currently manual), and eventually a `production` environment copying this

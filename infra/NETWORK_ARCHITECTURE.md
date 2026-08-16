@@ -9,17 +9,23 @@ account's default VPC, so its subnets, routing, and security groups stay
 scoped to this application rather than shared with anything else that later
 lands in the same account.
 
-The design follows the standard AWS two-tier subnet pattern: a **public
-tier** for anything that needs a direct path to the internet (the
-Application Load Balancer, the NAT Gateway), and a **private tier** for
-everything else (ECS tasks, RDS) — reachable from inside the VPC only, with
-outbound-only internet access via the NAT Gateway for things like OAuth
-provider callbacks and webhook delivery. The frontend (S3 + CloudFront) sits
-outside the VPC entirely — it's a static build with no compute, so it has no
-network-level dependency on it.
+The design follows the standard AWS two-tier subnet pattern, but with no NAT
+Gateway: a **public tier** for anything that needs a direct internet route -
+the Application Load Balancer, the ECS Fargate task, and the SSM bastion -
+and a **private tier** for RDS and EFS, neither of which ever needs outbound
+internet at all, so they have no internet route in either direction. The ECS
+task and bastion having public IPs doesn't mean they're reachable from the
+internet - both are locked down entirely by their own security groups (ECS:
+ingress only from the ALB's SG; bastion: zero ingress rules, SSM's connection
+model is outbound-initiated only). See `infra/README.md`'s Step 6 for why NAT
+was removed - its only two consumers (ECS, bastion) could each just get a
+public IP instead, for a ~$36.50/mo saving with no security regression.
+`enable_nat_gateway` on the `vpc` module is kept as a toggle (not deleted)
+for a future environment that genuinely needs private-subnet-only egress.
+The frontend (S3 + CloudFront) sits outside the VPC entirely - it's a static
+build with no compute, so it has no network-level dependency on it.
 
-The following diagram shows the target network architecture for the
-`staging` environment:
+The following diagram shows the `staging` environment as actually built:
 
 ```mermaid
 flowchart TB
@@ -42,48 +48,38 @@ flowchart TB
             direction TB
             PubA["Public subnet<br/>10.20.0.0/24"]
             ALB["Application Load Balancer<br/>(spans both public subnets)"]
-            NAT["NAT Gateway"]
+            ECSa["ECS Fargate task<br/>Java backend<br/>(own public IP)"]
+            Bastion["SSM bastion<br/>(own public IP, stopped between uses)"]
             PrivA["Private subnet<br/>10.20.10.0/24"]
-            ECSa["ECS Fargate task(s)<br/>Java backend"]
             PubA --- ALB
-            PubA --- NAT
-            PrivA --- ECSa
+            PubA --- ECSa
+            PubA --- Bastion
         end
 
         subgraph AZb["Availability Zone eu-west-2b"]
             direction TB
             PubB["Public subnet<br/>10.20.1.0/24"]
             PrivB["Private subnet<br/>10.20.11.0/24"]
-            ECSb["ECS Fargate task(s)<br/>Java backend"]
-            RDS["RDS PostgreSQL + timescaledb<br/>(Multi-AZ standby in production)"]
+            RDS["RDS PostgreSQL<br/>(native partitioning, no TimescaleDB)"]
+            EFS["EFS<br/>/app/media"]
             PubB --- ALB
-            PrivB --- ECSb
+            PrivA --- EFS
             PrivB --- RDS
+            PrivB --- EFS
         end
 
         PubRT --> PubA
         PubRT --> PubB
 
-        PrivRTa["Private route table A<br/>0.0.0.0/0 -> NAT"] --> NAT
-        PrivRTb["Private route table B<br/>0.0.0.0/0 -> NAT"] --> NAT
-        PrivA --> PrivRTa
-        PrivB --> PrivRTb
-
         ALB -->|":8080"| ECSa
-        ALB -->|":8080"| ECSb
         ECSa -->|":5432"| RDS
-        ECSb -->|":5432"| RDS
+        ECSa -->|":2049 NFS"| EFS
+        Bastion -.->|":5432, via SSM tunnel"| RDS
     end
 
-    ECSa -.->|"outbound only:<br/>OAuth callbacks, webhooks"| NAT
-    ECSb -.->|"outbound only"| NAT
-    NAT -.-> IGW
+    ECSa -->|"own public IP:<br/>ECR pull, Secrets Manager, CloudWatch Logs"| IGW
+    Bastion -->|"own public IP:<br/>SSM agent"| IGW
 ```
-
-**Current build status** (kept in sync with `infra/README.md`'s step log):
-VPC, both subnet tiers, the Internet Gateway, and a single NAT Gateway are
-built (Step 2). The ALB, ECS tasks, and RDS instance shown above are the
-target shape for upcoming steps — not yet provisioned.
 
 <a name="traffic-data-flow"></a>
 
@@ -91,26 +87,35 @@ target shape for upcoming steps — not yet provisioned.
 
 **Inbound, frontend** (static assets): a browser requests
 `cadence.bioinform.co.uk` → resolved via Route 53 to CloudFront → CloudFront
-serves the cached React build directly from S3, or fetches from S3 on a
-cache miss. No VPC involvement at all.
+serves the cached React build directly from S3 (Origin Access Control - the
+bucket itself is fully private), or fetches from S3 on a cache miss. No VPC
+involvement at all.
 
 **Inbound, API**: a browser's API call to `api.cadence.bioinform.co.uk` →
-resolved via Route 53 to the ALB's public IP → the Internet Gateway routes
-it (per the public route table) to the ALB in whichever public subnet is
-closest → the ALB terminates TLS and forwards to a healthy ECS task on port
-8080, in either private subnet, via its target group.
+resolved via Route 53 to the ALB → HTTP (80) redirects to HTTPS (443) → the
+ALB terminates TLS (ACM cert) and forwards to the healthy ECS task on port
+8080 via its target group, over the VPC's internal address space (the ALB
+reaches the task's private IP directly, even though the task also has a
+public one).
 
-**Outbound, from ECS tasks**: an ECS task's own outbound calls (OAuth
-authorization-code exchange with Strava/Google/Apple, outbound webhook
-delivery, pulling its container image from ECR) → routed per that AZ's
-private route table to the NAT Gateway → NAT'd to the NAT Gateway's public
-Elastic IP → out through the Internet Gateway. Nothing on the internet can
-open a connection back in this direction — only responses to a connection
-the ECS task itself initiated.
+**Outbound, from the ECS task**: pulling its image from ECR, resolving
+`POSTGRES_PASSWORD`/`JWT_PRIVATE_KEY_PEM`/etc. from Secrets Manager, shipping
+logs to CloudWatch → all go out through the Internet Gateway via the task's
+own public IP (no NAT Gateway - see Step 6). The task's security group still
+only allows *inbound* traffic from the ALB, so this doesn't expose anything -
+outbound connections the task itself initiates work regardless of whether it
+has a public IP.
 
-**Database**: ECS tasks reach RDS on port 5432 entirely within the VPC's
-private address space — this traffic never touches the Internet Gateway or
-NAT Gateway at all.
+**Database**: the ECS task reaches RDS on port 5432, and EFS on port 2049
+(NFS) for `/app/media`, entirely within the VPC's internal address space -
+neither touches the Internet Gateway, regardless of which subnet either side
+lives in (this is true of any two resources in the same VPC, public or
+private subnet).
+
+**Ad-hoc DB access**: the SSM bastion (stopped by default, started on
+demand) - `aws ssm start-session` port-forwards a local port to RDS over an
+outbound-only connection the bastion's SSM agent itself initiates. No inbound
+rule, no SSH key, no VPN. See `infra/README.md`'s bastion section.
 
 <a name="network-components"></a>
 
@@ -119,38 +124,34 @@ NAT Gateway at all.
 - **[Internet Gateway](https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html)**
   — the VPC's one attachment point to the internet. Only the public
   subnets' route table points at it.
-- **[NAT Gateway](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html)**
-  — gives the private subnets outbound-only internet access. Every
-  environment, including production, runs a **single** NAT Gateway
-  (`single_nat_gateway = true`) — a deliberate, ongoing cost choice (~$33/mo
-  saved per environment), not just a staging shortcut. The tradeoff: both
-  AZs' private subnets currently share one NAT Gateway, so if the AZ it
-  lives in has a problem, outbound internet access (OAuth callbacks,
-  webhook delivery, pulling container images) breaks for *every* private
-  subnet, not just that AZ's. Inbound traffic and the DB connection between
-  ECS and RDS are unaffected either way — this only touches the ECS tasks'
-  own outbound calls. See "Upgrading to per-AZ NAT Gateways" below if this
-  tradeoff ever needs revisiting.
-- **Public subnets** (one per AZ) — host the Application Load Balancer and
-  the NAT Gateway. Nothing else needs to live here.
-- **Private subnets** (one per AZ) — host the ECS Fargate tasks and the RDS
-  instance. No public IP; reachable only from inside the VPC (the ALB) or
-  via the security-group rules defined when those resources are built.
+- **Public subnets** (one per AZ) — host the Application Load Balancer, the
+  ECS Fargate task, and the SSM bastion. All three have security groups that
+  restrict what can actually reach them; a public subnet only means "has an
+  internet route."
+- **Private subnets** (one per AZ) — host RDS and the EFS mount targets. No
+  public IP, no internet route in either direction (NAT is off) - reachable
+  only from inside the VPC, via the security-group rules defined when each
+  resource was built.
 - **[Application Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/introduction.html)**
-  (upcoming) — terminates TLS (ACM certificate, DNS-validated via Route 53)
-  and forwards to the ECS service's target group. Spans both public
-  subnets for AZ redundancy even though the backing ECS service may run a
-  single task in `staging`.
-- **[RDS for PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_PostgreSQL.html)
-  with the `timescaledb` extension** (upcoming) — see `AWS_MIGRATION_PLAN.md`
-  §4 for why RDS + the community extension, not Timescale Cloud or
-  self-managed. Placed in the private subnets, gp3 storage with autoscaling.
+  — terminates TLS (ACM certificate, DNS-validated via Route 53) and forwards
+  to the ECS service's target group. Spans both public subnets for AZ
+  redundancy even though the backing ECS service runs a single task in
+  `staging`.
+- **[RDS for PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_PostgreSQL.html)**
+  — native declarative partitioning on `activities_record`/`record`, not
+  TimescaleDB (not supported on any AWS-managed PostgreSQL - see
+  `infra/README.md`'s decisions table). Placed in the private subnets, gp3
+  storage with autoscaling.
+- **[EFS](https://docs.aws.amazon.com/efs/latest/ug/whatisefs.html)** —
+  `/app/media` for the Java backend (which has no S3 storage code - see
+  `infra/README.md`'s Step 3 continued section). Private subnets, IAM-
+  authorized access point.
 - **[CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Introduction.html)
-  + S3** (upcoming) — serves the frontend's static build. Outside the VPC
-  entirely; no compute, so no network dependency on anything above.
-- **Security groups** (defined alongside each resource as it's built, not
-  up front): ALB → ECS on 8080 only; ECS → RDS on 5432 only; nothing else
-  has any ingress path. No component other than the ALB has a public IP.
+  + S3** — serves the frontend's static build. Outside the VPC entirely; no
+  compute, so no network dependency on anything above.
+- **Security groups** (defined alongside each resource as it was built, not
+  up front): ALB → ECS on 8080 only; ECS → RDS on 5432 only; ECS → EFS on
+  2049 only; bastion → RDS on 5432 only. Nothing else has any ingress path.
 
 ## Design decisions not in the diagram
 
@@ -165,34 +166,23 @@ NAT Gateway at all.
   (AWS provisions a node per associated subnet, no extra config), and RDS
   Multi-AZ / a multi-task ECS service can both be turned on later without a
   network redesign — those two are separate, explicit choices on top of the
-  network, not something the subnet layout gives you for free. NAT Gateway
-  redundancy is the one exception kept deliberately single, in every
-  environment — see below.
+  network, not something the subnet layout gives you for free.
 
-## Upgrading to per-AZ NAT Gateways
+## Re-enabling the NAT Gateway
 
-Kept single (`single_nat_gateway = true`) in every environment, including
-production, as an ongoing cost choice (~$33/mo saved per environment) —
-see the NAT Gateway entry above for the tradeoff this accepts. If that
-tradeoff ever needs revisiting (real production traffic makes the
-single-AZ outbound dependency an actual risk, not just a theoretical one):
+Off by default (`enable_nat_gateway = false` on the `vpc` module) since
+Step 6 - see that step in `infra/README.md` for why. If a future resource
+genuinely needs private-subnet-only egress (no public IP acceptable even
+with a locked-down security group):
 
-1. In `infra/terraform/envs/<environment>/main.tf`, change
-   `single_nat_gateway = true` to `single_nat_gateway = false` on the `vpc`
-   module call.
-2. `terraform plan` — because of how `modules/vpc/main.tf` is written
-   (`nat_gateway_count = var.single_nat_gateway ? 1 : var.az_count`, and
-   each private route table already points at
-   `aws_nat_gateway.this[count.index % local.nat_gateway_count]`), this is
-   purely additive for the AZ that doesn't have one yet: a new EIP + NAT
-   Gateway created in that AZ's public subnet, and that AZ's private route
-   table's single route updated to point at its own new NAT Gateway instead
-   of the shared one. The AZ that already has a NAT Gateway is untouched -
-   nothing gets destroyed or recreated.
-3. `terraform apply`. Expect a similar ~1-2 minute wait for the new NAT
-   Gateway to reach "Available", same as Step 2's original one.
-4. Update this file's "Current build status" note and `infra/README.md`'s
-   Decisions table once applied, same as every other step in this build.
-
-No application code, security group, or ECS/RDS configuration needs to
-change for this - it's purely a networking-layer change.
+1. In `infra/terraform/envs/<environment>/main.tf`, set
+   `enable_nat_gateway = true` on the `vpc` module call (optionally with
+   `single_nat_gateway = false` too, for one NAT Gateway per AZ instead of a
+   shared one - see `modules/vpc/variables.tf`'s description of that
+   tradeoff).
+2. Move whichever resource needs it back to the private subnets (reverse of
+   Step 6's `bastion`/`ecs` module changes).
+3. `terraform plan` / `apply`. Expect a similar ~1-2 minute wait for the new
+   NAT Gateway to reach "Available".
+4. Update this file and `infra/README.md`'s decisions table once applied,
+   same as every other step in this build.

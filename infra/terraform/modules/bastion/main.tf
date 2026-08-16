@@ -67,7 +67,7 @@ resource "aws_security_group" "bastion" {
 resource "aws_instance" "bastion" {
   ami                    = data.aws_ssm_parameter.al2023_arm64.value
   instance_type          = var.instance_type
-  subnet_id              = var.private_subnet_id
+  subnet_id              = var.subnet_id
   iam_instance_profile   = aws_iam_instance_profile.bastion.name
   vpc_security_group_ids = [aws_security_group.bastion.id]
   # No key_pair - SSM Session Manager is the only access path, so there's no SSH

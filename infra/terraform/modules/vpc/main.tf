@@ -1,8 +1,10 @@
 ########################################################################
-# VPC - the network Cadence's AWS resources live in. Standard shape:
-# public subnets for internet-facing things (ALB, NAT Gateway), private
-# subnets for everything else (RDS, ECS tasks) - see infra/README.md
-# Step 2 for the full explanation.
+# VPC - the network Cadence's AWS resources live in. Public subnets for
+# internet-facing things (ALB, and - with NAT off, the staging default -
+# the ECS task and bastion too, both still locked down by their own
+# security groups); private subnets for RDS and EFS, neither of which
+# ever needs outbound internet. See infra/README.md Step 2 and the cost
+# section for the full explanation.
 ########################################################################
 
 data "aws_availability_zones" "available" {
@@ -19,7 +21,7 @@ locals {
   public_subnet_cidrs  = [for i in range(var.az_count) : cidrsubnet(var.vpc_cidr, 8, i)]
   private_subnet_cidrs = [for i in range(var.az_count) : cidrsubnet(var.vpc_cidr, 8, i + 10)]
 
-  nat_gateway_count = var.single_nat_gateway ? 1 : var.az_count
+  nat_gateway_count = var.enable_nat_gateway ? (var.single_nat_gateway ? 1 : var.az_count) : 0
 }
 
 resource "aws_vpc" "this" {
@@ -35,7 +37,8 @@ resource "aws_internet_gateway" "this" {
   tags   = merge(var.tags, { Name = "cadence-${var.environment}-igw" })
 }
 
-# ---- public subnets: ALB, NAT Gateway ----
+# ---- public subnets: ALB, NAT Gateway (if enabled), and - staging default -
+# the ECS task and bastion ----
 
 resource "aws_subnet" "public" {
   count                   = var.az_count
@@ -64,9 +67,9 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# ---- NAT Gateway(s): lets private subnets reach the internet outbound
-# (OAuth callbacks, webhook delivery, pulling container images) without
-# being reachable from it ----
+# ---- NAT Gateway(s): OFF by default (enable_nat_gateway) - see that
+# variable's description. When on, lets private-subnet resources reach the
+# internet outbound without being reachable from it. ----
 
 resource "aws_eip" "nat" {
   count  = local.nat_gateway_count
@@ -85,7 +88,8 @@ resource "aws_nat_gateway" "this" {
   depends_on = [aws_internet_gateway.this]
 }
 
-# ---- private subnets: RDS, ECS tasks ----
+# ---- private subnets: RDS, EFS - neither needs outbound internet at all,
+# so with NAT off these have no route out in either direction. ----
 
 resource "aws_subnet" "private" {
   count             = var.az_count
@@ -106,7 +110,7 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route" "private_internet" {
-  count                  = var.az_count
+  count                  = var.enable_nat_gateway ? var.az_count : 0
   route_table_id         = aws_route_table.private[count.index].id
   destination_cidr_block = "0.0.0.0/0"
   nat_gateway_id         = aws_nat_gateway.this[count.index % local.nat_gateway_count].id
