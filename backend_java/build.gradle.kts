@@ -42,7 +42,7 @@ dependencies {
 	runtimeOnly("org.postgresql:postgresql")
 
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
-	implementation("com.garmin:fit:21.212.0")
+	implementation("com.garmin:fit:21.213.0")
 
 	implementation("org.mapstruct:mapstruct:$mapstructVersion")
 	annotationProcessor("org.mapstruct:mapstruct-processor:$mapstructVersion")
