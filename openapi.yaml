@@ -118,6 +118,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many registration attempts from this client - retry later.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /v1/auth/login:
     post:
