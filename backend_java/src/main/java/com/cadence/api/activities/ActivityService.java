@@ -91,7 +91,7 @@ public class ActivityService {
 		return sourced.stream()
 				.map(entry -> {
 					ThresholdHistory latest = thresholdHistoryRepository
-							.findFirstByAthleteIdAndFieldOrderByEffectiveFromDesc(activity.getAthlete().getId(), entry.getField())
+							.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(activity.getAthlete().getId(), entry.getField())
 							.orElse(null);
 					boolean isCurrent = latest != null && latest.getId().equals(entry.getId());
 					Object value = entry.getField() == ThresholdField.THRESHOLD_PACE ? entry.getValuePace() : entry.getValueNumeric();

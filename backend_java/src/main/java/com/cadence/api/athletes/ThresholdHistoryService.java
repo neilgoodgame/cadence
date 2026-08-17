@@ -117,7 +117,7 @@ public class ThresholdHistoryService {
 			return false;
 		}
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), field).orElse(null);
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
 		Double latestValue = latest == null ? null
 				: field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(latest.getValuePace()) : latest.getValueNumeric().doubleValue();
 		if (Objects.equals(latestValue, implied)) {
@@ -144,7 +144,7 @@ public class ThresholdHistoryService {
 			return false;
 		}
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), field).orElse(null);
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
 		Double latestValue = latest == null ? null
 				: field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(latest.getValuePace()) : latest.getValueNumeric().doubleValue();
 		if (Objects.equals(latestValue, candidate.impliedValue())) {
@@ -182,7 +182,7 @@ public class ThresholdHistoryService {
 	public boolean isStale(User athlete, ThresholdField field, LocalDate asOf) {
 		LocalDate effectiveAsOf = asOf != null ? asOf : LocalDate.now();
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), field).orElse(null);
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
 		if (latest == null) {
 			return true;
 		}
@@ -236,7 +236,7 @@ public class ThresholdHistoryService {
 	 * the current one has aged out of the window. */
 	public ThresholdSummaryEntry summaryFor(User athlete, ThresholdField field) {
 		List<ThresholdHistory> entries =
-				thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), field);
+				thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field);
 		if (entries.isEmpty()) {
 			return new ThresholdSummaryEntry(null, null, null, null, true);
 		}
@@ -249,7 +249,7 @@ public class ThresholdHistoryService {
 
 	/** GET /v1/athletes/{id}/threshold-history?field=... - the full ledger, most recent first. */
 	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field) {
-		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), field).stream()
+		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).stream()
 				.map(entry -> new ThresholdHistoryEntryResponse(
 						valueOf(field, entry), sourceActivityIdOf(entry), entry.getEffectiveFrom()))
 				.toList();

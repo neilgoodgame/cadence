@@ -12,17 +12,19 @@ import org.springframework.data.repository.query.Param;
 public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHistory, Long> {
 
 	// The ledger entry effective as of a specific historical date - what ZoneService.referenceFor
-	// and TssRecomputeService read for an activity-scoped reference.
-	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(
+	// and TssRecomputeService read for an activity-scoped reference. Tiebroken by id (insertion
+	// order) - effectiveFrom alone isn't unique (a same-day manual edit and activity-derived
+	// entry tie on date, and without a secondary key the DB's tie order is undefined).
+	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndEffectiveFromLessThanEqualOrderByEffectiveFromDescIdDesc(
 			String athleteId, ThresholdField field, LocalDate effectiveFrom);
 
 	// The current entry - what the athlete's live profile is cached from, and what isStale
-	// compares against.
-	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldOrderByEffectiveFromDesc(String athleteId, ThresholdField field);
+	// compares against. Tiebroken by id - see the comment above.
+	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(String athleteId, ThresholdField field);
 
 	// The full ledger for one field, most recent first - backs the history screen and the
-	// dashboard summary's "current + previous" pair.
-	List<ThresholdHistory> findByAthleteIdAndFieldOrderByEffectiveFromDesc(String athleteId, ThresholdField field);
+	// dashboard summary's "current + previous" pair. Tiebroken by id - see the comment above.
+	List<ThresholdHistory> findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(String athleteId, ThresholdField field);
 
 	// Export - oldest first (chronological), optionally narrowed to the fields a sport filter maps to.
 	List<ThresholdHistory> findByAthleteIdOrderByEffectiveFrom(String athleteId);

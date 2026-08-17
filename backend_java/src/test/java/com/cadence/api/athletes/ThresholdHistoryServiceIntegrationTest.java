@@ -73,7 +73,7 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(changed).isTrue();
 		ThresholdHistory entry = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
 		assertThat(entry.getValueNumeric()).isEqualTo(250);
 		assertThat(entry.getSourceActivity()).isNull();
 		assertThat(entry.getEffectiveFrom()).isEqualTo(LocalDate.now());
@@ -88,7 +88,7 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(changed).isFalse();
 		assertThat(thresholdHistoryRepository
-				.findByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), ThresholdField.FTP)).hasSize(1);
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(1);
 	}
 
 	@Test
@@ -102,7 +102,7 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(changed).isTrue();
 		List<ThresholdHistory> entries = thresholdHistoryRepository
-				.findByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), ThresholdField.FTP);
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
 		assertThat(entries).hasSize(2);
 		assertThat(entries.get(0).getValueNumeric()).isEqualTo(180);
 	}
@@ -115,7 +115,7 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(changed).isTrue();
 		ThresholdHistory entry = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), ThresholdField.THRESHOLD_PACE).orElseThrow();
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.THRESHOLD_PACE).orElseThrow();
 		assertThat(entry.getValuePace()).isEqualTo("4:15");
 		assertThat(entry.getValueNumeric()).isNull();
 	}
@@ -152,6 +152,6 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		assertThat(firstCount).isEqualTo(2);
 		assertThat(secondCount).isEqualTo(firstCount);
 		assertThat(thresholdHistoryRepository
-				.findByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), ThresholdField.FTP)).hasSize(2);
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(2);
 	}
 }
