@@ -1,15 +1,14 @@
 #!/bin/sh
-# Start/stop the always-on-billed pieces of staging (RDS + the ECS task) for
-# a usage pattern of ~10 min/day - see infra/README.md's cost estimate. NAT
-# Gateway and the ALB are NOT touched here: neither has a stop state (only
-# delete-and-recreate), and recreating them per-session would churn DNS/ACM/
-# target-group state for no real savings - they're accepted as fixed cost.
+# Start/stop the always-on-billed pieces of staging (RDS + the backend EC2
+# instance) for a usage pattern of ~10 min/day - see infra/README.md's cost
+# estimate. The ALB is gone entirely (replaced by CloudFront-direct-to-EC2,
+# see infra/EC2_BACKEND_SKETCH.md) and NAT Gateway is off (see Step 6) - the
+# ALB's replacement, CloudFront, is the one remaining fixed cost with no
+# stop state; not touched here.
 #
 # Usage: infra/scripts/staging-env.sh start|stop|status
 set -eu
 
-CLUSTER="cadence-staging"
-SERVICE="cadence-staging-backend"
 DB_INSTANCE="cadence-staging"
 PROFILE="cadence-terraform"
 REGION="eu-west-2"
@@ -25,20 +24,29 @@ db_status() {
 		--query 'DBInstances[0].DBInstanceStatus' --output text
 }
 
-ecs_running_count() {
-	$AWS ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
-		--query 'services[0].runningCount' --output text
+# Looked up by tag rather than hardcoded - this instance gets replaced
+# (new instance ID) whenever something forces it, e.g. a subnet change.
+instance_id() {
+	$AWS ec2 describe-instances \
+		--filters "Name=tag:Name,Values=cadence-staging-backend" "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+		--query 'Reservations[0].Instances[0].InstanceId' --output text
+}
+
+instance_status() {
+	$AWS ec2 describe-instances --instance-ids "$1" \
+		--query 'Reservations[0].Instances[0].State.Name' --output text
 }
 
 cmd_status() {
+	ID=$(instance_id)
 	echo "RDS ($DB_INSTANCE): $(db_status)"
-	echo "ECS ($SERVICE): runningCount=$(ecs_running_count)"
+	echo "Backend EC2 ($ID): $(instance_status "$ID")"
 }
 
 cmd_stop() {
-	echo "Scaling ECS service to 0 tasks..."
-	$AWS ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
-		--desired-count 0 --query 'service.desiredCount' --output text
+	ID=$(instance_id)
+	echo "Stopping backend EC2 instance $ID..."
+	$AWS ec2 stop-instances --instance-ids "$ID" --query 'StoppingInstances[0].CurrentState.Name' --output text
 
 	STATUS=$(db_status)
 	if [ "$STATUS" = "available" ]; then
@@ -52,8 +60,7 @@ cmd_stop() {
 		echo "RDS is already '$STATUS' - not stopping."
 	fi
 
-	echo "Not touching NAT Gateway or ALB - both stay up (fixed cost, no stop state)."
-	echo "ECS won't finish scaling down instantly - run '$0 status' to check."
+	echo "Not touching CloudFront - it's the ALB's replacement, fixed cost, no stop state."
 }
 
 cmd_start() {
@@ -72,14 +79,19 @@ cmd_start() {
 	$AWS rds wait db-instance-available --db-instance-identifier "$DB_INSTANCE"
 	echo "RDS available."
 
-	echo "Scaling ECS service to 1 task..."
-	$AWS ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
-		--desired-count 1 --query 'service.desiredCount' --output text
+	ID=$(instance_id)
+	echo "Starting backend EC2 instance $ID..."
+	$AWS ec2 start-instances --instance-ids "$ID" --query 'StartingInstances[0].CurrentState.Name' --output text
 
-	echo "Waiting for the ECS service to reach steady state (grace period is 180s" \
-		"for this app's cold boot - see infra/README.md's incident writeup)..."
-	$AWS ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
-	echo "Ready: https://api.cadence.bioinform.co.uk/healthz"
+	echo "Waiting for the instance to pass its status checks..."
+	$AWS ec2 wait instance-status-ok --instance-ids "$ID"
+
+	# The Elastic IP re-attaches automatically on start (it's associated with
+	# the instance, not something this script manages), but the container
+	# itself (systemd's cadence-backend.service, Restart=always) still needs
+	# a beat to actually boot - Spring Boot's cold start here runs 50-70s.
+	echo "Instance up - the app itself typically takes another 50-70s to finish booting."
+	echo "Check: https://api.cadence.bioinform.co.uk/healthz"
 }
 
 case "${1:-}" in

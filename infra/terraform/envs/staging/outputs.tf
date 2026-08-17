@@ -26,21 +26,21 @@ output "ecr_repository_url" {
   value = module.ecr.repository_url
 }
 
-output "alb_dns_name" {
-  description = "Raw ALB hostname - https://api.cadence.bioinform.co.uk is the real API URL."
-  value       = module.alb.dns_name
+output "backend_instance_id" {
+  value = module.ec2.instance_id
 }
 
-output "ecs_cluster_name" {
-  value = module.ecs.cluster_name
+output "backend_public_ip" {
+  description = "The Elastic IP - stable across stop/start. https://api.cadence.bioinform.co.uk is the real API URL (via CloudFront)."
+  value       = module.ec2.public_ip
 }
 
-output "ecs_service_name" {
-  value = module.ecs.service_name
+output "backend_log_group_name" {
+  value = module.ec2.log_group_name
 }
 
-output "ecs_log_group_name" {
-  value = module.ecs.log_group_name
+output "api_cdn_domain_name" {
+  value = module.api_cdn.cloudfront_domain_name
 }
 
 output "frontend_bucket_name" {

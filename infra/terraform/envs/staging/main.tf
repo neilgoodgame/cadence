@@ -2,7 +2,7 @@ module "vpc" {
   source = "../../modules/vpc"
 
   environment        = "staging"
-  enable_nat_gateway = false # ECS task + bastion get public IPs instead - see modules/vpc/variables.tf and infra/README.md's cost section
+  enable_nat_gateway = false # the backend EC2 instance gets a public IP instead - see modules/vpc/variables.tf and infra/README.md's cost section
 }
 
 module "rds" {
@@ -21,72 +21,34 @@ module "ecr" {
   name = "backend-java"
 }
 
-module "bastion" {
-  source = "../../modules/bastion"
-
-  environment = "staging"
-  vpc_id      = module.vpc.vpc_id
-  subnet_id   = module.vpc.public_subnet_ids[0] # public subnet, NAT is off - see modules/bastion/variables.tf
-}
-
-# The one ingress rule RDS's security group needs for the bastion - defined here,
-# not inside either module, since it's the composition of two modules' resources
-# (see modules/rds/main.tf's comment on why RDS itself starts with zero ingress).
-resource "aws_security_group_rule" "rds_from_bastion" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = module.rds.security_group_id
-  source_security_group_id = module.bastion.security_group_id
-  description              = "Bastion SSM to RDS"
-}
-
-module "efs" {
-  source = "../../modules/efs"
-
-  environment        = "staging"
-  vpc_id             = module.vpc.vpc_id
-  private_subnet_ids = module.vpc.private_subnet_ids
-}
-
 data "aws_route53_zone" "this" {
   name         = "bioinform.co.uk."
   private_zone = false
 }
 
-module "acm" {
+# CloudFront's certificate must live in us-east-1 regardless of where
+# everything else runs - see providers.tf's aws.us_east_1 alias. The API's
+# TLS termination moved here from the ALB (which used a eu-west-2 cert) when
+# the ALB was replaced by CloudFront-direct-to-EC2 - see
+# infra/EC2_BACKEND_SKETCH.md.
+module "acm_api" {
   source = "../../modules/acm"
   providers = {
-    aws = aws
+    aws = aws.us_east_1
   }
 
   domain_name = "api.cadence.bioinform.co.uk"
   zone_id     = data.aws_route53_zone.this.zone_id
 }
 
-module "alb" {
-  source = "../../modules/alb"
-
-  environment       = "staging"
-  vpc_id            = module.vpc.vpc_id
-  public_subnet_ids = module.vpc.public_subnet_ids
-  certificate_arn   = module.acm.certificate_arn
-}
-
-# ALIAS records are Route 53's own extension (not a real DNS record type) - the
-# ALB has no fixed IP to point a normal A record at, and this avoids the extra
-# lookup + TTL/caching issues a CNAME-at-apex-adjacent setup would have.
-resource "aws_route53_record" "api" {
-  zone_id = data.aws_route53_zone.this.zone_id
-  name    = "api.cadence.bioinform.co.uk"
-  type    = "A"
-
-  alias {
-    name                   = module.alb.dns_name
-    zone_id                = module.alb.zone_id
-    evaluate_target_health = true
+module "acm_frontend" {
+  source = "../../modules/acm"
+  providers = {
+    aws = aws.us_east_1
   }
+
+  domain_name = "cadence.bioinform.co.uk"
+  zone_id     = data.aws_route53_zone.this.zone_id
 }
 
 # Created by hand (see infra/README.md's Step 3 continued section) rather than
@@ -101,84 +63,88 @@ data "aws_secretsmanager_secret" "oauth_client_secret" {
   name = "cadence-staging-oauth-first-party-client-secret"
 }
 
-module "ecs" {
-  source = "../../modules/ecs"
+locals {
+  # module.ecr.repository_url is "registry/repo-name" as one string (e.g.
+  # 423351912929.dkr.ecr.eu-west-2.amazonaws.com/cadence-backend-java) -
+  # `docker login` needs just the registry host.
+  ecr_parts = split("/", module.ecr.repository_url)
+}
 
-  environment      = "staging"
-  vpc_id           = module.vpc.vpc_id
-  subnet_ids       = module.vpc.public_subnet_ids # NAT is off - see modules/vpc/variables.tf's enable_nat_gateway
-  assign_public_ip = true
+module "ec2" {
+  source = "../../modules/ec2"
 
-  ecr_repository_url = module.ecr.repository_url
-  image_tag          = "sha-359a20b" # main's tip incl. PR #228 (JWT keys fix) - see infra/README.md's Step 3 continued section.
+  environment = "staging"
+  vpc_id      = module.vpc.vpc_id
+  subnet_id   = module.vpc.public_subnet_ids[0] # public subnet, NAT is off - see modules/vpc/variables.tf's enable_nat_gateway
 
-  target_group_arn      = module.alb.target_group_arn
-  listener_arn          = module.alb.listener_arn
-  alb_security_group_id = module.alb.security_group_id
+  ecr_registry  = local.ecr_parts[0]
+  ecr_repo_name = local.ecr_parts[1]
+  image_tag     = "sha-359a20b" # main's tip incl. PR #228 (JWT keys fix) - see infra/README.md's Step 3 continued section.
 
-  db_address                = module.rds.address
-  db_name                   = module.rds.db_name
-  db_master_username        = module.rds.master_username
-  db_master_user_secret_arn = module.rds.master_user_secret_arn
+  db_address    = module.rds.address
+  db_name       = module.rds.db_name
+  db_username   = module.rds.master_username
+  db_secret_arn = module.rds.master_user_secret_arn
 
-  jwt_keys_secret_arn = data.aws_secretsmanager_secret.jwt_keys.arn
-  jwt_issuer          = "https://api.cadence.bioinform.co.uk" # real issuer, not the .env.example placeholder - see infra/README.md.
+  jwt_secret_arn = data.aws_secretsmanager_secret.jwt_keys.arn
+  jwt_issuer     = "https://api.cadence.bioinform.co.uk" # real issuer, not the .env.example placeholder - see infra/README.md.
 
-  oauth_client_secret_arn = data.aws_secretsmanager_secret.oauth_client_secret.arn
+  oauth_secret_arn = data.aws_secretsmanager_secret.oauth_client_secret.arn
 
   # Real deployed frontend origin + local dev (kept, so the local frontend can still
   # be pointed at the staging backend for testing). NOT "*" - SecurityConfig.java sets
   # allowCredentials(true), and Spring throws at request time if allowedOrigins
   # contains "*" together with credentials enabled.
   cors_allowed_origins = "https://cadence.bioinform.co.uk,http://localhost:5173,http://localhost:3000"
-
-  efs_file_system_id  = module.efs.file_system_id
-  efs_access_point_id = module.efs.access_point_id
 }
 
-# ALB -> ECS tasks on 8080 - the port the container listens on.
-resource "aws_security_group_rule" "ecs_from_alb" {
-  type                     = "ingress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  security_group_id        = module.ecs.security_group_id
-  source_security_group_id = module.alb.security_group_id
-  description              = "ALB to ECS tasks"
-}
-
-# ECS tasks -> RDS on 5432 - mirrors the existing bastion rule above.
-resource "aws_security_group_rule" "rds_from_ecs" {
+# The one ingress rule RDS's security group needs for the backend instance -
+# defined here, not inside either module, since it's the composition of two
+# modules' resources (see modules/rds/main.tf's comment on why RDS itself
+# starts with zero ingress). Covers both the app's own DB traffic and the
+# SSM-tunnel DB access this instance also serves (absorbed bastion role).
+resource "aws_security_group_rule" "rds_from_ec2" {
   type                     = "ingress"
   from_port                = 5432
   to_port                  = 5432
   protocol                 = "tcp"
   security_group_id        = module.rds.security_group_id
-  source_security_group_id = module.ecs.security_group_id
-  description              = "ECS tasks to RDS"
+  source_security_group_id = module.ec2.security_group_id
+  description              = "Backend EC2 to RDS"
 }
 
-# ECS tasks -> EFS on 2049 (NFS) - the /app/media mount.
-resource "aws_security_group_rule" "efs_from_ecs" {
-  type                     = "ingress"
-  from_port                = 2049
-  to_port                  = 2049
-  protocol                 = "tcp"
-  security_group_id        = module.efs.security_group_id
-  source_security_group_id = module.ecs.security_group_id
-  description              = "ECS tasks to EFS"
+# CloudFront requires a DNS name for its origin, not a raw IP - this record
+# exists purely for that. Set once, never touched again: the whole point of
+# the Elastic IP in modules/ec2 is that it doesn't change across stop/start.
+resource "aws_route53_record" "backend_origin" {
+  zone_id = data.aws_route53_zone.this.zone_id
+  name    = "backend-origin.cadence.bioinform.co.uk"
+  type    = "A"
+  ttl     = 300
+  records = [module.ec2.public_ip]
 }
 
-# CloudFront needs its cert in us-east-1 - see providers.tf's aws.us_east_1
-# alias. Separate cert from the API's (module.acm), not a SAN on it.
-module "acm_frontend" {
-  source = "../../modules/acm"
-  providers = {
-    aws = aws.us_east_1
+module "api_cdn" {
+  source = "../../modules/api_cdn"
+
+  environment        = "staging"
+  domain_name        = "api.cadence.bioinform.co.uk"
+  origin_domain_name = aws_route53_record.backend_origin.fqdn
+  certificate_arn    = module.acm_api.certificate_arn
+}
+
+# ALIAS records are Route 53's own extension (not a real DNS record type) -
+# CloudFront has no fixed IP to point a normal A record at.
+resource "aws_route53_record" "api" {
+  zone_id = data.aws_route53_zone.this.zone_id
+  name    = "api.cadence.bioinform.co.uk"
+  type    = "A"
+
+  alias {
+    name                   = module.api_cdn.cloudfront_domain_name
+    zone_id                = module.api_cdn.cloudfront_hosted_zone_id
+    evaluate_target_health = false
   }
-
-  domain_name = "cadence.bioinform.co.uk"
-  zone_id     = data.aws_route53_zone.this.zone_id
 }
 
 module "frontend" {

@@ -647,6 +647,107 @@ instance-hours again until stopped once more. Deliberately does **not**
 touch the bastion (already has its own established stop/start habit) or
 attempt anything with the ALB.
 
+**Superseded by Step 7 below** - the ALB itself is gone now, replaced by
+CloudFront-direct-to-EC2, and the achievable floor dropped further. Left
+here as the record of how the number was arrived at.
+
+## Step 7 - Replaced Fargate + ALB with a single EC2 instance + CloudFront
+
+**What & why:** the target was concrete - cheaper than a Strava subscription
+(£8.99/mo). The ALB (~$19-25/mo, no stop state) was the last thing standing
+in the way; see `infra/EC2_BACKEND_SKETCH.md` for the full design reasoning,
+written up and reviewed before building any of this. Summary: an Elastic IP
+stays attached across EC2 stop/start, so CloudFront can point at a stable
+address with no dynamic-DNS automation needed (unlike the Fargate-task
+alternative sketched first in `infra/ALB_REMOVAL_SKETCH.md`, which needed
+Cloud Map to solve the same problem Fargate's own ephemeral IPs create).
+
+- New `ec2` module - one `t4g.micro` (ARM/Graviton, cheaper per-hour than
+  the Fargate task it replaces even running 24/7), Elastic IP, instance
+  role (Secrets Manager scoped to the 3 secrets, ECR pull scoped to the one
+  repo, CloudWatch Logs, `AmazonSSMManagedInstanceCore`), security group
+  restricted to CloudFront's own managed IP prefix list on port 8080 only
+  (not the open internet - the plaintext CloudFront-to-origin hop this
+  implies is a documented, accepted AWS pattern given that restriction).
+  **Absorbs the old bastion's role** - same instance now serves traffic and
+  is what you SSM-tunnel through for ad-hoc RDS access, so there's no
+  separate bastion module or EC2 instance anymore.
+- New `api_cdn` module - CloudFront in front of the instance instead of an
+  ALB, custom HTTP origin (not S3+OAC like the frontend), `CachingDisabled`
+  + `Managed-AllViewer` (this is a thin proxy, not a real cache), a second
+  ACM cert in us-east-1 (CloudFront's origin's own hard requirement, same
+  reasoning as the frontend's cert - the API's TLS termination moved off the
+  eu-west-2 cert the ALB used).
+- **`efs` module removed** - Fargate's disk was ephemeral, which is the only
+  reason `/app/media` needed EFS in the first place (see Step 3 continued).
+  A stopped-not-terminated EC2 instance's local disk persists across the
+  same stop/start cycle RDS already uses, so `/app/media` is now a plain
+  bind-mounted host directory. Ties media durability to this one instance's
+  disk rather than a separately-durable filesystem - an accepted tradeoff
+  at the current near-empty usage level, revisit if that changes.
+- `ecs`, `alb`, `bastion` modules deleted entirely.
+
+**Two real bugs caught during rollout, not from planning:**
+- The first `terraform apply` failed outright:
+  `Invalid security group description` - another instance of the
+  apostrophe/charset restriction from Step 4 ("CloudFront's own IPs").
+  Fixed, re-applied cleanly from where the first attempt left off (Terraform
+  partial-apply state resumes correctly, no manual cleanup needed).
+- **A real secret exposure, worse than the Step 3-continued incident**: the
+  boot script originally passed all four secrets (`POSTGRES_PASSWORD`, the
+  full JWT private key, the JWT public key, `OAUTH_FIRST_PARTY_CLIENT_SECRET`)
+  as `docker run -e KEY=value` arguments. `docker run`'s arguments become
+  part of the process's command line - and `systemctl status`, run as a
+  completely routine post-boot check, echoed the full command line straight
+  back, leaking all four into this session. Remediation:
+  1. All four secrets rotated immediately (`aws secretsmanager rotate-secret`
+     for the RDS password - triggers AWS's own managed rotation, no value
+     ever needs to pass through; `put-secret-value` with freshly
+     `openssl`-generated values for the JWT keypair and OAuth secret, same
+     never-printed discipline as their original creation in Step 3
+     continued).
+  2. **The script itself redesigned**, not just patched: single-line secrets
+     (`POSTGRES_PASSWORD`, `OAUTH_FIRST_PARTY_CLIENT_SECRET`) now go into a
+     600-permission `--env-file`, read directly by the Docker daemon and
+     never becoming a command-line argument. The multi-line JWT PEM values
+     are written straight to files and bind-mounted at `/app/keys` instead -
+     `entrypoint.sh` already skips its own key-generation step whenever
+     those files already exist, so this needed **zero application-code
+     changes**, just matching a code path that was already there.
+  3. Verified the fix directly: same `systemctl status` command that leaked
+     everything the first time now shows only the non-secret `-e` flags
+     (`POSTGRES_HOST`, `JWT_ISSUER`, etc.) - the four secrets never appear.
+  4. One more real bug found in the same pass: `--log-opt
+     awslogs-stream-prefix` (an ECS-specific option the ECS agent translates
+     - not a real plain-Docker `awslogs` driver option) doesn't exist
+     outside ECS. Fixed to `awslogs-stream` (a fixed name - fine for one
+     instance, no need for ECS's prefix-plus-task-ID uniqueness scheme).
+
+**Applied and verified 2026-08-17**: SSM connectivity confirmed, boot script
+runs cleanly end to end (Docker + AWS CLI install, secrets fetch, ECR login,
+container start), app boots clean (Hibernate connects using the *rotated*
+RDS password, proving the fix actually works, not just that it looks
+right), `https://api.cadence.bioinform.co.uk/healthz` → `200` via
+CloudFront, a real CORS preflight from the frontend's origin still returns
+the right headers, frontend still serves `200`.
+
+`infra/scripts/staging-env.sh` rewritten to start/stop the EC2 instance
+(looked up by tag, since a future replacement changes its instance ID)
+instead of scaling an ECS service - `rds`/`ec2` are the only two pieces
+this script touches now, CloudFront has no stop state same as the ALB
+didn't.
+
+**Cost, achieved**: roughly **$10-12/month** continuously running the EC2
+instance, or a few dollars less with it stopped between the ~10 min/day of
+actual use via the script above - at or under the £8.99/mo target this
+whole line of investigation was aimed at. See
+`infra/EC2_BACKEND_SKETCH.md`'s cost table for the itemized breakdown this
+was priced against before building.
+
+Console check: **EC2 → Instances → `cadence-staging-backend`**; **CloudFront
+→ Distributions** (now two - frontend and API); **Systems Manager → Fleet
+Manager** (same instance now shows up here too, absorbed bastion role).
+
 ## Next: a CI/CD pipeline for the frontend build+sync+invalidate steps above
 (currently manual), and eventually a `production` environment copying this
 same proven module set
