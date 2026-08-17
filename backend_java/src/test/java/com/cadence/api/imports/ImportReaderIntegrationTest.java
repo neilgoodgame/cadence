@@ -582,7 +582,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			assertThat(counts.thresholdHistoryImported()).isEqualTo(1);
 			assertThat(counts.itemsSkipped()).isZero();
 			ThresholdHistory imported = thresholdHistoryRepository
-					.findByAthleteIdAndFieldOrderByEffectiveFromDesc(target.getId(), ThresholdField.FTP).get(0);
+					.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(target.getId(), ThresholdField.FTP).get(0);
 			assertThat(imported.getValueNumeric()).isEqualTo(260);
 			assertThat(imported.getSourceActivity()).isNull();
 		}
@@ -632,7 +632,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 
 			assertThat(counts.thresholdHistoryImported()).isZero();
 			assertThat(counts.itemsSkipped()).isEqualTo(1);
-			assertThat(thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDesc(
+			assertThat(thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(
 					target.getId(), ThresholdField.FTP)).isEmpty();
 		}
 		finally {

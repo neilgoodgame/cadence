@@ -88,7 +88,7 @@ public class ZoneService {
 		};
 		LocalDate asOf = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
 		return thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(athlete.getId(), field, asOf)
+				.findFirstByAthleteIdAndFieldAndEffectiveFromLessThanEqualOrderByEffectiveFromDescIdDesc(athlete.getId(), field, asOf)
 				.map(entry -> field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(entry.getValuePace())
 						: entry.getValueNumeric().doubleValue())
 				.orElse(null);

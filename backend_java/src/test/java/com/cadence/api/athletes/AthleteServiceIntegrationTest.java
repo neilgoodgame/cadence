@@ -110,7 +110,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		athleteService.updateProfile(athlete,
 				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null));
 
-		List<ThresholdHistory> entries = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDesc(
+		List<ThresholdHistory> entries = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(
 				athlete.getId(), ThresholdField.FTP);
 		assertThat(entries).hasSize(1);
 		assertThat(entries.get(0).getValueNumeric()).isEqualTo(280);
@@ -130,7 +130,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 				new AthleteUpdateRequest(null, null, 70.0, 280, null, null, null, null, null, null, null, null, null));
 
 		assertThat(thresholdHistoryRepository
-				.findByAthleteIdAndFieldOrderByEffectiveFromDesc(athlete.getId(), ThresholdField.FTP)).hasSize(1);
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(1);
 	}
 
 	@Test
@@ -140,7 +140,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		athleteService.updateProfile(athlete,
 				new AthleteUpdateRequest(null, null, null, null, null, "3:45", null, null, null, null, null, null, null));
 
-		List<ThresholdHistory> entries = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDesc(
+		List<ThresholdHistory> entries = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(
 				athlete.getId(), ThresholdField.THRESHOLD_PACE);
 		assertThat(entries).hasSize(1);
 		assertThat(entries.get(0).getValuePace()).isEqualTo("3:45");
