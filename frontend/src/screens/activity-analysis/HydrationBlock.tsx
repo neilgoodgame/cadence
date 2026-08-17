@@ -35,7 +35,7 @@ export function HydrationBlock({ activity }: { activity: Activity }) {
       <div>
         <div style={{ color: "var(--ink3)", fontSize: 11, marginBottom: 4 }}>START → END</div>
         <div className="mono" style={{ fontSize: 16, fontWeight: 600 }}>
-          {activity.start_weight_kg.toFixed(1)} → {activity.end_weight_kg.toFixed(1)} kg
+          {activity.start_weight_kg.toFixed(2)} → {activity.end_weight_kg.toFixed(2)} kg
         </div>
       </div>
       <div>
