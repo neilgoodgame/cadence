@@ -77,4 +77,13 @@ describe("hrZoneBandsToZones", () => {
     expect(zones[0]).toEqual({ name: "Z1 Active Recovery", low_pct: 0, high_pct: 67 });
     expect(zones[4]).toEqual({ name: "Z5 VO2max", low_pct: 105, high_pct: 114 });
   });
+
+  it("produces %-of-LTHR zones with no gaps between them, for every method", () => {
+    for (const method of ["max_hr", "karvonen", "coggan"] as const) {
+      const zones = hrZoneBandsToZones(generateHrZones(method, PARAMS), PARAMS.lthr);
+      for (let i = 1; i < zones.length; i++) {
+        expect(zones[i].low_pct).toBe(zones[i - 1].high_pct);
+      }
+    }
+  });
 });

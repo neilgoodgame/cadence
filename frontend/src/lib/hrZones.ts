@@ -128,11 +128,20 @@ function cogganCeiling(i: number, lthr: number, maxHr: number): number {
   return i < ZONE_DEFS.length - 1 ? capped - 1 : maxHr;
 }
 
-/** Converts absolute bpm bands into the API's %-of-LTHR zone model. */
+/** Converts absolute bpm bands into the API's %-of-LTHR zone model. generateHrZones's bands
+ * are contiguous in bpm (each minBpm is the previous maxBpm + 1), but rounding minBpm and
+ * maxBpm to a %-of-LTHR independently doesn't preserve that: LTHR is usually well over 100,
+ * so a single bpm can be smaller than one rounded percentage point, letting adjacent zones'
+ * rounded boundaries land on the same value (an apparent overlap) or skip one (an apparent
+ * gap) depending on which way each one rounds. Chaining low_pct to the previous zone's
+ * high_pct instead of re-deriving it from minBpm guarantees every zone touches the next with
+ * no gap, matching what bucketIntoZones already assumes (it only ever reads low_pct). */
 export function hrZoneBandsToZones(bands: HrZoneBand[], lthr: number): Zone[] {
-  return bands.map((band) => ({
-    name: `${band.name} ${band.label}`,
-    low_pct: Math.round((band.minBpm / lthr) * 100),
-    high_pct: Math.round((band.maxBpm / lthr) * 100),
-  }));
+  let lowPct = 0;
+  return bands.map((band) => {
+    const highPct = Math.round((band.maxBpm / lthr) * 100);
+    const zone = { name: `${band.name} ${band.label}`, low_pct: lowPct, high_pct: highPct };
+    lowPct = highPct;
+    return zone;
+  });
 }
