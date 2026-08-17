@@ -65,6 +65,9 @@ cadence:
     max-file-bytes: 2147483648
   oauth:
     first-party-client-secret: ${OAUTH_FIRST_PARTY_CLIENT_SECRET:dev-only-secret-change-me}
+  rate-limit:
+    register-max-attempts: ${REGISTER_RATE_LIMIT_MAX_ATTEMPTS:5}
+    register-window-minutes: ${REGISTER_RATE_LIMIT_WINDOW_MINUTES:60}
 
 springdoc:
   swagger-ui:
