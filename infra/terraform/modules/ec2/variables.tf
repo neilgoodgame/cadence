@@ -26,7 +26,8 @@ variable "ecr_repo_name" {
 }
 
 variable "image_tag" {
-  type = string
+  description = "Only the INITIAL value of the SSM parameter run.sh actually reads at container-start time (see aws_ssm_parameter.image_tag's ignore_changes) - changing this after first apply has no effect on a running instance. Deploys update the parameter directly instead, e.g. via infra/scripts/deploy-backend.sh."
+  type        = string
 }
 
 variable "log_retention_days" {

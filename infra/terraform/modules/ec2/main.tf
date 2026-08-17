@@ -112,6 +112,40 @@ resource "aws_iam_role_policy" "logs" {
   policy = data.aws_iam_policy_document.logs.json
 }
 
+# The "which image tag is currently live" state, deliberately kept OUT of
+# user_data/Terraform's own knowledge after this initial value - run.sh reads
+# it fresh on every start, the same way it already re-reads secrets fresh.
+# Routing new tags through Terraform instead (a user_data change) triggers a
+# real instance reboot on every apply, even without forcing full replacement -
+# learned the hard way right after this module first shipped, see
+# infra/README.md's Step 7. ignore_changes so a deploy script's update
+# survives whatever the next unrelated `terraform apply` does.
+resource "aws_ssm_parameter" "image_tag" {
+  name  = "/cadence/${var.environment}/backend-image-tag"
+  type  = "String"
+  value = var.image_tag
+
+  tags = var.tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+data "aws_iam_policy_document" "image_tag_param" {
+  statement {
+    effect    = "Allow"
+    actions   = ["ssm:GetParameter"]
+    resources = [aws_ssm_parameter.image_tag.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "image_tag_param" {
+  name   = "cadence-${var.environment}-backend-image-tag-param"
+  role   = aws_iam_role.this.id
+  policy = data.aws_iam_policy_document.image_tag_param.json
+}
+
 resource "aws_iam_instance_profile" "this" {
   name = "cadence-${var.environment}-backend"
   role = aws_iam_role.this.name
@@ -160,10 +194,10 @@ resource "aws_instance" "this" {
   # as the old bastion.
 
   user_data = templatefile("${path.module}/user_data.sh.tpl", {
-    region               = "eu-west-2"
-    ecr_registry         = var.ecr_registry
-    ecr_repo_name        = var.ecr_repo_name
-    image_tag            = var.image_tag
+    region                  = "eu-west-2"
+    ecr_registry            = var.ecr_registry
+    ecr_repo_name           = var.ecr_repo_name
+    image_tag_parameter_name = aws_ssm_parameter.image_tag.name
     db_address            = var.db_address
     db_name               = var.db_name
     db_username           = var.db_username

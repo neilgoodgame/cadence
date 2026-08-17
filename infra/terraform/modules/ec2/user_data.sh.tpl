@@ -36,6 +36,12 @@ set -eu
 REGION="${region}"
 docker rm -f cadence-backend >/dev/null 2>&1 || true
 
+# Read fresh on every start, same principle as the secrets below - a deploy
+# just updates this parameter and restarts the service, no Terraform/reboot
+# involved. See infra/CICD_DEPLOY_SKETCH.md for why this isn't a Terraform
+# variable baked into user_data instead.
+IMAGE_TAG=$(aws ssm get-parameter --name "${image_tag_parameter_name}" --region "$REGION" --query 'Parameter.Value' --output text)
+
 DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id "${db_secret_arn}" --region "$REGION" --query SecretString --output text | jq -r '.password')
 JWT_JSON=$(aws secretsmanager get-secret-value --secret-id "${jwt_secret_arn}" --region "$REGION" --query SecretString --output text)
 OAUTH_SECRET=$(aws secretsmanager get-secret-value --secret-id "${oauth_secret_arn}" --region "$REGION" --query SecretString --output text)
@@ -79,7 +85,7 @@ exec docker run --rm --name cadence-backend \
 	--log-opt awslogs-region="$REGION" \
 	--log-opt awslogs-group="${log_group_name}" \
 	--log-opt awslogs-stream=backend \
-	"${ecr_registry}/${ecr_repo_name}:${image_tag}"
+	"${ecr_registry}/${ecr_repo_name}:$IMAGE_TAG"
 RUNSCRIPT
 chmod +x /opt/cadence/run.sh
 

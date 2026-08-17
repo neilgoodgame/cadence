@@ -748,6 +748,51 @@ Console check: **EC2 → Instances → `cadence-staging-backend`**; **CloudFront
 → Distributions** (now two - frontend and API); **Systems Manager → Fleet
 Manager** (same instance now shows up here too, absorbed bastion role).
 
-## Next: a CI/CD pipeline for the frontend build+sync+invalidate steps above
-(currently manual), and eventually a `production` environment copying this
-same proven module set
+## Step 8 - Local one-command backend deploys
+
+**What & why:** answers `EC2_BACKEND_SKETCH.md`'s open question #3 - how a
+new image version actually gets deployed, now that ECS's rolling-deployment
+flow is gone. Implements the SSM-parameter mechanism
+`infra/CICD_DEPLOY_SKETCH.md` designed (written up first, before building
+anything) as a local script - the same mechanism a future GitHub Actions
+workflow would use, just triggered by hand for now instead of on push.
+
+- `ec2` module: new `aws_ssm_parameter` (`/cadence/staging/backend-image-tag`)
+  holds the live tag - `run.sh` reads it fresh on every start, the same way
+  it already re-reads secrets fresh. `lifecycle { ignore_changes = [value] }`
+  so a deploy's update survives whatever the next unrelated
+  `terraform apply` does. New scoped `ssm:GetParameter` IAM permission.
+  `image_tag` (the Terraform variable) is now only the parameter's *initial*
+  value - changing it after first apply has no effect on a running instance.
+- **This itself required a `user_data` change** (removing the baked-in tag,
+  adding the SSM read) - meaning the same real-instance-reboot side effect
+  Step 7 discovered applies here too. Flagged clearly before applying this
+  time (a real correction from Step 7, where an apply with an identical-
+  looking "just user_data" diff got run without asking, causing an
+  unplanned outage). **Applied 2026-08-17**: instance rebooted as expected
+  (~1m10s), came back healthy, confirmed `run.sh` now resolves the tag via
+  SSM rather than a fixed value baked in at launch.
+- New `infra/scripts/deploy-backend.sh`: builds (ARM64,
+  `--provenance=false --sbom=false`), tags with the current git SHA, skips
+  the build/push entirely if that tag already exists in ECR (idempotent -
+  re-running after a no-op commit doesn't rebuild), pushes, updates the SSM
+  parameter, restarts the service via SSM Run Command (not Terraform, not
+  SSH), then polls `/healthz` and fails loudly if the new version doesn't
+  come up healthy within 3 minutes. Warns (doesn't block) on uncommitted
+  changes to `backend_java/`, since the tag would otherwise imply content
+  that doesn't match the named commit.
+
+**Verified with a real deploy, not a dry run**: ran the script against the
+actual staging environment - build cache-hit (no `backend_java` source
+changes since the last deploy, so all layers reused), pushed a genuinely
+new tag (current HEAD differs from what was live, since several
+infra-only commits landed since), SSM parameter updated, service restarted,
+smoke test passed. Confirmed the live parameter value and a fresh
+`/healthz` request both reflect the new tag, and `terraform plan` shows no
+drift afterward (the `ignore_changes` on the parameter's value is doing its
+job).
+
+## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
+GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
+build+sync+invalidate steps (currently manual), and eventually a
+`production` environment copying this same proven module set
