@@ -42,6 +42,7 @@ class ExportControllerIntegrationTest extends IntegrationTest {
 		user.setEmail(email);
 		user.setName("Export Athlete");
 		user.setPassword("irrelevant-for-this-test");
+		user.setEmailVerified(true);
 		return userRepository.save(user);
 	}
 
@@ -67,6 +68,16 @@ class ExportControllerIntegrationTest extends IntegrationTest {
 		assertThat(response.getHeaders().getFirst(HttpHeaders.LOCATION)).isEqualTo("/v1/export/" + response.getBody().id());
 		assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("5");
 		assertThat(exportJobRepository.findByAthleteId(athlete.getId())).isPresent();
+	}
+
+	@Test
+	void startExportRejectsAnUnverifiedAthlete() {
+		User athlete = newAthlete("export-unverified@example.cc");
+		athlete.setEmailVerified(false);
+		userRepository.save(athlete);
+		authAs(athlete.getId());
+
+		assertThatThrownBy(() -> exportController.startExport(null)).isInstanceOf(ForbiddenException.class);
 	}
 
 	@Test

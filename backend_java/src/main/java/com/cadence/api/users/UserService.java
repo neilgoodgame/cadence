@@ -1,6 +1,7 @@
 package com.cadence.api.users;
 
 import com.cadence.api.common.error.ConflictException;
+import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.UnauthorizedException;
 import com.cadence.api.users.dto.LoginRequest;
@@ -45,6 +46,16 @@ public class UserService {
 
 	public User getById(String id) {
 		return userRepository.findById(id).orElseThrow(() -> new NotFoundException("No such user."));
+	}
+
+	/** Gates high-trust actions (full-account export/import) behind a confirmed email address -
+	 * registration itself is a soft gate (see RegistrationController), this is the enforcement
+	 * half. Social signups are emailVerified=true from the moment they register (the provider
+	 * already confirmed the address - see #register), so this never blocks them. */
+	public void requireEmailVerified(User user, String action) {
+		if (!user.isEmailVerified()) {
+			throw new ForbiddenException("Verify your email address before " + action + ".");
+		}
 	}
 
 	/**

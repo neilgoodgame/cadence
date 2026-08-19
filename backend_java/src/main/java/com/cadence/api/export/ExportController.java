@@ -47,6 +47,7 @@ public class ExportController {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		User athlete = userService.getById(athleteId);
+		userService.requireEmailVerified(athlete, "exporting your data");
 
 		// Only one export on record per athlete - replace any previous job and file outright
 		// rather than keeping a history nobody asked for.
