@@ -21,6 +21,11 @@ public class User extends PrefixedIdEntity {
 
 	private String password;
 
+	/** True immediately for social signups (the provider already verified the address) and
+	 * once a password signup redeems its EmailVerificationToken - see EmailVerificationService. */
+	@Column(name = "email_verified", nullable = false)
+	private boolean emailVerified = false;
+
 	@Column(nullable = false)
 	private String name;
 
@@ -119,6 +124,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setPassword(String password) {
 		this.password = password;
+	}
+
+	public boolean isEmailVerified() {
+		return emailVerified;
+	}
+
+	public void setEmailVerified(boolean emailVerified) {
+		this.emailVerified = emailVerified;
 	}
 
 	public String getName() {

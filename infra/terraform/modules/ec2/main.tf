@@ -112,6 +112,21 @@ resource "aws_iam_role_policy" "logs" {
   policy = data.aws_iam_policy_document.logs.json
 }
 
+# Scoped to exactly the one verified domain identity - not "*".
+data "aws_iam_policy_document" "ses" {
+  statement {
+    effect    = "Allow"
+    actions   = ["ses:SendEmail"]
+    resources = [var.ses_identity_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "ses" {
+  name   = "cadence-${var.environment}-backend-ses"
+  role   = aws_iam_role.this.id
+  policy = data.aws_iam_policy_document.ses.json
+}
+
 # The "which image tag is currently live" state, deliberately kept OUT of
 # user_data/Terraform's own knowledge after this initial value - run.sh reads
 # it fresh on every start, the same way it already re-reads secrets fresh.
@@ -186,32 +201,45 @@ resource "aws_security_group" "this" {
 
 resource "aws_instance" "this" {
   ami                    = data.aws_ssm_parameter.al2023_arm64.value
-  instance_type           = var.instance_type
-  subnet_id               = var.subnet_id
-  iam_instance_profile    = aws_iam_instance_profile.this.name
-  vpc_security_group_ids  = [aws_security_group.this.id]
+  instance_type          = var.instance_type
+  subnet_id              = var.subnet_id
+  iam_instance_profile   = aws_iam_instance_profile.this.name
+  vpc_security_group_ids = [aws_security_group.this.id]
   # No key_pair - SSM Session Manager is the only access path, same reasoning
   # as the old bastion.
 
   user_data = templatefile("${path.module}/user_data.sh.tpl", {
-    region                  = "eu-west-2"
-    ecr_registry            = var.ecr_registry
-    ecr_repo_name           = var.ecr_repo_name
-    image_tag_parameter_name = aws_ssm_parameter.image_tag.name
-    db_address            = var.db_address
-    db_name               = var.db_name
-    db_username           = var.db_username
-    db_secret_arn         = var.db_secret_arn
-    jwt_secret_arn        = var.jwt_secret_arn
-    jwt_kid               = var.jwt_kid
-    jwt_issuer            = var.jwt_issuer
-    jwt_audience          = var.jwt_audience
-    oauth_secret_arn      = var.oauth_secret_arn
-    cors_allowed_origins  = var.cors_allowed_origins
-    log_group_name        = aws_cloudwatch_log_group.backend.name
+    region                      = "eu-west-2"
+    ecr_registry                = var.ecr_registry
+    ecr_repo_name               = var.ecr_repo_name
+    image_tag_parameter_name    = aws_ssm_parameter.image_tag.name
+    db_address                  = var.db_address
+    db_name                     = var.db_name
+    db_username                 = var.db_username
+    db_secret_arn               = var.db_secret_arn
+    jwt_secret_arn              = var.jwt_secret_arn
+    jwt_kid                     = var.jwt_kid
+    jwt_issuer                  = var.jwt_issuer
+    jwt_audience                = var.jwt_audience
+    oauth_secret_arn            = var.oauth_secret_arn
+    cors_allowed_origins        = var.cors_allowed_origins
+    log_group_name              = aws_cloudwatch_log_group.backend.name
+    email_from_address          = var.email_from_address
+    email_verification_base_url = var.email_verification_base_url
+    ses_region                  = var.ses_region
   })
 
   tags = merge(var.tags, { Name = "cadence-${var.environment}-backend" })
+
+  lifecycle {
+    # The "latest AL2023 arm64" SSM parameter drifts as AWS publishes new
+    # AMI builds - without this, any apply (even one unrelated to the AMI)
+    # would force a full destroy/recreate the moment that parameter moves,
+    # losing /opt/cadence/media (it lives on the root EBS volume, not a
+    # separate persistent one - nothing preserves it across a real replace).
+    # AMI upgrades are a deliberate future step, not a surprise side effect.
+    ignore_changes = [ami]
+  }
 }
 
 # Stays attached across stop/start - the whole point (see the module header

@@ -2,6 +2,9 @@ export interface Athlete {
   id: string;
   name: string;
   email: string;
+  /** True immediately for social signups; false for a password signup until they redeem the
+   * link sent by POST /v1/auth/register (or resend one via /v1/auth/resend-verification). */
+  email_verified: boolean;
   age: number | null;
   weight_kg: number | null;
   ftp: number | null;

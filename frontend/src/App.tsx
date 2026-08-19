@@ -14,6 +14,7 @@ import { ImportScreen } from "./screens/ImportScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { PreferencesScreen } from "./screens/PreferencesScreen";
 import { ThresholdHistoryScreen } from "./screens/ThresholdHistoryScreen";
+import { VerifyEmailScreen } from "./screens/VerifyEmailScreen";
 import { WorkoutDesignerScreen } from "./screens/WorkoutDesignerScreen";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ export function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginScreen />} />
+            <Route path="/verify-email" element={<VerifyEmailScreen />} />
             <Route element={<RequireAuth />}>
               <Route element={<AppShell />}>
                 <Route path="/" element={<DashboardScreen />} />

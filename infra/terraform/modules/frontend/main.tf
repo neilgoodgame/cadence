@@ -51,10 +51,10 @@ resource "aws_cloudfront_distribution" "this" {
 
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD"]
-    cached_methods          = ["GET", "HEAD"]
-    target_origin_id        = "s3-frontend"
-    viewer_protocol_policy  = "redirect-to-https"
-    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_optimized.id
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "s3-frontend"
+    viewer_protocol_policy = "redirect-to-https"
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
   }
 
   # A SPA route like /athletes/123 has no matching S3 object, so S3 (via
@@ -64,14 +64,14 @@ resource "aws_cloudfront_distribution" "this" {
   # other SPA static host (Vercel/Netlify/S3 website hosting) handles this.
   custom_error_response {
     error_code         = 403
-    response_code       = 200
-    response_page_path  = "/index.html"
+    response_code      = 200
+    response_page_path = "/index.html"
   }
 
   custom_error_response {
     error_code         = 404
-    response_code       = 200
-    response_page_path  = "/index.html"
+    response_code      = 200
+    response_page_path = "/index.html"
   }
 
   restrictions {

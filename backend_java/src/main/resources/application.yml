@@ -68,6 +68,21 @@ cadence:
   rate-limit:
     register-max-attempts: ${REGISTER_RATE_LIMIT_MAX_ATTEMPTS:5}
     register-window-minutes: ${REGISTER_RATE_LIMIT_WINDOW_MINUTES:60}
+  email:
+    from-address: ${EMAIL_FROM_ADDRESS:no-reply@cadence.cc}
+    # Where the frontend's "verify your email" screen lives - the token is appended as ?token=...
+    verification-base-url: ${EMAIL_VERIFICATION_BASE_URL:http://localhost:5173/verify-email}
+    verification-ttl-hours: ${EMAIL_VERIFICATION_TTL_HOURS:24}
+    resend-cooldown-seconds: ${EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS:60}
+    # Explicit rather than left to SesV2Client's default region provider chain - that chain
+    # requires either an env var/profile or a reachable EC2 metadata service, neither of which
+    # exists in local/docker-compose dev, and failing to resolve one fails SesV2Client.builder()
+    # .build() *eagerly*, at bean construction - it took the whole app down at boot, not just
+    # email sending, before this was pinned. Matches infra/EC2_BACKEND_SKETCH.md's region.
+    ses-region: ${SES_REGION:eu-west-2}
+    # "ses" (real send, SesEmailService) or "log" (LoggingEmailService - logs the link instead
+    # of sending; docker-compose.yml sets this for local dev, which has no AWS credentials).
+    provider: ${EMAIL_PROVIDER:ses}
 
 springdoc:
   swagger-ui:

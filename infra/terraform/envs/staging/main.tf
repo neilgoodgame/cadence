@@ -51,6 +51,16 @@ module "acm_frontend" {
   zone_id     = data.aws_route53_zone.this.zone_id
 }
 
+# Same subdomain as the frontend, not the apex - bioinform.co.uk's own MX
+# records (Google Workspace) are untouched by this; DKIM verification is
+# CNAME-only. See modules/ses/variables.tf.
+module "ses" {
+  source = "../../modules/ses"
+
+  domain_name = "cadence.bioinform.co.uk"
+  zone_id     = data.aws_route53_zone.this.zone_id
+}
+
 # Created by hand (see infra/README.md's Step 3 continued section) rather than
 # by Terraform, same reasoning as the RDS master password: the actual secret
 # value should never pass through this config or state. Looked up by name so
@@ -96,6 +106,10 @@ module "ec2" {
   # allowCredentials(true), and Spring throws at request time if allowedOrigins
   # contains "*" together with credentials enabled.
   cors_allowed_origins = "https://cadence.bioinform.co.uk,http://localhost:5173,http://localhost:3000"
+
+  ses_identity_arn            = module.ses.arn
+  email_from_address          = "no-reply@cadence.bioinform.co.uk"
+  email_verification_base_url = "https://cadence.bioinform.co.uk/verify-email"
 }
 
 # The one ingress rule RDS's security group needs for the backend instance -

@@ -34,6 +34,7 @@ public class UserService {
 					? request.email()
 					: request.provider() + "+" + UUID.randomUUID() + "@social.cadence.invalid";
 			user.setEmail(email);
+			user.setEmailVerified(true);
 		}
 		else {
 			user.setEmail(request.email());

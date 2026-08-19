@@ -24,6 +24,9 @@ services:
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
+      # No AWS credentials or verified SES identity locally - log the verification link
+      # instead of sending it (see LoggingEmailService). Override in .env for real sends.
+      EMAIL_PROVIDER: log
     depends_on:
       db:
         condition: service_healthy
