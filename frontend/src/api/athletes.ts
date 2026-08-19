@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchStream, apiFetchWithHeaders } from "./client";
+import { apiFetch, apiFetchStream } from "./client";
 import { toQueryString } from "./activities";
 import type {
   Athlete,
@@ -7,7 +7,6 @@ import type {
   BestEffort,
   BestEffortKind,
   BestEffortPeriod,
-  BestEffortRecomputeJob,
   DataList,
   FitnessPoint,
   ThresholdFieldName,
@@ -73,25 +72,30 @@ async function* sseBlocks(response: Response): AsyncGenerator<{ event: string; d
   if (buffer.trim()) yield* parseBlock(buffer);
 }
 
-// Runs via a Celery job + polling, not SSE (the original implementation) - a full
-// account (thousands of activities) can take longer than gunicorn's sync-worker
-// timeout, which streaming alone doesn't avoid. See BestEffortsTab.tsx's usePolling
-// usage, matching the pattern startImport/getImportJob already use.
-export function startBestEffortRecompute(
+export type RecomputeBestEffortsEvent =
+  | { type: "progress"; current: number; total: number }
+  | { type: "done"; processed: number };
+
+// SSE, same as recomputeStatsStream/recomputeThresholdHistoryStream below - the endpoint
+// (BestEffortController#recompute) only ever streamed progress, never returned a pollable
+// job. An earlier version of this client assumed a Celery-style job+polling contract that
+// this backend never actually implemented (no GET .../recompute/{jobId} exists) - every call
+// silently hung waiting for the whole stream to buffer, then failed parsing it as JSON.
+export async function* recomputeBestEffortsStream(
   athleteId: string,
   kind?: BestEffortKind,
-): Promise<{ data: BestEffortRecomputeJob; retryAfterSeconds: number | null }> {
-  const qs = kind ? `?kind=${kind}` : "";
-  return apiFetchWithHeaders<BestEffortRecomputeJob>(`/v1/athletes/${athleteId}/best-efforts/recompute${qs}`, {
-    method: "POST",
-  });
-}
-
-export function getBestEffortRecomputeJob(
-  athleteId: string,
-  jobId: string,
-): Promise<{ data: BestEffortRecomputeJob; retryAfterSeconds: number | null }> {
-  return apiFetchWithHeaders<BestEffortRecomputeJob>(`/v1/athletes/${athleteId}/best-efforts/recompute/${jobId}`);
+): AsyncGenerator<RecomputeBestEffortsEvent> {
+  const response = await apiFetchStream(
+    `/v1/athletes/${athleteId}/best-efforts/recompute${toQueryString({ kind })}`,
+    { method: "POST" },
+  );
+  for await (const { event, data } of sseBlocks(response)) {
+    try {
+      const parsed = JSON.parse(data);
+      if (event === "done") yield { type: "done", processed: parsed.processed ?? 0 };
+      else yield { type: "progress", current: parsed.current ?? 0, total: parsed.total ?? 0 };
+    } catch { /* ignore malformed */ }
+  }
 }
 
 export type RecomputeStatsEvent =
