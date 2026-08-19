@@ -11,6 +11,8 @@ import com.cadence.api.athletes.dto.ThresholdSummaryEntry;
 import com.cadence.api.athletes.dto.ZoneSetReplaceRequest;
 import com.cadence.api.athletes.dto.ZoneSetReplaceResponse;
 import com.cadence.api.athletes.dto.ZoneSetResponse;
+import com.cadence.api.common.RecomputeLockRegistry;
+import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AccessGuard;
@@ -19,7 +21,6 @@ import com.cadence.api.users.UserMapper;
 import com.cadence.api.users.UserService;
 import com.cadence.api.users.dto.UserResponse;
 import jakarta.validation.Valid;
-import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -50,12 +51,13 @@ public class AthleteController {
 	private final ThresholdHistoryService thresholdHistoryService;
 	private final ActivityRepository activityRepository;
 	private final AccessGuard accessGuard;
+	private final RecomputeLockRegistry lockRegistry;
 	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
 	public AthleteController(UserService userService, UserMapper userMapper, AthleteService athleteService,
 			ZoneService zoneService, FitnessService fitnessService, TssRecomputeService tssRecomputeService,
 			DerivedStatsRecomputeService derivedStatsRecomputeService, ThresholdHistoryService thresholdHistoryService,
-			ActivityRepository activityRepository, AccessGuard accessGuard) {
+			ActivityRepository activityRepository, AccessGuard accessGuard, RecomputeLockRegistry lockRegistry) {
 		this.userService = userService;
 		this.userMapper = userMapper;
 		this.athleteService = athleteService;
@@ -66,6 +68,7 @@ public class AthleteController {
 		this.thresholdHistoryService = thresholdHistoryService;
 		this.activityRepository = activityRepository;
 		this.accessGuard = accessGuard;
+		this.lockRegistry = lockRegistry;
 	}
 
 	@GetMapping("/v1/athletes/{id}")
@@ -118,11 +121,18 @@ public class AthleteController {
 		return ResponseEntity.ok(Map.of("updated", updated));
 	}
 
+	/** See BestEffortController#recompute's Javadoc for why the timeout is 0 (a full account can
+	 * legitimately take a long time - a fixed timeout eventually kills any slow-enough account)
+	 * and why a per-athlete lock is needed (the background task outlives this connection, so a
+	 * disconnected/stalled run can still be going when a retry starts a second one). */
 	@PostMapping(value = "/v1/athletes/{id}/recompute-stats", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public SseEmitter recomputeStats(@PathVariable String id) {
 		accessGuard.requireWrite(id);
+		if (!lockRegistry.tryAcquire("derived-stats", id)) {
+			throw new ConflictException("A derived-stats recompute is already running for this athlete.");
+		}
 		User athlete = userService.getById(id);
-		SseEmitter emitter = new SseEmitter(600_000L);
+		SseEmitter emitter = new SseEmitter(0L);
 
 		taskExecutor.execute(() -> {
 			try {
@@ -132,6 +142,8 @@ public class AthleteController {
 				emitter.complete();
 			} catch (Exception e) {
 				emitter.completeWithError(e);
+			} finally {
+				lockRegistry.release("derived-stats", id);
 			}
 		});
 
@@ -141,8 +153,9 @@ public class AthleteController {
 	private void sendProgress(SseEmitter emitter, int current, int total) {
 		try {
 			emitter.send(SseEmitter.event().data("{\"current\":" + current + ",\"total\":" + total + "}"));
-		} catch (IOException e) {
-			// client disconnected - ignore, the emitter will complete with error naturally
+		} catch (Exception e) {
+			// Client disconnected, or the emitter already completed some other way - either
+			// way nothing here should interrupt the recompute loop still in progress.
 		}
 	}
 
@@ -184,8 +197,15 @@ public class AthleteController {
 	@PostMapping(value = "/v1/athletes/{id}/recompute-threshold-history", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public SseEmitter recomputeThresholdHistory(@PathVariable String id, @RequestParam ThresholdField field) {
 		accessGuard.requireWrite(id);
+		// Locked per-field, not per-athlete - rebuilding two different fields' ledgers
+		// concurrently doesn't race (see ThresholdHistoryService.rebuildHistory), only two
+		// rebuilds of the *same* field would.
+		String lockKind = "threshold-history-" + field.name();
+		if (!lockRegistry.tryAcquire(lockKind, id)) {
+			throw new ConflictException("A recompute for this field is already running for this athlete.");
+		}
 		User athlete = userService.getById(id);
-		SseEmitter emitter = new SseEmitter(600_000L);
+		SseEmitter emitter = new SseEmitter(0L);
 
 		taskExecutor.execute(() -> {
 			try {
@@ -195,6 +215,8 @@ public class AthleteController {
 				emitter.complete();
 			} catch (Exception e) {
 				emitter.completeWithError(e);
+			} finally {
+				lockRegistry.release(lockKind, id);
 			}
 		});
 

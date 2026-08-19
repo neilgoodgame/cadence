@@ -1,10 +1,11 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.DurationCurveResponse;
+import com.cadence.api.common.RecomputeLockRegistry;
+import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
-import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -19,20 +20,25 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RestController
 public class CurveController {
 
+	private static final String LOCK_KIND = "curves";
+
 	private final ActivityService activityService;
 	private final DurationCurveRepository durationCurveRepository;
 	private final DurationCurveRecomputeService recomputeService;
 	private final UserService userService;
 	private final AccessGuard accessGuard;
+	private final RecomputeLockRegistry lockRegistry;
 	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
 	public CurveController(ActivityService activityService, DurationCurveRepository durationCurveRepository,
-			DurationCurveRecomputeService recomputeService, UserService userService, AccessGuard accessGuard) {
+			DurationCurveRecomputeService recomputeService, UserService userService, AccessGuard accessGuard,
+			RecomputeLockRegistry lockRegistry) {
 		this.activityService = activityService;
 		this.durationCurveRepository = durationCurveRepository;
 		this.recomputeService = recomputeService;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
+		this.lockRegistry = lockRegistry;
 	}
 
 	@GetMapping("/v1/activities/{id}/curves")
@@ -47,12 +53,16 @@ public class CurveController {
 
 	/** Backfills duration curves for every eligible activity - see DurationCurveRecomputeService's
 	 * Javadoc for why this needs to exist at all (nothing else ever computes them for an activity
-	 * that already exists). SSE, same shape as BestEffortController#recompute. */
+	 * that already exists). SSE, same shape as BestEffortController#recompute - see that
+	 * method's Javadoc for why the timeout is 0 (no timeout) and why a lock is needed at all. */
 	@PostMapping(value = "/v1/athletes/{id}/curves/recompute", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public SseEmitter recompute(@PathVariable String id) {
 		accessGuard.requireWrite(id);
+		if (!lockRegistry.tryAcquire(LOCK_KIND, id)) {
+			throw new ConflictException("A duration-curve recompute is already running for this athlete.");
+		}
 		User athlete = userService.getById(id);
-		SseEmitter emitter = new SseEmitter(600_000L);
+		SseEmitter emitter = new SseEmitter(0L);
 
 		taskExecutor.execute(() -> {
 			try {
@@ -63,6 +73,8 @@ public class CurveController {
 				emitter.complete();
 			} catch (Exception e) {
 				emitter.completeWithError(e);
+			} finally {
+				lockRegistry.release(LOCK_KIND, id);
 			}
 		});
 
@@ -73,8 +85,9 @@ public class CurveController {
 		try {
 			emitter.send(SseEmitter.event()
 					.data("{\"current\":" + current + ",\"total\":" + total + "}"));
-		} catch (IOException e) {
-			// client disconnected — ignore, the emitter will complete with error naturally
+		} catch (Exception e) {
+			// Client disconnected, or the emitter already completed some other way - either
+			// way nothing here should interrupt the recompute loop still in progress.
 		}
 	}
 }
