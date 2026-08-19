@@ -46,6 +46,7 @@ public class ImportController {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		User athlete = userService.getById(athleteId);
+		userService.requireEmailVerified(athlete, "importing data");
 
 		if (file.getSize() > properties.dataImport().maxFileBytes()) {
 			throw new ValidationException("Import file is too large.", "file");

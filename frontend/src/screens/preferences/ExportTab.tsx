@@ -1,9 +1,14 @@
 import { useRef, useState } from "react";
 import { getImportJob, startImport } from "../../api/dataImport";
 import { downloadExport, getExportJob, startExport } from "../../api/export";
+import { ApiError } from "../../api/types";
 import type { ImportJob, ExportJob, Sport } from "../../api/types";
 import { usePolling } from "../import/usePolling";
 import { DataTransferProgressDialog } from "./DataTransferProgressDialog";
+
+function errorMessage(err: unknown): string {
+  return err instanceof ApiError ? err.message : "Something went wrong. Try again.";
+}
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 
@@ -147,6 +152,7 @@ function ImportSection() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [job, setJob] = useState<{ data: ImportJob; retryAfterSeconds: number | null } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <div>
@@ -166,8 +172,12 @@ function ImportSection() {
           e.target.value = "";
           if (!file) return;
           setUploading(true);
+          setError(null);
           try {
             setJob(await startImport(file));
+          }
+          catch (err) {
+            setError(errorMessage(err));
           }
           finally {
             setUploading(false);
@@ -181,6 +191,7 @@ function ImportSection() {
       >
         {uploading ? "Uploading…" : "Choose file to import"}
       </button>
+      {error && <div style={{ marginTop: 8, fontSize: 13, color: "var(--danger, #c0392b)" }}>{error}</div>}
 
       {job && <ImportProgressDialog initial={job} onClose={() => setJob(null)} />}
     </div>
@@ -190,6 +201,7 @@ function ImportSection() {
 export function ExportTab() {
   const [job, setJob] = useState<{ data: ExportJob; retryAfterSeconds: number | null } | null>(null);
   const [sport, setSport] = useState<Sport | "">("");
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 480 }}>
@@ -217,12 +229,18 @@ export function ExportTab() {
           </select>
           <button
             disabled={!!job}
-            onClick={() => startExport(sport || undefined).then(setJob)}
+            onClick={() => {
+              setError(null);
+              startExport(sport || undefined)
+                .then(setJob)
+                .catch((err) => setError(errorMessage(err)));
+            }}
             style={{ ...PRIMARY_BUTTON_STYLE, opacity: job ? 0.6 : 1 }}
           >
             Generate export
           </button>
         </div>
+        {error && <div style={{ fontSize: 13, color: "var(--danger, #c0392b)" }}>{error}</div>}
 
         {job && <ExportProgressDialog initial={job} onClose={() => setJob(null)} />}
       </div>
