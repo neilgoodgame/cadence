@@ -295,7 +295,9 @@ export function BestEffortsTab() {
         <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Recompute best efforts</h2>
         <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0, lineHeight: 1.6 }}>
           Recalculates best efforts from your stored activity records. Use this after changing the
-          entries-per-window setting, or to fix records that were computed from bad data.
+          entries-per-window setting, to fix records that were computed from bad data, or for
+          activities that never had best efforts computed in the first place (e.g. imported activities -
+          restoring from an export doesn't recompute them).
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
