@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   updateAthlete,
@@ -54,6 +54,38 @@ interface RecomputeState {
 }
 
 const IDLE: RecomputeState = { activeKind: null, current: 0, total: 0, result: null, error: false };
+
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+// Rough - the per-activity rate can vary a lot (a marathon's worth of samples costs far
+// more than a 20-minute spin), so this is a ballpark, not a promise. Needs a few seconds
+// of real throughput before it means anything.
+function etaText(current: number, total: number, elapsedSeconds: number): string | null {
+  if (current === 0 || elapsedSeconds < 3) return null;
+  const remaining = Math.round((elapsedSeconds / current) * (total - current));
+  return remaining <= 0 ? null : `~${formatElapsed(remaining)} left`;
+}
+
+// A large account can take a long time to recompute (each activity is its own DB
+// round-trip + sliding-window calculation) - "Starting…" with no feedback at all is
+// indistinguishable from actually being stuck. Ticks every second while `active`, resets
+// to 0 whenever a fresh recompute starts.
+function useElapsedSeconds(active: boolean): number {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const start = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => {
+      clearInterval(id);
+      setElapsed(0);
+    };
+  }, [active]);
+  return elapsed;
+}
 
 function ProgressBar({ current, total }: { current: number; total: number }) {
   const pct = total > 0 ? Math.round((current / total) * 100) : 0;
@@ -135,6 +167,7 @@ export function BestEffortsTab() {
   }, [user, effectiveTopN, setUser, qc]);
 
   const recomputeRunning = recompute.activeKind !== null;
+  const recomputeElapsed = useElapsedSeconds(recomputeRunning);
 
   const startStatsRecompute = useCallback(async () => {
     setStatsRecompute({ running: true, current: 0, total: 0, updated: null });
@@ -242,10 +275,19 @@ export function BestEffortsTab() {
             button would otherwise only show its progress in that other section, easy to miss
             since it's not next to the button that was actually clicked. */}
         {recomputeRunning && recompute.activeKind === "all" && recompute.total > 0 && (
-          <ProgressBar current={recompute.current} total={recompute.total} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <ProgressBar current={recompute.current} total={recompute.total} />
+            <span style={{ fontSize: 11, color: "var(--ink3)" }}>
+              {formatElapsed(recomputeElapsed)} elapsed
+              {(() => {
+                const eta = etaText(recompute.current, recompute.total, recomputeElapsed);
+                return eta ? ` \u00b7 ${eta}` : "";
+              })()}
+            </span>
+          </div>
         )}
         {recomputeRunning && recompute.activeKind === "all" && recompute.total === 0 && (
-          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting… ({formatElapsed(recomputeElapsed)})</p>
         )}
       </section>
 
@@ -280,10 +322,19 @@ export function BestEffortsTab() {
         </button>
 
         {recomputeRunning && recompute.total > 0 && (
-          <ProgressBar current={recompute.current} total={recompute.total} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <ProgressBar current={recompute.current} total={recompute.total} />
+            <span style={{ fontSize: 11, color: "var(--ink3)" }}>
+              {formatElapsed(recomputeElapsed)} elapsed
+              {(() => {
+                const eta = etaText(recompute.current, recompute.total, recomputeElapsed);
+                return eta ? ` \u00b7 ${eta}` : "";
+              })()}
+            </span>
+          </div>
         )}
         {recomputeRunning && recompute.total === 0 && (
-          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting… ({formatElapsed(recomputeElapsed)})</p>
         )}
         {recompute.result && !recomputeRunning && (
           <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0 }}>{recompute.result}</p>
