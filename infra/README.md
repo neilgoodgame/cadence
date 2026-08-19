@@ -1040,6 +1040,31 @@ confirmed both curves came back identical to the original.
 just `/healthz`) and frontend via the usual build/sync/invalidate
 (`index-BQDsVxGQ.js`), both halves together.
 
+## Step 16 - Fallout from Step 15's own deploy: recompute connections can hang forever
+
+**What & why:** the Step 15 deploy itself caused a real incident - a user's best-efforts
+recompute (2608 activities) was already running when that deploy restarted the backend,
+silently killing it mid-flight. The frontend never found out: `for await` on the SSE stream
+suspended on a `reader.read()` that never resolves once the server dies mid-response (an
+abrupt restart doesn't reliably propagate a clean TCP close through CloudFront), and the
+elapsed-time counter (Step 13) is driven by the browser's own clock, not the connection, so
+it kept ticking - "335m 11s elapsed" and climbing, frozen progress, no error. A dead
+connection dressed up as a slow one.
+
+Fixed with a client-side `withStallTimeout` (60s, well above the ~11s worst-case per-activity
+latency actually observed) wrapping all four recompute SSE streams (best efforts, duration
+curves, derived stats, threshold history) - a stall now surfaces as a clear "Recompute failed"
+instead of hanging. Also found and fixed while doing this: derived-stats and per-field
+threshold-history recompute had **no error handling at all** before this, an unhandled
+rejection that would have looked exactly like this same incident for a different cause.
+
+**Not code - a standing practice going forward**: always warn before deploying a backend
+change to staging, since a restart silently kills whatever long-running recompute might be in
+flight. Saved as a memory note for future sessions, not just this file.
+
+**Applied 2026-08-19**: frontend-only fix (no backend restart needed - confirmed live,
+`index-CdjbVFKB.js`).
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
