@@ -80,6 +80,27 @@ variable "cors_allowed_origins" {
   type = string
 }
 
+variable "ses_identity_arn" {
+  description = "SES domain identity ARN (modules/ses's output) - the instance role gets ses:SendEmail scoped to exactly this, for EmailVerificationService's outgoing mail."
+  type        = string
+}
+
+variable "email_from_address" {
+  description = "Must be an address on the verified SES domain identity, e.g. no-reply@cadence.bioinform.co.uk."
+  type        = string
+}
+
+variable "email_verification_base_url" {
+  description = "Where the frontend's /verify-email screen lives - the token is appended as ?token=..."
+  type        = string
+}
+
+variable "ses_region" {
+  description = "Passed explicitly rather than left to SesV2Client's default region provider chain - see application.yml's cadence.email.ses-region comment for why."
+  type        = string
+  default     = "eu-west-2"
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

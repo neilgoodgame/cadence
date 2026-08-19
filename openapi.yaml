@@ -163,6 +163,57 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /v1/auth/verify-email:
+    post:
+      tags: [Authentication]
+      summary: Confirm an email address
+      operationId: verifyEmail
+      security: []
+      description: >
+        Redeems the one-time token from the link sent by `POST /v1/auth/register` (or
+        `POST /v1/auth/resend-verification`), marking the account's `email_verified` true.
+        Public - the link may be opened in a browser with no session of its own.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "204":
+          description: Verified.
+        "400":
+          description: The token is invalid, already used, or has expired.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/auth/resend-verification:
+    post:
+      tags: [Authentication]
+      summary: Resend the verification email
+      operationId: resendVerificationEmail
+      description: >
+        Sends a fresh verification link to the signed-in athlete's own address, invalidating
+        none of their access - only usable while `email_verified` is still false, and rate
+        limited per athlete.
+      responses:
+        "204":
+          description: Sent.
+        "409":
+          description: This email address is already verified.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: A verification email was sent too recently - retry later.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /oauth/token:
     post:
       tags: [Authentication]
@@ -2328,6 +2379,13 @@ components:
         id: { type: string, example: usr_neil }
         name: { type: string, example: Neil Goodgame }
         email: { type: string, example: neil@example.cc }
+        email_verified:
+          type: boolean
+          description: >
+            True immediately for social signups (the provider already verified the
+            address). False for a password signup until they redeem the link sent by
+            POST /v1/auth/register, or resend one via POST /v1/auth/resend-verification.
+          example: true
         age: { type: integer, example: 34 }
         weight_kg: { type: number, example: 72 }
         ftp: { type: integer, example: 265 }

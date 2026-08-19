@@ -17,6 +17,20 @@ export function login(email: string, password: string): Promise<AuthResponse> {
   });
 }
 
+// Public - the link may be opened in a browser with no session of its own (a different
+// device, or one where the access token has since expired).
+export function verifyEmail(token: string): Promise<void> {
+  return apiFetch<void>("/v1/auth/verify-email", {
+    method: "POST",
+    body: { token },
+    anonymous: true,
+  });
+}
+
+export function resendVerification(): Promise<void> {
+  return apiFetch<void>("/v1/auth/resend-verification", { method: "POST" });
+}
+
 // The token endpoint authenticates the OAuth client via client_secret_post (see the
 // /oauth/token contract and FirstPartyClientConfig in backend_java). A browser bundle
 // can't keep a real secret, so this only works because the first-party "secret" is a

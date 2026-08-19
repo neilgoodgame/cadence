@@ -81,6 +81,9 @@ exec docker run --rm --name cadence-backend \
 	-e JWT_ISSUER="${jwt_issuer}" \
 	-e JWT_AUDIENCE="${jwt_audience}" \
 	-e CORS_ALLOWED_ORIGINS="${cors_allowed_origins}" \
+	-e EMAIL_FROM_ADDRESS="${email_from_address}" \
+	-e EMAIL_VERIFICATION_BASE_URL="${email_verification_base_url}" \
+	-e SES_REGION="${ses_region}" \
 	--log-driver awslogs \
 	--log-opt awslogs-region="$REGION" \
 	--log-opt awslogs-group="${log_group_name}" \

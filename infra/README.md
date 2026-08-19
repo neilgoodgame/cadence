@@ -792,6 +792,52 @@ smoke test passed. Confirmed the live parameter value and a fresh
 drift afterward (the `ignore_changes` on the parameter's value is doing its
 job).
 
+## Step 9 - SES domain identity for transactional email
+
+**What & why:** infrastructure for the email-verification-link feature added
+to `backend_java` (see `EmailVerificationService`/`SesEmailService`) - a new
+`ses` Terraform module verifies `cadence.bioinform.co.uk` as an SES sending
+identity via Easy DKIM (3 CNAME records only, no TXT record needed), and the
+`ec2` module gets a new IAM policy scoping `ses:SendEmail` to exactly that
+identity's ARN. Deliberately the frontend's own subdomain, not the apex
+`bioinform.co.uk` - the apex's existing Google Workspace MX records are
+untouched, since DKIM verification never involves MX at all.
+
+- New `email_from_address`/`email_verification_base_url`/`ses_region`
+  variables threaded through to `user_data.sh.tpl`'s `docker run` - same
+  "real-instance-reboot, not a replace" side effect as Steps 7/8, flagged
+  and confirmed before applying.
+- **A pre-existing, unrelated footgun surfaced by this apply**: the `ami`
+  data source (`al2023-ami-kernel-default-arm64`, "latest") had drifted
+  since the instance's first launch, so the plan initially wanted to
+  **replace** the instance outright - which would have silently wiped
+  `/opt/cadence/media` (it lives on the root EBS volume, not a separate
+  persistent one). Fixed by adding `lifecycle { ignore_changes = [ami] }`
+  to `aws_instance.this` - AMI upgrades are now a deliberate future step,
+  not a surprise side effect of an unrelated apply. Worth remembering for
+  any future `ec2` module change: always read the plan's replace/update
+  distinction before applying, not just the resource count.
+- **Applied 2026-08-19**: 6 added, 1 changed, 0 destroyed. Instance
+  rebooted in place (~1m13s), came back healthy (`/healthz` via
+  CloudFront). SES domain verification (DKIM) completed within roughly a
+  minute of the CNAME records landing in Route 53 - fast, since Route 53 is
+  authoritative for the zone already. Submitted the SES production-access
+  request (`sesv2 put-account-details`, mail type `TRANSACTIONAL`) the same
+  day - `ReviewDetails.Status` was `PENDING` immediately after; AWS review
+  typically takes about a business day. Until it's approved, sending is
+  sandboxed (200/day, 1/sec, verified recipients only) - fine for
+  continued testing with your own verified address, not yet for real
+  athlete signups.
+- **Not yet done**: the `backend_java` application code itself (the
+  verify-email/resend-verification endpoints and the V47 migration) hasn't
+  been deployed - this step only shipped the infrastructure it depends on.
+  A real deploy still needs `infra/scripts/deploy-backend.sh` run after
+  those commits land on `main`.
+
+Console check: **SES → Identities → `cadence.bioinform.co.uk`** (should show
+Verified); **SES → Account dashboard** (sending limits, production-access
+review status).
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a

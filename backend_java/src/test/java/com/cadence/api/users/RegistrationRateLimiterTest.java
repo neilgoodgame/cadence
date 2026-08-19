@@ -21,7 +21,7 @@ class RegistrationRateLimiterTest {
 	}
 
 	private static CadenceProperties propertiesWith(CadenceProperties.RateLimit rateLimit) {
-		return new CadenceProperties(null, null, null, null, null, rateLimit);
+		return new CadenceProperties(null, null, null, null, null, rateLimit, null);
 	}
 
 	/** Advances on demand, rather than by wall-clock time passing during the test. */

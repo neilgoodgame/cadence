@@ -19,13 +19,15 @@ public class RegistrationController {
 	private final UserMapper userMapper;
 	private final TokenIssuer tokenIssuer;
 	private final RegistrationRateLimiter rateLimiter;
+	private final EmailVerificationService emailVerificationService;
 
-	public RegistrationController(
-			UserService userService, UserMapper userMapper, TokenIssuer tokenIssuer, RegistrationRateLimiter rateLimiter) {
+	public RegistrationController(UserService userService, UserMapper userMapper, TokenIssuer tokenIssuer,
+			RegistrationRateLimiter rateLimiter, EmailVerificationService emailVerificationService) {
 		this.userService = userService;
 		this.userMapper = userMapper;
 		this.tokenIssuer = tokenIssuer;
 		this.rateLimiter = rateLimiter;
+		this.emailVerificationService = emailVerificationService;
 	}
 
 	@PostMapping("/v1/auth/register")
@@ -33,6 +35,10 @@ public class RegistrationController {
 	public AuthResponse register(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
 		rateLimiter.checkAndRecord(clientIp(httpRequest));
 		User user = userService.register(request);
+		// Social signups are already emailVerified=true (see UserService.register) - nothing to send.
+		if (!user.isEmailVerified()) {
+			emailVerificationService.issueAndSend(user);
+		}
 		TokenIssuer.TokenPair tokenPair = tokenIssuer.issueTokenPair(user);
 		TokenResponse tokens = new TokenResponse(
 				tokenPair.accessToken(), tokenPair.refreshToken(), "Bearer", tokenPair.expiresIn(), tokenPair.scope());

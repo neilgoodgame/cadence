@@ -4,6 +4,7 @@ public record UserResponse(
 		String id,
 		String name,
 		String email,
+		boolean emailVerified,
 		Integer age,
 		Double weightKg,
 		Integer ftp,

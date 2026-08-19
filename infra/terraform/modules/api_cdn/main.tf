@@ -25,19 +25,19 @@ resource "aws_cloudfront_distribution" "this" {
 
     custom_origin_config {
       http_port              = var.origin_port
-      https_port              = 443
-      origin_protocol_policy  = "http-only" # CloudFront terminates client TLS; the origin's own SG only accepts traffic from CloudFront's IPs - see modules/ec2's security group.
-      origin_ssl_protocols    = ["TLSv1.2"]
+      https_port             = 443
+      origin_protocol_policy = "http-only" # CloudFront terminates client TLS; the origin's own SG only accepts traffic from CloudFront's IPs - see modules/ec2's security group.
+      origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
 
   default_cache_behavior {
     allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods            = ["GET", "HEAD"]
-    target_origin_id          = "backend"
-    viewer_protocol_policy    = "redirect-to-https"
-    cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id
-    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer.id
+    cached_methods           = ["GET", "HEAD"]
+    target_origin_id         = "backend"
+    viewer_protocol_policy   = "redirect-to-https"
+    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
   }
 
   restrictions {

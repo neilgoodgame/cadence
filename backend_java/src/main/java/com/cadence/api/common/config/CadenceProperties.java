@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "cadence")
 public record CadenceProperties(
-		Jwt jwt, Cors cors, Uploads uploads, DataImport dataImport, Oauth oauth, RateLimit rateLimit) {
+		Jwt jwt, Cors cors, Uploads uploads, DataImport dataImport, Oauth oauth, RateLimit rateLimit, Email email) {
 
 	public record Jwt(String privateKeyPath, String publicKeyPath, String kid, String issuer, String audience) {
 	}
@@ -23,5 +23,9 @@ public record CadenceProperties(
 	}
 
 	public record RateLimit(int registerMaxAttempts, int registerWindowMinutes) {
+	}
+
+	public record Email(String fromAddress, String verificationBaseUrl, int verificationTtlHours,
+			int resendCooldownSeconds, String sesRegion, String provider) {
 	}
 }

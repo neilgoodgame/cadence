@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { EmailVerificationBanner } from "./EmailVerificationBanner";
 import { ProfileChip } from "./ProfileChip";
 import { ThemeToggle } from "./ThemeToggle";
 import { TrainingContextSwitcher } from "./TrainingContextSwitcher";
@@ -88,6 +89,7 @@ export function AppShell() {
       </aside>
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <EmailVerificationBanner />
         <header
           style={{
             display: "flex",
