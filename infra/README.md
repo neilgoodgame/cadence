@@ -943,6 +943,25 @@ frontend via the same manual `build`/`s3 sync`/`invalidate` steps as Step
 signup against the live API got 403 on `/v1/export`, and `curl`-ing the
 live frontend confirmed it serves the new bundle (`index-DiG09Uca.js`).
 
+## Step 13 - Fixed: best-efforts recompute never worked on the live site
+
+**What & why:** reported by a real user on `cadence.bioinform.co.uk` -
+clicking "Recompute all" under Preferences did nothing. Root cause: the
+frontend called `POST /v1/athletes/{id}/best-efforts/recompute` expecting a
+Celery-style job to poll by id, matching a code comment describing "the
+original implementation" - but `BestEffortController#recompute` only ever
+streamed progress via SSE, and no polling endpoint exists. Every click hung
+until the whole recompute finished server-side, then failed parsing raw SSE
+frames as JSON. Not caused by anything in this session's earlier work -
+broken since whenever the frontend switched from Django to this backend.
+Fixed by matching the SSE pattern the other two recompute features on the
+same screen already used correctly (`recomputeStatsStream`,
+`recomputeThresholdHistoryStream`).
+
+**Frontend-only fix** - deployed via the same manual build/sync/invalidate
+steps, backend untouched. **Applied 2026-08-19**: `curl`-ed the live site
+and confirmed the new bundle (`index-B976d0K8.js`) is served.
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
