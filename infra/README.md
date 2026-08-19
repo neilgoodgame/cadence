@@ -828,15 +828,69 @@ untouched, since DKIM verification never involves MX at all.
   sandboxed (200/day, 1/sec, verified recipients only) - fine for
   continued testing with your own verified address, not yet for real
   athlete signups.
-- **Not yet done**: the `backend_java` application code itself (the
-  verify-email/resend-verification endpoints and the V47 migration) hasn't
-  been deployed - this step only shipped the infrastructure it depends on.
-  A real deploy still needs `infra/scripts/deploy-backend.sh` run after
-  those commits land on `main`.
+- **Superseded by Step 10 below**: this step's own attempt to deploy the
+  application code via `deploy-backend.sh` looked successful (script exited
+  0, `/healthz` was green) but wasn't actually running the new code at all -
+  see Step 10 for why and how it was actually fixed.
 
 Console check: **SES → Identities → `cadence.bioinform.co.uk`** (should show
 Verified); **SES → Account dashboard** (sending limits, production-access
 review status).
+
+## Step 10 - Fixed: `user_data` changes were silently never taking effect
+
+**What & why:** discovered while verifying Step 9's deploy actually shipped -
+it hadn't. `deploy-backend.sh` reported success and `/healthz` was green, but
+inspecting the instance directly (`docker images` inside it, `cat
+/opt/cadence/run.sh` via SSM) showed it was still running the *original*
+image tag and the *original* run.sh from this instance's very first launch -
+missing not just this session's SES env vars but Step 8's entire
+SSM-parameter-tag mechanism from two days earlier. Step 8's own "confirmed
+run.sh now resolves the tag via SSM" claim was apparently never actually
+checked file-by-file, only via `/healthz` staying green - which it always
+will, since the old image is perfectly functional on its own.
+
+**Root cause:** a `user_data` change on `aws_instance` without
+`user_data_replace_on_change = true` updates the EC2 API attribute and
+reboots the *same* instance (stop → modify → start) - this looked like the
+right, gentler alternative to a full replace, and Terraform reports it as
+success. But cloud-init's AWS datasource keys its "have I already run
+user-data for this instance" semaphore off the **instance ID**, which a
+stop/start never changes. The new script gets staged to
+`/var/lib/cloud/instance/user-data.txt` correctly, but cloud-init sees the
+same instance ID it already initialized and skips re-running it - silently,
+with no error anywhere. Every `user_data`-driven change made to this
+instance since its first boot (Step 8's SSM mechanism, this session's SES
+env vars) had zero real effect until this fix.
+
+**Fix:** added `user_data_replace_on_change = true` to `aws_instance.this`
+in the `ec2` module, so Terraform forces a genuine replacement (new instance
+ID) whenever `user_data` changes, instead of a reboot that cloud-init quietly
+ignores. Since Terraform's state already believed the (never-applied)
+`user_data` matched, flipping the flag alone didn't retroactively trigger
+anything - required one explicit `terraform apply -replace=module.ec2.aws_instance.this`
+to force it this one time. Checked first that `/opt/cadence/media` was
+actually empty (0 files) before doing this, given a real replace loses
+anything on the root EBS volume - see the `ami` `ignore_changes` comment in
+the same resource for why that's not a separate persistent volume.
+
+**Applied and verified 2026-08-19** (new instance `i-02188127ff1fdd91c`,
+EIP re-attached automatically, same address): confirmed *by inspecting the
+instance directly this time*, not just `/healthz` - `docker images` inside
+the container shows the correct pushed digest, `/opt/cadence/run.sh` has the
+new `EMAIL_FROM_ADDRESS`/etc. flags, Flyway logged "Successfully applied 2
+migrations ... now at version v47", a real `POST /v1/auth/register` returned
+`email_verified: false` in the response, and CloudWatch's `AWS/SES` `Send`
+metric recorded a real accepted send with zero errors logged. SES production
+access was also granted already (fast automated approval) - `Max24HourSend`
+is 50000, not the sandbox's 200.
+
+**Lesson for future `ec2` module changes**: always read a plan's
+create/update/destroy counts before applying, not just whether it succeeds
+afterward - and for anything `user_data`-related specifically, verify by
+inspecting the instance's actual files/running image after a change, not
+just `/healthz`. A healthy old process and a healthy new one are
+indistinguishable from outside.
 
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's

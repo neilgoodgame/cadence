@@ -208,6 +208,22 @@ resource "aws_instance" "this" {
   # No key_pair - SSM Session Manager is the only access path, same reasoning
   # as the old bastion.
 
+  # Without this, a user_data change modifies the EC2 attribute in place and
+  # reboots the SAME instance - which looks like it works (Terraform reports
+  # success, the app comes back up) but cloud-init's AWS datasource keys its
+  # "have I already run user-data" semaphore off the instance ID, which a
+  # stop/start never changes. The reboot silently does nothing: the new
+  # script is staged on disk but never executed, and the OLD run.sh (and
+  # whatever image tag/env vars were baked into it at first boot) keeps
+  # running indefinitely. Found the hard way: Step 8's SSM-parameter change
+  # and this step's SES env vars both "succeeded" per Terraform/healthz
+  # while actually still running the instance's very first user_data. A real
+  # replace (new instance ID) is the only way cloud-init genuinely re-runs
+  # it - acceptable here since /opt/cadence/media isn't a separate
+  # persistent volume anyway (see the ami ignore_changes comment below) and
+  # is confirmed empty on this environment as of 2026-08-19.
+  user_data_replace_on_change = true
+
   user_data = templatefile("${path.module}/user_data.sh.tpl", {
     region                      = "eu-west-2"
     ecr_registry                = var.ecr_registry
