@@ -237,6 +237,16 @@ export function BestEffortsTab() {
             Increasing the limit requires a recompute to fill the new slots — use Save &amp; recompute all.
           </p>
         )}
+        {/* Recompute can also be triggered by "Recompute all"/per-kind buttons further down
+            (shared recompute state) - shown here too since a recompute started from THIS
+            button would otherwise only show its progress in that other section, easy to miss
+            since it's not next to the button that was actually clicked. */}
+        {recomputeRunning && recompute.activeKind === "all" && recompute.total > 0 && (
+          <ProgressBar current={recompute.current} total={recompute.total} />
+        )}
+        {recomputeRunning && recompute.activeKind === "all" && recompute.total === 0 && (
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>
+        )}
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
