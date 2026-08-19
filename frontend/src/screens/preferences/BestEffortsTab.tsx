@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   updateAthlete,
   recomputeBestEffortsStream,
+  recomputeCurvesStream,
   recomputeStatsStream,
   recomputeThresholdHistoryStream,
   trimBestEfforts,
@@ -178,6 +179,31 @@ export function BestEffortsTab() {
         setStatsRecompute({ running: false, current: event.updated, total: event.updated, updated: event.updated });
         qc.invalidateQueries({ queryKey: ["activities"] });
       }
+    }
+  }, [user, qc]);
+
+  const [curvesRecompute, setCurvesRecompute] = useState<RecomputeState>(IDLE);
+  const curvesRecomputeRunning = curvesRecompute.activeKind !== null;
+  const curvesElapsed = useElapsedSeconds(curvesRecomputeRunning);
+
+  const startCurvesRecompute = useCallback(async () => {
+    setCurvesRecompute({ activeKind: "all", current: 0, total: 0, result: null, error: false });
+    try {
+      for await (const event of recomputeCurvesStream(user!.id)) {
+        if (event.type === "progress") {
+          setCurvesRecompute(s => ({ ...s, current: event.current, total: event.total }));
+        }
+        else {
+          setCurvesRecompute({
+            activeKind: null, current: 0, total: 0, error: false,
+            result: `Recomputed duration curves — ${event.processed} activities`,
+          });
+          qc.invalidateQueries({ queryKey: ["activity-curve"] });
+        }
+      }
+    }
+    catch {
+      setCurvesRecompute(s => ({ ...s, activeKind: null, error: true }));
     }
   }, [user, qc]);
 
@@ -370,6 +396,46 @@ export function BestEffortsTab() {
         )}
         {statsRecompute.updated != null && !statsRecompute.running && (
           <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0 }}>Updated {statsRecompute.updated} activities</p>
+        )}
+      </section>
+
+      <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Recompute duration curves</h2>
+        <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0, lineHeight: 1.6 }}>
+          Backfills the power/heart-rate duration curves shown on each activity's Curves tab.
+          Nothing computes these except the original upload - use this for activities that never
+          had them in the first place (e.g. imported activities - restoring from an export
+          doesn't recompute them).
+        </p>
+
+        <button
+          onClick={() => startCurvesRecompute()}
+          disabled={curvesRecomputeRunning}
+          style={{ ...btnStyle, alignSelf: "flex-start", opacity: curvesRecomputeRunning ? 0.6 : 1 }}
+        >
+          {curvesRecomputeRunning ? "Working…" : "Recompute all"}
+        </button>
+
+        {curvesRecomputeRunning && curvesRecompute.total > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <ProgressBar current={curvesRecompute.current} total={curvesRecompute.total} />
+            <span style={{ fontSize: 11, color: "var(--ink3)" }}>
+              {formatElapsed(curvesElapsed)} elapsed
+              {(() => {
+                const eta = etaText(curvesRecompute.current, curvesRecompute.total, curvesElapsed);
+                return eta ? ` · ${eta}` : "";
+              })()}
+            </span>
+          </div>
+        )}
+        {curvesRecomputeRunning && curvesRecompute.total === 0 && (
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting… ({formatElapsed(curvesElapsed)})</p>
+        )}
+        {curvesRecompute.result && !curvesRecomputeRunning && (
+          <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0 }}>{curvesRecompute.result}</p>
+        )}
+        {curvesRecompute.error && (
+          <p style={{ fontSize: 13, color: "var(--danger,#e04040)", margin: 0 }}>Recompute failed. Try again.</p>
         )}
       </section>
 

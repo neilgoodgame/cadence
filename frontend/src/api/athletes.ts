@@ -98,6 +98,24 @@ export async function* recomputeBestEffortsStream(
   }
 }
 
+export type RecomputeCurvesEvent =
+  | { type: "progress"; current: number; total: number }
+  | { type: "done"; processed: number };
+
+// Backfills duration curves for activities that never got them from the upload pipeline -
+// restoring from an export being the main case (ImportReader never computes them). SSE, same
+// shape as recomputeBestEffortsStream above.
+export async function* recomputeCurvesStream(athleteId: string): AsyncGenerator<RecomputeCurvesEvent> {
+  const response = await apiFetchStream(`/v1/athletes/${athleteId}/curves/recompute`, { method: "POST" });
+  for await (const { event, data } of sseBlocks(response)) {
+    try {
+      const parsed = JSON.parse(data);
+      if (event === "done") yield { type: "done", processed: parsed.processed ?? 0 };
+      else yield { type: "progress", current: parsed.current ?? 0, total: parsed.total ?? 0 };
+    } catch { /* ignore malformed */ }
+  }
+}
+
 export type RecomputeStatsEvent =
   | { type: "progress"; current: number; total: number }
   | { type: "done"; updated: number };
