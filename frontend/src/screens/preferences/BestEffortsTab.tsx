@@ -114,10 +114,11 @@ export function BestEffortsTab() {
     current: number;
     total: number;
     updated: number | null;
-  }>({ running: false, current: 0, total: 0, updated: null });
+    error: boolean;
+  }>({ running: false, current: 0, total: 0, updated: null, error: false });
   const [windowDays, setWindowDays] = useState(user?.threshold_window_days ?? 112);
   const [sanityPct, setSanityPct] = useState(user?.threshold_sanity_pct ?? 30);
-  const IDLE_FIELD_RECOMPUTE = { running: false, current: 0, total: 0, result: null as number | null };
+  const IDLE_FIELD_RECOMPUTE = { running: false, current: 0, total: 0, result: null as number | null, error: false };
   const [fieldRecompute, setFieldRecompute] = useState<Record<ThresholdFieldName, typeof IDLE_FIELD_RECOMPUTE>>({
     ftp: IDLE_FIELD_RECOMPUTE,
     critical_run_power: IDLE_FIELD_RECOMPUTE,
@@ -171,14 +172,19 @@ export function BestEffortsTab() {
   const recomputeElapsed = useElapsedSeconds(recomputeRunning);
 
   const startStatsRecompute = useCallback(async () => {
-    setStatsRecompute({ running: true, current: 0, total: 0, updated: null });
-    for await (const event of recomputeStatsStream(user!.id)) {
-      if (event.type === "progress") {
-        setStatsRecompute(s => ({ ...s, current: event.current, total: event.total }));
-      } else {
-        setStatsRecompute({ running: false, current: event.updated, total: event.updated, updated: event.updated });
-        qc.invalidateQueries({ queryKey: ["activities"] });
+    setStatsRecompute({ running: true, current: 0, total: 0, updated: null, error: false });
+    try {
+      for await (const event of recomputeStatsStream(user!.id)) {
+        if (event.type === "progress") {
+          setStatsRecompute(s => ({ ...s, current: event.current, total: event.total }));
+        } else {
+          setStatsRecompute({ running: false, current: event.updated, total: event.updated, updated: event.updated, error: false });
+          qc.invalidateQueries({ queryKey: ["activities"] });
+        }
       }
+    }
+    catch {
+      setStatsRecompute(s => ({ ...s, running: false, error: true }));
     }
   }, [user, qc]);
 
@@ -218,16 +224,25 @@ export function BestEffortsTab() {
   });
 
   const startFieldRecompute = useCallback(async (field: ThresholdFieldName) => {
-    setFieldRecompute(s => ({ ...s, [field]: { running: true, current: 0, total: 0, result: null } }));
-    for await (const event of recomputeThresholdHistoryStream(user!.id, field)) {
-      if (event.type === "progress") {
-        setFieldRecompute(s => ({ ...s, [field]: { ...s[field], current: event.current, total: event.total } }));
-      } else {
-        setFieldRecompute(s => ({ ...s, [field]: { running: false, current: event.total, total: event.total, result: event.total } }));
-        qc.invalidateQueries({ queryKey: ["activities"] });
-        qc.invalidateQueries({ queryKey: ["thresholds", user!.id] });
-        qc.invalidateQueries({ queryKey: ["threshold-history", user!.id, field] });
+    setFieldRecompute(s => ({ ...s, [field]: { running: true, current: 0, total: 0, result: null, error: false } }));
+    try {
+      for await (const event of recomputeThresholdHistoryStream(user!.id, field)) {
+        if (event.type === "progress") {
+          setFieldRecompute(s => ({ ...s, [field]: { ...s[field], current: event.current, total: event.total } }));
+        } else {
+          setFieldRecompute(s => ({
+            ...s, [field]: { running: false, current: event.total, total: event.total, result: event.total, error: false },
+          }));
+          qc.invalidateQueries({ queryKey: ["activities"] });
+          qc.invalidateQueries({ queryKey: ["thresholds", user!.id] });
+          qc.invalidateQueries({ queryKey: ["threshold-history", user!.id, field] });
+        }
       }
+    }
+    catch {
+      // Not rethrown - startAllFieldsRecompute's sequence should still try the remaining
+      // fields rather than aborting entirely because one connection dropped.
+      setFieldRecompute(s => ({ ...s, [field]: { ...s[field], running: false, error: true } }));
     }
   }, [user, qc]);
 
@@ -397,6 +412,9 @@ export function BestEffortsTab() {
         {statsRecompute.updated != null && !statsRecompute.running && (
           <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0 }}>Updated {statsRecompute.updated} activities</p>
         )}
+        {statsRecompute.error && (
+          <p style={{ fontSize: 13, color: "var(--danger,#e04040)", margin: 0 }}>Recompute failed. Try again.</p>
+        )}
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -521,6 +539,9 @@ export function BestEffortsTab() {
                   <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>
                     {state.result === 0 ? "No qualifying efforts found." : `Ledger rebuilt — ${state.result} change${state.result === 1 ? "" : "s"} recorded.`}
                   </p>
+                )}
+                {state.error && (
+                  <p style={{ fontSize: 12, color: "var(--danger,#e04040)", margin: 0 }}>Recompute failed. Try again.</p>
                 )}
               </div>
             );
