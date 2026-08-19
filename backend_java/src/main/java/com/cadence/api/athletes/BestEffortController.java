@@ -6,10 +6,11 @@ import com.cadence.api.activities.BestEffortRepository;
 import com.cadence.api.activities.BestEffortRecomputeService;
 import com.cadence.api.athletes.dto.BestEffortListResponse;
 import com.cadence.api.athletes.dto.BestEffortResponse;
+import com.cadence.api.common.RecomputeLockRegistry;
+import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
-import java.io.IOException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -34,19 +35,23 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RestController
 public class BestEffortController {
 
+	private static final String LOCK_KIND = "best-efforts";
+
 	private final BestEffortRepository bestEffortRepository;
 	private final BestEffortRecomputeService recomputeService;
 	private final UserService userService;
 	private final AccessGuard accessGuard;
+	private final RecomputeLockRegistry lockRegistry;
 	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
 	public BestEffortController(BestEffortRepository bestEffortRepository,
 			BestEffortRecomputeService recomputeService, UserService userService,
-			AccessGuard accessGuard) {
+			AccessGuard accessGuard, RecomputeLockRegistry lockRegistry) {
 		this.bestEffortRepository = bestEffortRepository;
 		this.recomputeService = recomputeService;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
+		this.lockRegistry = lockRegistry;
 	}
 
 	@GetMapping("/v1/athletes/{id}/best-efforts")
@@ -111,12 +116,31 @@ public class BestEffortController {
 		bestEffortRepository.deleteByAthleteIdAndKindAndActivityId(id, kind, activityId);
 	}
 
+	/**
+	 * A full account can legitimately take hours (thousands of activities, each its own DB
+	 * round-trip) - seen for real in production. Two things that bit us there, both fixed here:
+	 * <ul>
+	 * <li>{@code SseEmitter}'s timeout is wall-clock, not an idle timer - a value long enough
+	 * for a quick account still eventually kills a slow one. {@code 0L} means no timeout at
+	 * all (see {@code jakarta.servlet.AsyncContext#setTimeout}'s Javadoc: "A timeout value of
+	 * zero or less indicates no timeout" - Spring's SseEmitter passes its constructor value
+	 * straight through to this).</li>
+	 * <li>The background task isn't tied to this connection's lifecycle at all - closing the
+	 * browser tab doesn't stop it. So a user who thinks a stalled/disconnected run died and
+	 * clicks the button again can end up with two runs racing on the same athlete's rows
+	 * (recomputeAll deletes-then-rewrites by id) - one loses with a Hibernate
+	 * StaleStateException. {@link RecomputeLockRegistry} rejects the second one instead.</li>
+	 * </ul>
+	 */
 	@PostMapping(value = "/v1/athletes/{id}/best-efforts/recompute", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public SseEmitter recompute(@PathVariable String id,
 			@RequestParam(required = false) BestEffortKind kind) {
 		accessGuard.requireWrite(id);
+		if (!lockRegistry.tryAcquire(LOCK_KIND, id)) {
+			throw new ConflictException("A best-efforts recompute is already running for this athlete.");
+		}
 		User athlete = userService.getById(id);
-		SseEmitter emitter = new SseEmitter(600_000L);
+		SseEmitter emitter = new SseEmitter(0L);
 
 		taskExecutor.execute(() -> {
 			try {
@@ -129,6 +153,8 @@ public class BestEffortController {
 				emitter.complete();
 			} catch (Exception e) {
 				emitter.completeWithError(e);
+			} finally {
+				lockRegistry.release(LOCK_KIND, id);
 			}
 		});
 
@@ -139,8 +165,10 @@ public class BestEffortController {
 		try {
 			emitter.send(SseEmitter.event()
 					.data("{\"current\":" + current + ",\"total\":" + total + "}"));
-		} catch (IOException e) {
-			// client disconnected — ignore, the emitter will complete with error naturally
+		} catch (Exception e) {
+			// Client disconnected (IOException), or the emitter already completed some other
+			// way (e.g. IllegalStateException) - either way the emitter itself will settle on
+			// its own; nothing here should interrupt the recompute loop still in progress.
 		}
 	}
 

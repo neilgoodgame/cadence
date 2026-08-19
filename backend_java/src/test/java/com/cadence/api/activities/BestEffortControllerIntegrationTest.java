@@ -1,11 +1,14 @@
 package com.cadence.api.activities;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.athletes.BestEffortController;
 import com.cadence.api.athletes.dto.BestEffortListResponse;
 import com.cadence.api.athletes.dto.BestEffortResponse;
+import com.cadence.api.common.RecomputeLockRegistry;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.support.IntegrationTest;
@@ -17,6 +20,7 @@ import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * Before native "4w"/"16w" periods existed, the frontend faked "16 weeks" by fetching the wider
@@ -40,6 +44,9 @@ class BestEffortControllerIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private ActivityRepository activityRepository;
+
+	@Autowired
+	private RecomputeLockRegistry lockRegistry;
 
 	@AfterEach
 	void clearAuthContext() {
@@ -94,5 +101,33 @@ class BestEffortControllerIntegrationTest extends IntegrationTest {
 
 		assertThat(response.data()).extracting(BestEffortResponse::activityId)
 				.containsExactlyInAnyOrder(recent1.getActivity().getId(), recent2.getActivity().getId());
+	}
+
+	@Test
+	void recomputeRejectsASecondConcurrentRunForTheSameAthlete() {
+		User athlete = newAthlete("recompute-lock@example.cc", 10);
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read", "activities:write"), AuthContext.CredentialKind.OAUTH2));
+
+		// Simulates a first recompute already in flight - the controller acquires this same
+		// lock synchronously, before the actual (async) work even starts, so this doesn't need
+		// a real background task to be genuinely racing to prove the rejection.
+		assertThat(lockRegistry.tryAcquire("best-efforts", athlete.getId())).isTrue();
+		try {
+			assertThatThrownBy(() -> bestEffortController.recompute(athlete.getId(), null))
+					.isInstanceOf(ConflictException.class);
+		}
+		finally {
+			lockRegistry.release("best-efforts", athlete.getId());
+		}
+	}
+
+	@Test
+	void recomputeSucceedsOnceThePreviousLockIsReleased() {
+		User athlete = newAthlete("recompute-lock-released@example.cc", 10);
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read", "activities:write"), AuthContext.CredentialKind.OAUTH2));
+
+		SseEmitter emitter = bestEffortController.recompute(athlete.getId(), null);
+
+		assertThat(emitter).isNotNull();
 	}
 }
