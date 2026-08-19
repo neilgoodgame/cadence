@@ -1017,6 +1017,29 @@ follow-ups:
 
 **Applied 2026-08-19**: confirmed new bundle (`index-DYe03oja.js`) live.
 
+## Step 15 - Closed the gap: duration-curve recompute
+
+**What & why:** Step 14 flagged duration curves as having no recompute
+path at all. Built one: extracted `DurationCurveComputeService` (shared by
+the upload pipeline and this new path, mirroring `BestEffortComputeService`
+exactly - `DurationCurveTasklet` now delegates instead of duplicating),
+new `DurationCurveRecomputeService` + `POST /v1/athletes/{id}/curves/
+recompute` (SSE, identical shape to the best-efforts endpoint), and a new
+"Recompute duration curves" section in Preferences - built with the
+elapsed-time/ETA feedback from the start this time, not bolted on after
+an incident.
+
+**Verified two ways before shipping**: new integration tests (backfills
+correctly, skips multisport parents, reports progress per activity), and
+live end-to-end locally - uploaded a real activity, deleted its
+`duration_curve` rows to simulate the import gap, called the new endpoint,
+confirmed both curves came back identical to the original.
+
+**Applied 2026-08-19**: backend deployed via `deploy-backend.sh` (image
+`sha-cc49afd`, confirmed running via `docker images` on the instance, not
+just `/healthz`) and frontend via the usual build/sync/invalidate
+(`index-BQDsVxGQ.js`), both halves together.
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
