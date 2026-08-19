@@ -1,16 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   updateAthlete,
-  getBestEffortRecomputeJob,
+  recomputeBestEffortsStream,
   recomputeStatsStream,
   recomputeThresholdHistoryStream,
-  startBestEffortRecompute,
   trimBestEfforts,
 } from "../../api/athletes";
 import { useAuth } from "../../auth/AuthContext";
-import { usePolling } from "../import/usePolling";
-import type { BestEffortKind, BestEffortRecomputeJob, ThresholdFieldName } from "../../api/types";
+import type { BestEffortKind, ThresholdFieldName } from "../../api/types";
 
 const THRESHOLD_FIELDS: { field: ThresholdFieldName; label: string }[] = [
   { field: "ftp", label: "FTP" },
@@ -47,50 +45,15 @@ const btnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-type RecomputeJobSeed = { data: BestEffortRecomputeJob; retryAfterSeconds: number | null };
-
 interface RecomputeState {
   activeKind: BestEffortKind | "all" | null;
-  seed: RecomputeJobSeed | null;
+  current: number;
+  total: number;
   result: string | null;
   error: boolean;
 }
 
-const IDLE: RecomputeState = { activeKind: null, seed: null, result: null, error: false };
-
-// Runs via a Celery job + polling (see api/athletes.ts's startBestEffortRecompute), not SSE -
-// a full account (thousands of activities) can take longer than gunicorn's sync-worker
-// timeout. Only mounted once a job has actually started (seed is non-null), matching the
-// ImportProgressDialog/ExportProgressDialog pattern in ExportTab.tsx - usePolling is a hook,
-// so it can't be called conditionally inside a callback, only via conditional rendering.
-function BestEffortRecomputeProgress({
-  athleteId,
-  seed,
-  onDone,
-}: {
-  athleteId: string;
-  seed: RecomputeJobSeed;
-  onDone: (job: BestEffortRecomputeJob) => void;
-}) {
-  const job = usePolling(
-    seed,
-    (jobId) => getBestEffortRecomputeJob(athleteId, jobId),
-    (j) => j.id,
-    (j) => j.status === "ready" || j.status === "failed",
-  );
-  const notified = useRef(false);
-  useEffect(() => {
-    if ((job.status === "ready" || job.status === "failed") && !notified.current) {
-      notified.current = true;
-      onDone(job);
-    }
-  }, [job, onDone]);
-
-  if (job.total_items == null) {
-    return <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>;
-  }
-  return <ProgressBar current={job.processed_items} total={job.total_items} />;
-}
+const IDLE: RecomputeState = { activeKind: null, current: 0, total: 0, result: null, error: false };
 
 function ProgressBar({ current, total }: { current: number; total: number }) {
   const pct = total > 0 ? Math.round((current / total) * 100) : 0;
@@ -146,31 +109,30 @@ export function BestEffortsTab() {
   });
 
   const startRecompute = useCallback(async (kind?: BestEffortKind, saveFirst?: boolean) => {
-    setRecompute({ activeKind: kind ?? "all", seed: null, result: null, error: false });
+    setRecompute({ activeKind: kind ?? "all", current: 0, total: 0, result: null, error: false });
     try {
       if (saveFirst) {
         const updated = await updateAthlete(user!.id, { best_effort_top_n: effectiveTopN });
         setUser(updated);
       }
-      const seed = await startBestEffortRecompute(user!.id, kind);
-      setRecompute(s => ({ ...s, seed }));
-    } catch {
+      for await (const event of recomputeBestEffortsStream(user!.id, kind)) {
+        if (event.type === "progress") {
+          setRecompute(s => ({ ...s, current: event.current, total: event.total }));
+        }
+        else {
+          const label = kind ? KINDS.find(k => k.kind === kind)?.label ?? kind : "all";
+          setRecompute({
+            activeKind: null, current: 0, total: 0, error: false,
+            result: `Recomputed ${label} — ${event.processed} activities`,
+          });
+          qc.invalidateQueries({ queryKey: ["best-efforts"] });
+        }
+      }
+    }
+    catch {
       setRecompute(s => ({ ...s, activeKind: null, error: true }));
     }
-  }, [user, effectiveTopN, setUser]);
-
-  const handleRecomputeDone = useCallback((job: BestEffortRecomputeJob) => {
-    if (job.status === "failed") {
-      setRecompute({ activeKind: null, seed: null, result: null, error: true });
-      return;
-    }
-    setRecompute(s => {
-      const kind = s.activeKind;
-      const label = kind && kind !== "all" ? KINDS.find(k => k.kind === kind)?.label ?? kind : "all";
-      return { activeKind: null, seed: null, result: `Recomputed ${label} — ${job.processed_items} activities`, error: false };
-    });
-    qc.invalidateQueries({ queryKey: ["best-efforts"] });
-  }, [qc]);
+  }, [user, effectiveTopN, setUser, qc]);
 
   const recomputeRunning = recompute.activeKind !== null;
 
@@ -307,10 +269,10 @@ export function BestEffortsTab() {
           {recomputeRunning && recompute.activeKind === "all" ? "Working…" : "Recompute all"}
         </button>
 
-        {recompute.seed && (
-          <BestEffortRecomputeProgress athleteId={user.id} seed={recompute.seed} onDone={handleRecomputeDone} />
+        {recomputeRunning && recompute.total > 0 && (
+          <ProgressBar current={recompute.current} total={recompute.total} />
         )}
-        {recomputeRunning && !recompute.seed && (
+        {recomputeRunning && recompute.total === 0 && (
           <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>
         )}
         {recompute.result && !recomputeRunning && (
