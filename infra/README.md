@@ -977,6 +977,25 @@ until the underlying data actually started flowing. Fixed by duplicating
 the status display next to that button too. **Applied 2026-08-19**:
 confirmed new bundle (`index-5y2IZBuj.js`) live.
 
+**Still looked stuck afterward** - the same user tried again and reported
+it hanging on "Starting…" indefinitely. Before assuming another UI bug,
+checked whether it was actually still running: `AWS/EC2` `CPUUtilization`
+for the backend instance jumped from its ~0.5% baseline to ~30% exactly
+when they clicked, and `AWS/RDS` `CPUUtilization` for `cadence-staging`
+jumped from ~3% to ~12% in the same window - genuinely working, not hung.
+Root cause: `BestEffortRecomputeService#recomputeAll` processes one
+activity per DB transaction (fetch activity, fetch athlete, fetch every
+recorded sample, run the sliding-window calculation) - benchmarked live at
+~1.5-2.5s/activity against a 7-activity throwaway account. At the scale of
+a real account (thousands of activities) that's tens of minutes with the
+UI showing nothing but a static "Starting…" the whole time - indistinguishable
+from actually being stuck. Fixed by adding a ticking elapsed-time counter
+(visible before the first progress event even arrives) and a rough "~Nm
+left" ETA once there's a few seconds of real throughput to extrapolate
+from. **Applied 2026-08-19**: confirmed new bundle (`index-B-HKKPbZ.js`)
+live. The underlying slowness itself (sequential per-activity processing)
+is unresolved - flagged as a real future optimization, not fixed here.
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
