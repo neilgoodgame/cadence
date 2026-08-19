@@ -927,6 +927,22 @@ together. Worth remembering for the CI/CD pipeline in "Next" below: it
 should ship both halves of a change atomically, or at least make it
 obvious when one has shipped without the other.
 
+## Step 12 - Enforcement: block export/import for unverified accounts
+
+**What & why:** `email_verified` existed since Step 9 but nothing checked
+it - added the enforcement half (`UserService.requireEmailVerified`,
+`POST /v1/export` and `POST /v1/import` now 403 for an unverified athlete).
+Applied Step 11's lesson this time: deployed **both halves together**,
+backend via `deploy-backend.sh` (image `sha-ab6c601`, the same
+SSM-parameter-restart mechanism Step 8 built, not `user_data` - Step 10's
+fix doesn't apply here since this deploy path was never broken) and
+frontend via the same manual `build`/`s3 sync`/`invalidate` steps as Step
+11.
+
+**Applied 2026-08-19**: verified both independently - a real unverified
+signup against the live API got 403 on `/v1/export`, and `curl`-ing the
+live frontend confirmed it serves the new bundle (`index-DiG09Uca.js`).
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
