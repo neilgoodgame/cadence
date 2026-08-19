@@ -892,6 +892,41 @@ inspecting the instance's actual files/running image after a change, not
 just `/healthz`. A healthy old process and a healthy new one are
 indistinguishable from outside.
 
+## Step 11 - Frontend deploy for the email-verification UI
+
+**What & why:** Step 9/10 deployed the *backend* half of the email-
+verification feature and verified it thoroughly, but the frontend half
+(`VerifyEmailScreen`, the resend banner in `AppShell`) was never actually
+built and pushed - frontend deploys are still the manual step noted since
+the original Step 6 build, not something `deploy-backend.sh` (or anything
+else) does automatically. Backend-only verification (`/healthz`, `curl`
+against the API directly) can't catch this class of gap - the API was
+correct the whole time, nothing in the frontend build pipeline failed, the
+new S3 objects simply hadn't been pushed yet. Caught only because a real
+signup on the live site showed no banner at all.
+
+Ran the exact steps this file has documented since Step 6:
+```
+cd frontend
+npm ci
+VITE_API_BASE_URL=https://api.cadence.bioinform.co.uk npm run build
+aws s3 sync dist/ s3://cadence-staging-frontend-423351912929 --delete
+aws cloudfront create-invalidation --distribution-id E20TKS0GHWLARX --paths '/*'
+```
+
+**Applied 2026-08-19**: build succeeded, sync uploaded the new bundle
+(`index-Bz59Yg33.js`) and deleted the 3 stale asset files, invalidation
+completed. Verified by `curl`-ing the live site and confirming the HTML
+now references the new bundle filename, not just that the invalidation API
+call returned success.
+
+**Lesson**: a feature that touches both backend and frontend isn't actually
+deployed until both halves are - "the API works" and "the app works" are
+separate claims, and this repo doesn't yet have anything that deploys them
+together. Worth remembering for the CI/CD pipeline in "Next" below: it
+should ship both halves of a change atomically, or at least make it
+obvious when one has shipped without the other.
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
