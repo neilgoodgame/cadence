@@ -996,6 +996,27 @@ from. **Applied 2026-08-19**: confirmed new bundle (`index-B-HKKPbZ.js`)
 live. The underlying slowness itself (sequential per-activity processing)
 is unresolved - flagged as a real future optimization, not fixed here.
 
+## Step 14 - Same import gap, two more places: best-efforts copy, duration curves
+
+**What & why:** the best-efforts-after-import gap (Step 13) turned out to
+be one instance of a general pattern: `ImportReader` restores raw data but
+never re-runs any step of the upload batch pipeline
+(`parseFile→thresholdHistory→computeDerivedStats→durationCurve→bestEffort→
+workoutMatch`) except carrying threshold-history rows over as-is. Two
+follow-ups:
+- Best-efforts section copy now says imported activities need a recompute
+  too (derived-stats copy already said this for itself).
+- A real user hit it live for duration curves specifically
+  (`act_q8v2x426pgbak2`, restored from an export, showed no power/HR
+  curves) - confirmed `DurationCurveTasklet` has the identical gap.
+  Fixed the resulting display bug (`CurvesTab.tsx` showed "Loading…"
+  forever for genuinely-empty data, indistinguishable from a real hang).
+- **Not fixed**: duration curves have no recompute path at all, unlike
+  best efforts/derived stats which both have a real service+endpoint+UI
+  button. Backfilling them for existing activities needs new work.
+
+**Applied 2026-08-19**: confirmed new bundle (`index-DYe03oja.js`) live.
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
