@@ -962,6 +962,21 @@ same screen already used correctly (`recomputeStatsStream`,
 steps, backend untouched. **Applied 2026-08-19**: `curl`-ed the live site
 and confirmed the new bundle (`index-B976d0K8.js`) is served.
 
+**Follow-up the same day**: user reported the recompute "worked" but showed
+no progress bar. Before assuming a UI bug, verified the SSE fix itself
+actually streams in real time through CloudFront and isn't secretly
+buffered - uploaded 7 activities to a throwaway staging account (a sample
+marathon FIT file, re-uploaded until dedup kicked in) and `curl`'d the raw
+SSE response with per-line timestamps: progress events arrived every
+1-2.5s across an 11.6s run, confirming CloudFront forwards chunked
+responses as received (matches AWS's own docs - no special config needed).
+So the actual gap was UI placement: progress/result only rendered in the
+"Recompute best efforts" section, never next to the separate "Save &
+recompute all" button - pre-existing since before this fix, just invisible
+until the underlying data actually started flowing. Fixed by duplicating
+the status display next to that button too. **Applied 2026-08-19**:
+confirmed new bundle (`index-5y2IZBuj.js`) live.
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
