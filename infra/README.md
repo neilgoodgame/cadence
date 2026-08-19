@@ -1065,6 +1065,40 @@ flight. Saved as a memory note for future sessions, not just this file.
 **Applied 2026-08-19**: frontend-only fix (no backend restart needed - confirmed live,
 `index-CdjbVFKB.js`).
 
+## Step 17 - The real root cause: a 10-minute timeout and a race condition
+
+**What & why:** Step 16's client-side stall detection was a genuine improvement, but it was
+treating the symptom - the user retried the same recompute and hit a *second*, different
+stall (1850/2608 this time), still showing no error because their tab hadn't picked up the
+Step 16 fix yet. Investigated properly this time instead of assuming another deploy/staleness
+issue: CloudWatch showed the instance genuinely working (correlated CPU) right up until it
+wasn't, and the actual backend logs told the real story -
+`org.springframework.web.context.request.async.AsyncRequestTimeoutException` at almost
+exactly the 10-minute mark, preceded by a Hibernate `StaleStateException` on
+`delete from best_effort where id=?` (0 rows deleted, expected 1).
+
+Two real, distinct bugs, both fixed:
+- All four recompute SSE endpoints hardcoded `new SseEmitter(600_000L)` - a 10-minute
+  wall-clock timeout, not an idle timer. Any account slow enough to take longer than that
+  (this one: ~11s/activity under load, thousands of activities) was always going to hit this,
+  regardless of anything else being fixed. `0L` is the actual fix -
+  `jakarta.servlet.AsyncContext#setTimeout`'s own Javadoc: "a timeout value of zero or less
+  indicates no timeout" - verified before using it, not assumed.
+- The background task isn't tied to the SSE connection at all (by design - confirmed
+  navigating away doesn't stop it, see Step 16's write-up), so an athlete whose earlier run
+  *looked* dead and retries can end up with two runs racing on the same rows. New
+  `RecomputeLockRegistry` rejects a second concurrent recompute of the same kind for the same
+  athlete with a 409.
+
+**Verified live before shipping**: fired two genuinely concurrent recompute requests for the
+same local athlete - one `200`/`done`, the other a clean `409`, and a follow-up after the
+first completed succeeded normally.
+
+**Applied 2026-08-19**: confirmed nothing was running for the affected athlete first (EC2 CPU
+back to the ~0.45% idle baseline for 15+ minutes), asked before deploying per the standing
+practice above, then deployed (image `sha-79c80fd`, confirmed running via `docker images` on
+the instance).
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
