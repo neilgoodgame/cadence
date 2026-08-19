@@ -2,18 +2,11 @@ package com.cadence.api.uploads.batch;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
-import com.cadence.api.activities.BestEffortWindows;
-import com.cadence.api.activities.DurationCurve;
-import com.cadence.api.activities.DurationCurveMetric;
-import com.cadence.api.activities.DurationCurveRepository;
-import com.cadence.api.activities.calc.DurationCurveCalculator;
+import com.cadence.api.activities.DurationCurveComputeService;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.uploads.parsing.ParsedActivity;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
@@ -26,13 +19,13 @@ public class DurationCurveTasklet implements Tasklet {
 
 	private final UploadJobContextRegistry contextRegistry;
 	private final ActivityRepository activityRepository;
-	private final DurationCurveRepository durationCurveRepository;
+	private final DurationCurveComputeService computeService;
 
 	public DurationCurveTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
-			DurationCurveRepository durationCurveRepository) {
+			DurationCurveComputeService computeService) {
 		this.contextRegistry = contextRegistry;
 		this.activityRepository = activityRepository;
-		this.durationCurveRepository = durationCurveRepository;
+		this.computeService = computeService;
 	}
 
 	@Override
@@ -51,31 +44,8 @@ public class DurationCurveTasklet implements Tasklet {
 
 			List<Integer> powerSeries = segment.parsed().samples().stream().map(ParsedActivity.Sample::power).toList();
 			List<Integer> hrSeries = segment.parsed().samples().stream().map(ParsedActivity.Sample::heartrate).toList();
-			int n = powerSeries.size();
-
-			if (powerSeries.stream().anyMatch(Objects::nonNull)) {
-				writeCurve(activity, DurationCurveMetric.POWER, powerSeries, BestEffortWindows.POWER_CURVE_DURATIONS, n);
-			}
-			if (hrSeries.stream().anyMatch(Objects::nonNull)) {
-				writeCurve(activity, DurationCurveMetric.HEARTRATE, hrSeries, BestEffortWindows.HR_CURVE_DURATIONS, n);
-			}
+			computeService.computeForActivity(activity, powerSeries, hrSeries);
 		}
 		return RepeatStatus.FINISHED;
-	}
-
-	private void writeCurve(Activity activity, DurationCurveMetric metric, List<Integer> series, List<Integer> durations, int n) {
-		Map<Integer, Double> points = DurationCurveCalculator.compute(series, durations);
-		if (points.isEmpty()) {
-			return;
-		}
-		Map<String, Double> stringKeyedPoints = new LinkedHashMap<>();
-		points.forEach((duration, value) -> stringKeyedPoints.put(String.valueOf(duration), value));
-
-		DurationCurve curve = durationCurveRepository.findByActivityIdAndMetric(activity.getId(), metric).orElseGet(DurationCurve::new);
-		curve.setActivity(activity);
-		curve.setMetric(metric);
-		curve.setExtendsTo(n);
-		curve.setPoints(stringKeyedPoints);
-		durationCurveRepository.save(curve);
 	}
 }
