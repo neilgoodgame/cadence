@@ -72,6 +72,40 @@ async function* sseBlocks(response: Response): AsyncGenerator<{ event: string; d
   if (buffer.trim()) yield* parseBlock(buffer);
 }
 
+// Comfortably above the slowest single-activity latency actually observed in production
+// (~11s under load - see infra/README.md's Step 16) while still catching a genuine stall in
+// under a minute rather than however long a browser tab happens to stay open. A long-running
+// recompute's SSE connection can go quiet forever without the browser ever seeing a clean
+// network error - e.g. a backend deploy restarting the server process mid-stream doesn't
+// reliably propagate a TCP close through CloudFront, so `reader.read()` just never resolves.
+// Without this, `for await` on the raw stream suspends indefinitely: the UI keeps showing
+// whatever progress it last received (and, for sections with an elapsed-time counter, a timer
+// that keeps ticking regardless, since it's driven by the browser's own clock, not the
+// connection) - a dead connection dressed up as a slow one.
+const STALL_TIMEOUT_MS = 60_000;
+
+// Exported only for withStallTimeout.test.ts - every real call site above supplies
+// STALL_TIMEOUT_MS itself.
+export async function* withStallTimeout<T>(source: AsyncGenerator<T>, timeoutMs: number): AsyncGenerator<T> {
+  while (true) {
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`No update in over ${Math.round(timeoutMs / 1000)}s - connection lost.`)),
+        timeoutMs,
+      );
+    });
+    try {
+      const result = await Promise.race([source.next(), timeout]);
+      if (result.done) return;
+      yield result.value;
+    }
+    finally {
+      clearTimeout(timer!);
+    }
+  }
+}
+
 export type RecomputeBestEffortsEvent =
   | { type: "progress"; current: number; total: number }
   | { type: "done"; processed: number };
@@ -89,7 +123,7 @@ export async function* recomputeBestEffortsStream(
     `/v1/athletes/${athleteId}/best-efforts/recompute${toQueryString({ kind })}`,
     { method: "POST" },
   );
-  for await (const { event, data } of sseBlocks(response)) {
+  for await (const { event, data } of withStallTimeout(sseBlocks(response), STALL_TIMEOUT_MS)) {
     try {
       const parsed = JSON.parse(data);
       if (event === "done") yield { type: "done", processed: parsed.processed ?? 0 };
@@ -107,7 +141,7 @@ export type RecomputeCurvesEvent =
 // shape as recomputeBestEffortsStream above.
 export async function* recomputeCurvesStream(athleteId: string): AsyncGenerator<RecomputeCurvesEvent> {
   const response = await apiFetchStream(`/v1/athletes/${athleteId}/curves/recompute`, { method: "POST" });
-  for await (const { event, data } of sseBlocks(response)) {
+  for await (const { event, data } of withStallTimeout(sseBlocks(response), STALL_TIMEOUT_MS)) {
     try {
       const parsed = JSON.parse(data);
       if (event === "done") yield { type: "done", processed: parsed.processed ?? 0 };
@@ -122,7 +156,7 @@ export type RecomputeStatsEvent =
 
 export async function* recomputeStatsStream(athleteId: string): AsyncGenerator<RecomputeStatsEvent> {
   const response = await apiFetchStream(`/v1/athletes/${athleteId}/recompute-stats`, { method: "POST" });
-  for await (const { event, data } of sseBlocks(response)) {
+  for await (const { event, data } of withStallTimeout(sseBlocks(response), STALL_TIMEOUT_MS)) {
     try {
       const parsed = JSON.parse(data);
       if (event === "done") yield { type: "done", updated: parsed.updated ?? 0 };
@@ -172,7 +206,7 @@ export async function* recomputeThresholdHistoryStream(
     `/v1/athletes/${athleteId}/recompute-threshold-history${toQueryString({ field })}`,
     { method: "POST" },
   );
-  for await (const { event, data } of sseBlocks(response)) {
+  for await (const { event, data } of withStallTimeout(sseBlocks(response), STALL_TIMEOUT_MS)) {
     try {
       const parsed = JSON.parse(data);
       if (event === "done") yield { type: "done", total: parsed.total ?? 0 };
