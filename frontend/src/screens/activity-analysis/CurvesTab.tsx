@@ -43,7 +43,7 @@ function DurationCurveChart({
     const points = Object.entries(data.points)
       .map(([seconds, value]) => ({ seconds: Number(seconds), value }))
       .sort((a, b) => a.seconds - b.seconds);
-    if (points.length === 0) return null;
+    if (points.length === 0) return "empty" as const;
 
     const innerWidth = WIDTH - MARGIN.left - MARGIN.right;
     const innerHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
@@ -106,6 +106,20 @@ function DurationCurveChart({
 
   if (!chart) {
     return <div style={{ color: "var(--ink3)", fontSize: 13 }}>Loading…</div>;
+  }
+  if (chart === "empty") {
+    // Not just "no power/HR sensor for this activity" - an activity restored from an export
+    // never gets this data at all (DurationCurveTasklet only ever runs during the original
+    // upload, never during import), so this is also the state for every imported activity's
+    // curves regardless of what sensors it actually recorded.
+    return (
+      <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: "20px 22px" }}>
+        <div className="mono" style={{ fontSize: 11, letterSpacing: "0.08em", color, marginBottom: 8 }}>
+          {label.toUpperCase()} DURATION CURVE
+        </div>
+        <div style={{ color: "var(--ink3)", fontSize: 13 }}>No {label.toLowerCase()} data for this activity.</div>
+      </div>
+    );
   }
 
   const patternId = `beyond-hatch-${metric}`;
