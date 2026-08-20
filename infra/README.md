@@ -1099,6 +1099,28 @@ back to the ~0.45% idle baseline for 15+ minutes), asked before deploying per th
 practice above, then deployed (image `sha-79c80fd`, confirmed running via `docker images` on
 the instance).
 
+## Step 18 - Step 17's own fix had a real flaw: heartbeats
+
+**What & why:** the very next retry after Step 17's fix "failed" again - but this time
+CloudWatch showed the instance genuinely working the whole time (sustained CPU, zero backend
+errors), meaning the 60s client-side stall-timeout itself was the problem: it measures the
+gap between progress events, which has no upper bound since one item's real processing time
+can vary. No fixed threshold is safe against an item slow enough to exceed it.
+
+Real fix: `SseHeartbeat` sends a trivial named event on a fixed 20s interval, completely
+independent of real progress, added to all four recompute endpoints. This decouples "is the
+connection alive" (only needs to be longer than the heartbeat interval) from "how long does
+one item take" (unbounded, and no longer relevant to stall detection at all). Frontend's four
+stream parsers skip heartbeat events rather than misreading them as a progress reset.
+
+Also worth noting for the record: since the "failed" run was genuinely still working
+server-side, it most likely completed successfully in the background anyway, despite the
+false error shown - flagged to the user rather than assumed.
+
+**Applied 2026-08-20**: confirmed nothing running first (EC2 CPU idle baseline), asked before
+deploying per the standing practice, then deployed both halves together - backend (image
+`sha-55c027e`) and frontend (`index-5DPQjCYk.js`).
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a
