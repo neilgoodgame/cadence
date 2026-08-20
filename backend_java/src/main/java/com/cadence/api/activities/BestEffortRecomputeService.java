@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -94,7 +95,8 @@ public class BestEffortRecomputeService {
 			if (athlete == null) return null;
 			List<Record> records = recordRepository.findByActivityIdOrderByT(activityId);
 			if (records.isEmpty()) return null;
-			List<Integer> powerSeries = records.stream().map(Record::getPower).toList();
+			List<Integer> powerSeries = RunningPowerSanitizer.sanitize(
+					records.stream().map(Record::getPower).toList(), activity.getSport(), athlete.getMaxRunningPowerWatts());
 			List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
 			List<Integer> tSeries = records.stream().map(Record::getT).toList();
 			List<Double> distanceSeries = records.stream().map(Record::getDistanceKm).toList();

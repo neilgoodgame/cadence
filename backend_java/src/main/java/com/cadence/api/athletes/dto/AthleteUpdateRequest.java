@@ -11,6 +11,7 @@ public record AthleteUpdateRequest(
 		Integer maxHr,
 		Integer restingHr,
 		Integer bestEffortTopN,
+		Integer maxRunningPowerWatts,
 		Boolean renameMatchedActivities,
 		Boolean appendMatchDateToName,
 		Boolean copyMatchedWorkoutTags) {

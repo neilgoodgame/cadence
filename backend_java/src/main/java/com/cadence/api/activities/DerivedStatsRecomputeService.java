@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.activities.calc.TrimpCalculator;
 import com.cadence.api.athletes.Zone;
 import com.cadence.api.activities.calc.TssCalculator;
@@ -110,7 +111,8 @@ public class DerivedStatsRecomputeService {
 		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 		boolean changed = false;
 
-		List<Integer> powerSeries = records.stream().map(Record::getPower).toList();
+		List<Integer> powerSeries = RunningPowerSanitizer.sanitize(
+				records.stream().map(Record::getPower).toList(), activity.getSport(), athlete.getMaxRunningPowerWatts());
 		Integer maxPower = max(powerSeries);
 		if (maxPower != null) {
 			activity.setMaxPower(maxPower);

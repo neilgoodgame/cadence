@@ -1,6 +1,7 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.activities.calc.NormalizedPowerCalculator;
+import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.activities.calc.TssCalculator;
 import com.cadence.api.athletes.ZoneService;
 import com.cadence.api.common.domain.Sport;
@@ -79,7 +80,8 @@ public class TssRecomputeService {
 		// activity-level stat (which may be corrupt if Garmin's native power field overrode
 		// the Stryd developer field during upload, inflating the value 10–15x).
 		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
-		List<Integer> powerSeries = records.stream().map(Record::getPower).toList();
+		List<Integer> powerSeries = RunningPowerSanitizer.sanitize(
+				records.stream().map(Record::getPower).toList(), activity.getSport(), athlete.getMaxRunningPowerWatts());
 		Double normPower = powerSeries.stream().anyMatch(p -> p != null)
 				? NormalizedPowerCalculator.compute(powerSeries) : null;
 

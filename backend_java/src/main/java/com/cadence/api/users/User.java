@@ -70,6 +70,16 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "threshold_sanity_pct", nullable = false)
 	private int thresholdSanityPct = 30;
 
+	/** A running-power sample above this is treated as corrupt sensor data - not a real effort,
+	 * a glitch - and dropped before it reaches best efforts, duration curves, normalized power, or
+	 * threshold history. See RunningPowerSanitizer's Javadoc for the failure mode this guards
+	 * against (third-party footpods, Stryd in particular, occasionally emit single-sample power
+	 * readings in the thousands of watts with completely ordinary pace/cadence around them).
+	 * Cycling is unaffected - its power comes from the FIT spec's native field, not this
+	 * footpod-specific developer-field fallback. */
+	@Column(name = "max_running_power_watts", nullable = false)
+	private int maxRunningPowerWatts = 1000;
+
 	@Column(name = "is_coach", nullable = false)
 	private boolean coach = false;
 
@@ -236,6 +246,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setThresholdSanityPct(int thresholdSanityPct) {
 		this.thresholdSanityPct = thresholdSanityPct;
+	}
+
+	public int getMaxRunningPowerWatts() {
+		return maxRunningPowerWatts;
+	}
+
+	public void setMaxRunningPowerWatts(int maxRunningPowerWatts) {
+		this.maxRunningPowerWatts = maxRunningPowerWatts;
 	}
 
 	public boolean isCoach() {

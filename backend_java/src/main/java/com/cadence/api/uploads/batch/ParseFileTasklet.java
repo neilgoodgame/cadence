@@ -5,6 +5,7 @@ import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.DistanceSource;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
+import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.common.config.CadenceProperties;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.batch.core.ExitStatus;
@@ -106,7 +108,11 @@ public class ParseFileTasklet implements Tasklet {
 		// it was actually worn for (a single-activity upload keeps all of them, as before).
 		boolean multisport = parsedActivities.size() > 1;
 		Activity parent = null;
-		for (ParsedActivity parsed : parsedActivities) {
+		for (ParsedActivity rawParsed : parsedActivities) {
+			// Dropped here, before a Record is ever written, rather than left for a later
+			// recompute to clean up - see RunningPowerSanitizer's Javadoc for the failure mode
+			// (an implausible single-sample power spike a footpod occasionally emits).
+			ParsedActivity parsed = sanitizeRunningPower(rawParsed, upload.getAthlete().getMaxRunningPowerWatts());
 			boolean isChild = multisport && parent != null;
 			Activity activity = new Activity();
 			activity.setAthlete(upload.getAthlete());
@@ -158,5 +164,29 @@ public class ParseFileTasklet implements Tasklet {
 			context.addSegment(parsed, activity.getId());
 		}
 		return RepeatStatus.FINISHED;
+	}
+
+	/** Applies {@link RunningPowerSanitizer}'s ceiling to the in-memory samples before a Record row,
+	 * lap average, or any ingest-time derived stat is built from them - see its Javadoc for the
+	 * failure mode. Note this doesn't touch {@code parsed.laps()}' own avgPower (computed upstream
+	 * in FitFileParser from the unsanitized samples) - a lap containing a spike still reports a
+	 * skewed average; only the per-second series consumers (best efforts, duration curves,
+	 * normalized power, threshold history, the activity chart) are protected. */
+	private static ParsedActivity sanitizeRunningPower(ParsedActivity parsed, int maxRunningPowerWatts) {
+		if (parsed.sport() != Sport.RUN) {
+			return parsed;
+		}
+		List<Integer> sanitizedPower = RunningPowerSanitizer.sanitize(
+				parsed.samples().stream().map(ParsedActivity.Sample::power).toList(), parsed.sport(), maxRunningPowerWatts);
+		List<ParsedActivity.Sample> samples = new ArrayList<>(parsed.samples().size());
+		for (int i = 0; i < parsed.samples().size(); i++) {
+			ParsedActivity.Sample s = parsed.samples().get(i);
+			samples.add(new ParsedActivity.Sample(s.t(), s.lat(), s.lng(), s.altitude(), s.distanceKm(),
+					s.heartrate(), s.cadence(), sanitizedPower.get(i), s.speed(), s.airTemp(), s.humidity(),
+					s.coreTemp(), s.skinTemp(), s.heatStrain(), s.leftBalancePct()));
+		}
+		return new ParsedActivity(parsed.sport(), parsed.environment(), parsed.hasGps(), parsed.startDate(),
+				parsed.source(), parsed.device(), parsed.distanceSource(), samples, parsed.laps(),
+				parsed.aerobicTrainingEffect(), parsed.anaerobicTrainingEffect());
 	}
 }

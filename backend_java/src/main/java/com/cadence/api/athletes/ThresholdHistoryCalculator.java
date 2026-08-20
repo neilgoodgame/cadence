@@ -6,6 +6,7 @@ import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.calc.DurationCurveCalculator;
 import com.cadence.api.activities.calc.PaceBestEffortCalculator;
+import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.users.User;
 import jakarta.persistence.EntityManager;
@@ -66,12 +67,13 @@ public class ThresholdHistoryCalculator {
 	/** The value this one activity's own best effort implies for `field` - raw units (watts for
 	 * ftp/criticalRunPower, seconds/km for thresholdPace), or null if the activity has no
 	 * qualifying effort (e.g. too short for the field's window). */
-	private Double impliedValue(Activity activity, ThresholdField field) {
+	private Double impliedValue(Activity activity, User athlete, ThresholdField field) {
 		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 		if (records.isEmpty()) {
 			return null;
 		}
-		List<Integer> powerSeries = records.stream().map(Record::getPower).toList();
+		List<Integer> powerSeries = RunningPowerSanitizer.sanitize(
+				records.stream().map(Record::getPower).toList(), activity.getSport(), athlete.getMaxRunningPowerWatts());
 		List<Integer> tSeries = records.stream().map(Record::getT).toList();
 		List<Double> distanceKmSeries = records.stream().map(Record::getDistanceKm).toList();
 
@@ -155,7 +157,7 @@ public class ThresholdHistoryCalculator {
 
 		Candidate best = null;
 		for (Activity activity : activities) {
-			Double implied = impliedValue(activity, field);
+			Double implied = impliedValue(activity, athlete, field);
 			if (implied != null && withinSanityBand(implied, referenceValue, athlete.getThresholdSanityPct())
 					&& (best == null || isBetter(field, implied, best.impliedValue()))) {
 				best = new Candidate(activity.getId(), dateOf(activity), implied);
@@ -201,7 +203,7 @@ public class ThresholdHistoryCalculator {
 			LocalDate cutoff = activityDate.minusDays(athlete.getThresholdWindowDays());
 			window = window.stream().filter(c -> c.date().isAfter(cutoff)).collect(Collectors.toCollection(ArrayList::new));
 
-			Double implied = impliedValue(activity, field);
+			Double implied = impliedValue(activity, athlete, field);
 			if (implied != null && withinSanityBand(implied, currentValue, athlete.getThresholdSanityPct())) {
 				Candidate candidate = new Candidate(activity.getId(), activityDate, implied);
 				window = window.stream()
