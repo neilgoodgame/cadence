@@ -74,6 +74,13 @@ public class AthleteService {
 			athlete.setBestEffortTopN(n == 0 ? 0 : Math.max(1, Math.min(50, n)));
 			changed.add("bestEffortTopN");
 		}
+		if (request.maxRunningPowerWatts() != null) {
+			// Bounded well below a real footpod glitch (~1500W+ observed) and well above even an
+			// elite runner's sustained power, so an accidental extreme value here can't reopen the
+			// hole RunningPowerSanitizer exists to close.
+			athlete.setMaxRunningPowerWatts(Math.max(400, Math.min(2000, request.maxRunningPowerWatts())));
+			changed.add("maxRunningPowerWatts");
+		}
 		if (request.renameMatchedActivities() != null) {
 			athlete.setRenameMatchedActivities(request.renameMatchedActivities());
 		}

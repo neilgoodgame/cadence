@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.activities.dto.StreamsResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -56,7 +57,7 @@ public class StreamService {
 			if (!SCALAR_FIELDS.contains(field)) {
 				continue;
 			}
-			fields.put(field, extractValues(sampled, field));
+			fields.put(field, extractValues(sampled, field, activity));
 		}
 		return new StreamsResponse(resolution, fields);
 	}
@@ -69,10 +70,11 @@ public class StreamService {
 		return fields;
 	}
 
-	private List<?> extractValues(List<Record> records, String field) {
+	private List<?> extractValues(List<Record> records, String field, Activity activity) {
 		return switch (field) {
 			case "time" -> records.stream().map(Record::getT).toList();
-			case "power" -> records.stream().map(Record::getPower).toList();
+			case "power" -> RunningPowerSanitizer.sanitize(records.stream().map(Record::getPower).toList(),
+					activity.getSport(), activity.getAthlete().getMaxRunningPowerWatts());
 			case "heartrate" -> records.stream().map(Record::getHeartrate).toList();
 			case "cadence" -> records.stream().map(Record::getCadence).toList();
 			case "altitude" -> records.stream().map(Record::getAltitude).toList();

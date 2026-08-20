@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import com.cadence.api.athletes.Zone;
+import com.cadence.api.common.domain.Sport;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -238,5 +239,33 @@ class CalculatorsTest {
 		assertThat(TrainingEffectLabel.of(4.0)).isEqualTo("Highly Improving");
 		assertThat(TrainingEffectLabel.of(4.9)).isEqualTo("Highly Improving");
 		assertThat(TrainingEffectLabel.of(5.0)).isEqualTo("Overreaching");
+	}
+
+	@Test
+	void runningPowerSanitizerDropsSamplesOverTheCeiling() {
+		List<Integer> series = Arrays.asList(240, 245, 8826, 236, 243);
+		List<Integer> sanitized = RunningPowerSanitizer.sanitize(series, Sport.RUN, 1000);
+		assertThat(sanitized).containsExactly(240, 245, null, 236, 243);
+	}
+
+	@Test
+	void runningPowerSanitizerLeavesSamplesAtOrUnderTheCeilingAlone() {
+		List<Integer> series = List.of(240, 1000, 999);
+		assertThat(RunningPowerSanitizer.sanitize(series, Sport.RUN, 1000))
+				.containsExactly(240, 1000, 999);
+	}
+
+	@Test
+	void runningPowerSanitizerLeavesNullSamplesAlone() {
+		List<Integer> series = Arrays.asList((Integer) null, 240);
+		assertThat(RunningPowerSanitizer.sanitize(series, Sport.RUN, 1000))
+				.containsExactly(null, 240);
+	}
+
+	@Test
+	void runningPowerSanitizerIsANoOpForCycling() {
+		List<Integer> series = List.of(240, 8826, 236);
+		assertThat(RunningPowerSanitizer.sanitize(series, Sport.BIKE, 1000))
+				.containsExactly(240, 8826, 236);
 	}
 }

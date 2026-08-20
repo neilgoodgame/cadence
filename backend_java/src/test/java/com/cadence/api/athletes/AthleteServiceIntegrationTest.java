@@ -39,7 +39,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("no-zoneset@example.cc");
 
 		var recomputed = athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(recomputed).isEmpty();
 	}
@@ -54,7 +54,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		zoneSetRepository.save(zoneSet);
 
 		var recomputed = athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(recomputed).containsExactly(ZoneType.BIKE_POWER);
 	}
@@ -64,7 +64,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("weight@example.cc");
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, 71.5, null, null, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, 71.5, null, null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(athlete.getWeightKg()).isEqualTo(71.5);
 	}
@@ -74,7 +74,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("match-prefs@example.cc");
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, null, null, null, null, null, null, null, true, true, null));
+				new AthleteUpdateRequest(null, null, null, null, null, null, null, null, null, null, null, true, true, null));
 
 		assertThat(athlete.isRenameMatchedActivities()).isTrue();
 		assertThat(athlete.isAppendMatchDateToName()).isTrue();
@@ -87,7 +87,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		userRepository.save(athlete);
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, 71.5, null, null, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, 71.5, null, null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(athlete.isRenameMatchedActivities()).isTrue();
 		assertThat(athlete.isAppendMatchDateToName()).isFalse();
@@ -98,7 +98,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("copy-tags@example.cc");
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, null, null, null, null, null, null, null, null, null, true));
+				new AthleteUpdateRequest(null, null, null, null, null, null, null, null, null, null, null, null, null, true));
 
 		assertThat(athlete.isCopyMatchedWorkoutTags()).isTrue();
 	}
@@ -108,7 +108,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("manual-ledger@example.cc");
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null, null));
 
 		List<ThresholdHistory> entries = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(
 				athlete.getId(), ThresholdField.FTP);
@@ -124,10 +124,10 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		// actually edited - re-saving with the athlete's existing ftp must not insert a second entry.
 		User athlete = newAthlete("manual-ledger-resubmit@example.cc");
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null, null));
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, 70.0, 280, null, null, null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, 70.0, 280, null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(thresholdHistoryRepository
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(1);
@@ -138,7 +138,7 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("manual-ledger-pace@example.cc");
 
 		athleteService.updateProfile(athlete,
-				new AthleteUpdateRequest(null, null, null, null, null, "3:45", null, null, null, null, null, null, null));
+				new AthleteUpdateRequest(null, null, null, null, null, "3:45", null, null, null, null, null, null, null, null));
 
 		List<ThresholdHistory> entries = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(
 				athlete.getId(), ThresholdField.THRESHOLD_PACE);

@@ -16,6 +16,7 @@ public record UserResponse(
 		int bestEffortTopN,
 		int thresholdWindowDays,
 		int thresholdSanityPct,
+		int maxRunningPowerWatts,
 		boolean isCoach,
 		boolean isAdmin,
 		boolean renameMatchedActivities,
