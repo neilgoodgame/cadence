@@ -2,6 +2,7 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.DurationCurveResponse;
 import com.cadence.api.common.RecomputeLockRegistry;
+import com.cadence.api.common.SseHeartbeat;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
@@ -21,6 +22,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class CurveController {
 
 	private static final String LOCK_KIND = "curves";
+	private static final long HEARTBEAT_INTERVAL_SECONDS = 20;
 
 	private final ActivityService activityService;
 	private final DurationCurveRepository durationCurveRepository;
@@ -63,6 +65,8 @@ public class CurveController {
 		}
 		User athlete = userService.getById(id);
 		SseEmitter emitter = new SseEmitter(0L);
+		SseHeartbeat heartbeat = new SseHeartbeat(
+				() -> emitter.send(SseEmitter.event().name("heartbeat").data("{}")), HEARTBEAT_INTERVAL_SECONDS);
 
 		taskExecutor.execute(() -> {
 			try {
@@ -74,6 +78,7 @@ public class CurveController {
 			} catch (Exception e) {
 				emitter.completeWithError(e);
 			} finally {
+				heartbeat.close();
 				lockRegistry.release(LOCK_KIND, id);
 			}
 		});

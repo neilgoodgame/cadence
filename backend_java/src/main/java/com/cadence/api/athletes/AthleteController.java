@@ -12,6 +12,7 @@ import com.cadence.api.athletes.dto.ZoneSetReplaceRequest;
 import com.cadence.api.athletes.dto.ZoneSetReplaceResponse;
 import com.cadence.api.athletes.dto.ZoneSetResponse;
 import com.cadence.api.common.RecomputeLockRegistry;
+import com.cadence.api.common.SseHeartbeat;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.paging.DataListResponse;
@@ -40,6 +41,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 public class AthleteController {
+
+	private static final long HEARTBEAT_INTERVAL_SECONDS = 20;
 
 	private final UserService userService;
 	private final UserMapper userMapper;
@@ -133,6 +136,8 @@ public class AthleteController {
 		}
 		User athlete = userService.getById(id);
 		SseEmitter emitter = new SseEmitter(0L);
+		SseHeartbeat heartbeat = new SseHeartbeat(
+				() -> emitter.send(SseEmitter.event().name("heartbeat").data("{}")), HEARTBEAT_INTERVAL_SECONDS);
 
 		taskExecutor.execute(() -> {
 			try {
@@ -143,6 +148,7 @@ public class AthleteController {
 			} catch (Exception e) {
 				emitter.completeWithError(e);
 			} finally {
+				heartbeat.close();
 				lockRegistry.release("derived-stats", id);
 			}
 		});
@@ -206,6 +212,8 @@ public class AthleteController {
 		}
 		User athlete = userService.getById(id);
 		SseEmitter emitter = new SseEmitter(0L);
+		SseHeartbeat heartbeat = new SseHeartbeat(
+				() -> emitter.send(SseEmitter.event().name("heartbeat").data("{}")), HEARTBEAT_INTERVAL_SECONDS);
 
 		taskExecutor.execute(() -> {
 			try {
@@ -216,6 +224,7 @@ public class AthleteController {
 			} catch (Exception e) {
 				emitter.completeWithError(e);
 			} finally {
+				heartbeat.close();
 				lockRegistry.release(lockKind, id);
 			}
 		});
