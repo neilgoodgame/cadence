@@ -124,6 +124,10 @@ export async function* recomputeBestEffortsStream(
     { method: "POST" },
   );
   for await (const { event, data } of withStallTimeout(sseBlocks(response), STALL_TIMEOUT_MS)) {
+    // Unrelated to real progress - just proves the connection is still alive between
+    // progress events, since one item's real processing time has no upper bound (see
+    // SseHeartbeat.java's Javadoc for the incident this fixes).
+    if (event === "heartbeat") continue;
     try {
       const parsed = JSON.parse(data);
       if (event === "done") yield { type: "done", processed: parsed.processed ?? 0 };
@@ -142,6 +146,10 @@ export type RecomputeCurvesEvent =
 export async function* recomputeCurvesStream(athleteId: string): AsyncGenerator<RecomputeCurvesEvent> {
   const response = await apiFetchStream(`/v1/athletes/${athleteId}/curves/recompute`, { method: "POST" });
   for await (const { event, data } of withStallTimeout(sseBlocks(response), STALL_TIMEOUT_MS)) {
+    // Unrelated to real progress - just proves the connection is still alive between
+    // progress events, since one item's real processing time has no upper bound (see
+    // SseHeartbeat.java's Javadoc for the incident this fixes).
+    if (event === "heartbeat") continue;
     try {
       const parsed = JSON.parse(data);
       if (event === "done") yield { type: "done", processed: parsed.processed ?? 0 };
@@ -157,6 +165,10 @@ export type RecomputeStatsEvent =
 export async function* recomputeStatsStream(athleteId: string): AsyncGenerator<RecomputeStatsEvent> {
   const response = await apiFetchStream(`/v1/athletes/${athleteId}/recompute-stats`, { method: "POST" });
   for await (const { event, data } of withStallTimeout(sseBlocks(response), STALL_TIMEOUT_MS)) {
+    // Unrelated to real progress - just proves the connection is still alive between
+    // progress events, since one item's real processing time has no upper bound (see
+    // SseHeartbeat.java's Javadoc for the incident this fixes).
+    if (event === "heartbeat") continue;
     try {
       const parsed = JSON.parse(data);
       if (event === "done") yield { type: "done", updated: parsed.updated ?? 0 };
@@ -207,6 +219,10 @@ export async function* recomputeThresholdHistoryStream(
     { method: "POST" },
   );
   for await (const { event, data } of withStallTimeout(sseBlocks(response), STALL_TIMEOUT_MS)) {
+    // Unrelated to real progress - just proves the connection is still alive between
+    // progress events, since one item's real processing time has no upper bound (see
+    // SseHeartbeat.java's Javadoc for the incident this fixes).
+    if (event === "heartbeat") continue;
     try {
       const parsed = JSON.parse(data);
       if (event === "done") yield { type: "done", total: parsed.total ?? 0 };
