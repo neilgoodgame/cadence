@@ -74,6 +74,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
     queryFn: () => getCurves(activity.id, "heartrate"),
   });
   const best20MinHr = hrCurve?.points["1200"] != null ? Math.round(hrCurve.points["1200"]) : null;
+  const best60MinHr = hrCurve?.points["3600"] != null ? Math.round(hrCurve.points["3600"]) : null;
 
   // Bike-only: matches the scope of FtpCalculationMethod's own 20-min-test/60-min-direct choice
   // (running's equivalent, critical run power, is always the direct 60-min number - no 20-min
@@ -144,6 +145,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
           <Card title="HEART RATE" color="#e0442e">
             <Stat label="Max HR" value={activity.max_hr} unit="bpm" />
             <Stat label="Best 20 min" value={best20MinHr} unit="bpm" />
+            <Stat label="Best 60 min" value={best60MinHr} unit="bpm" />
             <Stat label="TRIMP" value={activity.trimp != null ? Math.round(activity.trimp) : null} />
             <Stat label="HR Reserve Avg" value={hrReservePct(activity, athlete)} unit="%" />
           </Card>
