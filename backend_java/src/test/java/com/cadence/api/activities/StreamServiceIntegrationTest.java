@@ -66,4 +66,46 @@ class StreamServiceIntegrationTest extends IntegrationTest {
 		List<List<Double>> latlng = (List<List<Double>>) streams.fields().get("latlng");
 		assertThat(latlng).containsExactly(List.of(51.5, -0.1));
 	}
+
+	@Test
+	void getStreamsPowerFieldDoesNotThrowLazyInitializationException() {
+		// Regression test: the "power" field looks up the athlete's maxRunningPowerWatts for
+		// RunningPowerSanitizer - activity.getAthlete() is a lazy proxy, and (unlike this test's
+		// own repository calls) StreamController -> StreamService isn't wrapped in a single
+		// transaction in production, so touching that proxy directly threw
+		// org.hibernate.LazyInitializationException: "no session" the first time this shipped.
+		User athlete = new User();
+		athlete.setEmail("power-stream-lazy-init@example.cc");
+		athlete.setName("Power Stream Lazy Init Tester");
+		athlete.setPassword("irrelevant-for-this-test");
+		athlete.setMaxRunningPowerWatts(1500);
+		userRepository.save(athlete);
+
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setHasGps(false);
+		activity.setName("Run for the power-stream lazy-init regression test");
+		activity.setStartDate(Instant.parse("2026-01-01T08:00:00Z"));
+		activityRepository.save(activity);
+
+		Record record = new Record();
+		record.setId(new RecordId(activity.getId(), activity.getStartDate()));
+		record.setActivity(activity);
+		record.setT(0);
+		record.setPower(2000); // above this athlete's ceiling - exercises RunningPowerSanitizer too
+		recordRepository.save(record);
+
+		// A fresh read, same as the controller's activityService.getActivity(id) - not the same
+		// Activity instance/session activityRepository.save(activity) above used, so its athlete
+		// association is a genuinely unloaded lazy proxy, same as in production.
+		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
+
+		assertThatCode(() -> streamService.getStreams(reloaded, "power", "high")).doesNotThrowAnyException();
+
+		var streams = streamService.getStreams(reloaded, "power", "high");
+		@SuppressWarnings("unchecked")
+		List<Integer> power = (List<Integer>) streams.fields().get("power");
+		assertThat(power).containsExactly((Integer) null);
+	}
 }
