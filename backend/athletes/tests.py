@@ -722,6 +722,27 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         self.assertIsNotNone(candidate)  # no reference yet - nothing to sanity-check against
         self.assertEqual(candidate.implied_value, round(0.95 * 500))
 
+    def test_sixty_min_direct_uses_raw_sixty_minute_power_not_the_twenty_minute_multiplier(self):
+        self.athlete.ftp_calculation_method = "sixty_min_direct"
+        self.athlete.save(update_fields=["ftp_calculation_method"])
+        self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=240, duration_seconds=3600)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        # The raw 60-min average (240), not 0.95 * 240 (228) - the twenty_min_test default's math.
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.implied_value, 240)
+
+    def test_sixty_min_direct_does_not_qualify_from_a_20_minute_effort(self):
+        self.athlete.ftp_calculation_method = "sixty_min_direct"
+        self.athlete.save(update_fields=["ftp_calculation_method"])
+        # Long enough for twenty_min_test, too short for a real 60-minute window.
+        self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=240, duration_seconds=1200)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertIsNone(candidate)
+
     def test_pace_lower_is_better(self):
         self.athlete.threshold_pace = "5:00"
         self.athlete.save(update_fields=["threshold_pace"])

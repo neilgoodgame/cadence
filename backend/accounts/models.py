@@ -28,6 +28,17 @@ class UserManager(BaseUserManager["User"]):
 class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     id_prefix = "usr"
 
+    # How threshold_history.py's _implied_value derives an implied FTP from a bike activity.
+    # twenty_min_test is the conventional estimate (best 20-min power * 0.95) - practical since it
+    # only needs a 20-minute qualifying effort, but assumes a fixed ~5% fade out to 60 minutes
+    # that doesn't hold for every athlete's actual power-duration curve. sixty_min_direct uses the
+    # best 60-minute power directly (FTP's own textbook definition, no multiplier), at the cost of
+    # only producing a candidate from activities long enough to have a real 60-minute window.
+    FTP_CALCULATION_METHOD_CHOICES = [
+        ("twenty_min_test", "20-minute test (best 20-min power x 0.95)"),
+        ("sixty_min_direct", "60-minute direct (best 60-min power)"),
+    ]
+
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=150)
     handle = models.CharField(max_length=50, unique=True, null=True, blank=True)
@@ -58,6 +69,9 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # more than this percentage is treated as an outlier (e.g. corrupt power-meter data) and
     # excluded from consideration - see threshold_history.py's _within_sanity_band.
     threshold_sanity_pct = models.PositiveSmallIntegerField(default=30)
+    ftp_calculation_method = models.CharField(
+        max_length=20, choices=FTP_CALCULATION_METHOD_CHOICES, default="twenty_min_test"
+    )
     # Auto-match naming preferences (uploads/processing.py's attempt_workout_match) - both
     # default off so existing device-derived activity names are untouched unless opted in.
     # append_match_date_to_name only has an effect when rename_matched_activities is also on.

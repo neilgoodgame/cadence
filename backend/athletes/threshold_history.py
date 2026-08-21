@@ -31,7 +31,9 @@ LOWER_IS_BETTER = {"threshold_pace"}
 FTP_TEST_MULTIPLIER = 0.95
 FTP_TEST_WINDOW_SECONDS = 1200
 # Running threshold (both critical_run_power and threshold_pace) is conventionally estimated
-# directly from a sustained ~1-hour effort - no multiplier, unlike bike's 20-minute test.
+# directly from a sustained ~1-hour effort - no multiplier, unlike bike's 20-minute test. Also
+# reused for FTP under ftp_calculation_method="sixty_min_direct" - same window, same "direct, no
+# multiplier" reasoning, just applied to bike power instead of running.
 RUNNING_THRESHOLD_WINDOW_SECONDS = 3600
 
 
@@ -113,6 +115,9 @@ def _implied_value(activity: Activity, field: str) -> float | None:
     distance_km_series = [r[2] for r in records]
 
     if field == "ftp":
+        if activity.athlete.ftp_calculation_method == "sixty_min_direct":
+            best_60min = _sliding_window_best_avg(power_series, RUNNING_THRESHOLD_WINDOW_SECONDS)
+            return round(best_60min) if best_60min is not None else None
         best_20min = _sliding_window_best_avg(power_series, FTP_TEST_WINDOW_SECONDS)
         return round(FTP_TEST_MULTIPLIER * best_20min) if best_20min is not None else None
     if field == "critical_run_power":
