@@ -145,6 +145,18 @@ public class ThresholdHistoryService {
 		}
 		ThresholdHistory latest = thresholdHistoryRepository
 				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
+		// "Current" (summaryFor/ledgerFor/isStale) is whichever row has the latest effective_from,
+		// not whichever was inserted most recently - so a candidate dated *before* the existing
+		// current entry could never actually become current, however different its value. Recording
+		// it anyway is worse than a no-op: it's a dead row that silently re-inserts itself (with a
+		// new id) every time the ingest hook or a manual refresh re-evaluates the same activity,
+		// since its value keeps comparing as "different" from the still-unbeaten current entry.
+		// Seen for real: a stale manually-entered FTP (255W, no source activity) permanently
+		// outranked a genuine 225W ride-based candidate dated three weeks earlier, and every
+		// re-trigger added another identical dead 225W row instead of just doing nothing.
+		if (latest != null && candidate.date().isBefore(latest.getEffectiveFrom())) {
+			return false;
+		}
 		Double latestValue = latest == null ? null
 				: field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(latest.getValuePace()) : latest.getValueNumeric().doubleValue();
 		if (Objects.equals(latestValue, candidate.impliedValue())) {

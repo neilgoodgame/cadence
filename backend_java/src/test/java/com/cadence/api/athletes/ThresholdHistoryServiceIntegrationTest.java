@@ -134,6 +134,31 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		assertThat(zoneService.referenceFor(athlete, ZoneType.BIKE_POWER, activity)).isEqualTo(250.0);
 	}
 
+	// Regression test for a real bug found live: a manually-entered value effective from today
+	// permanently outranks any activity-based candidate dated earlier than today, however
+	// different its value - recomputeAndRecord used to record it anyway, appending a dead row
+	// that could never actually become current (see summaryFor/ledgerFor: "current" is whichever
+	// row has the latest effective_from) and would keep re-inserting itself, with a new id, every
+	// time the ingest hook or a manual refresh re-evaluated the same activity. Seen for real: a
+	// stale manual FTP entry (255W) outranked a genuine 225W ride-based candidate dated three
+	// weeks earlier, and every re-trigger silently added another identical dead 225W row.
+	@Test
+	void refreshDoesNotRecordACandidateDatedBeforeTheCurrentEntry() {
+		User athlete = newAthlete("refresh-dated-before-current@example.cc");
+		thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 255, null);
+		// 237W best-20min * 0.95 FTP_TEST_MULTIPLIER = 225.15, rounds to 225 - deliberately
+		// different from the manual 255 so a naive value-only diff check would record it.
+		newPowerActivity(athlete, Instant.now().minus(30, java.time.temporal.ChronoUnit.DAYS), 237, 1200);
+
+		boolean changed = thresholdHistoryService.refreshField(athlete, ThresholdField.FTP);
+
+		assertThat(changed).isFalse();
+		List<ThresholdHistory> entries = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
+		assertThat(entries).hasSize(1);
+		assertThat(entries.get(0).getValueNumeric()).isEqualTo(255);
+	}
+
 	// Regression test for a real bug found live: deleteByAthleteIdAndField used to be a plain
 	// Spring Data derived method, whose removal is only pending in the persistence context until
 	// the next flush - but replayFullHistory's entityManager.clear() (called right after, inside
