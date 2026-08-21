@@ -159,6 +159,35 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 	}
 
 	@Test
+	void sixtyMinDirectUsesRawSixtyMinutePowerNotTheTwentyMinuteMultiplier() {
+		athlete = newAthlete("threshold-history-sixty-min@example.cc", 200);
+		athlete.setFtpCalculationMethod(FtpCalculationMethod.SIXTY_MIN_DIRECT);
+		athlete = userRepository.save(athlete);
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-15T07:00:00Z"), 240, 3600);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 6, 1));
+
+		// The raw 60-min average (240), not 0.95 * 240 (228) - the TWENTY_MIN_TEST default's math.
+		assertThat(candidate).isNotNull();
+		assertThat(candidate.impliedValue()).isEqualTo(240);
+	}
+
+	@Test
+	void sixtyMinDirectDoesNotQualifyFromA20MinuteEffort() {
+		athlete = newAthlete("threshold-history-sixty-min-short@example.cc", 200);
+		athlete.setFtpCalculationMethod(FtpCalculationMethod.SIXTY_MIN_DIRECT);
+		athlete = userRepository.save(athlete);
+		// Long enough for TWENTY_MIN_TEST, too short for a real 60-minute window.
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-15T07:00:00Z"), 240, 1200);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 6, 1));
+
+		assertThat(candidate).isNull();
+	}
+
+	@Test
 	void paceLowerIsBetter() {
 		athlete = newAthlete("threshold-history-pace@example.cc", null);
 		athlete.setThresholdPace("5:00");

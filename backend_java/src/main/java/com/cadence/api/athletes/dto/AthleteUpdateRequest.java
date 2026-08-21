@@ -1,5 +1,7 @@
 package com.cadence.api.athletes.dto;
 
+import com.cadence.api.athletes.FtpCalculationMethod;
+
 public record AthleteUpdateRequest(
 		String name,
 		Integer age,
@@ -12,6 +14,7 @@ public record AthleteUpdateRequest(
 		Integer restingHr,
 		Integer bestEffortTopN,
 		Integer maxRunningPowerWatts,
+		FtpCalculationMethod ftpCalculationMethod,
 		Boolean renameMatchedActivities,
 		Boolean appendMatchDateToName,
 		Boolean copyMatchedWorkoutTags) {

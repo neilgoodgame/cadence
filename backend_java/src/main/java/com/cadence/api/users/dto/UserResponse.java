@@ -1,5 +1,7 @@
 package com.cadence.api.users.dto;
 
+import com.cadence.api.athletes.FtpCalculationMethod;
+
 public record UserResponse(
 		String id,
 		String name,
@@ -17,6 +19,7 @@ public record UserResponse(
 		int thresholdWindowDays,
 		int thresholdSanityPct,
 		int maxRunningPowerWatts,
+		FtpCalculationMethod ftpCalculationMethod,
 		boolean isCoach,
 		boolean isAdmin,
 		boolean renameMatchedActivities,

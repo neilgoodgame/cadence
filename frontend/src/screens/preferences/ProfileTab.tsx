@@ -96,6 +96,7 @@ export function ProfileTab() {
     lthr: user?.lthr ?? undefined,
     max_hr: user?.max_hr ?? undefined,
     resting_hr: user?.resting_hr ?? undefined,
+    ftp_calculation_method: user?.ftp_calculation_method ?? undefined,
   });
 
   const mutation = useMutation({
@@ -148,6 +149,18 @@ export function ProfileTab() {
               value={form.ftp ?? ""}
               onChange={(e) => setForm({ ...form, ftp: Number(e.target.value) })}
             />
+          </Field>
+          <Field label="FTP calculation method">
+            <select
+              style={inputStyle}
+              value={form.ftp_calculation_method ?? "twenty_min_test"}
+              onChange={(e) =>
+                setForm({ ...form, ftp_calculation_method: e.target.value as AthleteUpdate["ftp_calculation_method"] })
+              }
+            >
+              <option value="twenty_min_test">20-minute test (best 20-min power × 0.95)</option>
+              <option value="sixty_min_direct">60-minute direct (best 60-min power)</option>
+            </select>
           </Field>
           <Field label="Critical run power" unit="W">
             <input

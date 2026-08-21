@@ -1,5 +1,6 @@
 package com.cadence.api.users;
 
+import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -79,6 +80,11 @@ public class User extends PrefixedIdEntity {
 	 * footpod-specific developer-field fallback. */
 	@Column(name = "max_running_power_watts", nullable = false)
 	private int maxRunningPowerWatts = 1000;
+
+	/** How ThresholdHistoryCalculator derives an implied FTP from a bike activity - see
+	 * FtpCalculationMethod's Javadoc for the tradeoff between its two values. */
+	@Column(name = "ftp_calculation_method", nullable = false)
+	private FtpCalculationMethod ftpCalculationMethod = FtpCalculationMethod.TWENTY_MIN_TEST;
 
 	@Column(name = "is_coach", nullable = false)
 	private boolean coach = false;
@@ -254,6 +260,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setMaxRunningPowerWatts(int maxRunningPowerWatts) {
 		this.maxRunningPowerWatts = maxRunningPowerWatts;
+	}
+
+	public FtpCalculationMethod getFtpCalculationMethod() {
+		return ftpCalculationMethod;
+	}
+
+	public void setFtpCalculationMethod(FtpCalculationMethod ftpCalculationMethod) {
+		this.ftpCalculationMethod = ftpCalculationMethod;
 	}
 
 	public boolean isCoach() {
