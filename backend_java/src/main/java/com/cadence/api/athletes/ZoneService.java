@@ -27,6 +27,23 @@ public class ZoneService {
 			new Zone("Z4 Threshold", 91, 105),
 			new Zone("Z5 VO2max", 106, 150));
 
+	/** Jack Daniels' five training paces (Daniels' Running Formula), not the generic
+	 * power/HR table above - reusing that table for pace via ZoneRange's reciprocal transform
+	 * (see the frontend's lib/zones.ts) stretches disproportionately at the easy end, since
+	 * inverting a % is nonlinear. Percentages here are %-of-threshold-pace *effort* (matching
+	 * every other zone type's "higher % = harder" convention - a real pace comes from
+	 * reference / (pct / 100)), calibrated from Daniels' published VDOT tables so a runner's own
+	 * Threshold pace lands inside the Threshold band, not at one of its edges. Daniels' own
+	 * Threshold pace is itself defined as roughly a 60-minute effort - the same window this app's
+	 * own threshold_pace/critical_run_power already use, so the mapping is a natural fit, not an
+	 * approximation layered on top of an unrelated definition. */
+	public static final List<Zone> DEFAULT_PACE_ZONES = List.of(
+			new Zone("Easy", 0, 83),
+			new Zone("Marathon", 84, 93),
+			new Zone("Threshold", 94, 101),
+			new Zone("Interval", 102, 109),
+			new Zone("Repetition", 110, 150));
+
 	private final ZoneSetRepository zoneSetRepository;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
 
@@ -41,7 +58,7 @@ public class ZoneService {
 					ZoneSet zoneSet = new ZoneSet();
 					zoneSet.setAthlete(athlete);
 					zoneSet.setType(type);
-					zoneSet.setZones(DEFAULT_ZONES);
+					zoneSet.setZones(type == ZoneType.PACE ? DEFAULT_PACE_ZONES : DEFAULT_ZONES);
 					return zoneSetRepository.save(zoneSet);
 				});
 	}

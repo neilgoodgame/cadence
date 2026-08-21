@@ -111,4 +111,24 @@ class ZoneServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("zone-reference-null-activity@example.cc");
 		assertThat(zoneService.referenceFor(athlete, ZoneType.BIKE_POWER, null)).isEqualTo(250.0);
 	}
+
+	@Test
+	void freshPaceZoneSetUsesDanielsTableNotTheGenericOne() {
+		User athlete = newAthlete("zone-default-pace@example.cc");
+
+		ZoneSet paceZones = zoneService.getOrCreate(athlete, ZoneType.PACE);
+
+		assertThat(paceZones.getZones()).isEqualTo(ZoneService.DEFAULT_PACE_ZONES);
+		assertThat(paceZones.getZones()).extracting(Zone::name)
+				.containsExactly("Easy", "Marathon", "Threshold", "Interval", "Repetition");
+	}
+
+	@Test
+	void freshBikePowerZoneSetStillUsesTheGenericTable() {
+		User athlete = newAthlete("zone-default-bike@example.cc");
+
+		ZoneSet bikeZones = zoneService.getOrCreate(athlete, ZoneType.BIKE_POWER);
+
+		assertThat(bikeZones.getZones()).isEqualTo(ZoneService.DEFAULT_ZONES);
+	}
 }
