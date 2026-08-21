@@ -77,6 +77,28 @@ class FitFileParserTest {
 	}
 
 	@Test
+	void coreTemperatureComesFromTheNativeFitFieldWhenNoDeveloperFieldIsPresent() throws IOException {
+		// Zwift's export: core_temperature isn't a developer field here at all (confirmed
+		// directly against the fixture's field_description messages - only skin_temperature,
+		// core_data_quality, core_reserved, and heat_strain_index are declared) - the CORE
+		// sensor's actual core-temp reading instead comes through Garmin's later-added native
+		// FIT field, record.core_temperature (RecordMesg#getCoreTemperature).
+		try (InputStream in = getClass().getClassLoader().getResourceAsStream("fit-fixtures/indoor_ride_zwift_core_sensor.fit")) {
+			assertThat(in).isNotNull();
+			var parsed = FitFileParser.parse(in);
+
+			ParsedActivity result = parsed.get(0);
+			assertThat(result.samples().get(0).coreTemp()).isEqualTo(37.0);
+			assertThat(result.samples()).allSatisfy(s -> {
+				if (s.coreTemp() != null) {
+					assertThat(s.coreTemp()).isBetween(37.0, 38.64);
+				}
+			});
+			assertThat(result.samples()).anySatisfy(s -> assertThat(s.coreTemp()).isNotNull());
+		}
+	}
+
+	@Test
 	void leftBalancePctConvertsRightFlaggedValueToLeftPercent() {
 		// 0x80 (right flag) | 62 (62% right) -> 38% left.
 		assertThat(FitFileParser.leftBalancePct((short) (0x80 | 62))).isEqualTo(38.0);

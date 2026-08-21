@@ -200,8 +200,20 @@ public final class FitFileParser {
 			// Stryd footpod developer fields: ambient temperature/humidity.
 			Double airTemp = developerFieldAsDouble(r, "Stryd Temperature");
 			Integer humidity = developerFieldAsInteger(r, "Stryd Humidity");
-			// CORE body-temperature sensor developer fields.
-			Double coreTemp = developerFieldAsDouble(r, "core_temperature");
+			// CORE body-temperature sensor. core_temperature was later promoted to an official
+			// native FIT field (record.core_temperature, RecordMesg#getCoreTemperature) - some
+			// exports (e.g. Zwift) write it there instead of as a developer field, so the native
+			// value takes precedence, same as `power` above. skin_temperature has no native FIT
+			// field equivalent, so it's developer-field-only.
+			//
+			// Deliberately not `r.getCoreTemperature() != null ? r.getCoreTemperature().doubleValue()
+			// : developerFieldAsDouble(...)`: a ternary with one primitive-typed branch (.doubleValue())
+			// and one boxed-typed branch unifies to primitive double, which unboxes *whichever* branch
+			// is chosen - including a null developerFieldAsDouble() result on the fallback path, an NPE
+			// this exact fixture's Stryd (no CORE sensor) case hit immediately. Same class of bug
+			// firstNonNull's own Javadoc already documents, just missed here on the first pass.
+			Double nativeCoreTemp = r.getCoreTemperature() != null ? (double) r.getCoreTemperature() : null;
+			Double coreTemp = nativeCoreTemp != null ? nativeCoreTemp : developerFieldAsDouble(r, "core_temperature");
 			Double skinTemp = developerFieldAsDouble(r, "skin_temperature");
 			Double heatStrain = developerFieldAsDouble(r, "heat_strain_index");
 			Double leftBalancePct = leftBalancePct(r.getLeftRightBalance());
