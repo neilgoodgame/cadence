@@ -2,6 +2,8 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.activities.dto.StreamsResponse;
+import com.cadence.api.users.User;
+import com.cadence.api.users.UserRepository;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -19,9 +21,11 @@ public class StreamService {
 			"air_temp", "humidity", "core_temp", "skin_temp", "heat_strain");
 
 	private final RecordRepository recordRepository;
+	private final UserRepository userRepository;
 
-	public StreamService(RecordRepository recordRepository) {
+	public StreamService(RecordRepository recordRepository, UserRepository userRepository) {
 		this.recordRepository = recordRepository;
+		this.userRepository = userRepository;
 	}
 
 	public StreamsResponse getStreams(Activity activity, String fieldsParam, String resolution) {
@@ -73,8 +77,14 @@ public class StreamService {
 	private List<?> extractValues(List<Record> records, String field, Activity activity) {
 		return switch (field) {
 			case "time" -> records.stream().map(Record::getT).toList();
+			// activity.getAthlete() is a lazy proxy and this method runs outside any open
+			// Hibernate session (StreamController isn't @Transactional) - touching it directly
+			// throws LazyInitializationException. Re-fetching by id (itself safe on a lazy proxy,
+			// unlike the full entity) is the same pattern BestEffortRecomputeService and friends
+			// already use instead of trusting a passed-in Activity's association to still be
+			// initialized.
 			case "power" -> RunningPowerSanitizer.sanitize(records.stream().map(Record::getPower).toList(),
-					activity.getSport(), activity.getAthlete().getMaxRunningPowerWatts());
+					activity.getSport(), maxRunningPowerWattsFor(activity));
 			case "heartrate" -> records.stream().map(Record::getHeartrate).toList();
 			case "cadence" -> records.stream().map(Record::getCadence).toList();
 			case "altitude" -> records.stream().map(Record::getAltitude).toList();
@@ -87,5 +97,14 @@ public class StreamService {
 			case "heat_strain" -> records.stream().map(Record::getHeatStrain).toList();
 			default -> List.of();
 		};
+	}
+
+	/** Only called for the "power" field, and only ever meaningfully used for RUN (see
+	 * RunningPowerSanitizer) - so a 1000W default on a lookup miss is inert either way, not a
+	 * real fallback value being applied. */
+	private int maxRunningPowerWattsFor(Activity activity) {
+		return userRepository.findById(activity.getAthlete().getId())
+				.map(User::getMaxRunningPowerWatts)
+				.orElse(1000);
 	}
 }
