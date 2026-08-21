@@ -47,6 +47,8 @@ public class ThresholdHistoryCalculator {
 	private static final int FTP_TEST_WINDOW_SECONDS = 1200;
 	// Running threshold (both criticalRunPower and thresholdPace) is conventionally estimated
 	// directly from a sustained ~1-hour effort - no multiplier, unlike bike's 20-minute test.
+	// Also reused for FTP under FtpCalculationMethod.SIXTY_MIN_DIRECT - same window, same "direct,
+	// no multiplier" reasoning, just applied to bike power instead of running.
 	private static final int RUNNING_THRESHOLD_WINDOW_SECONDS = 3600;
 
 	private final ActivityRepository activityRepository;
@@ -79,6 +81,10 @@ public class ThresholdHistoryCalculator {
 
 		return switch (field) {
 			case FTP -> {
+				if (athlete.getFtpCalculationMethod() == FtpCalculationMethod.SIXTY_MIN_DIRECT) {
+					Double best60Min = DurationCurveCalculator.bestAverage(powerSeries, RUNNING_THRESHOLD_WINDOW_SECONDS);
+					yield best60Min == null ? null : (double) Math.round(best60Min);
+				}
 				Double best20Min = DurationCurveCalculator.bestAverage(powerSeries, FTP_TEST_WINDOW_SECONDS);
 				yield best20Min == null ? null : (double) Math.round(FTP_TEST_MULTIPLIER * best20Min);
 			}

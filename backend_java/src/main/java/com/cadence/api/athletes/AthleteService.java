@@ -81,6 +81,14 @@ public class AthleteService {
 			athlete.setMaxRunningPowerWatts(Math.max(400, Math.min(2000, request.maxRunningPowerWatts())));
 			changed.add("maxRunningPowerWatts");
 		}
+		if (request.ftpCalculationMethod() != null) {
+			// Doesn't retroactively touch the existing ledger (same as maxRunningPowerWatts
+			// above) - only affects candidates computed from here on. The athlete can already
+			// rebuild history from scratch via the existing per-field Recompute tool if they
+			// want past entries re-evaluated under the new method too.
+			athlete.setFtpCalculationMethod(request.ftpCalculationMethod());
+			changed.add("ftpCalculationMethod");
+		}
 		if (request.renameMatchedActivities() != null) {
 			athlete.setRenameMatchedActivities(request.renameMatchedActivities());
 		}

@@ -1,3 +1,8 @@
+/** How the backend derives an implied FTP from a bike activity - "twenty_min_test" (best 20-min
+ * power * 0.95, the conventional estimate) or "sixty_min_direct" (best 60-min power directly,
+ * FTP's own textbook definition, no multiplier - needs a longer qualifying effort). */
+export type FtpCalculationMethod = "twenty_min_test" | "sixty_min_direct";
+
 export interface Athlete {
   id: string;
   name: string;
@@ -21,6 +26,7 @@ export interface Athlete {
   /** Optional - only used for the Karvonen heart-rate-reserve % stat on Activity Analysis. */
   resting_hr: number | null;
   best_effort_top_n: number;
+  ftp_calculation_method: FtpCalculationMethod;
   is_coach: boolean;
   is_admin: boolean;
   /** When an upload auto-matches a scheduled workout, replace the activity's name with the
@@ -241,6 +247,7 @@ export interface AthleteUpdate {
   max_hr?: number;
   resting_hr?: number;
   best_effort_top_n?: number;
+  ftp_calculation_method?: FtpCalculationMethod;
   rename_matched_activities?: boolean;
   append_match_date_to_name?: boolean;
   copy_matched_workout_tags?: boolean;
