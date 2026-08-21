@@ -75,6 +75,17 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
   });
   const best20MinHr = hrCurve?.points["1200"] != null ? Math.round(hrCurve.points["1200"]) : null;
 
+  // Bike-only: matches the scope of FtpCalculationMethod's own 20-min-test/60-min-direct choice
+  // (running's equivalent, critical run power, is always the direct 60-min number - no 20-min
+  // proxy to compare against).
+  const { data: powerCurve } = useQuery({
+    queryKey: ["activity-curve", activity.id, "power"],
+    queryFn: () => getCurves(activity.id, "power"),
+    enabled: activity.sport === "bike",
+  });
+  const best20MinPower = powerCurve?.points["1200"] != null ? Math.round(powerCurve.points["1200"]) : null;
+  const best60MinPower = powerCurve?.points["3600"] != null ? Math.round(powerCurve.points["3600"]) : null;
+
   const referenceWeightKg = activity.start_weight_kg ?? athlete.weight_kg;
   const avgWkg =
     activity.avg_power != null && referenceWeightKg ? (activity.avg_power / referenceWeightKg).toFixed(2) : null;
@@ -118,6 +129,8 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
             <Stat label="Max Power" value={activity.max_power} unit="w" />
             <Stat label="Avg Watts/kg" value={avgWkg} unit="w/kg" />
             <Stat label="Work" value={workKj?.toLocaleString() ?? null} unit="kJ" />
+            {activity.sport === "bike" && <Stat label="Best 20 min" value={best20MinPower} unit="w" />}
+            {activity.sport === "bike" && <Stat label="Best 60 min" value={best60MinPower} unit="w" />}
             {activity.avg_left_balance_pct != null && (
               <Stat
                 label="L/R Balance"
