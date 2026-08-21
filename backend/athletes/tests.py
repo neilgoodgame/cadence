@@ -12,7 +12,7 @@ from uploads.processing import _trim_kind_window
 
 from .models import BestEffortRecomputeJob, ThresholdHistory, ZoneSet
 from .threshold_history import current_window_value, is_stale, record_manual_value, refresh_field, replay_full_history
-from .zones import DEFAULT_ZONES, reference_for
+from .zones import DEFAULT_PACE_ZONES, DEFAULT_ZONES, reference_for
 
 
 def _bearer_client(user, scope="activities:read activities:write workouts:write calendar:write coach gear:write"):
@@ -172,6 +172,14 @@ class ZoneSetViewTests(TestCase):
         bike = next(z for z in data if z["type"] == "bike_power")
         self.assertEqual(bike["reference"], 250)
         self.assertEqual(bike["zones"], DEFAULT_ZONES)
+
+    def test_pace_lazily_seeds_daniels_zones_not_the_generic_table(self):
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/zones")
+        pace = next(z for z in response.json()["data"] if z["type"] == "pace")
+        self.assertEqual(pace["zones"], DEFAULT_PACE_ZONES)
+        self.assertEqual(
+            [z["name"] for z in pace["zones"]], ["Easy", "Marathon", "Threshold", "Interval", "Repetition"]
+        )
 
     def test_pace_reference_is_seconds_from_mmss(self):
         response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/zones")
