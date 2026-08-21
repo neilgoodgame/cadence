@@ -11,7 +11,7 @@ from authn.oauth_utils import issue_token_pair
 from uploads.processing import _trim_kind_window
 
 from .models import BestEffortRecomputeJob, ThresholdHistory, ZoneSet
-from .threshold_history import current_window_value, is_stale, record_manual_value, replay_full_history
+from .threshold_history import current_window_value, is_stale, record_manual_value, refresh_field, replay_full_history
 from .zones import DEFAULT_ZONES, reference_for
 
 
@@ -844,6 +844,50 @@ class RecordManualValueTests(TestCase):
 
         self.assertFalse(is_stale(self.athlete, "ftp", as_of=date(2026, 4, 1)))  # 90 days later
         self.assertTrue(is_stale(self.athlete, "ftp", as_of=date(2026, 5, 1)))  # 120 days later
+
+
+class RefreshFieldTests(TestCase):
+    """refresh_field / _recompute_and_record - the athlete-triggered "this value is stale,
+    refresh now" recompute, as distinct from record_manual_value's trusted-unconditionally
+    write above."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="refresh-field@example.cc", password="x", name="Athlete")
+
+    def _make_power_activity(self, start_date, power, duration_seconds=1200):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Ride", start_date=start_date, moving_time=duration_seconds
+        )
+        for t in range(duration_seconds):
+            Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+        return activity
+
+    # Regression test for a real bug found live (Java backend, same algorithm): a manually-
+    # entered value effective from today permanently outranks any activity-based candidate dated
+    # earlier than today, however different its value - _recompute_and_record used to record it
+    # anyway, appending a dead row that could never actually become current (see is_stale/the
+    # dashboard summary: "current" is whichever row has the latest effective_from) and would keep
+    # re-inserting itself, with a new id, every time the ingest hook or a manual refresh
+    # re-evaluated the same activity. Seen for real: a stale manual FTP entry (255W) outranked a
+    # genuine 225W ride-based candidate dated three weeks earlier, and every re-trigger silently
+    # added another identical dead 225W row.
+    def test_does_not_record_a_candidate_dated_before_the_current_entry(self):
+        today = date.today()
+        record_manual_value(self.athlete, "ftp", 255, as_of=today)
+        # 237W best-20min * 0.95 FTP_TEST_MULTIPLIER = 225.15, rounds to 225 - deliberately
+        # different from the manual 255 so a naive value-only diff check would record it. Dated
+        # a month before today so it's well within the default 112-day window but still earlier
+        # than the manual entry above.
+        self._make_power_activity(
+            datetime(today.year, today.month, today.day, 7, 0, tzinfo=UTC) - timedelta(days=30), power=237
+        )
+
+        changed = refresh_field(self.athlete, "ftp")
+
+        self.assertFalse(changed)
+        entries = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp")
+        self.assertEqual(entries.count(), 1)
+        self.assertEqual(entries.get().value_numeric, 255)
 
 
 class BestEffortRecomputeJobViewTests(TestCase):

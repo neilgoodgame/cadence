@@ -274,6 +274,17 @@ def _recompute_and_record(athlete: User, field: str, as_of: date | None = None) 
     if candidate is None:
         return False
     latest = _latest_entry(athlete, field)
+    # "Current" (is_stale/the dashboard summary) is whichever row has the latest effective_from,
+    # not whichever was inserted most recently - so a candidate dated *before* the existing
+    # current entry could never actually become current, however different its value. Recording
+    # it anyway is worse than a no-op: it's a dead row that silently re-inserts itself (with a
+    # new id) every time the ingest hook or a manual refresh re-evaluates the same activity,
+    # since its value keeps comparing as "different" from the still-unbeaten current entry. Seen
+    # for real (Java backend, same algorithm): a stale manually-entered FTP permanently outranked
+    # a genuine ride-based candidate dated three weeks earlier, and every re-trigger added
+    # another identical dead row instead of just doing nothing.
+    if latest is not None and candidate.date < latest.effective_from:
+        return False
     latest_value = None
     if latest is not None:
         latest_value = _mmss_to_seconds(latest.value_pace) if field == "threshold_pace" else latest.value_numeric
