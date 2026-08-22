@@ -614,8 +614,18 @@ class WorkoutLibraryTests(TestCase):
     def test_chart_preview_is_computed_on_save(self):
         response = self.client.post("/v1/workouts", _workout_payload(), format="json")
         preview = response.json()["chart_preview"]
-        # warmup (50), 4x block (100), cool (40) — flattened/unrolled per leaf
-        self.assertEqual(preview, [50, 100, 100, 100, 100, 40])
+        # warmup (50, 600s), 4x block (100, 300s each), cool (40, 300s) — flattened/unrolled per leaf
+        self.assertEqual(
+            preview,
+            [
+                {"intensity": 50, "duration_seconds": 600},
+                {"intensity": 100, "duration_seconds": 300},
+                {"intensity": 100, "duration_seconds": 300},
+                {"intensity": 100, "duration_seconds": 300},
+                {"intensity": 100, "duration_seconds": 300},
+                {"intensity": 40, "duration_seconds": 300},
+            ],
+        )
 
     def test_list_filters_by_folder_tag_sport_and_search(self):
         folder = self.client.post("/v1/workout-folders", {"name": "Intervals"}, format="json").json()

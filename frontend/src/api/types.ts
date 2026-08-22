@@ -540,6 +540,11 @@ export interface RepeatGroup {
 
 export type WorkoutStep = LeafStep | RepeatGroup;
 
+export interface ChartPreviewPoint {
+  intensity: number;
+  duration_seconds: number;
+}
+
 export interface Workout {
   id: string;
   name: string;
@@ -549,7 +554,7 @@ export interface Workout {
   tss: number;
   folder_id: string | null;
   tags: string[];
-  chart_preview: number[];
+  chart_preview: ChartPreviewPoint[];
   updated_at: string;
 }
 

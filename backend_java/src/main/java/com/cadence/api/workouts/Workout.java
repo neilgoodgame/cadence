@@ -53,12 +53,12 @@ public class Workout extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private List<String> tags = new ArrayList<>();
 
-	/** Flattened per-leaf average target intensity, recomputed alongside duration/tss whenever
-	 * steps are replaced - cheap chart data for library cards/rows without shipping the full
-	 * step tree in the list response. */
+	/** Flattened per-leaf average target intensity and duration, recomputed alongside
+	 * duration/tss whenever steps are replaced - cheap chart data for library cards/rows
+	 * without shipping the full step tree in the list response. */
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(nullable = false)
-	private List<Double> chartPreview = new ArrayList<>();
+	private List<ChartPreviewPoint> chartPreview = new ArrayList<>();
 
 	@CreationTimestamp
 	@Column(nullable = false, updatable = false)
@@ -137,11 +137,11 @@ public class Workout extends PrefixedIdEntity {
 		this.tags = tags;
 	}
 
-	public List<Double> getChartPreview() {
+	public List<ChartPreviewPoint> getChartPreview() {
 		return chartPreview;
 	}
 
-	public void setChartPreview(List<Double> chartPreview) {
+	public void setChartPreview(List<ChartPreviewPoint> chartPreview) {
 		this.chartPreview = chartPreview;
 	}
 
