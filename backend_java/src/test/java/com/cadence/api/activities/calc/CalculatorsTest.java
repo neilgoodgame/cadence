@@ -268,4 +268,32 @@ class CalculatorsTest {
 		assertThat(RunningPowerSanitizer.sanitize(series, Sport.BIKE, 1000))
 				.containsExactly(240, 8826, 236);
 	}
+
+	@Test
+	void environmentSanitizerDropsHumidityReadingsThatAreExactlyZero() {
+		List<Integer> humidity = Arrays.asList(55, 0, 60);
+		assertThat(EnvironmentSanitizer.sanitizeHumidity(humidity)).containsExactly(55, null, 60);
+	}
+
+	@Test
+	void environmentSanitizerDropsTheAirTempSampleAlongsideAZeroHumidityReading() {
+		// 0C alone is a plausible cold-weather reading - only suspicious paired with the
+		// impossible 0% humidity from the same failed sensor read.
+		List<Double> airTemp = Arrays.asList(5.0, 0.0, 6.0);
+		List<Integer> humidity = Arrays.asList(55, 0, 60);
+		assertThat(EnvironmentSanitizer.sanitizeAirTemp(airTemp, humidity)).containsExactly(5.0, null, 6.0);
+	}
+
+	@Test
+	void environmentSanitizerKeepsAGenuinelyColdAirTempWhenHumidityIsReal() {
+		List<Double> airTemp = List.of(0.0);
+		List<Integer> humidity = List.of(45);
+		assertThat(EnvironmentSanitizer.sanitizeAirTemp(airTemp, humidity)).containsExactly(0.0);
+	}
+
+	@Test
+	void environmentSanitizerLeavesNullHumiditySamplesAlone() {
+		List<Integer> humidity = Arrays.asList((Integer) null, 60);
+		assertThat(EnvironmentSanitizer.sanitizeHumidity(humidity)).containsExactly(null, 60);
+	}
 }

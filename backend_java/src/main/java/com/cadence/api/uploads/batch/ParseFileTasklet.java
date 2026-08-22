@@ -5,6 +5,7 @@ import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.DistanceSource;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
+import com.cadence.api.activities.calc.EnvironmentSanitizer;
 import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.common.config.CadenceProperties;
 import com.cadence.api.common.domain.Sport;
@@ -112,7 +113,7 @@ public class ParseFileTasklet implements Tasklet {
 			// Dropped here, before a Record is ever written, rather than left for a later
 			// recompute to clean up - see RunningPowerSanitizer's Javadoc for the failure mode
 			// (an implausible single-sample power spike a footpod occasionally emits).
-			ParsedActivity parsed = sanitizeRunningPower(rawParsed, upload.getAthlete().getMaxRunningPowerWatts());
+			ParsedActivity parsed = sanitizeEnvironment(sanitizeRunningPower(rawParsed, upload.getAthlete().getMaxRunningPowerWatts()));
 			boolean isChild = multisport && parent != null;
 			Activity activity = new Activity();
 			activity.setAthlete(upload.getAthlete());
@@ -183,6 +184,30 @@ public class ParseFileTasklet implements Tasklet {
 			ParsedActivity.Sample s = parsed.samples().get(i);
 			samples.add(new ParsedActivity.Sample(s.t(), s.lat(), s.lng(), s.altitude(), s.distanceKm(),
 					s.heartrate(), s.cadence(), sanitizedPower.get(i), s.speed(), s.airTemp(), s.humidity(),
+					s.coreTemp(), s.skinTemp(), s.heatStrain(), s.leftBalancePct()));
+		}
+		return new ParsedActivity(parsed.sport(), parsed.environment(), parsed.hasGps(), parsed.startDate(),
+				parsed.source(), parsed.device(), parsed.distanceSource(), samples, parsed.laps(),
+				parsed.aerobicTrainingEffect(), parsed.anaerobicTrainingEffect());
+	}
+
+	/** Applies {@link EnvironmentSanitizer} to the in-memory samples before a Record row or any
+	 * ingest-time derived stat (avg air temp/humidity) is built from them - see its Javadoc for
+	 * the failure mode (a Stryd ambient-sensor pairing failure reporting a flat 0°C/0% for an
+	 * entire activity instead of omitting the reading). */
+	private static ParsedActivity sanitizeEnvironment(ParsedActivity parsed) {
+		if (parsed.sport() != Sport.RUN) {
+			return parsed;
+		}
+		List<Integer> humiditySeries = parsed.samples().stream().map(ParsedActivity.Sample::humidity).toList();
+		List<Double> sanitizedAirTemp = EnvironmentSanitizer.sanitizeAirTemp(
+				parsed.samples().stream().map(ParsedActivity.Sample::airTemp).toList(), humiditySeries);
+		List<Integer> sanitizedHumidity = EnvironmentSanitizer.sanitizeHumidity(humiditySeries);
+		List<ParsedActivity.Sample> samples = new ArrayList<>(parsed.samples().size());
+		for (int i = 0; i < parsed.samples().size(); i++) {
+			ParsedActivity.Sample s = parsed.samples().get(i);
+			samples.add(new ParsedActivity.Sample(s.t(), s.lat(), s.lng(), s.altitude(), s.distanceKm(),
+					s.heartrate(), s.cadence(), s.power(), s.speed(), sanitizedAirTemp.get(i), sanitizedHumidity.get(i),
 					s.coreTemp(), s.skinTemp(), s.heatStrain(), s.leftBalancePct()));
 		}
 		return new ParsedActivity(parsed.sport(), parsed.environment(), parsed.hasGps(), parsed.startDate(),
