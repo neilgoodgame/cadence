@@ -1,6 +1,8 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.activities.calc.EnvironmentSanitizer;
 import com.cadence.api.activities.calc.RunningPowerSanitizer;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.activities.calc.TrimpCalculator;
 import com.cadence.api.athletes.Zone;
 import com.cadence.api.activities.calc.TssCalculator;
@@ -23,10 +25,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Backfills the extended Activity Analysis stats (max power, cadence, elevation, calories,
- * TRIMP) for activities ingested before that computation existed (or before an athlete had
- * the profile thresholds TRIMP needs), from stored per-second Record rows rather than
- * re-parsing the original upload file - same data source and reason TssRecomputeService
- * already uses.
+ * TRIMP, run air temp/humidity) for activities ingested before that computation existed (or
+ * before an athlete had the profile thresholds TRIMP needs, or - for air temp/humidity - before
+ * EnvironmentSanitizer existed to correct a Stryd sensor-fallback reading), from stored
+ * per-second Record rows rather than re-parsing the original upload file - same data source and
+ * reason TssRecomputeService already uses.
  *
  * avgLeftBalancePct can NOT be backfilled this way: the FIT left_right_balance field is
  * deliberately never persisted per-sample onto Record (the UI only shows one aggregate
@@ -152,6 +155,28 @@ public class DerivedStatsRecomputeService {
 			changed = true;
 		}
 
+		// Stryd-derived, run only - same scope ComputeDerivedStatsTasklet's ingest-time
+		// computation uses. Checked against the *raw* series (not sanitized) so a 0/0-fallback
+		// activity - where sanitizing removes every sample - is recognized as "had data, now
+		// corrected to null" rather than silently skipped and left showing its stale 0/0.
+		if (activity.getSport() == Sport.RUN) {
+			List<Double> airTempSeriesRaw = records.stream().map(Record::getAirTemp).toList();
+			List<Integer> humiditySeriesRaw = records.stream().map(Record::getHumidity).toList();
+			List<Integer> sanitizedHumidity = EnvironmentSanitizer.sanitizeHumidity(humiditySeriesRaw);
+			List<Double> sanitizedAirTemp = EnvironmentSanitizer.sanitizeAirTemp(airTempSeriesRaw, humiditySeriesRaw);
+
+			if (airTempSeriesRaw.stream().anyMatch(Objects::nonNull)) {
+				Double avgAirTemp = meanDouble(sanitizedAirTemp);
+				activity.setAvgAirTemp(avgAirTemp != null ? round1(avgAirTemp) : null);
+				changed = true;
+			}
+			if (humiditySeriesRaw.stream().anyMatch(Objects::nonNull)) {
+				Double avgHumidity = mean(sanitizedHumidity);
+				activity.setAvgHumidity(avgHumidity != null ? (int) Math.round(avgHumidity) : null);
+				changed = true;
+			}
+		}
+
 		List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
 		List<Zone> hrZones = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE).getZones();
 		Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
@@ -173,6 +198,11 @@ public class DerivedStatsRecomputeService {
 	private Integer max(List<Integer> values) {
 		OptionalInt max = values.stream().filter(Objects::nonNull).mapToInt(Integer::intValue).max();
 		return max.isPresent() ? max.getAsInt() : null;
+	}
+
+	private Double meanDouble(List<Double> values) {
+		OptionalDouble avg = values.stream().filter(Objects::nonNull).mapToDouble(Double::doubleValue).average();
+		return avg.isPresent() ? avg.getAsDouble() : null;
 	}
 
 	private Double maxDouble(List<Double> values) {

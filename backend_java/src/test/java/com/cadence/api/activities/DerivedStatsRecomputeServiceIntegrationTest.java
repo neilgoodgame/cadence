@@ -46,6 +46,16 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 		return activityRepository.save(activity);
 	}
 
+	private Activity newRunActivity(User athlete, int movingTime) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("Run backfill target");
+		activity.setStartDate(Instant.parse("2026-01-01T08:00:00Z"));
+		activity.setMovingTime(movingTime);
+		return activityRepository.save(activity);
+	}
+
 	@Test
 	void backfillsStatsFromStoredRecords() {
 		User athlete = newAthlete("backfill@example.cc");
@@ -95,6 +105,54 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(updated.getMaxPower()).isNull();
 		assertThat(updated.getAvgCadence()).isNull();
 		assertThat(updated.getCalories()).isNull();
+	}
+
+	// Regression test for a real bug found live: a Stryd ambient-sensor pairing failure reports
+	// a flat 0.0C/0% for an entire activity instead of omitting the reading - 25 of a real
+	// account's 572 Stryd-equipped activities affected. EnvironmentSanitizer treats that as
+	// missing data, not a real reading (see its Javadoc), but only recomputing an activity
+	// actually corrects an already-stored stale 0/0 - it isn't touched by anything else.
+	@Test
+	void backfillCorrectsAStrydZeroFallbackToNullInsteadOfLeavingItStale() {
+		User athlete = newAthlete("stryd-zero-fallback@example.cc");
+		Activity activity = newRunActivity(athlete, 60);
+		activity.setAvgAirTemp(0.0);
+		activity.setAvgHumidity(0);
+		activity = activityRepository.save(activity);
+		for (int t = 0; t < 60; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setAirTemp(0.0);
+			record.setHumidity(0);
+			recordRepository.save(record);
+		}
+
+		Activity updated = derivedStatsRecomputeService.recomputeForActivity(activity.getId());
+
+		assertThat(updated.getAvgAirTemp()).isNull();
+		assertThat(updated.getAvgHumidity()).isNull();
+	}
+
+	@Test
+	void backfillComputesRealAirTempAndHumidityForRunActivities() {
+		User athlete = newAthlete("run-environment@example.cc");
+		Activity activity = newRunActivity(athlete, 60);
+		for (int t = 0; t < 60; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setAirTemp(18.0 + (t % 3));
+			record.setHumidity(55 + (t % 5));
+			recordRepository.save(record);
+		}
+
+		Activity updated = derivedStatsRecomputeService.recomputeForActivity(activity.getId());
+
+		assertThat(updated.getAvgAirTemp()).isCloseTo(19.0, org.assertj.core.data.Offset.offset(0.5));
+		assertThat(updated.getAvgHumidity()).isCloseTo(57, org.assertj.core.data.Offset.offset(2));
 	}
 
 	private void addRecords(Activity activity, int seconds) {
