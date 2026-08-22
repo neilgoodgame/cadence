@@ -134,6 +134,33 @@ class ActivityListViewTests(TestCase):
         asc = _bearer_client(self.athlete).get("/v1/activities?sort=hr")
         self.assertEqual([a["name"] for a in asc.json()["data"]], ["Low HR", "High HR", "No HR"])
 
+    # avg_air_temp is the one nullable sort field stored as a real (float), not a whole
+    # number - exercises the same Coalesce path avg_hr/max_hr/avg_power above use, but is
+    # worth its own test since the Java backend needed dedicated type-aware handling for
+    # exactly this field (JPA's typed Criteria coalesce doesn't infer across Integer/Double
+    # the way Django's does).
+    def test_sort_by_temperature_puts_activities_without_stryd_data_last_in_both_directions(self):
+        _make_activity(self.athlete, name="No Temp", avg_air_temp=None)
+        _make_activity(self.athlete, name="Cool", avg_air_temp=8.5)
+        _make_activity(self.athlete, name="Hot", avg_air_temp=31.2)
+
+        desc = _bearer_client(self.athlete).get("/v1/activities?sort=-temperature")
+        self.assertEqual([a["name"] for a in desc.json()["data"]], ["Hot", "Cool", "No Temp"])
+
+        asc = _bearer_client(self.athlete).get("/v1/activities?sort=temperature")
+        self.assertEqual([a["name"] for a in asc.json()["data"]], ["Cool", "Hot", "No Temp"])
+
+    def test_sort_by_humidity_puts_activities_without_stryd_data_last_in_both_directions(self):
+        _make_activity(self.athlete, name="No Humidity", avg_humidity=None)
+        _make_activity(self.athlete, name="Dry", avg_humidity=35)
+        _make_activity(self.athlete, name="Humid", avg_humidity=88)
+
+        desc = _bearer_client(self.athlete).get("/v1/activities?sort=-humidity")
+        self.assertEqual([a["name"] for a in desc.json()["data"]], ["Humid", "Dry", "No Humidity"])
+
+        asc = _bearer_client(self.athlete).get("/v1/activities?sort=humidity")
+        self.assertEqual([a["name"] for a in asc.json()["data"]], ["Dry", "Humid", "No Humidity"])
+
     def test_sort_by_date_ascending_and_descending(self):
         _make_activity(self.athlete, name="Earlier", start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC))
         _make_activity(self.athlete, name="Later", start_date=datetime(2026, 3, 1, 7, 0, tzinfo=UTC))

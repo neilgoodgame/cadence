@@ -1,6 +1,6 @@
 from typing import Any
 
-from django.db.models import Count, Exists, OuterRef, Q, Value
+from django.db.models import Count, Exists, FloatField, OuterRef, Q, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -56,6 +56,8 @@ ACTIVITY_FIELD_MAP = {
     "distance": "distance_km",
     "duration": "moving_time",
     "power": "avg_power",
+    "temperature": "avg_air_temp",
+    "humidity": "avg_humidity",
     "sport": "sport",
     "environment": "environment",
     "name": "name",
@@ -67,7 +69,7 @@ ACTIVITY_FIELD_MAP = {
 # "sort by heart rate" means to a user. The value is a sentinel safely outside any real
 # reading for these fields, used to push nulls to the end regardless of direction.
 NULLABLE_SORT_SENTINEL = 100_000
-NULLABLE_SORT_FIELDS = {"avg_hr", "max_hr", "avg_power"}
+NULLABLE_SORT_FIELDS = {"avg_hr", "max_hr", "avg_power", "avg_air_temp", "avg_humidity"}
 
 
 def _tag_filter(value: str) -> Q:
@@ -187,7 +189,17 @@ class ActivityListView(APIView):
                 descending = order_field.startswith("-")
                 annotation = f"{raw_order_field}_sort"
                 sentinel = -1 if descending else NULLABLE_SORT_SENTINEL
-                qs = qs.annotate(**{annotation: Coalesce(raw_order_field, Value(sentinel))})
+                # avg_air_temp is a FloatField; Coalesce can't infer an output_field from a
+                # bare int Value() mixed with a float column ("mixed types: FloatField,
+                # IntegerField") - every other nullable field here is an IntegerField, where
+                # the plain int sentinel already matches, so only this one needs an explicit
+                # output_field.
+                sentinel_value = (
+                    Value(float(sentinel), output_field=FloatField())
+                    if raw_order_field == "avg_air_temp"
+                    else Value(sentinel)
+                )
+                qs = qs.annotate(**{annotation: Coalesce(raw_order_field, sentinel_value)})
                 order_field = f"-{annotation}" if descending else annotation
 
         paginator = ActivityCursorPagination()
