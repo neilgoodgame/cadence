@@ -79,6 +79,39 @@ class RecomputeActivityStatsViewTests(TestCase):
         response = client.post(f"/v1/activities/{activity.id}/recompute-stats")
         self.assertEqual(response.status_code, 403)
 
+    # Regression test for a real bug found live: a Stryd ambient-sensor pairing failure
+    # reports a flat 0.0C/0% for an entire activity instead of omitting the reading - 25 of
+    # a real account's 572 Stryd-equipped activities affected. _sanitize_environment_samples
+    # treats that as missing data, not a real reading, but only recomputing an activity
+    # actually corrects an already-stored stale 0/0 - it isn't touched by anything else.
+    def test_backfill_corrects_a_stryd_zero_fallback_to_null_instead_of_leaving_it_stale(self):
+        activity = _make_activity(self.athlete, moving_time=60, avg_air_temp=0.0, avg_humidity=0)
+        for t in range(60):
+            Record.objects.create(
+                activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), air_temp=0.0, humidity=0
+            )
+
+        response = _bearer_client(self.athlete).post(f"/v1/activities/{activity.id}/recompute-stats")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["avg_air_temp"])
+        self.assertIsNone(response.json()["avg_humidity"])
+
+    def test_backfill_computes_real_air_temp_and_humidity_for_run_activities(self):
+        activity = _make_activity(self.athlete, moving_time=60)
+        for t in range(60):
+            Record.objects.create(
+                activity=activity,
+                t=t,
+                ts=activity.start_date + timedelta(seconds=t),
+                air_temp=18.0 + (t % 3),
+                humidity=55 + (t % 5),
+            )
+
+        response = _bearer_client(self.athlete).post(f"/v1/activities/{activity.id}/recompute-stats")
+        self.assertEqual(response.status_code, 200)
+        self.assertAlmostEqual(response.json()["avg_air_temp"], 19.0, delta=0.5)
+        self.assertAlmostEqual(response.json()["avg_humidity"], 57, delta=2)
+
 
 class RecomputeActivityTssViewTests(TestCase):
     """recompute-tss reads the ThresholdHistory value effective as of the activity's own date,

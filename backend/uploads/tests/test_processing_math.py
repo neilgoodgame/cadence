@@ -9,6 +9,7 @@ from athletes.models import ThresholdHistory
 from ..processing import (
     _best_pace_seconds_per_km,
     _min,
+    _sanitize_environment_samples,
     _total_ascent,
     _total_descent,
     compute_calories,
@@ -31,6 +32,26 @@ class ComputeNormalizedPowerTests(SimpleTestCase):
 
     def test_empty_series_returns_none(self):
         self.assertIsNone(compute_normalized_power([]))
+
+
+class SanitizeEnvironmentSamplesTests(SimpleTestCase):
+    def test_drops_humidity_readings_that_are_exactly_zero(self):
+        _, humidity = _sanitize_environment_samples([5.0, 0.0, 6.0], [55, 0, 60])
+        self.assertEqual(humidity, [55, None, 60])
+
+    def test_drops_the_air_temp_sample_alongside_a_zero_humidity_reading(self):
+        # 0C alone is a plausible cold-weather reading - only suspicious paired with the
+        # impossible 0% humidity from the same failed sensor read.
+        air_temp, _ = _sanitize_environment_samples([5.0, 0.0, 6.0], [55, 0, 60])
+        self.assertEqual(air_temp, [5.0, None, 6.0])
+
+    def test_keeps_a_genuinely_cold_air_temp_when_humidity_is_real(self):
+        air_temp, _ = _sanitize_environment_samples([0.0], [45])
+        self.assertEqual(air_temp, [0.0])
+
+    def test_leaves_none_humidity_samples_alone(self):
+        _, humidity = _sanitize_environment_samples([None, 6.0], [None, 60])
+        self.assertEqual(humidity, [None, 60])
 
 
 class ComputeDurationCurveTests(SimpleTestCase):
