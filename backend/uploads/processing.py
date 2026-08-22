@@ -90,6 +90,27 @@ def _min(values: Sequence[float | None]) -> float | None:
     return min(filtered) if filtered else None
 
 
+def _sanitize_environment_samples(
+    air_temp_series: Sequence[float | None], humidity_series: Sequence[int | None]
+) -> tuple[list[float | None], list[int | None]]:
+    """Nulls out a run's air-temperature/humidity samples together wherever humidity reads
+    exactly 0% - confirmed against real data as a Stryd ambient-sensor pairing-failure
+    fallback, not a real reading: 0% relative humidity essentially never occurs outdoors
+    (even deserts rarely go that low), and every affected activity showed flat 0.0C/0% with
+    zero variance for its entire duration, not a plausible weather reading that happens to
+    land on exactly zero. Found live: 25 of 572 activities with any Stryd environment data
+    affected, scattered across an otherwise-normal 18-month range - an intermittent
+    sensor/pairing failure, not a firmware-version cutoff.
+
+    Air temp is dropped alongside humidity (not checked on its own) because 0C alone is a
+    physically plausible cold-weather reading - it's only suspicious paired with an
+    impossible humidity from the same failed sensor read.
+    """
+    sanitized_humidity = [None if h == 0 else h for h in humidity_series]
+    sanitized_air_temp = [None if h == 0 else t for t, h in zip(air_temp_series, humidity_series, strict=True)]
+    return sanitized_air_temp, sanitized_humidity
+
+
 def _moving_time(samples: Sequence[Sample]) -> int:
     if not samples:
         return 0
@@ -364,17 +385,21 @@ def compute_calories(power_series: Sequence[float | None], moving_time_seconds: 
 
 def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
     """Backfills max power, cadence, max speed, elevation (min/max/ascent/descent),
-    calories, and TRIMP for `activity` from its stored per-second Record rows, rather
-    than re-parsing the original upload file. Shared by the per-activity and per-athlete
-    recompute-stats endpoints. Mutates `activity` in place and returns the field names
-    that changed; the caller is responsible for saving.
+    calories, TRIMP, and (run only) air temp/humidity for `activity` from its stored
+    per-second Record rows, rather than re-parsing the original upload file. Shared by the
+    per-activity and per-athlete recompute-stats endpoints. Mutates `activity` in place and
+    returns the field names that changed; the caller is responsible for saving.
 
     avg_left_balance_pct can NOT be backfilled this way: the FIT left_right_balance field
     is deliberately never persisted per-sample onto Record (the UI only shows one
     aggregate split, not a stream - see uploads/parsers/fit.py's _left_balance_pct), so
     it's simply unrecoverable for anything not re-ingested from the original file.
     """
-    records = list(activity.records.order_by("t").values("power", "cadence", "speed", "altitude", "heartrate"))
+    records = list(
+        activity.records.order_by("t").values(
+            "power", "cadence", "speed", "altitude", "heartrate", "air_temp", "humidity"
+        )
+    )
 
     power_series = [r["power"] for r in records]
     cadence_series = [r["cadence"] for r in records]
@@ -419,6 +444,23 @@ def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
     if trimp is not None:
         activity.trimp = trimp
         update_fields.append("trimp")
+
+    # Stryd-derived, run only - same scope _ingest_activity's ingest-time computation uses.
+    # Checked against the *raw* series (not sanitized) so a 0/0-fallback activity - where
+    # sanitizing removes every sample - is recognized as "had data, now corrected to null"
+    # rather than silently skipped and left showing its stale 0/0.
+    if activity.sport == "run":
+        raw_air_temp_series = [r["air_temp"] for r in records]
+        raw_humidity_series = [r["humidity"] for r in records]
+        air_temp_series, humidity_series = _sanitize_environment_samples(raw_air_temp_series, raw_humidity_series)
+        if any(v is not None for v in raw_air_temp_series):
+            avg_air_temp = _mean(air_temp_series)
+            activity.avg_air_temp = round(avg_air_temp, 1) if avg_air_temp is not None else None
+            update_fields.append("avg_air_temp")
+        if any(v is not None for v in raw_humidity_series):
+            avg_humidity = _mean(humidity_series)
+            activity.avg_humidity = round(avg_humidity) if avg_humidity is not None else None
+            update_fields.append("avg_humidity")
 
     return update_fields
 
@@ -723,6 +765,17 @@ def _ingest_activity(
     laps = parsed.get("laps", [])
     sport = parsed["sport"]
     is_multisport_parent = multisport and parent is None
+
+    # Dropped here, before a Record row or the activity-level average is built from them,
+    # rather than left for a later recompute to clean up - see
+    # _sanitize_environment_samples's docstring for the failure mode.
+    if sport == "run":
+        sanitized_air_temp, sanitized_humidity = _sanitize_environment_samples(
+            [s.get("air_temp") for s in samples], [s.get("humidity") for s in samples]
+        )
+        samples = [
+            {**s, "air_temp": sanitized_air_temp[i], "humidity": sanitized_humidity[i]} for i, s in enumerate(samples)
+        ]
 
     if multisport:
         # The shoe travels with the run/walk legs; the parent spans sports it wasn't worn for.
