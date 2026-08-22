@@ -6,17 +6,20 @@ import java.util.Map;
 
 public final class ActivityFieldMap implements FieldMap {
 
-	private static final Map<String, String> FIELDS = Map.of(
-			"date", "startDate",
-			"hr", "avgHr",
-			"maxhr", "maxHr",
-			"tss", "tss",
-			"distance", "distanceKm",
-			"duration", "movingTime",
-			"power", "avgPower",
-			"sport", "sport",
-			"environment", "environment",
-			"name", "name");
+	// Map.of tops out at 10 pairs (20 args) - Map.ofEntries has no such limit.
+	private static final Map<String, String> FIELDS = Map.ofEntries(
+			Map.entry("date", "startDate"),
+			Map.entry("hr", "avgHr"),
+			Map.entry("maxhr", "maxHr"),
+			Map.entry("tss", "tss"),
+			Map.entry("distance", "distanceKm"),
+			Map.entry("duration", "movingTime"),
+			Map.entry("power", "avgPower"),
+			Map.entry("temperature", "avgAirTemp"),
+			Map.entry("humidity", "avgHumidity"),
+			Map.entry("sport", "sport"),
+			Map.entry("environment", "environment"),
+			Map.entry("name", "name"));
 
 	@Override
 	public String resolve(String cqlField) {

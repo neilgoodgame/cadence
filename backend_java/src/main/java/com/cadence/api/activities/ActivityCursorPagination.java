@@ -36,8 +36,12 @@ public class ActivityCursorPagination {
 	// direction. It has to be applied consistently to the page ordering, the seek/cursor
 	// continuation predicate, AND the cursor encoding below - all three must agree on the
 	// same substituted value or pagination would skip or repeat rows at a null boundary.
-	private static final Set<String> NULLABLE_SORT_FIELDS = Set.of("avgHr", "maxHr", "avgPower");
+	private static final Set<String> NULLABLE_SORT_FIELDS = Set.of("avgHr", "maxHr", "avgPower", "avgHumidity", "avgAirTemp");
+	// avgAirTemp is the one nullable sort field stored as a real (not whole-number) column -
+	// everything else above coalesces as Integer.
+	private static final Set<String> DOUBLE_NULLABLE_SORT_FIELDS = Set.of("avgAirTemp");
 	private static final int NULLS_LAST_SENTINEL = 100_000;
+	private static final double NULLS_LAST_SENTINEL_DOUBLE = 100_000.0;
 
 	private final ActivityRepository activityRepository;
 	private final JsonMapper jsonMapper;
@@ -51,7 +55,9 @@ public class ActivityCursorPagination {
 		String field = primaryOrder.getProperty();
 		boolean desc = primaryOrder.isDescending();
 		boolean nullable = NULLABLE_SORT_FIELDS.contains(field);
+		boolean doubleField = DOUBLE_NULLABLE_SORT_FIELDS.contains(field);
 		int sentinel = desc ? -1 : NULLS_LAST_SENTINEL;
+		double sentinelDouble = desc ? -1.0 : NULLS_LAST_SENTINEL_DOUBLE;
 
 		Sort effectiveSort = nullable
 				? Sort.unsorted() // ordering applied via the Specification below instead
@@ -60,7 +66,9 @@ public class ActivityCursorPagination {
 		Specification<Activity> spec = filterSpec;
 		if (nullable) {
 			spec = spec.and((root, query, cb) -> {
-				Expression<Integer> coalesced = cb.coalesce(root.get(field), sentinel);
+				Expression<?> coalesced = doubleField
+						? cb.coalesce(root.<Double>get(field), sentinelDouble)
+						: cb.coalesce(root.<Integer>get(field), sentinel);
 				query.orderBy(
 						desc ? cb.desc(coalesced) : cb.asc(coalesced),
 						desc ? cb.desc(root.get("id")) : cb.asc(root.get("id")));
@@ -73,7 +81,7 @@ public class ActivityCursorPagination {
 			if (!cursor.field().equals(field)) {
 				throw new ValidationException("cursor does not match the requested sort field.", "cursor");
 			}
-			spec = spec.and(seekPredicate(primaryOrder, cursor, nullable, sentinel));
+			spec = spec.and(seekPredicate(primaryOrder, cursor, nullable, doubleField, sentinel, sentinelDouble));
 		}
 
 		Pageable pageable = PageRequest.of(0, limit + 1, effectiveSort);
@@ -81,25 +89,35 @@ public class ActivityCursorPagination {
 
 		boolean hasMore = rows.size() > limit;
 		List<Activity> page = hasMore ? rows.subList(0, limit) : rows;
-		String nextCursor = hasMore ? encode(field, page.get(page.size() - 1), sentinel) : null;
+		String nextCursor = hasMore ? encode(field, page.get(page.size() - 1), sentinel, sentinelDouble) : null;
 		return new CursorPage<>(hasMore, nextCursor, page);
 	}
 
-	private Specification<Activity> seekPredicate(Sort.Order order, ActivityCursor cursor, boolean nullable, int sentinel) {
+	private Specification<Activity> seekPredicate(Sort.Order order, ActivityCursor cursor, boolean nullable,
+			boolean doubleField, int sentinel, double sentinelDouble) {
 		String field = order.getProperty();
 		Comparable<?> value = parseSortValue(field, cursor.value());
 		boolean desc = order.isDescending();
-		return (root, query, cb) -> buildSeekPredicate(root, cb, field, value, desc, cursor.id(), nullable, sentinel);
+		return (root, query, cb) ->
+				buildSeekPredicate(root, cb, field, value, desc, cursor.id(), nullable, doubleField, sentinel, sentinelDouble);
 	}
 
 	@SuppressWarnings("unchecked")
 	private <Y extends Comparable<? super Y>> Predicate buildSeekPredicate(
 			Root<Activity> root, jakarta.persistence.criteria.CriteriaBuilder cb,
-			String field, Comparable<?> rawValue, boolean desc, String cursorId, boolean nullable, int sentinel) {
+			String field, Comparable<?> rawValue, boolean desc, String cursorId, boolean nullable,
+			boolean doubleField, int sentinel, double sentinelDouble) {
 		Y value = (Y) rawValue;
-		Expression<Y> comparable = nullable
-				? (Expression<Y>) (Expression<?>) cb.coalesce(root.<Integer>get(field), sentinel)
-				: root.get(field);
+		Expression<Y> comparable;
+		if (nullable) {
+			Expression<?> coalesced = doubleField
+					? cb.coalesce(root.<Double>get(field), sentinelDouble)
+					: cb.coalesce(root.<Integer>get(field), sentinel);
+			comparable = (Expression<Y>) coalesced;
+		}
+		else {
+			comparable = root.get(field);
+		}
 		Path<String> idPath = root.get("id");
 		var fieldEqual = cb.equal(comparable, value);
 		var idComparison = desc ? cb.lessThan(idPath, cursorId) : cb.greaterThan(idPath, cursorId);
@@ -110,8 +128,8 @@ public class ActivityCursorPagination {
 	private Comparable<?> parseSortValue(String field, String raw) {
 		return switch (field) {
 			case "startDate" -> Instant.parse(raw);
-			case "avgHr", "maxHr", "tss", "movingTime", "avgPower" -> Integer.valueOf(raw);
-			case "distanceKm" -> Double.valueOf(raw);
+			case "avgHr", "maxHr", "tss", "movingTime", "avgPower", "avgHumidity" -> Integer.valueOf(raw);
+			case "distanceKm", "avgAirTemp" -> Double.valueOf(raw);
 			case "sport" -> Sport.valueOf(raw);
 			case "environment" -> Environment.valueOf(raw);
 			default -> raw;
@@ -122,7 +140,11 @@ public class ActivityCursorPagination {
 		return value != null ? value : sentinel;
 	}
 
-	private String encode(String field, Activity lastRow, int sentinel) {
+	private static Double withSentinel(Double value, double sentinel) {
+		return value != null ? value : sentinel;
+	}
+
+	private String encode(String field, Activity lastRow, int sentinel, double sentinelDouble) {
 		Object value = switch (field) {
 			case "startDate" -> lastRow.getStartDate();
 			case "avgHr" -> withSentinel(lastRow.getAvgHr(), sentinel);
@@ -130,6 +152,8 @@ public class ActivityCursorPagination {
 			case "tss" -> lastRow.getTss();
 			case "movingTime" -> lastRow.getMovingTime();
 			case "avgPower" -> withSentinel(lastRow.getAvgPower(), sentinel);
+			case "avgHumidity" -> withSentinel(lastRow.getAvgHumidity(), sentinel);
+			case "avgAirTemp" -> withSentinel(lastRow.getAvgAirTemp(), sentinelDouble);
 			case "distanceKm" -> lastRow.getDistanceKm();
 			case "sport" -> lastRow.getSport().name();
 			case "environment" -> lastRow.getEnvironment().name();
