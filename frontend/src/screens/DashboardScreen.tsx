@@ -101,17 +101,17 @@ export function DashboardScreen() {
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>Welcome back, {user.name}.</h1>
 
-      <StatCardsRow points={points} weekTss={weekTss} />
-
-      <ThresholdSummaryCard />
+      <Card>
+        <WeekCalendar activities={activities} athleteId={user.id} />
+      </Card>
 
       <NextRaceCard />
 
       <UpcomingWorkoutsCard />
 
-      <Card>
-        <WeekCalendar activities={activities} athleteId={user.id} />
-      </Card>
+      <StatCardsRow points={points} weekTss={weekTss} />
+
+      <ThresholdSummaryCard />
 
       <Card>
         <TrainingHistory activities={historyActivities} athleteId={user.id} />
