@@ -23,6 +23,8 @@ const CQL_FIELDS: {
   { label: "Duration",    aliases: ["duration", "time", "mins"],       type: "numeric", unit: "min" },
   { label: "Power",       aliases: ["power", "watts", "np"],           type: "numeric", unit: "W" },
   { label: "Pace",        aliases: ["pace"],                           type: "numeric", unit: "/km" },
+  { label: "Temperature", aliases: ["temperature", "temp", "airtemp"], type: "numeric", unit: "°C" },
+  { label: "Humidity",    aliases: ["humidity", "hum"],                 type: "numeric", unit: "%" },
   { label: "Sport",       aliases: ["sport", "type", "discipline"],    type: "text",    values: "run · bike · swim · row · multisport" },
   { label: "Environment", aliases: ["environment", "env"],             type: "text",    values: "indoor · outdoor" },
   { label: "Name",        aliases: ["name", "title"],                  type: "text" },
@@ -34,6 +36,7 @@ const CQL_EXAMPLES = [
   { q: "tss > 200 orderby tss desc",          desc: "High-stress sessions, hardest first" },
   { q: "distance > 20 sport = run",           desc: "Long runs over 20 km" },
   { q: "power > 260 env = indoor",            desc: "Strong indoor rides" },
+  { q: "temperature > 25 orderby temperature desc", desc: "Hot-weather runs, hottest first" },
   { q: "name ~ marathon",                     desc: 'Activities with "marathon" in the name' },
   { q: "tag race",                            desc: "All tagged as race" },
   { q: 'tag "Heat Training"',                 desc: "Multi-word tag name (quoted)" },
@@ -163,6 +166,8 @@ const SORT_FIELDS: { key: string; label: string }[] = [
   { key: "duration", label: "Duration" },
   { key: "hr", label: "Avg HR" },
   { key: "power", label: "Power" },
+  { key: "temperature", label: "Temp" },
+  { key: "humidity", label: "Humidity" },
 ];
 
 // Same "order(ed)? by|sort(ed)? by" recognition as the CQL tokenizer - if the query text
