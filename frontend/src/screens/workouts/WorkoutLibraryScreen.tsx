@@ -9,7 +9,7 @@ import {
   listWorkouts,
   updateWorkout,
 } from "../../api/workouts";
-import type { Workout, WorkoutFolder, WorkoutSort, WorkoutSport } from "../../api/types";
+import type { ChartPreviewPoint, Workout, WorkoutFolder, WorkoutSort, WorkoutSport } from "../../api/types";
 import { sportColor, sportLabel } from "../../lib/sportColors";
 import { useAuth } from "../../auth/AuthContext";
 import { fmtDuration, withIds, zoneColor } from "./workoutTree";
@@ -584,13 +584,32 @@ function CheckBox({ checked, onClick }: { checked: boolean; onClick: () => void 
 
 // Same 5-zone %FTP/%threshold colour scale as the Builder's chart (workoutTree.zoneColor),
 // so a workout's intensity profile looks the same whether you're viewing or editing it.
-function MiniChart({ preview }: { preview: number[] }) {
+// Each bar's width is proportional to its interval's actual duration (flex-grow), with a
+// floor so a distance-based step (duration_seconds 0, no time to size by) still shows a sliver.
+function MiniChart({ preview }: { preview: ChartPreviewPoint[] }) {
   if (preview.length === 0) return null;
   return (
     <div style={{ height: 44, display: "flex", alignItems: "flex-end", gap: 1, background: "var(--elev)", borderRadius: 6, overflow: "hidden", marginTop: 10 }}>
-      {preview.map((v, i) => (
-        <div key={i} style={{ flex: 1, height: "100%", display: "flex", alignItems: "flex-end" }}>
-          <div style={{ width: "100%", height: `${Math.min(100, (v / 150) * 100)}%`, background: zoneColor(v), opacity: 0.65 }} />
+      {preview.map((point, i) => (
+        <div
+          key={i}
+          style={{
+            flexGrow: Math.max(point.duration_seconds, 30),
+            flexShrink: 0,
+            flexBasis: 0,
+            height: "100%",
+            display: "flex",
+            alignItems: "flex-end",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              height: `${Math.min(100, (point.intensity / 150) * 100)}%`,
+              background: zoneColor(point.intensity),
+              opacity: 0.65,
+            }}
+          />
         </div>
       ))}
     </div>

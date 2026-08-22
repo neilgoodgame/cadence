@@ -114,7 +114,21 @@ class WorkoutLibraryIntegrationTest extends IntegrationTest {
 	void chartPreviewIsComputedOnSave() {
 		User athlete = saveAthlete("chart-preview@example.cc");
 		Workout workout = createWorkout(athlete, "Chart preview", Sport.BIKE, null, null);
-		assertThat(workout.getChartPreview()).containsExactly(60.0);
+		// 50-70% target avg -> 60.0; 300s duration, matching createWorkout's fixed 5-minute step.
+		assertThat(workout.getChartPreview()).containsExactly(new ChartPreviewPoint(60.0, 300));
+	}
+
+	@Test
+	void chartPreviewSizesEachLeafByItsOwnDurationNotEqualWidths() {
+		User athlete = saveAthlete("chart-preview-durations@example.cc");
+		List<WorkoutStepDto> steps = List.of(
+				leaf(StepKind.BLOCK, StepEndType.TIME, 60, TargetType.POWER, 90.0, 90.0),
+				leaf(StepKind.BLOCK, StepEndType.TIME, 1200, TargetType.POWER, 65.0, 65.0));
+		Workout workout = workoutService.createWorkout(
+				athlete, new WorkoutCreateRequest("Sprint then steady", Sport.BIKE, steps, null, null));
+
+		assertThat(workout.getChartPreview())
+				.containsExactly(new ChartPreviewPoint(90.0, 60), new ChartPreviewPoint(65.0, 1200));
 	}
 
 	@Test

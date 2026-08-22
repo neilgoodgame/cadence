@@ -75,29 +75,33 @@ public final class WorkoutCalculations {
 	}
 
 	/**
-	 * A small array of per-leaf average target intensity (flattened/unrolled repeat groups),
-	 * denormalized onto {@code Workout.chartPreview} so the library list endpoint can render a
-	 * mini interval chart per card without shipping the full step tree.
+	 * A small array of per-leaf average target intensity and duration (flattened/unrolled
+	 * repeat groups), denormalized onto {@code Workout.chartPreview} so the library list
+	 * endpoint can render a mini interval chart per card - each bar sized proportionally to
+	 * that leaf's actual duration, not shipping the full step tree.
 	 */
-	public static List<Double> computeChartPreview(List<WorkoutStepDto> steps) {
-		List<Double> preview = new ArrayList<>();
+	public static List<ChartPreviewPoint> computeChartPreview(List<WorkoutStepDto> steps) {
+		List<ChartPreviewPoint> preview = new ArrayList<>();
 		flattenLeaves(steps, preview);
 		return preview;
 	}
 
-	private static void flattenLeaves(List<WorkoutStepDto> steps, List<Double> preview) {
+	private static void flattenLeaves(List<WorkoutStepDto> steps, List<ChartPreviewPoint> preview) {
 		for (WorkoutStepDto step : steps) {
 			if (step.kind() == StepKind.REPEAT) {
 				int repeat = step.repeat() != null ? step.repeat() : 1;
 				for (int r = 0; r < repeat; r++) {
 					flattenLeaves(step.children(), preview);
 				}
-			} else if (step.targetType() == TargetType.OPEN) {
-				preview.add(40.0);
 			} else {
-				double low = step.targetLow() != null ? step.targetLow() : 60;
-				double high = step.targetHigh() != null ? step.targetHigh() : low;
-				preview.add((low + high) / 2);
+				int duration = step.duration() != null ? step.duration() : 0;
+				if (step.targetType() == TargetType.OPEN) {
+					preview.add(new ChartPreviewPoint(40.0, duration));
+				} else {
+					double low = step.targetLow() != null ? step.targetLow() : 60;
+					double high = step.targetHigh() != null ? step.targetHigh() : low;
+					preview.add(new ChartPreviewPoint((low + high) / 2, duration));
+				}
 			}
 		}
 	}

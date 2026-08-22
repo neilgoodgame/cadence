@@ -77,19 +77,22 @@ def _flatten_leaves(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def compute_chart_preview(steps: list[dict[str, Any]]) -> list[float]:
-    """A small array of per-leaf average target intensity (flattened/unrolled),
-    denormalized onto `Workout.chart_preview` so the library list endpoint can
-    render a mini interval chart per card without shipping the full step tree.
+def compute_chart_preview(steps: list[dict[str, Any]]) -> list[dict[str, float | int]]:
+    """A small array of per-leaf average target intensity and duration
+    (flattened/unrolled), denormalized onto `Workout.chart_preview` so the
+    library list endpoint can render a mini interval chart per card — each bar
+    sized proportionally to that leaf's actual duration, not shipping the full
+    step tree.
     """
     preview = []
     for leaf in _flatten_leaves(steps):
+        duration = leaf.get("duration") or 0
         if leaf.get("target_type") == "open":
-            preview.append(40.0)
+            preview.append({"intensity": 40.0, "duration_seconds": duration})
             continue
         low = leaf.get("target_low")
         low = low if low is not None else 60
         high = leaf.get("target_high")
         high = high if high is not None else low
-        preview.append((low + high) / 2)
+        preview.append({"intensity": (low + high) / 2, "duration_seconds": duration})
     return preview

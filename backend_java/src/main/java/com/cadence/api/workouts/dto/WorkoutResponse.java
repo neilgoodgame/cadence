@@ -1,6 +1,7 @@
 package com.cadence.api.workouts.dto;
 
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.workouts.ChartPreviewPoint;
 import java.time.Instant;
 import java.util.List;
 
@@ -13,6 +14,6 @@ public record WorkoutResponse(
 		int tss,
 		String folderId,
 		List<String> tags,
-		List<Double> chartPreview,
+		List<ChartPreviewPoint> chartPreview,
 		Instant updatedAt) {
 }
