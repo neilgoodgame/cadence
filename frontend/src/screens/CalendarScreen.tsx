@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { getActivity } from "../api/activities";
 import { listRaces } from "../api/races";
 import { getCalendar, unscheduleWorkout } from "../api/scheduling";
@@ -95,10 +95,19 @@ function WeekSummaryCell({ totals }: { totals: WeekTotals }) {
 
 export function CalendarScreen() {
   const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
+  // Which month is showing lives in the URL, not component state - a plain useState here
+  // resets to today's month on every remount, including the one the browser's Back button
+  // causes after following a Link off this screen (e.g. clicking into an activity from a
+  // month other than the current one, then navigating back).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const year = searchParams.has("year") ? Number(searchParams.get("year")) : today.getFullYear();
+  const month = searchParams.has("month") ? Number(searchParams.get("month")) : today.getMonth();
   const [scheduleDate, setScheduleDate] = useState<string | null>(null);
   const [addRaceDate, setAddRaceDate] = useState<string | null>(null);
+
+  function goToMonth(y: number, m: number) {
+    setSearchParams({ year: String(y), month: String(m) });
+  }
 
   const queryClient = useQueryClient();
   // The grid always renders full Monday-start weeks, so it pads out into the leading/
@@ -238,13 +247,11 @@ export function CalendarScreen() {
 
   function goToPreviousMonth() {
     const d = new Date(year, month - 1, 1);
-    setYear(d.getFullYear());
-    setMonth(d.getMonth());
+    goToMonth(d.getFullYear(), d.getMonth());
   }
   function goToNextMonth() {
     const d = new Date(year, month + 1, 1);
-    setYear(d.getFullYear());
-    setMonth(d.getMonth());
+    goToMonth(d.getFullYear(), d.getMonth());
   }
 
   return (
@@ -258,10 +265,7 @@ export function CalendarScreen() {
             ‹
           </button>
           <button
-            onClick={() => {
-              setYear(today.getFullYear());
-              setMonth(today.getMonth());
-            }}
+            onClick={() => goToMonth(today.getFullYear(), today.getMonth())}
             style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600 }}
           >
             Today
