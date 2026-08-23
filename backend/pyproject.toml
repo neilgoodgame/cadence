@@ -22,6 +22,12 @@ dependencies = [
     "whitenoise==6.12.0",
     "drf-spectacular==0.30.0",
     "python-dotenv==1.2.2",
+    # django-mcp-server declares only "mcp>=1.8.0" (no upper bound), but 0.5.7 imports
+    # `FastMCP` from `mcp.server` - removed entirely in the mcp SDK's 2.0 restructuring
+    # (confirmed live: ImportError against the otherwise-latest mcp==2.0.0). Pinned to the
+    # newest pre-2.0 release until django-mcp-server catches up.
+    "django-mcp-server==0.5.7",
+    "mcp==1.9.4",
 ]
 
 [dependency-groups]
