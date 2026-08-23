@@ -154,8 +154,11 @@ settings value, so it must already be a callable object, not a string to resolve
 
 The six existing scope strings were never enforced per-DRF-view anywhere in this app -
 authorization is athlete-ownership-based (`core/permissions.py`'s `IsAuthorizedForAthleteRead`/
-`Write` + `UserRelationship`), identical finding to the Java backend. No MCP tools exist on this
-backend yet to add a scope check on top of that.
+`Write` + `UserRelationship`), identical finding to the Java backend. The MCP tool layer (each
+app's `mcp.py`, e.g. `activities/mcp.py`, added in a follow-up to this PR) adds one new check on
+top: `authn/mcp_toolset.py`'s `ScopedMCPToolset._require_scope(...)`, called at the start of every
+tool method, checking the *token's* granted scopes - the direct equivalent of the Java backend's
+`McpToolAuthorizer.requireScope(...)`.
 
 ## Where this lives
 
@@ -201,11 +204,12 @@ the reply.
   user sees and approves what's being granted," but not branded.
 - **The login page is minimal, unbranded HTML** (`authn/templates/authn/login.html`) - functional,
   not styled to match the product.
-- **No MCP tools exist on this backend at all.** This PR only proves `/mcp` is mounted, secured,
-  and returns a real MCP `initialize` response once authenticated - mirroring how the Java
-  backend's authorization PR verified its transport before any tools existed. Django tools (if
-  this backend is ever promoted to production) are unstarted, unlike Java's, which already has a
-  full read/write tool set pending its own follow-up PR.
+- **This PR covers authorization only.** It proves `/mcp` is mounted, secured, and returns a real
+  MCP `initialize` response once authenticated - mirroring how the Java backend's authorization PR
+  verified its transport before any tools existed. The 18-tool read/write layer (mirroring Java's)
+  was added in a follow-up PR on top of this one, in each app's own `mcp.py` module - see that
+  PR's description and `authn/test_mcp_tools.py` for its own testing notes, kept out of this file
+  since it's a different concern from the authorization foundation this file documents.
 
 ## External documentation
 

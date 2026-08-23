@@ -94,7 +94,7 @@ strict_equality = true
 django_settings_module = "config.settings"
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "fitparse.*", "oauth2_provider.*", "ijson.*"]
+module = ["celery.*", "fitparse.*", "oauth2_provider.*", "ijson.*", "mcp_server.*"]
 ignore_missing_imports = true
 
 # Test modules are still type-checked, just not required to annotate every
