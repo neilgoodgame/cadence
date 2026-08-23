@@ -2,8 +2,9 @@
 
 How the Cadence API authenticates a Model Context Protocol client (Claude.ai / Claude Desktop's
 remote-connector flow) against `POST /mcp`. This is the authorization *foundation* only - the
-actual MCP tools (`list_activities`, `create_workout`, etc.) are documented separately; this file
-covers exclusively how a client proves who it is before any tool call is allowed.
+actual MCP tools (`list_activities`, `create_workout`, etc., under `mcp/tools/`) have no separate
+doc file of their own; see their own Javadoc and `McpToolsIntegrationTest.java` for what each one
+does. This file covers exclusively how a client proves who it is before any tool call is allowed.
 
 See `ROADMAP.md`'s "Model Context Protocol server" entry for why this exists at all.
 

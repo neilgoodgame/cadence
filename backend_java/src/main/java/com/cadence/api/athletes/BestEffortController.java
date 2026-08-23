@@ -93,7 +93,7 @@ public class BestEffortController {
 	 * true top N by value (respecting direction) before returning, preserving the
 	 * window-asc/value-desc order callers expect.
 	 */
-	static List<BestEffort> capPerWindow(List<BestEffort> efforts, boolean lowerIsBetter, int topN) {
+	public static List<BestEffort> capPerWindow(List<BestEffort> efforts, boolean lowerIsBetter, int topN) {
 		if (topN <= 0) return efforts; // 0 = unlimited, matching trimToTop's own "0 = keep all"
 		Map<String, List<BestEffort>> byWindow = efforts.stream()
 				.collect(Collectors.groupingBy(BestEffort::getWindow, LinkedHashMap::new, Collectors.toList()));
