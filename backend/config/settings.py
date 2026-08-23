@@ -5,6 +5,15 @@ from typing import overload
 from celery.schedules import crontab
 from dotenv import load_dotenv
 
+# Imported eagerly (not referenced as a dotted-path string) because django-oauth-toolkit's
+# PKCE_REQUIRED setting isn't in its IMPORT_STRINGS list (confirmed live against the installed
+# version's settings.py) - unlike ACCESS_TOKEN_GENERATOR/REFRESH_TOKEN_GENERATOR below, which are
+# resolved lazily from strings, oauth2_validators.py does a plain `callable(oauth2_settings.PKCE_REQUIRED)`
+# check, so the settings dict needs the real function object. Safe to import here: it's a
+# dependency-free module (constants + one pure function), not a Django app needing the app
+# registry to be ready yet.
+from authn.mcp_oauth import pkce_required
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR.parent / ".env")
 
@@ -45,6 +54,7 @@ INSTALLED_APPS = [
     "oauth2_provider",
     "corsheaders",
     "drf_spectacular",
+    "mcp_server",
     # local apps
     "accounts",
     "authn",
@@ -106,6 +116,11 @@ DATABASES = {
 
 AUTH_USER_MODEL = "accounts.User"
 
+# Only ever hit via oauth2_provider.views.AuthorizationView's LoginRequiredMixin redirect - the
+# frontend's own login flow is the JSON /v1/auth/login API (accounts/views.py) and never uses
+# Django sessions or this URL. See authn/login_views.py.
+LOGIN_URL = "authn-login"
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -155,9 +170,11 @@ OAUTH2_PROVIDER = {
     "ACCESS_TOKEN_GENERATOR": "authn.token_generators.generate_access_token",
     "REFRESH_TOKEN_GENERATOR": "authn.token_generators.generate_refresh_token",
     # openapi.yaml's documented /oauth/token request body has no code_challenge/
-    # code_verifier fields; the toolkit defaults PKCE_REQUIRED to True, which would
-    # reject every request that follows the documented contract literally.
-    "PKCE_REQUIRED": False,
+    # code_verifier fields, so PKCE can't be required globally (the toolkit defaults to True) or
+    # the first-party client's documented contract would be rejected. Required per-client instead
+    # (a bool-returning callable is a supported PKCE_REQUIRED value) so the real third-party MCP
+    # client - which always sends PKCE - can still be held to it. See authn/mcp_oauth.py.
+    "PKCE_REQUIRED": pkce_required,
     "SCOPES": {
         "activities:read": "Read activities and streams",
         "activities:write": "Upload and edit activities",
@@ -165,8 +182,31 @@ OAUTH2_PROVIDER = {
         "calendar:write": "Schedule workouts",
         "coach": "Access an athlete roster",
         "gear:write": "Manage gear",
+        # Not Cadence-meaningful on its own; advertising it is what makes Claude's OAuth client
+        # auto-request a refresh token when connecting. Global (not cadence-mcp-only) because
+        # django-oauth-toolkit has no per-Application scope allowlist without an add-on - see
+        # authn/mcp_oauth.py.
+        "offline_access": "Retain offline access (refresh tokens)",
     },
 }
+
+# --- MCP OAuth client (cadence-mcp) ---
+# Client secret for the "cadence-mcp" Application (seeded by
+# authn/migrations/0001_seed_mcp_oauth_application.py). Distinct from the first-party client's
+# secret, which the toolkit auto-generates - this one must be a stable, known value on every
+# environment because the migration seeds a fixed client_id/secret pair rather than generating
+# one at boot. Matches Java's OAUTH_MCP_CLIENT_SECRET naming for cross-backend consistency.
+OAUTH_MCP_CLIENT_SECRET = env("OAUTH_MCP_CLIENT_SECRET", "insecure-dev-mcp-secret-change-me")
+
+# This API's own issuer identity, used in RFC 8414/9728 discovery document responses (see
+# authn/discovery_views.py). Matches Java's OAUTH_ISSUER / cadence.oauth.issuer naming.
+OAUTH_ISSUER = env("OAUTH_ISSUER", "http://localhost:8000")
+
+# --- MCP server (django-mcp-server) ---
+# Reuses the same OAuth2 bearer-token path already in REST_FRAMEWORK's
+# DEFAULT_AUTHENTICATION_CLASSES below - not a parallel auth stack. No tools registered
+# yet; this just mounts /mcp so the OAuth layer has something real to authenticate against.
+DJANGO_MCP_AUTHENTICATION_CLASSES = ["authn.mcp_auth.McpOAuth2Authentication"]
 
 # --- JWT signing (scoped delegated JWTs minted via /v1/auth/jwt) ---
 JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH", str(BASE_DIR / "keys" / "jwt_private.pem"))

@@ -12,6 +12,7 @@ urlpatterns = [
     # only registers "token/", which would otherwise 301 POST requests here.
     path("oauth/token", TokenView.as_view(), name="oauth-token"),
     path("oauth/", include("oauth2_provider.urls", namespace="oauth2_provider")),
+    path("", include("mcp_server.urls")),
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path("schema/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("", include("accounts.urls")),
