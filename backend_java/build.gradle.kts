@@ -48,6 +48,10 @@ dependencies {
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
 	implementation("com.garmin:fit:21.213.0")
 
+	// SPIKE: compatibility check only, see infra/... plan - MCP transport under Spring Boot 4.1.0.
+	implementation(platform("org.springframework.ai:spring-ai-bom:2.0.1"))
+	implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc")
+
 	implementation("org.mapstruct:mapstruct:$mapstructVersion")
 	annotationProcessor("org.mapstruct:mapstruct-processor:$mapstructVersion")
 
@@ -58,6 +62,9 @@ dependencies {
 	// yet, so resolving against the 2.x BOM fails outright.
 	testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
+	// Spring Boot 4's modularization split MockMvc test support out of starter-test -
+	// needed explicitly now for @AutoConfigureMockMvc (org.springframework.boot.webmvc.test.autoconfigure).
+	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 	testImplementation("org.springframework.batch:spring-batch-test")
 	testImplementation("org.springframework.security:spring-security-test")
 	testImplementation("org.springframework.boot:spring-boot-testcontainers")
