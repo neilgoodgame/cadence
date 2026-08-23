@@ -44,7 +44,7 @@ BEST_EFFORT_PERIOD_DAYS = {"4w": 28, "3m": 90, "16w": 112, "1y": 365}
 LOWER_IS_BETTER_KINDS = {"running_pace"}
 
 
-def _cap_per_window(efforts: list[BestEffort], lower_is_better: bool, top_n: int) -> list[BestEffort]:
+def cap_per_window(efforts: list[BestEffort], lower_is_better: bool, top_n: int) -> list[BestEffort]:
     """Trim retains up to top_n rows per window in EACH tracked period independently (see
     _trim_kind_window in uploads/processing.py), so a single date-filtered read can still
     return more than top_n rows for one window - e.g. the top-10-of-112-days set and the
@@ -162,7 +162,7 @@ class BestEffortListView(APIView):
             qs = qs.filter(date__gte=cutoff)
 
         athlete = get_object_or_404(User, pk=id)
-        capped = _cap_per_window(list(qs), kind in LOWER_IS_BETTER_KINDS, athlete.best_effort_top_n)
+        capped = cap_per_window(list(qs), kind in LOWER_IS_BETTER_KINDS, athlete.best_effort_top_n)
 
         return Response({"kind": kind, "period": period, "data": BestEffortSerializer(capped, many=True).data})
 
@@ -271,7 +271,7 @@ def _validate_threshold_field(field: str | None) -> str:
     return field
 
 
-def _threshold_summary_for_field(athlete: User, field: str) -> dict:
+def threshold_summary_for_field(athlete: User, field: str) -> dict:
     entries = list(ThresholdHistory.objects.filter(athlete=athlete, field=field).order_by("-effective_from")[:2])
     if not entries:
         return {
@@ -308,7 +308,7 @@ class AthleteThresholdsView(APIView):
         if not user_may_read(sub, id):
             raise PermissionDenied("You do not have access to that athlete's data.")
         athlete = get_object_or_404(User, pk=id)
-        return Response({field: _threshold_summary_for_field(athlete, field) for field in _THRESHOLD_FIELDS})
+        return Response({field: threshold_summary_for_field(athlete, field) for field in _THRESHOLD_FIELDS})
 
 
 class ThresholdHistoryListView(APIView):
@@ -351,7 +351,7 @@ class RefreshThresholdView(APIView):
 
         refresh_field(athlete, field)
         athlete.refresh_from_db()
-        return Response({f: _threshold_summary_for_field(athlete, f) for f in _THRESHOLD_FIELDS})
+        return Response({f: threshold_summary_for_field(athlete, f) for f in _THRESHOLD_FIELDS})
 
 
 def _recompute_threshold_history_stream(athlete: User, field: str) -> Iterator[str]:
