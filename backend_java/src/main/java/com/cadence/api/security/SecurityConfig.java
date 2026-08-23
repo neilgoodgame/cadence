@@ -1,6 +1,7 @@
 package com.cadence.api.security;
 
 import com.cadence.api.common.config.CadenceProperties;
+import com.cadence.api.mcp.McpAuthenticationEntryPoint;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,7 +16,11 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.DelegatingAuthenticationEntryPoint;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcherEntry;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -63,6 +68,21 @@ public class SecurityConfig {
 		return new ProviderManager(provider);
 	}
 
+	/**
+	 * {@code BearerTokenAuthenticationFilter} (wired via {@code oauth2ResourceServer()} below)
+	 * handles its own authentication failures directly, bypassing {@code exceptionHandling()}'s
+	 * per-matcher dispatch entirely - so a single entry point bean, used in both places, is the
+	 * only way to guarantee {@code /mcp} actually gets {@link McpAuthenticationEntryPoint}'s
+	 * {@code WWW-Authenticate} discovery header regardless of which code path rejects the
+	 * request. Every other path falls through to {@code apiAuthenticationEntryPoint} unchanged.
+	 */
+	@Bean
+	public AuthenticationEntryPoint securityEntryPoint(
+			ApiAuthenticationEntryPoint apiAuthenticationEntryPoint, McpAuthenticationEntryPoint mcpAuthenticationEntryPoint) {
+		return new DelegatingAuthenticationEntryPoint(apiAuthenticationEntryPoint,
+				new RequestMatcherEntry<>(PathPatternRequestMatcher.pathPattern("/mcp"), mcpAuthenticationEntryPoint));
+	}
+
 	@Bean
 	@Order(2)
 	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http,
@@ -70,8 +90,9 @@ public class SecurityConfig {
 			AuthContextFilter authContextFilter,
 			CorsConfigurationSource corsConfigurationSource,
 			AuthenticationManager formLoginAuthenticationManager,
-			ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
-			ApiAccessDeniedHandler apiAccessDeniedHandler) throws Exception {
+			AuthenticationEntryPoint securityEntryPoint,
+			ApiAccessDeniedHandler apiAccessDeniedHandler,
+			CadenceProperties properties) throws Exception {
 		http
 				.csrf(AbstractHttpConfigurer::disable)
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
@@ -79,19 +100,39 @@ public class SecurityConfig {
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(
 								"/v1/auth/register", "/v1/auth/login", "/v1/auth/verify-email",
-								"/.well-known/jwks.json", "/healthz",
+								"/.well-known/jwks.json", "/.well-known/oauth-protected-resource", "/healthz",
 								"/login", "/login/**",
 								"/schema/**", "/swagger-ui/**", "/swagger-ui.html")
 						.permitAll()
 						.anyRequest().authenticated())
 				.exceptionHandling(exceptions -> exceptions
-						.defaultAuthenticationEntryPointFor(apiAuthenticationEntryPoint, request -> true)
+						.defaultAuthenticationEntryPointFor(securityEntryPoint, request -> true)
 						.defaultAccessDeniedHandlerFor(apiAccessDeniedHandler, request -> true))
 				.formLogin(Customizer.withDefaults())
 				.oauth2ResourceServer(resourceServer -> resourceServer
 						.authenticationManagerResolver(resolver)
-						.authenticationEntryPoint(apiAuthenticationEntryPoint)
-						.accessDeniedHandler(apiAccessDeniedHandler))
+						.authenticationEntryPoint(securityEntryPoint)
+						.accessDeniedHandler(apiAccessDeniedHandler)
+						// RFC 9728 protected-resource metadata for the MCP client's discovery
+						// flow - Spring Security's own built-in filter, not hand-rolled.
+						// offline_access is listed alongside the real scopes purely so Claude
+						// auto-requests a refresh token (see McpClientConfig's Javadoc).
+						.protectedResourceMetadata(prm -> prm.protectedResourceMetadataCustomizer(builder -> builder
+								.resource(properties.oauth().issuer() + "/mcp")
+								.authorizationServer(properties.oauth().issuer())
+								.scope("activities:read")
+								.scope("activities:write")
+								.scope("workouts:write")
+								.scope("calendar:write")
+								.scope("gear:write")
+								.scope("offline_access")
+								// bearerMethods() (not bearerMethod()) - the builder pre-populates
+								// "header" by default, and bearerMethod() appends rather than
+								// replaces, which would otherwise duplicate the entry.
+								.bearerMethods(methods -> {
+									methods.clear();
+									methods.add("header");
+								}))))
 				.addFilterAfter(authContextFilter, BearerTokenAuthenticationFilter.class);
 		return http.build();
 	}

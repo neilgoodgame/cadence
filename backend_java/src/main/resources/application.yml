@@ -48,6 +48,17 @@ spring:
     jdbc:
       initialize-schema: never
 
+  ai:
+    mcp:
+      server:
+        # Streamable HTTP (not the older SSE transport) mounted at the framework default
+        # POST /mcp - secured by SecurityConfig same as every other endpoint, since Spring AI's
+        # MCP server starter provides no authentication of its own by design (per its own docs).
+        protocol: STREAMABLE
+        type: SYNC
+        name: cadence-api
+        version: 0.1.0
+
 cadence:
   jwt:
     private-key-path: ${JWT_PRIVATE_KEY_PATH:keys/jwt_private.pem}
@@ -65,6 +76,12 @@ cadence:
     max-file-bytes: 2147483648
   oauth:
     first-party-client-secret: ${OAUTH_FIRST_PARTY_CLIENT_SECRET:dev-only-secret-change-me}
+    # The MCP OAuth client - unlike the first-party client, this one requires PKCE and consent
+    # (see McpClientConfig) since it's a genuine third-party grant (Claude.ai/Claude Desktop),
+    # not Cadence's own frontend. Pasted into Claude's "Add custom connector -> Advanced
+    # settings" alongside the server URL - no Dynamic Client Registration needed.
+    mcp-client-secret: ${OAUTH_MCP_CLIENT_SECRET:dev-only-secret-change-me}
+    issuer: ${OAUTH_ISSUER:https://api.cadence.cc}
   rate-limit:
     register-max-attempts: ${REGISTER_RATE_LIMIT_MAX_ATTEMPTS:5}
     register-window-minutes: ${REGISTER_RATE_LIMIT_WINDOW_MINUTES:60}

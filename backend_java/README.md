@@ -62,6 +62,11 @@ controller/service reads `AuthContextHolder.get()` regardless of credential type
 active `UserRelationship` (any role for read, `coach` role for write) from `athleteId`
 to `sub`. Delegation failures are **403**, never 404.
 
+A second OAuth2 client (`cadence-mcp`, alongside the frontend's `cadence-first-party`)
+authorizes MCP clients (Claude.ai/Claude Desktop) against `POST /mcp` - full authorization
+code + PKCE + consent flow, RFC 8414/9728 discovery. See
+[`docs/mcp-oauth.md`](docs/mcp-oauth.md) for the full writeup with external spec links.
+
 ### Async upload pipeline
 
 `POST /v1/activities` hashes the uploaded file; a repeat upload for the same athlete

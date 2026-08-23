@@ -19,7 +19,13 @@ public record CadenceProperties(
 	public record DataImport(long maxFileBytes) {
 	}
 
-	public record Oauth(String firstPartyClientSecret) {
+	/**
+	 * {@code issuer} is set explicitly (rather than left to Spring Authorization Server's
+	 * request-derived resolution) so the value emitted in OAuth/OIDC discovery metadata stays
+	 * correct behind CloudFront, which terminates TLS and proxies plain HTTP to the origin -
+	 * same reasoning as {@link Jwt#issuer()}.
+	 */
+	public record Oauth(String firstPartyClientSecret, String mcpClientSecret, String issuer) {
 	}
 
 	public record RateLimit(int registerMaxAttempts, int registerWindowMinutes) {
