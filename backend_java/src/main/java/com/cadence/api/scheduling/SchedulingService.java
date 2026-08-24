@@ -65,6 +65,11 @@ public class SchedulingService {
 
 	@Transactional
 	public ScheduledWorkout update(ScheduledWorkout scheduled, LocalDate date, String activityId) {
+		return update(scheduled, date, activityId, null);
+	}
+
+	@Transactional
+	public ScheduledWorkout update(ScheduledWorkout scheduled, LocalDate date, String activityId, TimeOfDay timeOfDay) {
 		if (date != null) {
 			scheduled.setDate(date);
 		}
@@ -73,6 +78,9 @@ public class SchedulingService {
 					.orElseThrow(() -> new NotFoundException("No such activity."));
 			scheduled.setActivity(activity);
 			scheduled.setStatus(ScheduledWorkoutStatus.COMPLETED);
+		}
+		if (timeOfDay != null) {
+			scheduled.setTimeOfDay(timeOfDay);
 		}
 		return scheduledWorkoutRepository.save(scheduled);
 	}

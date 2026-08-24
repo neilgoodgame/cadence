@@ -136,6 +136,44 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		assertThat(scheduled.date()).isEqualTo(LocalDate.of(2026, 9, 1));
 	}
 
+	// Regression test for a real bug found live: Claude.ai's MCP connector reported having no way
+	// to move a scheduled workout, so a requested "swap two dates" left duplicate entries instead
+	// of a clean move - see move_workout's Javadoc.
+	@Test
+	void moveWorkoutChangesTheDateOfAnExistingEntryInPlace() {
+		User athlete = saveAthlete("mcp-move@example.cc");
+		authAs(athlete.getId(), "workouts:write", "calendar:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse workout = workoutWriteTools.createWorkout("To Move", "bike", steps, null);
+		ScheduledWorkoutResponse scheduled = scheduledWorkoutWriteTools.scheduleWorkout(
+				workout.id(), LocalDate.of(2026, 9, 6), "am");
+
+		ScheduledWorkoutResponse moved = scheduledWorkoutWriteTools.moveWorkout(
+				scheduled.id(), LocalDate.of(2026, 9, 13), "pm");
+
+		assertThat(moved.id()).isEqualTo(scheduled.id());
+		assertThat(moved.date()).isEqualTo(LocalDate.of(2026, 9, 13));
+		assertThat(moved.timeOfDay().name()).isEqualToIgnoringCase("pm");
+	}
+
+	@Test
+	void unscheduleWorkoutRemovesTheEntry() {
+		User athlete = saveAthlete("mcp-unschedule@example.cc");
+		authAs(athlete.getId(), "workouts:write", "calendar:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse workout = workoutWriteTools.createWorkout("To Unschedule", "bike", steps, null);
+		ScheduledWorkoutResponse scheduled = scheduledWorkoutWriteTools.scheduleWorkout(
+				workout.id(), LocalDate.of(2026, 9, 6), "am");
+
+		var result = scheduledWorkoutWriteTools.unscheduleWorkout(scheduled.id());
+
+		assertThat(result.get("deleted")).isEqualTo(true);
+		assertThatThrownBy(() -> scheduledWorkoutWriteTools.moveWorkout(scheduled.id(), LocalDate.of(2026, 9, 7), null))
+				.isInstanceOf(com.cadence.api.common.error.NotFoundException.class);
+	}
+
 	@Test
 	void getWorkoutFromAnotherAthleteIsRejected() {
 		User owner = saveAthlete("mcp-workout-owner@example.cc");
