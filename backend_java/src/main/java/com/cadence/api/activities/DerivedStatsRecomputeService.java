@@ -1,6 +1,7 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.activities.calc.EnvironmentSanitizer;
+import com.cadence.api.activities.calc.NormalizedPowerCalculator;
 import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.activities.calc.TrimpCalculator;
@@ -24,8 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Backfills the extended Activity Analysis stats (max power, cadence, elevation, calories,
- * TRIMP, run air temp/humidity) for activities ingested before that computation existed (or
+ * Backfills the extended Activity Analysis stats (avg/norm/max power, cadence, elevation,
+ * calories, TRIMP, run air temp/humidity) for activities ingested before that computation existed (or
  * before an athlete had the profile thresholds TRIMP needs, or - for air temp/humidity - before
  * EnvironmentSanitizer existed to correct a Stryd sensor-fallback reading), from stored
  * per-second Record rows rather than re-parsing the original upload file - same data source and
@@ -122,6 +123,43 @@ public class DerivedStatsRecomputeService {
 			changed = true;
 		}
 
+		// avgPower/normPower: same sanitized series maxPower above uses - these predate
+		// RunningPowerSanitizer being wired into ComputeDerivedStatsTasklet's ingest-time
+		// computation for some historical activities, leaving a stale unsanitized value stuck
+		// here (e.g. one Stryd spike sample dragging avgPower/normPower far above maxPower).
+		Double avgPower = mean(powerSeries);
+		if (avgPower != null) {
+			activity.setAvgPower((int) Math.round(avgPower));
+			changed = true;
+		}
+		Double normPower = null;
+		if (powerSeries.stream().anyMatch(Objects::nonNull)) {
+			normPower = NormalizedPowerCalculator.compute(powerSeries);
+			if (normPower != null) {
+				activity.setNormPower((int) Math.round(normPower));
+				changed = true;
+			}
+		}
+
+		// intensity: same normPower/threshold-power ratio ComputeDerivedStatsTasklet computes at
+		// ingest time - like avgPower/normPower above, it's never touched once set, so a backfilled
+		// normPower correction above would otherwise leave this stuck at its old, equally-skewed
+		// value (e.g. a stale intensity of 11+ instead of the normal ~0.5-1.2 range).
+		if (normPower != null && normPower > 0 && activity.getSport() == Sport.BIKE) {
+			Double ftp = referenceForOrLive(athlete, ZoneType.BIKE_POWER, activity);
+			if (ftp != null) {
+				activity.setIntensity(round3(normPower / ftp));
+				changed = true;
+			}
+		}
+		else if (normPower != null && normPower > 0 && activity.getSport() == Sport.RUN) {
+			Double criticalRunPower = referenceForOrLive(athlete, ZoneType.RUN_POWER, activity);
+			if (criticalRunPower != null) {
+				activity.setIntensity(round3(normPower / criticalRunPower));
+				changed = true;
+			}
+		}
+
 		List<Integer> cadenceSeries = records.stream().map(Record::getCadence).toList();
 		if (cadenceSeries.stream().anyMatch(Objects::nonNull)) {
 			Double avgCadence = mean(cadenceSeries);
@@ -148,7 +186,6 @@ public class DerivedStatsRecomputeService {
 			changed = true;
 		}
 
-		Double avgPower = mean(powerSeries);
 		if (avgPower != null) {
 			double workKj = avgPower * activity.getMovingTime() / 1000.0;
 			activity.setCalories(UploadCalculations.caloriesFromWorkKj(workKj));
@@ -188,6 +225,18 @@ public class DerivedStatsRecomputeService {
 		}
 
 		return changed;
+	}
+
+	/** Ledger entry effective as of {@code activity}'s own date, falling back to the athlete's
+	 * live profile value when none is effective yet - mirrors ComputeDerivedStatsTasklet's
+	 * ingest-time helper of the same name. */
+	private Double referenceForOrLive(User athlete, ZoneType type, Activity activity) {
+		Double value = zoneService.referenceFor(athlete, type, activity);
+		return value != null ? value : zoneService.referenceFor(athlete, type);
+	}
+
+	private double round3(double v) {
+		return Math.round(v * 1000) / 1000.0;
 	}
 
 	private Double mean(List<Integer> values) {
