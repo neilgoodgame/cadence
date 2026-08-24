@@ -248,4 +248,17 @@ MEDIA_ROOT = BASE_DIR / "media"
 # before dataexport's own check ever runs. MAX_UPLOAD_SIZE_BYTES (activity uploads) is
 # unaffected - it's still enforced on its own in uploads/services.py.
 MAX_IMPORT_SIZE_BYTES = 2 * 1024 * 1024 * 1024
+
+# --- Email verification ---
+# Mirrors backend_java's cadence.email.* properties exactly (same env var names) - see
+# accounts/email_sender.py. EMAIL_PROVIDER "log" (this default) logs the verification link at
+# INFO instead of sending it - a local box has neither AWS credentials nor a verified SES
+# identity to actually deliver anything through; "ses" is what staging/prod set.
+EMAIL_PROVIDER = env("EMAIL_PROVIDER", "log")
+EMAIL_FROM_ADDRESS = env("EMAIL_FROM_ADDRESS", "no-reply@cadence.cc")
+# Where the frontend's "verify your email" screen lives - the token is appended as ?token=...
+EMAIL_VERIFICATION_BASE_URL = env("EMAIL_VERIFICATION_BASE_URL", "http://localhost:5173/verify-email")
+EMAIL_VERIFICATION_TTL_HOURS = int(env("EMAIL_VERIFICATION_TTL_HOURS", "24"))
+EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = int(env("EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS", "60"))
+SES_REGION = env("SES_REGION", "eu-west-2")
 DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_IMPORT_SIZE_BYTES

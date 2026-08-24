@@ -81,6 +81,13 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # (workouts/models.py's Workout.tags, a plain list of names) onto the activity.
     copy_matched_workout_tags = models.BooleanField(default=False)
 
+    # Gates high-trust actions (full-account export/import - see dataexport/views.py's
+    # _require_email_verified) behind a confirmed email address. Every account here goes
+    # through the password-signup flow (RegisterView rejects social signup for now), so this
+    # always starts false and is only ever flipped by EmailVerificationToken.verify - unlike
+    # backend_java's User.emailVerified, which social signups get pre-set to true.
+    email_verified = models.BooleanField(default=False)
+
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
@@ -109,6 +116,29 @@ class PersonalAccessToken(PrefixedIDModel):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.prefix}…)"
+
+
+class EmailVerificationToken(PrefixedIDModel):
+    """A one-time-use token proving control of the email address on a password-based account -
+    mirrors backend_java's EmailVerificationToken exactly (same table shape, same hashed-secret
+    scheme as PersonalAccessToken above: only the raw value mailed to the athlete can complete
+    verification, nothing recoverable from the row itself). See
+    accounts/email_verification.py.
+    """
+
+    id_prefix = "evt"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="email_verification_tokens")
+    hashed_secret = models.CharField(max_length=64, unique=True)
+    created = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    def is_usable(self, now) -> bool:
+        return self.used_at is None and now < self.expires_at
+
+    def __str__(self) -> str:
+        return f"verification token for {self.user_id}"
 
 
 class UserRelationship(models.Model):

@@ -14,6 +14,7 @@ from core.auth_context import authenticated_user, get_request_scopes
 from core.derived import compute_compliance, compute_fitness_series, compute_flags, compute_tsb
 from core.exceptions import ConflictError, InvalidCredentialsError
 
+from . import email_verification
 from .models import PersonalAccessToken, User, UserRelationship
 from .serializers import (
     AccessTokenSerializer,
@@ -27,6 +28,7 @@ from .serializers import (
     ShareSerializer,
     UpdateShareSerializer,
     UserSerializer,
+    VerifyEmailSerializer,
 )
 from .tokens import generate_secret, hash_secret, visible_prefix
 
@@ -74,7 +76,31 @@ class RegisterView(APIView):
             raise ConflictError("An account with that email already exists.")
 
         user = User.objects.create_user(email=data["email"], password=data["password"], name=data["name"])
+        email_verification.issue_and_send(user)
         return Response(_athlete_with_tokens(user), status=status.HTTP_201_CREATED)
+
+
+class VerifyEmailView(APIView):
+    """Public - reached by clicking the emailed link, which may not carry this browser's
+    bearer token (a different device, or a session that's since expired)."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request: Request) -> Response:
+        serializer = VerifyEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email_verification.verify(serializer.validated_data["token"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ResendVerificationView(APIView):
+    """Authenticated - resends to the caller's own address rather than taking one as input, so
+    this can't be used to probe whether an arbitrary email belongs to an account."""
+
+    def post(self, request: Request) -> Response:
+        email_verification.resend(authenticated_user(request))
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class LoginView(APIView):

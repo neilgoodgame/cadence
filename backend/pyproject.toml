@@ -28,6 +28,7 @@ dependencies = [
     # newest pre-2.0 release until django-mcp-server catches up.
     "django-mcp-server==0.5.7",
     "mcp==1.9.4",
+    "boto3==1.43.78",
 ]
 
 [dependency-groups]
@@ -94,7 +95,7 @@ strict_equality = true
 django_settings_module = "config.settings"
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "fitparse.*", "oauth2_provider.*", "ijson.*", "mcp_server.*"]
+module = ["celery.*", "fitparse.*", "oauth2_provider.*", "ijson.*", "mcp_server.*", "boto3.*", "botocore.*"]
 ignore_missing_imports = true
 
 # Test modules are still type-checked, just not required to annotate every
