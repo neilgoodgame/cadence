@@ -93,6 +93,15 @@ class ScheduledWorkoutCreateTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_schedule_accepts_notes(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/scheduled-workouts",
+            {"workout_id": self.workout.id, "athlete_id": self.athlete.id, "date": "2026-06-20", "notes": "Race sim"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["notes"], "Race sim")
+
     def test_workout_belonging_to_someone_else_404(self):
         other = User.objects.create_user(email="other@example.cc", password="x", name="Other")
         foreign_workout = Workout.objects.create(created_by=other, name="Not mine", sport="run")
@@ -144,6 +153,13 @@ class ScheduledWorkoutDetailTests(TestCase):
             f"/v1/scheduled-workouts/{self.scheduled.id}", {"activity_id": foreign_activity.id}, format="json"
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_patch_notes(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/scheduled-workouts/{self.scheduled.id}", {"notes": "Swap if it rains"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["notes"], "Swap if it rains")
 
     def test_outsider_cannot_patch(self):
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])

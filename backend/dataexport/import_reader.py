@@ -493,6 +493,7 @@ def _import_scheduled_workouts(
                     time_of_day=scheduled.get("time_of_day") or "",
                     status="completed" if activity_id else "planned",
                     activity_id=activity_id,
+                    notes=scheduled.get("notes") or "",
                 )
                 counts["scheduled_workouts_imported"] += 1
             except Exception:

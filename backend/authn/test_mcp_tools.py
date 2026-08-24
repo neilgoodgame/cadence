@@ -153,6 +153,73 @@ class SchedulingToolsTests(TestCase):
         with self.assertRaises(PermissionDenied):
             tools.schedule_workout(workout_id=workout.id, date="2026-09-01")
 
+    def test_schedule_workout_accepts_notes(self) -> None:
+        athlete = User.objects.create_user(email="mcp-schedule-notes@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="bike")
+        tools = SchedulingMCPTools(request=_mcp_request(athlete, "calendar:write"))
+
+        result = tools.schedule_workout(workout_id=workout.id, date="2026-09-01", notes="Race sim")
+
+        self.assertEqual(result["notes"], "Race sim")
+
+    # Regression test mirroring backend_java's McpToolsIntegrationTest -
+    # moveWorkoutChangesTheDateOfAnExistingEntryInPlace: Claude.ai's MCP connector had no way to
+    # move a scheduled workout, so a requested "swap two dates" left duplicate entries instead of
+    # a clean move.
+    def test_move_workout_changes_date_and_time_of_day_in_place(self) -> None:
+        athlete = User.objects.create_user(email="mcp-move@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="bike")
+        tools = SchedulingMCPTools(request=_mcp_request(athlete, "calendar:write"))
+        scheduled = tools.schedule_workout(workout_id=workout.id, date="2026-09-06", time_of_day="am")
+
+        moved = tools.move_workout(scheduled_workout_id=scheduled["id"], date="2026-09-13", time_of_day="pm")
+
+        self.assertEqual(moved["id"], scheduled["id"])
+        self.assertEqual(moved["date"], "2026-09-13")
+        self.assertEqual(moved["time_of_day"], "PM")
+
+    def test_move_workout_can_update_just_the_notes(self) -> None:
+        athlete = User.objects.create_user(email="mcp-move-notes@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="bike")
+        tools = SchedulingMCPTools(request=_mcp_request(athlete, "calendar:write"))
+        scheduled = tools.schedule_workout(workout_id=workout.id, date="2026-09-06")
+
+        annotated = tools.move_workout(scheduled_workout_id=scheduled["id"], notes="Swap if it rains")
+
+        self.assertEqual(annotated["date"], "2026-09-06")
+        self.assertEqual(annotated["notes"], "Swap if it rains")
+
+    def test_unschedule_workout_removes_the_entry(self) -> None:
+        athlete = User.objects.create_user(email="mcp-unschedule@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="bike")
+        tools = SchedulingMCPTools(request=_mcp_request(athlete, "calendar:write"))
+        scheduled = tools.schedule_workout(workout_id=workout.id, date="2026-09-06")
+
+        result = tools.unschedule_workout(scheduled_workout_id=scheduled["id"])
+
+        self.assertEqual(result, {"deleted": True, "id": scheduled["id"]})
+        self.assertFalse(ScheduledWorkout.objects.filter(pk=scheduled["id"]).exists())
+
+    def test_unschedule_workout_refuses_a_completed_entry(self) -> None:
+        athlete = User.objects.create_user(email="mcp-unschedule-completed@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="bike")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Completed ride",
+            start_date=timezone.datetime(2026, 9, 6, tzinfo=timezone.get_default_timezone()),
+            moving_time=1800,
+            distance_km=10,
+        )
+        scheduled = ScheduledWorkout.objects.create(
+            workout=workout, athlete=athlete, date="2026-09-06", activity=activity, status="completed"
+        )
+        tools = SchedulingMCPTools(request=_mcp_request(athlete, "calendar:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.unschedule_workout(scheduled_workout_id=scheduled.id)
+
     def test_get_calendar_reports_scheduled_and_unplanned(self) -> None:
         athlete = User.objects.create_user(email="mcp-calendar@example.cc", password="x", name="Athlete")
         workout = Workout.objects.create(created_by=athlete, name="W", sport="bike")

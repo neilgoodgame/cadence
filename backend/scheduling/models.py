@@ -33,6 +33,7 @@ class ScheduledWorkout(PrefixedIDModel):
     activity = models.ForeignKey(
         Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="scheduled_workout_matches"
     )
+    notes = models.CharField(blank=True, default="", max_length=500)
 
     class Meta:
         ordering = ["date"]
