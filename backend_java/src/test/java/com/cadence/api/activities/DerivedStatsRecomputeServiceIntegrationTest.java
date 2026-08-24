@@ -76,6 +76,8 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 		Activity updated = derivedStatsRecomputeService.recomputeForActivity(activity.getId());
 
 		assertThat(updated.getMaxPower()).isEqualTo(200);
+		assertThat(updated.getAvgPower()).isEqualTo(200);
+		assertThat(updated.getNormPower()).isEqualTo(200);
 		assertThat(updated.getAvgCadence()).isEqualTo(85);
 		assertThat(updated.getMaxCadence()).isEqualTo(85);
 		assertThat(updated.getMaxSpeed()).isCloseTo(28.8, org.assertj.core.data.Offset.offset(0.1));
@@ -103,8 +105,36 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 		Activity updated = derivedStatsRecomputeService.recomputeForActivity(activity.getId());
 
 		assertThat(updated.getMaxPower()).isNull();
+		assertThat(updated.getAvgPower()).isNull();
+		assertThat(updated.getNormPower()).isNull();
 		assertThat(updated.getAvgCadence()).isNull();
 		assertThat(updated.getCalories()).isNull();
+	}
+
+	// Regression test for a real bug found live: a historical activity ingested before
+	// RunningPowerSanitizer was wired into ComputeDerivedStatsTasklet's avgPower/normPower
+	// computation was left with a stale avgPower/normPower dragged sky-high by a single Stryd
+	// footpod spike sample - see RunningPowerSanitizer's Javadoc for the failure mode. maxPower
+	// was already correctly backfilled sanitized; avgPower/normPower were not backfilled at all
+	// before this fix, leaving the stale unsanitized (or entirely absent) value in place.
+	@Test
+	void backfillSanitizesARunningPowerSpikeOutOfAvgAndNormPower() {
+		User athlete = newAthlete("run-power-spike@example.cc");
+		Activity activity = newRunActivity(athlete, 60);
+		for (int t = 0; t < 60; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(t == 30 ? 1999 : 230);
+			recordRepository.save(record);
+		}
+
+		Activity updated = derivedStatsRecomputeService.recomputeForActivity(activity.getId());
+
+		assertThat(updated.getMaxPower()).isEqualTo(230);
+		assertThat(updated.getAvgPower()).isEqualTo(230);
+		assertThat(updated.getNormPower()).isCloseTo(230, org.assertj.core.data.Offset.offset(10));
 	}
 
 	// Regression test for a real bug found live: a Stryd ambient-sensor pairing failure reports
@@ -185,6 +215,8 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 		Activity reloadedSecond = activityRepository.findById(second.getId()).orElseThrow();
 		assertThat(reloadedFirst.getMaxPower()).isEqualTo(200);
 		assertThat(reloadedSecond.getMaxPower()).isEqualTo(200);
+		assertThat(reloadedFirst.getAvgPower()).isEqualTo(200);
+		assertThat(reloadedSecond.getAvgPower()).isEqualTo(200);
 		assertThat(reloadedFirst.getCalories()).isNotNull();
 		assertThat(reloadedSecond.getCalories()).isNotNull();
 	}
