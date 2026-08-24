@@ -1,5 +1,7 @@
 package com.cadence.api.workouts;
 
+import com.cadence.api.athletes.ZoneService;
+import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -19,10 +21,12 @@ public class WorkoutService {
 
 	private final WorkoutRepository workoutRepository;
 	private final WorkoutFolderRepository workoutFolderRepository;
+	private final ZoneService zoneService;
 
-	public WorkoutService(WorkoutRepository workoutRepository, WorkoutFolderRepository workoutFolderRepository) {
+	public WorkoutService(WorkoutRepository workoutRepository, WorkoutFolderRepository workoutFolderRepository, ZoneService zoneService) {
 		this.workoutRepository = workoutRepository;
 		this.workoutFolderRepository = workoutFolderRepository;
+		this.zoneService = zoneService;
 	}
 
 	public List<Workout> listWorkouts(
@@ -53,7 +57,7 @@ public class WorkoutService {
 		if (request.tags() != null) {
 			workout.setTags(request.tags());
 		}
-		applySteps(workout, request.steps());
+		applySteps(workout, request.steps(), creator);
 		return workoutRepository.save(workout);
 	}
 
@@ -74,7 +78,7 @@ public class WorkoutService {
 			workout.setTags(request.tags());
 		}
 		if (request.steps() != null) {
-			applySteps(workout, request.steps());
+			applySteps(workout, request.steps(), workout.getCreatedBy());
 		}
 		return workoutRepository.save(workout);
 	}
@@ -104,10 +108,11 @@ public class WorkoutService {
 		return folder;
 	}
 
-	private void applySteps(Workout workout, List<WorkoutStepDto> stepDtos) {
+	private void applySteps(Workout workout, List<WorkoutStepDto> stepDtos, User athlete) {
 		workout.getSteps().clear();
 		addSteps(workout, stepDtos, null);
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(stepDtos);
+		Double thresholdPaceSecPerKm = zoneService.referenceFor(athlete, ZoneType.PACE);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(stepDtos, thresholdPaceSecPerKm);
 		workout.setDuration(result.durationSeconds());
 		workout.setTss(result.tss());
 		workout.setChartPreview(WorkoutCalculations.computeChartPreview(stepDtos));

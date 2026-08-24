@@ -30,6 +30,11 @@ class WorkoutServiceIntegrationTest extends IntegrationTest {
 				1, "", List.of());
 	}
 
+	private static WorkoutStepDto distanceLeaf(Integer distance, TargetType targetType, Double low, Double high) {
+		return new WorkoutStepDto(StepKind.BLOCK, StepEndType.DISTANCE, null, distance, targetType, low, high,
+				Target2Type.NONE, null, null, 1, "", List.of());
+	}
+
 	private static WorkoutStepDto group(int repeat, WorkoutStepDto... children) {
 		return new WorkoutStepDto(StepKind.REPEAT, null, null, null, null, null, null, Target2Type.NONE, null, null,
 				repeat, "", List.of(children));
@@ -106,5 +111,33 @@ class WorkoutServiceIntegrationTest extends IntegrationTest {
 
 		Workout fetched = workoutService.getWorkoutWithSteps(workout.getId());
 		assertThat(fetched.getSteps()).hasSize(2); // repeat group + its 1 child
+	}
+
+	// Regression coverage for a real gap found live: a distance-ended pace-targeted step
+	// (typical for a running workout) showed 0:00 duration and 0 TSS with no way to fix it -
+	// see WorkoutCalculationsTest for the pure-calculation coverage; this proves the athlete's
+	// real threshold_pace profile field actually reaches that calculation end to end.
+	@Test
+	void createInfersDurationForADistanceStepWhenTheAthleteHasAThresholdPace() {
+		User athlete = saveAthlete("pace-inference@example.cc");
+		athlete.setThresholdPace("4:00"); // 240 sec/km
+		userRepository.save(athlete);
+		List<WorkoutStepDto> steps = List.of(distanceLeaf(5000, TargetType.PACE, 100.0, 100.0));
+
+		Workout workout = workoutService.createWorkout(athlete, new WorkoutCreateRequest("5k Tempo", Sport.RUN, steps, null, null));
+
+		assertThat(workout.getDuration()).isEqualTo(1200); // 5km * 240 sec/km
+		assertThat(workout.getTss()).isGreaterThan(0);
+	}
+
+	@Test
+	void createLeavesDurationZeroForADistanceStepWithoutAThresholdPace() {
+		User athlete = saveAthlete("no-pace-inference@example.cc");
+		List<WorkoutStepDto> steps = List.of(distanceLeaf(5000, TargetType.PACE, 100.0, 100.0));
+
+		Workout workout = workoutService.createWorkout(athlete, new WorkoutCreateRequest("5k Tempo", Sport.RUN, steps, null, null));
+
+		assertThat(workout.getDuration()).isEqualTo(0);
+		assertThat(workout.getTss()).isEqualTo(0);
 	}
 }

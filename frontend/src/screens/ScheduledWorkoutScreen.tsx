@@ -136,9 +136,13 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
           {sportLabel(workout.sport)}
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", margin: "8px 0 2px" }}>{workout.name}</h1>
-        <div className="mono" style={{ fontSize: 13, color: "var(--ink3)" }}>
-          {formatDuration(workout.duration)} · {workout.tss} TSS
-        </div>
+        {(workout.duration > 0 || workout.tss > 0) && (
+          <div className="mono" style={{ fontSize: 13, color: "var(--ink3)" }}>
+            {[workout.duration > 0 ? formatDuration(workout.duration) : null, workout.tss > 0 ? `${workout.tss} TSS` : null]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        )}
         <MiniChart preview={workout.chart_preview} />
       </div>
 
