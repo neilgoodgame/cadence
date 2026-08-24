@@ -15,6 +15,7 @@ class ScheduledWorkoutSerializer(serializers.ModelSerializer):
             "time_of_day",
             "status",
             "activity_id",
+            "notes",
         ]
 
 
@@ -23,8 +24,11 @@ class ScheduleWorkoutCreateSerializer(serializers.Serializer):
     athlete_id = serializers.CharField()
     date = serializers.DateField()
     time_of_day = serializers.ChoiceField(choices=ScheduledWorkout.TIME_OF_DAY_CHOICES, required=False)
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=500)
 
 
 class ScheduledWorkoutUpdateSerializer(serializers.Serializer):
     date = serializers.DateField(required=False)
     activity_id = serializers.CharField(required=False)
+    time_of_day = serializers.ChoiceField(choices=ScheduledWorkout.TIME_OF_DAY_CHOICES, required=False)
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=500)
