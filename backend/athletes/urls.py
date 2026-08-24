@@ -9,6 +9,7 @@ from .views import (
     BestEffortRecomputeView,
     BestEffortTrimView,
     FitnessListView,
+    RecomputeAthleteCurvesView,
     RecomputeAthleteStatsView,
     RecomputeAthleteTssView,
     RecomputeThresholdHistoryView,
@@ -42,6 +43,11 @@ urlpatterns = [
     path("v1/athletes/<str:id>/fitness", FitnessListView.as_view(), name="athlete-fitness"),
     path("v1/athletes/<str:id>/recompute-tss", RecomputeAthleteTssView.as_view(), name="athlete-recompute-tss"),
     path("v1/athletes/<str:id>/recompute-stats", RecomputeAthleteStatsView.as_view(), name="athlete-recompute-stats"),
+    path(
+        "v1/athletes/<str:id>/curves/recompute",
+        RecomputeAthleteCurvesView.as_view(),
+        name="athlete-curves-recompute",
+    ),
     path("v1/athletes/<str:id>/thresholds", AthleteThresholdsView.as_view(), name="athlete-thresholds"),
     path(
         "v1/athletes/<str:id>/threshold-history",

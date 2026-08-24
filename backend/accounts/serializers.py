@@ -30,7 +30,12 @@ class UserSerializer(serializers.ModelSerializer):
             "rename_matched_activities",
             "append_match_date_to_name",
             "copy_matched_workout_tags",
+            "email_verified",
         ]
+
+
+class VerifyEmailSerializer(serializers.Serializer):
+    token = serializers.CharField()
 
 
 class RegisterSerializer(serializers.Serializer):

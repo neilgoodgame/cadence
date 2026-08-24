@@ -9,14 +9,18 @@ from .views import (
     LoginView,
     MeView,
     RegisterView,
+    ResendVerificationView,
     RosterListView,
     ShareDetailView,
     ShareListCreateView,
+    VerifyEmailView,
 )
 
 urlpatterns = [
     path("v1/auth/register", RegisterView.as_view(), name="register"),
     path("v1/auth/login", LoginView.as_view(), name="login"),
+    path("v1/auth/verify-email", VerifyEmailView.as_view(), name="verify-email"),
+    path("v1/auth/resend-verification", ResendVerificationView.as_view(), name="resend-verification"),
     path("v1/me", MeView.as_view(), name="me"),
     path("v1/me/contexts", ContextsView.as_view(), name="me-contexts"),
     path("v1/auth/tokens", AccessTokenListCreateView.as_view(), name="access-tokens"),

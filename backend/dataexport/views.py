@@ -9,6 +9,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import User
 from activities.models import Activity
 from core.auth_context import get_effective_athlete_id
 from core.permissions import user_may_read, user_may_write
@@ -30,10 +31,20 @@ def _require_read(request: Request, athlete_id: str) -> None:
         raise PermissionDenied("You do not have access to that athlete's data.")
 
 
+def _require_email_verified(athlete_id: str, action: str) -> None:
+    """The enforcement half of the soft gate email_verified is - mirrors backend_java's
+    UserService.requireEmailVerified, wired into the same two endpoints (POST /v1/export,
+    POST /v1/import)."""
+    athlete = get_object_or_404(User, pk=athlete_id)
+    if not athlete.email_verified:
+        raise PermissionDenied(f"Verify your email address before {action}.")
+
+
 class ExportView(APIView):
     def post(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
+        _require_email_verified(athlete_id, "exporting your data")
 
         sport = request.query_params.get("sport") or None
         if sport and sport not in dict(Activity.SPORT_CHOICES):
@@ -90,6 +101,7 @@ class ImportView(APIView):
     def post(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
+        _require_email_verified(athlete_id, "importing data")
 
         file_obj = request.FILES.get("file")
         if not file_obj:

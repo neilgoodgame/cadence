@@ -262,6 +262,49 @@ class RecomputeAthleteStatsView(APIView):
         return response
 
 
+def _recompute_curves_stream(athlete: User) -> Iterator[str]:
+    from uploads.processing import _write_duration_curves
+
+    candidates = (
+        Activity.objects.filter(athlete=athlete, parent_activity__isnull=True)
+        .exclude(sport__in=("multisport", "transition"))
+        .order_by("start_date")
+    )
+
+    activities = list(candidates)
+    total = len(activities)
+
+    for i, activity in enumerate(activities):
+        records = list(activity.records.order_by("t").values("power", "heartrate"))
+        if records:
+            power_series = [r["power"] for r in records]
+            hr_series = [r["heartrate"] for r in records]
+            _write_duration_curves(activity, power_series, hr_series)
+        yield f"data: {json.dumps({'current': i + 1, 'total': total})}\n\n"
+
+    yield f"event: done\ndata: {json.dumps({'processed': total})}\n\n"
+
+
+class RecomputeAthleteCurvesView(APIView):
+    """Backfills duration curves for every eligible activity - mirrors
+    backend_java's DurationCurveRecomputeService/CurveController#recompute. Nothing else ever
+    computes a duration curve for an activity that already exists (in particular, ImportReader-
+    equivalent restores raw Record rows but never recomputes curves from them), so every
+    activity restored from an export has none until this runs. Streamed like
+    RecomputeAthleteStatsView, same reasoning.
+    """
+
+    def post(self, request: Request, id: str) -> StreamingHttpResponse:
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        athlete = get_object_or_404(User, pk=id)
+        response = StreamingHttpResponse(_recompute_curves_stream(athlete), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+
 _THRESHOLD_FIELDS = ("ftp", "critical_run_power", "threshold_pace")
 
 

@@ -6,7 +6,7 @@ from django.test import TestCase
 from accounts.models import User
 from athletes.models import ThresholdHistory
 
-from ..models import Record
+from ..models import DurationCurve, Record
 from .helpers import _bearer_client, _delegated_client, _make_activity
 
 
@@ -221,3 +221,63 @@ class RecomputeAthleteStatsViewTests(TestCase):
         self.assertEqual(len(progress_events), 3)
         self.assertEqual(progress_events[0], {"current": 1, "total": 3})
         self.assertEqual(progress_events[-1], {"current": 3, "total": 3})
+
+
+# Regression coverage for a real gap found live: Django's scheduling MCP tools were missing
+# move_workout/unschedule_workout (see scheduling/mcp.py), which prompted a broader Django-vs-Java
+# parity audit - this endpoint (backend_java's CurveController#recompute) turned out to be
+# entirely missing here. Nothing else in this backend recomputes duration curves for an activity
+# that already exists (in particular, dataexport's import restores raw Record rows but never
+# recomputes curves from them - same gap RecomputeAthleteStatsView exists to backfill for stats).
+class RecomputeAthleteCurvesViewTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="curves-athlete@example.cc", password="x", name="Athlete")
+        self.outsider = User.objects.create_user(email="curves-outsider@example.cc", password="x", name="Outsider")
+
+    def _make_activity_with_records(self, **kwargs):
+        activity = _make_activity(self.athlete, moving_time=3600, **kwargs)
+        for t in range(3600):
+            Record.objects.create(
+                activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=200, heartrate=140
+            )
+        return activity
+
+    def test_backfills_curves_across_all_of_the_athletes_activities(self):
+        activity = self._make_activity_with_records()
+        self.assertFalse(DurationCurve.objects.filter(activity=activity).exists())
+
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/curves/recompute")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_final_stream_event(response)["processed"], 1)
+
+        power_curve = DurationCurve.objects.get(activity=activity, metric="power")
+        self.assertEqual(power_curve.points["5"], 200.0)
+        self.assertTrue(DurationCurve.objects.filter(activity=activity, metric="heartrate").exists())
+
+    def test_does_not_touch_other_athletes_activities(self):
+        other_athlete = User.objects.create_user(email="curves-other@example.cc", password="x", name="Other")
+        other_activity = _make_activity(other_athlete)
+
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/curves/recompute")
+        self.assertEqual(response.status_code, 200)
+
+        self.assertFalse(DurationCurve.objects.filter(activity=other_activity).exists())
+
+    def test_outsider_cannot_bulk_recompute(self):
+        self._make_activity_with_records()
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.post(f"/v1/athletes/{self.athlete.id}/curves/recompute")
+        self.assertEqual(response.status_code, 403)
+
+    def test_streams_progress_after_each_activity(self):
+        self._make_activity_with_records()
+        self._make_activity_with_records(name="Evening Run")
+
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/curves/recompute")
+        content = b"".join(response.streaming_content).decode()
+        progress_events = [
+            json.loads(block[len("data: ") :]) for block in content.split("\n\n") if block.startswith("data: ")
+        ]
+
+        self.assertEqual(len(progress_events), 2)
+        self.assertEqual(progress_events[-1], {"current": 2, "total": 2})

@@ -29,6 +29,14 @@ def _bearer_client(user, scope="activities:read activities:write coach"):
     return client
 
 
+def _verified_user(**kwargs) -> User:
+    # POST /v1/export and /v1/import both now 403 an unverified athlete (see
+    # dataexport/views.py's _require_email_verified) - every user in this file exercises one or
+    # the other, so this file's own fixtures need email_verified=True regardless (dedicated
+    # coverage for the unverified-403 case itself lives in ExportImportGateTests below).
+    return User.objects.create_user(email_verified=True, **kwargs)
+
+
 def _make_activity(athlete: User, **kwargs) -> Activity:
     defaults = {
         "sport": "run",
@@ -80,8 +88,8 @@ def _seed_full_account(athlete: User) -> dict:
 
 class ExportImportRoundTripTests(TestCase):
     def setUp(self):
-        self.source = User.objects.create_user(email="export-source@example.cc", password="x", name="Source")
-        self.target = User.objects.create_user(email="export-target@example.cc", password="x", name="Target")
+        self.source = _verified_user(email="export-source@example.cc", password="x", name="Source")
+        self.target = _verified_user(email="export-target@example.cc", password="x", name="Target")
         _seed_full_account(self.source)
 
     def test_export_then_import_recreates_data_with_remapped_ids(self):
@@ -154,7 +162,7 @@ class ImportActivityDedupTests(TestCase):
     aborts the whole transaction) that's out of scope for this fix."""
 
     def setUp(self):
-        self.athlete = User.objects.create_user(email="dedup-target@example.cc", password="x", name="Dedup")
+        self.athlete = _verified_user(email="dedup-target@example.cc", password="x", name="Dedup")
         self.run = _make_activity(
             self.athlete,
             sport="run",
@@ -227,10 +235,8 @@ class ImportThresholdHistoryTests(TestCase):
     re-derived against the importing athlete's own (possibly unrelated) fitness."""
 
     def test_imported_activity_carries_over_the_sources_own_historical_value_unchanged(self):
-        source = User.objects.create_user(email="threshold-history-source@example.cc", password="x", name="Source")
-        target = User.objects.create_user(
-            email="threshold-history-target@example.cc", password="x", name="Target", ftp=222
-        )
+        source = _verified_user(email="threshold-history-source@example.cc", password="x", name="Source")
+        target = _verified_user(email="threshold-history-target@example.cc", password="x", name="Target", ftp=222)
         activity = _make_activity(source, sport="bike", name="Ride")
         ThresholdHistory.objects.create(
             athlete=source, field="ftp", value_numeric=250, source_activity=activity, effective_from=date(2026, 1, 1)
@@ -256,8 +262,8 @@ class ImportThresholdHistoryTests(TestCase):
     def test_a_manually_entered_value_round_trips_with_no_source_activity(self):
         # source_activity=None (see threshold_history.py::record_manual_value) - not a malformed
         # or unmapped reference, so this must NOT be treated as a dangling link and skipped.
-        source = User.objects.create_user(email="threshold-manual-source@example.cc", password="x", name="Source")
-        target = User.objects.create_user(email="threshold-manual-target@example.cc", password="x", name="Target")
+        source = _verified_user(email="threshold-manual-source@example.cc", password="x", name="Source")
+        target = _verified_user(email="threshold-manual-target@example.cc", password="x", name="Target")
         ThresholdHistory.objects.create(
             athlete=source, field="ftp", value_numeric=260, source_activity=None, effective_from=date(2026, 1, 1)
         )
@@ -285,7 +291,7 @@ class ImportThresholdHistoryTests(TestCase):
 
         from django.core.files.storage import default_storage
 
-        target = User.objects.create_user(email="threshold-dangling-target@example.cc", password="x", name="Target")
+        target = _verified_user(email="threshold-dangling-target@example.cc", password="x", name="Target")
         relative_path = "exports/test/threshold-history-dangling.json.gz"
         full_path = default_storage.path(relative_path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -327,7 +333,7 @@ class ImportThresholdHistoryTests(TestCase):
 
         from django.core.files.storage import default_storage
 
-        target = User.objects.create_user(email="threshold-history-pre-feature@example.cc", password="x", name="Target")
+        target = _verified_user(email="threshold-history-pre-feature@example.cc", password="x", name="Target")
         relative_path = "exports/test/threshold-history-pre-feature.json.gz"
         full_path = default_storage.path(relative_path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -355,7 +361,7 @@ class ImportThresholdHistoryTests(TestCase):
 
 class SportFilterTests(TestCase):
     def setUp(self):
-        self.athlete = User.objects.create_user(email="sport-filter@example.cc", password="x", name="Athlete")
+        self.athlete = _verified_user(email="sport-filter@example.cc", password="x", name="Athlete")
         _seed_full_account(self.athlete)
         _make_activity(
             self.athlete, sport="run", name="Standalone Run", start_date=datetime(2026, 1, 2, 7, 0, tzinfo=UTC)
@@ -429,7 +435,7 @@ class ProgressStepTests(TestCase):
     field these feed is what the frontend's progress dialog polls for."""
 
     def setUp(self):
-        self.athlete = User.objects.create_user(email="progress-steps@example.cc", password="x", name="Athlete")
+        self.athlete = _verified_user(email="progress-steps@example.cc", password="x", name="Athlete")
         _seed_full_account(self.athlete)
 
     def test_write_export_calls_on_step_for_every_section_in_order(self):
@@ -448,7 +454,7 @@ class ProgressStepTests(TestCase):
         relative_path = "exports/test/progress-steps-source.json.gz"
         write_export(self.athlete.id, None, relative_path)
 
-        target = User.objects.create_user(email="progress-steps-target@example.cc", password="x", name="Target")
+        target = _verified_user(email="progress-steps-target@example.cc", password="x", name="Target")
         seen: list[str] = []
 
         read_import(target.id, relative_path, on_step=seen.append)
@@ -468,7 +474,7 @@ class ProgressItemsTests(TestCase):
     across every kind of data - so each one resets at the start of every new section."""
 
     def setUp(self):
-        self.athlete = User.objects.create_user(email="progress-items@example.cc", password="x", name="Athlete")
+        self.athlete = _verified_user(email="progress-items@example.cc", password="x", name="Athlete")
         _seed_full_account(self.athlete)
         # _seed_full_account: 2 activities, 1 race, 1 workout, 1 scheduled_workout, 1 bike,
         # 1 shoe, 1 component, 1 threshold_history entry. Equipment is one section
@@ -512,7 +518,7 @@ class ProgressItemsTests(TestCase):
     def test_read_import_calls_on_total_and_on_progress_per_section(self):
         relative_path = "exports/test/progress-items-source.json.gz"
         write_export(self.athlete.id, None, relative_path)
-        target = User.objects.create_user(email="progress-items-target@example.cc", password="x", name="Target")
+        target = _verified_user(email="progress-items-target@example.cc", password="x", name="Target")
         events: list[tuple[str, int]] = []
 
         read_import(
@@ -561,7 +567,7 @@ class ProgressItemsTests(TestCase):
                 ).encode("utf-8")
             )
 
-        target = User.objects.create_user(email="progress-items-nocounts@example.cc", password="x", name="Target")
+        target = _verified_user(email="progress-items-nocounts@example.cc", password="x", name="Target")
         totals: list[int] = []
 
         read_import(target.id, relative_path, on_total=totals.append)
@@ -573,7 +579,7 @@ class ProgressItemsTests(TestCase):
 
 class ExportCountsTests(TestCase):
     def setUp(self):
-        self.athlete = User.objects.create_user(email="export-counts@example.cc", password="x", name="Athlete")
+        self.athlete = _verified_user(email="export-counts@example.cc", password="x", name="Athlete")
         _seed_full_account(self.athlete)
 
     def test_unfiltered_export_counts_match_the_full_seeded_account(self):
@@ -637,3 +643,21 @@ class ExportCountsTests(TestCase):
         )
 
         default_storage.delete(relative_path)
+
+
+# Regression coverage for a real gap found live during a Django-vs-Java parity audit: Java's
+# equivalent gate (UserService.requireEmailVerified, wired into POST /v1/export and /v1/import
+# in #237) had no Django counterpart at all - email_verified didn't even exist as a field here.
+class ExportImportGateTests(TestCase):
+    def setUp(self):
+        self.unverified = User.objects.create_user(email="gate-unverified@example.cc", password="x", name="Athlete")
+
+    def test_export_rejects_an_unverified_athlete(self):
+        response = _bearer_client(self.unverified).post("/v1/export")
+        self.assertEqual(response.status_code, 403)
+
+    def test_import_rejects_an_unverified_athlete(self):
+        response = _bearer_client(self.unverified).post(
+            "/v1/import", {"file": SimpleUploadedFile("export.json.gz", b"")}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 403)

@@ -1,10 +1,13 @@
+from datetime import timedelta
 from io import StringIO
+from unittest import mock
 
 from django.core.management import CommandError, call_command
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
-from accounts.models import PersonalAccessToken, User, UserRelationship
+from accounts.models import EmailVerificationToken, PersonalAccessToken, User, UserRelationship
 from accounts.tokens import generate_secret, hash_secret, visible_prefix
 from authn.oauth_utils import issue_token_pair
 
@@ -47,6 +50,18 @@ class RegisterViewTests(TestCase):
         self.assertTrue(body["tokens"]["access_token"].startswith("cad_at_"))
         self.assertTrue(body["tokens"]["refresh_token"].startswith("cad_rt_"))
         self.assertTrue(User.objects.filter(email="neil@example.cc").exists())
+
+    def test_register_issues_an_unverified_user_and_a_verification_token(self):
+        response = APIClient().post(
+            "/v1/auth/register",
+            {"name": "Neil Goodgame", "email": "neil-verify@example.cc", "password": "s3cret-pass"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()["athlete"]["email_verified"])
+        user = User.objects.get(email="neil-verify@example.cc")
+        self.assertFalse(user.email_verified)
+        self.assertTrue(EmailVerificationToken.objects.filter(user=user).exists())
 
     def test_register_duplicate_email_conflicts(self):
         User.objects.create_user(email="neil@example.cc", password="s3cret-pass", name="Neil")
@@ -332,3 +347,77 @@ class GrantAdminCommandTests(TestCase):
     def test_unknown_email_raises_command_error(self):
         with self.assertRaises(CommandError):
             call_command("grant_admin", "--email", "nobody@example.cc", stdout=StringIO())
+
+
+# Mirrors backend_java's EmailVerificationService/Controller test coverage - found missing
+# entirely (along with the field and the whole feature) during a Django-vs-Java parity audit.
+class EmailVerificationTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email="verify-me@example.cc", password="s3cret-pass", name="Athlete")
+
+    def _issue_token(self) -> str:
+        from accounts import email_verification
+
+        with mock.patch("accounts.email_verification.send_verification_email") as mocked:
+            email_verification.issue_and_send(self.user)
+        link = mocked.call_args[0][1]
+        return link.split("token=")[1]
+
+    def test_verify_with_a_valid_token_marks_the_user_verified(self):
+        raw_token = self._issue_token()
+
+        response = APIClient().post("/v1/auth/verify-email", {"token": raw_token}, format="json")
+
+        self.assertEqual(response.status_code, 204)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.email_verified)
+
+    def test_verify_with_an_unknown_token_is_rejected(self):
+        response = APIClient().post("/v1/auth/verify-email", {"token": "cad_evt_not-a-real-token"}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_verify_with_an_already_used_token_is_rejected(self):
+        raw_token = self._issue_token()
+        first = APIClient().post("/v1/auth/verify-email", {"token": raw_token}, format="json")
+        self.assertEqual(first.status_code, 204)
+
+        second = APIClient().post("/v1/auth/verify-email", {"token": raw_token}, format="json")
+        self.assertEqual(second.status_code, 400)
+
+    def test_verify_with_an_expired_token_is_rejected(self):
+        token = EmailVerificationToken.objects.create(
+            user=self.user, hashed_secret="a" * 64, expires_at=timezone.now() - timedelta(hours=1)
+        )
+        response = APIClient().post("/v1/auth/verify-email", {"token": "irrelevant"}, format="json")
+        # Wrong secret entirely also 400s - this asserts the row exists and is simply expired,
+        # not that the lookup itself failed for an unrelated reason.
+        self.assertFalse(token.is_usable(timezone.now()))
+        self.assertEqual(response.status_code, 400)
+
+    def test_resend_issues_a_fresh_token_and_emails_it(self):
+        with mock.patch("accounts.email_verification.send_verification_email") as mocked:
+            response = _bearer_client(self.user).post("/v1/auth/resend-verification")
+        self.assertEqual(response.status_code, 204)
+        mocked.assert_called_once()
+        self.assertEqual(EmailVerificationToken.objects.filter(user=self.user).count(), 1)
+
+    def test_resend_when_already_verified_conflicts(self):
+        self.user.email_verified = True
+        self.user.save(update_fields=["email_verified"])
+
+        response = _bearer_client(self.user).post("/v1/auth/resend-verification")
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_resend_within_the_cooldown_is_throttled(self):
+        with mock.patch("accounts.email_verification.send_verification_email"):
+            first = _bearer_client(self.user).post("/v1/auth/resend-verification")
+        self.assertEqual(first.status_code, 204)
+
+        second = _bearer_client(self.user).post("/v1/auth/resend-verification")
+
+        self.assertEqual(second.status_code, 429)
+
+    def test_resend_requires_authentication(self):
+        response = APIClient().post("/v1/auth/resend-verification")
+        self.assertEqual(response.status_code, 401)
