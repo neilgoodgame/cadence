@@ -6,5 +6,6 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 
 public record ScheduleWorkoutCreateRequest(
-		@NotBlank String workoutId, @NotBlank String athleteId, @NotNull LocalDate date, TimeOfDay timeOfDay) {
+		@NotBlank String workoutId, @NotBlank String athleteId, @NotNull LocalDate date, TimeOfDay timeOfDay,
+		String notes) {
 }

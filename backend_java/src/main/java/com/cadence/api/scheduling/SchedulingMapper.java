@@ -16,6 +16,7 @@ public class SchedulingMapper {
 				s.getDate(),
 				s.getTimeOfDay(),
 				s.getStatus(),
-				s.getActivity() != null ? s.getActivity().getId() : null);
+				s.getActivity() != null ? s.getActivity().getId() : null,
+				s.getNotes());
 	}
 }

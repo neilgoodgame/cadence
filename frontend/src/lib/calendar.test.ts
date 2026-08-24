@@ -12,6 +12,7 @@ function entry(overrides: Partial<ScheduledWorkout>): ScheduledWorkout {
     time_of_day: "",
     status: "planned",
     activity_id: null,
+    notes: "",
     ...overrides,
   };
 }

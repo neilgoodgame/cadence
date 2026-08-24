@@ -665,7 +665,7 @@ public class ImportReader {
 			try {
 				transactionTemplate.executeWithoutResult(status -> {
 					ScheduledWorkout scheduled = schedulingService.schedule(
-							athlete.getId(), workout.getId(), athlete.getId(), sr.date(), sr.timeOfDay());
+							athlete.getId(), workout.getId(), athlete.getId(), sr.date(), sr.timeOfDay(), sr.notes());
 					String newActivityId = sr.activityId() != null ? activityIdMap.get(sr.activityId()) : null;
 					// A MISSED original status has no direct settable path via SchedulingService - it
 					// comes back PLANNED, a minor accepted gap (see plan doc).

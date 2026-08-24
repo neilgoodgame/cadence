@@ -39,32 +39,38 @@ public class ScheduledWorkoutWriteTools {
 	public ScheduledWorkoutResponse scheduleWorkout(
 			@McpToolParam(description = "The workout id, e.g. wkt_xxxxxxxxxxxx", required = true) String workoutId,
 			@McpToolParam(description = "Date to schedule it on (YYYY-MM-DD)", required = true) LocalDate date,
-			@McpToolParam(description = "am, mid, or pm - default mid", required = false) String timeOfDay) {
+			@McpToolParam(description = "am, mid, or pm - default mid", required = false) String timeOfDay,
+			@McpToolParam(description = "Free-text note for this specific occurrence, e.g. \"swap if it rains\"",
+					required = false) String notes) {
 		authorizer.requireScope(McpScopes.CALENDAR_WRITE);
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		String assignedById = AuthContextHolder.get().sub();
-		var scheduled = schedulingService.schedule(assignedById, workoutId, athleteId, date, parseTimeOfDay(timeOfDay));
+		var scheduled = schedulingService.schedule(
+				assignedById, workoutId, athleteId, date, parseTimeOfDay(timeOfDay), notes);
 		return schedulingMapper.toResponse(scheduled);
 	}
 
-	@McpTool(name = "move_workout", description = "Change the date (and/or time of day) of an "
-			+ "already-scheduled calendar entry, from get_calendar - e.g. swapping two workouts "
-			+ "between dates. Prefer this over unschedule_workout + schedule_workout for a move: "
-			+ "it edits the entry in place instead of leaving a stale duplicate if a caller forgets "
-			+ "the delete step.",
+	@McpTool(name = "move_workout", description = "Update an already-scheduled calendar entry, "
+			+ "from get_calendar - its date, time of day, and/or notes. Pass only the fields you "
+			+ "want to change; omit the rest to leave them as-is (pass an empty string for notes to "
+			+ "clear it). Use this for a swap between two dates instead of unschedule_workout + "
+			+ "schedule_workout: it edits the entry in place instead of leaving a stale duplicate if "
+			+ "a caller forgets the delete step.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public ScheduledWorkoutResponse moveWorkout(
 			@McpToolParam(description = "The scheduled entry's id (from get_calendar), e.g. sch_xxxxxxxxxxxx",
 					required = true) String scheduledWorkoutId,
-			@McpToolParam(description = "New date (YYYY-MM-DD)", required = true) LocalDate date,
-			@McpToolParam(description = "am, mid, or pm - omit to leave unchanged", required = false) String timeOfDay) {
+			@McpToolParam(description = "New date (YYYY-MM-DD) - omit to leave unchanged", required = false) LocalDate date,
+			@McpToolParam(description = "am, mid, or pm - omit to leave unchanged", required = false) String timeOfDay,
+			@McpToolParam(description = "New note for this occurrence - omit to leave unchanged, pass an "
+					+ "empty string to clear it", required = false) String notes) {
 		authorizer.requireScope(McpScopes.CALENDAR_WRITE);
 		var scheduled = schedulingService.getScheduledWorkout(scheduledWorkoutId);
 		accessGuard.requireWrite(scheduled.getAthlete().getId());
 		TimeOfDay parsedTimeOfDay = (timeOfDay == null || timeOfDay.isBlank()) ? null : parseTimeOfDay(timeOfDay);
-		var moved = schedulingService.update(scheduled, date, null, parsedTimeOfDay);
+		var moved = schedulingService.update(scheduled, date, null, parsedTimeOfDay, notes);
 		return schedulingMapper.toResponse(moved);
 	}
 
