@@ -143,11 +143,6 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
       </div>
 
       <Card>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 12 }}>Structure</div>
-        <WorkoutStructureList steps={structure} actions={NOOP_STRUCTURE_ACTIONS} readOnly />
-      </Card>
-
-      <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <label>
             <div style={labelStyle}>Date</div>
@@ -197,6 +192,11 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
             {saveMutation.isError && <span style={{ fontSize: 13, color: "#e0442e" }}>Failed to save. Try again.</span>}
           </div>
         </div>
+      </Card>
+
+      <Card>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 12 }}>Structure</div>
+        <WorkoutStructureList steps={structure} actions={NOOP_STRUCTURE_ACTIONS} readOnly />
       </Card>
 
       <button
