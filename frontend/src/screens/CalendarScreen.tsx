@@ -3,7 +3,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { Link, useSearchParams } from "react-router-dom";
 import { getActivity } from "../api/activities";
 import { listRaces } from "../api/races";
-import { getCalendar, unscheduleWorkout } from "../api/scheduling";
+import { getCalendar, unscheduleWorkout, updateScheduledWorkoutNotes } from "../api/scheduling";
 import { listWorkouts } from "../api/workouts";
 import type { Activity, Race, ScheduledWorkout, Workout } from "../api/types";
 import { dateKey, derivedStatus, monthGridDays } from "../lib/calendar";
@@ -125,6 +125,18 @@ export function CalendarScreen() {
     mutationFn: unscheduleWorkout,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calendar"] }),
   });
+
+  const notesMutation = useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes: string }) => updateScheduledWorkoutNotes(id, notes),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calendar"] }),
+  });
+
+  const editNotes = (id: string, currentNotes: string) => {
+    const next = prompt("Note for this workout:", currentNotes);
+    if (next !== null && next !== currentNotes) {
+      notesMutation.mutate({ id, notes: next });
+    }
+  };
 
   const workoutById = useMemo(() => {
     const map = new Map(workoutsData?.data.map((w) => [w.id, w]));
@@ -330,6 +342,7 @@ export function CalendarScreen() {
                         <Link
                           key={entry.id}
                           to={`/activities/${entry.activity_id}`}
+                          title={entry.notes || undefined}
                           onClick={(e) => e.stopPropagation()}
                           style={{
                             fontSize: 11,
@@ -344,6 +357,7 @@ export function CalendarScreen() {
                         >
                           <TimeOfDayBadge entry={entry} />
                           {workout?.name ?? entry.workout_id}
+                          {entry.notes && <span style={{ marginLeft: 4 }}>📝</span>}
                           {activity && (
                             <div className="mono" style={entryStatsStyle}>
                               {activityStatsLine(activity)}
@@ -355,6 +369,7 @@ export function CalendarScreen() {
                     return (
                       <div
                         key={entry.id}
+                        title={entry.notes || undefined}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!isCompleted && confirm(`Unschedule ${workout?.name ?? "this workout"}?`)) {
@@ -375,6 +390,15 @@ export function CalendarScreen() {
                       >
                         <TimeOfDayBadge entry={entry} />
                         {workout?.name ?? entry.workout_id}
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            editNotes(entry.id, entry.notes);
+                          }}
+                          style={{ marginLeft: 4, cursor: "pointer" }}
+                        >
+                          📝
+                        </span>
                         {workout && (
                           <div className="mono" style={entryStatsStyle}>
                             {workoutStatsLine(workout)}

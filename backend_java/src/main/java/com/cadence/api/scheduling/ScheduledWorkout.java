@@ -47,6 +47,9 @@ public class ScheduledWorkout extends PrefixedIdEntity {
 	@JoinColumn(name = "activity_id")
 	private Activity activity;
 
+	@Column(nullable = false)
+	private String notes = "";
+
 	@Override
 	protected String idPrefix() {
 		return "sch";
@@ -106,5 +109,13 @@ public class ScheduledWorkout extends PrefixedIdEntity {
 
 	public void setActivity(Activity activity) {
 		this.activity = activity;
+	}
+
+	public String getNotes() {
+		return notes;
+	}
+
+	public void setNotes(String notes) {
+		this.notes = notes;
 	}
 }

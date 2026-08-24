@@ -12,6 +12,7 @@ export interface ScheduleWorkoutInput {
   athlete_id: string;
   date: string;
   time_of_day?: TimeOfDay;
+  notes?: string;
 }
 
 export function scheduleWorkout(input: ScheduleWorkoutInput): Promise<ScheduledWorkout> {
@@ -20,4 +21,8 @@ export function scheduleWorkout(input: ScheduleWorkoutInput): Promise<ScheduledW
 
 export function unscheduleWorkout(id: string): Promise<void> {
   return apiFetch<void>(`/v1/scheduled-workouts/${id}`, { method: "DELETE" });
+}
+
+export function updateScheduledWorkoutNotes(id: string, notes: string): Promise<ScheduledWorkout> {
+  return apiFetch<ScheduledWorkout>(`/v1/scheduled-workouts/${id}`, { method: "PATCH", body: { notes } });
 }

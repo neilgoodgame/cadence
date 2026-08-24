@@ -44,6 +44,12 @@ public class SchedulingService {
 
 	@Transactional
 	public ScheduledWorkout schedule(String assignedById, String workoutId, String athleteId, LocalDate date, TimeOfDay timeOfDay) {
+		return schedule(assignedById, workoutId, athleteId, date, timeOfDay, null);
+	}
+
+	@Transactional
+	public ScheduledWorkout schedule(String assignedById, String workoutId, String athleteId, LocalDate date,
+			TimeOfDay timeOfDay, String notes) {
 		Workout workout = workoutRepository.findById(workoutId).orElseThrow(() -> new NotFoundException("No such workout."));
 		User athlete = userRepository.findById(athleteId).orElseThrow(() -> new NotFoundException("No such athlete."));
 
@@ -56,6 +62,9 @@ public class SchedulingService {
 		}
 		scheduled.setDate(date);
 		scheduled.setTimeOfDay(timeOfDay);
+		if (notes != null) {
+			scheduled.setNotes(notes);
+		}
 		return scheduledWorkoutRepository.save(scheduled);
 	}
 
@@ -65,11 +74,20 @@ public class SchedulingService {
 
 	@Transactional
 	public ScheduledWorkout update(ScheduledWorkout scheduled, LocalDate date, String activityId) {
-		return update(scheduled, date, activityId, null);
+		return update(scheduled, date, activityId, null, null);
 	}
 
 	@Transactional
 	public ScheduledWorkout update(ScheduledWorkout scheduled, LocalDate date, String activityId, TimeOfDay timeOfDay) {
+		return update(scheduled, date, activityId, timeOfDay, null);
+	}
+
+	/** Any {@code null} argument (other than {@code scheduled} itself) leaves that field
+	 * unchanged - lets callers (the REST PATCH endpoint, the MCP move_workout tool) update just
+	 * the one or two fields they actually mean to touch. Pass an empty string for {@code notes}
+	 * to clear it - only {@code null} means "leave as-is". */
+	@Transactional
+	public ScheduledWorkout update(ScheduledWorkout scheduled, LocalDate date, String activityId, TimeOfDay timeOfDay, String notes) {
 		if (date != null) {
 			scheduled.setDate(date);
 		}
@@ -81,6 +99,9 @@ public class SchedulingService {
 		}
 		if (timeOfDay != null) {
 			scheduled.setTimeOfDay(timeOfDay);
+		}
+		if (notes != null) {
+			scheduled.setNotes(notes);
 		}
 		return scheduledWorkoutRepository.save(scheduled);
 	}

@@ -598,6 +598,7 @@ export interface ScheduledWorkout {
   time_of_day: TimeOfDay | "" | null;
   status: ScheduledWorkoutStatus;
   activity_id: string | null;
+  notes: string;
 }
 
 /** data only ever contains ScheduledWorkout rows - unplanned_activities covers completed

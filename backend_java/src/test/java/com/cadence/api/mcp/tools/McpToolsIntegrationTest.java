@@ -129,11 +129,12 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		WorkoutResponse workout = workoutWriteTools.createWorkout("To Schedule", "bike", steps, null);
 
 		ScheduledWorkoutResponse scheduled = scheduledWorkoutWriteTools.scheduleWorkout(
-				workout.id(), LocalDate.of(2026, 9, 1), "am");
+				workout.id(), LocalDate.of(2026, 9, 1), "am", "Race sim");
 
 		assertThat(scheduled.workoutId()).isEqualTo(workout.id());
 		assertThat(scheduled.athleteId()).isEqualTo(athlete.getId());
 		assertThat(scheduled.date()).isEqualTo(LocalDate.of(2026, 9, 1));
+		assertThat(scheduled.notes()).isEqualTo("Race sim");
 	}
 
 	// Regression test for a real bug found live: Claude.ai's MCP connector reported having no way
@@ -147,14 +148,33 @@ class McpToolsIntegrationTest extends IntegrationTest {
 				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
 		WorkoutResponse workout = workoutWriteTools.createWorkout("To Move", "bike", steps, null);
 		ScheduledWorkoutResponse scheduled = scheduledWorkoutWriteTools.scheduleWorkout(
-				workout.id(), LocalDate.of(2026, 9, 6), "am");
+				workout.id(), LocalDate.of(2026, 9, 6), "am", null);
 
 		ScheduledWorkoutResponse moved = scheduledWorkoutWriteTools.moveWorkout(
-				scheduled.id(), LocalDate.of(2026, 9, 13), "pm");
+				scheduled.id(), LocalDate.of(2026, 9, 13), "pm", null);
 
 		assertThat(moved.id()).isEqualTo(scheduled.id());
 		assertThat(moved.date()).isEqualTo(LocalDate.of(2026, 9, 13));
 		assertThat(moved.timeOfDay().name()).isEqualToIgnoringCase("pm");
+	}
+
+	// Follow-up to the move_workout fix above: also lets a caller attach a note to an entry
+	// without needing to touch its date, e.g. adding context to an existing swap.
+	@Test
+	void moveWorkoutCanUpdateJustTheNotes() {
+		User athlete = saveAthlete("mcp-move-notes@example.cc");
+		authAs(athlete.getId(), "workouts:write", "calendar:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse workout = workoutWriteTools.createWorkout("To Annotate", "bike", steps, null);
+		ScheduledWorkoutResponse scheduled = scheduledWorkoutWriteTools.scheduleWorkout(
+				workout.id(), LocalDate.of(2026, 9, 6), "am", null);
+
+		ScheduledWorkoutResponse annotated = scheduledWorkoutWriteTools.moveWorkout(
+				scheduled.id(), null, null, "Swap if it rains");
+
+		assertThat(annotated.date()).isEqualTo(LocalDate.of(2026, 9, 6));
+		assertThat(annotated.notes()).isEqualTo("Swap if it rains");
 	}
 
 	@Test
@@ -165,12 +185,12 @@ class McpToolsIntegrationTest extends IntegrationTest {
 				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
 		WorkoutResponse workout = workoutWriteTools.createWorkout("To Unschedule", "bike", steps, null);
 		ScheduledWorkoutResponse scheduled = scheduledWorkoutWriteTools.scheduleWorkout(
-				workout.id(), LocalDate.of(2026, 9, 6), "am");
+				workout.id(), LocalDate.of(2026, 9, 6), "am", null);
 
 		var result = scheduledWorkoutWriteTools.unscheduleWorkout(scheduled.id());
 
 		assertThat(result.get("deleted")).isEqualTo(true);
-		assertThatThrownBy(() -> scheduledWorkoutWriteTools.moveWorkout(scheduled.id(), LocalDate.of(2026, 9, 7), null))
+		assertThatThrownBy(() -> scheduledWorkoutWriteTools.moveWorkout(scheduled.id(), LocalDate.of(2026, 9, 7), null, null))
 				.isInstanceOf(com.cadence.api.common.error.NotFoundException.class);
 	}
 

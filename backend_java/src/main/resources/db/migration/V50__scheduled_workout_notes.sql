@@ -1,0 +1,1 @@
+ALTER TABLE scheduled_workout ADD COLUMN notes VARCHAR(500) NOT NULL DEFAULT '';

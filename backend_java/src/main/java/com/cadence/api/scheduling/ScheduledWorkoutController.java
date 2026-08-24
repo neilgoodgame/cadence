@@ -34,7 +34,7 @@ public class ScheduledWorkoutController {
 		accessGuard.requireWrite(request.athleteId());
 		String assignedById = AuthContextHolder.get().sub();
 		ScheduledWorkout scheduled = schedulingService.schedule(
-				assignedById, request.workoutId(), request.athleteId(), request.date(), request.timeOfDay());
+				assignedById, request.workoutId(), request.athleteId(), request.date(), request.timeOfDay(), request.notes());
 		return schedulingMapper.toResponse(scheduled);
 	}
 
@@ -42,7 +42,8 @@ public class ScheduledWorkoutController {
 	public ScheduledWorkoutResponse updateScheduledWorkout(@PathVariable String id, @RequestBody ScheduledWorkoutUpdateRequest request) {
 		ScheduledWorkout scheduled = schedulingService.getScheduledWorkout(id);
 		accessGuard.requireWrite(scheduled.getAthlete().getId());
-		ScheduledWorkout updated = schedulingService.update(scheduled, request.date(), request.activityId());
+		ScheduledWorkout updated = schedulingService.update(
+				scheduled, request.date(), request.activityId(), request.timeOfDay(), request.notes());
 		return schedulingMapper.toResponse(updated);
 	}
 

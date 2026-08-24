@@ -19,6 +19,7 @@ export function ScheduleModal({ date, onClose }: { date: string; onClose: () => 
   const [workoutId, setWorkoutId] = useState("");
   const [scheduleDate, setScheduleDate] = useState(date);
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | "">("");
+  const [notes, setNotes] = useState("");
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -27,6 +28,7 @@ export function ScheduleModal({ date, onClose }: { date: string; onClose: () => 
         athlete_id: user!.id,
         date: scheduleDate,
         time_of_day: timeOfDay || undefined,
+        notes: notes.trim() || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["calendar"] });
@@ -96,6 +98,18 @@ export function ScheduleModal({ date, onClose }: { date: string; onClose: () => 
             ))}
           </div>
         </div>
+
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Notes (optional)</div>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            maxLength={500}
+            rows={2}
+            placeholder="e.g. swap if it rains"
+            style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", fontFamily: "inherit", resize: "vertical" }}
+          />
+        </label>
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
           <button onClick={onClose} style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, padding: "8px 16px" }}>
