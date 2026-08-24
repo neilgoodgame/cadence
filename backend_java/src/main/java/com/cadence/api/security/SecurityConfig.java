@@ -2,6 +2,7 @@ package com.cadence.api.security;
 
 import com.cadence.api.common.config.CadenceProperties;
 import com.cadence.api.mcp.McpAuthenticationEntryPoint;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -42,7 +43,17 @@ public class SecurityConfig {
 	@Bean
 	public CorsConfigurationSource corsConfigurationSource(CadenceProperties properties) {
 		CorsConfiguration configuration = new CorsConfiguration();
-		configuration.setAllowedOrigins(properties.cors().allowedOrigins());
+		// The API's own origin is added automatically, not just properties.cors().allowedOrigins()
+		// (the SPA frontend's origins) - Spring's CorsFilter treats ANY request carrying an Origin
+		// header as needing to match this allowlist, including same-origin POSTs: modern browsers
+		// attach Origin to POST requests regardless of same-origin-ness (unlike GET), so the
+		// browser-rendered /login form (in front of /oauth/authorize, for a real third-party OAuth
+		// client like Claude's MCP connector - see McpClientConfig) trips this even though it's
+		// genuinely same-origin. Found live testing the MCP connector flow with an actual browser -
+		// the earlier curl-scripted verification never caught this, since curl never sends Origin.
+		List<String> allowedOrigins = new ArrayList<>(properties.cors().allowedOrigins());
+		allowedOrigins.add(properties.oauth().issuer());
+		configuration.setAllowedOrigins(allowedOrigins);
 		configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"));
 		configuration.setAllowedHeaders(List.of("*"));
 		configuration.setAllowCredentials(true);
