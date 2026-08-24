@@ -586,7 +586,7 @@ function CheckBox({ checked, onClick }: { checked: boolean; onClick: () => void 
 // so a workout's intensity profile looks the same whether you're viewing or editing it.
 // Each bar's width is proportional to its interval's actual duration (flex-grow), with a
 // floor so a distance-based step (duration_seconds 0, no time to size by) still shows a sliver.
-function MiniChart({ preview }: { preview: ChartPreviewPoint[] }) {
+export function MiniChart({ preview }: { preview: ChartPreviewPoint[] }) {
   if (preview.length === 0) return null;
   return (
     <div style={{ height: 44, display: "flex", alignItems: "flex-end", gap: 1, background: "var(--elev)", borderRadius: 6, overflow: "hidden", marginTop: 10 }}>

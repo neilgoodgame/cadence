@@ -19,10 +19,24 @@ export function scheduleWorkout(input: ScheduleWorkoutInput): Promise<ScheduledW
   return apiFetch<ScheduledWorkout>("/v1/scheduled-workouts", { method: "POST", body: input });
 }
 
+export function getScheduledWorkout(id: string): Promise<ScheduledWorkout> {
+  return apiFetch<ScheduledWorkout>(`/v1/scheduled-workouts/${id}`);
+}
+
 export function unscheduleWorkout(id: string): Promise<void> {
   return apiFetch<void>(`/v1/scheduled-workouts/${id}`, { method: "DELETE" });
 }
 
 export function updateScheduledWorkoutNotes(id: string, notes: string): Promise<ScheduledWorkout> {
   return apiFetch<ScheduledWorkout>(`/v1/scheduled-workouts/${id}`, { method: "PATCH", body: { notes } });
+}
+
+export interface ScheduledWorkoutUpdateInput {
+  date?: string;
+  time_of_day?: TimeOfDay;
+  notes?: string;
+}
+
+export function updateScheduledWorkout(id: string, input: ScheduledWorkoutUpdateInput): Promise<ScheduledWorkout> {
+  return apiFetch<ScheduledWorkout>(`/v1/scheduled-workouts/${id}`, { method: "PATCH", body: input });
 }
