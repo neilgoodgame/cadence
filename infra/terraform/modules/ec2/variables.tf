@@ -76,6 +76,16 @@ variable "oauth_secret_arn" {
   type        = string
 }
 
+variable "oauth_mcp_secret_arn" {
+  description = "cadence-staging-oauth-mcp-client-secret - a plain string secret, not JSON. Distinct from oauth_secret_arn: the MCP client (Claude.ai/Desktop's remote connector) is a separate, real third-party OAuth client from the first-party frontend client."
+  type        = string
+}
+
+variable "oauth_issuer" {
+  description = "Real deployed issuer (https://api.cadence.bioinform.co.uk), not the code's cadence.cc placeholder default - used in the MCP server's RFC 8414/9728 discovery documents. Mirrors jwt_issuer's existing override."
+  type        = string
+}
+
 variable "cors_allowed_origins" {
   type = string
 }

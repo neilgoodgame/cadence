@@ -73,6 +73,10 @@ data "aws_secretsmanager_secret" "oauth_client_secret" {
   name = "cadence-staging-oauth-first-party-client-secret"
 }
 
+data "aws_secretsmanager_secret" "oauth_mcp_client_secret" {
+  name = "cadence-staging-oauth-mcp-client-secret"
+}
+
 locals {
   # module.ecr.repository_url is "registry/repo-name" as one string (e.g.
   # 423351912929.dkr.ecr.eu-west-2.amazonaws.com/cadence-backend-java) -
@@ -100,6 +104,9 @@ module "ec2" {
   jwt_issuer     = "https://api.cadence.bioinform.co.uk" # real issuer, not the .env.example placeholder - see infra/README.md.
 
   oauth_secret_arn = data.aws_secretsmanager_secret.oauth_client_secret.arn
+
+  oauth_mcp_secret_arn = data.aws_secretsmanager_secret.oauth_mcp_client_secret.arn
+  oauth_issuer         = "https://api.cadence.bioinform.co.uk" # real issuer, not the code's cadence.cc placeholder default - MCP's RFC 8414/9728 discovery documents advertise this.
 
   # Real deployed frontend origin + local dev (kept, so the local frontend can still
   # be pointed at the staging backend for testing). NOT "*" - SecurityConfig.java sets
