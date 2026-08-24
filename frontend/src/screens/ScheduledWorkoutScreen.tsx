@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getScheduledWorkout, unscheduleWorkout, updateScheduledWorkout } from "../api/scheduling";
@@ -7,7 +7,23 @@ import type { ScheduledWorkout, TimeOfDay, WorkoutDetail } from "../api/types";
 import { Card } from "../components/Card";
 import { formatDuration } from "../lib/format";
 import { sportColor, sportLabel } from "../lib/sportColors";
+import { withIds } from "./workouts/workoutTree";
 import { MiniChart } from "./workouts/WorkoutLibraryScreen";
+import { WorkoutStructureList, type StructureActions } from "./workouts/WorkoutStructureList";
+
+// Read-only here (see WorkoutStructureList's readOnly prop) - none of these are ever called,
+// they just satisfy StructureActions' shape.
+const NOOP_STRUCTURE_ACTIONS: StructureActions = {
+  selectedId: null,
+  onSelect: () => {},
+  onMoveUp: () => {},
+  onMoveDown: () => {},
+  onDuplicate: () => {},
+  onRemove: () => {},
+  onRepeatChange: () => {},
+  onAddChild: () => {},
+  onAddNestedGroup: () => {},
+};
 
 const TIME_OPTIONS: { value: TimeOfDay; label: string }[] = [
   { value: "AM", label: "Morning" },
@@ -81,6 +97,11 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
 
   const dirty = date !== scheduled.date || timeOfDay !== (scheduled.time_of_day || "") || notes !== scheduled.notes;
 
+  // withIds generates fresh ids on every call (see workoutTree.ts's module-level counter) -
+  // memoized so typing in the notes field below doesn't remount every structure row on each
+  // keystroke.
+  const structure = useMemo(() => withIds(workout.steps), [workout]);
+
   const saveMutation = useMutation({
     mutationFn: () => updateScheduledWorkout(scheduled.id, { date, time_of_day: timeOfDay || undefined, notes }),
     onSuccess: () => {
@@ -120,6 +141,11 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
         </div>
         <MiniChart preview={workout.chart_preview} />
       </div>
+
+      <Card>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 12 }}>Structure</div>
+        <WorkoutStructureList steps={structure} actions={NOOP_STRUCTURE_ACTIONS} readOnly />
+      </Card>
 
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
