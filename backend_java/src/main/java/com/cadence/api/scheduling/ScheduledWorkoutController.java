@@ -8,6 +8,7 @@ import com.cadence.api.security.AuthContextHolder;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,6 +36,13 @@ public class ScheduledWorkoutController {
 		String assignedById = AuthContextHolder.get().sub();
 		ScheduledWorkout scheduled = schedulingService.schedule(
 				assignedById, request.workoutId(), request.athleteId(), request.date(), request.timeOfDay(), request.notes());
+		return schedulingMapper.toResponse(scheduled);
+	}
+
+	@GetMapping("/v1/scheduled-workouts/{id}")
+	public ScheduledWorkoutResponse getScheduledWorkout(@PathVariable String id) {
+		ScheduledWorkout scheduled = schedulingService.getScheduledWorkout(id);
+		accessGuard.requireRead(scheduled.getAthlete().getId());
 		return schedulingMapper.toResponse(scheduled);
 	}
 

@@ -1,9 +1,9 @@
 import { Fragment, useMemo, useState } from "react";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { getActivity } from "../api/activities";
 import { listRaces } from "../api/races";
-import { getCalendar, unscheduleWorkout, updateScheduledWorkoutNotes } from "../api/scheduling";
+import { getCalendar } from "../api/scheduling";
 import { listWorkouts } from "../api/workouts";
 import type { Activity, Race, ScheduledWorkout, Workout } from "../api/types";
 import { dateKey, derivedStatus, monthGridDays } from "../lib/calendar";
@@ -109,7 +109,6 @@ export function CalendarScreen() {
     setSearchParams({ year: String(y), month: String(m) });
   }
 
-  const queryClient = useQueryClient();
   // The grid always renders full Monday-start weeks, so it pads out into the leading/
   // trailing days of adjacent months (see monthGridDays) - the fetch range has to match
   // that, not just the calendar month, or those adjacent-month cells silently render empty
@@ -120,23 +119,6 @@ export function CalendarScreen() {
   const { data: calendarData } = useQuery({ queryKey: ["calendar", from, to], queryFn: () => getCalendar(from, to) });
   const { data: workoutsData } = useQuery({ queryKey: ["workouts"], queryFn: () => listWorkouts() });
   const { data: racesData } = useQuery({ queryKey: ["races"], queryFn: listRaces });
-
-  const unscheduleMutation = useMutation({
-    mutationFn: unscheduleWorkout,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calendar"] }),
-  });
-
-  const notesMutation = useMutation({
-    mutationFn: ({ id, notes }: { id: string; notes: string }) => updateScheduledWorkoutNotes(id, notes),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["calendar"] }),
-  });
-
-  const editNotes = (id: string, currentNotes: string) => {
-    const next = prompt("Note for this workout:", currentNotes);
-    if (next !== null && next !== currentNotes) {
-      notesMutation.mutate({ id, notes: next });
-    }
-  };
 
   const workoutById = useMemo(() => {
     const map = new Map(workoutsData?.data.map((w) => [w.id, w]));
@@ -367,44 +349,34 @@ export function CalendarScreen() {
                       );
                     }
                     return (
-                      <div
+                      <Link
                         key={entry.id}
+                        to={`/scheduled/${entry.id}`}
                         title={entry.notes || undefined}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!isCompleted && confirm(`Unschedule ${workout?.name ?? "this workout"}?`)) {
-                            unscheduleMutation.mutate(entry.id);
-                          }
-                        }}
+                        onClick={(e) => e.stopPropagation()}
                         style={{
                           fontSize: 11,
                           padding: "3px 6px",
                           borderRadius: 6,
                           borderLeft: `3px solid ${color}`,
-                          borderTop: isCompleted ? "none" : `1px dashed ${color}88`,
-                          borderRight: isCompleted ? "none" : `1px dashed ${color}88`,
-                          borderBottom: isCompleted ? "none" : `1px dashed ${color}88`,
-                          background: isCompleted ? `${color}22` : "transparent",
-                          color: status === "missed" ? "#e0442e" : isCompleted ? "var(--ink)" : "var(--ink2)",
+                          borderTop: `1px dashed ${color}88`,
+                          borderRight: `1px dashed ${color}88`,
+                          borderBottom: `1px dashed ${color}88`,
+                          background: "transparent",
+                          color: status === "missed" ? "#e0442e" : "var(--ink2)",
+                          textDecoration: "none",
+                          display: "block",
                         }}
                       >
                         <TimeOfDayBadge entry={entry} />
                         {workout?.name ?? entry.workout_id}
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            editNotes(entry.id, entry.notes);
-                          }}
-                          style={{ marginLeft: 4, cursor: "pointer" }}
-                        >
-                          📝
-                        </span>
+                        {entry.notes && <span style={{ marginLeft: 4 }}>📝</span>}
                         {workout && (
                           <div className="mono" style={entryStatsStyle}>
                             {workoutStatsLine(workout)}
                           </div>
                         )}
-                      </div>
+                      </Link>
                     );
                   })}
                   {(unplannedByDate.get(key) ?? []).map((activity) => {

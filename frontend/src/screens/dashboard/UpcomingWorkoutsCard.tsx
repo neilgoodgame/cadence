@@ -72,7 +72,7 @@ export function UpcomingWorkoutsCard() {
           upcoming.map((w) => (
             <div
               key={w.id}
-              onClick={() => navigate("/workouts")}
+              onClick={() => navigate(`/scheduled/${w.id}`)}
               style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 6px", borderRadius: 10, cursor: "pointer" }}
             >
               <div style={{ width: 40, flexShrink: 0, textAlign: "center" }}>
