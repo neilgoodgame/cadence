@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,6 +22,16 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Bridges whichever of the three bearer-credential schemes authenticated this request
  * into one consistent {@link AuthContext}, regardless of which {@code AuthenticationManager}
  * {@link BearerSchemeAuthenticationManagerResolver} dispatched to.
+ *
+ * <p>Runs on every request through the default security filter chain, which - since the MCP
+ * OAuth work added a real browser-rendered {@code /login} form in front of {@code /oauth/authorize}
+ * (needed for a genuine third-party OAuth client like Claude's MCP connector, unlike the
+ * first-party client which bypasses it entirely) - now also sees session-based
+ * {@code UsernamePasswordAuthenticationToken}s, not just the three bearer-credential types. Those
+ * never reach a REST resource endpoint that reads {@link AuthContextHolder} (the login/consent
+ * pages don't use it), so {@link #resolve} skips anything it doesn't recognize instead of
+ * crashing the request - found live via a real Claude Desktop connector test, where this threw a
+ * 500 mid-flow and surfaced to Claude as a generic "Authorization ... failed" error.
  */
 @Component
 public class AuthContextFilter extends OncePerRequestFilter {
@@ -31,7 +42,7 @@ public class AuthContextFilter extends OncePerRequestFilter {
 		try {
 			Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 			if (authentication != null && authentication.isAuthenticated()) {
-				AuthContextHolder.set(resolve(authentication));
+				resolve(authentication).ifPresent(AuthContextHolder::set);
 			}
 			filterChain.doFilter(request, response);
 		}
@@ -40,7 +51,7 @@ public class AuthContextFilter extends OncePerRequestFilter {
 		}
 	}
 
-	private AuthContext resolve(Authentication authentication) {
+	private Optional<AuthContext> resolve(Authentication authentication) {
 		if (authentication instanceof JwtAuthenticationToken jwtAuth) {
 			Jwt jwt = jwtAuth.getToken();
 			String sub = jwt.getSubject();
@@ -48,20 +59,22 @@ public class AuthContextFilter extends OncePerRequestFilter {
 			if (athleteId == null || athleteId.isBlank()) {
 				athleteId = sub;
 			}
-			return new AuthContext(sub, athleteId, parseScope(jwt.getClaimAsString("scope")), AuthContext.CredentialKind.JWT);
+			return Optional.of(
+					new AuthContext(sub, athleteId, parseScope(jwt.getClaimAsString("scope")), AuthContext.CredentialKind.JWT));
 		}
 		if (authentication instanceof BearerTokenAuthentication bearerAuth) {
 			OAuth2AuthenticatedPrincipal principal = (OAuth2AuthenticatedPrincipal) bearerAuth.getPrincipal();
 			String sub = principal.getName();
 			List<String> scopeAttribute = principal.getAttribute("scope");
 			Set<String> scopes = scopeAttribute == null ? Set.of() : Set.copyOf(scopeAttribute);
-			return AuthContext.self(sub, scopes, AuthContext.CredentialKind.OAUTH2);
+			return Optional.of(AuthContext.self(sub, scopes, AuthContext.CredentialKind.OAUTH2));
 		}
 		if (authentication instanceof PersonalAccessTokenAuthentication patAuth) {
 			Set<String> scopes = Set.copyOf(patAuth.token().getScopes());
-			return AuthContext.self((String) patAuth.getPrincipal(), scopes, AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN);
+			return Optional.of(
+					AuthContext.self((String) patAuth.getPrincipal(), scopes, AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
 		}
-		throw new IllegalStateException("Unrecognized authentication type: " + authentication.getClass());
+		return Optional.empty();
 	}
 
 	private Set<String> parseScope(String scope) {
