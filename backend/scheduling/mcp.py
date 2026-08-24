@@ -45,6 +45,7 @@ def _scheduled_workout_entry(scheduled: ScheduledWorkout) -> dict[str, Any]:
         "time_of_day": scheduled.time_of_day,
         "status": scheduled.status,
         "activity_id": scheduled.activity_id,
+        "notes": scheduled.notes,
     }
 
 
@@ -77,7 +78,7 @@ class SchedulingMCPTools(ScopedMCPToolset):
             "unplanned_activities": [_activity_summary(a) for a in unplanned],
         }
 
-    def schedule_workout(self, workout_id: str, date: str, time_of_day: str = "mid") -> dict[str, Any]:
+    def schedule_workout(self, workout_id: str, date: str, time_of_day: str = "mid", notes: str = "") -> dict[str, Any]:
         """Put a saved workout (from list_workouts/create_workout) onto the athlete's calendar
         for a specific date."""
         self._require_scope(CALENDAR_WRITE)
@@ -100,5 +101,61 @@ class SchedulingMCPTools(ScopedMCPToolset):
             assigned_by_id=sub if sub != athlete_id else None,
             date=parsed_date,
             time_of_day=normalized_tod,
+            notes=notes or "",
         )
         return _scheduled_workout_entry(scheduled)
+
+    def move_workout(
+        self,
+        scheduled_workout_id: str,
+        date: str | None = None,
+        time_of_day: str | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """Update an already-scheduled calendar entry, from get_calendar - its date, time of
+        day, and/or notes. Pass only the fields you want to change; omit the rest to leave them
+        as-is (pass an empty string for notes to clear it). Use this for a swap between two dates
+        instead of unschedule_workout + schedule_workout: it edits the entry in place instead of
+        leaving a stale duplicate if a caller forgets the delete step."""
+        self._require_scope(CALENDAR_WRITE)
+        scheduled = get_object_or_404(ScheduledWorkout, pk=scheduled_workout_id)
+        self._require_write(scheduled.athlete_id)
+
+        update_fields = []
+        if date is not None:
+            parsed_date = parse_date(date)
+            if parsed_date is None:
+                raise ValidationError({"date": "Must be a date in YYYY-MM-DD format."})
+            scheduled.date = parsed_date
+            update_fields.append("date")
+        if time_of_day is not None:
+            normalized_tod = _TIME_OF_DAY_INPUT.get(time_of_day.strip().lower())
+            if normalized_tod is None:
+                raise ValidationError({"time_of_day": "time_of_day must be one of: am, mid, pm."})
+            scheduled.time_of_day = normalized_tod
+            update_fields.append("time_of_day")
+        if notes is not None:
+            scheduled.notes = notes
+            update_fields.append("notes")
+
+        if update_fields:
+            scheduled.save(update_fields=update_fields)
+        return _scheduled_workout_entry(scheduled)
+
+    def unschedule_workout(self, scheduled_workout_id: str) -> dict[str, Any]:
+        """Remove a scheduled workout from the athlete's calendar (from get_calendar). Does not
+        delete the underlying saved workout, only this calendar placement - and refuses a
+        completed entry (one already linked to a real activity) rather than silently detaching
+        it."""
+        self._require_scope(CALENDAR_WRITE)
+        scheduled = get_object_or_404(ScheduledWorkout, pk=scheduled_workout_id)
+        self._require_write(scheduled.athlete_id)
+        if scheduled.activity_id is not None:
+            raise ValidationError(
+                {
+                    "scheduled_workout_id": "This entry is already linked to a completed activity - "
+                    "unscheduling it would orphan that link."
+                }
+            )
+        scheduled.delete()
+        return {"deleted": True, "id": scheduled_workout_id}

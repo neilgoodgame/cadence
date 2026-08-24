@@ -79,6 +79,7 @@ class ScheduledWorkoutListCreateView(APIView):
             assigned_by_id=sub if sub != athlete_id else None,
             date=data["date"],
             time_of_day=data.get("time_of_day", ""),
+            notes=data.get("notes", ""),
         )
         return Response(ScheduledWorkoutSerializer(scheduled).data, status=201)
 
@@ -103,6 +104,12 @@ class ScheduledWorkoutDetailView(APIView):
             scheduled.activity = activity
             scheduled.status = "completed"
             update_fields.extend(["activity", "status"])
+        if "time_of_day" in data:
+            scheduled.time_of_day = data["time_of_day"]
+            update_fields.append("time_of_day")
+        if "notes" in data:
+            scheduled.notes = data["notes"]
+            update_fields.append("notes")
 
         if update_fields:
             scheduled.save(update_fields=update_fields)
