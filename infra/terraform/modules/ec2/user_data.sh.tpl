@@ -45,6 +45,7 @@ IMAGE_TAG=$(aws ssm get-parameter --name "${image_tag_parameter_name}" --region 
 DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id "${db_secret_arn}" --region "$REGION" --query SecretString --output text | jq -r '.password')
 JWT_JSON=$(aws secretsmanager get-secret-value --secret-id "${jwt_secret_arn}" --region "$REGION" --query SecretString --output text)
 OAUTH_SECRET=$(aws secretsmanager get-secret-value --secret-id "${oauth_secret_arn}" --region "$REGION" --query SecretString --output text)
+OAUTH_MCP_SECRET=$(aws secretsmanager get-secret-value --secret-id "${oauth_mcp_secret_arn}" --region "$REGION" --query SecretString --output text)
 
 echo "$JWT_JSON" | jq -r '.jwt_private_key_pem' > /opt/cadence/keys/jwt_private.pem
 echo "$JWT_JSON" | jq -r '.jwt_public_key_pem' > /opt/cadence/keys/jwt_public.pem
@@ -64,6 +65,7 @@ ENV_FILE=/opt/cadence/env
 	umask 077
 	printf 'POSTGRES_PASSWORD=%s\n' "$DB_PASSWORD"
 	printf 'OAUTH_FIRST_PARTY_CLIENT_SECRET=%s\n' "$OAUTH_SECRET"
+	printf 'OAUTH_MCP_CLIENT_SECRET=%s\n' "$OAUTH_MCP_SECRET"
 ) > "$ENV_FILE"
 
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "${ecr_registry}"
@@ -80,6 +82,7 @@ exec docker run --rm --name cadence-backend \
 	-e JWT_KID="${jwt_kid}" \
 	-e JWT_ISSUER="${jwt_issuer}" \
 	-e JWT_AUDIENCE="${jwt_audience}" \
+	-e OAUTH_ISSUER="${oauth_issuer}" \
 	-e CORS_ALLOWED_ORIGINS="${cors_allowed_origins}" \
 	-e EMAIL_FROM_ADDRESS="${email_from_address}" \
 	-e EMAIL_VERIFICATION_BASE_URL="${email_verification_base_url}" \

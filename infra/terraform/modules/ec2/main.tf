@@ -48,7 +48,7 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# Scoped to exactly the 3 secrets run.sh resolves - not a blanket grant.
+# Scoped to exactly the 4 secrets run.sh resolves - not a blanket grant.
 data "aws_iam_policy_document" "secrets" {
   statement {
     effect  = "Allow"
@@ -57,6 +57,7 @@ data "aws_iam_policy_document" "secrets" {
       var.db_secret_arn,
       var.jwt_secret_arn,
       var.oauth_secret_arn,
+      var.oauth_mcp_secret_arn,
     ]
   }
 }
@@ -238,6 +239,8 @@ resource "aws_instance" "this" {
     jwt_issuer                  = var.jwt_issuer
     jwt_audience                = var.jwt_audience
     oauth_secret_arn            = var.oauth_secret_arn
+    oauth_mcp_secret_arn        = var.oauth_mcp_secret_arn
+    oauth_issuer                = var.oauth_issuer
     cors_allowed_origins        = var.cors_allowed_origins
     log_group_name              = aws_cloudwatch_log_group.backend.name
     email_from_address          = var.email_from_address
