@@ -5,7 +5,7 @@ import { ApiError } from "../../api/types";
 import type { Share, ShareRole, VirtualCoachCreated } from "../../api/types";
 import { RevealedSecret } from "./TokensTab";
 
-const VIRTUAL_COACH_SCOPES = ["activities:read", "workouts:write", "calendar:write"];
+const VIRTUAL_COACH_SCOPES = ["activities:read", "activities:write", "workouts:write", "calendar:write"];
 
 function ShareRow({ share }: { share: Share }) {
   const queryClient = useQueryClient();
@@ -140,7 +140,8 @@ export function SharingTab() {
         <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>Add an AI coach</h3>
         <p style={{ fontSize: 13, color: "var(--ink3)", margin: "0 0 12px" }}>
           Creates a coach account for an AI assistant like Claude.ai to connect to over MCP, separate from your own
-          login. It can view your training data and schedule or create workouts, the same as a human coach.
+          login. It can view your training data, schedule or create workouts, and comment on activities, the same as
+          a human coach.
         </p>
         {revealedVirtualCoach ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

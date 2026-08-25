@@ -16,12 +16,14 @@ from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
-from authn.mcp_scopes import ACTIVITIES_READ
+from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
+from core.auth_context import get_effective_athlete_id
 from core.cql.compiler import compile_ast_to_q
 from core.cql.parser import parse
 
-from .models import Activity, ActivityTag, DurationCurve
+from .models import Activity, ActivityComment, ActivityTag, DurationCurve
+from .serializers import ActivityCommentSerializer
 
 ACTIVITY_FIELD_MAP = {
     "date": "start_date",
@@ -248,3 +250,22 @@ class ActivityMCPTools(ScopedMCPToolset):
         points = curve.points if curve else {}
 
         return {"metric": metric, **{key: points.get(sec) for key, sec in _CURVE_KEYS.items()}}
+
+    def post_activity_comment(self, activity_id: str, text: str) -> dict[str, Any]:
+        """Post a short comment on an activity (from list_activities/get_activity) - visible to
+        the athlete and anyone else with access to it, e.g. coaching feedback on a specific
+        session."""
+        self._require_scope(ACTIVITIES_WRITE)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        # Comments are read-gated, not write-gated (see ActivityCommentListView's docstring) -
+        # anyone who can see the activity can comment on it, same as the REST endpoint.
+        self._require_read(activity.athlete_id)
+        sub, _ = get_effective_athlete_id(self.request)
+
+        if not text or not text.strip():
+            raise ValidationError({"text": "Comment text cannot be empty."})
+        if len(text) > 4000:
+            raise ValidationError({"text": "text must be 4000 characters or fewer."})
+
+        comment = ActivityComment.objects.create(activity=activity, author_id=sub, text=text)
+        return ActivityCommentSerializer(comment).data
