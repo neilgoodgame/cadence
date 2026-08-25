@@ -294,6 +294,59 @@ class ActivityToolsTests(TestCase):
         self.assertEqual(len(result["data"]), 1)
         self.assertEqual(result["data"][0]["name"], "Mine")
 
+    def _new_activity(self, athlete: User) -> Activity:
+        return Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Morning Run",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+        )
+
+    def test_post_activity_comment_attributes_it_to_the_real_caller(self) -> None:
+        athlete = User.objects.create_user(email="mcp-comment-athlete@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.post_activity_comment(activity_id=activity.id, text="Nice pace today!")
+
+        self.assertEqual(result["text"], "Nice pace today!")
+        self.assertEqual(result["author_id"], athlete.id)
+        self.assertEqual(result["author_role"], "athlete")
+
+    def test_post_activity_comment_requires_the_activities_write_scope(self) -> None:
+        athlete = User.objects.create_user(email="mcp-comment-scope-athlete@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.post_activity_comment(activity_id=activity.id, text="Should fail")
+
+    def test_post_activity_comment_rejects_blank_or_overlong_text(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-comment-validation-athlete@example.cc", password="x", name="Athlete"
+        )
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.post_activity_comment(activity_id=activity.id, text="  ")
+        with self.assertRaises(ValidationError):
+            tools.post_activity_comment(activity_id=activity.id, text="x" * 4001)
+
+    def test_post_activity_comment_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-comment-outsider-athlete@example.cc", password="x", name="Athlete"
+        )
+        outsider = User.objects.create_user(email="mcp-comment-outsider@example.cc", password="x", name="Outsider")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.post_activity_comment(activity_id=activity.id, text="Should fail")
+
 
 class AthleteToolsTests(TestCase):
     def test_get_me_returns_the_callers_own_profile(self) -> None:
