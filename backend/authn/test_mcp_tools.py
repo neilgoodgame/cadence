@@ -14,7 +14,8 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from accounts.models import User
+from accounts.models import PersonalAccessToken, User, UserRelationship
+from accounts.tokens import generate_secret, hash_secret, visible_prefix
 from activities.mcp import ActivityMCPTools
 from activities.models import Activity
 from athletes.mcp import AthleteMCPTools
@@ -352,6 +353,28 @@ class AthleteToolsTests(TestCase):
     def test_get_me_returns_the_callers_own_profile(self) -> None:
         athlete = User.objects.create_user(email="mcp-me@example.cc", password="x", name="Athlete", ftp=250)
         tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.get_me()
+
+        self.assertEqual(result["id"], athlete.id)
+        self.assertEqual(result["ftp"], 250)
+
+    def test_get_me_for_a_delegated_coach_returns_the_athletes_profile_not_the_coachs_own(self) -> None:
+        athlete = User.objects.create_user(email="mcp-me-athlete@example.cc", password="x", name="Athlete", ftp=250)
+        coach = User.objects.create_user(email="mcp-me-coach@example.cc", password="x", name="Coach")
+        UserRelationship.objects.create(
+            owner=athlete, grantee=coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+        )
+        secret = generate_secret()
+        pat = PersonalAccessToken.objects.create(
+            user=coach,
+            name="Delegated",
+            prefix=visible_prefix(secret),
+            hashed_secret=hash_secret(secret),
+            scopes=["activities:read"],
+            delegated_athlete=athlete,
+        )
+        tools = AthleteMCPTools(request=SimpleNamespace(user=coach, auth=pat))
 
         result = tools.get_me()
 

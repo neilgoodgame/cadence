@@ -15,6 +15,10 @@ import com.cadence.api.mcp.tools.workouts.WorkoutWriteTools;
 import com.cadence.api.scheduling.dto.ScheduledWorkoutResponse;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
+import com.cadence.api.sharing.ShareRole;
+import com.cadence.api.sharing.ShareStatus;
+import com.cadence.api.sharing.UserRelationship;
+import com.cadence.api.sharing.UserRelationshipRepository;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -55,6 +59,9 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private UserRepository userRepository;
+
+	@Autowired
+	private UserRelationshipRepository userRelationshipRepository;
 
 	@AfterEach
 	void clearAuthContext() {
@@ -214,6 +221,27 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		athlete.setFtp(250);
 		userRepository.save(athlete);
 		authAs(athlete.getId(), "activities:read");
+
+		McpAthleteProfile profile = athleteProfileTools.getMe();
+
+		assertThat(profile.id()).isEqualTo(athlete.getId());
+		assertThat(profile.ftp()).isEqualTo(250);
+	}
+
+	@Test
+	void getMeForADelegatedCoachReturnsTheAthletesProfileNotTheCoachsOwn() {
+		User athlete = saveAthlete("mcp-get-me-athlete@example.cc");
+		athlete.setFtp(250);
+		userRepository.save(athlete);
+		User coach = saveAthlete("mcp-get-me-coach@example.cc");
+		UserRelationship relationship = new UserRelationship();
+		relationship.setOwner(athlete);
+		relationship.setGrantee(coach);
+		relationship.setRole(ShareRole.COACH);
+		relationship.setStatus(ShareStatus.ACTIVE);
+		userRelationshipRepository.save(relationship);
+		AuthContextHolder.set(
+				new AuthContext(coach.getId(), athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
 
 		McpAthleteProfile profile = athleteProfileTools.getMe();
 
