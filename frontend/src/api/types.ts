@@ -76,6 +76,7 @@ export interface Share {
   role: ShareRole;
   status: "pending" | "active";
   since: string;
+  is_virtual: boolean;
 }
 
 export interface Contexts {
