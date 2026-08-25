@@ -203,10 +203,15 @@ OAUTH_MCP_CLIENT_SECRET = env("OAUTH_MCP_CLIENT_SECRET", "insecure-dev-mcp-secre
 OAUTH_ISSUER = env("OAUTH_ISSUER", "http://localhost:8000")
 
 # --- MCP server (django-mcp-server) ---
-# Reuses the same OAuth2 bearer-token path already in REST_FRAMEWORK's
-# DEFAULT_AUTHENTICATION_CLASSES below - not a parallel auth stack. No tools registered
-# yet; this just mounts /mcp so the OAuth layer has something real to authenticate against.
-DJANGO_MCP_AUTHENTICATION_CLASSES = ["authn.mcp_auth.McpOAuth2Authentication"]
+# Reuses the same bearer-token paths already in REST_FRAMEWORK's DEFAULT_AUTHENTICATION_CLASSES
+# above - not a parallel auth stack. PersonalAccessTokenAuthentication matches Java's /mcp,
+# which accepts a cad_pat_... token via the same BearerSchemeAuthenticationManagerResolver every
+# other endpoint uses (confirmed live) - needed for a virtual coach's delegated personal access
+# token (see accounts.delegation) to authenticate an MCP client without a full OAuth2 flow.
+DJANGO_MCP_AUTHENTICATION_CLASSES = [
+    "authn.mcp_auth.McpOAuth2Authentication",
+    "core.authentication.PersonalAccessTokenAuthentication",
+]
 
 # --- JWT signing (scoped delegated JWTs minted via /v1/auth/jwt) ---
 JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH", str(BASE_DIR / "keys" / "jwt_private.pem"))

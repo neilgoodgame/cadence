@@ -45,6 +45,12 @@ public class PersonalAccessToken extends PrefixedIdEntity {
 	@Column(name = "last_used")
 	private LocalDate lastUsed;
 
+	/** Whose data this token authorizes, when it differs from {@link #user} - a coach's (real
+	 * or virtual) token scoped to a specific athlete via an active {@code UserRelationship} at
+	 * creation time (see DelegationPolicy). Null for an ordinary self-scoped token. */
+	@Column(name = "delegated_athlete_id")
+	private String delegatedAthleteId;
+
 	@PrePersist
 	private void onCreate() {
 		if (created == null) {
@@ -115,5 +121,13 @@ public class PersonalAccessToken extends PrefixedIdEntity {
 
 	public void setLastUsed(LocalDate lastUsed) {
 		this.lastUsed = lastUsed;
+	}
+
+	public String getDelegatedAthleteId() {
+		return delegatedAthleteId;
+	}
+
+	public void setDelegatedAthleteId(String delegatedAthleteId) {
+		this.delegatedAthleteId = delegatedAthleteId;
 	}
 }

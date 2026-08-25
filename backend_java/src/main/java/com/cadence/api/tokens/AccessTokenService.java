@@ -5,8 +5,11 @@ import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.security.pat.PersonalAccessToken;
 import com.cadence.api.security.pat.PersonalAccessTokenRepository;
 import com.cadence.api.security.pat.PersonalAccessTokenService;
+import com.cadence.api.sharing.DelegationPolicy;
+import com.cadence.api.tokens.dto.AccessTokenResponse;
 import com.cadence.api.tokens.dto.CreateAccessTokenRequest;
 import com.cadence.api.users.User;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -22,10 +25,13 @@ public class AccessTokenService {
 
 	private final PersonalAccessTokenRepository repository;
 	private final PersonalAccessTokenService cryptoService;
+	private final DelegationPolicy delegationPolicy;
 
-	public AccessTokenService(PersonalAccessTokenRepository repository, PersonalAccessTokenService cryptoService) {
+	public AccessTokenService(
+			PersonalAccessTokenRepository repository, PersonalAccessTokenService cryptoService, DelegationPolicy delegationPolicy) {
 		this.repository = repository;
 		this.cryptoService = cryptoService;
+		this.delegationPolicy = delegationPolicy;
 	}
 
 	public record CreatedToken(PersonalAccessToken token, String secret) {
@@ -40,6 +46,10 @@ public class AccessTokenService {
 		if (!callerScopes.isEmpty() && !callerScopes.containsAll(request.scopes())) {
 			throw new ValidationException("scopes must be a subset of your own scopes.", "scopes");
 		}
+		boolean delegated = request.athleteId() != null && !request.athleteId().equals(user.getId());
+		if (delegated) {
+			delegationPolicy.requireActiveCoachAccess(request.athleteId(), user.getId(), request.scopes());
+		}
 		String secret = cryptoService.generateSecret();
 		PersonalAccessToken token = new PersonalAccessToken();
 		token.setUser(user);
@@ -48,6 +58,7 @@ public class AccessTokenService {
 		token.setHashedSecret(cryptoService.hash(secret));
 		token.setScopes(request.scopes());
 		token.setExpiresAt(request.expiresAt());
+		token.setDelegatedAthleteId(delegated ? request.athleteId() : null);
 		repository.save(token);
 		return new CreatedToken(token, secret);
 	}
@@ -68,5 +79,11 @@ public class AccessTokenService {
 	@Transactional
 	public void revoke(String id) {
 		repository.deleteById(id);
+	}
+
+	public AccessTokenResponse toResponse(PersonalAccessToken token) {
+		return new AccessTokenResponse(token.getId(), token.getName(), token.getPrefix(), token.getScopes(),
+				token.getCreated().atZone(ZoneOffset.UTC).toLocalDate(), token.getExpiresAt(), token.getLastUsed(),
+				token.getDelegatedAthleteId());
 	}
 }

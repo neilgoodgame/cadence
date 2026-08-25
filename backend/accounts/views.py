@@ -15,6 +15,7 @@ from core.derived import compute_compliance, compute_fitness_series, compute_fla
 from core.exceptions import ConflictError, InvalidCredentialsError
 
 from . import email_verification
+from .delegation import create_virtual_coach, require_active_coach_access
 from .models import PersonalAccessToken, User, UserRelationship
 from .serializers import (
     AccessTokenSerializer,
@@ -22,6 +23,7 @@ from .serializers import (
     CoachedAthleteSerializer,
     CreateAccessTokenSerializer,
     CreateShareSerializer,
+    CreateVirtualCoachSerializer,
     LoginSerializer,
     RegisterSerializer,
     RosterEntrySerializer,
@@ -29,6 +31,7 @@ from .serializers import (
     UpdateShareSerializer,
     UserSerializer,
     VerifyEmailSerializer,
+    VirtualCoachCreatedSerializer,
 )
 from .tokens import generate_secret, hash_secret, visible_prefix
 
@@ -55,6 +58,7 @@ def _share_payload(relationship: UserRelationship) -> dict[str, Any]:
         "role": relationship.role,
         "status": relationship.status,
         "since": relationship.created.date(),
+        "is_virtual": relationship.grantee.is_virtual,
     }
 
 
@@ -145,17 +149,7 @@ class ContextsView(APIView):
         ]
 
         coached_by_qs = UserRelationship.objects.filter(owner=user).select_related("grantee")
-        coached_by = [
-            {
-                "id": rel.id,
-                "name": rel.grantee.name,
-                "handle": rel.grantee.handle,
-                "role": rel.role,
-                "status": rel.status,
-                "since": rel.created.date(),
-            }
-            for rel in coached_by_qs
-        ]
+        coached_by = [_share_payload(rel) for rel in coached_by_qs]
 
         return Response(
             {
@@ -189,14 +183,21 @@ class AccessTokenListCreateView(APIView):
                 }
             )
 
+        user = authenticated_user(request)
+        athlete_id = data.get("athlete_id")
+        delegated = athlete_id is not None and athlete_id != user.id
+        if delegated:
+            require_active_coach_access(athlete_id, user.id, data["scopes"])
+
         secret = generate_secret()
         pat = PersonalAccessToken.objects.create(
-            user=authenticated_user(request),
+            user=user,
             name=data["name"],
             prefix=visible_prefix(secret),
             hashed_secret=hash_secret(secret),
             scopes=data["scopes"],
             expires_at=data.get("expires_at"),
+            delegated_athlete_id=athlete_id if delegated else None,
         )
         payload = AccessTokenSerializer(pat).data
         payload["secret"] = secret
@@ -243,7 +244,10 @@ class ShareListCreateView(APIView):
             grantee = User.objects.filter(handle__iexact=invitee).first()
         else:
             grantee = User.objects.filter(email__iexact=invitee).first()
-        if grantee is None:
+        if grantee is None or grantee.is_virtual:
+            # Virtual coaches are only ever created (and linked) via VirtualCoachCreateView -
+            # they have no discoverable email/handle to invite by, but guard the invariant
+            # explicitly rather than relying on that alone.
             raise ValidationError(
                 {
                     "error": {
@@ -275,6 +279,24 @@ class ShareListCreateView(APIView):
         return Response(ShareSerializer(_share_payload(relationship)).data, status=status.HTTP_201_CREATED)
 
 
+class VirtualCoachCreateView(APIView):
+    def post(self, request: Request) -> Response:
+        serializer = CreateVirtualCoachSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        athlete = authenticated_user(request)
+
+        result = create_virtual_coach(athlete, data["name"], data["scopes"])
+        payload = {
+            "share": _share_payload(result["relationship"]),
+            "email": result["email"],
+            "password": result["password"],
+            "token": result["token"],
+            "secret": result["secret"],
+        }
+        return Response(VirtualCoachCreatedSerializer(payload).data, status=status.HTTP_201_CREATED)
+
+
 class ShareDetailView(APIView):
     def patch(self, request: Request, id: str) -> Response:
         relationship = get_object_or_404(UserRelationship, pk=id, owner=authenticated_user(request))
@@ -286,6 +308,20 @@ class ShareDetailView(APIView):
 
     def delete(self, request: Request, id: str) -> Response:
         relationship = get_object_or_404(UserRelationship, pk=id, owner=authenticated_user(request))
+        grantee = relationship.grantee
+        if grantee.is_virtual:
+            # A virtual coach exists only for this one relationship (see accounts.delegation) -
+            # it has a real usable password and a delegated token, either of which would
+            # otherwise keep working indefinitely after revoke, so deleting the whole account is
+            # the actual invalidation, not just deleting the relationship row.
+            relationship.delete()
+            grantee.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        # A delegated token's authorization is resolved from the athlete_id stored on the token
+        # itself (core.auth_context.get_effective_athlete_id), not re-checked against the
+        # relationship on every request - so revoking here must actively invalidate any token
+        # this grantee minted against this owner, or it would keep working indefinitely.
+        PersonalAccessToken.objects.filter(user=grantee, delegated_athlete=relationship.owner).delete()
         relationship.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

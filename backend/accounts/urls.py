@@ -14,6 +14,7 @@ from .views import (
     ShareDetailView,
     ShareListCreateView,
     VerifyEmailView,
+    VirtualCoachCreateView,
 )
 
 urlpatterns = [
@@ -27,6 +28,10 @@ urlpatterns = [
     path("v1/auth/tokens/<str:id>", AccessTokenDetailView.as_view(), name="access-token-detail"),
     path("v1/auth/tokens/<str:id>/rotate", AccessTokenRotateView.as_view(), name="access-token-rotate"),
     path("v1/shares", ShareListCreateView.as_view(), name="shares"),
+    # Must come before the <str:id> pattern below - Django's resolver matches the first pattern
+    # in list order regardless of HTTP method, so "virtual-coach" would otherwise be swallowed
+    # as an `id` by ShareDetailView (405, since it has no post()).
+    path("v1/shares/virtual-coach", VirtualCoachCreateView.as_view(), name="virtual-coach"),
     path("v1/shares/<str:id>", ShareDetailView.as_view(), name="share-detail"),
     path("v1/coach/athletes", RosterListView.as_view(), name="coach-roster"),
     path("v1/coach/athletes/<str:id>", CoachAthleteDetailView.as_view(), name="coach-athlete-detail"),
