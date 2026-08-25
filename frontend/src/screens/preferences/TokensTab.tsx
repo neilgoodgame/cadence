@@ -5,7 +5,7 @@ import type { AccessTokenWithSecret } from "../../api/types";
 
 const ALL_SCOPES = ["activities:read", "activities:write", "workouts:write", "gear:write"];
 
-function RevealedSecret({ token, onDismiss }: { token: AccessTokenWithSecret; onDismiss: () => void }) {
+export function RevealedSecret({ token, onDismiss }: { token: AccessTokenWithSecret; onDismiss: () => void }) {
   return (
     <div style={{ border: "1px solid #2fa66a", borderRadius: 10, padding: 16, background: "var(--elev)" }}>
       <div style={{ fontWeight: 700, fontSize: 14, color: "#2fa66a", marginBottom: 8 }}>

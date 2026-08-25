@@ -97,6 +97,14 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "is_active", nullable = false)
 	private boolean active = true;
 
+	/** Synthetic account with no real inbox and no password, created via the "virtual coach"
+	 * flow (SharingService.createVirtualCoach) for an MCP client to authenticate as. Never
+	 * logs into the web app - can only authenticate via the delegated personal access token
+	 * minted alongside it. Restricted to exactly one coach relationship (see
+	 * SharingService.createShare's guard); a real coach is not restricted this way. */
+	@Column(name = "is_virtual", nullable = false)
+	private boolean virtual = false;
+
 	// Auto-match naming preferences (WorkoutMatchTasklet) - both default off so existing
 	// device-derived activity names are untouched unless opted in. appendMatchDateToName
 	// only has an effect when renameMatchedActivities is also on.
@@ -292,6 +300,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setActive(boolean active) {
 		this.active = active;
+	}
+
+	public boolean isVirtual() {
+		return virtual;
+	}
+
+	public void setVirtual(boolean virtual) {
+		this.virtual = virtual;
 	}
 
 	public boolean isRenameMatchedActivities() {

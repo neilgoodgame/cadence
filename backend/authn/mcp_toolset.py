@@ -30,8 +30,10 @@ class ScopedMCPToolset(MCPToolset):
             raise PermissionDenied(f"This action requires the '{scope}' scope.")
 
     def _effective_athlete_id(self) -> str:
-        """The caller's own athlete id. No MCP tool exposes an athlete_id param - v1 is
-        self-only, no coach-for-athlete delegation, matching the Java backend exactly."""
+        """No MCP tool exposes an athlete_id param - resolved instead from whichever credential
+        authenticated the request: a plain OAuth2/self-scoped token resolves to the caller's own
+        id, while a coach's delegated personal access token (see accounts.delegation) resolves
+        to the athlete it's scoped to, matching the Java backend exactly."""
         _, athlete_id = get_effective_athlete_id(self.request)
         return athlete_id
 

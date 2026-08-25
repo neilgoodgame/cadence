@@ -11,7 +11,6 @@ import com.cadence.api.tokens.dto.CreateAccessTokenRequest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
 import jakarta.validation.Valid;
-import java.time.ZoneOffset;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -70,7 +69,6 @@ public class AccessTokenController {
 	}
 
 	private AccessTokenResponse toResponse(PersonalAccessToken token) {
-		return new AccessTokenResponse(token.getId(), token.getName(), token.getPrefix(), token.getScopes(),
-				token.getCreated().atZone(ZoneOffset.UTC).toLocalDate(), token.getExpiresAt(), token.getLastUsed());
+		return accessTokenService.toResponse(token);
 	}
 }

@@ -4,8 +4,10 @@ import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.sharing.dto.CreateShareRequest;
+import com.cadence.api.sharing.dto.CreateVirtualCoachRequest;
 import com.cadence.api.sharing.dto.ShareResponse;
 import com.cadence.api.sharing.dto.UpdateShareRequest;
+import com.cadence.api.sharing.dto.VirtualCoachCreatedResponse;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
 import jakarta.validation.Valid;
@@ -47,6 +49,13 @@ public class ShareController {
 		User owner = userService.getById(AuthContextHolder.get().sub());
 		UserRelationship relationship = sharingService.createShare(owner, request);
 		return sharingService.toResponse(relationship);
+	}
+
+	@PostMapping("/v1/shares/virtual-coach")
+	@ResponseStatus(HttpStatus.CREATED)
+	public VirtualCoachCreatedResponse createVirtualCoach(@Valid @RequestBody CreateVirtualCoachRequest request) {
+		User athlete = userService.getById(AuthContextHolder.get().sub());
+		return sharingService.createVirtualCoach(athlete, request);
 	}
 
 	@PatchMapping("/v1/shares/{id}")

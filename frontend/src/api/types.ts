@@ -76,6 +76,7 @@ export interface Share {
   role: ShareRole;
   status: "pending" | "active";
   since: string;
+  is_virtual: boolean;
 }
 
 export interface Contexts {
@@ -356,10 +357,18 @@ export interface AccessToken {
   created: string;
   expires_at: string | null;
   last_used: string | null;
+  delegated_athlete_id: string | null;
 }
 
 export interface AccessTokenWithSecret extends AccessToken {
   secret: string;
+}
+
+export interface VirtualCoachCreated {
+  share: Share;
+  email: string;
+  password: string;
+  token: AccessTokenWithSecret;
 }
 
 export type BikeKind = "road" | "indoor" | "gravel" | "tt";

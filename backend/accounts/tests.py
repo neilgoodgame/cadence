@@ -278,6 +278,139 @@ class ShareViewTests(TestCase):
         self.assertFalse(UserRelationship.objects.filter(pk=rel.id).exists())
 
 
+class VirtualCoachTests(TestCase):
+    """A virtual coach's delegated token needs to make GET /v1/workouts (a list endpoint,
+    which resolves the athlete to query via get_effective_athlete_id) return the *athlete's*
+    workouts, not an empty list of the coach's own."""
+
+    def setUp(self):
+        from workouts.models import Workout
+
+        self.athlete = User.objects.create_user(email="virtual-coach-athlete@example.cc", password="x", name="Athlete")
+        self.workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="bike")
+        self.client = _bearer_client(self.athlete)
+
+    def test_create_virtual_coach_lists_the_athletes_workouts(self):
+        response = self.client.post(
+            "/v1/shares/virtual-coach",
+            {"name": "Claude.ai", "scopes": ["activities:read", "workouts:write", "calendar:write"]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body["share"]["role"], "coach")
+        self.assertEqual(body["share"]["status"], "active")
+        secret = body["token"]["secret"]
+        self.assertTrue(secret.startswith("cad_pat_"))
+
+        pat_client = APIClient()
+        pat_client.credentials(HTTP_AUTHORIZATION=f"Bearer {secret}")
+        listing = pat_client.get("/v1/workouts")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.json()["data"][0]["id"], self.workout.id)
+
+    def test_a_plain_self_scoped_token_never_sees_another_athletes_workouts(self):
+        # An ordinary (non-delegated) personal access token, minted by an unrelated user with no
+        # share to self.athlete - the list endpoint must not leak across athletes by default.
+        coach = User.objects.create_user(email="virtual-coach-control-coach@example.cc", password="x", name="Coach")
+        coach_client = _bearer_client(coach)
+        created_token = coach_client.post(
+            "/v1/auth/tokens", {"name": "Coach's own token", "scopes": ["activities:read"]}, format="json"
+        ).json()
+
+        pat_client = APIClient()
+        pat_client.credentials(HTTP_AUTHORIZATION=f"Bearer {created_token['secret']}")
+        listing = pat_client.get("/v1/workouts")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.json()["data"], [])
+
+    def test_revoking_the_share_invalidates_the_virtual_coachs_token(self):
+        created = self.client.post(
+            "/v1/shares/virtual-coach",
+            {"name": "Claude.ai", "scopes": ["activities:read", "workouts:write"]},
+            format="json",
+        ).json()
+
+        self.client.delete(f"/v1/shares/{created['share']['id']}")
+
+        pat_client = APIClient()
+        pat_client.credentials(HTTP_AUTHORIZATION=f"Bearer {created['token']['secret']}")
+        self.assertEqual(pat_client.get("/v1/workouts").status_code, 401)
+
+    def test_a_viewer_only_relationship_cannot_mint_a_delegated_token_with_write_scopes(self):
+        coach = User.objects.create_user(email="delegation-viewer-coach@example.cc", password="x", name="Coach")
+        UserRelationship.objects.create(
+            owner=self.athlete, grantee=coach, role=UserRelationship.ROLE_VIEWER, status=UserRelationship.STATUS_ACTIVE
+        )
+        coach_client = _bearer_client(coach)
+        response = coach_client.post(
+            "/v1/auth/tokens",
+            {"name": "Should fail", "scopes": ["workouts:write"], "athlete_id": self.athlete.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_create_virtual_coach_issues_a_usable_password_that_logs_in(self):
+        created = self.client.post(
+            "/v1/shares/virtual-coach", {"name": "Claude.ai", "scopes": ["activities:read"]}, format="json"
+        ).json()
+
+        response = APIClient().post(
+            "/v1/auth/login", {"email": created["email"], "password": created["password"]}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_virtual_coachs_oauth2_session_delegates_to_its_athlete(self):
+        created = self.client.post(
+            "/v1/shares/virtual-coach", {"name": "Claude.ai", "scopes": ["activities:read"]}, format="json"
+        ).json()
+        coach = User.objects.get(email=created["email"])
+
+        # A real OAuth2 session for the virtual coach - the same kind of session Claude.ai's
+        # connector ends up with after completing an interactive login as it - not the delegated
+        # PAT already covered above.
+        oauth_client = _bearer_client(coach, scope="activities:read")
+        listing = oauth_client.get("/v1/workouts")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.json()["data"][0]["id"], self.workout.id)
+
+    def test_a_real_coachs_own_oauth2_session_is_not_delegated_even_with_one_athlete(self):
+        # The whole point of scoping this to is_virtual: a real user's own OAuth2 session (their
+        # normal web app login) must never silently start showing someone else's data just
+        # because they happen to coach exactly one athlete.
+        coach = User.objects.create_user(email="real-coach-oauth-delegation@example.cc", password="x", name="Coach")
+        UserRelationship.objects.create(
+            owner=self.athlete, grantee=coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+        )
+        coach_client = _bearer_client(coach)
+        listing = coach_client.get("/v1/workouts")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.json()["data"], [])
+
+    def test_revoking_the_share_deletes_the_whole_virtual_account(self):
+        created = self.client.post(
+            "/v1/shares/virtual-coach", {"name": "Claude.ai", "scopes": ["activities:read"]}, format="json"
+        ).json()
+
+        self.client.delete(f"/v1/shares/{created['share']['id']}")
+
+        self.assertFalse(User.objects.filter(email=created["email"]).exists())
+
+    def test_virtual_accounts_cannot_be_invited_as_an_ordinary_share(self):
+        created = self.client.post(
+            "/v1/shares/virtual-coach", {"name": "Claude.ai", "scopes": ["activities:read"]}, format="json"
+        ).json()
+        virtual_coach = User.objects.get(email=UserRelationship.objects.get(pk=created["share"]["id"]).grantee.email)
+        other_athlete_client = _bearer_client(
+            User.objects.create_user(email="other-athlete@example.cc", password="x", name="Other")
+        )
+
+        response = other_athlete_client.post(
+            "/v1/shares", {"invitee": virtual_coach.email, "role": "coach"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+
 class CoachViewTests(TestCase):
     def setUp(self):
         self.coach = User.objects.create_user(email="coach@example.cc", password="x", name="Coach")

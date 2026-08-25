@@ -76,6 +76,7 @@ class ShareSerializer(serializers.Serializer):
     role = serializers.CharField()
     status = serializers.CharField()
     since = serializers.DateField()
+    is_virtual = serializers.BooleanField()
 
 
 class CreateShareSerializer(serializers.Serializer):
@@ -105,10 +106,11 @@ class CoachAthleteSerializer(serializers.Serializer):
 
 class AccessTokenSerializer(serializers.ModelSerializer):
     created = serializers.SerializerMethodField()
+    delegated_athlete_id = serializers.CharField(allow_null=True)
 
     class Meta:
         model = PersonalAccessToken
-        fields = ["id", "name", "prefix", "scopes", "created", "expires_at", "last_used"]
+        fields = ["id", "name", "prefix", "scopes", "created", "expires_at", "last_used", "delegated_athlete_id"]
 
     def get_created(self, obj: PersonalAccessToken) -> date:
         return obj.created.date()
@@ -118,3 +120,24 @@ class CreateAccessTokenSerializer(serializers.Serializer):
     name = serializers.CharField()
     scopes = serializers.ListField(child=serializers.CharField(), allow_empty=False)
     expires_at = serializers.DateField(required=False, allow_null=True)
+    # Optional - only meaningful when it differs from the caller's own id, minting a token
+    # delegated to an athlete the caller actively coaches (or views). See
+    # accounts.delegation.require_active_coach_access.
+    athlete_id = serializers.CharField(required=False, allow_null=True)
+
+
+class CreateVirtualCoachSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    scopes = serializers.ListField(child=serializers.CharField(), allow_empty=False)
+
+
+class VirtualCoachCreatedSerializer(serializers.Serializer):
+    share = ShareSerializer()
+    email = serializers.CharField()
+    password = serializers.CharField()
+    token = serializers.SerializerMethodField()
+
+    def get_token(self, obj: dict[str, Any]) -> dict[str, Any]:
+        payload = AccessTokenSerializer(obj["token"]).data
+        payload["secret"] = obj["secret"]
+        return payload
