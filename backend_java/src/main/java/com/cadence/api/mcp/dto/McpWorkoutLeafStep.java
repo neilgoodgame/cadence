@@ -17,7 +17,9 @@ public record McpWorkoutLeafStep(
 		@McpToolParam(required = false, description = "seconds - for end_type=time") Integer duration,
 		@McpToolParam(required = false, description = "meters - for end_type=distance") Integer distance,
 		@McpToolParam(required = true, description = "power, hr, pace, cadence, or open") String targetType,
-		@McpToolParam(required = false, description = "%-of-threshold low bound") Double targetLow,
-		@McpToolParam(required = false, description = "%-of-threshold high bound") Double targetHigh,
+		@McpToolParam(required = false, description = "%-of-threshold low bound, on a 0-100 scale - "
+				+ "e.g. 65 for 65% of threshold, NOT 0.65") Double targetLow,
+		@McpToolParam(required = false, description = "%-of-threshold high bound, on a 0-100 scale - "
+				+ "e.g. 65 for 65% of threshold, NOT 0.65") Double targetHigh,
 		@McpToolParam(required = false, description = "free-text note") String note) {
 }

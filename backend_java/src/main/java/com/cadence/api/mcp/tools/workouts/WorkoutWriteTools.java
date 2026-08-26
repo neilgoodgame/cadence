@@ -59,8 +59,8 @@ public class WorkoutWriteTools {
 			+ "afterwards). Each step is either a leaf (kind: warmup/block/rec/cool, with end_type "
 			+ "time/distance/manual and a target_type power/hr/pace/cadence/open) or a repeat group "
 			+ "(kind: repeat, with a repeat count and nested children - no end_type/target on the "
-			+ "group itself). target_low/target_high are a %-of-threshold range (equal values for a "
-			+ "flat target).",
+			+ "group itself). target_low/target_high are a %-of-threshold range on a 0-100 scale, "
+			+ "e.g. 65 for 65% of threshold (NOT 0.65) - equal values for a flat target.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
 	public WorkoutResponse createWorkout(
@@ -101,6 +101,8 @@ public class WorkoutWriteTools {
 		StepEndType endType = parseEnum(StepEndType.class, input.endType(), "end_type", "time, distance, or manual");
 		TargetType targetType = parseEnum(TargetType.class, input.targetType(), "target_type",
 				"power, hr, pace, cadence, or open");
+		requireTargetScale(input.targetLow(), "target_low");
+		requireTargetScale(input.targetHigh(), "target_high");
 		return new WorkoutStepDto(kind, endType, input.duration(), input.distance(), targetType,
 				input.targetLow(), input.targetHigh(), Target2Type.NONE, null, null, 1, noteOrEmpty(input.note()), List.of());
 	}
@@ -113,8 +115,25 @@ public class WorkoutWriteTools {
 		StepEndType endType = parseEnum(StepEndType.class, leaf.endType(), "end_type", "time, distance, or manual");
 		TargetType targetType = parseEnum(TargetType.class, leaf.targetType(), "target_type",
 				"power, hr, pace, cadence, or open");
+		requireTargetScale(leaf.targetLow(), "target_low");
+		requireTargetScale(leaf.targetHigh(), "target_high");
 		return new WorkoutStepDto(kind, endType, leaf.duration(), leaf.distance(), targetType,
 				leaf.targetLow(), leaf.targetHigh(), Target2Type.NONE, null, null, 1, noteOrEmpty(leaf.note()), List.of());
+	}
+
+	/**
+	 * Catches the specific mistake seen live: a caller passing a 0-1 fraction (0.65) where this
+	 * tool expects a 0-100 percentage (65) - every real target is well above 1 (even an easy
+	 * recovery zone is tens of percent), so any non-null value in (0, 1) is unambiguously wrong
+	 * scale, not a legitimately tiny target. Silently accepting it produced a workout whose
+	 * computed TSS rounded to 0 and whose power target rounded to a couple of watts, with no
+	 * error anywhere to catch it.
+	 */
+	private static void requireTargetScale(Double value, String field) {
+		if (value != null && value > 0 && value < 1) {
+			throw new ValidationException(
+					field + " must be a percentage on a 0-100 scale (e.g. 65 for 65%), not a fraction (e.g. 0.65).", field);
+		}
 	}
 
 	private static String noteOrEmpty(String note) {

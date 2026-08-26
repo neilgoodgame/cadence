@@ -115,6 +115,19 @@ class McpToolsIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void createWorkoutRejectsAFractionPassedInsteadOfAPercentage() {
+		User athlete = saveAthlete("mcp-create-workout-fraction@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+
+		// The exact mistake seen live: 0.65 instead of 65 for 65% of threshold.
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 600, null, "power", 0.65, 0.75, null, null, null));
+
+		assertThatThrownBy(() -> workoutWriteTools.createWorkout("Bad", "bike", steps, null))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
 	void createWorkoutRejectsWithoutTheWriteScope() {
 		User athlete = saveAthlete("mcp-create-workout-noscope@example.cc");
 		authAs(athlete.getId()); // no scopes granted at all
