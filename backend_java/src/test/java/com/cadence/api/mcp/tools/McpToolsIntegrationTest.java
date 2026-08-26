@@ -103,6 +103,36 @@ class McpToolsIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void createWorkoutParsesDistanceUnitsIntoMeters() {
+		User athlete = saveAthlete("mcp-create-workout-distance@example.cc");
+		authAs(athlete.getId(), "workouts:write", "activities:read");
+
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("block", "distance", null, "400m", "pace", 100.0, 100.0, null, null, null),
+				new McpWorkoutStepInput("block", "distance", null, "5km", "pace", 100.0, 100.0, null, null, null),
+				new McpWorkoutStepInput("block", "distance", null, "3.1mi", "pace", 100.0, 100.0, null, null, null));
+
+		WorkoutResponse response = workoutWriteTools.createWorkout("Distance units", "run", steps, null);
+
+		var persistedSteps = workoutReadTools.getWorkout(response.id()).steps();
+		assertThat(persistedSteps.get(0).distance()).isEqualTo(400);
+		assertThat(persistedSteps.get(1).distance()).isEqualTo(5000);
+		assertThat(persistedSteps.get(2).distance()).isEqualTo(4989); // 3.1 * 1609.344, rounded
+	}
+
+	@Test
+	void createWorkoutRejectsADistanceWithNoUnit() {
+		User athlete = saveAthlete("mcp-create-workout-distance-nounit@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("block", "distance", null, "400", "pace", 100.0, 100.0, null, null, null));
+
+		assertThatThrownBy(() -> workoutWriteTools.createWorkout("Bad", "run", steps, null))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
 	void createWorkoutRejectsAnInvalidTargetType() {
 		User athlete = saveAthlete("mcp-create-workout-invalid@example.cc");
 		authAs(athlete.getId(), "workouts:write");

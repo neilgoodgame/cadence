@@ -44,6 +44,46 @@ const rampFromLabel: Record<TargetType, string> = {
   open: "FROM",
 };
 
+type DistanceUnit = "m" | "km" | "mi";
+const METERS_PER_KM = 1000;
+const METERS_PER_MILE = 1609.344;
+const METERS_PER_UNIT: Record<DistanceUnit, number> = { m: 1, km: METERS_PER_KM, mi: METERS_PER_MILE };
+
+// Purely a display default - this app has no stored unit preference anywhere (metric
+// throughout), so this just picks whichever unit keeps the number readable for a fresh step;
+// it doesn't round-trip an originally-chosen unit across a reload, since only metres are stored.
+function defaultDistanceUnit(meters: number | null): DistanceUnit {
+  return meters !== null && meters >= 1000 ? "km" : "m";
+}
+
+// A plain `value={fmtDuration(seconds)}` input reformats/re-pads on every keystroke, which
+// resets the cursor to the end mid-edit. Keeping the displayed text as local state (only
+// reformatted on blur, or when `key`-ing this per step id forces a remount on step switch) fixes
+// that while still committing live via onChange as you type - same pattern as DurationInput.
+function DistanceInput({ meters, onChange }: { meters: number | null; onChange: (meters: number | null) => void }) {
+  const [unit, setUnit] = useState<DistanceUnit>(() => defaultDistanceUnit(meters));
+  const displayValue = meters === null ? "" : Math.round((meters / METERS_PER_UNIT[unit]) * 100) / 100;
+
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      <input
+        type="number"
+        value={displayValue}
+        onChange={(e) => {
+          const raw = e.target.value;
+          onChange(raw ? Math.round(Number(raw) * METERS_PER_UNIT[unit]) : null);
+        }}
+        style={{ ...fieldStyle, fontFamily: "monospace", flex: 1 }}
+      />
+      <select value={unit} onChange={(e) => setUnit(e.target.value as DistanceUnit)} style={{ ...fieldStyle, width: 76, flexShrink: 0 }}>
+        <option value="m">m</option>
+        <option value="km">km</option>
+        <option value="mi">mi</option>
+      </select>
+    </div>
+  );
+}
+
 export function StepDrawer({
   step,
   onChange,
@@ -186,13 +226,8 @@ function LeafDrawer({ step, onChange, onRemove, onClose }: { step: Leaf; onChang
       )}
       {step.end_type === "distance" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <label style={labelStyle}>DISTANCE (M)</label>
-          <input
-            type="number"
-            value={step.distance ?? ""}
-            onChange={(e) => onChange({ ...step, distance: e.target.value ? Number(e.target.value) : null })}
-            style={{ ...fieldStyle, fontFamily: "monospace" }}
-          />
+          <label style={labelStyle}>DISTANCE</label>
+          <DistanceInput key={step.id} meters={step.distance} onChange={(meters) => onChange({ ...step, distance: meters })} />
         </div>
       )}
 

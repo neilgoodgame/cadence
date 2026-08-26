@@ -90,6 +90,98 @@ class WorkoutToolsTests(TestCase):
         # warmup + 3x(block+rec) + cool = 8 leaf points, matching the flattened/unrolled chart preview.
         self.assertEqual(len(workout.chart_preview), 8)
 
+    def test_create_workout_parses_distance_units_into_meters(self) -> None:
+        athlete = User.objects.create_user(email="mcp-create-workout-distance@example.cc", password="x", name="Athlete")
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write activities:read"))
+
+        created = tools.create_workout(
+            name="Distance units",
+            sport="run",
+            steps=[
+                {
+                    "kind": "block",
+                    "end_type": "distance",
+                    "distance": "400m",
+                    "target_type": "pace",
+                    "target_low": 100,
+                    "target_high": 100,
+                },
+                {
+                    "kind": "block",
+                    "end_type": "distance",
+                    "distance": "5km",
+                    "target_type": "pace",
+                    "target_low": 100,
+                    "target_high": 100,
+                },
+                {
+                    "kind": "block",
+                    "end_type": "distance",
+                    "distance": "3.1mi",
+                    "target_type": "pace",
+                    "target_low": 100,
+                    "target_high": 100,
+                },
+            ],
+        )
+
+        steps = tools.get_workout(created["id"])["steps"]
+        self.assertEqual(steps[0]["distance"], 400)
+        self.assertEqual(steps[1]["distance"], 5000)
+        self.assertEqual(steps[2]["distance"], 4989)  # 3.1 * 1609.344, rounded
+
+    def test_create_workout_rejects_a_distance_with_no_unit(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-create-workout-distance-nounit@example.cc", password="x", name="Athlete"
+        )
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.create_workout(
+                name="Bad",
+                sport="run",
+                steps=[
+                    {
+                        "kind": "block",
+                        "end_type": "distance",
+                        "distance": "400",
+                        "target_type": "pace",
+                        "target_low": 100,
+                        "target_high": 100,
+                    }
+                ],
+            )
+
+    def test_create_workout_parses_distance_units_nested_in_a_repeat_group(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-create-workout-distance-nested@example.cc", password="x", name="Athlete"
+        )
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write activities:read"))
+
+        created = tools.create_workout(
+            name="Nested distance",
+            sport="run",
+            steps=[
+                {
+                    "kind": "repeat",
+                    "repeat": 2,
+                    "children": [
+                        {
+                            "kind": "block",
+                            "end_type": "distance",
+                            "distance": "1km",
+                            "target_type": "pace",
+                            "target_low": 100,
+                            "target_high": 100,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        steps = tools.get_workout(created["id"])["steps"]
+        self.assertEqual(steps[0]["children"][0]["distance"], 1000)
+
     def test_create_workout_rejects_an_invalid_target_type(self) -> None:
         athlete = User.objects.create_user(email="mcp-create-workout-invalid@example.cc", password="x", name="Athlete")
         tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))

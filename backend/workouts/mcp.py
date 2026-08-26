@@ -7,6 +7,7 @@ nesting since clean_step_tree already supports it and MCPToolset's schema genera
 a plain `list[dict[str, Any]]` type hint, not a fully-typed recursive model.
 """
 
+import re
 from typing import Any
 
 from django.db.models import Count
@@ -19,6 +20,50 @@ from authn.mcp_toolset import ScopedMCPToolset
 from .models import Workout
 from .serializers import build_step_tree
 from .views import SORT_OPTIONS, _replace_steps
+
+_DISTANCE_PATTERN = re.compile(
+    r"^\s*(?P<magnitude>\d+(?:\.\d+)?)\s*(?P<unit>m|km|mi|meters?|kilometers?|miles?)\s*$", re.IGNORECASE
+)
+_METERS_PER_KM = 1000.0
+_METERS_PER_MILE = 1609.344
+
+
+def _parse_distance_meters(value: Any, field: str) -> int | None:
+    """Requires an explicit unit rather than defaulting a bare number to metres - the whole
+    point is to close off the "which unit did the caller mean" ambiguity _require_target_scale
+    has to catch after the fact for target_low/target_high; here there's no valid interpretation
+    of a bare number to silently accept.
+    """
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise ValidationError({field: f'{field} must be a string like "400m", "5km", or "3.1mi".'})
+    match = _DISTANCE_PATTERN.match(value)
+    if not match:
+        raise ValidationError({field: f'{field} must be a number with a unit, e.g. "400m", "5km", or "3.1mi".'})
+    magnitude = float(match.group("magnitude"))
+    unit = match.group("unit").lower()
+    if unit == "m" or unit.startswith("meter"):
+        meters = magnitude
+    elif unit == "km" or unit.startswith("kilomet"):
+        meters = magnitude * _METERS_PER_KM
+    else:
+        meters = magnitude * _METERS_PER_MILE
+    return round(meters)
+
+
+def _convert_step_distances(steps: list[dict[str, Any]]) -> None:
+    """Mutates each step's distance in place from a unit string ("5km") to metres (5000) -
+    recurses into repeat groups' children since Django (unlike the Java tool) accepts
+    arbitrary nesting depth. Run before _replace_steps, which expects metres like every other
+    distance-consuming path (WorkoutCalculations-equivalent, chart preview) always has.
+    """
+    for step in steps:
+        if "distance" in step:
+            step["distance"] = _parse_distance_meters(step["distance"], "distance")
+        children = step.get("children")
+        if children:
+            _convert_step_distances(children)
 
 
 def _require_target_scale(steps: list[dict[str, Any]]) -> None:
@@ -116,7 +161,8 @@ class WorkoutMCPTools(ScopedMCPToolset):
         pace/cadence/open) or a repeat group (kind: repeat, with a repeat count and nested
         children - no end_type/target on the group itself). target_low/target_high are a
         %-of-threshold range on a 0-100 scale, e.g. 65 for 65% of threshold (NOT 0.65) - equal
-        values for a flat target."""
+        values for a flat target. distance takes a unit suffix - e.g. "400m", "5km", "3.1mi" -
+        the unit is required."""
         self._require_scope(WORKOUTS_WRITE)
         athlete_id = self._effective_athlete_id()
         self._require_write(athlete_id)
@@ -126,6 +172,7 @@ class WorkoutMCPTools(ScopedMCPToolset):
         if sport not in dict(Workout.SPORT_CHOICES):
             raise ValidationError({"sport": "sport must be bike or run."})
         _require_target_scale(steps)
+        _convert_step_distances(steps)
 
         workout = Workout.objects.create(created_by_id=athlete_id, name=name, sport=sport, folder=None, tags=tags or [])
         _replace_steps(workout, steps)
