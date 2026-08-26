@@ -69,7 +69,8 @@ public class SchedulingService {
 	}
 
 	public ScheduledWorkout getScheduledWorkout(String id) {
-		return scheduledWorkoutRepository.findById(id).orElseThrow(() -> new NotFoundException("No such scheduled workout."));
+		return scheduledWorkoutRepository.findByIdWithAssignedBy(id)
+				.orElseThrow(() -> new NotFoundException("No such scheduled workout."));
 	}
 
 	@Transactional

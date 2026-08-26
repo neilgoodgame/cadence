@@ -33,6 +33,12 @@ public interface ScheduledWorkoutRepository extends JpaRepository<ScheduledWorko
 
 	Optional<ScheduledWorkout> findByIdAndAthleteId(String id, String athleteId);
 
+	// LEFT (not inner) join - assignedBy is null for the common self-scheduled case, which an
+	// inner join would silently exclude entirely. Lets SchedulingMapper safely read
+	// assignedBy.getName()/.isVirtual() - see its Javadoc.
+	@Query("select s from ScheduledWorkout s left join fetch s.assignedBy where s.id = :id")
+	Optional<ScheduledWorkout> findByIdWithAssignedBy(@Param("id") String id);
+
 	// Callers read workout.name off the result, so the association needs to come back already
 	// initialized - see GearService/ShoeService for why that's not safe to defer otherwise.
 	@Query("select s from ScheduledWorkout s join fetch s.workout where s.athlete.id = :athleteId "

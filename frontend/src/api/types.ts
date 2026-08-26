@@ -602,6 +602,11 @@ export interface ScheduledWorkout {
   workout_id: string;
   athlete_id: string;
   assigned_by: string | null;
+  // Best-effort on the Java backend - see SchedulingMapper's Javadoc. Only reliably populated
+  // for the scheduled-workout detail fetch (GET /v1/scheduled-workouts/{id}); other endpoints
+  // that return ScheduledWorkout rows may leave these null/false even when assigned_by is set.
+  assigned_by_name: string | null;
+  assigned_by_is_virtual: boolean;
   date: string;
   // Python returns "" when unset; Java returns null - confirmed against both live.
   time_of_day: TimeOfDay | "" | null;
