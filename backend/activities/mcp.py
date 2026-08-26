@@ -269,3 +269,13 @@ class ActivityMCPTools(ScopedMCPToolset):
 
         comment = ActivityComment.objects.create(activity=activity, author_id=sub, text=text)
         return ActivityCommentSerializer(comment).data
+
+    def list_activity_comments(self, activity_id: str) -> dict[str, Any]:
+        """List the comments on an activity (from list_activities/get_activity), oldest first -
+        who wrote each one and their role (athlete/coach/viewer). Use this to see whether the
+        athlete replied to a comment before posting another."""
+        self._require_scope(ACTIVITIES_READ)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_read(activity.athlete_id)
+        comments = activity.comments.select_related("author", "activity").order_by("created")
+        return {"data": ActivityCommentSerializer(comments, many=True).data}

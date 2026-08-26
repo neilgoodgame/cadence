@@ -348,6 +348,43 @@ class ActivityToolsTests(TestCase):
         with self.assertRaises(PermissionDenied):
             tools.post_activity_comment(activity_id=activity.id, text="Should fail")
 
+    def test_list_activity_comments_returns_them_oldest_first(self) -> None:
+        athlete = User.objects.create_user(email="mcp-list-comments-athlete@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        write_tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        write_tools.post_activity_comment(activity_id=activity.id, text="First")
+        write_tools.post_activity_comment(activity_id=activity.id, text="Second")
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.list_activity_comments(activity_id=activity.id)
+
+        self.assertEqual(len(result["data"]), 2)
+        self.assertEqual(result["data"][0]["text"], "First")
+        self.assertEqual(result["data"][1]["text"], "Second")
+
+    def test_list_activity_comments_requires_the_activities_read_scope(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-list-comments-scope-athlete@example.cc", password="x", name="Athlete"
+        )
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.list_activity_comments(activity_id=activity.id)
+
+    def test_list_activity_comments_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-list-comments-outsider-athlete@example.cc", password="x", name="Athlete"
+        )
+        outsider = User.objects.create_user(
+            email="mcp-list-comments-outsider@example.cc", password="x", name="Outsider"
+        )
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.list_activity_comments(activity_id=activity.id)
+
 
 class AthleteToolsTests(TestCase):
     def test_get_me_returns_the_callers_own_profile(self) -> None:

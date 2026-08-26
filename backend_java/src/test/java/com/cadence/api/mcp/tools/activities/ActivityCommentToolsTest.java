@@ -101,4 +101,41 @@ class ActivityCommentToolsTest extends IntegrationTest {
 		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "Should fail"))
 				.isInstanceOf(ForbiddenException.class);
 	}
+
+	@Test
+	void listsCommentsOldestFirst() {
+		User athlete = newUser("comment-tool-list-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		activityCommentTools.postActivityComment(activity.getId(), "First");
+		activityCommentTools.postActivityComment(activity.getId(), "Second");
+
+		authAs(athlete.getId(), "activities:read");
+		var comments = activityCommentTools.listActivityComments(activity.getId());
+
+		assertThat(comments).hasSize(2);
+		assertThat(comments.get(0).text()).isEqualTo("First");
+		assertThat(comments.get(1).text()).isEqualTo("Second");
+	}
+
+	@Test
+	void listCommentsRequiresTheActivitiesReadScope() {
+		User athlete = newUser("comment-tool-list-scope-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		authAs(athlete.getId(), "workouts:write");
+
+		assertThatThrownBy(() -> activityCommentTools.listActivityComments(activity.getId()))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void listCommentsRejectsAnOutsiderWithNoShare() {
+		User athlete = newUser("comment-tool-list-outsider-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		User outsider = newUser("comment-tool-list-outsider@example.cc");
+		authAs(outsider.getId(), "activities:read");
+
+		assertThatThrownBy(() -> activityCommentTools.listActivityComments(activity.getId()))
+				.isInstanceOf(ForbiddenException.class);
+	}
 }
