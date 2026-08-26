@@ -22,6 +22,7 @@ from core.auth_context import get_effective_athlete_id
 from core.cql.compiler import compile_ast_to_q
 from core.cql.parser import parse
 
+from .comments import resolve_parent_comment
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve
 from .serializers import ActivityCommentSerializer
 
@@ -251,10 +252,14 @@ class ActivityMCPTools(ScopedMCPToolset):
 
         return {"metric": metric, **{key: points.get(sec) for key, sec in _CURVE_KEYS.items()}}
 
-    def post_activity_comment(self, activity_id: str, text: str) -> dict[str, Any]:
+    def post_activity_comment(
+        self, activity_id: str, text: str, parent_comment_id: str | None = None
+    ) -> dict[str, Any]:
         """Post a short comment on an activity (from list_activities/get_activity) - visible to
         the athlete and anyone else with access to it, e.g. coaching feedback on a specific
-        session."""
+        session. Omit parent_comment_id for a top-level comment, or pass an existing top-level
+        comment's id (from list_activity_comments) to reply to it - single-level threading only,
+        replying to a reply is rejected."""
         self._require_scope(ACTIVITIES_WRITE)
         activity = get_object_or_404(Activity, pk=activity_id)
         # Comments are read-gated, not write-gated (see ActivityCommentListView's docstring) -
@@ -266,8 +271,9 @@ class ActivityMCPTools(ScopedMCPToolset):
             raise ValidationError({"text": "Comment text cannot be empty."})
         if len(text) > 4000:
             raise ValidationError({"text": "text must be 4000 characters or fewer."})
+        parent = resolve_parent_comment(activity, parent_comment_id)
 
-        comment = ActivityComment.objects.create(activity=activity, author_id=sub, text=text)
+        comment = ActivityComment.objects.create(activity=activity, author_id=sub, parent=parent, text=text)
         return ActivityCommentSerializer(comment).data
 
     def list_activity_comments(self, activity_id: str) -> dict[str, Any]:

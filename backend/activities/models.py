@@ -280,6 +280,10 @@ class ActivityComment(PrefixedIDModel):
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="comments")
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="activity_comments")
+    # Null for a top-level comment. Single-level threading only - a reply's own parent is
+    # always null (enforced in the view/MCP tool, not here), so this never points at another
+    # reply.
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="replies")
     text = models.TextField()
     created = models.DateTimeField(auto_now_add=True)
 

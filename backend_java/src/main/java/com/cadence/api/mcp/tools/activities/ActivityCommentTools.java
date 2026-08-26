@@ -49,7 +49,10 @@ public class ActivityCommentTools {
 					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
 	public ActivityCommentResponse postActivityComment(
 			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
-			@McpToolParam(description = "The comment text, up to 4000 characters", required = true) String text) {
+			@McpToolParam(description = "The comment text, up to 4000 characters", required = true) String text,
+			@McpToolParam(description = "Omit for a top-level comment, or pass an existing top-level "
+					+ "comment's id (from list_activity_comments) to reply to it. Single-level threading "
+					+ "only - replying to a reply is rejected.", required = false) String parentCommentId) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
 		// The REST endpoint's request DTO enforces this via @NotBlank/@Size - a tool parameter
 		// has no such bean-validated wrapper, so it's checked by hand here.
@@ -62,7 +65,7 @@ public class ActivityCommentTools {
 		Activity activity = activityService.getActivity(activityId);
 		String sub = accessGuard.requireRead(activity.getAthlete().getId());
 		User author = userService.getById(sub);
-		return activityCommentService.create(activity, author, text);
+		return activityCommentService.create(activity, author, text, parentCommentId);
 	}
 
 	@McpTool(name = "list_activity_comments", description = "List the comments on an activity "
