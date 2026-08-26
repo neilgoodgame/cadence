@@ -75,6 +75,39 @@ class ScheduledWorkoutControllerIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void getScheduledWorkoutIncludesTheAssignersName() {
+		User athlete = newAthlete("get-scheduled-assigned-athlete@example.cc");
+		User coach = newAthlete("get-scheduled-assigned-coach@example.cc");
+		coach.setName("Claude.ai");
+		coach.setVirtual(true);
+		userRepository.save(coach);
+		Workout workout = newWorkout(athlete);
+		ScheduledWorkout scheduled = schedulingService.schedule(
+				coach.getId(), workout.getId(), athlete.getId(), LocalDate.of(2026, 9, 6), TimeOfDay.AM, null);
+		authAs(athlete.getId());
+
+		var response = scheduledWorkoutController.getScheduledWorkout(scheduled.getId());
+
+		assertThat(response.assignedBy()).isEqualTo(coach.getId());
+		assertThat(response.assignedByName()).isEqualTo("Claude.ai");
+		assertThat(response.assignedByIsVirtual()).isTrue();
+	}
+
+	@Test
+	void getScheduledWorkoutSelfScheduledHasNoAssignerName() {
+		User athlete = newAthlete("get-scheduled-self-athlete@example.cc");
+		Workout workout = newWorkout(athlete);
+		ScheduledWorkout scheduled = schedulingService.schedule(
+				athlete.getId(), workout.getId(), athlete.getId(), LocalDate.of(2026, 9, 6), TimeOfDay.AM, null);
+		authAs(athlete.getId());
+
+		var response = scheduledWorkoutController.getScheduledWorkout(scheduled.getId());
+
+		assertThat(response.assignedByName()).isNull();
+		assertThat(response.assignedByIsVirtual()).isFalse();
+	}
+
+	@Test
 	void getScheduledWorkoutRejectsAnOutsider() {
 		User athlete = newAthlete("get-scheduled-owner@example.cc");
 		User outsider = newAthlete("get-scheduled-outsider@example.cc");

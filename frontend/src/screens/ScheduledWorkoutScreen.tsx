@@ -144,6 +144,18 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
           </div>
         )}
         <MiniChart preview={workout.chart_preview} />
+        {scheduled.assigned_by && (
+          <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+            Scheduled by {scheduled.assigned_by_name ?? "your coach"}
+            {scheduled.assigned_by_is_virtual && (
+              <span
+                style={{ fontSize: 10, fontWeight: 700, color: "var(--ink3)", border: "1px solid var(--line)", borderRadius: 4, padding: "1px 5px" }}
+              >
+                AI
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <Card>
