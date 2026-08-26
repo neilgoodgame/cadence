@@ -10,6 +10,7 @@ import com.cadence.api.mcp.dispatch.McpToolAuthorizer;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
+import java.util.List;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
@@ -62,5 +63,19 @@ public class ActivityCommentTools {
 		String sub = accessGuard.requireRead(activity.getAthlete().getId());
 		User author = userService.getById(sub);
 		return activityCommentService.create(activity, author, text);
+	}
+
+	@McpTool(name = "list_activity_comments", description = "List the comments on an activity "
+			+ "(from list_activities/get_activity), oldest first - who wrote each one and their "
+			+ "role (athlete/coach/viewer). Use this to see whether the athlete replied to a "
+			+ "comment before posting another.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public List<ActivityCommentResponse> listActivityComments(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return activityCommentService.list(activityId);
 	}
 }
