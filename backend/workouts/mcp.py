@@ -21,6 +21,29 @@ from .serializers import build_step_tree
 from .views import SORT_OPTIONS, _replace_steps
 
 
+def _require_target_scale(steps: list[dict[str, Any]]) -> None:
+    """Catches the specific mistake seen live: a caller passing a 0-1 fraction (0.65) where this
+    tool expects a 0-100 percentage (65) - every real target is well above 1 (even an easy
+    recovery zone is tens of percent), so any non-null value in (0, 1) is unambiguously wrong
+    scale, not a legitimately tiny target. Silently accepting it produced a workout whose
+    computed TSS rounded to 0 and whose power target rounded to a couple of watts, with no error
+    anywhere to catch it. Recurses into repeat groups' children since Django (unlike the Java
+    tool) accepts arbitrary nesting depth.
+    """
+    for step in steps:
+        for field in ("target_low", "target_high"):
+            value = step.get(field)
+            if isinstance(value, (int, float)) and 0 < value < 1:
+                raise ValidationError(
+                    {
+                        field: f"{field} must be a percentage on a 0-100 scale (e.g. 65 for 65%), not a fraction (e.g. 0.65)."
+                    }
+                )
+        children = step.get("children")
+        if children:
+            _require_target_scale(children)
+
+
 def _workout_summary(workout: Workout) -> dict[str, Any]:
     return {
         "id": workout.id,
@@ -92,7 +115,8 @@ class WorkoutMCPTools(ScopedMCPToolset):
         warmup/block/rec/cool, with an end_type time/distance/manual and a target_type power/hr/
         pace/cadence/open) or a repeat group (kind: repeat, with a repeat count and nested
         children - no end_type/target on the group itself). target_low/target_high are a
-        %-of-threshold range (equal values for a flat target)."""
+        %-of-threshold range on a 0-100 scale, e.g. 65 for 65% of threshold (NOT 0.65) - equal
+        values for a flat target."""
         self._require_scope(WORKOUTS_WRITE)
         athlete_id = self._effective_athlete_id()
         self._require_write(athlete_id)
@@ -101,6 +125,7 @@ class WorkoutMCPTools(ScopedMCPToolset):
             raise ValidationError({"name": "name is required."})
         if sport not in dict(Workout.SPORT_CHOICES):
             raise ValidationError({"sport": "sport must be bike or run."})
+        _require_target_scale(steps)
 
         workout = Workout.objects.create(created_by_id=athlete_id, name=name, sport=sport, folder=None, tags=tags or [])
         _replace_steps(workout, steps)

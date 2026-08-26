@@ -101,6 +101,55 @@ class WorkoutToolsTests(TestCase):
                 steps=[{"kind": "block", "end_type": "time", "duration": 100, "target_type": "not-a-real-type"}],
             )
 
+    def test_create_workout_rejects_a_fraction_passed_instead_of_a_percentage(self) -> None:
+        athlete = User.objects.create_user(email="mcp-create-workout-fraction@example.cc", password="x", name="Athlete")
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        # The exact mistake seen live: 0.65 instead of 65 for 65% of threshold.
+        with self.assertRaises(ValidationError):
+            tools.create_workout(
+                name="Bad",
+                sport="bike",
+                steps=[
+                    {
+                        "kind": "block",
+                        "end_type": "time",
+                        "duration": 100,
+                        "target_type": "power",
+                        "target_low": 0.65,
+                        "target_high": 0.75,
+                    }
+                ],
+            )
+
+    def test_create_workout_rejects_a_fraction_nested_in_a_repeat_group(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-create-workout-fraction-nested@example.cc", password="x", name="Athlete"
+        )
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.create_workout(
+                name="Bad",
+                sport="bike",
+                steps=[
+                    {
+                        "kind": "repeat",
+                        "repeat": 3,
+                        "children": [
+                            {
+                                "kind": "block",
+                                "end_type": "time",
+                                "duration": 100,
+                                "target_type": "power",
+                                "target_low": 0.95,
+                                "target_high": 0.95,
+                            }
+                        ],
+                    }
+                ],
+            )
+
     def test_create_workout_requires_workouts_write_scope(self) -> None:
         athlete = User.objects.create_user(email="mcp-create-workout-scope@example.cc", password="x", name="Athlete")
         tools = WorkoutMCPTools(request=_mcp_request(athlete, "activities:read"))
