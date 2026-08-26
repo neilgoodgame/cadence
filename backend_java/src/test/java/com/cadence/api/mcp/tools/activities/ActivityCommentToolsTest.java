@@ -62,7 +62,7 @@ class ActivityCommentToolsTest extends IntegrationTest {
 		Activity activity = newActivity(athlete);
 		authAs(athlete.getId(), "activities:read", "activities:write");
 
-		var response = activityCommentTools.postActivityComment(activity.getId(), "Nice pace today!");
+		var response = activityCommentTools.postActivityComment(activity.getId(), "Nice pace today!", null);
 
 		assertThat(response.text()).isEqualTo("Nice pace today!");
 		assertThat(response.authorId()).isEqualTo(athlete.getId());
@@ -75,7 +75,7 @@ class ActivityCommentToolsTest extends IntegrationTest {
 		Activity activity = newActivity(athlete);
 		authAs(athlete.getId(), "activities:read");
 
-		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "Should fail"))
+		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "Should fail", null))
 				.isInstanceOf(ForbiddenException.class);
 	}
 
@@ -85,9 +85,9 @@ class ActivityCommentToolsTest extends IntegrationTest {
 		Activity activity = newActivity(athlete);
 		authAs(athlete.getId(), "activities:read", "activities:write");
 
-		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "  "))
+		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "  ", null))
 				.isInstanceOf(ValidationException.class);
-		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "x".repeat(4001)))
+		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "x".repeat(4001), null))
 				.isInstanceOf(ValidationException.class);
 	}
 
@@ -98,7 +98,7 @@ class ActivityCommentToolsTest extends IntegrationTest {
 		User outsider = newUser("comment-tool-outsider@example.cc");
 		authAs(outsider.getId(), "activities:read", "activities:write");
 
-		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "Should fail"))
+		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "Should fail", null))
 				.isInstanceOf(ForbiddenException.class);
 	}
 
@@ -107,8 +107,8 @@ class ActivityCommentToolsTest extends IntegrationTest {
 		User athlete = newUser("comment-tool-list-athlete@example.cc");
 		Activity activity = newActivity(athlete);
 		authAs(athlete.getId(), "activities:read", "activities:write");
-		activityCommentTools.postActivityComment(activity.getId(), "First");
-		activityCommentTools.postActivityComment(activity.getId(), "Second");
+		activityCommentTools.postActivityComment(activity.getId(), "First", null);
+		activityCommentTools.postActivityComment(activity.getId(), "Second", null);
 
 		authAs(athlete.getId(), "activities:read");
 		var comments = activityCommentTools.listActivityComments(activity.getId());
@@ -137,5 +137,29 @@ class ActivityCommentToolsTest extends IntegrationTest {
 
 		assertThatThrownBy(() -> activityCommentTools.listActivityComments(activity.getId()))
 				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void aReplyIsAttachedToItsParent() {
+		User athlete = newUser("comment-tool-reply-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		var root = activityCommentTools.postActivityComment(activity.getId(), "Root", null);
+
+		var reply = activityCommentTools.postActivityComment(activity.getId(), "Reply", root.id());
+
+		assertThat(reply.parentId()).isEqualTo(root.id());
+	}
+
+	@Test
+	void cannotReplyToAReply() {
+		User athlete = newUser("comment-tool-no-nested-reply-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		var root = activityCommentTools.postActivityComment(activity.getId(), "Root", null);
+		var reply = activityCommentTools.postActivityComment(activity.getId(), "Reply", root.id());
+
+		assertThatThrownBy(() -> activityCommentTools.postActivityComment(activity.getId(), "Reply to a reply", reply.id()))
+				.isInstanceOf(ValidationException.class);
 	}
 }

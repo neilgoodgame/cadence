@@ -46,7 +46,7 @@ public class ActivityCommentController {
 		Activity activity = activityService.getActivity(id);
 		String sub = accessGuard.requireRead(activity.getAthlete().getId());
 		User author = userService.getById(sub);
-		return activityCommentService.create(activity, author, request.text());
+		return activityCommentService.create(activity, author, request.text(), request.parentId());
 	}
 
 	@DeleteMapping("/v1/activities/{id}/comments/{commentId}")

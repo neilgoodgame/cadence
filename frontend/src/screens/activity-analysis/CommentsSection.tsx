@@ -80,6 +80,131 @@ function Comment({ comment, canDelete, onDelete }: { comment: ActivityComment; c
   );
 }
 
+function ReplyComposer({
+  onCancel,
+  onSubmit,
+  isPending,
+}: {
+  onCancel: () => void;
+  onSubmit: (text: string) => void;
+  isPending: boolean;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function submit() {
+    const text = draft.trim();
+    if (!text || isPending) return;
+    onSubmit(text);
+    setDraft("");
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 8 }}>
+      <textarea
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            submit();
+          }
+          if (e.key === "Escape") onCancel();
+        }}
+        placeholder="Write a reply…"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          resize: "none",
+          height: 36,
+          border: "1px solid var(--line)",
+          borderRadius: 8,
+          padding: "8px 11px",
+          background: "var(--elev)",
+          color: "var(--ink)",
+          fontFamily: "inherit",
+          fontSize: 13,
+          outline: "none",
+        }}
+      />
+      <button
+        onClick={submit}
+        disabled={!draft.trim() || isPending}
+        style={{
+          flexShrink: 0,
+          border: "none",
+          borderRadius: 8,
+          padding: "8px 14px",
+          background: "var(--ember)",
+          color: "#fff",
+          fontSize: 12.5,
+          fontWeight: 600,
+          cursor: "pointer",
+          opacity: !draft.trim() || isPending ? 0.5 : 1,
+        }}
+      >
+        {isPending ? "Posting…" : "Reply"}
+      </button>
+      <button
+        onClick={onCancel}
+        style={{ flexShrink: 0, border: "none", background: "none", color: "var(--ink3)", fontSize: 12.5, cursor: "pointer", padding: "8px 4px" }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+function Thread({
+  root,
+  replies,
+  selfId,
+  onDelete,
+  onReply,
+  replyPending,
+}: {
+  root: ActivityComment;
+  replies: ActivityComment[];
+  selfId: string | null;
+  onDelete: (commentId: string) => void;
+  onReply: (text: string) => void;
+  replyPending: boolean;
+}) {
+  const [replying, setReplying] = useState(false);
+
+  return (
+    <div>
+      <Comment comment={root} canDelete={root.author_id === selfId} onDelete={() => onDelete(root.id)} />
+      {replies.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12, marginLeft: 44, paddingLeft: 12, borderLeft: "2px solid var(--line)" }}>
+          {replies.map((reply) => (
+            <Comment key={reply.id} comment={reply} canDelete={reply.author_id === selfId} onDelete={() => onDelete(reply.id)} />
+          ))}
+        </div>
+      )}
+      <div style={{ marginLeft: 44 }}>
+        {replying ? (
+          <ReplyComposer
+            isPending={replyPending}
+            onCancel={() => setReplying(false)}
+            onSubmit={(text) => {
+              onReply(text);
+              setReplying(false);
+            }}
+          />
+        ) : (
+          <button
+            onClick={() => setReplying(true)}
+            style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "6px 0 0" }}
+          >
+            Reply
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function CommentsSection({ activityId }: { activityId: string }) {
   const { selfId } = useAuth();
   const queryClient = useQueryClient();
@@ -97,12 +222,25 @@ export function CommentsSection({ activityId }: { activityId: string }) {
     },
   });
 
+  const replyMutation = useMutation({
+    mutationFn: ({ text, parentId }: { text: string; parentId: string }) => createComment(activityId, text, parentId),
+    onSuccess: invalidate,
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (commentId: string) => deleteComment(activityId, commentId),
     onSuccess: invalidate,
   });
 
   const comments = data?.data ?? [];
+  const roots = comments.filter((c) => !c.parent_id);
+  const repliesByParent = new Map<string, ActivityComment[]>();
+  for (const c of comments) {
+    if (!c.parent_id) continue;
+    const list = repliesByParent.get(c.parent_id) ?? [];
+    list.push(c);
+    repliesByParent.set(c.parent_id, list);
+  }
 
   function submit() {
     const text = draft.trim();
@@ -119,20 +257,23 @@ export function CommentsSection({ activityId }: { activityId: string }) {
         </span>
       </div>
 
-      {comments.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
-          {comments.map((c) => (
-            <Comment
-              key={c.id}
-              comment={c}
-              canDelete={c.author_id === selfId}
-              onDelete={() => deleteMutation.mutate(c.id)}
+      {roots.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, marginBottom: 20 }}>
+          {roots.map((root) => (
+            <Thread
+              key={root.id}
+              root={root}
+              replies={repliesByParent.get(root.id) ?? []}
+              selfId={selfId}
+              onDelete={(commentId) => deleteMutation.mutate(commentId)}
+              onReply={(text) => replyMutation.mutate({ text, parentId: root.id })}
+              replyPending={replyMutation.isPending}
             />
           ))}
         </div>
       )}
 
-      <div style={{ borderTop: comments.length > 0 ? "1px solid var(--line)" : "none", paddingTop: comments.length > 0 ? 16 : 0 }}>
+      <div style={{ borderTop: roots.length > 0 ? "1px solid var(--line)" : "none", paddingTop: roots.length > 0 ? 16 : 0 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <textarea
             value={draft}

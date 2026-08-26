@@ -19,6 +19,7 @@ from uploads.services import create_activity_upload
 from workouts.inference import infer_workout
 from workouts.models import Workout
 
+from .comments import resolve_parent_comment
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Record, Tag
 from .serializers import (
     ActivityCommentCreateSerializer,
@@ -486,9 +487,10 @@ class ActivityCommentListView(APIView):
 
         serializer = ActivityCommentCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        parent = resolve_parent_comment(activity, serializer.validated_data.get("parent_id"))
 
         comment = ActivityComment.objects.create(
-            activity=activity, author_id=sub, text=serializer.validated_data["text"]
+            activity=activity, author_id=sub, parent=parent, text=serializer.validated_data["text"]
         )
         return Response(ActivityCommentSerializer(comment).data, status=201)
 

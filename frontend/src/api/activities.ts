@@ -133,8 +133,11 @@ export function listComments(activityId: string): Promise<DataList<ActivityComme
   return apiFetch<DataList<ActivityComment>>(`/v1/activities/${activityId}/comments`);
 }
 
-export function createComment(activityId: string, text: string): Promise<ActivityComment> {
-  return apiFetch<ActivityComment>(`/v1/activities/${activityId}/comments`, { method: "POST", body: { text } });
+export function createComment(activityId: string, text: string, parentId?: string): Promise<ActivityComment> {
+  return apiFetch<ActivityComment>(`/v1/activities/${activityId}/comments`, {
+    method: "POST",
+    body: { text, parent_id: parentId },
+  });
 }
 
 export function deleteComment(activityId: string, commentId: string): Promise<void> {

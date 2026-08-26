@@ -366,6 +366,28 @@ class ActivityToolsTests(TestCase):
         self.assertEqual(result["author_id"], athlete.id)
         self.assertEqual(result["author_role"], "athlete")
 
+    def test_a_reply_is_attached_to_its_parent(self) -> None:
+        athlete = User.objects.create_user(email="mcp-comment-reply-athlete@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        root = tools.post_activity_comment(activity_id=activity.id, text="Root")
+
+        reply = tools.post_activity_comment(activity_id=activity.id, text="Reply", parent_comment_id=root["id"])
+
+        self.assertEqual(reply["parent_id"], root["id"])
+
+    def test_cannot_reply_to_a_reply(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-comment-no-nested-reply-athlete@example.cc", password="x", name="Athlete"
+        )
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        root = tools.post_activity_comment(activity_id=activity.id, text="Root")
+        reply = tools.post_activity_comment(activity_id=activity.id, text="Reply", parent_comment_id=root["id"])
+
+        with self.assertRaises(ValidationError):
+            tools.post_activity_comment(activity_id=activity.id, text="Reply to a reply", parent_comment_id=reply["id"])
+
     def test_post_activity_comment_requires_the_activities_write_scope(self) -> None:
         athlete = User.objects.create_user(email="mcp-comment-scope-athlete@example.cc", password="x", name="Athlete")
         activity = self._new_activity(athlete)

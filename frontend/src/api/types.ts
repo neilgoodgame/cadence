@@ -260,6 +260,9 @@ export interface ActivityComment {
   author_id: string;
   author_name: string;
   author_role: "athlete" | "coach" | "viewer";
+  // Null for a top-level comment; the id of the top-level comment it replies to otherwise.
+  // Single-level threading only - a reply's own parent_id is always null.
+  parent_id: string | null;
   text: string;
   created: string;
 }

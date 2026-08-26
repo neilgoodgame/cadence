@@ -153,7 +153,7 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ActivityComment
-        fields = ["id", "activity_id", "author_id", "author_name", "author_role", "text", "created"]
+        fields = ["id", "activity_id", "author_id", "author_name", "author_role", "parent_id", "text", "created"]
 
     def get_author_role(self, obj: ActivityComment) -> str:
         if obj.author_id == obj.activity.athlete_id:
@@ -168,6 +168,10 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
 
 class ActivityCommentCreateSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=4000, trim_whitespace=True)
+    # Optional - omit for a top-level comment, or an existing top-level comment's id to reply
+    # to it. See views.ActivityCommentListView.post for the single-level-threading rule this
+    # enforces (belongs to the same activity, and isn't itself a reply).
+    parent_id = serializers.CharField(required=False, allow_null=True)
 
     def validate_text(self, value: str) -> str:
         if not value.strip():
