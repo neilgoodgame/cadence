@@ -50,10 +50,12 @@ const METERS_PER_MILE = 1609.344;
 const METERS_PER_UNIT: Record<DistanceUnit, number> = { m: 1, km: METERS_PER_KM, mi: METERS_PER_MILE };
 
 // Purely a display default - this app has no stored unit preference anywhere (metric
-// throughout), so this just picks whichever unit keeps the number readable for a fresh step;
-// it doesn't round-trip an originally-chosen unit across a reload, since only metres are stored.
-function defaultDistanceUnit(meters: number | null): DistanceUnit {
-  return meters !== null && meters >= 1000 ? "km" : "m";
+// throughout), so this just picks a sensible starting unit each time the drawer opens on a
+// step; it doesn't round-trip an originally-chosen unit across a reload, since only metres are
+// stored. Defaults to km (the unit most runs/rides are naturally specified in) regardless of
+// the step's current magnitude - switch to m or mi via the dropdown for track intervals etc.
+function defaultDistanceUnit(): DistanceUnit {
+  return "km";
 }
 
 // A plain `value={fmtDuration(seconds)}` input reformats/re-pads on every keystroke, which
@@ -61,7 +63,7 @@ function defaultDistanceUnit(meters: number | null): DistanceUnit {
 // reformatted on blur, or when `key`-ing this per step id forces a remount on step switch) fixes
 // that while still committing live via onChange as you type - same pattern as DurationInput.
 function DistanceInput({ meters, onChange }: { meters: number | null; onChange: (meters: number | null) => void }) {
-  const [unit, setUnit] = useState<DistanceUnit>(() => defaultDistanceUnit(meters));
+  const [unit, setUnit] = useState<DistanceUnit>(defaultDistanceUnit);
   const displayValue = meters === null ? "" : Math.round((meters / METERS_PER_UNIT[unit]) * 100) / 100;
 
   return (
