@@ -119,8 +119,49 @@ class ScheduledWorkoutDetailTests(TestCase):
         self.outsider = User.objects.create_user(email="outsider@example.cc", password="x", name="Outsider")
         self.workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="bike")
         self.scheduled = ScheduledWorkout.objects.create(
-            workout=self.workout, athlete=self.athlete, date=date(2026, 6, 20)
+            workout=self.workout, athlete=self.athlete, date=date(2026, 6, 20), notes="Swap if it rains"
         )
+
+    def test_get_returns_the_entry(self):
+        response = _bearer_client(self.athlete).get(f"/v1/scheduled-workouts/{self.scheduled.id}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["id"], self.scheduled.id)
+        self.assertEqual(body["workout_id"], self.workout.id)
+        self.assertEqual(body["notes"], "Swap if it rains")
+
+    def test_get_includes_the_assigners_name(self):
+        coach = User.objects.create_user(email="detail-coach@example.cc", password="x", name="Coach", is_virtual=True)
+        UserRelationship.objects.create(
+            owner=self.athlete, grantee=coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+        )
+        assigned = ScheduledWorkout.objects.create(
+            workout=self.workout, athlete=self.athlete, assigned_by=coach, date=date(2026, 6, 21)
+        )
+
+        response = _bearer_client(self.athlete).get(f"/v1/scheduled-workouts/{assigned.id}")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["assigned_by"], coach.id)
+        self.assertEqual(body["assigned_by_name"], "Coach")
+        self.assertTrue(body["assigned_by_is_virtual"])
+
+    def test_get_self_scheduled_has_no_assigner_name(self):
+        response = _bearer_client(self.athlete).get(f"/v1/scheduled-workouts/{self.scheduled.id}")
+
+        body = response.json()
+        self.assertIsNone(body["assigned_by_name"])
+        self.assertFalse(body["assigned_by_is_virtual"])
+
+    def test_get_rejects_an_outsider(self):
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.get(f"/v1/scheduled-workouts/{self.scheduled.id}")
+        self.assertEqual(response.status_code, 403)
+
+    def test_get_missing_id_404s(self):
+        response = _bearer_client(self.athlete).get("/v1/scheduled-workouts/sch_doesnotexist")
+        self.assertEqual(response.status_code, 404)
 
     def test_reschedule_date(self):
         response = _bearer_client(self.athlete).patch(

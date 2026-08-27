@@ -8,6 +8,8 @@ function entry(overrides: Partial<ScheduledWorkout>): ScheduledWorkout {
     workout_id: "wkt_1",
     athlete_id: "usr_1",
     assigned_by: null,
+    assigned_by_name: null,
+    assigned_by_is_virtual: false,
     date: "2026-06-15",
     time_of_day: "",
     status: "planned",

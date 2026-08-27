@@ -14,7 +14,8 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from accounts.models import User
+from accounts.models import PersonalAccessToken, User, UserRelationship
+from accounts.tokens import generate_secret, hash_secret, visible_prefix
 from activities.mcp import ActivityMCPTools
 from activities.models import Activity
 from athletes.mcp import AthleteMCPTools
@@ -89,6 +90,98 @@ class WorkoutToolsTests(TestCase):
         # warmup + 3x(block+rec) + cool = 8 leaf points, matching the flattened/unrolled chart preview.
         self.assertEqual(len(workout.chart_preview), 8)
 
+    def test_create_workout_parses_distance_units_into_meters(self) -> None:
+        athlete = User.objects.create_user(email="mcp-create-workout-distance@example.cc", password="x", name="Athlete")
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write activities:read"))
+
+        created = tools.create_workout(
+            name="Distance units",
+            sport="run",
+            steps=[
+                {
+                    "kind": "block",
+                    "end_type": "distance",
+                    "distance": "400m",
+                    "target_type": "pace",
+                    "target_low": 100,
+                    "target_high": 100,
+                },
+                {
+                    "kind": "block",
+                    "end_type": "distance",
+                    "distance": "5km",
+                    "target_type": "pace",
+                    "target_low": 100,
+                    "target_high": 100,
+                },
+                {
+                    "kind": "block",
+                    "end_type": "distance",
+                    "distance": "3.1mi",
+                    "target_type": "pace",
+                    "target_low": 100,
+                    "target_high": 100,
+                },
+            ],
+        )
+
+        steps = tools.get_workout(created["id"])["steps"]
+        self.assertEqual(steps[0]["distance"], 400)
+        self.assertEqual(steps[1]["distance"], 5000)
+        self.assertEqual(steps[2]["distance"], 4989)  # 3.1 * 1609.344, rounded
+
+    def test_create_workout_rejects_a_distance_with_no_unit(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-create-workout-distance-nounit@example.cc", password="x", name="Athlete"
+        )
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.create_workout(
+                name="Bad",
+                sport="run",
+                steps=[
+                    {
+                        "kind": "block",
+                        "end_type": "distance",
+                        "distance": "400",
+                        "target_type": "pace",
+                        "target_low": 100,
+                        "target_high": 100,
+                    }
+                ],
+            )
+
+    def test_create_workout_parses_distance_units_nested_in_a_repeat_group(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-create-workout-distance-nested@example.cc", password="x", name="Athlete"
+        )
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write activities:read"))
+
+        created = tools.create_workout(
+            name="Nested distance",
+            sport="run",
+            steps=[
+                {
+                    "kind": "repeat",
+                    "repeat": 2,
+                    "children": [
+                        {
+                            "kind": "block",
+                            "end_type": "distance",
+                            "distance": "1km",
+                            "target_type": "pace",
+                            "target_low": 100,
+                            "target_high": 100,
+                        }
+                    ],
+                }
+            ],
+        )
+
+        steps = tools.get_workout(created["id"])["steps"]
+        self.assertEqual(steps[0]["children"][0]["distance"], 1000)
+
     def test_create_workout_rejects_an_invalid_target_type(self) -> None:
         athlete = User.objects.create_user(email="mcp-create-workout-invalid@example.cc", password="x", name="Athlete")
         tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
@@ -98,6 +191,55 @@ class WorkoutToolsTests(TestCase):
                 name="Bad",
                 sport="bike",
                 steps=[{"kind": "block", "end_type": "time", "duration": 100, "target_type": "not-a-real-type"}],
+            )
+
+    def test_create_workout_rejects_a_fraction_passed_instead_of_a_percentage(self) -> None:
+        athlete = User.objects.create_user(email="mcp-create-workout-fraction@example.cc", password="x", name="Athlete")
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        # The exact mistake seen live: 0.65 instead of 65 for 65% of threshold.
+        with self.assertRaises(ValidationError):
+            tools.create_workout(
+                name="Bad",
+                sport="bike",
+                steps=[
+                    {
+                        "kind": "block",
+                        "end_type": "time",
+                        "duration": 100,
+                        "target_type": "power",
+                        "target_low": 0.65,
+                        "target_high": 0.75,
+                    }
+                ],
+            )
+
+    def test_create_workout_rejects_a_fraction_nested_in_a_repeat_group(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-create-workout-fraction-nested@example.cc", password="x", name="Athlete"
+        )
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.create_workout(
+                name="Bad",
+                sport="bike",
+                steps=[
+                    {
+                        "kind": "repeat",
+                        "repeat": 3,
+                        "children": [
+                            {
+                                "kind": "block",
+                                "end_type": "time",
+                                "duration": 100,
+                                "target_type": "power",
+                                "target_low": 0.95,
+                                "target_high": 0.95,
+                            }
+                        ],
+                    }
+                ],
             )
 
     def test_create_workout_requires_workouts_write_scope(self) -> None:
@@ -294,11 +436,145 @@ class ActivityToolsTests(TestCase):
         self.assertEqual(len(result["data"]), 1)
         self.assertEqual(result["data"][0]["name"], "Mine")
 
+    def _new_activity(self, athlete: User) -> Activity:
+        return Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Morning Run",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+        )
+
+    def test_post_activity_comment_attributes_it_to_the_real_caller(self) -> None:
+        athlete = User.objects.create_user(email="mcp-comment-athlete@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.post_activity_comment(activity_id=activity.id, text="Nice pace today!")
+
+        self.assertEqual(result["text"], "Nice pace today!")
+        self.assertEqual(result["author_id"], athlete.id)
+        self.assertEqual(result["author_role"], "athlete")
+
+    def test_a_reply_is_attached_to_its_parent(self) -> None:
+        athlete = User.objects.create_user(email="mcp-comment-reply-athlete@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        root = tools.post_activity_comment(activity_id=activity.id, text="Root")
+
+        reply = tools.post_activity_comment(activity_id=activity.id, text="Reply", parent_comment_id=root["id"])
+
+        self.assertEqual(reply["parent_id"], root["id"])
+
+    def test_cannot_reply_to_a_reply(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-comment-no-nested-reply-athlete@example.cc", password="x", name="Athlete"
+        )
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        root = tools.post_activity_comment(activity_id=activity.id, text="Root")
+        reply = tools.post_activity_comment(activity_id=activity.id, text="Reply", parent_comment_id=root["id"])
+
+        with self.assertRaises(ValidationError):
+            tools.post_activity_comment(activity_id=activity.id, text="Reply to a reply", parent_comment_id=reply["id"])
+
+    def test_post_activity_comment_requires_the_activities_write_scope(self) -> None:
+        athlete = User.objects.create_user(email="mcp-comment-scope-athlete@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.post_activity_comment(activity_id=activity.id, text="Should fail")
+
+    def test_post_activity_comment_rejects_blank_or_overlong_text(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-comment-validation-athlete@example.cc", password="x", name="Athlete"
+        )
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.post_activity_comment(activity_id=activity.id, text="  ")
+        with self.assertRaises(ValidationError):
+            tools.post_activity_comment(activity_id=activity.id, text="x" * 4001)
+
+    def test_post_activity_comment_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-comment-outsider-athlete@example.cc", password="x", name="Athlete"
+        )
+        outsider = User.objects.create_user(email="mcp-comment-outsider@example.cc", password="x", name="Outsider")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.post_activity_comment(activity_id=activity.id, text="Should fail")
+
+    def test_list_activity_comments_returns_them_oldest_first(self) -> None:
+        athlete = User.objects.create_user(email="mcp-list-comments-athlete@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        write_tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        write_tools.post_activity_comment(activity_id=activity.id, text="First")
+        write_tools.post_activity_comment(activity_id=activity.id, text="Second")
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.list_activity_comments(activity_id=activity.id)
+
+        self.assertEqual(len(result["data"]), 2)
+        self.assertEqual(result["data"][0]["text"], "First")
+        self.assertEqual(result["data"][1]["text"], "Second")
+
+    def test_list_activity_comments_requires_the_activities_read_scope(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-list-comments-scope-athlete@example.cc", password="x", name="Athlete"
+        )
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.list_activity_comments(activity_id=activity.id)
+
+    def test_list_activity_comments_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-list-comments-outsider-athlete@example.cc", password="x", name="Athlete"
+        )
+        outsider = User.objects.create_user(
+            email="mcp-list-comments-outsider@example.cc", password="x", name="Outsider"
+        )
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.list_activity_comments(activity_id=activity.id)
+
 
 class AthleteToolsTests(TestCase):
     def test_get_me_returns_the_callers_own_profile(self) -> None:
         athlete = User.objects.create_user(email="mcp-me@example.cc", password="x", name="Athlete", ftp=250)
         tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.get_me()
+
+        self.assertEqual(result["id"], athlete.id)
+        self.assertEqual(result["ftp"], 250)
+
+    def test_get_me_for_a_delegated_coach_returns_the_athletes_profile_not_the_coachs_own(self) -> None:
+        athlete = User.objects.create_user(email="mcp-me-athlete@example.cc", password="x", name="Athlete", ftp=250)
+        coach = User.objects.create_user(email="mcp-me-coach@example.cc", password="x", name="Coach")
+        UserRelationship.objects.create(
+            owner=athlete, grantee=coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+        )
+        secret = generate_secret()
+        pat = PersonalAccessToken.objects.create(
+            user=coach,
+            name="Delegated",
+            prefix=visible_prefix(secret),
+            hashed_secret=hash_secret(secret),
+            scopes=["activities:read"],
+            delegated_athlete=athlete,
+        )
+        tools = AthleteMCPTools(request=SimpleNamespace(user=coach, auth=pat))
 
         result = tools.get_me()
 

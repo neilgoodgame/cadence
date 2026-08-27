@@ -15,6 +15,10 @@ import com.cadence.api.mcp.tools.workouts.WorkoutWriteTools;
 import com.cadence.api.scheduling.dto.ScheduledWorkoutResponse;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
+import com.cadence.api.sharing.ShareRole;
+import com.cadence.api.sharing.ShareStatus;
+import com.cadence.api.sharing.UserRelationship;
+import com.cadence.api.sharing.UserRelationshipRepository;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -56,6 +60,9 @@ class McpToolsIntegrationTest extends IntegrationTest {
 	@Autowired
 	private UserRepository userRepository;
 
+	@Autowired
+	private UserRelationshipRepository userRelationshipRepository;
+
 	@AfterEach
 	void clearAuthContext() {
 		AuthContextHolder.clear();
@@ -96,12 +103,55 @@ class McpToolsIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void createWorkoutParsesDistanceUnitsIntoMeters() {
+		User athlete = saveAthlete("mcp-create-workout-distance@example.cc");
+		authAs(athlete.getId(), "workouts:write", "activities:read");
+
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("block", "distance", null, "400m", "pace", 100.0, 100.0, null, null, null),
+				new McpWorkoutStepInput("block", "distance", null, "5km", "pace", 100.0, 100.0, null, null, null),
+				new McpWorkoutStepInput("block", "distance", null, "3.1mi", "pace", 100.0, 100.0, null, null, null));
+
+		WorkoutResponse response = workoutWriteTools.createWorkout("Distance units", "run", steps, null);
+
+		var persistedSteps = workoutReadTools.getWorkout(response.id()).steps();
+		assertThat(persistedSteps.get(0).distance()).isEqualTo(400);
+		assertThat(persistedSteps.get(1).distance()).isEqualTo(5000);
+		assertThat(persistedSteps.get(2).distance()).isEqualTo(4989); // 3.1 * 1609.344, rounded
+	}
+
+	@Test
+	void createWorkoutRejectsADistanceWithNoUnit() {
+		User athlete = saveAthlete("mcp-create-workout-distance-nounit@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("block", "distance", null, "400", "pace", 100.0, 100.0, null, null, null));
+
+		assertThatThrownBy(() -> workoutWriteTools.createWorkout("Bad", "run", steps, null))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
 	void createWorkoutRejectsAnInvalidTargetType() {
 		User athlete = saveAthlete("mcp-create-workout-invalid@example.cc");
 		authAs(athlete.getId(), "workouts:write");
 
 		List<McpWorkoutStepInput> steps = List.of(
 				new McpWorkoutStepInput("warmup", "time", 600, null, "nonsense", 50.0, 50.0, null, null, null));
+
+		assertThatThrownBy(() -> workoutWriteTools.createWorkout("Bad", "bike", steps, null))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void createWorkoutRejectsAFractionPassedInsteadOfAPercentage() {
+		User athlete = saveAthlete("mcp-create-workout-fraction@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+
+		// The exact mistake seen live: 0.65 instead of 65 for 65% of threshold.
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 600, null, "power", 0.65, 0.75, null, null, null));
 
 		assertThatThrownBy(() -> workoutWriteTools.createWorkout("Bad", "bike", steps, null))
 				.isInstanceOf(ValidationException.class);
@@ -214,6 +264,27 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		athlete.setFtp(250);
 		userRepository.save(athlete);
 		authAs(athlete.getId(), "activities:read");
+
+		McpAthleteProfile profile = athleteProfileTools.getMe();
+
+		assertThat(profile.id()).isEqualTo(athlete.getId());
+		assertThat(profile.ftp()).isEqualTo(250);
+	}
+
+	@Test
+	void getMeForADelegatedCoachReturnsTheAthletesProfileNotTheCoachsOwn() {
+		User athlete = saveAthlete("mcp-get-me-athlete@example.cc");
+		athlete.setFtp(250);
+		userRepository.save(athlete);
+		User coach = saveAthlete("mcp-get-me-coach@example.cc");
+		UserRelationship relationship = new UserRelationship();
+		relationship.setOwner(athlete);
+		relationship.setGrantee(coach);
+		relationship.setRole(ShareRole.COACH);
+		relationship.setStatus(ShareStatus.ACTIVE);
+		userRelationshipRepository.save(relationship);
+		AuthContextHolder.set(
+				new AuthContext(coach.getId(), athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
 
 		McpAthleteProfile profile = athleteProfileTools.getMe();
 

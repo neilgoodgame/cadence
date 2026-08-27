@@ -87,3 +87,70 @@ class ActivityCommentViewTests(TestCase):
         response = client.delete(f"/v1/activities/{activity.id}/comments/{comment.id}")
         self.assertEqual(response.status_code, 403)
         self.assertTrue(ActivityComment.objects.filter(pk=comment.id).exists())
+
+    def test_reply_is_attached_to_its_parent(self):
+        activity = _make_activity(self.athlete)
+        client = _delegated_client(self.coach, self.athlete, scopes=["activities:read"])
+        root = client.post(f"/v1/activities/{activity.id}/comments", {"text": "Nice work"}, format="json").json()
+
+        reply = _bearer_client(self.athlete).post(
+            f"/v1/activities/{activity.id}/comments", {"text": "Thanks!", "parent_id": root["id"]}, format="json"
+        )
+
+        self.assertEqual(reply.status_code, 201)
+        self.assertEqual(reply.json()["parent_id"], root["id"])
+
+    def test_top_level_comment_has_no_parent_id(self):
+        activity = _make_activity(self.athlete)
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{activity.id}/comments", {"text": "Felt great"}, format="json"
+        )
+        self.assertIsNone(response.json()["parent_id"])
+
+    def test_cannot_reply_to_a_reply(self):
+        activity = _make_activity(self.athlete)
+        client = _bearer_client(self.athlete)
+        root = client.post(f"/v1/activities/{activity.id}/comments", {"text": "Root"}, format="json").json()
+        reply = client.post(
+            f"/v1/activities/{activity.id}/comments", {"text": "Reply", "parent_id": root["id"]}, format="json"
+        ).json()
+
+        response = client.post(
+            f"/v1/activities/{activity.id}/comments",
+            {"text": "Reply to a reply", "parent_id": reply["id"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_cannot_reply_to_a_comment_on_another_activity(self):
+        activity_one = _make_activity(self.athlete)
+        activity_two = _make_activity(self.athlete)
+        client = _bearer_client(self.athlete)
+        root = client.post(
+            f"/v1/activities/{activity_one.id}/comments", {"text": "On activity one"}, format="json"
+        ).json()
+
+        response = client.post(
+            f"/v1/activities/{activity_two.id}/comments", {"text": "Reply", "parent_id": root["id"]}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_replying_to_an_unknown_parent_is_rejected(self):
+        activity = _make_activity(self.athlete)
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{activity.id}/comments", {"text": "Reply", "parent_id": "cmt_doesnotexist"}, format="json"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_deleting_a_root_comment_cascades_to_its_replies(self):
+        activity = _make_activity(self.athlete)
+        client = _bearer_client(self.athlete)
+        root = client.post(f"/v1/activities/{activity.id}/comments", {"text": "Root"}, format="json").json()
+        client.post(f"/v1/activities/{activity.id}/comments", {"text": "Reply", "parent_id": root["id"]}, format="json")
+
+        response = client.delete(f"/v1/activities/{activity.id}/comments/{root['id']}")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(ActivityComment.objects.filter(activity=activity).count(), 0)

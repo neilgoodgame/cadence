@@ -15,7 +15,6 @@ from accounts.models import User
 from activities.models import BestEffort
 from authn.mcp_scopes import ACTIVITIES_READ
 from authn.mcp_toolset import ScopedMCPToolset
-from core.auth_context import get_effective_athlete_id
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 
 from .views import BEST_EFFORT_PERIOD_DAYS, LOWER_IS_BETTER_KINDS, cap_per_window, threshold_summary_for_field
@@ -31,10 +30,17 @@ class AthleteMCPTools(ScopedMCPToolset):
         a first call to establish training-zone context before interpreting other tools'
         numbers."""
         self._require_scope(ACTIVITIES_READ)
-        # Uses the token's own subject directly, not effective_athlete_id() - this tool is
-        # always "me", never a delegated athlete_id, matching the Java tool exactly.
-        sub, _ = get_effective_athlete_id(self.request)
-        athlete = get_object_or_404(User, pk=sub)
+        # Deliberately the delegated athlete (_effective_athlete_id), not the token's own
+        # subject - matches every other tool in this file, and this tool's own docstring
+        # promises the training context needed "to interpret other tools' numbers", which are
+        # all athlete-scoped too. This used to read the raw sub instead - correct only while no
+        # MCP credential could actually delegate, which stopped being true once PAT/OAuth2
+        # delegation shipped (see core.auth_context.get_effective_athlete_id); surfaced live
+        # when a virtual coach's get_me came back as its own empty profile instead of the
+        # athlete's.
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        athlete = get_object_or_404(User, pk=athlete_id)
 
         return {
             "id": athlete.id,

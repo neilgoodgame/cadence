@@ -1,9 +1,14 @@
 package com.cadence.api.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.cadence.api.sharing.ShareRole;
+import com.cadence.api.sharing.ShareStatus;
+import com.cadence.api.sharing.UserRelationship;
+import com.cadence.api.sharing.UserRelationshipRepository;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -34,6 +39,12 @@ class AuthContextFilterTest extends IntegrationTest {
 
 	@Autowired
 	private PasswordEncoder passwordEncoder;
+
+	@Autowired
+	private UserRelationshipRepository userRelationshipRepository;
+
+	@Autowired
+	private AuthContextFilter authContextFilter;
 
 	@Test
 	void sessionBasedFormLoginDoesNotCrashAuthContextFilter() throws Exception {
@@ -66,5 +77,55 @@ class AuthContextFilterTest extends IntegrationTest {
 						"Expected no 5xx, got " + status + ": " + result.getResponse().getContentAsString());
 			}
 		});
+	}
+
+	private User newUser(String email) {
+		User user = new User();
+		user.setEmail(email);
+		user.setName("Test user");
+		user.setPassword(passwordEncoder.encode("irrelevant-for-this-test"));
+		return userRepository.save(user);
+	}
+
+	@Test
+	void virtualCoachDelegatesToItsOneActiveAthlete() {
+		User athlete = newUser("virtual-delegation-athlete@example.cc");
+		User coach = newUser("virtual-delegation-coach@example.cc");
+		coach.setVirtual(true);
+		userRepository.save(coach);
+		UserRelationship relationship = new UserRelationship();
+		relationship.setOwner(athlete);
+		relationship.setGrantee(coach);
+		relationship.setRole(ShareRole.COACH);
+		relationship.setStatus(ShareStatus.ACTIVE);
+		userRelationshipRepository.save(relationship);
+
+		assertThat(authContextFilter.virtualCoachDelegatedAthleteId(coach.getId())).contains(athlete.getId());
+	}
+
+	@Test
+	void aRealCoachWithOneAthleteIsNotDelegated() {
+		// The whole point of scoping this to isVirtual: a real user's own OAuth2 session (their
+		// normal web app login) must never silently start showing someone else's data just
+		// because they happen to coach exactly one athlete.
+		User athlete = newUser("real-coach-delegation-athlete@example.cc");
+		User coach = newUser("real-coach-delegation-coach@example.cc");
+		UserRelationship relationship = new UserRelationship();
+		relationship.setOwner(athlete);
+		relationship.setGrantee(coach);
+		relationship.setRole(ShareRole.COACH);
+		relationship.setStatus(ShareStatus.ACTIVE);
+		userRelationshipRepository.save(relationship);
+
+		assertThat(authContextFilter.virtualCoachDelegatedAthleteId(coach.getId())).isEmpty();
+	}
+
+	@Test
+	void aVirtualCoachWithNoActiveRelationshipIsNotDelegated() {
+		User coach = newUser("virtual-delegation-orphan-coach@example.cc");
+		coach.setVirtual(true);
+		userRepository.save(coach);
+
+		assertThat(authContextFilter.virtualCoachDelegatedAthleteId(coach.getId())).isEmpty();
 	}
 }

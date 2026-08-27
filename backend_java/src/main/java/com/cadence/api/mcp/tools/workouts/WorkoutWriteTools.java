@@ -23,6 +23,8 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
@@ -59,8 +61,9 @@ public class WorkoutWriteTools {
 			+ "afterwards). Each step is either a leaf (kind: warmup/block/rec/cool, with end_type "
 			+ "time/distance/manual and a target_type power/hr/pace/cadence/open) or a repeat group "
 			+ "(kind: repeat, with a repeat count and nested children - no end_type/target on the "
-			+ "group itself). target_low/target_high are a %-of-threshold range (equal values for a "
-			+ "flat target).",
+			+ "group itself). target_low/target_high are a %-of-threshold range on a 0-100 scale, "
+			+ "e.g. 65 for 65% of threshold (NOT 0.65) - equal values for a flat target. distance "
+			+ "takes a unit suffix - e.g. \"400m\", \"5km\", \"3.1mi\" - the unit is required.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
 	public WorkoutResponse createWorkout(
@@ -101,7 +104,10 @@ public class WorkoutWriteTools {
 		StepEndType endType = parseEnum(StepEndType.class, input.endType(), "end_type", "time, distance, or manual");
 		TargetType targetType = parseEnum(TargetType.class, input.targetType(), "target_type",
 				"power, hr, pace, cadence, or open");
-		return new WorkoutStepDto(kind, endType, input.duration(), input.distance(), targetType,
+		requireTargetScale(input.targetLow(), "target_low");
+		requireTargetScale(input.targetHigh(), "target_high");
+		Integer distanceMeters = parseDistanceMeters(input.distance(), "distance");
+		return new WorkoutStepDto(kind, endType, input.duration(), distanceMeters, targetType,
 				input.targetLow(), input.targetHigh(), Target2Type.NONE, null, null, 1, noteOrEmpty(input.note()), List.of());
 	}
 
@@ -113,8 +119,61 @@ public class WorkoutWriteTools {
 		StepEndType endType = parseEnum(StepEndType.class, leaf.endType(), "end_type", "time, distance, or manual");
 		TargetType targetType = parseEnum(TargetType.class, leaf.targetType(), "target_type",
 				"power, hr, pace, cadence, or open");
-		return new WorkoutStepDto(kind, endType, leaf.duration(), leaf.distance(), targetType,
+		requireTargetScale(leaf.targetLow(), "target_low");
+		requireTargetScale(leaf.targetHigh(), "target_high");
+		Integer distanceMeters = parseDistanceMeters(leaf.distance(), "distance");
+		return new WorkoutStepDto(kind, endType, leaf.duration(), distanceMeters, targetType,
 				leaf.targetLow(), leaf.targetHigh(), Target2Type.NONE, null, null, 1, noteOrEmpty(leaf.note()), List.of());
+	}
+
+	/**
+	 * Catches the specific mistake seen live: a caller passing a 0-1 fraction (0.65) where this
+	 * tool expects a 0-100 percentage (65) - every real target is well above 1 (even an easy
+	 * recovery zone is tens of percent), so any non-null value in (0, 1) is unambiguously wrong
+	 * scale, not a legitimately tiny target. Silently accepting it produced a workout whose
+	 * computed TSS rounded to 0 and whose power target rounded to a couple of watts, with no
+	 * error anywhere to catch it.
+	 */
+	private static void requireTargetScale(Double value, String field) {
+		if (value != null && value > 0 && value < 1) {
+			throw new ValidationException(
+					field + " must be a percentage on a 0-100 scale (e.g. 65 for 65%), not a fraction (e.g. 0.65).", field);
+		}
+	}
+
+	private static final Pattern DISTANCE_PATTERN =
+			Pattern.compile("(?i)^\\s*(\\d+(?:\\.\\d+)?)\\s*(m|km|mi|meters?|kilometers?|miles?)\\s*$");
+	private static final double METERS_PER_KM = 1000.0;
+	private static final double METERS_PER_MILE = 1609.344;
+
+	/**
+	 * Requires an explicit unit rather than defaulting a bare number to metres - the whole point
+	 * is to close off the "which unit did the caller mean" ambiguity that {@link
+	 * #requireTargetScale} has to catch after the fact for target_low/target_high; here there's
+	 * no valid interpretation of a bare number to silently accept.
+	 */
+	private static Integer parseDistanceMeters(String distance, String field) {
+		if (distance == null || distance.isBlank()) {
+			return null;
+		}
+		Matcher matcher = DISTANCE_PATTERN.matcher(distance);
+		if (!matcher.matches()) {
+			throw new ValidationException(
+					field + " must be a number with a unit, e.g. \"400m\", \"5km\", or \"3.1mi\".", field);
+		}
+		double magnitude = Double.parseDouble(matcher.group(1));
+		String unit = matcher.group(2).toLowerCase();
+		double meters;
+		if (unit.equals("m") || unit.startsWith("meter")) {
+			meters = magnitude;
+		}
+		else if (unit.equals("km") || unit.startsWith("kilomet")) {
+			meters = magnitude * METERS_PER_KM;
+		}
+		else {
+			meters = magnitude * METERS_PER_MILE;
+		}
+		return (int) Math.round(meters);
 	}
 
 	private static String noteOrEmpty(String note) {

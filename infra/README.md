@@ -1121,6 +1121,48 @@ false error shown - flagged to the user rather than assumed.
 deploying per the standing practice, then deployed both halves together - backend (image
 `sha-55c027e`) and frontend (`index-5DPQjCYk.js`).
 
+## Incident: scheduled RDS password rotation took the API down (2026-08-24)
+
+**What happened:** the RDS master password (`manage_master_user_password = true`) auto-rotates
+on a 7-day schedule - confirmed via `describe-secret`: `RotationEnabled: true`,
+`AutomaticallyAfterDays: 7`, and `LastRotatedDate` landed at 16:08 today. The running backend
+container only resolves that secret once, at boot (`run.sh`'s `aws secretsmanager
+get-secret-value` into the env file - see §3/§7's "fetches secrets fresh... on every boot" note,
+which is true for boot but not for an already-running process), so every DB connection started
+failing immediately after rotation: `HikariPool-1 ... FATAL: password authentication failed
+for user "cadence"`. `/healthz` stayed a misleading `200` throughout, since it's DB-independent
+- real traffic (e.g. `/v1/auth/login`) was the first signal, reported by the user as "the API
+has gone down."
+
+**Immediate fix:** `systemctl restart cadence-backend` via SSM (same mechanism `deploy-backend.sh`
+uses) - forces `run.sh` to refetch the now-current secret. Confirmed via fresh boot logs
+(`HikariPool-1 - Added connection`, Flyway validated against the live schema) and a real
+`/v1/auth/login` call returning a genuine `401` instead of timing out. Total outage window:
+from the 16:08 rotation to the ~17:03 restart, since nothing was watching for this.
+
+**Decision: disabled automatic rotation** (`aws secretsmanager cancel-rotate-secret` -
+confirmed `RotationEnabled: false` after) rather than building a restart-on-rotation trigger.
+Reasoning discussed and agreed explicitly, not a default: this DB has no public port (RUNBOOK
+§5 - inbound restricted to the backend instance's own security group only), so rotation's main
+value - capping how long a *leaked* credential stays useful against network-based reuse -
+applies to a much narrower threat model here than it would for an internet-facing database.
+It doesn't protect against the instance itself being compromised either, since a compromised
+IAM role can fetch the live current secret regardless of rotation. Worth noting this reverses
+the "Incident: RDS master password exposed" entry above's own remediation instinct (`rotate-
+secret` as the correct response to an actual leak) - that was a different, more concrete threat
+(a real secret exposure into a session transcript) than the general "rotate on a timer" default
+being turned off here; rotating on-demand in response to a real leak is still the right move if
+one ever happens, this only disables the *unattended* 7-day schedule.
+
+**Tech debt, deliberately deferred:** the actual fix for this class of outage is IAM database
+authentication (short-lived per-connection tokens via `rds-db:connect`, generated fresh by the
+app rather than cached from boot) instead of a static Secrets-Manager-sourced password - it
+would let rotation (or any credential change) happen with zero app-level effect, no restart
+needed, and it'd be safe to re-enable scheduled rotation at that point. Bigger lift than
+disabling rotation (a new HikariCP credentials provider, `rds_iam` grant on the `cadence` DB
+user, an `rds-db:connect` IAM policy scoped to the instance) - not done now, but re-enabling
+rotation should happen together with this, not before it.
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a

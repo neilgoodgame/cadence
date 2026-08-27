@@ -46,7 +46,7 @@ function RowControls({ id, actions }: { id: string; actions: StructureActions })
   );
 }
 
-function LeafRow({ step, actions }: { step: Leaf; actions: StructureActions }) {
+function LeafRow({ step, actions, readOnly }: { step: Leaf; actions: StructureActions; readOnly: boolean }) {
   const selected = step.id === actions.selectedId;
   const t = targetInfo(step);
   return (
@@ -58,7 +58,7 @@ function LeafRow({ step, actions }: { step: Leaf; actions: StructureActions }) {
         gap: 12,
         padding: "10px 12px",
         borderRadius: 10,
-        cursor: "pointer",
+        cursor: readOnly ? "default" : "pointer",
         background: selected ? "var(--emberSoft, rgba(236,74,38,0.08))" : "var(--elev)",
         border: `1px solid ${selected ? "var(--ember)" : "var(--line)"}`,
       }}
@@ -71,12 +71,12 @@ function LeafRow({ step, actions }: { step: Leaf; actions: StructureActions }) {
         </div>
         <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--ink2)" }}>{stepDetail(step)}</div>
       </div>
-      <RowControls id={step.id} actions={actions} />
+      {!readOnly && <RowControls id={step.id} actions={actions} />}
     </div>
   );
 }
 
-function GroupRow({ step, actions, depth }: { step: Group; actions: StructureActions; depth: number }) {
+function GroupRow({ step, actions, depth, readOnly }: { step: Group; actions: StructureActions; depth: number; readOnly: boolean }) {
   const selected = step.id === actions.selectedId;
   return (
     <div>
@@ -100,19 +100,24 @@ function GroupRow({ step, actions, depth }: { step: Group; actions: StructureAct
             {step.children.length} steps × {step.repeat} · {fmtDuration(totalDuration(step.children) * step.repeat)} total
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--canvas, transparent)", borderRadius: 7, padding: 3 }}>
-          <button
-            style={{ ...iconBtnStyle, fontWeight: 700 }}
-            onClick={(e) => (e.stopPropagation(), actions.onRepeatChange(step.id, Math.max(1, step.repeat - 1)))}
-          >
-            –
-          </button>
-          <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, minWidth: 16, textAlign: "center" }}>{step.repeat}</span>
-          <button style={{ ...iconBtnStyle, fontWeight: 700 }} onClick={(e) => (e.stopPropagation(), actions.onRepeatChange(step.id, step.repeat + 1))}>
-            +
-          </button>
-        </div>
-        <RowControls id={step.id} actions={actions} />
+        {!readOnly && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--canvas, transparent)", borderRadius: 7, padding: 3 }}>
+            <button
+              style={{ ...iconBtnStyle, fontWeight: 700 }}
+              onClick={(e) => (e.stopPropagation(), actions.onRepeatChange(step.id, Math.max(1, step.repeat - 1)))}
+            >
+              –
+            </button>
+            <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, minWidth: 16, textAlign: "center" }}>{step.repeat}</span>
+            <button style={{ ...iconBtnStyle, fontWeight: 700 }} onClick={(e) => (e.stopPropagation(), actions.onRepeatChange(step.id, step.repeat + 1))}>
+              +
+            </button>
+          </div>
+        )}
+        {readOnly && (
+          <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "var(--ink2)" }}>× {step.repeat}</span>
+        )}
+        {!readOnly && <RowControls id={step.id} actions={actions} />}
       </div>
       <div
         style={{
@@ -124,34 +129,46 @@ function GroupRow({ step, actions, depth }: { step: Group; actions: StructureAct
           borderLeft: `2px solid ${depth === 0 ? "var(--line)" : "rgba(236,74,38,0.25)"}`,
         }}
       >
-        <WorkoutStructureList steps={step.children} actions={actions} depth={depth + 1} />
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => actions.onAddChild(step.id)}
-            style={{ alignSelf: "flex-start", padding: "5px 11px", borderRadius: 7, border: "1px dashed var(--line)", background: "none", fontSize: 12, fontWeight: 600, color: "var(--ink3)", cursor: "pointer" }}
-          >
-            + step in group
-          </button>
-          <button
-            onClick={() => actions.onAddNestedGroup(step.id)}
-            style={{ alignSelf: "flex-start", padding: "5px 11px", borderRadius: 7, border: "1px dashed var(--ember)", background: "none", fontSize: 12, fontWeight: 600, color: "var(--ember)", cursor: "pointer" }}
-          >
-            + nested repeat group
-          </button>
-        </div>
+        <WorkoutStructureList steps={step.children} actions={actions} depth={depth + 1} readOnly={readOnly} />
+        {!readOnly && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => actions.onAddChild(step.id)}
+              style={{ alignSelf: "flex-start", padding: "5px 11px", borderRadius: 7, border: "1px dashed var(--line)", background: "none", fontSize: 12, fontWeight: 600, color: "var(--ink3)", cursor: "pointer" }}
+            >
+              + step in group
+            </button>
+            <button
+              onClick={() => actions.onAddNestedGroup(step.id)}
+              style={{ alignSelf: "flex-start", padding: "5px 11px", borderRadius: 7, border: "1px dashed var(--ember)", background: "none", fontSize: 12, fontWeight: 600, color: "var(--ember)", cursor: "pointer" }}
+            >
+              + nested repeat group
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export function WorkoutStructureList({ steps, actions, depth = 0 }: { steps: Step[]; actions: StructureActions; depth?: number }) {
+export function WorkoutStructureList({
+  steps,
+  actions,
+  depth = 0,
+  readOnly = false,
+}: {
+  steps: Step[];
+  actions: StructureActions;
+  depth?: number;
+  readOnly?: boolean;
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {steps.map((step) =>
         isGroup(step) ? (
-          <GroupRow key={step.id} step={step} actions={actions} depth={depth} />
+          <GroupRow key={step.id} step={step} actions={actions} depth={depth} readOnly={readOnly} />
         ) : (
-          <LeafRow key={step.id} step={step} actions={actions} />
+          <LeafRow key={step.id} step={step} actions={actions} readOnly={readOnly} />
         ),
       )}
     </div>

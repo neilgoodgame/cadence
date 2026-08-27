@@ -76,6 +76,7 @@ export interface Share {
   role: ShareRole;
   status: "pending" | "active";
   since: string;
+  is_virtual: boolean;
 }
 
 export interface Contexts {
@@ -259,6 +260,9 @@ export interface ActivityComment {
   author_id: string;
   author_name: string;
   author_role: "athlete" | "coach" | "viewer";
+  // Null for a top-level comment; the id of the top-level comment it replies to otherwise.
+  // Single-level threading only - a reply's own parent_id is always null.
+  parent_id: string | null;
   text: string;
   created: string;
 }
@@ -356,10 +360,18 @@ export interface AccessToken {
   created: string;
   expires_at: string | null;
   last_used: string | null;
+  delegated_athlete_id: string | null;
 }
 
 export interface AccessTokenWithSecret extends AccessToken {
   secret: string;
+}
+
+export interface VirtualCoachCreated {
+  share: Share;
+  email: string;
+  password: string;
+  token: AccessTokenWithSecret;
 }
 
 export type BikeKind = "road" | "indoor" | "gravel" | "tt";
@@ -593,6 +605,11 @@ export interface ScheduledWorkout {
   workout_id: string;
   athlete_id: string;
   assigned_by: string | null;
+  // Best-effort on the Java backend - see SchedulingMapper's Javadoc. Only reliably populated
+  // for the scheduled-workout detail fetch (GET /v1/scheduled-workouts/{id}); other endpoints
+  // that return ScheduledWorkout rows may leave these null/false even when assigned_by is set.
+  assigned_by_name: string | null;
+  assigned_by_is_virtual: boolean;
   date: string;
   // Python returns "" when unset; Java returns null - confirmed against both live.
   time_of_day: TimeOfDay | "" | null;

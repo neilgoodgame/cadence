@@ -1,6 +1,10 @@
 package com.cadence.api.security;
 
 import com.cadence.api.security.pat.PersonalAccessTokenAuthentication;
+import com.cadence.api.sharing.ShareStatus;
+import com.cadence.api.sharing.UserRelationshipRepository;
+import com.cadence.api.users.User;
+import com.cadence.api.users.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,6 +40,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class AuthContextFilter extends OncePerRequestFilter {
 
+	private final UserRepository userRepository;
+	private final UserRelationshipRepository userRelationshipRepository;
+
+	public AuthContextFilter(UserRepository userRepository, UserRelationshipRepository userRelationshipRepository) {
+		this.userRepository = userRepository;
+		this.userRelationshipRepository = userRelationshipRepository;
+	}
+
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
 			throws ServletException, IOException {
@@ -67,14 +79,36 @@ public class AuthContextFilter extends OncePerRequestFilter {
 			String sub = principal.getName();
 			List<String> scopeAttribute = principal.getAttribute("scope");
 			Set<String> scopes = scopeAttribute == null ? Set.of() : Set.copyOf(scopeAttribute);
-			return Optional.of(AuthContext.self(sub, scopes, AuthContext.CredentialKind.OAUTH2));
+			String athleteId = virtualCoachDelegatedAthleteId(sub).orElse(sub);
+			return Optional.of(new AuthContext(sub, athleteId, scopes, AuthContext.CredentialKind.OAUTH2));
 		}
 		if (authentication instanceof PersonalAccessTokenAuthentication patAuth) {
 			Set<String> scopes = Set.copyOf(patAuth.token().getScopes());
-			return Optional.of(
-					AuthContext.self((String) patAuth.getPrincipal(), scopes, AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
+			String sub = (String) patAuth.getPrincipal();
+			String delegatedAthleteId = patAuth.token().getDelegatedAthleteId();
+			String athleteId = (delegatedAthleteId == null || delegatedAthleteId.isBlank()) ? sub : delegatedAthleteId;
+			return Optional.of(new AuthContext(sub, athleteId, scopes, AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * Deliberately scoped to {@code isVirtual} accounts only, not "any coach with exactly one
+	 * active relationship" - a real user's own OAuth2 session (the web app's normal login) must
+	 * never silently start showing someone else's data just because they happen to coach one
+	 * athlete. A virtual account has no legitimate "self" view at all (see User.isVirtual's
+	 * Javadoc), and is only ever linked to exactly one athlete by construction, so this is
+	 * unambiguous.
+	 */
+	Optional<String> virtualCoachDelegatedAthleteId(String userId) {
+		User user = userRepository.findById(userId).orElse(null);
+		if (user == null || !user.isVirtual()) {
+			return Optional.empty();
+		}
+		return userRelationshipRepository.findByGranteeIdAndStatus(userId, ShareStatus.ACTIVE)
+				.stream()
+				.findFirst()
+				.map(relationship -> relationship.getOwner().getId());
 	}
 
 	private Set<String> parseScope(String scope) {

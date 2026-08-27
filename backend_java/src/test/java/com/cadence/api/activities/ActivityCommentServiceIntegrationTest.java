@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.cadence.api.activities.dto.ActivityCommentResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
+import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.sharing.ShareRole;
 import com.cadence.api.sharing.ShareStatus;
 import com.cadence.api.sharing.UserRelationship;
@@ -64,7 +66,7 @@ class ActivityCommentServiceIntegrationTest extends IntegrationTest {
 		User athlete = newUser("athlete-own-comment@example.cc");
 		Activity activity = newActivity(athlete);
 
-		ActivityCommentResponse response = activityCommentService.create(activity, athlete, "Felt great today");
+		ActivityCommentResponse response = activityCommentService.create(activity, athlete, "Felt great today", null);
 
 		assertThat(response.text()).isEqualTo("Felt great today");
 		assertThat(response.authorId()).isEqualTo(athlete.getId());
@@ -78,7 +80,7 @@ class ActivityCommentServiceIntegrationTest extends IntegrationTest {
 		grantRelationship(athlete, coach, ShareRole.COACH);
 		Activity activity = newActivity(athlete);
 
-		ActivityCommentResponse response = activityCommentService.create(activity, coach, "Good pacing");
+		ActivityCommentResponse response = activityCommentService.create(activity, coach, "Good pacing", null);
 
 		assertThat(response.authorRole()).isEqualTo("coach");
 		assertThat(response.authorId()).isEqualTo(coach.getId());
@@ -91,7 +93,7 @@ class ActivityCommentServiceIntegrationTest extends IntegrationTest {
 		grantRelationship(athlete, viewer, ShareRole.VIEWER);
 		Activity activity = newActivity(athlete);
 
-		ActivityCommentResponse response = activityCommentService.create(activity, viewer, "Nice work");
+		ActivityCommentResponse response = activityCommentService.create(activity, viewer, "Nice work", null);
 
 		assertThat(response.authorRole()).isEqualTo("viewer");
 	}
@@ -100,8 +102,8 @@ class ActivityCommentServiceIntegrationTest extends IntegrationTest {
 	void commentsAreListedOldestFirst() {
 		User athlete = newUser("order-athlete@example.cc");
 		Activity activity = newActivity(athlete);
-		activityCommentService.create(activity, athlete, "First");
-		activityCommentService.create(activity, athlete, "Second");
+		activityCommentService.create(activity, athlete, "First", null);
+		activityCommentService.create(activity, athlete, "Second", null);
 
 		List<ActivityCommentResponse> comments = activityCommentService.list(activity.getId());
 
@@ -112,7 +114,7 @@ class ActivityCommentServiceIntegrationTest extends IntegrationTest {
 	void authorCanDeleteOwnComment() {
 		User athlete = newUser("delete-own-athlete@example.cc");
 		Activity activity = newActivity(athlete);
-		ActivityCommentResponse comment = activityCommentService.create(activity, athlete, "Oops");
+		ActivityCommentResponse comment = activityCommentService.create(activity, athlete, "Oops", null);
 
 		activityCommentService.delete(activity.getId(), comment.id(), athlete.getId());
 
@@ -125,10 +127,78 @@ class ActivityCommentServiceIntegrationTest extends IntegrationTest {
 		User coach = newUser("delete-other-coach@example.cc");
 		grantRelationship(athlete, coach, ShareRole.COACH);
 		Activity activity = newActivity(athlete);
-		ActivityCommentResponse comment = activityCommentService.create(activity, athlete, "Mine");
+		ActivityCommentResponse comment = activityCommentService.create(activity, athlete, "Mine", null);
 
 		assertThatThrownBy(() -> activityCommentService.delete(activity.getId(), comment.id(), coach.getId()))
 				.isInstanceOf(ForbiddenException.class);
 		assertThat(activityCommentService.list(activity.getId())).hasSize(1);
+	}
+
+	@Test
+	void replyIsAttachedToItsParent() {
+		User athlete = newUser("reply-athlete@example.cc");
+		User coach = newUser("reply-coach@example.cc");
+		grantRelationship(athlete, coach, ShareRole.COACH);
+		Activity activity = newActivity(athlete);
+		ActivityCommentResponse root = activityCommentService.create(activity, coach, "Nice work", null);
+
+		ActivityCommentResponse reply = activityCommentService.create(activity, athlete, "Thanks!", root.id());
+
+		assertThat(reply.parentId()).isEqualTo(root.id());
+		List<ActivityCommentResponse> comments = activityCommentService.list(activity.getId());
+		assertThat(comments).extracting(ActivityCommentResponse::parentId).containsExactly(null, root.id());
+	}
+
+	@Test
+	void topLevelCommentHasNoParentId() {
+		User athlete = newUser("no-parent-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+
+		ActivityCommentResponse comment = activityCommentService.create(activity, athlete, "Felt great", null);
+
+		assertThat(comment.parentId()).isNull();
+	}
+
+	@Test
+	void cannotReplyToAReply() {
+		User athlete = newUser("no-nested-reply-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		ActivityCommentResponse root = activityCommentService.create(activity, athlete, "Root", null);
+		ActivityCommentResponse reply = activityCommentService.create(activity, athlete, "Reply", root.id());
+
+		assertThatThrownBy(() -> activityCommentService.create(activity, athlete, "Reply to a reply", reply.id()))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void cannotReplyToACommentOnAnotherActivity() {
+		User athlete = newUser("cross-activity-reply-athlete@example.cc");
+		Activity activityOne = newActivity(athlete);
+		Activity activityTwo = newActivity(athlete);
+		ActivityCommentResponse root = activityCommentService.create(activityOne, athlete, "On activity one", null);
+
+		assertThatThrownBy(() -> activityCommentService.create(activityTwo, athlete, "Reply", root.id()))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void replyingToAnUnknownParentIsRejected() {
+		User athlete = newUser("unknown-parent-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+
+		assertThatThrownBy(() -> activityCommentService.create(activity, athlete, "Reply", "cmt_doesnotexist"))
+				.isInstanceOf(NotFoundException.class);
+	}
+
+	@Test
+	void deletingARootCommentCascadesToItsReplies() {
+		User athlete = newUser("cascade-delete-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		ActivityCommentResponse root = activityCommentService.create(activity, athlete, "Root", null);
+		activityCommentService.create(activity, athlete, "Reply", root.id());
+
+		activityCommentService.delete(activity.getId(), root.id(), athlete.getId());
+
+		assertThat(activityCommentService.list(activity.getId())).isEmpty();
 	}
 }

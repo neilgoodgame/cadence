@@ -92,6 +92,13 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
 
+    # Synthetic account with no real inbox and no usable password, created via the "virtual
+    # coach" flow (accounts.delegation.create_virtual_coach) for an MCP client to authenticate
+    # as. Never logs into the web app - can only authenticate via the delegated personal access
+    # token minted alongside it. Restricted to exactly one coach relationship (see
+    # ShareListCreateView.post's guard); a real coach is not restricted this way.
+    is_virtual = models.BooleanField(default=False)
+
     objects = UserManager()
 
     USERNAME_FIELD = "email"
@@ -113,6 +120,14 @@ class PersonalAccessToken(PrefixedIDModel):
     created = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateField(null=True, blank=True)
     last_used = models.DateField(null=True, blank=True)
+    # Whose data this token authorizes, when it differs from `user` - a coach's (real or
+    # virtual) token scoped to a specific athlete via an active UserRelationship at creation
+    # time (see accounts.delegation.require_active_coach_access). Null for an ordinary
+    # self-scoped token. `delegated_athlete_id` (the plain column) is what auth-path code reads
+    # to avoid an extra join on every request; `delegated_athlete` is the full relation.
+    delegated_athlete = models.ForeignKey(
+        User, on_delete=models.CASCADE, null=True, blank=True, related_name="delegated_tokens"
+    )
 
     def __str__(self) -> str:
         return f"{self.name} ({self.prefix}…)"

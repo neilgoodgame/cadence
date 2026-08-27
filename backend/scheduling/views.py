@@ -85,6 +85,11 @@ class ScheduledWorkoutListCreateView(APIView):
 
 
 class ScheduledWorkoutDetailView(APIView):
+    def get(self, request: Request, id: str) -> Response:
+        scheduled = get_object_or_404(ScheduledWorkout.objects.select_related("assigned_by"), pk=id)
+        _require_read(request, scheduled.athlete_id)
+        return Response(ScheduledWorkoutSerializer(scheduled).data)
+
     def patch(self, request: Request, id: str) -> Response:
         scheduled = get_object_or_404(ScheduledWorkout, pk=id)
         sub, _ = get_effective_athlete_id(request)

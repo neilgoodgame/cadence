@@ -9,7 +9,6 @@ import com.cadence.api.mcp.dispatch.McpScopes;
 import com.cadence.api.mcp.dispatch.McpToolAuthorizer;
 import com.cadence.api.mcp.dto.McpAthleteProfile;
 import com.cadence.api.security.AccessGuard;
-import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
 import java.util.List;
@@ -48,7 +47,17 @@ public class AthleteProfileTools {
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public McpAthleteProfile getMe() {
 		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
-		User user = userService.getById(AuthContextHolder.get().sub());
+		// Deliberately the delegated athlete (effectiveAthleteId), not AuthContextHolder.get().sub()
+		// - matches this file's other two tools, and this tool's own docstring promises the
+		// training context needed "to interpret other tools' numbers", which are all athlete-scoped
+		// too. An earlier version of this tool used sub (the real, possibly-coach principal)
+		// instead - correct only while no MCP credential could actually delegate, which stopped
+		// being true once PAT/OAuth2 delegation shipped (see AuthContext.java's Javadoc);
+		// surfaced live when a virtual coach's get_me came back as its own empty profile instead
+		// of the athlete's.
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireRead(athleteId);
+		User user = userService.getById(athleteId);
 		return new McpAthleteProfile(
 				user.getId(),
 				user.getName(),

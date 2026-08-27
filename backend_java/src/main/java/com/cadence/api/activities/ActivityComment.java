@@ -31,6 +31,13 @@ public class ActivityComment extends PrefixedIdEntity {
 	@JoinColumn(name = "author_id", nullable = false)
 	private User author;
 
+	/** Null for a top-level comment. Single-level threading only - a reply's own parent is
+	 * always null (enforced in ActivityCommentService, not the DB), so this never points at
+	 * another reply. */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "parent_id")
+	private ActivityComment parent;
+
 	@Column(nullable = false)
 	private String text;
 
@@ -63,6 +70,14 @@ public class ActivityComment extends PrefixedIdEntity {
 
 	public void setAuthor(User author) {
 		this.author = author;
+	}
+
+	public ActivityComment getParent() {
+		return parent;
+	}
+
+	public void setParent(ActivityComment parent) {
+		this.parent = parent;
 	}
 
 	public String getText() {

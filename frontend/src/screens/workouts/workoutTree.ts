@@ -233,8 +233,20 @@ export function targetInfo(step: LeafStep): TargetInfo {
   return { primary, secondary, color };
 }
 
+// Display only - shows km once it's the more readable unit, but only metres is ever stored
+// (see StepDrawer's DistanceInput), so this doesn't reflect which unit a step was authored in.
+function fmtDistanceMeters(meters: number): string {
+  if (meters >= 1000) return `${Math.round((meters / 1000) * 100) / 100} km`;
+  return `${meters} m`;
+}
+
 export function stepDetail(step: LeafStep): string {
-  const dur = step.end_type === "time" ? fmtDuration(step.duration || 0) : step.end_type === "distance" ? `${step.distance || 0} m` : "Manual";
+  const dur =
+    step.end_type === "time"
+      ? fmtDuration(step.duration || 0)
+      : step.end_type === "distance"
+        ? fmtDistanceMeters(step.distance || 0)
+        : "Manual";
   const t = targetInfo(step);
   return dur + " · " + t.primary + (t.secondary ? " · " + t.secondary : "");
 }
