@@ -38,7 +38,7 @@ public interface WorkoutMapper {
 							? buildLevel(byParent, s.getId())
 							: List.of();
 					return new WorkoutStepDto(dto.kind(), dto.endType(), dto.duration(), dto.distance(),
-							dto.targetType(), dto.targetLow(), dto.targetHigh(), dto.target2Type(),
+							dto.targetType(), dto.targetLow(), dto.targetHigh(), dto.powerUnit(), dto.target2Type(),
 							dto.target2Low(), dto.target2High(), dto.repeat(), dto.note(), children);
 				})
 				.toList();

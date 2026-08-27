@@ -8,10 +8,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from activities.models import Activity
+from athletes.zones import reference_for
 from core.auth_context import get_effective_athlete_id
 from core.permissions import user_may_read, user_may_write
 
-from .calculations import compute_chart_preview, compute_duration_and_tss
+from .calculations import compute_chart_preview, compute_duration_and_tss, normalize_power_units
 from .models import Workout, WorkoutFolder, WorkoutStep
 from .serializers import (
     WorkoutCreateSerializer,
@@ -67,6 +68,7 @@ def _create_steps(workout: Workout, steps_data: list[dict[str, Any]], parent: Wo
             target_type=step.get("target_type"),
             target_low=step.get("target_low"),
             target_high=step.get("target_high"),
+            power_unit=step.get("power_unit") or "pct_ftp",
             target2_type=step.get("target2_type") or "none",
             target2_low=step.get("target2_low"),
             target2_high=step.get("target2_high"),
@@ -81,10 +83,13 @@ def _replace_steps(workout: Workout, steps_data: list[dict[str, Any]]) -> None:
     cleaned = clean_step_tree(steps_data)
     workout.steps.all().delete()
     _create_steps(workout, cleaned)
-    duration, tss = compute_duration_and_tss(cleaned)
+    zone_type = "bike_power" if workout.sport == "bike" else "run_power"
+    power_reference = reference_for(workout.created_by, zone_type)
+    normalized = normalize_power_units(cleaned, power_reference)
+    duration, tss = compute_duration_and_tss(normalized)
     workout.duration = duration
     workout.tss = tss
-    workout.chart_preview = compute_chart_preview(cleaned)
+    workout.chart_preview = compute_chart_preview(normalized)
     workout.save(update_fields=["duration", "tss", "chart_preview", "updated_at"])
 
 

@@ -112,10 +112,13 @@ public class WorkoutService {
 		workout.getSteps().clear();
 		addSteps(workout, stepDtos, null);
 		Double thresholdPaceSecPerKm = zoneService.referenceFor(athlete, ZoneType.PACE);
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(stepDtos, thresholdPaceSecPerKm);
+		ZoneType powerZoneType = workout.getSport() == Sport.BIKE ? ZoneType.BIKE_POWER : ZoneType.RUN_POWER;
+		Double powerReferenceWatts = zoneService.referenceFor(athlete, powerZoneType);
+		List<WorkoutStepDto> normalized = WorkoutCalculations.normalizePowerUnits(stepDtos, powerReferenceWatts);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(normalized, thresholdPaceSecPerKm);
 		workout.setDuration(result.durationSeconds());
 		workout.setTss(result.tss());
-		workout.setChartPreview(WorkoutCalculations.computeChartPreview(stepDtos));
+		workout.setChartPreview(WorkoutCalculations.computeChartPreview(normalized));
 	}
 
 	/**
@@ -140,6 +143,7 @@ public class WorkoutService {
 			step.setTargetType(dto.targetType());
 			step.setTargetLow(dto.targetLow());
 			step.setTargetHigh(dto.targetHigh());
+			step.setPowerUnit(dto.powerUnit() != null ? dto.powerUnit() : PowerUnit.PCT_FTP);
 			step.setTarget2Type(dto.target2Type() != null ? dto.target2Type() : Target2Type.NONE);
 			step.setTarget2Low(dto.target2Low());
 			step.setTarget2High(dto.target2High());

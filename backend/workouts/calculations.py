@@ -1,4 +1,32 @@
+import copy
 from typing import Any
+
+# Fallback power reference (watts) used to normalize a "watts"-unit step when the athlete
+# hasn't set a real ftp/critical_run_power - matches the display-only placeholder already used
+# on the frontend (frontend/src/screens/workouts/workoutTree.ts, workoutExport.ts).
+_DEFAULT_POWER_REFERENCE = 265
+
+
+def normalize_power_units(steps: list[dict[str, Any]], power_reference: float | None) -> list[dict[str, Any]]:
+    """Returns a copy of `steps` where every "watts"-unit power leaf's target_low/target_high
+    are replaced by their %FTP-equivalent, so duration/TSS/chart-preview math (which only ever
+    understands %-space) can stay completely unit-blind. The real, persisted WorkoutStep rows
+    keep whatever the athlete actually entered - this copy is ephemeral, used only to feed
+    compute_duration_and_tss/compute_chart_preview.
+    """
+    reference = power_reference if power_reference is not None else _DEFAULT_POWER_REFERENCE
+    out: list[dict[str, Any]] = []
+    for step in steps:
+        step = copy.copy(step)
+        if step.get("kind") == "repeat":
+            step["children"] = normalize_power_units(step.get("children") or [], power_reference)
+        elif step.get("target_type") == "power" and step.get("power_unit") == "watts":
+            low = step.get("target_low")
+            high = step.get("target_high")
+            step["target_low"] = (low / reference) * 100 if low is not None else None
+            step["target_high"] = (high / reference) * 100 if high is not None else None
+        out.append(step)
+    return out
 
 
 def _leaf_duration(step: dict[str, Any]) -> int:

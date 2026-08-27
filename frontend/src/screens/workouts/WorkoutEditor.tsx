@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InferredWorkout } from "../../api/activities";
 import { createWorkout, getWorkout, updateWorkout, type WorkoutInput } from "../../api/workouts";
@@ -19,6 +19,7 @@ import {
   fmtDuration,
   mapSteps,
   moveStep,
+  normalizePowerUnits,
   removeStep,
   stepCount,
   stripIds,
@@ -79,8 +80,10 @@ function WorkoutEditorForm({
   const [assignOpen, setAssignOpen] = useState(false);
 
   const effectiveIsNew = currentId === null;
-  const totalDur = totalDuration(steps);
-  const tss = totalTss(steps);
+  const powerReferenceWatts = sport === "bike" ? (user?.ftp ?? null) : (user?.critical_run_power ?? null);
+  const normalizedSteps = useMemo(() => normalizePowerUnits(steps, powerReferenceWatts), [steps, powerReferenceWatts]);
+  const totalDur = totalDuration(normalizedSteps);
+  const tss = totalTss(normalizedSteps);
   const count = stepCount(steps);
   const selected = findStep(steps, selectedId);
 
@@ -210,12 +213,12 @@ function WorkoutEditorForm({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
           <div style={{ background: "var(--elev)", borderRadius: 14, padding: layout === "chart" ? "20px 22px 16px" : "14px 18px" }}>
-            <WorkoutChart steps={steps} selectedId={selectedId} onSelect={setSelectedId} compact={layout === "list"} />
+            <WorkoutChart steps={normalizedSteps} selectedId={selectedId} onSelect={setSelectedId} compact={layout === "list"} />
           </div>
 
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 12 }}>Structure</div>
-            <WorkoutStructureList steps={steps} actions={actions} />
+            <WorkoutStructureList steps={steps} actions={actions} powerReferenceWatts={powerReferenceWatts} />
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
               <button onClick={() => setSteps([...steps, defaultLeaf("warmup", sport)])} style={dashedBtnStyle()}>
                 + Warm-up
@@ -245,6 +248,7 @@ function WorkoutEditorForm({
               setSelectedId(null);
             }}
             onClose={() => setSelectedId(null)}
+            powerReferenceWatts={powerReferenceWatts}
           />
         </div>
       </div>

@@ -28,6 +28,7 @@
         "target_type": { "type": ["string", "null"], "enum": ["power", "hr", "pace", "cadence", "open", null] },
         "target_low": { "type": ["number", "null"] },
         "target_high": { "type": ["number", "null"] },
+        "power_unit": { "type": ["string", "null"], "enum": ["pct_ftp", "watts", null], "description": "Only meaningful when target_type=power." },
         "target2_type": { "type": ["string", "null"], "enum": ["cadence", "none", null] },
         "target2_low": { "type": ["number", "null"] },
         "target2_high": { "type": ["number", "null"] },

@@ -35,8 +35,8 @@ class WorkoutLibraryIntegrationTest extends IntegrationTest {
 
 	private static WorkoutStepDto leaf(StepKind kind, StepEndType endType, Integer duration, TargetType targetType,
 			Double low, Double high) {
-		return new WorkoutStepDto(kind, endType, duration, null, targetType, low, high, Target2Type.NONE, null, null,
-				1, "", List.of());
+		return new WorkoutStepDto(kind, endType, duration, null, targetType, low, high, PowerUnit.PCT_FTP,
+				Target2Type.NONE, null, null, 1, "", List.of());
 	}
 
 	private User saveAthlete(String email) {

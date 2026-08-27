@@ -46,9 +46,19 @@ function RowControls({ id, actions }: { id: string; actions: StructureActions })
   );
 }
 
-function LeafRow({ step, actions, readOnly }: { step: Leaf; actions: StructureActions; readOnly: boolean }) {
+function LeafRow({
+  step,
+  actions,
+  readOnly,
+  powerReferenceWatts,
+}: {
+  step: Leaf;
+  actions: StructureActions;
+  readOnly: boolean;
+  powerReferenceWatts: number | null;
+}) {
   const selected = step.id === actions.selectedId;
-  const t = targetInfo(step);
+  const t = targetInfo(step, powerReferenceWatts);
   return (
     <div
       onClick={() => actions.onSelect(step.id)}
@@ -69,14 +79,26 @@ function LeafRow({ step, actions, readOnly }: { step: Leaf; actions: StructureAc
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{kindLabel(step.kind)}</span>
           {step.note && <span style={{ fontSize: 11, color: "var(--ink3)" }}>✎ {step.note}</span>}
         </div>
-        <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--ink2)" }}>{stepDetail(step)}</div>
+        <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--ink2)" }}>{stepDetail(step, powerReferenceWatts)}</div>
       </div>
       {!readOnly && <RowControls id={step.id} actions={actions} />}
     </div>
   );
 }
 
-function GroupRow({ step, actions, depth, readOnly }: { step: Group; actions: StructureActions; depth: number; readOnly: boolean }) {
+function GroupRow({
+  step,
+  actions,
+  depth,
+  readOnly,
+  powerReferenceWatts,
+}: {
+  step: Group;
+  actions: StructureActions;
+  depth: number;
+  readOnly: boolean;
+  powerReferenceWatts: number | null;
+}) {
   const selected = step.id === actions.selectedId;
   return (
     <div>
@@ -129,7 +151,7 @@ function GroupRow({ step, actions, depth, readOnly }: { step: Group; actions: St
           borderLeft: `2px solid ${depth === 0 ? "var(--line)" : "rgba(236,74,38,0.25)"}`,
         }}
       >
-        <WorkoutStructureList steps={step.children} actions={actions} depth={depth + 1} readOnly={readOnly} />
+        <WorkoutStructureList steps={step.children} actions={actions} depth={depth + 1} readOnly={readOnly} powerReferenceWatts={powerReferenceWatts} />
         {!readOnly && (
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -156,19 +178,21 @@ export function WorkoutStructureList({
   actions,
   depth = 0,
   readOnly = false,
+  powerReferenceWatts = null,
 }: {
   steps: Step[];
   actions: StructureActions;
   depth?: number;
   readOnly?: boolean;
+  powerReferenceWatts?: number | null;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {steps.map((step) =>
         isGroup(step) ? (
-          <GroupRow key={step.id} step={step} actions={actions} depth={depth} readOnly={readOnly} />
+          <GroupRow key={step.id} step={step} actions={actions} depth={depth} readOnly={readOnly} powerReferenceWatts={powerReferenceWatts} />
         ) : (
-          <LeafRow key={step.id} step={step} actions={actions} readOnly={readOnly} />
+          <LeafRow key={step.id} step={step} actions={actions} readOnly={readOnly} powerReferenceWatts={powerReferenceWatts} />
         ),
       )}
     </div>

@@ -208,14 +208,15 @@ public class WorkoutInferenceService {
 	}
 
 	private static WorkoutStepDto leafToStep(Node.LeafCandidate leaf) {
+		// Inference always reconstructs steps in %-space (pct-of-threshold), never watts.
 		return new WorkoutStepDto(classifyKind(leaf), StepEndType.TIME, leaf.duration(), null, leaf.targetType(),
-				leaf.pct(), leaf.pct(), Target2Type.NONE, null, null, 1, "", null);
+				leaf.pct(), leaf.pct(), PowerUnit.PCT_FTP, Target2Type.NONE, null, null, 1, "", null);
 	}
 
 	private WorkoutStepDto groupToStep(Node.Group group) {
 		List<WorkoutStepDto> children = group.children().stream().map(this::nodeToStep).toList();
-		return new WorkoutStepDto(StepKind.REPEAT, null, null, null, null, null, null, Target2Type.NONE, null, null,
-				group.repeat(), "", children);
+		return new WorkoutStepDto(StepKind.REPEAT, null, null, null, null, null, null, PowerUnit.PCT_FTP,
+				Target2Type.NONE, null, null, group.repeat(), "", children);
 	}
 
 	private WorkoutStepDto nodeToStep(Node node) {
@@ -227,7 +228,7 @@ public class WorkoutInferenceService {
 
 	private static WorkoutStepDto withKind(WorkoutStepDto dto, StepKind kind) {
 		return new WorkoutStepDto(kind, dto.endType(), dto.duration(), dto.distance(), dto.targetType(),
-				dto.targetLow(), dto.targetHigh(), dto.target2Type(), dto.target2Low(), dto.target2High(),
-				dto.repeat(), dto.note(), dto.children());
+				dto.targetLow(), dto.targetHigh(), dto.powerUnit(), dto.target2Type(), dto.target2Low(),
+				dto.target2High(), dto.repeat(), dto.note(), dto.children());
 	}
 }

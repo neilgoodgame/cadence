@@ -10,13 +10,13 @@ class WorkoutCalculationsTest {
 
 	private static WorkoutStepDto leaf(StepKind kind, StepEndType endType, Integer duration, Integer distance,
 			TargetType targetType, Double low, Double high) {
-		return new WorkoutStepDto(kind, endType, duration, distance, targetType, low, high, Target2Type.NONE, null,
-				null, 1, "", List.of());
+		return new WorkoutStepDto(kind, endType, duration, distance, targetType, low, high, PowerUnit.PCT_FTP,
+				Target2Type.NONE, null, null, 1, "", List.of());
 	}
 
 	private static WorkoutStepDto group(int repeat, WorkoutStepDto... children) {
-		return new WorkoutStepDto(StepKind.REPEAT, null, null, null, null, null, null, Target2Type.NONE, null, null,
-				repeat, "", List.of(children));
+		return new WorkoutStepDto(StepKind.REPEAT, null, null, null, null, null, null, PowerUnit.PCT_FTP,
+				Target2Type.NONE, null, null, repeat, "", List.of(children));
 	}
 
 	@Test
@@ -113,5 +113,50 @@ class WorkoutCalculationsTest {
 
 		assertThat(result.durationSeconds()).isEqualTo(2 * (4 * 240 + 200));
 		assertThat(result.tss()).isEqualTo(56);
+	}
+
+	private static WorkoutStepDto wattsLeaf(StepKind kind, Integer duration, Double low, Double high) {
+		return new WorkoutStepDto(kind, StepEndType.TIME, duration, null, TargetType.POWER, low, high,
+				PowerUnit.WATTS, Target2Type.NONE, null, null, 1, "", List.of());
+	}
+
+	@Test
+	void normalizePowerUnitsConvertsWattsLeafToPctFtpEquivalent() {
+		List<WorkoutStepDto> normalized = WorkoutCalculations
+				.normalizePowerUnits(List.of(wattsLeaf(StepKind.BLOCK, 300, 200.0, 250.0)), 250.0);
+
+		assertThat(normalized.get(0).targetLow()).isEqualTo(80.0);
+		assertThat(normalized.get(0).targetHigh()).isEqualTo(100.0);
+		assertThat(normalized.get(0).powerUnit()).isEqualTo(PowerUnit.PCT_FTP);
+	}
+
+	@Test
+	void normalizePowerUnitsFallsBackToPlaceholderReferenceWhenNoneGiven() {
+		List<WorkoutStepDto> normalized = WorkoutCalculations
+				.normalizePowerUnits(List.of(wattsLeaf(StepKind.BLOCK, 300, 265.0, 265.0)), null);
+
+		assertThat(normalized.get(0).targetLow()).isEqualTo(100.0);
+	}
+
+	@Test
+	void normalizePowerUnitsLeavesPctFtpAndNonPowerStepsUntouched() {
+		WorkoutStepDto pctFtp = leaf(StepKind.BLOCK, StepEndType.TIME, 300, null, TargetType.POWER, 80.0, 90.0);
+		WorkoutStepDto hr = leaf(StepKind.BLOCK, StepEndType.TIME, 300, null, TargetType.HR, 70.0, 70.0);
+
+		List<WorkoutStepDto> normalized = WorkoutCalculations.normalizePowerUnits(List.of(pctFtp, hr), 250.0);
+
+		assertThat(normalized).containsExactly(pctFtp, hr);
+	}
+
+	@Test
+	void normalizePowerUnitsHandlesWattsLeavesNestedInARepeatGroupAndMatchesPctFtpTss() {
+		List<WorkoutStepDto> wattsSteps = List.of(group(4, wattsLeaf(StepKind.BLOCK, 300, 250.0, 250.0)));
+		List<WorkoutStepDto> pctSteps = List
+				.of(group(4, leaf(StepKind.BLOCK, StepEndType.TIME, 300, null, TargetType.POWER, 100.0, 100.0)));
+
+		List<WorkoutStepDto> normalizedWatts = WorkoutCalculations.normalizePowerUnits(wattsSteps, 250.0);
+
+		assertThat(WorkoutCalculations.computeDurationAndTss(normalizedWatts, null))
+				.isEqualTo(WorkoutCalculations.computeDurationAndTss(pctSteps, null));
 	}
 }

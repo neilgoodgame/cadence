@@ -149,6 +149,59 @@ class ExportImportRoundTripTests(TestCase):
         return Activity.objects.get(athlete=self.source, name="Triathlon Bike Leg").id
 
 
+class ImportWorkoutPowerUnitTests(TestCase):
+    """_import_workouts (unlike _replace_steps) builds its own steps directly from the
+    imported file rather than going through the normal write path - a watts-unit power step's
+    duration/TSS must still come out normalized to the *target* athlete's real FTP, not silently
+    misinterpreted as a raw percentage (see workouts/calculations.py's normalize_power_units)."""
+
+    def setUp(self):
+        self.source = _verified_user(email="watts-source@example.cc", password="x", name="Source")
+        self.target = _verified_user(email="watts-target@example.cc", password="x", name="Target", ftp=250)
+
+        workout = Workout.objects.create(
+            created_by=self.source, name="Watts block", sport="bike", duration=1200, tss=33
+        )
+        group = WorkoutStep.objects.create(workout=workout, order=0, kind="repeat", repeat=4)
+        WorkoutStep.objects.create(
+            workout=workout,
+            parent=group,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            power_unit="watts",
+            target_low=250,
+            target_high=250,
+        )
+
+    def test_import_normalizes_watts_unit_step_against_the_target_athletes_real_ftp(self):
+        source_client = _bearer_client(self.source)
+        start = source_client.post("/v1/export")
+        export_id = start.json()["id"]
+        self.assertEqual(source_client.get(f"/v1/export/{export_id}").json()["status"], "ready")
+        content = b"".join(source_client.get(f"/v1/export/{export_id}/download").streaming_content)
+
+        target_client = _bearer_client(self.target)
+        upload = target_client.post(
+            "/v1/import", {"file": SimpleUploadedFile("export.json.gz", content)}, format="multipart"
+        )
+        import_id = upload.json()["id"]
+        result = target_client.get(f"/v1/import/{import_id}").json()
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["counts"]["items_skipped"], 0)
+
+        imported = Workout.objects.get(created_by=self.target, name="Watts block")
+        # 250W at a 250W target FTP = 100% FTP, 4x5min -> same worked example as
+        # workouts/tests.py's ComputeDurationAndTssTests.test_worked_example_repeat_group.
+        self.assertEqual(imported.duration, 1200)
+        self.assertEqual(imported.tss, 33)
+        leaf = imported.steps.get(kind="block")
+        self.assertEqual(leaf.power_unit, "watts")
+        self.assertEqual(leaf.target_low, 250)  # the real, persisted value stays in watts
+
+
 class ImportActivityDedupTests(TestCase):
     """Activities are deduplicated against the target athlete's existing ones by
     (date, sport, distance_km, moving_time) before creating a row - re-importing an athlete's

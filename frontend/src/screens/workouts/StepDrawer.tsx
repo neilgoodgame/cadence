@@ -1,6 +1,11 @@
 import { useState, type CSSProperties } from "react";
-import type { StepEndType, StepKind, Target2Type, TargetType } from "../../api/types";
+import type { PowerUnit, StepEndType, StepKind, Target2Type, TargetType } from "../../api/types";
 import { fmtDuration, isGroup, parseDuration, targetInfo, type Group, type Leaf, type Step } from "./workoutTree";
+
+// Fallback power reference (watts) used to convert a target when the toggle below is switched
+// and the athlete hasn't set a real FTP/critical_run_power - matches the placeholder used
+// throughout workoutTree.ts/workoutExport.ts for the same "no real threshold yet" case.
+const DEFAULT_POWER_REFERENCE = 265;
 
 const KINDS: StepKind[] = ["warmup", "block", "rec", "cool"];
 const END_TYPES: StepEndType[] = ["time", "distance", "manual"];
@@ -91,11 +96,13 @@ export function StepDrawer({
   onChange,
   onRemove,
   onClose,
+  powerReferenceWatts = null,
 }: {
   step: Step | null;
   onChange: (step: Step) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
+  powerReferenceWatts?: number | null;
 }) {
   if (!step) {
     return (
@@ -110,7 +117,7 @@ export function StepDrawer({
   return isGroup(step) ? (
     <GroupDrawer step={step} onChange={onChange} onRemove={onRemove} onClose={onClose} />
   ) : (
-    <LeafDrawer step={step} onChange={onChange} onRemove={onRemove} onClose={onClose} />
+    <LeafDrawer step={step} onChange={onChange} onRemove={onRemove} onClose={onClose} powerReferenceWatts={powerReferenceWatts} />
   );
 }
 
@@ -185,10 +192,32 @@ function GroupDrawer({ step, onChange, onRemove, onClose }: { step: Group; onCha
   );
 }
 
-function LeafDrawer({ step, onChange, onRemove, onClose }: { step: Leaf; onChange: (step: Step) => void; onRemove: (id: string) => void; onClose: () => void }) {
+function LeafDrawer({
+  step,
+  onChange,
+  onRemove,
+  onClose,
+  powerReferenceWatts = null,
+}: {
+  step: Leaf;
+  onChange: (step: Step) => void;
+  onRemove: (id: string) => void;
+  onClose: () => void;
+  powerReferenceWatts?: number | null;
+}) {
   const hasRange = step.target_type !== "open";
   const isRamp = step.target_low !== step.target_high;
-  const preview = targetInfo(step);
+  const preview = targetInfo(step, powerReferenceWatts);
+  const powerReference = powerReferenceWatts ?? DEFAULT_POWER_REFERENCE;
+
+  function setPowerUnit(unit: PowerUnit) {
+    if (unit === step.power_unit) return;
+    const lo = step.target_low;
+    const hi = step.target_high;
+    const convert = (v: number | null) =>
+      v == null ? null : unit === "watts" ? Math.round((powerReference * v) / 100) : Math.round((v / powerReference) * 100);
+    onChange({ ...step, power_unit: unit, target_low: convert(lo), target_high: convert(hi) });
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -246,6 +275,31 @@ function LeafDrawer({ step, onChange, onRemove, onClose }: { step: Leaf; onChang
         </select>
       </div>
 
+      {step.target_type === "power" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={labelStyle}>POWER UNIT</label>
+          <div style={{ display: "flex", gap: 4, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 8, padding: 3, width: "fit-content" }}>
+            {(["pct_ftp", "watts"] as PowerUnit[]).map((u) => (
+              <div
+                key={u}
+                onClick={() => setPowerUnit(u)}
+                style={{
+                  padding: "5px 12px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  color: step.power_unit === u ? "var(--ink)" : "var(--ink3)",
+                  background: step.power_unit === u ? "var(--card)" : "transparent",
+                }}
+              >
+                {u === "pct_ftp" ? "% FTP" : "Watts"}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {hasRange && (
         <>
           <label style={{ fontSize: 11.5, color: "var(--ink2)", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
@@ -258,7 +312,7 @@ function LeafDrawer({ step, onChange, onRemove, onClose }: { step: Leaf; onChang
           </label>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={labelStyle}>{rampFromLabel[step.target_type]}</label>
+              <label style={labelStyle}>{step.target_type === "power" && step.power_unit === "watts" ? "FROM WATTS" : rampFromLabel[step.target_type]}</label>
               <input
                 type="number"
                 value={step.target_low ?? ""}

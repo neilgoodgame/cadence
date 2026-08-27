@@ -24,6 +24,10 @@ def _clean_leaf(step: dict[str, Any]) -> dict[str, Any]:
     if target2_type not in dict(WorkoutStep.TARGET2_TYPE_CHOICES):
         raise serializers.ValidationError({"target2_type": "target2_type must be one of cadence, none."})
 
+    power_unit = step.get("power_unit") or "pct_ftp"
+    if power_unit not in dict(WorkoutStep.POWER_UNIT_CHOICES):
+        raise serializers.ValidationError({"power_unit": "power_unit must be one of pct_ftp, watts."})
+
     return {
         "kind": step["kind"],
         "end_type": end_type,
@@ -32,6 +36,7 @@ def _clean_leaf(step: dict[str, Any]) -> dict[str, Any]:
         "target_type": target_type,
         "target_low": step.get("target_low"),
         "target_high": step.get("target_high"),
+        "power_unit": power_unit,
         "target2_type": target2_type,
         "target2_low": step.get("target2_low"),
         "target2_high": step.get("target2_high"),
@@ -53,6 +58,7 @@ def _clean_group(step: dict[str, Any]) -> dict[str, Any]:
         "target_type": "",
         "target_low": None,
         "target_high": None,
+        "power_unit": "pct_ftp",
         "target2_type": "none",
         "target2_low": None,
         "target2_high": None,
@@ -98,6 +104,7 @@ def build_step_tree(workout: Workout) -> list[dict[str, Any]]:
                 "target_type": s.target_type,
                 "target_low": s.target_low,
                 "target_high": s.target_high,
+                "power_unit": s.power_unit,
                 "target2_type": s.target2_type,
                 "target2_low": s.target2_low,
                 "target2_high": s.target2_high,
@@ -125,6 +132,7 @@ class WorkoutStepSerializer(serializers.Serializer):
     target_type = serializers.CharField(allow_null=True)
     target_low = serializers.FloatField(allow_null=True)
     target_high = serializers.FloatField(allow_null=True)
+    power_unit = serializers.CharField()
     target2_type = serializers.CharField()
     target2_low = serializers.FloatField(allow_null=True)
     target2_high = serializers.FloatField(allow_null=True)

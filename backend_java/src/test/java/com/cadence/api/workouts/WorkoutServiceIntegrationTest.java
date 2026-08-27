@@ -26,18 +26,18 @@ class WorkoutServiceIntegrationTest extends IntegrationTest {
 
 	private static WorkoutStepDto leaf(StepKind kind, StepEndType endType, Integer duration, TargetType targetType,
 			Double low, Double high) {
-		return new WorkoutStepDto(kind, endType, duration, null, targetType, low, high, Target2Type.NONE, null, null,
-				1, "", List.of());
+		return new WorkoutStepDto(kind, endType, duration, null, targetType, low, high, PowerUnit.PCT_FTP,
+				Target2Type.NONE, null, null, 1, "", List.of());
 	}
 
 	private static WorkoutStepDto distanceLeaf(Integer distance, TargetType targetType, Double low, Double high) {
 		return new WorkoutStepDto(StepKind.BLOCK, StepEndType.DISTANCE, null, distance, targetType, low, high,
-				Target2Type.NONE, null, null, 1, "", List.of());
+				PowerUnit.PCT_FTP, Target2Type.NONE, null, null, 1, "", List.of());
 	}
 
 	private static WorkoutStepDto group(int repeat, WorkoutStepDto... children) {
-		return new WorkoutStepDto(StepKind.REPEAT, null, null, null, null, null, null, Target2Type.NONE, null, null,
-				repeat, "", List.of(children));
+		return new WorkoutStepDto(StepKind.REPEAT, null, null, null, null, null, null, PowerUnit.PCT_FTP,
+				Target2Type.NONE, null, null, repeat, "", List.of(children));
 	}
 
 	private User saveAthlete(String email) {
@@ -139,5 +139,34 @@ class WorkoutServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(workout.getDuration()).isEqualTo(0);
 		assertThat(workout.getTss()).isEqualTo(0);
+	}
+
+	private static WorkoutStepDto wattsLeaf(StepKind kind, Integer duration, Double low, Double high) {
+		return new WorkoutStepDto(kind, StepEndType.TIME, duration, null, TargetType.POWER, low, high,
+				PowerUnit.WATTS, Target2Type.NONE, null, null, 1, "", List.of());
+	}
+
+	// A watts-defined power step's duration/TSS must land on the same worked example as
+	// createRoundTripsNestedRepeatGroups' equivalent %FTP block (4x5min @100% of a 250W FTP),
+	// but authored as literal watts against the athlete's real, persisted FTP - and the raw
+	// watts value (not a converted percentage) must be what actually gets persisted.
+	@Test
+	void createNormalizesAWattsUnitPowerStepAgainstTheAthletesRealFtp() {
+		User athlete = saveAthlete("watts-power@example.cc");
+		athlete.setFtp(250);
+		userRepository.save(athlete);
+		List<WorkoutStepDto> steps = List.of(group(4, wattsLeaf(StepKind.BLOCK, 300, 250.0, 250.0)));
+
+		Workout workout = workoutService.createWorkout(athlete,
+				new WorkoutCreateRequest("Watts-defined block", Sport.BIKE, steps, null, null));
+
+		assertThat(workout.getDuration()).isEqualTo(1200);
+		assertThat(workout.getTss()).isEqualTo(33);
+
+		Workout fetched = workoutService.getWorkoutWithSteps(workout.getId());
+		List<WorkoutStepDto> tree = workoutMapper.toStepTree(fetched.getSteps());
+		WorkoutStepDto persistedLeaf = tree.get(0).children().get(0);
+		assertThat(persistedLeaf.powerUnit()).isEqualTo(PowerUnit.WATTS);
+		assertThat(persistedLeaf.targetLow()).isEqualTo(250.0); // the real, persisted value stays in watts
 	}
 }

@@ -1,22 +1,39 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import type { WorkoutSport } from "../../api/types";
-import type { Step } from "./workoutTree";
-import { buildFixtureJson, buildTcx, buildZwo, download } from "./workoutExport";
+import { useAuth } from "../../auth/AuthContext";
+import { isGroup, type Step } from "./workoutTree";
+import { buildFixtureJson, buildTcx, buildZwo, download, powerReferenceFor, tcxHasApproximateTarget, thresholdsFromAthlete } from "./workoutExport";
+
+function hasPowerStep(steps: Step[]): boolean {
+  return steps.some((s) => (isGroup(s) ? hasPowerStep(s.children as Step[]) : s.target_type === "power"));
+}
 
 export function ExportModal({ name, sport, steps, onClose }: { name: string; sport: WorkoutSport; steps: Step[]; onClose: () => void }) {
+  const { user } = useAuth();
+  const thresholds = thresholdsFromAthlete(user);
+  const powerReference = powerReferenceFor(sport, thresholds);
   const [format, setFormat] = useState<"zwo" | "tcx" | "fixture">("zwo");
+  const [ftpOverrideInput, setFtpOverrideInput] = useState("");
+  const parsedOverride = ftpOverrideInput.trim() === "" ? null : Number(ftpOverrideInput);
+  const ftpOverride = parsedOverride != null && Number.isFinite(parsedOverride) ? parsedOverride : null;
+  const showOverride = hasPowerStep(steps) && format !== "fixture";
   const preview = useMemo(() => {
-    if (format === "zwo") return buildZwo(name, sport, steps);
-    if (format === "tcx") return buildTcx(name, sport, steps);
+    if (format === "zwo") return buildZwo(name, sport, steps, thresholds, ftpOverride);
+    if (format === "tcx") return buildTcx(name, sport, steps, thresholds, ftpOverride);
     return buildFixtureJson(name, sport, steps);
-  }, [format, name, sport, steps]);
+  }, [format, name, sport, steps, thresholds, ftpOverride]);
   const filename = format === "zwo" ? "workout.zwo" : format === "tcx" ? "workout.tcx" : "workout.json";
   const target = format === "zwo" ? "Zwift" : format === "tcx" ? "Garmin Connect" : "test fixture";
+  const powerRefLabel = sport === "bike" ? "FTP" : "critical power";
   const note =
     format === "zwo"
-      ? "Drop the .zwo into Documents/Zwift/Workouts/<id>/ or import via the companion. Non-power targets approximated as %FTP."
+      ? powerReference != null
+        ? `Drop the .zwo into Documents/Zwift/Workouts/<id>/ or import via the companion. %FTP-defined power steps pass straight through by default; watts-defined steps are converted to a fraction using your real ${powerRefLabel} - set an override below to use a different one for this export.`
+        : `Drop the .zwo into Documents/Zwift/Workouts/<id>/ or import via the companion. Non-power targets approximated as %FTP. Set your ${powerRefLabel} in Settings to enable the override below.`
       : format === "tcx"
-        ? "Garmin Connect → Training → Workouts → Import. Non-power targets approximated as %FTP."
+        ? tcxHasApproximateTarget(steps, sport, thresholds)
+          ? `Garmin Connect → Training → Workouts → Import. Targets use your real LTHR/threshold pace/${powerRefLabel} where set; steps without one fall back to an approximate placeholder - set them in Settings for accuracy.`
+          : "Garmin Connect → Training → Workouts → Import. Heart-rate, pace, and power targets all use your real thresholds."
         : "For backend testing: drop the file into backend/workouts/test_fixtures/roundtrip/ to add it as a round-trip inference test case.";
 
   const segBtn = (active: boolean): CSSProperties => ({
@@ -64,6 +81,29 @@ export function ExportModal({ name, sport, steps, onClose }: { name: string; spo
             </div>
           </div>
           <div style={{ fontSize: 12.5, color: "var(--ink2)" }}>{note}</div>
+          {showOverride && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink2)" }}>
+              Override {powerRefLabel} for this export (W)
+              <input
+                type="number"
+                min={1}
+                placeholder={powerReference != null ? String(powerReference) : "not set"}
+                disabled={powerReference == null}
+                value={ftpOverrideInput}
+                onChange={(e) => setFtpOverrideInput(e.target.value)}
+                style={{
+                  width: 90,
+                  padding: "5px 9px",
+                  borderRadius: 7,
+                  border: "1px solid var(--line)",
+                  background: "var(--elev)",
+                  color: "var(--ink)",
+                  fontSize: 12.5,
+                  opacity: powerReference == null ? 0.5 : 1,
+                }}
+              />
+            </label>
+          )}
           <div style={{ background: "#0c0d10", border: "1px solid var(--line)", borderRadius: 11, overflow: "auto", maxHeight: 300 }}>
             <pre style={{ margin: 0, padding: "15px 17px", fontFamily: "monospace", fontSize: 11.5, lineHeight: 1.55, color: "#c9c9c9", whiteSpace: "pre" }}>{preview}</pre>
           </div>

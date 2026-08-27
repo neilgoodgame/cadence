@@ -9,6 +9,7 @@ import com.cadence.api.mcp.dto.McpWorkoutStepInput;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
+import com.cadence.api.workouts.PowerUnit;
 import com.cadence.api.workouts.StepEndType;
 import com.cadence.api.workouts.StepKind;
 import com.cadence.api.workouts.Target2Type;
@@ -98,8 +99,8 @@ public class WorkoutWriteTools {
 		if (kind == StepKind.REPEAT) {
 			List<WorkoutStepDto> children = input.children() == null ? List.of()
 					: input.children().stream().map(WorkoutWriteTools::toStepDto).toList();
-			return new WorkoutStepDto(kind, null, null, null, null, null, null, Target2Type.NONE, null, null,
-					input.repeat() != null ? input.repeat() : 1, noteOrEmpty(input.note()), children);
+			return new WorkoutStepDto(kind, null, null, null, null, null, null, PowerUnit.PCT_FTP, Target2Type.NONE,
+					null, null, input.repeat() != null ? input.repeat() : 1, noteOrEmpty(input.note()), children);
 		}
 		StepEndType endType = parseEnum(StepEndType.class, input.endType(), "end_type", "time, distance, or manual");
 		TargetType targetType = parseEnum(TargetType.class, input.targetType(), "target_type",
@@ -107,8 +108,10 @@ public class WorkoutWriteTools {
 		requireTargetScale(input.targetLow(), "target_low");
 		requireTargetScale(input.targetHigh(), "target_high");
 		Integer distanceMeters = parseDistanceMeters(input.distance(), "distance");
+		// MCP-authored power steps are always %-of-threshold - see requireTargetScale's contract.
 		return new WorkoutStepDto(kind, endType, input.duration(), distanceMeters, targetType,
-				input.targetLow(), input.targetHigh(), Target2Type.NONE, null, null, 1, noteOrEmpty(input.note()), List.of());
+				input.targetLow(), input.targetHigh(), PowerUnit.PCT_FTP, Target2Type.NONE, null, null, 1,
+				noteOrEmpty(input.note()), List.of());
 	}
 
 	/** {@code children} is {@link McpWorkoutLeafStep} not {@link McpWorkoutStepInput} - see that
@@ -123,7 +126,8 @@ public class WorkoutWriteTools {
 		requireTargetScale(leaf.targetHigh(), "target_high");
 		Integer distanceMeters = parseDistanceMeters(leaf.distance(), "distance");
 		return new WorkoutStepDto(kind, endType, leaf.duration(), distanceMeters, targetType,
-				leaf.targetLow(), leaf.targetHigh(), Target2Type.NONE, null, null, 1, noteOrEmpty(leaf.note()), List.of());
+				leaf.targetLow(), leaf.targetHigh(), PowerUnit.PCT_FTP, Target2Type.NONE, null, null, 1,
+				noteOrEmpty(leaf.note()), List.of());
 	}
 
 	/**
