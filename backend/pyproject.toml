@@ -25,9 +25,11 @@ dependencies = [
     # django-mcp-server declares only "mcp>=1.8.0" (no upper bound), but 0.5.7 imports
     # `FastMCP` from `mcp.server` - removed entirely in the mcp SDK's 2.0 restructuring
     # (confirmed live: ImportError against the otherwise-latest mcp==2.0.0). Pinned to the
-    # newest pre-2.0 release until django-mcp-server catches up.
+    # newest pre-2.0 release until django-mcp-server catches up - deliberately excluded from
+    # a dependabot bump to 2.0.0 (PR #289) for exactly this reason; still bumped to the newest
+    # 1.x release available (1.9.4 -> 1.29.1) since that stays within the same constraint.
     "django-mcp-server==0.5.7",
-    "mcp==2.0.0",
+    "mcp==1.29.1",
     "boto3==1.43.78",
 ]
 
