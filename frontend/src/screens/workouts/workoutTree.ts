@@ -1,4 +1,4 @@
-import type { LeafStep, RepeatGroup, StepKind, Target2Type, TargetType, WorkoutStep, WorkoutSport } from "../../api/types";
+import type { LeafStep, PowerUnit, RepeatGroup, StepKind, Target2Type, TargetType, WorkoutStep, WorkoutSport } from "../../api/types";
 
 // Pure tree/calc/format helpers for the workout Build-mode editor. Ported from the
 // design prototype (Workout Designer.dc.html) so the frontend, Python, and Java
@@ -96,6 +96,38 @@ export function moveStep(steps: Step[], id: string, dir: -1 | 1): Step[] {
     return swap(steps, idx, j);
   }
   return steps.map((s) => (isGroup(s) ? ({ ...s, children: moveStep(s.children as Step[], id, dir) } as Group) : s));
+}
+
+// Fallback power reference (watts) used to normalize a "watts"-unit step when the athlete
+// hasn't set a real ftp/critical_run_power - matches the display-only FTP constant below.
+const DEFAULT_POWER_REFERENCE = 265;
+
+/** Returns a copy of `steps` where every "watts"-unit power leaf's target_low/target_high are
+ * replaced by their %FTP-equivalent, so totalDuration/totalTss/WorkoutChart (which only ever
+ * understand %-space) can stay completely unit-blind. Mirrors backend/workouts/calculations.py's
+ * normalize_power_units and WorkoutCalculations.normalizePowerUnits exactly. */
+export function normalizePowerUnits<T extends WorkoutStep>(steps: T[], powerReferenceWatts: number | null): T[] {
+  const reference = powerReferenceWatts ?? DEFAULT_POWER_REFERENCE;
+  return steps.map((s): T => {
+    if (isGroup(s)) {
+      return { ...s, children: normalizePowerUnits(s.children as WorkoutStep[], powerReferenceWatts) } as T;
+    }
+    const leaf = s as unknown as LeafStep;
+    if (leaf.target_type === "power" && leaf.power_unit === "watts") {
+      const lo = leaf.target_low;
+      const hi = leaf.target_high;
+      // power_unit flips to pct_ftp too, so any downstream consumer (targetInfo, zoneColor)
+      // that branches on it treats this normalized copy as ordinary %-space data - it must
+      // never see "watts" alongside an already-converted percentage.
+      return {
+        ...s,
+        target_low: lo != null ? (lo / reference) * 100 : null,
+        target_high: hi != null ? (hi / reference) * 100 : null,
+        power_unit: "pct_ftp",
+      } as T;
+    }
+    return s;
+  });
 }
 
 // ---------- duration / TSS (mirrors backend/workouts/calculations.py and
@@ -205,15 +237,19 @@ export interface TargetInfo {
   color: string;
 }
 
-export function targetInfo(step: LeafStep): TargetInfo {
+export function targetInfo(step: LeafStep, powerReferenceWatts: number | null = null): TargetInfo {
   if (!step.target_type || step.target_type === "open") return { primary: "Open · manual lap", secondary: null, color: "#8a94a6" };
   const lo = step.target_low ?? 0;
   const hi = step.target_high ?? lo;
   const avg = (lo + hi) / 2;
   let primary: string;
   let color: string;
-  if (step.target_type === "power") {
-    const w = (p: number) => Math.round((FTP * p) / 100);
+  if (step.target_type === "power" && step.power_unit === "watts") {
+    const ref = powerReferenceWatts ?? FTP;
+    primary = lo === hi ? `${lo}W · ${Math.round((lo / ref) * 100)}% FTP` : `${lo}→${hi}W`;
+    color = zoneColor((avg / ref) * 100);
+  } else if (step.target_type === "power") {
+    const w = (p: number) => Math.round(((powerReferenceWatts ?? FTP) * p) / 100);
     primary = lo === hi ? `${lo}% FTP · ${w(lo)}W` : `${lo}→${hi}% FTP`;
     color = zoneColor(avg);
   } else if (step.target_type === "hr") {
@@ -240,14 +276,14 @@ function fmtDistanceMeters(meters: number): string {
   return `${meters} m`;
 }
 
-export function stepDetail(step: LeafStep): string {
+export function stepDetail(step: LeafStep, powerReferenceWatts: number | null = null): string {
   const dur =
     step.end_type === "time"
       ? fmtDuration(step.duration || 0)
       : step.end_type === "distance"
         ? fmtDistanceMeters(step.distance || 0)
         : "Manual";
-  const t = targetInfo(step);
+  const t = targetInfo(step, powerReferenceWatts);
   return dur + " · " + t.primary + (t.secondary ? " · " + t.secondary : "");
 }
 
@@ -270,6 +306,7 @@ export function defaultLeaf(kind: "warmup" | "block" | "rec" | "cool", sport: Wo
     target_type: sport === "bike" ? "power" : "pace",
     target_low: p.target_low,
     target_high: p.target_high,
+    power_unit: "pct_ftp" as PowerUnit,
     target2_type: "none" as Target2Type,
     target2_low: 85,
     target2_high: 95,
@@ -293,6 +330,7 @@ export function defaultGroup(sport: WorkoutSport = "bike"): Group {
         target_type: (sport === "bike" ? "power" : "pace") as TargetType,
         target_low: 100,
         target_high: 100,
+        power_unit: "pct_ftp" as PowerUnit,
         target2_type: "none" as Target2Type,
         target2_low: 85,
         target2_high: 95,
@@ -307,6 +345,7 @@ export function defaultGroup(sport: WorkoutSport = "bike"): Group {
         target_type: (sport === "bike" ? "power" : "pace") as TargetType,
         target_low: 50,
         target_high: 55,
+        power_unit: "pct_ftp" as PowerUnit,
         target2_type: "none" as Target2Type,
         target2_low: 85,
         target2_high: 95,
@@ -322,8 +361,8 @@ export function stripIds(steps: Step[]): WorkoutStep[] {
     if (isGroup(s)) {
       return { kind: "repeat", repeat: s.repeat, note: s.note, children: stripIds(s.children as Step[]) };
     }
-    const { kind, end_type, duration, distance, target_type, target_low, target_high, target2_type, target2_low, target2_high, note } = s;
-    return { kind, end_type, duration, distance, target_type, target_low, target_high, target2_type, target2_low, target2_high, note };
+    const { kind, end_type, duration, distance, target_type, target_low, target_high, power_unit, target2_type, target2_low, target2_high, note } = s;
+    return { kind, end_type, duration, distance, target_type, target_low, target_high, power_unit, target2_type, target2_low, target2_high, note };
   });
 }
 
@@ -362,6 +401,7 @@ function leafTpl(
     target_type: targetType,
     target_low: low,
     target_high: high,
+    power_unit: "pct_ftp",
     target2_type: target2Type ?? "none",
     target2_low: target2Low ?? 85,
     target2_high: target2High ?? 95,

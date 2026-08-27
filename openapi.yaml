@@ -2847,8 +2847,9 @@ components:
           type: string
           enum: [power, hr, pace, cadence, open]
           description: Primary target dimension for a leaf step. `open` = no target (manual lap).
-        target_low: { type: [number, "null"], description: "Zone floor, or ramp start if target_high differs. Unit follows target_type: %FTP, %max HR, %threshold pace, or rpm." }
+        target_low: { type: [number, "null"], description: "Zone floor, or ramp start if target_high differs. Unit follows target_type: %FTP or watts (see power_unit) for power, %max HR, %threshold pace, or rpm." }
         target_high: { type: [number, "null"], description: Zone ceiling, or ramp end. Equal to target_low for a flat (non-ramping) target. }
+        power_unit: { type: string, enum: [pct_ftp, watts], default: pct_ftp, description: Only meaningful when target_type=power - whether target_low/target_high are a percentage of FTP/critical_run_power or absolute watts. }
         target2_type: { type: string, enum: [cadence, none], default: none, description: Optional secondary constraint alongside target_type. }
         target2_low: { type: [number, "null"], description: rpm, when target2_type=cadence. }
         target2_high: { type: [number, "null"], description: rpm, when target2_type=cadence. }

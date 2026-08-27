@@ -20,6 +20,37 @@ public final class WorkoutCalculations {
 	public record Result(int durationSeconds, int tss) {
 	}
 
+	// Fallback power reference (watts) used to normalize a "watts"-unit step when the athlete
+	// hasn't set a real ftp/criticalRunPower - matches the display-only placeholder already used
+	// on the frontend (frontend/src/screens/workouts/workoutTree.ts, workoutExport.ts).
+	private static final double DEFAULT_POWER_REFERENCE = 265;
+
+	/** Returns a copy of {@code steps} where every "watts"-unit power leaf's targetLow/targetHigh
+	 * are replaced by their %FTP-equivalent, so duration/TSS/chart-preview math (which only ever
+	 * understands %-space) can stay completely unit-blind. The real, persisted WorkoutStep rows
+	 * keep whatever the athlete actually entered - this copy is ephemeral, used only to feed
+	 * computeDurationAndTss/computeChartPreview. */
+	public static List<WorkoutStepDto> normalizePowerUnits(List<WorkoutStepDto> steps, Double powerReferenceWatts) {
+		double reference = powerReferenceWatts != null ? powerReferenceWatts : DEFAULT_POWER_REFERENCE;
+		List<WorkoutStepDto> out = new ArrayList<>(steps.size());
+		for (WorkoutStepDto step : steps) {
+			if (step.kind() == StepKind.REPEAT) {
+				WorkoutStepDto normalizedGroup = new WorkoutStepDto(step.kind(), step.endType(), step.duration(),
+						step.distance(), step.targetType(), step.targetLow(), step.targetHigh(), step.powerUnit(),
+						step.target2Type(), step.target2Low(), step.target2High(), step.repeat(), step.note(),
+						normalizePowerUnits(step.children(), powerReferenceWatts));
+				out.add(normalizedGroup);
+			} else if (step.targetType() == TargetType.POWER && step.powerUnit() == PowerUnit.WATTS) {
+				Double low = step.targetLow() != null ? (step.targetLow() / reference) * 100 : null;
+				Double high = step.targetHigh() != null ? (step.targetHigh() / reference) * 100 : null;
+				out.add(step.withNormalizedPower(low, high));
+			} else {
+				out.add(step);
+			}
+		}
+		return out;
+	}
+
 	/** {@code thresholdPaceSecPerKm} is the athlete's live PACE zone reference (seconds/km at
 	 * threshold) - null if they haven't set one yet, in which case distance+pace steps fall back
 	 * to the same 0 every other distance-ended step already gets. */

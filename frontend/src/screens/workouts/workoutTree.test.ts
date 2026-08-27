@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LeafStep, RepeatGroup, WorkoutStep } from "../../api/types";
-import { flattenLeaves, stepCount, totalDuration, totalTss } from "./workoutTree";
+import { flattenLeaves, normalizePowerUnits, stepCount, totalDuration, totalTss } from "./workoutTree";
 
 // Same worked examples as backend/workouts/tests.py and WorkoutCalculationsTest.java -
 // keeps all three duration/TSS implementations honest against each other.
@@ -14,6 +14,7 @@ function leaf(overrides: Partial<LeafStep> = {}): LeafStep {
     target_type: "power",
     target_low: 100,
     target_high: 100,
+    power_unit: "pct_ftp",
     target2_type: "none",
     target2_low: null,
     target2_high: null,
@@ -57,6 +58,36 @@ describe("totalDuration / totalTss", () => {
     ];
     expect(totalDuration(steps)).toBe(2 * (4 * 240 + 200));
     expect(totalTss(steps)).toBe(56);
+  });
+});
+
+describe("normalizePowerUnits", () => {
+  it("converts a watts-unit power leaf to its %FTP-equivalent using the real reference", () => {
+    const steps = [leaf({ power_unit: "watts", target_low: 200, target_high: 250 })];
+    const normalized = normalizePowerUnits(steps, 250);
+    const [normalizedLeaf] = normalized as LeafStep[];
+    expect(normalizedLeaf.power_unit).toBe("pct_ftp");
+    expect(normalizedLeaf.target_low).toBe(80);
+    expect(normalizedLeaf.target_high).toBe(100);
+  });
+
+  it("falls back to the placeholder reference when the athlete hasn't set a real one", () => {
+    const steps = [leaf({ power_unit: "watts", target_low: 265, target_high: 265 })];
+    const normalized = normalizePowerUnits(steps, null);
+    expect((normalized[0] as LeafStep).target_low).toBe(100);
+  });
+
+  it("leaves pct_ftp-unit and non-power steps untouched", () => {
+    const steps = [leaf({ power_unit: "pct_ftp", target_low: 80, target_high: 90 }), leaf({ target_type: "hr", target_low: 70, target_high: 70 })];
+    expect(normalizePowerUnits(steps, 250)).toEqual(steps);
+  });
+
+  it("normalizes watts-unit leaves nested inside a repeat group, and TSS matches an equivalent pct_ftp workout", () => {
+    const wattsSteps = [group(4, [leaf({ power_unit: "watts", target_low: 250, target_high: 250, duration: 300 })])];
+    const pctSteps = [group(4, [leaf({ power_unit: "pct_ftp", target_low: 100, target_high: 100, duration: 300 })])];
+    const normalizedWatts = normalizePowerUnits(wattsSteps, 250);
+    expect(totalTss(normalizedWatts)).toBe(totalTss(pctSteps));
+    expect(totalDuration(normalizedWatts)).toBe(totalDuration(pctSteps));
   });
 });
 

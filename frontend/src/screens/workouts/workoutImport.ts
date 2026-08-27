@@ -31,6 +31,7 @@ function leaf(kind: StepKind, duration: number, low: number | null, high: number
     target_type: low === null ? "open" : "power",
     target_low: low,
     target_high: high ?? low,
+    power_unit: "pct_ftp",
     target2_type: cadenceValue !== null ? "cadence" : "none",
     target2_low: cadenceValue,
     target2_high: cadenceValue,

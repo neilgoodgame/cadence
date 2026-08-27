@@ -54,6 +54,9 @@ public class WorkoutStep {
 	@Column(name = "target_high")
 	private Double targetHigh;
 
+	@Column(name = "power_unit", nullable = false)
+	private PowerUnit powerUnit = PowerUnit.PCT_FTP;
+
 	@Column(name = "target2_type", nullable = false)
 	private Target2Type target2Type = Target2Type.NONE;
 
@@ -151,6 +154,14 @@ public class WorkoutStep {
 
 	public void setTargetHigh(Double targetHigh) {
 		this.targetHigh = targetHigh;
+	}
+
+	public PowerUnit getPowerUnit() {
+		return powerUnit;
+	}
+
+	public void setPowerUnit(PowerUnit powerUnit) {
+		this.powerUnit = powerUnit;
 	}
 
 	public Target2Type getTarget2Type() {

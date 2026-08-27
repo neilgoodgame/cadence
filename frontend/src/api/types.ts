@@ -528,6 +528,9 @@ export type StepKind = "warmup" | "block" | "rec" | "cool";
 export type StepEndType = "time" | "distance" | "manual";
 export type TargetType = "power" | "hr" | "pace" | "cadence" | "open";
 export type Target2Type = "cadence" | "none";
+/** Only meaningful when target_type is "power" - whether target_low/target_high are a
+ * percentage of FTP/critical_run_power or absolute watts. */
+export type PowerUnit = "pct_ftp" | "watts";
 
 export interface LeafStep {
   kind: StepKind;
@@ -537,6 +540,7 @@ export interface LeafStep {
   target_type: TargetType;
   target_low: number | null;
   target_high: number | null;
+  power_unit: PowerUnit;
   target2_type: Target2Type;
   target2_low: number | null;
   target2_high: number | null;

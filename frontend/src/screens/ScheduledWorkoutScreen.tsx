@@ -7,7 +7,10 @@ import type { ScheduledWorkout, TimeOfDay, WorkoutDetail } from "../api/types";
 import { Card } from "../components/Card";
 import { formatDuration } from "../lib/format";
 import { sportColor, sportLabel } from "../lib/sportColors";
+import { useAuth } from "../auth/AuthContext";
 import { withIds } from "./workouts/workoutTree";
+import { buildTcx, download, tcxHasApproximateTarget, thresholdsFromAthlete } from "./workouts/workoutExport";
+import { ExportModal } from "./workouts/ExportModal";
 import { MiniChart } from "./workouts/WorkoutLibraryScreen";
 import { WorkoutStructureList, type StructureActions } from "./workouts/WorkoutStructureList";
 
@@ -35,6 +38,11 @@ const labelStyle = { fontSize: 12, fontWeight: 600, color: "var(--ink2)", margin
 const inputStyle = { width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box" as const };
 const primaryBtn = { alignSelf: "flex-start" as const, padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" };
 const dangerBtn = { padding: "8px 16px", borderRadius: 8, border: "1px solid var(--line)", background: "none", color: "#c4332a", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const downloadBtn = { padding: "6px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "none", color: "var(--ink2)", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 };
+
+function workoutFilename(name: string, ext: string) {
+  return `${name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "workout"}.${ext}`;
+}
 
 /** Reachable by clicking a planned (not-yet-completed) calendar entry from either the Calendar
  * or the Dashboard's Upcoming workouts card - a completed entry keeps navigating straight to its
@@ -90,6 +98,9 @@ export function ScheduledWorkoutScreen() {
 function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWorkout; workout: WorkoutDetail }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const thresholds = thresholdsFromAthlete(user);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const [date, setDate] = useState(scheduled.date);
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | "">(scheduled.time_of_day || "");
@@ -156,7 +167,27 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
             )}
           </div>
         )}
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <button
+            onClick={() => download(workoutFilename(workout.name, "tcx"), buildTcx(workout.name, workout.sport, structure, thresholds))}
+            style={downloadBtn}
+            title="Download for Garmin"
+          >
+            ↓ Garmin (.tcx)
+          </button>
+          {workout.sport === "bike" && (
+            <button onClick={() => setExportOpen(true)} style={downloadBtn} title="Download for Zwift">
+              ↓ Zwift (.zwo)
+            </button>
+          )}
+        </div>
+        {tcxHasApproximateTarget(structure, workout.sport, thresholds) && (
+          <div style={{ fontSize: 11.5, color: "var(--ink3)", marginTop: 6 }}>
+            Set your FTP / LTHR / threshold pace in Settings for accurate targets in the .tcx - falling back to an approximate placeholder for now.
+          </div>
+        )}
       </div>
+      {exportOpen && <ExportModal name={workout.name} sport={workout.sport} steps={structure} onClose={() => setExportOpen(false)} />}
 
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

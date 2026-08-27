@@ -7,7 +7,7 @@ from activities.models import Activity, ActivityTag, Lap, Tag
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 
-from .calculations import compute_duration_and_tss
+from .calculations import compute_duration_and_tss, normalize_power_units
 from .inference import Group, LeafCandidate, _compress_pass, infer_workout
 from .models import Workout, WorkoutStep
 
@@ -129,6 +129,68 @@ class ComputeDurationAndTssTests(TestCase):
         duration, tss = compute_duration_and_tss(steps)
         self.assertEqual(duration, 2 * (4 * 240 + 200))
         self.assertEqual(tss, 56)
+
+
+class NormalizePowerUnitsTests(TestCase):
+    def test_converts_watts_unit_leaf_to_pct_ftp_equivalent(self):
+        steps = [
+            {"kind": "block", "target_type": "power", "power_unit": "watts", "target_low": 200, "target_high": 250}
+        ]
+        normalized = normalize_power_units(steps, 250)
+        self.assertEqual(normalized[0]["target_low"], 80)
+        self.assertEqual(normalized[0]["target_high"], 100)
+
+    def test_falls_back_to_placeholder_reference_when_none_given(self):
+        steps = [
+            {"kind": "block", "target_type": "power", "power_unit": "watts", "target_low": 265, "target_high": 265}
+        ]
+        normalized = normalize_power_units(steps, None)
+        self.assertEqual(normalized[0]["target_low"], 100)
+
+    def test_leaves_pct_ftp_and_non_power_steps_untouched(self):
+        steps = [
+            {"kind": "block", "target_type": "power", "power_unit": "pct_ftp", "target_low": 80, "target_high": 90},
+            {"kind": "block", "target_type": "hr", "power_unit": "pct_ftp", "target_low": 70, "target_high": 70},
+        ]
+        self.assertEqual(normalize_power_units(steps, 250), steps)
+
+    def test_normalizes_watts_unit_leaves_nested_in_a_repeat_group_and_matches_pct_ftp_tss(self):
+        watts_steps = [
+            {
+                "kind": "repeat",
+                "repeat": 4,
+                "children": [
+                    {
+                        "kind": "block",
+                        "end_type": "time",
+                        "duration": 300,
+                        "target_type": "power",
+                        "power_unit": "watts",
+                        "target_low": 250,
+                        "target_high": 250,
+                    }
+                ],
+            }
+        ]
+        pct_steps = [
+            {
+                "kind": "repeat",
+                "repeat": 4,
+                "children": [
+                    {
+                        "kind": "block",
+                        "end_type": "time",
+                        "duration": 300,
+                        "target_type": "power",
+                        "power_unit": "pct_ftp",
+                        "target_low": 100,
+                        "target_high": 100,
+                    }
+                ],
+            }
+        ]
+        normalized_watts = normalize_power_units(watts_steps, 250)
+        self.assertEqual(compute_duration_and_tss(normalized_watts), compute_duration_and_tss(pct_steps))
 
 
 class CompressPassTests(TestCase):
@@ -357,6 +419,43 @@ class WorkoutViewTests(TestCase):
         data = response.json()
         self.assertEqual(data["duration"], 1200)
         self.assertEqual(data["tss"], 33)
+
+    def test_watts_unit_power_step_is_persisted_and_normalized_to_match_equivalent_pct_ftp_workout(self):
+        self.athlete.ftp = 250
+        self.athlete.save(update_fields=["ftp"])
+        payload = {
+            "name": "Watts-defined block",
+            "sport": "bike",
+            "steps": [
+                {
+                    "kind": "repeat",
+                    "repeat": 4,
+                    "children": [
+                        {
+                            "kind": "block",
+                            "end_type": "time",
+                            "duration": 300,
+                            "target_type": "power",
+                            "power_unit": "watts",
+                            "target_low": 250,
+                            "target_high": 250,
+                        }
+                    ],
+                }
+            ],
+        }
+        response = _bearer_client(self.athlete).post("/v1/workouts", payload, format="json")
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        # Same worked example as test_create_uses_worked_example_for_duration_and_tss, but
+        # authored in watts (250W = 100% of a 250W FTP) instead of a raw percentage - the
+        # normalized duration/TSS must land on exactly the same numbers.
+        self.assertEqual(data["duration"], 1200)
+        self.assertEqual(data["tss"], 33)
+        workout = Workout.objects.get(pk=data["id"])
+        leaf = workout.steps.get(kind="block")
+        self.assertEqual(leaf.power_unit, "watts")
+        self.assertEqual(leaf.target_low, 250)  # the real, persisted value stays in watts
 
     def test_create_allows_empty_steps(self):
         response = _bearer_client(self.athlete).post("/v1/workouts", self._create_payload(steps=[]), format="json")

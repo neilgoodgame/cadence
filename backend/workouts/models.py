@@ -88,6 +88,10 @@ class WorkoutStep(models.Model):
         ("cadence", "Cadence"),
         ("none", "None"),
     ]
+    POWER_UNIT_CHOICES = [
+        ("pct_ftp", "% FTP"),
+        ("watts", "Watts"),
+    ]
 
     workout = models.ForeignKey(Workout, on_delete=models.CASCADE, related_name="steps")
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="children")
@@ -100,6 +104,10 @@ class WorkoutStep(models.Model):
     target_type = models.CharField(max_length=10, choices=TARGET_TYPE_CHOICES, blank=True, default="")
     target_low = models.FloatField(null=True, blank=True)
     target_high = models.FloatField(null=True, blank=True)
+    # Only meaningful when target_type == "power" - which unit target_low/target_high are in
+    # (% of FTP/critical_run_power, or absolute watts). Harmless default on every other row,
+    # same convention as target2_type's default of "none" on rows where it doesn't apply.
+    power_unit = models.CharField(max_length=10, choices=POWER_UNIT_CHOICES, blank=True, default="pct_ftp")
     target2_type = models.CharField(max_length=10, choices=TARGET2_TYPE_CHOICES, default="none")
     target2_low = models.FloatField(null=True, blank=True)
     target2_high = models.FloatField(null=True, blank=True)

@@ -41,12 +41,14 @@ import ijson
 from django.core.files.storage import default_storage
 from django.utils.dateparse import parse_date, parse_datetime, parse_duration
 
+from accounts.models import User
 from activities.models import Activity, ActivityTag, Lap, Record, Tag
 from athletes.models import ThresholdHistory
+from athletes.zones import reference_for
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
 from races.models import Race
 from scheduling.models import ScheduledWorkout
-from workouts.calculations import compute_chart_preview, compute_duration_and_tss
+from workouts.calculations import compute_chart_preview, compute_duration_and_tss, normalize_power_units
 from workouts.models import Workout, WorkoutStep
 
 logger = logging.getLogger(__name__)
@@ -209,6 +211,7 @@ def _create_steps(workout: Workout, steps: list[dict[str, Any]], parent: Workout
             target_type=step.get("target_type") or "",
             target_low=step.get("target_low"),
             target_high=step.get("target_high"),
+            power_unit=step.get("power_unit") or "pct_ftp",
             target2_type=step.get("target2_type") or "none",
             target2_low=step.get("target2_low"),
             target2_high=step.get("target2_high"),
@@ -230,6 +233,7 @@ def _attach_tag(activity: Activity, athlete_id: str, name: str) -> None:
 def _import_workouts(
     athlete_id: str, stored_path: str, workouts_by_old_id: dict[str, str], counts: dict, progress: _Progress
 ) -> None:
+    athlete = User.objects.get(pk=athlete_id)
     with _stream(stored_path) as gz:
         for workout in ijson.items(gz, "workouts.item", use_float=True):
             try:
@@ -245,10 +249,12 @@ def _import_workouts(
                     tags=workout.get("tags") or [],
                 )
                 _create_steps(created, steps)
-                duration, tss = compute_duration_and_tss(steps)
+                zone_type = "bike_power" if workout["sport"] == "bike" else "run_power"
+                normalized = normalize_power_units(steps, reference_for(athlete, zone_type))
+                duration, tss = compute_duration_and_tss(normalized)
                 created.duration = duration
                 created.tss = tss
-                created.chart_preview = compute_chart_preview(steps)
+                created.chart_preview = compute_chart_preview(normalized)
                 created.save(update_fields=["duration", "tss", "chart_preview"])
                 workouts_by_old_id[workout["id"]] = created.id
                 counts["workouts_imported"] += 1
