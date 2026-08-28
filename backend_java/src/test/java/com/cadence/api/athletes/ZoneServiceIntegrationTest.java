@@ -9,13 +9,14 @@ import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /** referenceFor's activity-scoping: bike_power/run_power/pace look up the ThresholdHistory
- * ledger entry effective as of the activity's own date when given one, instead of the athlete's
- * current (possibly since-changed) profile. */
+ * ledger entry that was actually recorded current as of the activity's own date when given one,
+ * instead of the athlete's current (possibly since-changed) profile. */
 class ZoneServiceIntegrationTest extends IntegrationTest {
 
 	@Autowired
@@ -39,11 +40,15 @@ class ZoneServiceIntegrationTest extends IntegrationTest {
 	}
 
 	private Activity newActivity(User athlete, Sport sport) {
+		return newActivity(athlete, sport, Instant.parse("2026-01-01T07:00:00Z"));
+	}
+
+	private Activity newActivity(User athlete, Sport sport, Instant startDate) {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
 		activity.setSport(sport);
 		activity.setName("Old activity");
-		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		activity.setStartDate(startDate);
 		return activityRepository.save(activity);
 	}
 
@@ -62,8 +67,40 @@ class ZoneServiceIntegrationTest extends IntegrationTest {
 		entry.setValueNumeric(valueNumeric);
 		entry.setValuePace(valuePace != null ? valuePace : "");
 		entry.setSourceActivity(activity);
-		entry.setEffectiveFrom(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
+		LocalDate date = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
+		entry.setEffectiveFrom(date);
+		entry.setCurrentFrom(date);
 		return thresholdHistoryRepository.save(entry);
+	}
+
+	private ThresholdHistory newEntryWithDates(User athlete, ThresholdField field, Activity activity,
+			Integer valueNumeric, String valuePace, LocalDate effectiveFrom, LocalDate currentFrom) {
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(athlete);
+		entry.setField(field);
+		entry.setValueNumeric(valueNumeric);
+		entry.setValuePace(valuePace != null ? valuePace : "");
+		entry.setSourceActivity(activity);
+		entry.setEffectiveFrom(effectiveFrom);
+		entry.setCurrentFrom(currentFrom);
+		return thresholdHistoryRepository.save(entry);
+	}
+
+	@Test
+	void aRowOnlyBecomesCurrentFromItsCurrentFromDateNotItsEffectiveFromDate() {
+		// The exact real-world bug this field exists to fix: a worse row dated *after* a still-
+		// better one (still well inside the window) must not win just because effectiveFrom <=
+		// the target date trivially holds for the worse row's own activity date too.
+		User athlete = newAthlete("zone-reference-cascading-expiry@example.cc");
+		Activity better = newActivity(athlete, Sport.RUN, Instant.parse("2023-08-26T08:45:01Z"));
+		Activity worse = newActivity(athlete, Sport.RUN, Instant.parse("2023-09-03T07:45:51Z"));
+		newEntryWithDates(athlete, ThresholdField.THRESHOLD_PACE, better, null, "4:20",
+				LocalDate.of(2023, 8, 26), LocalDate.of(2023, 8, 26));
+		// Only becomes current on 2023-12-22, once the better entry above ages out of the window.
+		newEntryWithDates(athlete, ThresholdField.THRESHOLD_PACE, worse, null, "4:26",
+				LocalDate.of(2023, 9, 3), LocalDate.of(2023, 12, 22));
+
+		assertThat(zoneService.referenceFor(athlete, ZoneType.PACE, worse)).isEqualTo(260.0); // "4:20" -> 260s, not "4:26"
 	}
 
 	@Test

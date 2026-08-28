@@ -235,6 +235,32 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 		assertThat(entries.get(0).activityId()).isEqualTo(strong.getId());
 		assertThat(entries.get(1).activityId()).isEqualTo(weak.getId());
 		assertThat(entries.get(1).value()).isLessThan(entries.get(0).value());
+		// weak wins on its own processing pass here - currentFrom and effectiveFrom coincide.
+		assertThat(entries.get(1).currentFrom()).isEqualTo(entries.get(1).effectiveFrom());
+	}
+
+	@Test
+	void replayCurrentFromLagsEffectiveFromWhenAWorseRowOnlyWinsLater() {
+		// The exact real-world scenario this field exists for: a worse-but-still-qualifying ride
+		// sits dormant in the window behind a better one, then only becomes current once a THIRD,
+		// unrelated, later activity's own processing pass notices the better one has aged out -
+		// currentFrom must be stamped with that third activity's date, not the winner's own.
+		athlete = newAthlete("threshold-history-cascading-expiry@example.cc", 200);
+		Activity better = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 250, 1200);
+		Activity worse = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-09T07:00:00Z"), 220, 1200);
+		// >112 days after `better` (2026-01-01), but still within 112 days of `worse`
+		// (2026-01-09) - and too short (600s < the 1200s FTP test window) to contribute its own
+		// candidacy, so it's purely the trigger, not itself a candidate.
+		Activity trigger = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-04-25T07:00:00Z"), 999, 600);
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> entries =
+				calculator.replayFullHistory(athlete, ThresholdField.FTP);
+
+		assertThat(entries).extracting(ThresholdHistoryCalculator.ThresholdHistoryEntry::activityId)
+				.containsExactly(better.getId(), worse.getId());
+		assertThat(entries.get(1).effectiveFrom()).isEqualTo(worse.getStartDate().atZone(java.time.ZoneOffset.UTC).toLocalDate());
+		assertThat(entries.get(1).currentFrom()).isEqualTo(trigger.getStartDate().atZone(java.time.ZoneOffset.UTC).toLocalDate());
+		assertThat(entries.get(1).effectiveFrom()).isNotEqualTo(entries.get(1).currentFrom());
 	}
 
 	@Test

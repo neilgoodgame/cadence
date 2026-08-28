@@ -13,6 +13,7 @@ import com.cadence.api.tokens.dto.CreateAccessTokenRequest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
@@ -74,7 +75,9 @@ class AthleteControllerZonesIntegrationTest extends IntegrationTest {
 		entry.setValueNumeric(valueNumeric);
 		entry.setValuePace("");
 		entry.setSourceActivity(sourceActivity);
-		entry.setEffectiveFrom(sourceActivity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
+		LocalDate date = sourceActivity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
+		entry.setEffectiveFrom(date);
+		entry.setCurrentFrom(date);
 		thresholdHistoryRepository.save(entry);
 	}
 

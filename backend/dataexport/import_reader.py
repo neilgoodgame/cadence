@@ -540,6 +540,9 @@ def _import_threshold_history(
                 counts["items_skipped"] += 1
                 progress.tick()
                 continue
+            # A file exported before current_from existed has no such key - effective_from is
+            # the same non-regressing fallback the migration backfilled existing rows with.
+            current_from = parse_date(row["current_from"]) if row.get("current_from") else effective_from
             entries.append(
                 ThresholdHistory(
                     athlete_id=athlete_id,
@@ -548,6 +551,7 @@ def _import_threshold_history(
                     value_pace=row.get("value_pace") or "",
                     source_activity_id=new_activity_id,
                     effective_from=effective_from,
+                    current_from=current_from,
                 )
             )
             counts["threshold_history_imported"] += 1

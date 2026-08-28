@@ -77,6 +77,7 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		assertThat(entry.getValueNumeric()).isEqualTo(250);
 		assertThat(entry.getSourceActivity()).isNull();
 		assertThat(entry.getEffectiveFrom()).isEqualTo(LocalDate.now());
+		assertThat(entry.getCurrentFrom()).isEqualTo(LocalDate.now());
 	}
 
 	@Test

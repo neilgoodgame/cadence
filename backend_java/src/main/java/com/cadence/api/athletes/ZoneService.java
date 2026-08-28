@@ -87,12 +87,16 @@ public class ZoneService {
 	}
 
 	/** As {@link #referenceFor(User, ZoneType)}, but for BIKE_POWER/RUN_POWER/PACE looks up the
-	 * ThresholdHistory ledger entry effective as of {@code activity}'s own date instead of the
+	 * ThresholdHistory ledger entry that was actually the *recorded current value* as of
+	 * {@code activity}'s own date - filtered on currentFrom, not effectiveFrom - instead of the
 	 * athlete's current profile, so a historic activity's zones stay pinned to what was true when
-	 * it happened rather than moving every time the athlete's current profile changes. Returns
-	 * null (not a fallback to the live profile) when no ledger entry is effective yet - "unknown"
-	 * is the correct answer, not a guess. HEART_RATE has no ledger of its own (lthr isn't rolling-
-	 * window derived) and always reads live, same as the 2-arg overload. */
+	 * it happened rather than moving every time the athlete's current profile changes. Filtering
+	 * on effectiveFrom instead would let a row match its own activity's date even when it hadn't
+	 * actually become current yet (see ThresholdHistory.getCurrentFrom()'s Javadoc for the
+	 * cascading-expiry case where that happens for real). Returns null (not a fallback to the
+	 * live profile) when no ledger entry is current yet - "unknown" is the correct answer, not a
+	 * guess. HEART_RATE has no ledger of its own (lthr isn't rolling-window derived) and always
+	 * reads live, same as the 2-arg overload. */
 	public Double referenceFor(User athlete, ZoneType type, Activity activity) {
 		if (activity == null || type == ZoneType.HEART_RATE) {
 			return referenceFor(athlete, type);
@@ -105,7 +109,7 @@ public class ZoneService {
 		};
 		LocalDate asOf = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
 		return thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldAndEffectiveFromLessThanEqualOrderByEffectiveFromDescIdDesc(athlete.getId(), field, asOf)
+				.findFirstByAthleteIdAndFieldAndCurrentFromLessThanEqualOrderByCurrentFromDescIdDesc(athlete.getId(), field, asOf)
 				.map(entry -> field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(entry.getValuePace())
 						: entry.getValueNumeric().doubleValue())
 				.orElse(null);

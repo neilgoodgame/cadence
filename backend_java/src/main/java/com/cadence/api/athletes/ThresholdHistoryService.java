@@ -128,6 +128,7 @@ public class ThresholdHistoryService {
 		entry.setField(field);
 		entry.setSourceActivity(null);
 		entry.setEffectiveFrom(LocalDate.now());
+		entry.setCurrentFrom(LocalDate.now());
 		if (field == ThresholdField.THRESHOLD_PACE) {
 			entry.setValuePace(valuePace);
 		}
@@ -139,7 +140,8 @@ public class ThresholdHistoryService {
 	}
 
 	private boolean recomputeAndRecord(User athlete, ThresholdField field, LocalDate asOf) {
-		Candidate candidate = calculator.currentWindowValue(athlete, field, asOf);
+		LocalDate effectiveAsOf = asOf != null ? asOf : LocalDate.now();
+		Candidate candidate = calculator.currentWindowValue(athlete, field, effectiveAsOf);
 		if (candidate == null) {
 			return false;
 		}
@@ -162,16 +164,17 @@ public class ThresholdHistoryService {
 		if (Objects.equals(latestValue, candidate.impliedValue())) {
 			return false;
 		}
-		recordCandidate(athlete, field, candidate);
+		recordCandidate(athlete, field, candidate, effectiveAsOf);
 		return true;
 	}
 
-	private void recordCandidate(User athlete, ThresholdField field, Candidate candidate) {
+	private void recordCandidate(User athlete, ThresholdField field, Candidate candidate, LocalDate currentFrom) {
 		ThresholdHistory entry = new ThresholdHistory();
 		entry.setAthlete(athlete);
 		entry.setField(field);
 		entry.setSourceActivity(activityRepository.getReferenceById(candidate.activityId()));
 		entry.setEffectiveFrom(candidate.date());
+		entry.setCurrentFrom(currentFrom);
 		if (field == ThresholdField.THRESHOLD_PACE) {
 			entry.setValuePace(secondsToMmss(candidate.impliedValue()));
 		}
@@ -216,6 +219,7 @@ public class ThresholdHistoryService {
 			row.setField(field);
 			row.setSourceActivity(activityRepository.getReferenceById(entry.activityId()));
 			row.setEffectiveFrom(entry.effectiveFrom());
+			row.setCurrentFrom(entry.currentFrom());
 			if (field == ThresholdField.THRESHOLD_PACE) {
 				row.setValuePace(secondsToMmss(entry.value()));
 			}

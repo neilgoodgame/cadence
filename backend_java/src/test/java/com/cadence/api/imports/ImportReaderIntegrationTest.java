@@ -204,6 +204,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 		thresholdEntry.setValuePace("4:30");
 		thresholdEntry.setSourceActivity(child);
 		thresholdEntry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		thresholdEntry.setCurrentFrom(LocalDate.of(2026, 1, 1));
 		thresholdHistoryRepository.save(thresholdEntry);
 
 		Path file = Files.createTempFile("import-test", ".json.gz");
@@ -529,6 +530,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 		entry.setValueNumeric(250);
 		entry.setSourceActivity(ride);
 		entry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		entry.setCurrentFrom(LocalDate.of(2026, 3, 1));
 		thresholdHistoryRepository.save(entry);
 
 		Path file = Files.createTempFile("import-threshold-history-roundtrip-test", ".json.gz");
@@ -545,6 +547,10 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			assertThat(importedEntries).hasSize(1);
 			assertThat(importedEntries.get(0).getField()).isEqualTo(ThresholdField.FTP);
 			assertThat(importedEntries.get(0).getValueNumeric()).isEqualTo(250);
+			// currentFrom carries over too, distinct from effectiveFrom - not silently collapsed
+			// to it, which would reintroduce the cascading-expiry bug on the imported copy.
+			assertThat(importedEntries.get(0).getEffectiveFrom()).isEqualTo(LocalDate.of(2026, 1, 1));
+			assertThat(importedEntries.get(0).getCurrentFrom()).isEqualTo(LocalDate.of(2026, 3, 1));
 
 			// The target's own live ftp is untouched by the import - only the ledger is populated.
 			User reloadedTarget = userRepository.findById(target.getId()).orElseThrow();
@@ -568,6 +574,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 		entry.setValueNumeric(260);
 		entry.setSourceActivity(null);
 		entry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		entry.setCurrentFrom(LocalDate.of(2026, 1, 1));
 		thresholdHistoryRepository.save(entry);
 
 		Path file = Files.createTempFile("import-threshold-manual-roundtrip-test", ".json.gz");
@@ -623,7 +630,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 				generator.writeEndArray();
 				generator.writeArrayPropertyStart("threshold_history");
 				generator.writePOJO(new com.cadence.api.export.dto.ThresholdHistoryExportEntry(
-						ThresholdField.FTP, 260, "", "act_doesnotexist", LocalDate.of(2026, 1, 1)));
+						ThresholdField.FTP, 260, "", "act_doesnotexist", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1)));
 				generator.writeEndArray();
 				generator.writeEndObject();
 			}

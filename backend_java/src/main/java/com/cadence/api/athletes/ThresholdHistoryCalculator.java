@@ -36,7 +36,11 @@ public class ThresholdHistoryCalculator {
 	public record Candidate(String activityId, LocalDate date, double impliedValue) {
 	}
 
-	public record ThresholdHistoryEntry(ThresholdField field, double value, String activityId, LocalDate effectiveFrom) {
+	/** currentFrom is the date whose recompute pass discovered this as the new window winner -
+	 * see {@link ThresholdHistory#getCurrentFrom()}'s Javadoc for why that can differ from
+	 * effectiveFrom (the winning candidate's own activity date). */
+	public record ThresholdHistoryEntry(
+			ThresholdField field, double value, String activityId, LocalDate effectiveFrom, LocalDate currentFrom) {
 	}
 
 	// Pace is seconds/km - a *lower* value is the improvement, the opposite of every other field.
@@ -223,7 +227,11 @@ public class ThresholdHistoryCalculator {
 			if (!Objects.equals(newValue, currentValue)) {
 				currentValue = newValue;
 				if (best != null) {
-					entries.add(new ThresholdHistoryEntry(field, newValue, best.activityId(), best.date()));
+					// currentFrom is *this* iteration's activityDate - the date whose recompute
+					// pass discovered best as the new window winner - not best.date
+					// (effectiveFrom), which can be much earlier when best only wins now because
+					// a better, more recent entry aged out from under it.
+					entries.add(new ThresholdHistoryEntry(field, newValue, best.activityId(), best.date(), activityDate));
 				}
 			}
 			current++;

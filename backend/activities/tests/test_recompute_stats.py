@@ -129,6 +129,7 @@ class RecomputeActivityTssViewTests(TestCase):
             value_numeric=200,
             source_activity=activity,
             effective_from=date(2025, 12, 1),
+            current_from=date(2025, 12, 1),
         )
         for t in range(3600):
             Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=200)

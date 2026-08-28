@@ -253,6 +253,7 @@ class ReferenceForTests(TestCase):
             value_numeric=200,
             source_activity=activity,
             effective_from=activity.start_date.date(),
+            current_from=activity.start_date.date(),
         )
         self.assertEqual(reference_for(self.athlete, "bike_power", activity=activity), 200)
 
@@ -264,6 +265,7 @@ class ReferenceForTests(TestCase):
             value_pace="4:30",
             source_activity=activity,
             effective_from=activity.start_date.date(),
+            current_from=activity.start_date.date(),
         )
         self.assertEqual(reference_for(self.athlete, "pace", activity=activity), 270)
 
@@ -277,6 +279,7 @@ class ReferenceForTests(TestCase):
             value_numeric=200,
             source_activity=activity,
             effective_from=activity.start_date.date(),
+            current_from=activity.start_date.date(),
         )
         self.assertEqual(reference_for(self.athlete, "heart_rate", activity=activity), 160)
 
@@ -288,6 +291,37 @@ class ReferenceForTests(TestCase):
             athlete=self.athlete, sport="bike", name="No history", start_date=timezone.now()
         )
         self.assertIsNone(reference_for(self.athlete, "bike_power", activity=activity))
+
+    def test_a_row_only_becomes_current_from_its_current_from_date_not_its_effective_from_date(self):
+        # The exact real-world bug this field exists to fix: a worse row dated *after* a still-
+        # better one (still well inside the window) must not win just because effective_from <=
+        # the target date trivially holds for the worse row's own activity date too.
+        better_activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Lee Valley", start_date=datetime(2023, 8, 26, tzinfo=UTC)
+        )
+        worse_activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Big Half", start_date=datetime(2023, 9, 3, tzinfo=UTC)
+        )
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="threshold_pace",
+            value_pace="4:20",
+            source_activity=better_activity,
+            effective_from=date(2023, 8, 26),
+            current_from=date(2023, 8, 26),
+        )
+        # Only becomes current on 2023-12-22, once the better entry above ages out of the window.
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="threshold_pace",
+            value_pace="4:26",
+            source_activity=worse_activity,
+            effective_from=date(2023, 9, 3),
+            current_from=date(2023, 12, 22),
+        )
+        self.assertEqual(
+            reference_for(self.athlete, "pace", activity=worse_activity), 260
+        )  # "4:20" -> 260s, not "4:26"
 
 
 class ZoneSetActivityScopeTests(TestCase):
@@ -307,6 +341,7 @@ class ZoneSetActivityScopeTests(TestCase):
             value_numeric=200,
             source_activity=self.old_bike_activity,
             effective_from=self.old_bike_activity.start_date.date(),
+            current_from=self.old_bike_activity.start_date.date(),
         )
         # The athlete's FTP has since gone up - the old activity's own ledger entry should win.
         self.athlete.ftp = 250
@@ -362,6 +397,7 @@ class RecomputeAthleteTssViewTests(TestCase):
             value_numeric=200,  # what FTP actually was when this ride happened
             source_activity=activity,
             effective_from=activity.start_date.date(),
+            current_from=activity.start_date.date(),
         )
         for t in range(3600):
             Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=200)
@@ -789,6 +825,29 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         self.assertEqual(entries[0].activity_id, strong.id)
         self.assertEqual(entries[1].activity_id, weak.id)
         self.assertLess(entries[1].value, entries[0].value)
+        # weak wins on its own processing pass here - current_from and effective_from coincide.
+        self.assertEqual(entries[1].effective_from, entries[1].current_from)
+
+    def test_replay_current_from_lags_effective_from_when_a_worse_row_only_wins_later(self):
+        # The exact real-world scenario this field exists for: a worse-but-still-qualifying ride
+        # sits dormant in the window behind a better one, then only becomes current once a THIRD,
+        # unrelated, later activity's own processing pass notices the better one has aged out -
+        # current_from must be stamped with that third activity's date, not the winner's own.
+        better = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=250)
+        worse = self._make_power_activity("bike", datetime(2026, 1, 9, 7, 0, tzinfo=UTC), power=220)
+        # >112 days after `better` (2026-01-01), but still within 112 days of `worse` (2026-01-09)
+        # - and too short (600s < the 1200s FTP test window) to contribute its own candidacy, so
+        # it's purely the trigger, not itself a candidate.
+        trigger = self._make_power_activity(
+            "bike", datetime(2026, 4, 25, 7, 0, tzinfo=UTC), power=999, duration_seconds=600, name="Short spin"
+        )
+
+        entries = replay_full_history(self.athlete, "ftp")
+
+        self.assertEqual([e.activity_id for e in entries], [better.id, worse.id])
+        self.assertEqual(entries[1].effective_from, worse.start_date.date())
+        self.assertEqual(entries[1].current_from, trigger.start_date.date())
+        self.assertNotEqual(entries[1].effective_from, entries[1].current_from)
 
     def test_replay_excludes_outlier_from_ledger(self):
         self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=210)

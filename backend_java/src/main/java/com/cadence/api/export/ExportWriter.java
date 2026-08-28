@@ -339,7 +339,7 @@ public class ExportWriter {
 			// ThresholdHistoryService.recordManualValue) - not sourced from any activity.
 			String sourceActivityId = entry.getSourceActivity() != null ? entry.getSourceActivity().getId() : null;
 			generator.writePOJO(new ThresholdHistoryExportEntry(entry.getField(), entry.getValueNumeric(),
-					entry.getValuePace(), sourceActivityId, entry.getEffectiveFrom()));
+					entry.getValuePace(), sourceActivityId, entry.getEffectiveFrom(), entry.getCurrentFrom()));
 			progress.tick();
 		}
 		generator.writeEndArray();
