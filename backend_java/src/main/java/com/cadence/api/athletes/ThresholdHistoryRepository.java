@@ -50,6 +50,12 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	// previously defines your FTP" indicator.
 	List<ThresholdHistory> findBySourceActivityId(String activityId);
 
+	// Every entry that became current on a given date, regardless of source - paired with the
+	// method above on the activity page: an entry here whose sourceActivity is a *different*
+	// activity means this activity's own ingest/recompute pass is what revealed that earlier,
+	// dormant effort as the new current value (see ThresholdHistory.getCurrentFrom()'s Javadoc).
+	List<ThresholdHistory> findByAthleteIdAndCurrentFrom(String athleteId, LocalDate currentFrom);
+
 	// A plain `deleteBy...` derived method loads matching rows into the persistence context and
 	// only marks them for removal there - the DELETE isn't actually issued until the next flush.
 	// ThresholdHistoryCalculator.replayFullHistory (called right after this, inside the same

@@ -19,6 +19,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -83,21 +84,43 @@ public class ActivityService {
 				duplicateIds);
 	}
 
-	/** Every ThresholdHistory row this activity is (or was) the source of - empty for the vast
-	 * majority of activities. isCurrent is true when this is still the latest entry for its field
-	 * (not yet superseded by a later, more recent effort). */
+	/** Two distinct signals, both keyed off this activity - empty for the vast majority of
+	 * activities:
+	 * <ul>
+	 * <li>Rows this activity's own effort produced (sourceActivity == activity) - "is this
+	 * activity itself a new PR."
+	 * <li>Rows whose currentFrom == this activity's own date but whose source is a DIFFERENT,
+	 * earlier activity - this activity's own ingest/recompute pass is what noticed an earlier,
+	 * dormant effort had become current, once its window rival aged out (see
+	 * ThresholdHistory.getCurrentFrom()'s Javadoc - a confirmed real scenario, not hypothetical:
+	 * importing today's run can be the trigger that reveals a months-old effort just took over).
+	 * </ul>
+	 * Distinguished via sourceActivityId on the returned DTO - equal to this activity's own id
+	 * for the first case, a different activity's id for the second. isCurrent is true when a row
+	 * is still the latest entry for its field (not yet superseded by a later, more recent
+	 * effort). */
 	private List<ActivityThresholdHistoryEntry> thresholdHistoryFor(Activity activity) {
-		List<ThresholdHistory> sourced = thresholdHistoryRepository.findBySourceActivityId(activity.getId());
-		return sourced.stream()
+		List<ThresholdHistory> ownEffort = thresholdHistoryRepository.findBySourceActivityId(activity.getId());
+		LocalDate activityDate = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
+		List<ThresholdHistory> revealed = thresholdHistoryRepository
+				.findByAthleteIdAndCurrentFrom(activity.getAthlete().getId(), activityDate).stream()
+				.filter(entry -> !activity.getId().equals(sourceActivityIdOf(entry)))
+				.toList();
+		return Stream.concat(ownEffort.stream(), revealed.stream())
 				.map(entry -> {
 					ThresholdHistory latest = thresholdHistoryRepository
 							.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(activity.getAthlete().getId(), entry.getField())
 							.orElse(null);
 					boolean isCurrent = latest != null && latest.getId().equals(entry.getId());
 					Object value = entry.getField() == ThresholdField.THRESHOLD_PACE ? entry.getValuePace() : entry.getValueNumeric();
-					return new ActivityThresholdHistoryEntry(entry.getField(), value, isCurrent);
+					return new ActivityThresholdHistoryEntry(entry.getField(), value, isCurrent, sourceActivityIdOf(entry));
 				})
 				.toList();
+	}
+
+	// Null for a manually-entered value - not sourced from any activity.
+	private static String sourceActivityIdOf(ThresholdHistory entry) {
+		return entry.getSourceActivity() != null ? entry.getSourceActivity().getId() : null;
 	}
 
 	public CursorPage<ActivityResponse> list(String athleteId, String q, Sport sportFilter, Environment environmentFilter,

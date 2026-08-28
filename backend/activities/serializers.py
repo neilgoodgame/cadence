@@ -78,19 +78,38 @@ class ActivitySerializer(serializers.ModelSerializer):
         return list(obj.duplicate_activities.order_by("start_date").values_list("id", flat=True))
 
     def get_threshold_history(self, obj: Activity) -> list[dict]:
-        # Every ThresholdHistory entry this activity is the source of - empty for the vast
-        # majority of activities. is_current distinguishes "this is still the latest entry for
-        # that field" from "since superseded by a later, different activity."
+        # Two distinct signals, both keyed off this activity - empty for the vast majority of
+        # activities:
+        # (1) Entries this activity's own effort produced (source_activity == obj) - "is this
+        #     activity itself a new PR."
+        # (2) Entries whose current_from == this activity's own date but whose source is a
+        #     DIFFERENT, earlier activity - this activity's own ingest/recompute pass is what
+        #     noticed an earlier, dormant effort had become current, once its window rival aged
+        #     out (see ThresholdHistory.current_from's docstring - a confirmed real scenario, not
+        #     hypothetical: importing today's run can be the trigger that reveals a months-old
+        #     effort just took over). Distinguished from (1) via source_activity_id - equal to
+        #     obj.id for (1), a different activity's id for (2).
         from athletes.models import ThresholdHistory
 
-        result = []
-        for entry in obj.threshold_history.all():
-            is_current = not ThresholdHistory.objects.filter(
+        def is_current(entry: ThresholdHistory) -> bool:
+            return not ThresholdHistory.objects.filter(
                 athlete_id=obj.athlete_id, field=entry.field, effective_from__gt=entry.effective_from
             ).exists()
+
+        def as_dict(entry: ThresholdHistory) -> dict:
             value = entry.value_pace if entry.field == "threshold_pace" else entry.value_numeric
-            result.append({"field": entry.field, "value": value, "is_current": is_current})
-        return result
+            return {
+                "field": entry.field,
+                "value": value,
+                "is_current": is_current(entry),
+                "source_activity_id": entry.source_activity_id,
+            }
+
+        own_effort = obj.threshold_history.all()
+        revealed = ThresholdHistory.objects.filter(
+            athlete_id=obj.athlete_id, current_from=obj.start_date.date()
+        ).exclude(source_activity_id=obj.id)
+        return [as_dict(entry) for entry in [*own_effort, *revealed]]
 
 
 class ActivityUpdateSerializer(serializers.Serializer):
