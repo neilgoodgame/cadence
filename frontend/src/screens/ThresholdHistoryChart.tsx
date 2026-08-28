@@ -32,7 +32,9 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
     // chronological order to draw a sane step line.
     const chronological: Point[] = [...points]
       .reverse()
-      .map((p) => ({ date: new Date(p.effective_from), value: numericValue(field, p.value) }))
+      // current_from, not effective_from - a step's boundary should be when the value actually
+      // became current, not when its (possibly much earlier) source activity happened.
+      .map((p) => ({ date: new Date(p.current_from), value: numericValue(field, p.value) }))
       .filter((p): p is Point => p.value != null);
     if (chronological.length === 0) {
       return null;

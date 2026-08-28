@@ -267,7 +267,7 @@ public class ThresholdHistoryService {
 	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field) {
 		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).stream()
 				.map(entry -> new ThresholdHistoryEntryResponse(
-						valueOf(field, entry), sourceActivityIdOf(entry), entry.getEffectiveFrom()))
+						valueOf(field, entry), sourceActivityIdOf(entry), entry.getEffectiveFrom(), entry.getCurrentFrom()))
 				.toList();
 	}
 }

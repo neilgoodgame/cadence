@@ -11,7 +11,14 @@ from authn.oauth_utils import issue_token_pair
 from uploads.processing import _trim_kind_window
 
 from .models import BestEffortRecomputeJob, ThresholdHistory, ZoneSet
-from .threshold_history import current_window_value, is_stale, record_manual_value, refresh_field, replay_full_history
+from .threshold_history import (
+    current_window_value,
+    is_stale,
+    rebuild_history_stream,
+    record_manual_value,
+    refresh_field,
+    replay_full_history,
+)
 from .zones import DEFAULT_PACE_ZONES, DEFAULT_ZONES, reference_for
 
 
@@ -871,6 +878,45 @@ class ThresholdHistoryAlgorithmTests(TestCase):
 
         self.assertEqual(len(entries), len(powers))
         self.assertEqual(entries[-1].value, round(0.95 * powers[-1]))
+
+
+class ThresholdHistoryListViewTests(TestCase):
+    """GET /v1/athletes/<id>/threshold-history?field=... exposes current_from distinct from
+    effective_from - the history screen's "effective from" date must be current_from, not
+    effective_from (see ThresholdHistory.current_from's docstring for why a row's own activity
+    date can differ from the date it actually became current)."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="ledger-current-from@example.cc", password="x", name="Athlete", ftp=200
+        )
+
+    def _make_power_activity(self, start_date, power, duration_seconds=1200):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Ride", start_date=start_date, moving_time=duration_seconds
+        )
+        for t in range(duration_seconds):
+            Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+        return activity
+
+    def test_ledger_exposes_current_from_distinct_from_effective_from(self):
+        better = self._make_power_activity(datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=250)
+        worse = self._make_power_activity(datetime(2026, 1, 9, 7, 0, tzinfo=UTC), power=220)
+        self._make_power_activity(datetime(2026, 4, 25, 7, 0, tzinfo=UTC), power=999, duration_seconds=600)  # trigger
+
+        for _ in rebuild_history_stream(self.athlete, "ftp"):
+            pass
+
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/threshold-history?field=ftp")
+        entries = response.json()["data"]
+
+        self.assertEqual(len(entries), 2)
+        # Most recent first: worse (revealed later) comes before better.
+        self.assertEqual(entries[0]["source_activity_id"], worse.id)
+        self.assertEqual(entries[0]["effective_from"], "2026-01-09")
+        self.assertEqual(entries[0]["current_from"], "2026-04-25")
+        self.assertEqual(entries[1]["source_activity_id"], better.id)
+        self.assertEqual(entries[1]["effective_from"], entries[1]["current_from"])
 
 
 class RecordManualValueTests(TestCase):

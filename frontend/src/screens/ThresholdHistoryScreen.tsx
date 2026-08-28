@@ -5,6 +5,7 @@ import { formatDate } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import { Card } from "../components/Card";
 import { ThresholdHistoryChart } from "./ThresholdHistoryChart";
+import { daysInEffect } from "./thresholdHistory";
 import type { ThresholdFieldName } from "../api/types";
 
 const FIELD_LABELS: Record<ThresholdFieldName, string> = {
@@ -38,6 +39,7 @@ export function ThresholdHistoryScreen() {
   }
 
   const entries = historyQuery.data?.data ?? [];
+  const days = daysInEffect(entries);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -68,7 +70,7 @@ export function ThresholdHistoryScreen() {
       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 560 }}>
         {entries.map((entry, i) => (
           <div
-            key={`${entry.effective_from}-${i}`}
+            key={`${entry.current_from}-${i}`}
             style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
               padding: "10px 14px", borderRadius: 8, background: "var(--elev)", border: "1px solid var(--line)",
@@ -78,7 +80,9 @@ export function ThresholdHistoryScreen() {
               <span className="mono" style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>
                 {formatValue(field, entry.value)}
               </span>
-              <span style={{ fontSize: 12, color: "var(--ink3)" }}>Effective from {formatDate(entry.effective_from, true)}</span>
+              <span style={{ fontSize: 12, color: "var(--ink3)" }}>
+                Effective from {formatDate(entry.current_from, true)} &middot; {days[i]} day{days[i] === 1 ? "" : "s"}
+              </span>
             </div>
             {entry.source_activity_id && (
               <Link to={`/activities/${entry.source_activity_id}`} style={{ fontSize: 12, color: "var(--ember)", fontWeight: 600 }}>
