@@ -372,6 +372,7 @@ class ThresholdHistoryListView(APIView):
                 "value": entry.value_pace if field == "threshold_pace" else entry.value_numeric,
                 "source_activity_id": entry.source_activity_id,
                 "effective_from": entry.effective_from,
+                "current_from": entry.current_from,
             }
             for entry in entries
         ]

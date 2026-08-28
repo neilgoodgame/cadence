@@ -180,4 +180,27 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		assertThat(thresholdHistoryRepository
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(2);
 	}
+
+	@Test
+	void ledgerForExposesCurrentFromDistinctFromEffectiveFrom() {
+		// The history screen's "effective from" date must be currentFrom, not effectiveFrom -
+		// see ThresholdHistory.getCurrentFrom()'s Javadoc for why a row's own activity date can
+		// differ from the date it actually became current.
+		User athlete = newAthlete("ledger-current-from@example.cc");
+		Activity better = newPowerActivity(athlete, Instant.parse("2026-01-01T07:00:00Z"), 250, 1200);
+		Activity worse = newPowerActivity(athlete, Instant.parse("2026-01-09T07:00:00Z"), 220, 1200);
+		newPowerActivity(athlete, Instant.parse("2026-04-25T07:00:00Z"), 999, 600); // trigger, too short to qualify
+
+		thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+		List<com.cadence.api.athletes.dto.ThresholdHistoryEntryResponse> ledger =
+				thresholdHistoryService.ledgerFor(athlete, ThresholdField.FTP);
+
+		assertThat(ledger).hasSize(2);
+		// Most recent first: worse (revealed later) comes before better.
+		assertThat(ledger.get(0).sourceActivityId()).isEqualTo(worse.getId());
+		assertThat(ledger.get(0).effectiveFrom()).isEqualTo(LocalDate.of(2026, 1, 9));
+		assertThat(ledger.get(0).currentFrom()).isEqualTo(LocalDate.of(2026, 4, 25));
+		assertThat(ledger.get(1).sourceActivityId()).isEqualTo(better.getId());
+		assertThat(ledger.get(1).effectiveFrom()).isEqualTo(ledger.get(1).currentFrom());
+	}
 }

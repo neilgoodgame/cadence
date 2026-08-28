@@ -161,11 +161,15 @@ export interface ThresholdsSummary {
   threshold_pace: ThresholdSummaryEntry;
 }
 
-/** One row of the full ledger for a field - GET /v1/athletes/{id}/threshold-history?field=... */
+/** One row of the full ledger for a field - GET /v1/athletes/{id}/threshold-history?field=...
+ * effective_from is the qualifying activity's own date; current_from is the date this row
+ * actually became the recorded current value - the two can differ (see current_from's own
+ * usage in ThresholdHistoryIndicator/ThresholdHistoryScreen for why). */
 export interface ThresholdHistoryPoint {
   value: number | string;
   source_activity_id: string | null;
   effective_from: string;
+  current_from: string;
 }
 
 export interface ThresholdHistoryResponse {
