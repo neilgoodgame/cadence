@@ -394,6 +394,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		thresholdEntry.setValuePace("4:30");
 		thresholdEntry.setSourceActivity(activity);
 		thresholdEntry.setEffectiveFrom(LocalDate.of(2026, 4, 1));
+		thresholdEntry.setCurrentFrom(LocalDate.of(2026, 4, 1));
 		thresholdHistoryRepository.save(thresholdEntry);
 
 		Race race = new Race();
@@ -499,6 +500,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		ftpEntry.setValueNumeric(250);
 		ftpEntry.setSourceActivity(bikeActivity);
 		ftpEntry.setEffectiveFrom(LocalDate.of(2026, 4, 2));
+		ftpEntry.setCurrentFrom(LocalDate.of(2026, 4, 2));
 		thresholdHistoryRepository.save(ftpEntry);
 
 		ThresholdHistory paceEntry = new ThresholdHistory();
@@ -507,6 +509,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		paceEntry.setValuePace("4:30");
 		paceEntry.setSourceActivity(runActivity);
 		paceEntry.setEffectiveFrom(LocalDate.of(2026, 4, 3));
+		paceEntry.setCurrentFrom(LocalDate.of(2026, 4, 3));
 		thresholdHistoryRepository.save(paceEntry);
 
 		Race bikeRace = new Race();
@@ -644,6 +647,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		entry.setValueNumeric(200);
 		entry.setSourceActivity(activity);
 		entry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		entry.setCurrentFrom(LocalDate.of(2026, 1, 1));
 		thresholdHistoryRepository.save(entry);
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();

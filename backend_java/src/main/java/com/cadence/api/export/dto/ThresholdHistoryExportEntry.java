@@ -7,6 +7,6 @@ import java.time.LocalDate;
  * any one activity (see ExportWriter.writeThresholdHistory / ImportReader.importThresholdHistory).
  * Dual-typed like the ThresholdHistory entity it mirrors: valueNumeric for ftp/criticalRunPower,
  * valuePace for thresholdPace - only one is ever populated, matching `field`. */
-public record ThresholdHistoryExportEntry(
-		ThresholdField field, Integer valueNumeric, String valuePace, String sourceActivityId, LocalDate effectiveFrom) {
+public record ThresholdHistoryExportEntry(ThresholdField field, Integer valueNumeric, String valuePace,
+		String sourceActivityId, LocalDate effectiveFrom, LocalDate currentFrom) {
 }

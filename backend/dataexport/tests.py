@@ -80,7 +80,12 @@ def _seed_full_account(athlete: User) -> dict:
     ScheduledWorkout.objects.create(workout=workout, athlete=athlete, date=date(2026, 1, 1), activity=child)
 
     threshold_entry = ThresholdHistory.objects.create(
-        athlete=athlete, field="ftp", value_numeric=250, source_activity=child, effective_from=date(2026, 1, 1)
+        athlete=athlete,
+        field="ftp",
+        value_numeric=250,
+        source_activity=child,
+        effective_from=date(2026, 1, 1),
+        current_from=date(2026, 1, 1),
     )
 
     return {"bike": bike, "workout": workout, "parent": parent, "child": child, "threshold_entry": threshold_entry}
@@ -292,7 +297,12 @@ class ImportThresholdHistoryTests(TestCase):
         target = _verified_user(email="threshold-history-target@example.cc", password="x", name="Target", ftp=222)
         activity = _make_activity(source, sport="bike", name="Ride")
         ThresholdHistory.objects.create(
-            athlete=source, field="ftp", value_numeric=250, source_activity=activity, effective_from=date(2026, 1, 1)
+            athlete=source,
+            field="ftp",
+            value_numeric=250,
+            source_activity=activity,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 3, 1),
         )
 
         relative_path = "exports/test/threshold-history-roundtrip.json.gz"
@@ -304,6 +314,10 @@ class ImportThresholdHistoryTests(TestCase):
         self.assertEqual(imported_entry.field, "ftp")
         self.assertEqual(imported_entry.value_numeric, 250)
         self.assertEqual(imported_entry.source_activity_id, imported_activity.id)
+        # current_from carries over too, distinct from effective_from - not silently collapsed
+        # to it, which would reintroduce the cascading-expiry bug on the imported copy.
+        self.assertEqual(imported_entry.effective_from, date(2026, 1, 1))
+        self.assertEqual(imported_entry.current_from, date(2026, 3, 1))
         # The target's own live ftp is untouched by the import - only the ledger is populated.
         target.refresh_from_db()
         self.assertEqual(target.ftp, 222)
@@ -318,7 +332,12 @@ class ImportThresholdHistoryTests(TestCase):
         source = _verified_user(email="threshold-manual-source@example.cc", password="x", name="Source")
         target = _verified_user(email="threshold-manual-target@example.cc", password="x", name="Target")
         ThresholdHistory.objects.create(
-            athlete=source, field="ftp", value_numeric=260, source_activity=None, effective_from=date(2026, 1, 1)
+            athlete=source,
+            field="ftp",
+            value_numeric=260,
+            source_activity=None,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
         )
 
         relative_path = "exports/test/threshold-history-manual-roundtrip.json.gz"

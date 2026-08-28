@@ -132,6 +132,7 @@ class ComputeTssTests(TestCase):
             value_numeric=200,
             source_activity=activity,
             effective_from=date(2025, 12, 1),
+            current_from=date(2025, 12, 1),
         )
         tss = compute_tss(activity, athlete, norm_power=200, heartrate_series=[])
         self.assertEqual(tss, 100)

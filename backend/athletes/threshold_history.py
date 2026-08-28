@@ -156,6 +156,7 @@ class ThresholdHistoryEntry:
     value: float
     activity_id: str
     effective_from: date
+    current_from: date
 
 
 def _athlete_reference_value(athlete: User, field: str) -> float | None:
@@ -226,9 +227,17 @@ def _replay_full_history_into(
         if new_value != current_value:
             current_value = new_value
             if best is not None:
+                # current_from is *this* iteration's activity_date - the date whose recompute
+                # pass discovered best as the new window winner - not best.date (effective_from),
+                # which can be much earlier when best only wins now because a better, more
+                # recent entry aged out from under it (see ThresholdHistoryEntry's docstring).
                 entries_out.append(
                     ThresholdHistoryEntry(
-                        field=field, value=new_value, activity_id=best.activity_id, effective_from=best.date
+                        field=field,
+                        value=new_value,
+                        activity_id=best.activity_id,
+                        effective_from=best.date,
+                        current_from=activity_date,
                     )
                 )
         yield i + 1, total
@@ -250,10 +259,11 @@ def _latest_entry(athlete: User, field: str) -> ThresholdHistory | None:
     return ThresholdHistory.objects.filter(athlete=athlete, field=field).order_by("-effective_from").first()
 
 
-def _record_candidate(athlete: User, field: str, candidate: Candidate) -> None:
+def _record_candidate(athlete: User, field: str, candidate: Candidate, current_from: date) -> None:
     """Writes a new ThresholdHistory row for `candidate` and updates the athlete's cached
     profile value to match. Caller is responsible for confirming this candidate actually
-    represents a change worth recording."""
+    represents a change worth recording. `current_from` is the date this recompute pass ran as
+    of - see ThresholdHistoryEntry's docstring for why that can differ from candidate.date."""
     if field == "threshold_pace":
         value_numeric, value_pace = None, _seconds_to_mmss(candidate.implied_value)
     else:
@@ -265,6 +275,7 @@ def _record_candidate(athlete: User, field: str, candidate: Candidate) -> None:
         value_pace=value_pace,
         source_activity_id=candidate.activity_id,
         effective_from=candidate.date,
+        current_from=current_from,
     )
     setattr(athlete, field, value_pace if field == "threshold_pace" else value_numeric)
     athlete.save(update_fields=[field])
@@ -275,7 +286,8 @@ def _recompute_and_record(athlete: User, field: str, as_of: date | None = None) 
     from the latest one on file. Returns whether anything actually changed. Shared by
     recompute_for_activity (activity-triggered, as_of that activity's own date) and
     refresh_field (athlete-triggered, as_of today)."""
-    candidate = current_window_value(athlete, field, as_of=as_of)
+    effective_as_of = as_of or date.today()
+    candidate = current_window_value(athlete, field, as_of=effective_as_of)
     if candidate is None:
         return False
     latest = _latest_entry(athlete, field)
@@ -295,7 +307,7 @@ def _recompute_and_record(athlete: User, field: str, as_of: date | None = None) 
         latest_value = _mmss_to_seconds(latest.value_pace) if field == "threshold_pace" else latest.value_numeric
     if latest_value == candidate.implied_value:
         return False
-    _record_candidate(athlete, field, candidate)
+    _record_candidate(athlete, field, candidate, current_from=effective_as_of)
     return True
 
 
@@ -332,13 +344,15 @@ def record_manual_value(athlete: User, field: str, raw_value: int | str, as_of: 
     if latest_value == implied_value:
         return False
     value_numeric, value_pace = (None, raw_value) if field == "threshold_pace" else (raw_value, "")
+    effective_as_of = as_of or date.today()
     ThresholdHistory.objects.create(
         athlete=athlete,
         field=field,
         value_numeric=value_numeric,
         value_pace=value_pace,
         source_activity=None,
-        effective_from=as_of or date.today(),
+        effective_from=effective_as_of,
+        current_from=effective_as_of,
     )
     return True
 
@@ -378,6 +392,7 @@ def rebuild_history_stream(athlete: User, field: str) -> Iterator[tuple[int, int
             value_pace=_seconds_to_mmss(entry.value) if field == "threshold_pace" else "",
             source_activity_id=entry.activity_id,
             effective_from=entry.effective_from,
+            current_from=entry.current_from,
         )
         for entry in entries
     )

@@ -69,18 +69,21 @@ def reference_for(athlete: User, zone_type: str, activity: "Activity | None" = N
     Without `activity`, this is computed live from the athlete's *current* profile - the
     original behavior, still used for the athlete-level Zone Editor and the HR-based TSS/TRIMP
     helpers (heart_rate has no per-activity history to fall back to - lthr isn't rolling-window
-    derived). With `activity`, bike_power/run_power/pace instead look up the most recent
-    ThresholdHistory entry effective at-or-before that activity's own date, so a historic ride's
-    zones stay pinned to what was true when it happened rather than moving every time the
-    athlete's current (rolling-window-derived) profile changes.
+    derived). With `activity`, bike_power/run_power/pace instead look up the ThresholdHistory
+    entry that was actually the *recorded current value* at that activity's own date - filtered
+    on current_from, not effective_from. Those two dates differ whenever a row only became
+    current later than its own qualifying activity's date (an earlier, better entry aging out of
+    the window - see ThresholdHistory.current_from's docstring): filtering on effective_from
+    would let such a row match its own activity's date every time (effective_from <= that same
+    date trivially holds), even though the row wasn't actually in effect yet. This keeps a
+    historic ride's zones pinned to what was genuinely true when it happened, rather than to a
+    later value that happens to share a source activity in the same neighborhood.
     """
     field = THRESHOLD_FIELD_BY_ZONE_TYPE[zone_type]
     if activity is not None and zone_type != "heart_rate":
         entry = (
-            ThresholdHistory.objects.filter(
-                athlete=athlete, field=field, effective_from__lte=activity.start_date.date()
-            )
-            .order_by("-effective_from")
+            ThresholdHistory.objects.filter(athlete=athlete, field=field, current_from__lte=activity.start_date.date())
+            .order_by("-current_from")
             .first()
         )
         if entry is None:

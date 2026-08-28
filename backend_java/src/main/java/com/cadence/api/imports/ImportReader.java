@@ -720,6 +720,10 @@ public class ImportReader {
 					row.setValuePace(entry.valuePace() != null ? entry.valuePace() : "");
 					row.setSourceActivity(newActivityId != null ? activityRepository.getReferenceById(newActivityId) : null);
 					row.setEffectiveFrom(entry.effectiveFrom());
+					// A file exported before currentFrom existed has no such key - effectiveFrom
+					// is the same non-regressing fallback the migration backfilled existing rows
+					// with.
+					row.setCurrentFrom(entry.currentFrom() != null ? entry.currentFrom() : entry.effectiveFrom());
 					thresholdHistoryRepository.save(row);
 				});
 				counts.thresholdHistory++;

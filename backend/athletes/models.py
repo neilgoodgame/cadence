@@ -51,7 +51,7 @@ class ThresholdHistory(models.Model):
     """One row per (athlete, field) every time the rolling-window-derived threshold value
     actually changes - see athletes/threshold_history.py. The sole source of truth for "what was
     this athlete's threshold at any given point in time": an activity's own effective threshold
-    is a lookup here (the most recent entry with effective_from <= that activity's start_date),
+    is a lookup here (the most recent entry with current_from <= that activity's start_date),
     not a value duplicated onto every Activity row. Not fetched by its own id, so it uses a plain
     BigAutoField per the core.models.PrefixedIDModel convention (same as ZoneSet/BestEffort).
     """
@@ -67,12 +67,30 @@ class ThresholdHistory(models.Model):
     source_activity = models.ForeignKey(
         Activity, on_delete=models.CASCADE, related_name="threshold_history", null=True, blank=True
     )
+    # The qualifying activity's own date - what "this activity set/previously defined your X"
+    # display is keyed on. NOT necessarily the date this row started being the recorded current
+    # value - see current_from below for that. Equal to current_from for the common case (this
+    # candidate wins immediately, on its own date), but can be much earlier than current_from
+    # when this row only became current later, via an *earlier* better entry aging out of the
+    # window (the "not a one-way ratchet" case - see current_window_value's docstring). A row
+    # dated e.g. 2023-09-03 that only overtook a better 2023-08-26 entry once that one aged out
+    # 112 days later is a real, confirmed example - not a hypothetical.
     effective_from = models.DateField()
+    # The date this row actually became the recorded current value - the date of whichever
+    # activity's ingest/recompute pass first found this to be the new window winner (for a
+    # cascading-expiry win, that's a *different*, later activity than effective_from's own one;
+    # for the common immediate-win case, the two are equal). This is what an activity-scoped
+    # lookup (athletes/zones.py::reference_for) must filter on, not effective_from - filtering on
+    # effective_from lets a not-yet-current row (like the 2023-09-03 example above) match its own
+    # activity's date, since effective_from <= that same date trivially holds, even though the
+    # row wasn't actually in effect until 3+ months later.
+    current_from = models.DateField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["athlete", "field", "effective_from"]),
+            models.Index(fields=["athlete", "field", "current_from"]),
         ]
         verbose_name_plural = "threshold history"
 

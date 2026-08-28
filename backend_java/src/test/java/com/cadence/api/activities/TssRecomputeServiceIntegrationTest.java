@@ -10,6 +10,7 @@ import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,7 +56,9 @@ class TssRecomputeServiceIntegrationTest extends IntegrationTest {
 		entry.setField(ThresholdField.FTP);
 		entry.setValueNumeric(historicalFtp);
 		entry.setSourceActivity(activity);
-		entry.setEffectiveFrom(startDate.atZone(ZoneOffset.UTC).toLocalDate());
+		LocalDate date = startDate.atZone(ZoneOffset.UTC).toLocalDate();
+		entry.setEffectiveFrom(date);
+		entry.setCurrentFrom(date);
 		thresholdHistoryRepository.save(entry);
 
 		for (int t = 0; t < movingTime; t++) {

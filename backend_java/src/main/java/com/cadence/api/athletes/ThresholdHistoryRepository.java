@@ -18,6 +18,15 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndEffectiveFromLessThanEqualOrderByEffectiveFromDescIdDesc(
 			String athleteId, ThresholdField field, LocalDate effectiveFrom);
 
+	// The row that was actually the *recorded current value* as of a specific historical date -
+	// filtered on currentFrom, not effectiveFrom (see ThresholdHistory.getCurrentFrom()'s
+	// Javadoc: those two dates differ whenever a row only became current later than its own
+	// qualifying activity's date, so filtering on effectiveFrom would let a not-yet-current row
+	// match its own activity's date). This, not the method above, is what an activity-scoped zone
+	// reference must use. Tiebroken by id - see the comment above.
+	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCurrentFromLessThanEqualOrderByCurrentFromDescIdDesc(
+			String athleteId, ThresholdField field, LocalDate currentFrom);
+
 	// The current entry - what the athlete's live profile is cached from, and what isStale
 	// compares against. Tiebroken by id - see the comment above.
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(String athleteId, ThresholdField field);

@@ -247,6 +247,8 @@ class ThresholdHistoryIngestionTests(TestCase):
         entry = ThresholdHistory.objects.get(athlete=athlete, field="ftp")
         self.assertEqual(entry.value_numeric, 209)
         self.assertEqual(entry.source_activity_id, activity.id)
+        self.assertEqual(entry.current_from, start.date())
+        self.assertEqual(entry.current_from, entry.effective_from)
 
         athlete.refresh_from_db()
         self.assertEqual(athlete.ftp, 209)
