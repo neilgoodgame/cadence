@@ -131,12 +131,17 @@ export interface DataList<T> {
 
 export type ThresholdFieldName = "ftp" | "critical_run_power" | "threshold_pace";
 
-/** One row this activity is the source of - see Activity.threshold_history. */
+/** One row associated with this activity, in one of two ways distinguished by
+ * source_activity_id - see Activity.threshold_history. source_activity_id equal to this
+ * activity's own id means this activity's own effort produced the row; a *different* id means
+ * this activity's own ingest/recompute pass is what revealed an earlier, dormant effort as the
+ * new current value once its window rival aged out. */
 export interface ThresholdHistoryEntry {
   field: ThresholdFieldName;
   /** Watts for ftp/critical_run_power, "M:SS" for threshold_pace. */
   value: number | string;
   is_current: boolean;
+  source_activity_id: string | null;
 }
 
 /** One field's current state - GET /v1/athletes/{id}/thresholds. */
@@ -207,9 +212,10 @@ export interface Activity {
   trimp: number | null;
   /** Mean % of power from the left leg (dual-sided power meters only). Right % is 100 minus this. */
   avg_left_balance_pct: number | null;
-  /** Every ThresholdHistory ledger entry this activity is (or was) the source of - empty for
-   * the vast majority of activities. `is_current` is false once a later activity's effort has
-   * superseded this one for the same field. See ThresholdHistoryIndicator. */
+  /** Every ThresholdHistory ledger entry associated with this activity, either as its own
+   * source or as something this activity's ingest revealed - empty for the vast majority of
+   * activities. `is_current` is false once a later activity's effort has superseded this one
+   * for the same field. See ThresholdHistoryIndicator and ThresholdHistoryEntry. */
   threshold_history: ThresholdHistoryEntry[];
   start_weight_kg: number | null;
   end_weight_kg: number | null;
