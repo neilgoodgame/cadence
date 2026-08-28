@@ -91,7 +91,7 @@ public class AthleteController {
 
 	@GetMapping("/v1/athletes/{id}/zones")
 	public DataListResponse<ZoneSetResponse> listZones(
-			@PathVariable String id, @RequestParam(required = false) String activityId) {
+			@PathVariable String id, @RequestParam(name = "activity_id", required = false) String activityId) {
 		accessGuard.requireRead(id);
 		User athlete = userService.getById(id);
 		// Optional: scope bike_power/run_power/pace's reference to one activity's own threshold
