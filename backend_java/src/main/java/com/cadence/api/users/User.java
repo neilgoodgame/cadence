@@ -1,6 +1,7 @@
 package com.cadence.api.users;
 
 import com.cadence.api.athletes.FtpCalculationMethod;
+import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -85,6 +86,12 @@ public class User extends PrefixedIdEntity {
 	 * FtpCalculationMethod's Javadoc for the tradeoff between its two values. */
 	@Column(name = "ftp_calculation_method", nullable = false)
 	private FtpCalculationMethod ftpCalculationMethod = FtpCalculationMethod.TWENTY_MIN_TEST;
+
+	/** See RunningPowerSource's own Javadoc. Deliberately not a fallback preference - the
+	 * non-selected source is completely ignored, not used when the selected one is momentarily
+	 * missing. */
+	@Column(name = "running_power_source", nullable = false)
+	private RunningPowerSource runningPowerSource = RunningPowerSource.STRYD;
 
 	@Column(name = "is_coach", nullable = false)
 	private boolean coach = false;
@@ -276,6 +283,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setFtpCalculationMethod(FtpCalculationMethod ftpCalculationMethod) {
 		this.ftpCalculationMethod = ftpCalculationMethod;
+	}
+
+	public RunningPowerSource getRunningPowerSource() {
+		return runningPowerSource;
+	}
+
+	public void setRunningPowerSource(RunningPowerSource runningPowerSource) {
+		this.runningPowerSource = runningPowerSource;
 	}
 
 	public boolean isCoach() {

@@ -368,6 +368,7 @@ def _import_activities(
                     moving_time=ar.get("moving_time") or 0,
                     distance_km=ar.get("distance_km") or 0,
                     distance_source=ar.get("distance_source") or "gps",
+                    power_source=ar.get("power_source") or "",
                     avg_power=ar.get("avg_power"),
                     norm_power=ar.get("norm_power"),
                     intensity=ar.get("intensity"),

@@ -93,6 +93,14 @@ public class ThresholdHistoryCalculator {
 				yield best20Min == null ? null : (double) Math.round(FTP_TEST_MULTIPLIER * best20Min);
 			}
 			case CRITICAL_RUN_POWER -> {
+				// Excluded (source doesn't match the athlete's current preference), or every
+				// sample is genuinely absent (e.g. "native" preferred but this file has no
+				// native power meter at all) - either way, not a qualifying candidate.
+				// bestAverage treats a missing sample as 0W, not "no data," so an all-absent
+				// series must be caught here rather than left to fall through to it.
+				if (!activity.matchesRunningPowerPreference(athlete) || powerSeries.stream().noneMatch(Objects::nonNull)) {
+					yield null;
+				}
 				Double best60Min = DurationCurveCalculator.bestAverage(powerSeries, RUNNING_THRESHOLD_WINDOW_SECONDS);
 				yield best60Min == null ? null : (double) Math.round(best60Min);
 			}

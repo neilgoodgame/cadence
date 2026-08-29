@@ -512,6 +512,7 @@ public class ImportReader {
 		activity.setMovingTime(ar.movingTime());
 		activity.setDistanceKm(ar.distanceKm());
 		activity.setDistanceSource(ar.distanceSource());
+		activity.setPowerSource(ar.powerSource());
 		activity.setAvgPower(ar.avgPower());
 		activity.setNormPower(ar.normPower());
 		activity.setIntensity(ar.intensity());

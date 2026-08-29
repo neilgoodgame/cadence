@@ -43,12 +43,18 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 	}
 
 	private Activity newPowerActivity(User owner, Sport sport, Instant startDate, int power, int durationSeconds) {
+		return newPowerActivity(owner, sport, startDate, (Integer) power, durationSeconds, null);
+	}
+
+	private Activity newPowerActivity(User owner, Sport sport, Instant startDate, Integer power, int durationSeconds,
+			com.cadence.api.athletes.RunningPowerSource powerSource) {
 		Activity activity = new Activity();
 		activity.setAthlete(owner);
 		activity.setSport(sport);
 		activity.setName("Ride");
 		activity.setStartDate(startDate);
 		activity.setMovingTime(durationSeconds);
+		activity.setPowerSource(powerSource);
 		activity = activityRepository.save(activity);
 		for (int t = 0; t < durationSeconds; t++) {
 			Record record = new Record();
@@ -200,6 +206,27 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 
 		assertThat(candidate.activityId()).isEqualTo(faster.getId());
 		assertThat(candidate.impliedValue()).isCloseTo(270.0, org.assertj.core.data.Offset.offset(1.0));
+	}
+
+	@Test
+	void criticalRunPowerIgnoresAMatchingActivityWithNoRealPowerDataAtAll() {
+		// A real edge case, not hypothetical: under "native" preference, a Stryd-only file (no
+		// native power meter at all) resolves to a powerSource that trivially *matches* the
+		// preference (both NATIVE, since that's what governed the resolution at ingest), but
+		// every sample is genuinely null - bestAverage treats a missing sample as 0W, not "no
+		// data," so this must be caught before it reaches that, or a Stryd-only activity
+		// ingested under "native" preference would imply an athlete has a 0W critical running
+		// power instead of no candidate at all.
+		athlete = newAthlete("threshold-history-no-real-power@example.cc", null);
+		athlete.setRunningPowerSource(com.cadence.api.athletes.RunningPowerSource.NATIVE);
+		athlete = userRepository.save(athlete);
+		newPowerActivity(athlete, Sport.RUN, Instant.parse("2026-02-01T07:00:00Z"), (Integer) null, 3600,
+				com.cadence.api.athletes.RunningPowerSource.NATIVE);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.CRITICAL_RUN_POWER, LocalDate.of(2026, 2, 15));
+
+		assertThat(candidate).isNull();
 	}
 
 	// --- replayFullHistory ---

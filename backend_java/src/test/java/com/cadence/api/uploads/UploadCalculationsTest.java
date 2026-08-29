@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class UploadCalculationsTest {
 
 	private static ParsedActivity.Sample sample(double altitude) {
-		return new ParsedActivity.Sample(0, null, null, altitude, null, null, null, null, null, null, null, null, null, null, null);
+		return new ParsedActivity.Sample(0, null, null, altitude, null, null, null, null, null, null, null, null, null, null, null, null);
 	}
 
 	@Test

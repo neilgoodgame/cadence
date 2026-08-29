@@ -50,6 +50,7 @@ class AthleteMCPTools(ScopedMCPToolset):
             "ftp": athlete.ftp,
             "ftp_calculation_method": athlete.ftp_calculation_method,
             "critical_run_power": athlete.critical_run_power,
+            "running_power_source": athlete.running_power_source,
             "threshold_pace": athlete.threshold_pace or None,
             "lthr": athlete.lthr,
             "max_hr": athlete.max_hr,

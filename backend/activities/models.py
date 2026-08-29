@@ -31,6 +31,17 @@ class Activity(PrefixedIDModel):
         ("trainer", "Trainer"),
         ("manual", "Manual"),
     ]
+    # Which of the two candidate running-power readings this run's Record.power was actually
+    # resolved from - see uploads/processing.py::_select_running_power_source. Only ever set for
+    # FIT-sourced run activities where the file's own ambiguity (native vs Stryd developer
+    # field) made a choice necessary; blank for every other sport/format, where there's no such
+    # choice to record. Recomputes (best efforts, derived stats, threshold history) compare this
+    # against the athlete's *current* running_power_source preference, not just at ingest -
+    # so this is a record of what was true about the file, not a frozen policy snapshot.
+    POWER_SOURCE_CHOICES = [
+        ("stryd", "Stryd"),
+        ("native", "Native"),
+    ]
 
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="activities")
     sport = models.CharField(max_length=10, choices=SPORT_CHOICES)
@@ -47,6 +58,7 @@ class Activity(PrefixedIDModel):
     moving_time = models.IntegerField(default=0)
     distance_km = models.FloatField(default=0)
     distance_source = models.CharField(max_length=10, choices=DISTANCE_SOURCE_CHOICES, default="gps")
+    power_source = models.CharField(max_length=10, choices=POWER_SOURCE_CHOICES, blank=True, default="")
     avg_power = models.IntegerField(null=True, blank=True)
     norm_power = models.IntegerField(null=True, blank=True)
     intensity = models.FloatField(null=True, blank=True)
@@ -112,6 +124,18 @@ class Activity(PrefixedIDModel):
 
     def __str__(self) -> str:
         return self.name
+
+    def matches_running_power_preference(self, athlete: User) -> bool:
+        """Whether this activity's own resolved running-power source still matches the
+        athlete's *current* running_power_source preference - False only when both are set
+        and they disagree. An unset power_source (pre-feature activity, a non-FIT format, or
+        a non-run sport) always matches: there's nothing to compare against, so its power is
+        trusted exactly as it was before this preference existed. Checked by every consumer
+        of running power (best efforts, TSS/derived stats, critical_run_power threshold
+        history) before trusting avg_power/Record.power for a run - see
+        uploads/processing.py::_select_running_power_source for where power_source itself
+        gets set."""
+        return not self.power_source or self.power_source == athlete.running_power_source
 
 
 class Lap(models.Model):

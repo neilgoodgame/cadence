@@ -13,6 +13,7 @@ import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.uploads.UploadCalculations;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -117,6 +118,12 @@ public class DerivedStatsRecomputeService {
 
 		List<Integer> powerSeries = RunningPowerSanitizer.sanitize(
 				records.stream().map(Record::getPower).toList(), activity.getSport(), athlete.getMaxRunningPowerWatts());
+		if (activity.getSport() == Sport.RUN && !activity.matchesRunningPowerPreference(athlete)) {
+			// This run's stored power came from the source the athlete currently excludes -
+			// maxPower/avgPower/normPower/intensity/calories below must not be derived from
+			// it, same reasoning as TssCalculator's own gate.
+			powerSeries = Collections.nCopies(powerSeries.size(), null);
+		}
 		Integer maxPower = max(powerSeries);
 		if (maxPower != null) {
 			activity.setMaxPower(maxPower);

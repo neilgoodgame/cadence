@@ -72,6 +72,22 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     ftp_calculation_method = models.CharField(
         max_length=20, choices=FTP_CALCULATION_METHOD_CHOICES, default="twenty_min_test"
     )
+    # Which running-power reading to trust when a FIT file carries both: a watch's own
+    # accelerometer-based estimate (e.g. Garmin Running Power) and a third-party footpod's
+    # (e.g. Stryd). The two commonly disagree substantially - native running-power algorithms
+    # tend to read meaningfully higher than Stryd for the same effort - so this is a deliberate
+    # choice, not a fallback preference: the non-selected source is completely ignored at parse
+    # time (uploads/processing.py::_select_running_power_source), not used when the selected one
+    # is momentarily missing. Every consumer of running power downstream (best efforts, TSS/
+    # derived stats, critical_run_power's rolling-window threshold) re-checks a run activity's
+    # own Activity.power_source against this *current* preference before trusting its power data
+    # - not just at ingest time - so switching this later correctly stops an already-imported
+    # activity's stale-preference power from counting, without needing to re-upload it.
+    RUNNING_POWER_SOURCE_CHOICES = [
+        ("stryd", "Stryd"),
+        ("native", "Native (e.g. Garmin Running Power)"),
+    ]
+    running_power_source = models.CharField(max_length=10, choices=RUNNING_POWER_SOURCE_CHOICES, default="stryd")
     # Auto-match naming preferences (uploads/processing.py's attempt_workout_match) - both
     # default off so existing device-derived activity names are untouched unless opted in.
     # append_match_date_to_name only has an effect when rename_matched_activities is also on.

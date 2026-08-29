@@ -216,6 +216,21 @@ class RealFitIngestionTests(TestCase):
         self.assertAlmostEqual(activity.avg_air_temp, 20.8, places=1)
         self.assertEqual(activity.avg_humidity, 35)
 
+    def test_running_treadmill_under_native_preference_ignores_the_stryd_only_files_power_entirely(self):
+        # This device is Stryd-only (no native power meter at all - see
+        # RealFitFixtureParserTests in test_parsers.py) - under the "native" preference, its
+        # power must be completely ignored end to end, not fall back to the only data present.
+        self.athlete.running_power_source = "native"
+        self.athlete.save(update_fields=["running_power_source"])
+
+        activity = self._upload_fixture("running_treadmill.fit")
+
+        self.assertEqual(activity.power_source, "native")
+        self.assertFalse(Record.objects.filter(activity=activity, power__isnull=False).exists())
+        self.assertIsNone(activity.norm_power)
+        self.assertFalse(BestEffort.objects.filter(athlete=self.athlete, kind="running_power").exists())
+        self.assertIsNone(reference_for(self.athlete, "run_power", activity))
+
     def test_patch_avg_air_temp_ignored_after_stryd_ingestion(self):
         activity = self._upload_fixture("running_treadmill.fit")
         client = _bearer_client(self.athlete)

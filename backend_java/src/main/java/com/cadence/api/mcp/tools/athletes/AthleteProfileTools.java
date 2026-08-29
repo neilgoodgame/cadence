@@ -66,6 +66,7 @@ public class AthleteProfileTools {
 				user.getFtp(),
 				user.getFtpCalculationMethod(),
 				user.getCriticalRunPower(),
+				user.getRunningPowerSource(),
 				user.getThresholdPace(),
 				user.getLthr(),
 				user.getMaxHr(),

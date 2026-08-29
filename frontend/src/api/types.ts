@@ -3,6 +3,14 @@
  * FTP's own textbook definition, no multiplier - needs a longer qualifying effort). */
 export type FtpCalculationMethod = "twenty_min_test" | "sixty_min_direct";
 
+/** Which running-power reading to trust when a FIT file carries both: a watch's own
+ * accelerometer-based estimate ("native", e.g. Garmin Running Power) and a third-party
+ * footpod's ("stryd"). The two commonly disagree substantially - native running-power
+ * algorithms tend to read meaningfully higher than Stryd for the same effort - so this is a
+ * deliberate choice, not a fallback preference: the non-selected source is completely ignored
+ * at parse time, not used when the selected one is momentarily missing. */
+export type RunningPowerSource = "stryd" | "native";
+
 export interface Athlete {
   id: string;
   name: string;
@@ -27,6 +35,7 @@ export interface Athlete {
   resting_hr: number | null;
   best_effort_top_n: number;
   ftp_calculation_method: FtpCalculationMethod;
+  running_power_source: RunningPowerSource;
   is_coach: boolean;
   is_admin: boolean;
   /** When an upload auto-matches a scheduled workout, replace the activity's name with the
@@ -192,6 +201,10 @@ export interface Activity {
   moving_time: number;
   distance_km: number;
   distance_source: DistanceSource;
+  /** Which of the two candidate running-power readings this run's power was actually resolved
+   * from (native vs Stryd) - null for every non-FIT/non-run activity, where there's no such
+   * ambiguity to record. See Athlete.running_power_source. */
+  power_source: RunningPowerSource | null;
   avg_power: number | null;
   norm_power: number | null;
   intensity: number | null;
@@ -259,6 +272,7 @@ export interface AthleteUpdate {
   resting_hr?: number;
   best_effort_top_n?: number;
   ftp_calculation_method?: FtpCalculationMethod;
+  running_power_source?: RunningPowerSource;
   rename_matched_activities?: boolean;
   append_match_date_to_name?: boolean;
   copy_matched_workout_tags?: boolean;

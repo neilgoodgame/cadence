@@ -7,6 +7,7 @@ import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.calc.EnvironmentSanitizer;
 import com.cadence.api.activities.calc.RunningPowerSanitizer;
+import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.config.CadenceProperties;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
@@ -18,6 +19,7 @@ import com.cadence.api.uploads.UploadStatus;
 import com.cadence.api.uploads.parsing.FileParserDispatcher;
 import com.cadence.api.uploads.parsing.NoActivityDataException;
 import com.cadence.api.uploads.parsing.ParsedActivity;
+import com.cadence.api.users.User;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -113,7 +115,12 @@ public class ParseFileTasklet implements Tasklet {
 			// Dropped here, before a Record is ever written, rather than left for a later
 			// recompute to clean up - see RunningPowerSanitizer's Javadoc for the failure mode
 			// (an implausible single-sample power spike a footpod occasionally emits).
-			ParsedActivity parsed = sanitizeEnvironment(sanitizeRunningPower(rawParsed, upload.getAthlete().getMaxRunningPowerWatts()));
+			// selectRunningPowerSource runs first: it collapses the two power candidates
+			// (native/Stryd) into the one the athlete actually trusts, so
+			// sanitizeRunningPower's spike-clipping below applies to whichever source was
+			// actually chosen, not always the native field.
+			ParsedActivity selected = selectRunningPowerSource(rawParsed, upload.getAthlete());
+			ParsedActivity parsed = sanitizeEnvironment(sanitizeRunningPower(selected, upload.getAthlete().getMaxRunningPowerWatts()));
 			boolean isChild = multisport && parent != null;
 			Activity activity = new Activity();
 			activity.setAthlete(upload.getAthlete());
@@ -130,6 +137,11 @@ public class ParseFileTasklet implements Tasklet {
 			activity.setDistanceSource(parsed.distanceSource() != null
 					? parsed.distanceSource()
 					: (parsed.hasGps() ? DistanceSource.GPS : DistanceSource.MANUAL));
+			// Only FIT-sourced runs carry the native-vs-Stryd ambiguity selectRunningPowerSource
+			// resolves below - every other sport/format has nothing to record here.
+			activity.setPowerSource(parsed.sport() == Sport.RUN && "fit".equals(parsed.source())
+					? upload.getAthlete().getRunningPowerSource()
+					: null);
 			activity.setAscent(UploadCalculations.totalAscent(parsed.samples()));
 			activity.setTotalDescent(UploadCalculations.totalDescent(parsed.samples()));
 			if (isChild) {
@@ -173,6 +185,33 @@ public class ParseFileTasklet implements Tasklet {
 	 * in FitFileParser from the unsanitized samples) - a lap containing a spike still reports a
 	 * skewed average; only the per-second series consumers (best efforts, duration curves,
 	 * normalized power, threshold history, the activity chart) are protected. */
+	/** Resolves each running sample's power to *only* the athlete's preferred source
+	 * (User.getRunningPowerSource()) - the other candidate is completely ignored, not used as a
+	 * fallback for a momentary gap. FitFileParser keeps both {@code power} (native) and
+	 * {@code powerStryd} (Stryd's own developer field) distinct through parsing specifically
+	 * because it has no athlete context to choose between them; this is where that choice
+	 * actually happens, now that {@code athlete} is in scope.
+	 *
+	 * <p>Only meaningful for FIT files, where the ambiguity exists at all - a TCX/GPX file has
+	 * a single power field with no source to distinguish, so this passes those through
+	 * unchanged. */
+	private static ParsedActivity selectRunningPowerSource(ParsedActivity parsed, User athlete) {
+		if (parsed.sport() != Sport.RUN || !"fit".equals(parsed.source())) {
+			return parsed;
+		}
+		boolean preferNative = athlete.getRunningPowerSource() == RunningPowerSource.NATIVE;
+		List<ParsedActivity.Sample> samples = new ArrayList<>(parsed.samples().size());
+		for (ParsedActivity.Sample s : parsed.samples()) {
+			Integer resolved = preferNative ? s.power() : s.powerStryd();
+			samples.add(new ParsedActivity.Sample(s.t(), s.lat(), s.lng(), s.altitude(), s.distanceKm(),
+					s.heartrate(), s.cadence(), resolved, s.speed(), s.airTemp(), s.humidity(),
+					s.coreTemp(), s.skinTemp(), s.heatStrain(), s.leftBalancePct(), s.powerStryd()));
+		}
+		return new ParsedActivity(parsed.sport(), parsed.environment(), parsed.hasGps(), parsed.startDate(),
+				parsed.source(), parsed.device(), parsed.distanceSource(), samples, parsed.laps(),
+				parsed.aerobicTrainingEffect(), parsed.anaerobicTrainingEffect());
+	}
+
 	private static ParsedActivity sanitizeRunningPower(ParsedActivity parsed, int maxRunningPowerWatts) {
 		if (parsed.sport() != Sport.RUN) {
 			return parsed;
@@ -184,7 +223,7 @@ public class ParseFileTasklet implements Tasklet {
 			ParsedActivity.Sample s = parsed.samples().get(i);
 			samples.add(new ParsedActivity.Sample(s.t(), s.lat(), s.lng(), s.altitude(), s.distanceKm(),
 					s.heartrate(), s.cadence(), sanitizedPower.get(i), s.speed(), s.airTemp(), s.humidity(),
-					s.coreTemp(), s.skinTemp(), s.heatStrain(), s.leftBalancePct()));
+					s.coreTemp(), s.skinTemp(), s.heatStrain(), s.leftBalancePct(), s.powerStryd()));
 		}
 		return new ParsedActivity(parsed.sport(), parsed.environment(), parsed.hasGps(), parsed.startDate(),
 				parsed.source(), parsed.device(), parsed.distanceSource(), samples, parsed.laps(),
@@ -208,7 +247,7 @@ public class ParseFileTasklet implements Tasklet {
 			ParsedActivity.Sample s = parsed.samples().get(i);
 			samples.add(new ParsedActivity.Sample(s.t(), s.lat(), s.lng(), s.altitude(), s.distanceKm(),
 					s.heartrate(), s.cadence(), s.power(), s.speed(), sanitizedAirTemp.get(i), sanitizedHumidity.get(i),
-					s.coreTemp(), s.skinTemp(), s.heatStrain(), s.leftBalancePct()));
+					s.coreTemp(), s.skinTemp(), s.heatStrain(), s.leftBalancePct(), s.powerStryd()));
 		}
 		return new ParsedActivity(parsed.sport(), parsed.environment(), parsed.hasGps(), parsed.startDate(),
 				parsed.source(), parsed.device(), parsed.distanceSource(), samples, parsed.laps(),

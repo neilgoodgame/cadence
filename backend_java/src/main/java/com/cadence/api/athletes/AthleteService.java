@@ -89,6 +89,16 @@ public class AthleteService {
 			athlete.setFtpCalculationMethod(request.ftpCalculationMethod());
 			changed.add("ftpCalculationMethod");
 		}
+		if (request.runningPowerSource() != null) {
+			// Doesn't retroactively touch already-imported activities' stored Record.power
+			// (see Activity.getPowerSource()'s Javadoc) - but every consumer of running power
+			// (best efforts, TSS/derived stats, criticalRunPower threshold history) re-checks
+			// each activity's own powerSource against this preference on every recompute, not
+			// just at ingest, so switching this does correctly exclude already-imported
+			// activities whose source no longer matches, without needing to re-upload them.
+			athlete.setRunningPowerSource(request.runningPowerSource());
+			changed.add("runningPowerSource");
+		}
 		if (request.renameMatchedActivities() != null) {
 			athlete.setRenameMatchedActivities(request.renameMatchedActivities());
 		}
