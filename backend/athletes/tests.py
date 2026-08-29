@@ -1059,6 +1059,33 @@ class RefreshFieldTests(TestCase):
         self.assertEqual(entries.count(), 1)
         self.assertEqual(entries.get().value_numeric, 255)
 
+    # Regression test for a real bug found live: threshold_pace's implied value is a raw,
+    # sub-second float (unlike ftp/critical_run_power, which round before this comparison), while
+    # the "already recorded" value is reconstructed from the stored whole-second "M:SS" string -
+    # so a fractional-second mismatch (near-certain on real data) made every re-trigger insert
+    # another identical dead row, bumping current_from to today, even though nothing had actually
+    # changed. Seen for real: a run import unrelated to running power/pace re-triggered the
+    # ingest hook, which re-evaluated an already-current 15-days-old best effort and inserted a
+    # duplicate ledger row for it.
+    def test_does_not_record_a_duplicate_row_for_a_still_current_fractional_pace(self):
+        start_date = datetime.now(UTC) - timedelta(days=14)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Run", start_date=start_date, moving_time=3600
+        )
+        # 274.6 s/km - deliberately not a whole number, so the raw best-pace calculation lands on
+        # a fractional value that only becomes "4:35" (275s) once rounded for storage/display.
+        for t in range(3601):
+            Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), distance_km=t / 274.6)
+
+        first = refresh_field(self.athlete, "threshold_pace")
+        second = refresh_field(self.athlete, "threshold_pace")
+
+        self.assertTrue(first)
+        self.assertFalse(second)
+        entries = ThresholdHistory.objects.filter(athlete=self.athlete, field="threshold_pace")
+        self.assertEqual(entries.count(), 1)
+        self.assertEqual(entries.get().value_pace, "4:35")
+
 
 class BestEffortRecomputeJobViewTests(TestCase):
     """The recompute endpoint runs via a Celery job + polling, not a synchronous

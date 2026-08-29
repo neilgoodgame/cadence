@@ -134,7 +134,15 @@ def _implied_value(activity: Activity, field: str) -> float | None:
         best_60min = _sliding_window_best_avg(power_series, RUNNING_THRESHOLD_WINDOW_SECONDS)
         return round(best_60min) if best_60min is not None else None
     if field == "threshold_pace":
-        return _best_pace_seconds_per_km_over_duration(t_series, distance_km_series, RUNNING_THRESHOLD_WINDOW_SECONDS)
+        best_pace = _best_pace_seconds_per_km_over_duration(
+            t_series, distance_km_series, RUNNING_THRESHOLD_WINDOW_SECONDS
+        )
+        # Rounded to whole seconds like ftp/critical_run_power above - value_pace is stored (and
+        # re-parsed via _mmss_to_seconds for _recompute_and_record's dead-row comparison) as
+        # whole-second "M:SS", so a raw sub-second float here could never compare equal to the
+        # already-rounded stored value: every re-ingest inserted a spurious duplicate row for the
+        # same still-current pace instead of recognizing it as unchanged.
+        return round(best_pace) if best_pace is not None else None
     raise ValueError(f"Unknown field: {field}")
 
 

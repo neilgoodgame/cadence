@@ -104,8 +104,16 @@ public class ThresholdHistoryCalculator {
 				Double best60Min = DurationCurveCalculator.bestAverage(powerSeries, RUNNING_THRESHOLD_WINDOW_SECONDS);
 				yield best60Min == null ? null : (double) Math.round(best60Min);
 			}
-			case THRESHOLD_PACE -> PaceBestEffortCalculator.bestPaceSecondsPerKmOverDuration(
-					tSeries, distanceKmSeries, RUNNING_THRESHOLD_WINDOW_SECONDS);
+			case THRESHOLD_PACE -> {
+				Double bestPace = PaceBestEffortCalculator.bestPaceSecondsPerKmOverDuration(
+						tSeries, distanceKmSeries, RUNNING_THRESHOLD_WINDOW_SECONDS);
+				// Rounded to whole seconds like FTP/CRITICAL_RUN_POWER above - valuePace is stored
+				// (and re-parsed via mmssToSeconds for recomputeAndRecord's dead-row comparison) as
+				// whole-second "M:SS", so a raw sub-second double here could never compare equal to
+				// the already-rounded stored value: every re-ingest inserted a spurious duplicate
+				// row for the same still-current pace instead of recognizing it as unchanged.
+				yield bestPace == null ? null : (double) Math.round(bestPace);
+			}
 		};
 	}
 
