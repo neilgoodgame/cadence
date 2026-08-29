@@ -40,7 +40,8 @@ public class BestEffortComputeService {
 				updateHrBestEfforts(activity, athlete, BestEffortKind.CYCLING_HR, hrSeries, topN);
 			}
 		} else if (activity.getSport() == Sport.RUN) {
-			if (athlete.getCriticalRunPower() != null && powerSeries.stream().anyMatch(Objects::nonNull)) {
+			if (athlete.getCriticalRunPower() != null && activity.matchesRunningPowerPreference(athlete)
+					&& powerSeries.stream().anyMatch(Objects::nonNull)) {
 				updatePowerBestEfforts(activity, athlete, BestEffortKind.RUNNING_POWER, powerSeries, topN);
 			}
 			updatePaceBestEfforts(activity, athlete, tSeries, distanceSeries, topN);
@@ -57,7 +58,11 @@ public class BestEffortComputeService {
 		switch (kind) {
 			case CYCLING_POWER -> updatePowerBestEfforts(activity, athlete, kind, powerSeries, topN);
 			case CYCLING_HR -> updateHrBestEfforts(activity, athlete, kind, hrSeries, topN);
-			case RUNNING_POWER -> updatePowerBestEfforts(activity, athlete, kind, powerSeries, topN);
+			case RUNNING_POWER -> {
+				if (activity.matchesRunningPowerPreference(athlete)) {
+					updatePowerBestEfforts(activity, athlete, kind, powerSeries, topN);
+				}
+			}
 			case RUNNING_HR -> updateHrBestEfforts(activity, athlete, kind, hrSeries, topN);
 			case RUNNING_PACE -> updatePaceBestEfforts(activity, athlete, tSeries, distanceSeries, topN);
 		}

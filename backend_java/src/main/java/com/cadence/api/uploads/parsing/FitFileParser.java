@@ -196,7 +196,16 @@ public final class FitFileParser {
 			Double speed = firstNonNull(r.getEnhancedSpeed(), r.getSpeed());
 			Integer heartrate = r.getHeartRate() != null ? r.getHeartRate().intValue() : null;
 			Integer cadence = r.getCadence() != null ? r.getCadence().intValue() : null;
-			Integer power = r.getPower() != null ? r.getPower() : developerFieldAsInteger(r, "Power");
+			// Kept as two distinct candidates, not merged here - a run can carry both a
+			// native-power reading (a watch's own accelerometer-based estimate, e.g. Garmin
+			// Running Power) and a third-party footpod's (e.g. Stryd) developer field "Power"
+			// at once, and which one the athlete actually trusts is a per-athlete preference
+			// this parser layer has no access to (see ParseFileTasklet's power-source
+			// resolution). Native by default - correct as-is for every non-run sport (a bike
+			// power meter always writes the standard field, never a Stryd-style developer
+			// field) and for run activities until that resolution runs.
+			Integer power = r.getPower();
+			Integer powerStryd = developerFieldAsInteger(r, "Power");
 			// Stryd footpod developer fields: ambient temperature/humidity.
 			Double airTemp = developerFieldAsDouble(r, "Stryd Temperature");
 			Integer humidity = developerFieldAsInteger(r, "Stryd Humidity");
@@ -219,7 +228,7 @@ public final class FitFileParser {
 			Double leftBalancePct = leftBalancePct(r.getLeftRightBalance());
 			samples.add(new ParsedActivity.Sample(
 					t, lat, lng, altitude, distanceKm, heartrate, cadence, power, speed,
-					airTemp, humidity, coreTemp, skinTemp, heatStrain, leftBalancePct));
+					airTemp, humidity, coreTemp, skinTemp, heatStrain, leftBalancePct, powerStryd));
 		}
 
 		List<ParsedActivity.LapSummary> lapSummaries = new ArrayList<>(laps.size());
@@ -232,14 +241,22 @@ public final class FitFileParser {
 			if (avgPower == null && lap.getStartTime() != null) {
 				// Third-party run-power meters (e.g. Stryd) don't fill in the lap message's own
 				// avg_power summary field - only a native power meter does. Fall back to
-				// averaging the already Stryd-fallback-applied per-sample power (see `power`
-				// above) over the lap's time window instead of reporting it as simply missing.
+				// averaging whichever per-sample candidate actually has data over the lap's
+				// time window (native, then Stryd) instead of reporting it as simply missing -
+				// this is a display-only summary, not subject to the athlete's power-source
+				// preference the way Record.power/Activity stats are (see
+				// ParseFileTasklet's power-source resolution).
 				int lapStartT = (int) ((lap.getStartTime().getDate().getTime() - startMillis) / 1000);
 				int lapEndT = lapStartT + duration;
-				OptionalDouble mean = samples.stream()
-						.filter(s -> s.t() >= lapStartT && s.t() < lapEndT && s.power() != null)
-						.mapToInt(ParsedActivity.Sample::power)
-						.average();
+				List<ParsedActivity.Sample> lapSamples = samples.stream()
+						.filter(s -> s.t() >= lapStartT && s.t() < lapEndT)
+						.toList();
+				OptionalDouble mean = lapSamples.stream().filter(s -> s.power() != null)
+						.mapToInt(ParsedActivity.Sample::power).average();
+				if (mean.isEmpty()) {
+					mean = lapSamples.stream().filter(s -> s.powerStryd() != null)
+							.mapToInt(ParsedActivity.Sample::powerStryd).average();
+				}
 				avgPower = mean.isPresent() ? (int) Math.round(mean.getAsDouble()) : null;
 			}
 			lapSummaries.add(new ParsedActivity.LapSummary(index++, duration, distanceKm, avgHr, avgPower));

@@ -27,6 +27,7 @@ class UserSerializer(serializers.ModelSerializer):
             "threshold_window_days",
             "threshold_sanity_pct",
             "ftp_calculation_method",
+            "running_power_source",
             "rename_matched_activities",
             "append_match_date_to_name",
             "copy_matched_workout_tags",

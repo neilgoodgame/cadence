@@ -10,6 +10,7 @@ from ..processing import (
     _best_pace_seconds_per_km,
     _min,
     _sanitize_environment_samples,
+    _select_running_power_source,
     _total_ascent,
     _total_descent,
     compute_calories,
@@ -19,6 +20,38 @@ from ..processing import (
     compute_tss,
     training_effect_label,
 )
+
+
+class SelectRunningPowerSourceTests(SimpleTestCase):
+    def _athlete(self, running_power_source="stryd"):
+        return User(running_power_source=running_power_source)
+
+    def test_stryd_preference_ignores_native_even_when_present(self):
+        samples = [{"power": 400, "power_stryd": 250}]
+        resolved, tag = _select_running_power_source(samples, "fit", self._athlete("stryd"))
+        self.assertEqual(resolved[0]["power"], 250)
+        self.assertEqual(tag, "stryd")
+
+    def test_native_preference_ignores_stryd_even_when_present(self):
+        samples = [{"power": 400, "power_stryd": 250}]
+        resolved, tag = _select_running_power_source(samples, "fit", self._athlete("native"))
+        self.assertEqual(resolved[0]["power"], 400)
+        self.assertEqual(tag, "native")
+
+    def test_stryd_preference_with_only_native_data_yields_no_power_at_all(self):
+        # The exact real-world case this feature exists for: a Garmin-native-only run under
+        # the default "stryd" preference must not fall back to the native reading.
+        samples = [{"power": 364, "power_stryd": None}]
+        resolved, tag = _select_running_power_source(samples, "fit", self._athlete("stryd"))
+        self.assertIsNone(resolved[0]["power"])
+        self.assertEqual(tag, "stryd")
+
+    def test_non_fit_source_is_passed_through_untagged(self):
+        # TCX/GPX have a single power field with no native-vs-Stryd ambiguity to resolve.
+        samples = [{"power": 250}]
+        resolved, tag = _select_running_power_source(samples, "tcx", self._athlete("stryd"))
+        self.assertEqual(resolved[0]["power"], 250)
+        self.assertEqual(tag, "")
 
 
 class ComputeNormalizedPowerTests(SimpleTestCase):
@@ -146,6 +179,33 @@ class ComputeTssTests(TestCase):
         # All samples sit at exactly 100% of LTHR -> Z4 Threshold (91-105%),
         # whose midpoint is 98% -> a full hour there is 98 hrTSS exactly.
         self.assertEqual(tss, 98)
+
+    def test_run_falls_back_to_hr_when_power_source_no_longer_matches_preference(self):
+        # The athlete has since switched away from trusting this run's power source (e.g.
+        # they now exclude native/Garmin power) - compute_tss must not score it against a
+        # power-based threshold even though norm_power/threshold_power are both present.
+        athlete = User.objects.create_user(
+            email="power-source-mismatch@example.cc",
+            password="x",
+            name="Athlete",
+            critical_run_power=999,
+            lthr=160,
+            running_power_source="stryd",
+        )
+        activity = Activity.objects.create(
+            athlete=athlete,
+            sport="run",
+            moving_time=3600,
+            power_source="native",
+            start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC),
+        )
+        hr_series = [160] * 3600
+        # 300/999 would give a very different (power-based) TSS if the gate didn't fire -
+        # comparing against the explicit norm_power=None call (same hr_series) proves the
+        # mismatched power was actually ignored, not just coincidentally similar.
+        gated_tss = compute_tss(activity, athlete, norm_power=300, heartrate_series=hr_series)
+        explicit_hr_tss = compute_tss(activity, athlete, norm_power=None, heartrate_series=hr_series)
+        self.assertEqual(gated_tss, explicit_hr_tss)
 
 
 class MinTests(SimpleTestCase):

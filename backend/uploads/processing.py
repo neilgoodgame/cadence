@@ -111,6 +111,30 @@ def _sanitize_environment_samples(
     return sanitized_air_temp, sanitized_humidity
 
 
+def _select_running_power_source(samples: list[Sample], source_format: str, athlete: User) -> tuple[list[Sample], str]:
+    """Resolves each running sample's power to *only* the athlete's preferred source
+    (User.running_power_source) - the other candidate is completely ignored, not used as a
+    fallback for a momentary gap. uploads/parsers/fit.py keeps both `power` (native) and
+    `power_stryd` (Stryd's own developer field) distinct through parsing specifically because
+    it has no athlete context to choose between them; this is where that choice actually
+    happens, now that `athlete` is in scope.
+
+    Only meaningful for FIT files, where the ambiguity exists at all - a TCX/GPX file has a
+    single power field with no source to distinguish, so this passes those through unchanged
+    and returns "" for the activity-level tag (nothing to record).
+
+    Returns the resolved samples and the power_source value to persist on Activity, so a later
+    preference change is recognised at recompute time against *this* activity's own resolved
+    source, not just applied going forward - see Activity.power_source's own docstring.
+    """
+    if source_format != "fit":
+        return samples, ""
+    preference = athlete.running_power_source
+    key = "power" if preference == "native" else "power_stryd"
+    resolved = [{**s, "power": s.get(key)} for s in samples]
+    return resolved, preference
+
+
 def _moving_time(samples: Sequence[Sample]) -> int:
     if not samples:
         return 0
@@ -339,6 +363,12 @@ def compute_tss(
         if threshold_power is None:
             threshold_power = reference_for(athlete, "bike_power")
     elif activity.sport == "run":
+        if not activity.matches_running_power_preference(athlete):
+            # This run's power came from the source the athlete currently excludes (see
+            # Activity.matches_running_power_preference) - treat it as though there were no
+            # power data at all, same as any other run with no power meter, rather than
+            # scoring it against a threshold derived from a source it doesn't trust.
+            norm_power = None
         threshold_power = reference_for(athlete, "run_power", activity)
         if threshold_power is None:
             threshold_power = reference_for(athlete, "run_power")
@@ -402,6 +432,11 @@ def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
     )
 
     power_series = [r["power"] for r in records]
+    if activity.sport == "run" and not activity.matches_running_power_preference(athlete):
+        # This run's stored power came from the source the athlete currently excludes -
+        # max_power/calories below must not be derived from it, same reasoning as
+        # compute_tss's own gate.
+        power_series = [None] * len(power_series)
     cadence_series = [r["cadence"] for r in records]
     speed_series = [r["speed"] for r in records]
     altitude_series = [r["altitude"] for r in records]
@@ -630,7 +665,12 @@ def compute_kind_best_efforts(
         if activity.sport == "bike" and has_hr:
             _update_hr_best_efforts(activity, athlete, "cycling_hr", hr_series)
     elif kind == "running_power":
-        if activity.sport == "run" and athlete.critical_run_power and any(p for p in power_series):
+        if (
+            activity.sport == "run"
+            and athlete.critical_run_power
+            and activity.matches_running_power_preference(athlete)
+            and any(p for p in power_series)
+        ):
             _update_power_best_efforts(activity, athlete, "running_power", power_series)
     elif kind == "running_pace":
         if activity.sport == "run":
@@ -671,7 +711,11 @@ def update_best_efforts(
         if has_hr:
             _update_hr_best_efforts(activity, athlete, "cycling_hr", hr_series)
     elif activity.sport == "run":
-        if athlete.critical_run_power and any(p for p in power_series):
+        if (
+            athlete.critical_run_power
+            and activity.matches_running_power_preference(athlete)
+            and any(p for p in power_series)
+        ):
             _update_power_best_efforts(activity, athlete, "running_power", power_series)
         _update_pace_best_efforts(activity, athlete, t_series, distance_km_series)
         if has_hr:
@@ -769,6 +813,7 @@ def _ingest_activity(
     # Dropped here, before a Record row or the activity-level average is built from them,
     # rather than left for a later recompute to clean up - see
     # _sanitize_environment_samples's docstring for the failure mode.
+    power_source = ""
     if sport == "run":
         sanitized_air_temp, sanitized_humidity = _sanitize_environment_samples(
             [s.get("air_temp") for s in samples], [s.get("humidity") for s in samples]
@@ -776,6 +821,7 @@ def _ingest_activity(
         samples = [
             {**s, "air_temp": sanitized_air_temp[i], "humidity": sanitized_humidity[i]} for i, s in enumerate(samples)
         ]
+        samples, power_source = _select_running_power_source(samples, parsed.get("source", ""), athlete)
 
     if multisport:
         # The shoe travels with the run/walk legs; the parent spans sports it wasn't worn for.
@@ -795,6 +841,7 @@ def _ingest_activity(
         moving_time=_moving_time(samples),
         distance_km=_total_distance_km(samples, laps),
         distance_source=parsed.get("distance_source", "gps" if parsed["has_gps"] else "manual"),
+        power_source=power_source,
         ascent=_total_ascent(samples),
         total_descent=_total_descent(samples),
         parent_activity=parent,

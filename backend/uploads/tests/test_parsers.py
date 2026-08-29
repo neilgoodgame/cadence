@@ -167,13 +167,18 @@ class RealFitFixtureParserTests(SimpleTestCase):
         self.assertTrue(all(s["air_temp"] is None for s in result["samples"]))
         self.assertTrue(all(s["humidity"] is None for s in result["samples"]))
 
-    def test_running_outdoor_marathon_falls_back_to_stryd_power_field(self):
+    def test_running_outdoor_marathon_exposes_stryd_power_field(self):
+        # Stryd-only device: no native power meter, so "power" (native) stays None
+        # throughout and the Stryd developer field is where the real data lives - see
+        # uploads/processing.py::_select_running_power_source for where these two
+        # candidates get resolved against the athlete's own preference.
         (result,) = parse_fit(str(FIXTURES_DIR / "running_outdoor_marathon.fit"))
         self.assertEqual(result["sport"], "run")
         self.assertEqual(result["environment"], "outdoor")
         self.assertTrue(result["has_gps"])
         self.assertEqual(len(result["samples"]), 12241)
-        self.assertTrue(all(s["power"] is not None for s in result["samples"]))
+        self.assertTrue(all(s["power"] is None for s in result["samples"]))
+        self.assertTrue(all(s["power_stryd"] is not None for s in result["samples"]))
 
     def test_running_outdoor_marathon_has_stryd_env_fields_but_no_core(self):
         (result,) = parse_fit(str(FIXTURES_DIR / "running_outdoor_marathon.fit"))
@@ -192,13 +197,14 @@ class RealFitFixtureParserTests(SimpleTestCase):
         self.assertEqual(len(result["laps"]), 5)
         self.assertTrue(all(lap["avg_power"] is not None for lap in result["laps"]))
 
-    def test_running_treadmill_falls_back_to_stryd_power_field(self):
+    def test_running_treadmill_exposes_stryd_power_field(self):
         (result,) = parse_fit(str(FIXTURES_DIR / "running_treadmill.fit"))
         self.assertEqual(result["sport"], "run")
         self.assertEqual(result["environment"], "indoor")
         self.assertFalse(result["has_gps"])
         self.assertEqual(len(result["samples"]), 5299)
-        self.assertTrue(all(s["power"] is not None for s in result["samples"]))
+        self.assertTrue(all(s["power"] is None for s in result["samples"]))
+        self.assertTrue(all(s["power_stryd"] is not None for s in result["samples"]))
 
     def test_device_from_file_id_manufacturer(self):
         (result,) = parse_fit(str(FIXTURES_DIR / "cycling_indoor.fit"))

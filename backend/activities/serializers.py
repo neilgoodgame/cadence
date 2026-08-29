@@ -26,6 +26,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "moving_time",
             "distance_km",
             "distance_source",
+            "power_source",
             "avg_power",
             "norm_power",
             "intensity",

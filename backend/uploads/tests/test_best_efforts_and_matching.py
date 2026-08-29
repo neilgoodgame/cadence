@@ -42,6 +42,49 @@ class BestEffortUpsertTests(TestCase):
         self.assertEqual(self._best("cycling_power", "1min").activity_id, a3.id)
 
 
+class RunningPowerBestEffortSourceGateTests(TestCase):
+    """A run activity whose power_source no longer matches the athlete's current
+    running_power_source preference is excluded from running_power best efforts entirely -
+    see Activity.matches_running_power_preference."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="be-power-source@example.cc",
+            password="x",
+            name="Athlete",
+            critical_run_power=1,
+            running_power_source="stryd",
+        )
+
+    def _run(self, power_source):
+        return Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Run",
+            power_source=power_source,
+            start_date=datetime(2026, 6, 10, 7, 0, tzinfo=UTC),
+        )
+
+    def test_mismatched_source_produces_no_running_power_best_effort(self):
+        activity = self._run(power_source="native")
+        update_best_efforts(activity, self.athlete, [300] * 60, [], [])
+        self.assertIsNone(BestEffort.objects.filter(athlete=self.athlete, kind="running_power").first())
+
+    def test_matching_source_produces_a_running_power_best_effort(self):
+        activity = self._run(power_source="stryd")
+        update_best_efforts(activity, self.athlete, [300] * 60, [], [])
+        best = BestEffort.objects.filter(athlete=self.athlete, kind="running_power").first()
+        self.assertIsNotNone(best)
+        self.assertEqual(best.activity_id, activity.id)
+
+    def test_untagged_source_is_trusted_as_before(self):
+        # A pre-feature activity (power_source="") - not newly excluded by this preference.
+        activity = self._run(power_source="")
+        update_best_efforts(activity, self.athlete, [300] * 60, [], [])
+        best = BestEffort.objects.filter(athlete=self.athlete, kind="running_power").first()
+        self.assertIsNotNone(best)
+
+
 class BestEffortTrimPeriodTests(TestCase):
     """_trim_kind_window keeps a row if it's a top-N record within ANY tracked period
     (BEST_EFFORT_TRIM_PERIOD_DAYS, or all-time), not just the all-time top-N."""

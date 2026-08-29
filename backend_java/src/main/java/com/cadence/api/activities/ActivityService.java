@@ -65,6 +65,7 @@ public class ActivityService {
 				activity.getId(), activity.getAthlete().getId(), activity.getSport(), activity.getEnvironment(),
 				activity.isHasGps(), activity.getName(), activity.getStartDate(), activity.getSource(),
 				activity.getDevice(), activity.getMovingTime(), activity.getDistanceKm(), activity.getDistanceSource(),
+				activity.getPowerSource(),
 				activity.getAvgPower(), activity.getNormPower(), activity.getIntensity(), activity.getTss(),
 				activity.getAvgHr(), activity.getMaxHr(), activity.getAscent(),
 				activity.getMaxPower(), activity.getAvgCadence(), activity.getMaxCadence(), activity.getMaxSpeed(),

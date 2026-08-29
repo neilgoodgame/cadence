@@ -221,12 +221,15 @@ def _build_activity(
         altitude = message.get_value("enhanced_altitude")
         if altitude is None:
             altitude = message.get_value("altitude")
-        power = message.get_value("power")
-        if power is None:
-            # Third-party run-power meters (e.g. Stryd) write power as a
-            # developer field named "Power" rather than the standard
-            # lowercase "power" field used by native power meters.
-            power = _developer_value(message, "Power", dev_field_scales)
+        # Kept as two distinct candidates, not merged here - a run can carry both a
+        # native-power reading (a watch's own accelerometer-based estimate, e.g. Garmin
+        # Running Power) and a third-party footpod's (e.g. Stryd) developer field
+        # "Power" at once, and which one the athlete actually trusts is a per-athlete
+        # preference (see uploads/processing.py::_select_running_power_source) this
+        # parser layer has no access to. Resolving here would silently prefer whichever
+        # field fitparse happens to check first, every time, for every athlete.
+        power_native = message.get_value("power")
+        power_stryd = _developer_value(message, "Power", dev_field_scales)
         samples.append(
             {
                 "t": t,
@@ -236,7 +239,12 @@ def _build_activity(
                 "distance_km": max(0.0, (distance_m - distance_base_m) / 1000) if distance_m is not None else None,
                 "heartrate": message.get_value("heart_rate"),
                 "cadence": message.get_value("cadence"),
-                "power": power,
+                # Native by default - correct as-is for every non-run sport (a bike power
+                # meter always writes the standard field, never a Stryd-style developer
+                # field) and for run activities until _select_running_power_source
+                # resolves it against the athlete's own preference.
+                "power": power_native,
+                "power_stryd": power_stryd,
                 "speed": speed,
                 # Stryd footpod developer fields: ambient temperature/humidity.
                 "air_temp": _developer_value(message, "Stryd Temperature", dev_field_scales),
@@ -259,13 +267,19 @@ def _build_activity(
         if avg_power is None:
             # Third-party run-power meters (e.g. Stryd) don't fill in the lap message's
             # own avg_power summary field - only a native power meter does. Fall back to
-            # averaging the already Stryd-fallback-applied per-sample power (see `power`
-            # above) over the lap's time window instead of reporting it as simply missing.
+            # averaging whichever per-sample candidate actually has data over the lap's
+            # time window (native, then Stryd) instead of reporting it as simply missing -
+            # this is a display-only summary, not subject to the athlete's power-source
+            # preference the way Record.power/Activity stats are (see
+            # uploads/processing.py::_select_running_power_source).
             lap_start = ensure_utc(message.get_value("start_time"))
             if lap_start is not None:
                 lap_start_t = int((lap_start - start_time).total_seconds())
                 lap_end_t = lap_start_t + duration
-                powers = [s["power"] for s in samples if lap_start_t <= s["t"] < lap_end_t and s["power"] is not None]
+                lap_samples = [s for s in samples if lap_start_t <= s["t"] < lap_end_t]
+                powers = [s["power"] for s in lap_samples if s["power"] is not None] or [
+                    s["power_stryd"] for s in lap_samples if s["power_stryd"] is not None
+                ]
                 if powers:
                     avg_power = round(sum(powers) / len(powers))
         lap_summaries.append(

@@ -1,6 +1,7 @@
 package com.cadence.api.mcp.dto;
 
 import com.cadence.api.athletes.FtpCalculationMethod;
+import com.cadence.api.athletes.RunningPowerSource;
 
 /**
  * Trimmed for {@code get_me} - drops {@code UserResponse}'s app-preference fields
@@ -15,6 +16,7 @@ public record McpAthleteProfile(
 		Integer ftp,
 		FtpCalculationMethod ftpCalculationMethod,
 		Integer criticalRunPower,
+		RunningPowerSource runningPowerSource,
 		String thresholdPace,
 		Integer lthr,
 		Integer maxHr,

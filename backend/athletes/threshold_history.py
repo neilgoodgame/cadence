@@ -121,6 +121,16 @@ def _implied_value(activity: Activity, field: str) -> float | None:
         best_20min = _sliding_window_best_avg(power_series, FTP_TEST_WINDOW_SECONDS)
         return round(FTP_TEST_MULTIPLIER * best_20min) if best_20min is not None else None
     if field == "critical_run_power":
+        # Excluded (source doesn't match the athlete's current preference), or every sample is
+        # genuinely absent (e.g. "native" preferred but this file has no native power meter at
+        # all) - either way, not a qualifying candidate. _sliding_window_best_avg treats a
+        # missing sample as 0W, not "no data" (power_series above already substituted 0 for
+        # every None), so an all-absent series must be caught here rather than left to fall
+        # through to it.
+        if not activity.matches_running_power_preference(activity.athlete) or not any(
+            r[1] is not None for r in records
+        ):
+            return None
         best_60min = _sliding_window_best_avg(power_series, RUNNING_THRESHOLD_WINDOW_SECONDS)
         return round(best_60min) if best_60min is not None else None
     if field == "threshold_pace":

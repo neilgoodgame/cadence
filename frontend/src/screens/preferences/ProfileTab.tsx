@@ -97,6 +97,7 @@ export function ProfileTab() {
     max_hr: user?.max_hr ?? undefined,
     resting_hr: user?.resting_hr ?? undefined,
     ftp_calculation_method: user?.ftp_calculation_method ?? undefined,
+    running_power_source: user?.running_power_source ?? undefined,
   });
 
   const mutation = useMutation({
@@ -171,6 +172,25 @@ export function ProfileTab() {
               onChange={(e) => setForm({ ...form, critical_run_power: Number(e.target.value) })}
             />
           </Field>
+          <Field label="Running power source">
+            <select
+              style={inputStyle}
+              value={form.running_power_source ?? "stryd"}
+              onChange={(e) =>
+                setForm({ ...form, running_power_source: e.target.value as AthleteUpdate["running_power_source"] })
+              }
+            >
+              <option value="stryd">Stryd</option>
+              <option value="native">Native (e.g. Garmin Running Power)</option>
+            </select>
+          </Field>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: "-6px 0 0" }}>
+            Native running-power algorithms tend to read meaningfully higher than Stryd for the
+            same effort - the source you don't pick is ignored entirely on future uploads, not
+            used as a fallback. Doesn't retroactively change already-imported activities'
+            stored data, but best efforts, TSS, and critical running power all re-check this
+            preference whenever recomputed.
+          </p>
           <Field label="Threshold pace" unit="MM:SS /km">
             <input
               className="mono"

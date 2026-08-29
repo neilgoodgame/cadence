@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import com.cadence.api.gear.Bike;
@@ -53,6 +54,16 @@ public class Activity extends PrefixedIdEntity {
 
 	@Column(name = "distance_source", nullable = false)
 	private DistanceSource distanceSource = DistanceSource.GPS;
+
+	// Which of the two candidate running-power readings this run's Record.power was actually
+	// resolved from - see ParseFileTasklet's power-source resolution. Only ever set for
+	// FIT-sourced run activities where the file's own ambiguity (native vs Stryd developer
+	// field) made a choice necessary; null for every other sport/format, where there's no such
+	// choice to record. Recomputes (best efforts, derived stats, threshold history) compare this
+	// against the athlete's *current* runningPowerSource preference, not just at ingest - so
+	// this is a record of what was true about the file, not a frozen policy snapshot.
+	@Column(name = "power_source")
+	private RunningPowerSource powerSource;
 
 	@Column(name = "avg_power")
 	private Integer avgPower;
@@ -259,6 +270,25 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setDistanceSource(DistanceSource distanceSource) {
 		this.distanceSource = distanceSource;
+	}
+
+	public RunningPowerSource getPowerSource() {
+		return powerSource;
+	}
+
+	public void setPowerSource(RunningPowerSource powerSource) {
+		this.powerSource = powerSource;
+	}
+
+	/** Whether this activity's own resolved running-power source still matches the athlete's
+	 * *current* runningPowerSource preference - false only when both are set and they disagree.
+	 * A null powerSource (pre-feature activity, a non-FIT format, or a non-run sport) always
+	 * matches: there's nothing to compare against, so its power is trusted exactly as it was
+	 * before this preference existed. Checked by every consumer of running power (best efforts,
+	 * TSS/derived stats, criticalRunPower threshold history) before trusting avgPower/
+	 * Record.power for a run. */
+	public boolean matchesRunningPowerPreference(User athlete) {
+		return powerSource == null || powerSource == athlete.getRunningPowerSource();
 	}
 
 	public Integer getAvgPower() {

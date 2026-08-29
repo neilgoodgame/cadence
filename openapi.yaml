@@ -2390,6 +2390,16 @@ components:
         weight_kg: { type: number, example: 72 }
         ftp: { type: integer, example: 265 }
         critical_run_power: { type: integer, example: 285 }
+        running_power_source:
+          type: string
+          enum: [stryd, native]
+          default: stryd
+          description: >-
+            Which running-power reading to trust when a FIT file carries both a watch's own
+            native estimate (e.g. Garmin Running Power) and a Stryd footpod reading - native
+            algorithms tend to read meaningfully higher than Stryd for the same effort, so the
+            non-selected source is completely ignored, not used as a fallback.
+          example: stryd
         threshold_pace: { type: string, example: "4:00" }
         threshold_window_days:
           type: integer
@@ -2499,6 +2509,15 @@ components:
           enum: [gps, footpod, trainer, manual]
           description: How distance was measured. `footpod` / `trainer` for indoor runs and rides.
           example: gps
+        power_source:
+          type: [string, "null"]
+          enum: [stryd, native, null]
+          description: >-
+            Which of the two candidate running-power readings this run's power was actually
+            resolved from (native vs Stryd) - null for every non-FIT/non-run activity, where
+            there's no such ambiguity to record. See the athlete's running_power_source
+            preference.
+          example: stryd
         avg_power: { type: [integer, "null"] }
         norm_power: { type: [integer, "null"] }
         intensity: { type: number, description: Intensity factor, example: 0.78 }

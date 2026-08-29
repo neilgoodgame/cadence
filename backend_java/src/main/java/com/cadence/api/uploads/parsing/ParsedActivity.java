@@ -37,7 +37,14 @@ public record ParsedActivity(
 			// Transient - consumed by ComputeDerivedStatsTasklet to compute the activity-level
 			// avgLeftBalancePct, not persisted per-sample onto Record (the mockup only shows
 			// one aggregate L/R split, not a stream). FIT-only, always null from GPX/TCX.
-			Double leftBalancePct) {
+			Double leftBalancePct,
+			// A run can carry both a native-power reading (`power` above, e.g. Garmin Running
+			// Power) and a Stryd footpod's developer-field "Power" at once - which one the
+			// athlete actually trusts is a per-athlete preference this parser layer has no
+			// access to, so both are kept distinct through parsing and resolved downstream (see
+			// ParseFileTasklet's power-source resolution). FIT-only, always null from GPX/TCX -
+			// those formats have a single power field with no such ambiguity.
+			Integer powerStryd) {
 	}
 
 	public record LapSummary(int index, int duration, double distanceKm, Integer avgHr, Integer avgPower) {

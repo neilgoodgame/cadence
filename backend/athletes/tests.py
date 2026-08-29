@@ -695,9 +695,14 @@ class ThresholdHistoryAlgorithmTests(TestCase):
             email="threshold-history@example.cc", password="x", name="Athlete", ftp=200
         )
 
-    def _make_power_activity(self, sport, start_date, power, duration_seconds=1200, name="Ride"):
+    def _make_power_activity(self, sport, start_date, power, duration_seconds=1200, name="Ride", power_source=""):
         activity = Activity.objects.create(
-            athlete=self.athlete, sport=sport, name=name, start_date=start_date, moving_time=duration_seconds
+            athlete=self.athlete,
+            sport=sport,
+            name=name,
+            start_date=start_date,
+            moving_time=duration_seconds,
+            power_source=power_source,
         )
         for t in range(duration_seconds):
             Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
@@ -878,6 +883,37 @@ class ThresholdHistoryAlgorithmTests(TestCase):
 
         self.assertEqual(len(entries), len(powers))
         self.assertEqual(entries[-1].value, round(0.95 * powers[-1]))
+
+    def test_critical_run_power_excludes_an_activity_whose_power_source_no_longer_matches_preference(self):
+        self.athlete.running_power_source = "stryd"
+        self.athlete.save(update_fields=["running_power_source"])
+        excluded = self._make_power_activity(
+            "run", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=280, duration_seconds=3600, power_source="native"
+        )
+        candidate = current_window_value(self.athlete, "critical_run_power", as_of=date(2026, 1, 15))
+        self.assertIsNone(candidate)  # the only qualifying activity is excluded
+
+        excluded.power_source = "stryd"
+        excluded.save(update_fields=["power_source"])
+        candidate = current_window_value(self.athlete, "critical_run_power", as_of=date(2026, 1, 15))
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.activity_id, excluded.id)
+
+    def test_critical_run_power_ignores_a_matching_activity_with_no_real_power_data_at_all(self):
+        # A real edge case, not hypothetical: under "native" preference, a Stryd-only file (no
+        # native power meter at all) resolves to a power_source that trivially *matches* the
+        # preference (both "native," since that's what governed the resolution at ingest), but
+        # every sample is genuinely None - _sliding_window_best_avg treats a missing sample as
+        # 0W, not "no data," so this must be caught before it reaches that, or a Stryd-only
+        # activity ingested under "native" preference would imply an athlete has a 0W critical
+        # running power instead of no candidate at all.
+        self.athlete.running_power_source = "native"
+        self.athlete.save(update_fields=["running_power_source"])
+        self._make_power_activity(
+            "run", datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=None, duration_seconds=3600, power_source="native"
+        )
+        candidate = current_window_value(self.athlete, "critical_run_power", as_of=date(2026, 2, 15))
+        self.assertIsNone(candidate)
 
 
 class ThresholdHistoryListViewTests(TestCase):

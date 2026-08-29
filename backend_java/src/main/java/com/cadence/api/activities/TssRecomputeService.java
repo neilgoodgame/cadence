@@ -82,7 +82,11 @@ public class TssRecomputeService {
 		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 		List<Integer> powerSeries = RunningPowerSanitizer.sanitize(
 				records.stream().map(Record::getPower).toList(), activity.getSport(), athlete.getMaxRunningPowerWatts());
-		Double normPower = powerSeries.stream().anyMatch(p -> p != null)
+		// This run's power came from the source the athlete currently excludes - score it
+		// against the HR-based fallback below instead of a power-based threshold it doesn't
+		// trust, same reasoning TssCalculator's own >1.5-intensity guard exists for.
+		boolean excludedRunningPower = activity.getSport() == Sport.RUN && !activity.matchesRunningPowerPreference(athlete);
+		Double normPower = !excludedRunningPower && powerSeries.stream().anyMatch(p -> p != null)
 				? NormalizedPowerCalculator.compute(powerSeries) : null;
 
 		Integer tss = TssCalculator.powerBased(normPower, thresholdPower, activity.getMovingTime());
