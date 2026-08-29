@@ -65,6 +65,25 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		return activity;
 	}
 
+	private Activity newPaceActivity(User owner, Instant startDate, double paceSecondsPerKm, int durationSeconds) {
+		Activity activity = new Activity();
+		activity.setAthlete(owner);
+		activity.setSport(Sport.RUN);
+		activity.setName("Run");
+		activity.setStartDate(startDate);
+		activity.setMovingTime(durationSeconds);
+		activity = activityRepository.save(activity);
+		for (int t = 0; t <= durationSeconds; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), startDate.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setDistanceKm(t / paceSecondsPerKm);
+			recordRepository.save(record);
+		}
+		return activity;
+	}
+
 	@Test
 	void seedsTheInitialValueWhenNoEntryExists() {
 		User athlete = newAthlete("manual-threshold-seed@example.cc");
@@ -158,6 +177,32 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
 		assertThat(entries).hasSize(1);
 		assertThat(entries.get(0).getValueNumeric()).isEqualTo(255);
+	}
+
+	// Regression test for a real bug found live: thresholdPace's implied value is a raw,
+	// sub-second double (unlike ftp/criticalRunPower, which round before this comparison), while
+	// the "already recorded" value is reconstructed from the stored whole-second "M:SS" string -
+	// so a fractional-second mismatch (near-certain on real data) made every re-trigger insert
+	// another identical dead row, bumping currentFrom to today, even though nothing had actually
+	// changed. Seen for real: a run import unrelated to running power/pace re-triggered the
+	// ingest hook, which re-evaluated an already-current 15-days-old best effort and inserted a
+	// duplicate ledger row for it.
+	@Test
+	void refreshDoesNotRecordADuplicateRowForAStillCurrentFractionalPace() {
+		User athlete = newAthlete("refresh-fractional-pace@example.cc");
+		// 274.6 s/km - deliberately not a whole number, so the raw best-pace calculation lands on
+		// a fractional value that only becomes "4:35" (275s) once rounded for storage/display.
+		newPaceActivity(athlete, Instant.now().minus(14, java.time.temporal.ChronoUnit.DAYS), 274.6, 3600);
+
+		boolean first = thresholdHistoryService.refreshField(athlete, ThresholdField.THRESHOLD_PACE);
+		boolean second = thresholdHistoryService.refreshField(athlete, ThresholdField.THRESHOLD_PACE);
+
+		assertThat(first).isTrue();
+		assertThat(second).isFalse();
+		List<ThresholdHistory> entries = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.THRESHOLD_PACE);
+		assertThat(entries).hasSize(1);
+		assertThat(entries.get(0).getValuePace()).isEqualTo("4:35");
 	}
 
 	// Regression test for a real bug found live: deleteByAthleteIdAndField used to be a plain
