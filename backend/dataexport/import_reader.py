@@ -251,10 +251,11 @@ def _import_workouts(
                 _create_steps(created, steps)
                 zone_type = "bike_power" if workout["sport"] == "bike" else "run_power"
                 normalized = normalize_power_units(steps, reference_for(athlete, zone_type))
-                duration, tss = compute_duration_and_tss(normalized)
+                pace_reference = reference_for(athlete, "pace")
+                duration, tss = compute_duration_and_tss(normalized, workout["sport"], pace_reference)
                 created.duration = duration
                 created.tss = tss
-                created.chart_preview = compute_chart_preview(normalized)
+                created.chart_preview = compute_chart_preview(normalized, workout["sport"], pace_reference)
                 created.save(update_fields=["duration", "tss", "chart_preview"])
                 workouts_by_old_id[workout["id"]] = created.id
                 counts["workouts_imported"] += 1

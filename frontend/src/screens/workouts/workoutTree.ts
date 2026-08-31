@@ -132,33 +132,66 @@ export function normalizePowerUnits<T extends WorkoutStep>(steps: T[], powerRefe
 
 // ---------- duration / TSS (mirrors backend/workouts/calculations.py and
 // WorkoutCalculations.java exactly) ----------
-function leafDuration(step: LeafStep): number {
-  return step.end_type === "time" ? step.duration || 0 : 0;
+// `sport`/`thresholdPaceSecPerKm` enable inferring a distance-ended running step's duration
+// from its target % and the athlete's threshold pace - running power % and threshold-pace %
+// share the same %-of-60min-effort scale (see athletes/zones.py's DEFAULT_PACE_ZONES), so this
+// only applies to sport === "run"; a cyclist's speed for a given %FTP is too dependent on
+// terrain/aero for the same assumption to hold. Every other distance/manual combination
+// (HR/cadence/open targets, a bike workout, or no threshold pace set yet) stays at 0 -
+// intentional, not a bug.
+export function leafDuration(step: LeafStep, sport: WorkoutSport, thresholdPaceSecPerKm: number | null): number {
+  if (step.end_type === "time") return step.duration || 0;
+  if (
+    sport === "run" &&
+    step.end_type === "distance" &&
+    (step.target_type === "power" || step.target_type === "pace") &&
+    step.distance &&
+    thresholdPaceSecPerKm
+  ) {
+    const lo = step.target_low ?? 60;
+    const hi = step.target_high ?? lo;
+    const avgPct = (lo + hi) / 2;
+    if (avgPct <= 0) return 0;
+    const paceSecPerKm = (thresholdPaceSecPerKm * 100) / avgPct;
+    return Math.round((step.distance / 1000) * paceSecPerKm);
+  }
+  return 0;
 }
 
-export function totalDuration(steps: WorkoutStep[]): number {
+export function totalDuration(steps: WorkoutStep[], sport: WorkoutSport, thresholdPaceSecPerKm: number | null): number {
   return steps.reduce(
-    (sum, s) => (isGroup(s) ? sum + totalDuration(s.children) * (s.repeat || 1) : sum + leafDuration(s)),
+    (sum, s) =>
+      isGroup(s)
+        ? sum + totalDuration(s.children, sport, thresholdPaceSecPerKm) * (s.repeat || 1)
+        : sum + leafDuration(s, sport, thresholdPaceSecPerKm),
     0,
   );
 }
 
-function leafTss(step: LeafStep): number {
+// Reuses `leafDuration` (not the step's own raw, often-null, `duration` field) so an inferred
+// distance+power/pace duration feeds TSS too.
+function leafTss(step: LeafStep, sport: WorkoutSport, thresholdPaceSecPerKm: number | null): number {
   const lo = step.target_low ?? 60;
   const hi = step.target_high ?? lo;
   const avg = (lo + hi) / 2;
-  const hours = (step.duration || 0) / 3600;
+  const hours = leafDuration(step, sport, thresholdPaceSecPerKm) / 3600;
   if (step.target_type === "power") return hours * Math.pow(avg / 100, 2) * 100;
   if (step.target_type === "open") return hours * 55;
   return hours * (avg / 100) * 80;
 }
 
-function tssSum(steps: WorkoutStep[]): number {
-  return steps.reduce((sum, s) => (isGroup(s) ? sum + tssSum(s.children) * (s.repeat || 1) : sum + leafTss(s)), 0);
+function tssSum(steps: WorkoutStep[], sport: WorkoutSport, thresholdPaceSecPerKm: number | null): number {
+  return steps.reduce(
+    (sum, s) =>
+      isGroup(s)
+        ? sum + tssSum(s.children, sport, thresholdPaceSecPerKm) * (s.repeat || 1)
+        : sum + leafTss(s, sport, thresholdPaceSecPerKm),
+    0,
+  );
 }
 
-export function totalTss(steps: WorkoutStep[]): number {
-  return Math.round(tssSum(steps));
+export function totalTss(steps: WorkoutStep[], sport: WorkoutSport, thresholdPaceSecPerKm: number | null): number {
+  return Math.round(tssSum(steps, sport, thresholdPaceSecPerKm));
 }
 
 export function stepCount(steps: WorkoutStep[]): number {

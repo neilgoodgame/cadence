@@ -115,10 +115,12 @@ public class WorkoutService {
 		ZoneType powerZoneType = workout.getSport() == Sport.BIKE ? ZoneType.BIKE_POWER : ZoneType.RUN_POWER;
 		Double powerReferenceWatts = zoneService.referenceFor(athlete, powerZoneType);
 		List<WorkoutStepDto> normalized = WorkoutCalculations.normalizePowerUnits(stepDtos, powerReferenceWatts);
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(normalized, thresholdPaceSecPerKm);
+		WorkoutCalculations.Result result =
+				WorkoutCalculations.computeDurationAndTss(normalized, workout.getSport(), thresholdPaceSecPerKm);
 		workout.setDuration(result.durationSeconds());
 		workout.setTss(result.tss());
-		workout.setChartPreview(WorkoutCalculations.computeChartPreview(normalized));
+		workout.setChartPreview(
+				WorkoutCalculations.computeChartPreview(normalized, workout.getSport(), thresholdPaceSecPerKm));
 	}
 
 	/**
