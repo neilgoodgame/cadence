@@ -160,7 +160,7 @@ class WorkoutInferenceServiceTest {
 
 		InferredWorkoutResponse result = service.infer(activity, laps, true);
 
-		WorkoutCalculations.Result totals = WorkoutCalculations.computeDurationAndTss(result.steps(), null);
+		WorkoutCalculations.Result totals = WorkoutCalculations.computeDurationAndTss(result.steps(), Sport.BIKE, null);
 		assertThat(totals.durationSeconds()).isEqualTo(laps.stream().mapToInt(Lap::getDuration).sum());
 	}
 

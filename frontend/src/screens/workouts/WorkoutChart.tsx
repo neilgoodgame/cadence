@@ -1,5 +1,6 @@
-import { useMemo } from "react";
-import { flattenLeafSteps, targetInfo, type Leaf, type Step } from "./workoutTree";
+import { useCallback, useMemo } from "react";
+import type { WorkoutSport } from "../../api/types";
+import { flattenLeafSteps, leafDuration, targetInfo, type Leaf, type Step } from "./workoutTree";
 
 const AXIS_MAX = 150; // % FTP/threshold headroom above 100%
 
@@ -15,17 +16,28 @@ interface BarGeometry {
 
 export function WorkoutChart({
   steps,
+  sport,
+  thresholdPaceSecPerKm,
   selectedId,
   onSelect,
   compact,
 }: {
   steps: Step[];
+  sport: WorkoutSport;
+  thresholdPaceSecPerKm: number | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   compact: boolean;
 }) {
   const leaves = useMemo(() => flattenLeafSteps(steps), [steps]);
-  const totalDur = useMemo(() => leaves.reduce((a, c) => a + (c.duration || 60), 0) || 1, [leaves]);
+  // Falls back to a flat 60s placeholder width when no real or inferred duration is available
+  // (e.g. a manual/open step, or a distance step this editor can't estimate yet) so it never
+  // renders a zero-width bar.
+  const barDuration = useCallback(
+    (leaf: Leaf) => leafDuration(leaf, sport, thresholdPaceSecPerKm) || 60,
+    [sport, thresholdPaceSecPerKm],
+  );
+  const totalDur = useMemo(() => leaves.reduce((a, c) => a + barDuration(c), 0) || 1, [leaves, barDuration]);
   const height = compact ? 110 : 220;
 
   // Each leaf becomes a trapezoid: target_low/target_high are the block's *start*/*end*
@@ -39,7 +51,7 @@ export function WorkoutChart({
           const isOpen = leaf.target_type === "open";
           const startPct = isOpen ? 40 : (leaf.target_low ?? 60);
           const endPct = isOpen ? 40 : (leaf.target_high ?? startPct);
-          const width = ((leaf.duration || 60) / totalDur) * 100;
+          const width = (barDuration(leaf) / totalDur) * 100;
           const bar: BarGeometry = {
             leaf,
             key: `${leaf.id}-${i}`, // a repeat group's leaves recur once per `repeat` when flattened, so leaf.id alone isn't unique
@@ -53,7 +65,7 @@ export function WorkoutChart({
         },
         { list: [], cursor: 0 },
       ).list,
-    [leaves, totalDur],
+    [leaves, totalDur, barDuration],
   );
 
   return (

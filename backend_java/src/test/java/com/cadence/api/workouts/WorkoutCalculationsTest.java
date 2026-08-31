@@ -2,6 +2,7 @@ package com.cadence.api.workouts;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.workouts.dto.WorkoutStepDto;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -24,7 +25,7 @@ class WorkoutCalculationsTest {
 		List<WorkoutStepDto> steps = List
 				.of(group(4, leaf(StepKind.BLOCK, StepEndType.TIME, 300, null, TargetType.POWER, 100.0, 100.0)));
 
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, null);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, null);
 
 		assertThat(result.durationSeconds()).isEqualTo(1200);
 		assertThat(result.tss()).isEqualTo(33);
@@ -36,7 +37,7 @@ class WorkoutCalculationsTest {
 				leaf(StepKind.BLOCK, StepEndType.DISTANCE, null, 5000, TargetType.POWER, 100.0, 100.0),
 				leaf(StepKind.BLOCK, StepEndType.MANUAL, null, null, TargetType.OPEN, null, null));
 
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, null);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, null);
 
 		assertThat(result.durationSeconds()).isEqualTo(0);
 		assertThat(result.tss()).isEqualTo(0);
@@ -47,7 +48,7 @@ class WorkoutCalculationsTest {
 		List<WorkoutStepDto> steps = List
 				.of(leaf(StepKind.BLOCK, StepEndType.TIME, 3600, null, TargetType.POWER, 50.0, 70.0));
 
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, null);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, null);
 
 		assertThat(result.durationSeconds()).isEqualTo(3600);
 		assertThat(result.tss()).isEqualTo(36); // midpoint 60% FTP -> (60/100)^2 * 100
@@ -63,7 +64,7 @@ class WorkoutCalculationsTest {
 				.of(leaf(StepKind.BLOCK, StepEndType.DISTANCE, null, 5000, TargetType.PACE, 100.0, 100.0));
 
 		// 240 sec/km (4:00/km) at 100% target -> 5km * 240 sec/km = 1200s.
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, 240.0);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, 240.0);
 
 		assertThat(result.durationSeconds()).isEqualTo(1200);
 		assertThat(result.tss()).isNotEqualTo(0); // duration feeds tss too, not just duration
@@ -75,7 +76,7 @@ class WorkoutCalculationsTest {
 		List<WorkoutStepDto> steps = List
 				.of(leaf(StepKind.BLOCK, StepEndType.DISTANCE, null, 1000, TargetType.PACE, 50.0, 50.0));
 
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, 240.0);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, 240.0);
 
 		assertThat(result.durationSeconds()).isEqualTo(480); // 1km * (240 * 100/50) sec/km
 	}
@@ -85,20 +86,50 @@ class WorkoutCalculationsTest {
 		List<WorkoutStepDto> steps = List
 				.of(leaf(StepKind.BLOCK, StepEndType.DISTANCE, null, 5000, TargetType.PACE, 100.0, 100.0));
 
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, null);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, null);
+
+		assertThat(result.durationSeconds()).isEqualTo(0);
+		assertThat(result.tss()).isEqualTo(0);
+	}
+
+	// Regression coverage for a real bug found live: a running workout's distance-ended
+	// power-targeted step (e.g. "4km at 80-85% critical run power") also showed 0:00 duration
+	// and 0 TSS. Running power % and threshold-pace % share the same %-of-60min-effort scale
+	// (see ZoneService's PACE zone calibration), so this is now inferred exactly like a
+	// pace-targeted step.
+	@Test
+	void distanceStepWithPowerTargetInfersDurationForARunWorkout() {
+		List<WorkoutStepDto> steps = List
+				.of(leaf(StepKind.BLOCK, StepEndType.DISTANCE, null, 4000, TargetType.POWER, 80.0, 85.0));
+
+		// avg 82.5% -> pace = 275 * 100/82.5 = 333.33 sec/km -> 4km * 333.33 = 1333s.
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, 275.0);
+
+		assertThat(result.durationSeconds()).isEqualTo(1333);
+		assertThat(result.tss()).isNotEqualTo(0);
+	}
+
+	@Test
+	void distanceStepWithPowerTargetStaysZeroForABikeWorkout() {
+		// A cyclist's speed for a given %FTP is too dependent on terrain/aero for the running
+		// pace-effort assumption to hold, so the power-target inference is run-only.
+		List<WorkoutStepDto> steps = List
+				.of(leaf(StepKind.BLOCK, StepEndType.DISTANCE, null, 40000, TargetType.POWER, 90.0, 90.0));
+
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.BIKE, 275.0);
 
 		assertThat(result.durationSeconds()).isEqualTo(0);
 		assertThat(result.tss()).isEqualTo(0);
 	}
 
 	@Test
-	void distanceStepWithANonPaceTargetStillContributesZero() {
-		// Power/HR/cadence targets have no distance-to-time assumption even with a known
-		// threshold pace - only pace targets do.
+	void distanceStepWithANonPaceOrPowerTargetStillContributesZero() {
+		// HR/cadence/open targets have no distance-to-time assumption even for a run with a
+		// known threshold pace - only pace/power targets do.
 		List<WorkoutStepDto> steps = List
-				.of(leaf(StepKind.BLOCK, StepEndType.DISTANCE, null, 5000, TargetType.POWER, 100.0, 100.0));
+				.of(leaf(StepKind.BLOCK, StepEndType.DISTANCE, null, 5000, TargetType.HR, 100.0, 100.0));
 
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, 240.0);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, 240.0);
 
 		assertThat(result.durationSeconds()).isEqualTo(0);
 	}
@@ -109,7 +140,7 @@ class WorkoutCalculationsTest {
 				group(4, leaf(StepKind.BLOCK, StepEndType.TIME, 240, null, TargetType.POWER, 100.0, 100.0)),
 				leaf(StepKind.REC, StepEndType.TIME, 200, null, TargetType.POWER, 50.0, 50.0)));
 
-		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, null);
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, null);
 
 		assertThat(result.durationSeconds()).isEqualTo(2 * (4 * 240 + 200));
 		assertThat(result.tss()).isEqualTo(56);
@@ -156,7 +187,7 @@ class WorkoutCalculationsTest {
 
 		List<WorkoutStepDto> normalizedWatts = WorkoutCalculations.normalizePowerUnits(wattsSteps, 250.0);
 
-		assertThat(WorkoutCalculations.computeDurationAndTss(normalizedWatts, null))
-				.isEqualTo(WorkoutCalculations.computeDurationAndTss(pctSteps, null));
+		assertThat(WorkoutCalculations.computeDurationAndTss(normalizedWatts, Sport.RUN, null))
+				.isEqualTo(WorkoutCalculations.computeDurationAndTss(pctSteps, Sport.RUN, null));
 	}
 }

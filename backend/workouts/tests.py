@@ -7,7 +7,7 @@ from activities.models import Activity, ActivityTag, Lap, Tag
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 
-from .calculations import compute_duration_and_tss, normalize_power_units
+from .calculations import compute_chart_preview, compute_duration_and_tss, normalize_power_units
 from .inference import Group, LeafCandidate, _compress_pass, infer_workout
 from .models import Workout, WorkoutStep
 
@@ -129,6 +129,90 @@ class ComputeDurationAndTssTests(TestCase):
         duration, tss = compute_duration_and_tss(steps)
         self.assertEqual(duration, 2 * (4 * 240 + 200))
         self.assertEqual(tss, 56)
+
+
+class EstimateDistanceDurationTests(TestCase):
+    """Regression coverage for a real bug found live: a running workout's distance-ended
+    interval blocks (e.g. "4km at 80-85% CP") contributed zero duration/TSS, since the calc
+    had no pace assumption to convert distance to time - even though running power % and
+    threshold-pace % share the same %-of-60min-effort scale (see athletes/zones.py's
+    DEFAULT_PACE_ZONES), so a real estimate is available whenever the athlete has a threshold
+    pace set. Scoped to sport == "run" only - a cyclist's speed for a given %FTP is too
+    dependent on terrain/aero for the same assumption to hold.
+    """
+
+    def test_distance_power_step_infers_duration_and_tss_from_threshold_pace(self):
+        steps = [
+            {
+                "kind": "block",
+                "end_type": "distance",
+                "distance": 4000,
+                "target_type": "power",
+                "target_low": 80,
+                "target_high": 85,
+            }
+        ]
+        duration, tss = compute_duration_and_tss(steps, "run", 275)
+        self.assertEqual(duration, 1333)  # 4km @ (275 * 100/82.5) = 333.33s/km
+        self.assertEqual(tss, 25)
+
+    def test_distance_pace_step_infers_duration(self):
+        steps = [
+            {
+                "kind": "block",
+                "end_type": "distance",
+                "distance": 1000,
+                "target_type": "pace",
+                "target_low": 105,
+                "target_high": 106,
+            }
+        ]
+        duration, _tss = compute_duration_and_tss(steps, "run", 275)
+        self.assertEqual(duration, 261)  # 1km @ (275 * 100/105.5) = 260.66s/km
+
+    def test_bike_distance_power_step_still_contributes_zero(self):
+        steps = [
+            {
+                "kind": "block",
+                "end_type": "distance",
+                "distance": 40000,
+                "target_type": "power",
+                "target_low": 90,
+                "target_high": 90,
+            }
+        ]
+        duration, tss = compute_duration_and_tss(steps, "bike", 275)
+        self.assertEqual(duration, 0)
+        self.assertEqual(tss, 0)
+
+    def test_no_pace_reference_still_contributes_zero(self):
+        steps = [
+            {
+                "kind": "block",
+                "end_type": "distance",
+                "distance": 4000,
+                "target_type": "power",
+                "target_low": 80,
+                "target_high": 85,
+            }
+        ]
+        duration, tss = compute_duration_and_tss(steps, "run", None)
+        self.assertEqual(duration, 0)
+        self.assertEqual(tss, 0)
+
+    def test_chart_preview_uses_inferred_duration_for_distance_steps(self):
+        steps = [
+            {
+                "kind": "block",
+                "end_type": "distance",
+                "distance": 4000,
+                "target_type": "power",
+                "target_low": 80,
+                "target_high": 85,
+            }
+        ]
+        preview = compute_chart_preview(steps, "run", 275)
+        self.assertEqual(preview[0]["duration_seconds"], 1333)
 
 
 class NormalizePowerUnitsTests(TestCase):

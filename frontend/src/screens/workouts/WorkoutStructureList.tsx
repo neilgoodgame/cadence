@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { WorkoutSport } from "../../api/types";
 import { fmtDuration, isGroup, kindLabel, stepDetail, targetInfo, totalDuration, type Group, type Leaf, type Step } from "./workoutTree";
 
 export interface StructureActions {
@@ -92,12 +93,16 @@ function GroupRow({
   depth,
   readOnly,
   powerReferenceWatts,
+  sport,
+  thresholdPaceSecPerKm,
 }: {
   step: Group;
   actions: StructureActions;
   depth: number;
   readOnly: boolean;
   powerReferenceWatts: number | null;
+  sport: WorkoutSport;
+  thresholdPaceSecPerKm: number | null;
 }) {
   const selected = step.id === actions.selectedId;
   return (
@@ -119,7 +124,8 @@ function GroupRow({
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>Repeat group</span>
           <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--ink2)" }}>
-            {step.children.length} steps × {step.repeat} · {fmtDuration(totalDuration(step.children) * step.repeat)} total
+            {step.children.length} steps × {step.repeat} ·{" "}
+            {fmtDuration(totalDuration(step.children, sport, thresholdPaceSecPerKm) * step.repeat)} total
           </div>
         </div>
         {!readOnly && (
@@ -151,7 +157,15 @@ function GroupRow({
           borderLeft: `2px solid ${depth === 0 ? "var(--line)" : "rgba(236,74,38,0.25)"}`,
         }}
       >
-        <WorkoutStructureList steps={step.children} actions={actions} depth={depth + 1} readOnly={readOnly} powerReferenceWatts={powerReferenceWatts} />
+        <WorkoutStructureList
+          steps={step.children}
+          actions={actions}
+          depth={depth + 1}
+          readOnly={readOnly}
+          powerReferenceWatts={powerReferenceWatts}
+          sport={sport}
+          thresholdPaceSecPerKm={thresholdPaceSecPerKm}
+        />
         {!readOnly && (
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -179,18 +193,31 @@ export function WorkoutStructureList({
   depth = 0,
   readOnly = false,
   powerReferenceWatts = null,
+  sport = "bike",
+  thresholdPaceSecPerKm = null,
 }: {
   steps: Step[];
   actions: StructureActions;
   depth?: number;
   readOnly?: boolean;
   powerReferenceWatts?: number | null;
+  sport?: WorkoutSport;
+  thresholdPaceSecPerKm?: number | null;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {steps.map((step) =>
         isGroup(step) ? (
-          <GroupRow key={step.id} step={step} actions={actions} depth={depth} readOnly={readOnly} powerReferenceWatts={powerReferenceWatts} />
+          <GroupRow
+            key={step.id}
+            step={step}
+            actions={actions}
+            depth={depth}
+            readOnly={readOnly}
+            powerReferenceWatts={powerReferenceWatts}
+            sport={sport}
+            thresholdPaceSecPerKm={thresholdPaceSecPerKm}
+          />
         ) : (
           <LeafRow key={step.id} step={step} actions={actions} readOnly={readOnly} powerReferenceWatts={powerReferenceWatts} />
         ),

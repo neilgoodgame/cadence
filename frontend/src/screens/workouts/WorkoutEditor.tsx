@@ -10,6 +10,7 @@ import { WorkoutStructureList, type StructureActions } from "./WorkoutStructureL
 import { StepDrawer } from "./StepDrawer";
 import { TemplatesPanel } from "./TemplatesPanel";
 import { ExportModal } from "./ExportModal";
+import { parseThresholdPaceSecPerKm } from "./workoutExport";
 import { AssignModal } from "./AssignModal";
 import {
   defaultGroup,
@@ -81,9 +82,10 @@ function WorkoutEditorForm({
 
   const effectiveIsNew = currentId === null;
   const powerReferenceWatts = sport === "bike" ? (user?.ftp ?? null) : (user?.critical_run_power ?? null);
+  const thresholdPaceSecPerKm = parseThresholdPaceSecPerKm(user?.threshold_pace);
   const normalizedSteps = useMemo(() => normalizePowerUnits(steps, powerReferenceWatts), [steps, powerReferenceWatts]);
-  const totalDur = totalDuration(normalizedSteps);
-  const tss = totalTss(normalizedSteps);
+  const totalDur = totalDuration(normalizedSteps, sport, thresholdPaceSecPerKm);
+  const tss = totalTss(normalizedSteps, sport, thresholdPaceSecPerKm);
   const count = stepCount(steps);
   const selected = findStep(steps, selectedId);
 
@@ -213,12 +215,25 @@ function WorkoutEditorForm({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
           <div style={{ background: "var(--elev)", borderRadius: 14, padding: layout === "chart" ? "20px 22px 16px" : "14px 18px" }}>
-            <WorkoutChart steps={normalizedSteps} selectedId={selectedId} onSelect={setSelectedId} compact={layout === "list"} />
+            <WorkoutChart
+              steps={normalizedSteps}
+              sport={sport}
+              thresholdPaceSecPerKm={thresholdPaceSecPerKm}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              compact={layout === "list"}
+            />
           </div>
 
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 12 }}>Structure</div>
-            <WorkoutStructureList steps={steps} actions={actions} powerReferenceWatts={powerReferenceWatts} />
+            <WorkoutStructureList
+              steps={steps}
+              actions={actions}
+              powerReferenceWatts={powerReferenceWatts}
+              sport={sport}
+              thresholdPaceSecPerKm={thresholdPaceSecPerKm}
+            />
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
               <button onClick={() => setSteps([...steps, defaultLeaf("warmup", sport)])} style={dashedBtnStyle()}>
                 + Warm-up

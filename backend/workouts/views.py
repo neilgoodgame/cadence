@@ -85,11 +85,12 @@ def _replace_steps(workout: Workout, steps_data: list[dict[str, Any]]) -> None:
     _create_steps(workout, cleaned)
     zone_type = "bike_power" if workout.sport == "bike" else "run_power"
     power_reference = reference_for(workout.created_by, zone_type)
+    pace_reference = reference_for(workout.created_by, "pace")
     normalized = normalize_power_units(cleaned, power_reference)
-    duration, tss = compute_duration_and_tss(normalized)
+    duration, tss = compute_duration_and_tss(normalized, workout.sport, pace_reference)
     workout.duration = duration
     workout.tss = tss
-    workout.chart_preview = compute_chart_preview(normalized)
+    workout.chart_preview = compute_chart_preview(normalized, workout.sport, pace_reference)
     workout.save(update_fields=["duration", "tss", "chart_preview", "updated_at"])
 
 
