@@ -92,12 +92,16 @@ public class WorkoutAutoMatchService {
 				if (workoutTagName.isBlank()) {
 					continue;
 				}
+				// MANUAL, not AUTO: these are the workout's own descriptive tags (e.g. "road",
+				// "marathon") - ordinary content that happens to be copied automatically, not a
+				// system marker like "Auto-matched" above. AUTO would permanently block removal
+				// (see TagService.detachTag) on every activity that ever reuses this tag name.
 				Tag workoutTag = tagRepository.findByAthleteIdAndNameIgnoreCase(athlete.getId(), workoutTagName)
 						.orElseGet(() -> {
 							Tag created = new Tag();
 							created.setAthlete(athlete);
 							created.setName(workoutTagName);
-							created.setOrigin(TagOrigin.AUTO);
+							created.setOrigin(TagOrigin.MANUAL);
 							return tagRepository.save(created);
 						});
 				if (!activityTagRepository.existsByActivityIdAndTagId(activity.getId(), workoutTag.getId())) {

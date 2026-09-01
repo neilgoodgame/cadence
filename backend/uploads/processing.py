@@ -762,8 +762,12 @@ def attempt_workout_match(activity: Activity, athlete: User) -> None:
         for workout_tag_name in candidate.workout.tags:
             if not workout_tag_name.strip():
                 continue
+            # manual, not auto: these are the workout's own descriptive tags (e.g. "road",
+            # "marathon") - ordinary content that happens to be copied automatically, not a
+            # system marker like "Auto-matched" above. auto would permanently block removal
+            # (see views.py's untag_activity) on every activity that ever reuses this tag name.
             workout_tag, _created = Tag.objects.get_or_create(
-                athlete=athlete, name=workout_tag_name, defaults={"origin": "auto"}
+                athlete=athlete, name=workout_tag_name, defaults={"origin": "manual"}
             )
             ActivityTag.objects.get_or_create(activity=activity, tag=workout_tag)
     fire_event("scheduled_workout.matched", athlete.id, ScheduledWorkoutSerializer(candidate).data)

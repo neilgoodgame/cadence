@@ -311,7 +311,13 @@ class WorkoutMatchingTests(TestCase):
 
         tag_names = set(ActivityTag.objects.filter(activity=activity).values_list("tag__name", flat=True))
         self.assertEqual(tag_names, {"Auto-matched", "Speedwork", "Race prep"})
-        self.assertEqual(Tag.objects.get(athlete=self.athlete, name="Speedwork").origin, "auto")
+        # Regression coverage for a real bug found live: copied workout tags (ordinary
+        # descriptive content like "road"/"marathon", not a system marker) were created as
+        # "auto", which ActivityUntagView permanently refuses to remove from any activity -
+        # silently breaking tag removal in the UI for every activity that ever reused that tag
+        # name. Only the "Auto-matched" marker tag itself should stay "auto".
+        self.assertEqual(Tag.objects.get(athlete=self.athlete, name="Speedwork").origin, "manual")
+        self.assertEqual(Tag.objects.get(athlete=self.athlete, name="Auto-matched").origin, "auto")
 
     def test_reuses_an_existing_tag_with_the_same_name_instead_of_duplicating(self):
         self.athlete.copy_matched_workout_tags = True

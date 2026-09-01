@@ -113,6 +113,7 @@ export function Header({ activity }: { activity: Activity }) {
   const navigate = useNavigate();
   const [newTag, setNewTag] = useState("");
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
+  const [tagError, setTagError] = useState<string | null>(null);
   const tagMenuRef = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState(false);
   const [nameInput, setNameInput] = useState(activity.name);
@@ -229,7 +230,13 @@ export function Header({ activity }: { activity: Activity }) {
   });
   const removeTag = useMutation({
     mutationFn: (tagId: string) => untagActivity(activity.id, tagId),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setTagError(null);
+      invalidate();
+    },
+    // e.g. the "Auto-matched" marker tag - the backend refuses to remove it and previously
+    // failed silently here, leaving the click looking like it did nothing.
+    onError: (e: unknown) => setTagError(e instanceof Error ? e.message : "Couldn't remove that tag."),
   });
 
   const tagDraft = newTag.trim();
@@ -475,6 +482,9 @@ export function Header({ activity }: { activity: Activity }) {
               </div>
             )}
           </div>
+          {tagError && (
+            <span style={{ flexBasis: "100%", fontSize: 12, color: "#c4332a" }}>{tagError}</span>
+          )}
         </div>
       )}
 
