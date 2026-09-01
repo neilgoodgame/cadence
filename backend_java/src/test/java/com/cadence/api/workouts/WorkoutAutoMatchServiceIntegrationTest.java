@@ -189,7 +189,14 @@ class WorkoutAutoMatchServiceIntegrationTest extends IntegrationTest {
 		autoMatchService.attemptMatch(activity.getId());
 
 		assertThat(activityTagNames(activity)).isEqualTo(Set.of("Auto-matched", "Speedwork", "Race prep"));
+		// Regression coverage for a real bug found live: copied workout tags (ordinary
+		// descriptive content like "road"/"marathon", not a system marker) were created as
+		// AUTO, which TagService.detachTag permanently refuses to remove from any activity -
+		// silently breaking tag removal in the UI for every activity that ever reused that tag
+		// name. Only the "Auto-matched" marker tag itself should stay AUTO.
 		assertThat(tagRepository.findByAthleteIdAndNameIgnoreCase(athlete.getId(), "Speedwork").orElseThrow().getOrigin())
+				.isEqualTo(TagOrigin.MANUAL);
+		assertThat(tagRepository.findByAthleteIdAndNameIgnoreCase(athlete.getId(), "Auto-matched").orElseThrow().getOrigin())
 				.isEqualTo(TagOrigin.AUTO);
 	}
 
