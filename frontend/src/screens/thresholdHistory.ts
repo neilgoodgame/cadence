@@ -1,4 +1,5 @@
-import type { ThresholdHistoryPoint } from "../api/types";
+import type { ThresholdFieldName, ThresholdHistoryPoint } from "../api/types";
+import { formatPace, parsePace } from "../lib/format";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -20,4 +21,19 @@ export function daysInEffect(entries: ThresholdHistoryPoint[]): number[] {
     const end = i === 0 ? utcMidnightToday() : new Date(entries[i - 1].current_from);
     return Math.max(0, Math.round((end.getTime() - start.getTime()) / MS_PER_DAY));
   });
+}
+
+// Pace is seconds/km - a *lower* value is the improvement, the opposite of the two power
+// fields. Mirrors dashboard/ThresholdSummaryCard.tsx's own deltaLabel (that one compares a
+// field's current value against its previous value; this compares two adjacent ledger rows).
+export function deltaLabel(field: ThresholdFieldName, value: number | string, previousValue: number | string): string | null {
+  if (field === "threshold_pace") {
+    const current = parsePace(String(value));
+    const previous = parsePace(String(previousValue));
+    if (current == null || previous == null || current === previous) return null;
+    return `${current < previous ? "▼" : "▲"} ${formatPace(Math.abs(current - previous))} vs previous`;
+  }
+  const delta = Number(value) - Number(previousValue);
+  if (delta === 0) return null;
+  return `${delta > 0 ? "+" : ""}${delta}W vs previous`;
 }

@@ -5,7 +5,7 @@ import { formatDate } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import { Card } from "../components/Card";
 import { ThresholdHistoryChart } from "./ThresholdHistoryChart";
-import { daysInEffect } from "./thresholdHistory";
+import { daysInEffect, deltaLabel } from "./thresholdHistory";
 import type { ThresholdFieldName } from "../api/types";
 
 const FIELD_LABELS: Record<ThresholdFieldName, string> = {
@@ -68,29 +68,41 @@ export function ThresholdHistoryScreen() {
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 560 }}>
-        {entries.map((entry, i) => (
-          <div
-            key={`${entry.current_from}-${i}`}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "10px 14px", borderRadius: 8, background: "var(--elev)", border: "1px solid var(--line)",
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <span className="mono" style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>
-                {formatValue(field, entry.value)}
-              </span>
-              <span style={{ fontSize: 12, color: "var(--ink3)" }}>
-                Effective from {formatDate(entry.current_from, true)} &middot; {days[i]} day{days[i] === 1 ? "" : "s"}
-              </span>
+        {entries.map((entry, i) => {
+          // effective_from is the qualifying activity's own date; current_from is when this
+          // row actually became the recorded current value (see ThresholdHistoryPoint) - they
+          // differ exactly when a later ingest revealed an earlier, dormant effort (the same
+          // "revealed" case ThresholdHistoryIndicator surfaces on the activity page).
+          const revealed = entry.effective_from !== entry.current_from;
+          const delta = i < entries.length - 1 ? deltaLabel(field, entry.value, entries[i + 1].value) : null;
+          return (
+            <div
+              key={`${entry.current_from}-${i}`}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "10px 14px", borderRadius: 8, background: "var(--elev)", border: "1px solid var(--line)",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span className="mono" style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>
+                  {formatValue(field, entry.value)}
+                </span>
+                <span style={{ fontSize: 12, color: "var(--ink3)" }}>
+                  Effective from {formatDate(entry.current_from, true)} &middot; {days[i]} day{days[i] === 1 ? "" : "s"}
+                  {revealed && <> &middot; effort from {formatDate(entry.effective_from, true)}</>}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+                {delta && <span style={{ fontSize: 12, color: "var(--ink3)", whiteSpace: "nowrap" }}>{delta}</span>}
+                {entry.source_activity_id && (
+                  <Link to={`/activities/${entry.source_activity_id}`} style={{ fontSize: 12, color: "var(--ember)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                    View activity
+                  </Link>
+                )}
+              </div>
             </div>
-            {entry.source_activity_id && (
-              <Link to={`/activities/${entry.source_activity_id}`} style={{ fontSize: 12, color: "var(--ember)", fontWeight: 600 }}>
-                View activity
-              </Link>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
