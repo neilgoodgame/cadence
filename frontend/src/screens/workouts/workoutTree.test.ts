@@ -82,6 +82,28 @@ describe("totalDuration / totalTss", () => {
   });
 });
 
+// Regression coverage for a real underestimate found live: TSS is defined so 1 hour at
+// threshold (IF=1.0) is 100 - `pace` targets used a flatter linear formula that gave 80
+// instead, and understated harder efforts progressively more (not squared like `power`).
+// `pace` now uses the same IF^2 * 100 formula as `power`.
+describe("pace TSS matches power TSS", () => {
+  it("scores 100 TSS for one hour at threshold pace", () => {
+    const steps = [leaf({ duration: 3600, target_type: "pace", target_low: 100, target_high: 100 })];
+    expect(totalTss(steps, "run", null)).toBe(100);
+  });
+
+  it("scores the same TSS as an equivalent power target", () => {
+    const paceSteps = [leaf({ duration: 1800, target_type: "pace", target_low: 105, target_high: 105 })];
+    const powerSteps = [leaf({ duration: 1800, target_type: "power", target_low: 105, target_high: 105 })];
+    expect(totalTss(paceSteps, "run", null)).toBe(totalTss(powerSteps, "run", null));
+  });
+
+  it("still uses the flatter approximation for HR targets", () => {
+    const steps = [leaf({ duration: 3600, target_type: "hr", target_low: 100, target_high: 100 })];
+    expect(totalTss(steps, "run", null)).toBe(80); // unchanged: hours * (avg/100) * 80
+  });
+});
+
 describe("normalizePowerUnits", () => {
   it("converts a watts-unit power leaf to its %FTP-equivalent using the real reference", () => {
     const steps = [leaf({ power_unit: "watts", target_low: 200, target_high: 250 })];

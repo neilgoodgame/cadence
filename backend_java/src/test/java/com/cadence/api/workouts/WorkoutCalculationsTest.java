@@ -134,6 +134,41 @@ class WorkoutCalculationsTest {
 		assertThat(result.durationSeconds()).isEqualTo(0);
 	}
 
+	// Regression coverage for a real underestimate found live: TSS is defined so 1 hour at
+	// threshold (IF=1.0) is 100 - `pace` targets used a flatter linear formula that gave 80
+	// instead, and understated harder efforts progressively more (not squared like `power`).
+	// `pace` now uses the same IF^2 * 100 formula as `power`.
+	@Test
+	void oneHourAtThresholdPaceScores100Tss() {
+		List<WorkoutStepDto> steps = List
+				.of(leaf(StepKind.BLOCK, StepEndType.TIME, 3600, null, TargetType.PACE, 100.0, 100.0));
+
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, null);
+
+		assertThat(result.tss()).isEqualTo(100);
+	}
+
+	@Test
+	void paceAndPowerTargetsScoreTheSameTssAtEqualIntensity() {
+		List<WorkoutStepDto> paceSteps = List
+				.of(leaf(StepKind.BLOCK, StepEndType.TIME, 1800, null, TargetType.PACE, 105.0, 105.0));
+		List<WorkoutStepDto> powerSteps = List
+				.of(leaf(StepKind.BLOCK, StepEndType.TIME, 1800, null, TargetType.POWER, 105.0, 105.0));
+
+		assertThat(WorkoutCalculations.computeDurationAndTss(paceSteps, Sport.RUN, null))
+				.isEqualTo(WorkoutCalculations.computeDurationAndTss(powerSteps, Sport.RUN, null));
+	}
+
+	@Test
+	void hrTargetStillUsesTheFlatterApproximation() {
+		List<WorkoutStepDto> steps = List
+				.of(leaf(StepKind.BLOCK, StepEndType.TIME, 3600, null, TargetType.HR, 100.0, 100.0));
+
+		WorkoutCalculations.Result result = WorkoutCalculations.computeDurationAndTss(steps, Sport.RUN, null);
+
+		assertThat(result.tss()).isEqualTo(80); // unchanged: hours * (avg/100) * 80
+	}
+
 	@Test
 	void nestedRepeatGroupsMultiplyAndSum() {
 		List<WorkoutStepDto> steps = List.of(group(2,

@@ -168,14 +168,21 @@ export function totalDuration(steps: WorkoutStep[], sport: WorkoutSport, thresho
   );
 }
 
-// Reuses `leafDuration` (not the step's own raw, often-null, `duration` field) so an inferred
-// distance+power/pace duration feeds TSS too.
+// TSS ~= hours * intensity_factor^2 * 100, using the target_low/target_high midpoint as the IF.
+// `pace` uses the same squared formula as `power` - TSS is defined so 1 hour at threshold
+// (IF=1.0) is 100, and effort above threshold compounds faster than linearly, exactly like
+// power's IF^2 - so a flat multiplier would both miss the 100-at-threshold calibration point
+// and understate hard efforts more the harder they get. HR/cadence keep a flatter approximation
+// since HR lags real effort (undershooting short hard efforts, so squaring it would overcorrect
+// the wrong way) and cadence carries no intensity signal at all. Reuses `leafDuration` (not the
+// step's own raw, often-null, `duration` field) so an inferred distance+power/pace duration
+// feeds TSS too.
 function leafTss(step: LeafStep, sport: WorkoutSport, thresholdPaceSecPerKm: number | null): number {
   const lo = step.target_low ?? 60;
   const hi = step.target_high ?? lo;
   const avg = (lo + hi) / 2;
   const hours = leafDuration(step, sport, thresholdPaceSecPerKm) / 3600;
-  if (step.target_type === "power") return hours * Math.pow(avg / 100, 2) * 100;
+  if (step.target_type === "power" || step.target_type === "pace") return hours * Math.pow(avg / 100, 2) * 100;
   if (step.target_type === "open") return hours * 55;
   return hours * (avg / 100) * 80;
 }
