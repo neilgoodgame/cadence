@@ -215,6 +215,65 @@ class EstimateDistanceDurationTests(TestCase):
         self.assertEqual(preview[0]["duration_seconds"], 1333)
 
 
+class PaceTssMatchesPowerTests(TestCase):
+    """Regression coverage for a real underestimate found live: TSS is defined so 1 hour at
+    threshold (IF=1.0) is 100 - `pace` targets used a flatter linear formula that gave 80
+    instead, and understated harder efforts progressively more (not squared like `power`).
+    `pace` now uses the same IF^2 * 100 formula as `power`.
+    """
+
+    def test_one_hour_at_threshold_pace_scores_100_tss(self):
+        steps = [
+            {
+                "kind": "block",
+                "end_type": "time",
+                "duration": 3600,
+                "target_type": "pace",
+                "target_low": 100,
+                "target_high": 100,
+            }
+        ]
+        _duration, tss = compute_duration_and_tss(steps)
+        self.assertEqual(tss, 100)
+
+    def test_pace_and_power_targets_score_the_same_tss_at_equal_intensity(self):
+        pace_steps = [
+            {
+                "kind": "block",
+                "end_type": "time",
+                "duration": 1800,
+                "target_type": "pace",
+                "target_low": 105,
+                "target_high": 105,
+            }
+        ]
+        power_steps = [
+            {
+                "kind": "block",
+                "end_type": "time",
+                "duration": 1800,
+                "target_type": "power",
+                "target_low": 105,
+                "target_high": 105,
+            }
+        ]
+        self.assertEqual(compute_duration_and_tss(pace_steps), compute_duration_and_tss(power_steps))
+
+    def test_hr_target_still_uses_the_flatter_approximation(self):
+        steps = [
+            {
+                "kind": "block",
+                "end_type": "time",
+                "duration": 3600,
+                "target_type": "hr",
+                "target_low": 100,
+                "target_high": 100,
+            }
+        ]
+        _duration, tss = compute_duration_and_tss(steps)
+        self.assertEqual(tss, 80)  # unchanged: hours * (avg/100) * 80
+
+
 class NormalizePowerUnitsTests(TestCase):
     def test_converts_watts_unit_leaf_to_pct_ftp_equivalent(self):
         steps = [

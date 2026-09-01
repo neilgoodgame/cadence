@@ -113,18 +113,21 @@ public final class WorkoutCalculations {
 	}
 
 	/**
-	 * TSS ~= hours * intensity_factor^2 * 100 for power targets, using the
-	 * targetLow/targetHigh midpoint (equal for a flat target, averaged for a
-	 * ramp). Non-power targets have no direct IF equivalent, so pace/HR/cadence
-	 * use a flatter approximation and {@code open} (no target) assumes a light
-	 * effort - both intentional simplifications, matching the design prototype.
-	 * Reuses {@link #leafDuration} (not the step's own raw, often-null,
-	 * {@code duration} field) so an inferred distance+pace/power duration feeds TSS too.
+	 * TSS ~= hours * intensity_factor^2 * 100, using the targetLow/targetHigh midpoint as the
+	 * IF (equal for a flat target, averaged for a ramp). {@code pace} uses the same squared
+	 * formula as {@code power} - TSS is defined so 1 hour at threshold (IF=1.0) is 100, and
+	 * effort above threshold compounds faster than linearly, exactly like power's IF^2 - so a
+	 * flat multiplier would both miss the 100-at-threshold calibration point and understate
+	 * hard efforts more the harder they get. HR/cadence keep a flatter approximation since HR
+	 * lags real effort (undershooting short hard efforts, so squaring it would overcorrect the
+	 * wrong way) and cadence carries no intensity signal at all; {@code open} (no target)
+	 * assumes a light effort. Reuses {@link #leafDuration} (not the step's own raw, often-null,
+	 * {@code duration} field) so an inferred distance+power/pace duration feeds TSS too.
 	 */
 	private static double leafTss(WorkoutStepDto step, Sport sport, Double thresholdPaceSecPerKm) {
 		double avg = targetAvg(step);
 		double hours = leafDuration(step, sport, thresholdPaceSecPerKm) / 3600.0;
-		if (step.targetType() == TargetType.POWER) {
+		if (step.targetType() == TargetType.POWER || step.targetType() == TargetType.PACE) {
 			return hours * Math.pow(avg / 100.0, 2) * 100;
 		}
 		if (step.targetType() == TargetType.OPEN) {

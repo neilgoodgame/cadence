@@ -75,18 +75,23 @@ def _total_duration(steps: list[dict[str, Any]], sport: str, pace_reference: flo
 
 
 def _leaf_tss(step: dict[str, Any], sport: str, pace_reference: float | None) -> float:
-    """TSS ~= hours * intensity_factor^2 * 100 for power targets, using the
-    target_low/target_high midpoint (equal for a flat target, averaged for a
-    ramp). Non-power targets have no direct IF equivalent, so pace/HR/cadence
-    use a flatter approximation and `open` (no target) assumes a light effort —
-    both intentional simplifications, matching the design prototype's calc.
-    Reuses `_leaf_duration` (not the step's own raw, often-null, `duration`
-    field) so an inferred distance+power/pace duration feeds TSS too.
+    """TSS ~= hours * intensity_factor^2 * 100, using the target_low/target_high
+    midpoint as the IF (equal for a flat target, averaged for a ramp). `pace`
+    uses the same squared formula as `power` - TSS is defined so 1 hour at
+    threshold (IF=1.0) is 100, and effort above threshold compounds faster than
+    linearly, exactly like power's IF^2 - so a flat multiplier would both miss
+    the 100-at-threshold calibration point and understate hard efforts more the
+    harder they get. HR/cadence keep a flatter approximation since HR lags real
+    effort (undershooting short hard efforts, so squaring it would overcorrect
+    the wrong way) and cadence carries no intensity signal at all; `open` (no
+    target) assumes a light effort. Reuses `_leaf_duration` (not the step's own
+    raw, often-null, `duration` field) so an inferred distance+power/pace
+    duration feeds TSS too.
     """
     avg = _target_avg(step)
     hours = _leaf_duration(step, sport, pace_reference) / 3600
     target_type = step.get("target_type")
-    if target_type == "power":
+    if target_type in ("power", "pace"):
         return hours * (avg / 100) ** 2 * 100
     if target_type == "open":
         return hours * 55
