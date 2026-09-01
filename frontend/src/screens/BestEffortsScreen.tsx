@@ -3,6 +3,7 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { listBestEfforts, excludeActivityFromBestEfforts } from "../api/athletes";
 import { listActivities, getActivity } from "../api/activities";
+import { ActivityNameLink } from "../components/ActivityNameLink";
 import { useAuth } from "../auth/AuthContext";
 import { formatDuration, formatPace } from "../lib/format";
 import type { Activity, BestEffort, BestEffortKind, BestEffortPeriod } from "../api/types";
@@ -144,24 +145,6 @@ function PrBadge({ color }: { color: string }) {
     >
       PR
     </span>
-  );
-}
-
-function ActivityName({ id }: { id: string }) {
-  const { data } = useQuery({
-    queryKey: ["activity", id],
-    queryFn: () => getActivity(id),
-    staleTime: 5 * 60 * 1000,
-  });
-  return (
-    <Link
-      to={`/activities/${id}`}
-      style={{ color: "inherit", textDecoration: "none" }}
-      onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "underline")}
-      onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.textDecoration = "none")}
-    >
-      {data?.name ?? "—"}
-    </Link>
   );
 }
 
@@ -338,7 +321,7 @@ function RunHrRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: {
     >
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
       <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        <ActivityName id={effort.activity_id} />
+        <ActivityNameLink id={effort.activity_id} />
       </span>
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
         {fmtShortDate(effort.date)}
@@ -427,7 +410,7 @@ function BikeHrRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: 
     >
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
       <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        <ActivityName id={effort.activity_id} />
+        <ActivityNameLink id={effort.activity_id} />
       </span>
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
         {fmtShortDate(effort.date)}
@@ -513,7 +496,7 @@ function RunPowerRow({ effort, rank, allTimeEfforts, onExclude, excludePending }
     >
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
       <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        <ActivityName id={effort.activity_id} />
+        <ActivityNameLink id={effort.activity_id} />
       </span>
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
         {fmtShortDate(effort.date)}
@@ -625,7 +608,7 @@ function RunPaceRow({ effort, rank, allTimeEfforts, onExclude, excludePending }:
     >
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
       <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        <ActivityName id={effort.activity_id} />
+        <ActivityNameLink id={effort.activity_id} />
       </span>
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
         {fmtShortDate(effort.date)}
@@ -733,7 +716,7 @@ function BikePowerRow({
     >
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>{rank}</span>
       <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        <ActivityName id={effort.activity_id} />
+        <ActivityNameLink id={effort.activity_id} />
       </span>
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink3)" }}>
         {fmtShortDate(effort.date)}

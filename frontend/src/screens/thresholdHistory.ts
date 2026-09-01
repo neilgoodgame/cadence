@@ -26,14 +26,16 @@ export function daysInEffect(entries: ThresholdHistoryPoint[]): number[] {
 // Pace is seconds/km - a *lower* value is the improvement, the opposite of the two power
 // fields. Mirrors dashboard/ThresholdSummaryCard.tsx's own deltaLabel (that one compares a
 // field's current value against its previous value; this compares two adjacent ledger rows).
+// Returns just the arrow + magnitude ("▼ 0:03 /km", "+8W") - callers append context ("vs
+// previous") themselves, since a table column already says so in its header.
 export function deltaLabel(field: ThresholdFieldName, value: number | string, previousValue: number | string): string | null {
   if (field === "threshold_pace") {
     const current = parsePace(String(value));
     const previous = parsePace(String(previousValue));
     if (current == null || previous == null || current === previous) return null;
-    return `${current < previous ? "▼" : "▲"} ${formatPace(Math.abs(current - previous))} vs previous`;
+    return `${current < previous ? "▼" : "▲"} ${formatPace(Math.abs(current - previous))}`;
   }
   const delta = Number(value) - Number(previousValue);
   if (delta === 0) return null;
-  return `${delta > 0 ? "+" : ""}${delta}W vs previous`;
+  return `${delta > 0 ? "+" : ""}${delta}W`;
 }

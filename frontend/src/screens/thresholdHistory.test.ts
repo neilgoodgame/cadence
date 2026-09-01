@@ -45,13 +45,13 @@ describe("daysInEffect", () => {
 
 describe("deltaLabel", () => {
   it("shows a signed watt delta for power fields, higher is an improvement", () => {
-    expect(deltaLabel("ftp", 258, 250)).toBe("+8W vs previous");
-    expect(deltaLabel("critical_run_power", 250, 258)).toBe("-8W vs previous");
+    expect(deltaLabel("ftp", 258, 250)).toBe("+8W");
+    expect(deltaLabel("critical_run_power", 250, 258)).toBe("-8W");
   });
 
   it("shows a pace delta for threshold_pace, lower (faster) is an improvement", () => {
-    expect(deltaLabel("threshold_pace", "4:32", "4:35")).toBe("▼ 0:03 /km vs previous");
-    expect(deltaLabel("threshold_pace", "4:38", "4:35")).toBe("▲ 0:03 /km vs previous");
+    expect(deltaLabel("threshold_pace", "4:32", "4:35")).toBe("▼ 0:03 /km");
+    expect(deltaLabel("threshold_pace", "4:38", "4:35")).toBe("▲ 0:03 /km");
   });
 
   it("returns null when the value hasn't changed", () => {
