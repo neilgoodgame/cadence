@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThresholdHistoryPoint } from "../api/types";
-import { daysInEffect } from "./thresholdHistory";
+import { daysInEffect, deltaLabel } from "./thresholdHistory";
 
 function point(overrides: Partial<ThresholdHistoryPoint> = {}): ThresholdHistoryPoint {
   return {
@@ -40,5 +40,22 @@ describe("daysInEffect", () => {
     const entries = [worse, better];
     // better ran 2023-08-26 -> 2023-12-22 (worse's current_from) = 118 days.
     expect(daysInEffect(entries)[1]).toBe(118);
+  });
+});
+
+describe("deltaLabel", () => {
+  it("shows a signed watt delta for power fields, higher is an improvement", () => {
+    expect(deltaLabel("ftp", 258, 250)).toBe("+8W vs previous");
+    expect(deltaLabel("critical_run_power", 250, 258)).toBe("-8W vs previous");
+  });
+
+  it("shows a pace delta for threshold_pace, lower (faster) is an improvement", () => {
+    expect(deltaLabel("threshold_pace", "4:32", "4:35")).toBe("▼ 0:03 /km vs previous");
+    expect(deltaLabel("threshold_pace", "4:38", "4:35")).toBe("▲ 0:03 /km vs previous");
+  });
+
+  it("returns null when the value hasn't changed", () => {
+    expect(deltaLabel("ftp", 250, 250)).toBeNull();
+    expect(deltaLabel("threshold_pace", "4:35", "4:35")).toBeNull();
   });
 });
