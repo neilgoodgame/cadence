@@ -1,5 +1,5 @@
 import type { Athlete, WorkoutSport } from "../../api/types";
-import { isGroup, kindLabel, stripIds, type Leaf, type Step } from "./workoutTree";
+import { isGroup, kindLabel, leafDuration, stripIds, type Leaf, type Step } from "./workoutTree";
 
 const FTP = 265; // fallback power reference (watts) when the athlete hasn't set a real one
 
@@ -116,10 +116,23 @@ export function buildTcx(
     // for run) or the override, falling back to a placeholder only when neither is set.
     return `<Target xsi:type="Power_t"><PowerZone xsi:type="CustomPowerZone_t"><Low><Value>${Math.round(powerRef * w.lo)}</Value></Low><High><Value>${Math.round(powerRef * w.hi)}</Value></High></PowerZone></Target>`;
   };
+  // Unlike .zwo (buildZwo below), TCX has real Duration_t variants beyond elapsed time - a
+  // distance-ended step exports as an actual Distance_t target, which real Garmin devices track
+  // natively (better than any time estimate: the device follows the athlete's real pace on the
+  // day, not a guess), and a manual/lap-press step as UserInitiated_t (advance on button press).
+  const durationXml = (s: Leaf): string => {
+    if (s.end_type === "distance" && s.distance) {
+      return `<Duration xsi:type="Distance_t"><Meters>${s.distance}</Meters></Duration>`;
+    }
+    if (s.end_type === "manual") {
+      return `<Duration xsi:type="UserInitiated_t"/>`;
+    }
+    return `<Duration xsi:type="Time_t"><Seconds>${s.duration || 0}</Seconds></Duration>`;
+  };
   const step = (name: string, s: Leaf, intensity: string) => {
     return (
       `      <Step xsi:type="Step_t">\n        <StepId>${id++}</StepId>\n        <Name>${name}</Name>\n` +
-      `        <Duration xsi:type="Time_t"><Seconds>${s.duration || 0}</Seconds></Duration>\n` +
+      `        ${durationXml(s)}\n` +
       `        <Intensity>${intensity}</Intensity>\n` +
       `        ${target(s)}\n      </Step>\n`
     );
@@ -186,9 +199,14 @@ export function buildZwo(
     "  <tags/>",
     "  <workout>",
   ];
+  // Unlike TCX (buildTcx above), Zwift's .zwo format has no distance-based duration concept at
+  // all - every segment needs a plain elapsed-seconds Duration - so a distance-ended running
+  // step's duration is estimated from the athlete's threshold pace, same as the app's own
+  // duration/TSS calc (workoutTree.ts's leafDuration; run-only, see its own doc comment for why).
+  const duration = (s: Leaf) => leafDuration(s, sport, thresholds.thresholdPaceSecPerKm);
   const seg = (tag: string, s: Leaf) => {
     const b = rawBounds(s);
-    return `    <${tag} Duration="${s.duration || 0}" PowerLow="${fraction(s, b.lo).toFixed(2)}" PowerHigh="${fraction(s, b.hi).toFixed(2)}"/>`;
+    return `    <${tag} Duration="${duration(s)}" PowerLow="${fraction(s, b.lo).toFixed(2)}" PowerHigh="${fraction(s, b.hi).toFixed(2)}"/>`;
   };
   const emit = (list: Step[]) => {
     for (const s of list) {
@@ -202,7 +220,7 @@ export function buildZwo(
           const won = rawBounds(on);
           const woff = rawBounds(off);
           lines.push(
-            `    <IntervalsT Repeat="${s.repeat}" OnDuration="${on.duration}" OffDuration="${off.duration}" OnPower="${fraction(on, won.lo).toFixed(2)}" OffPower="${fraction(off, woff.lo).toFixed(2)}"/>`,
+            `    <IntervalsT Repeat="${s.repeat}" OnDuration="${duration(on)}" OffDuration="${duration(off)}" OnPower="${fraction(on, won.lo).toFixed(2)}" OffPower="${fraction(off, woff.lo).toFixed(2)}"/>`,
           );
         } else {
           for (let r = 0; r < s.repeat; r++) emit(s.children as Step[]);
