@@ -11,10 +11,56 @@ import {
   formatStepTarget,
   groupLaps,
   stepZonePct,
+  summarizeSteps,
   sum,
   weightedAvg,
   type RepeatGroup,
 } from "./lapPresentation";
+
+function StepSummaryCards({ laps, athlete }: { laps: Lap[]; athlete: Athlete }) {
+  const rows = useMemo(() => summarizeSteps(laps, athlete), [laps, athlete]);
+  // Nothing worth summarizing for an activity with no step-derived laps at all (original-source
+  // laps, or an unmatched activity) - every lap would land in one "Other" bucket.
+  if (!rows.some((r) => r.key !== "other")) return null;
+
+  return (
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      {rows.map((row) => (
+        <div
+          key={row.key}
+          style={{
+            display: "flex",
+            alignItems: "stretch",
+            gap: 10,
+            border: "1px solid var(--line)",
+            borderRadius: 10,
+            padding: "8px 12px",
+            background: "var(--card)",
+            minWidth: 140,
+          }}
+        >
+          <div style={{ width: 4, borderRadius: 2, background: row.color, flexShrink: 0 }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+              {row.label}
+              {row.target && <span style={{ fontWeight: 500, color: "var(--ink3)" }}> · {row.target}</span>}
+            </div>
+            <div className="mono" style={{ fontSize: 11.5, color: "var(--ink2)" }}>
+              {row.count}× avg {formatDuration(Math.round(row.avgDuration))}
+              {row.avgPower != null && ` · ${Math.round(row.avgPower)}w`}
+              {row.avgHr != null && ` · ${Math.round(row.avgHr)}bpm`}
+            </div>
+            {row.avgCompliancePct != null && (
+              <div className="mono" style={{ fontSize: 11, fontWeight: 700, color: complianceColor(row.avgCompliancePct) }}>
+                {row.avgCompliancePct}% of target
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function ComplianceBadge({ lap, athlete }: { lap: Lap; athlete: Athlete }) {
   const pct = compliancePct(lap, athlete);
@@ -281,6 +327,7 @@ export function LapsTab({
         )}
         {workoutId && <RegenerateLapsButton activityId={activityId} />}
       </div>
+      <StepSummaryCards laps={laps} athlete={athlete} />
       <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--ink3)", fontSize: 11 }}>
