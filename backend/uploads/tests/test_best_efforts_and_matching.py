@@ -6,6 +6,7 @@ from accounts.models import User
 from activities.models import Activity, ActivityTag, BestEffort, Lap, Record, Tag
 from scheduling.models import ScheduledWorkout
 from workouts.models import Workout, WorkoutStep
+from workouts.tests import _make_gorby_workout, _seed_matching_records
 
 from ..processing import BEST_EFFORT_TRIM_PERIOD_DAYS, _trim_kind_window, attempt_workout_match, update_best_efforts
 
@@ -405,3 +406,78 @@ class WorkoutMatchingTests(TestCase):
 
         tag_names = set(ActivityTag.objects.filter(activity=activity).values_list("tag__name", flat=True))
         self.assertEqual(tag_names, {"Auto-matched"})
+
+    def test_ambiguous_same_day_candidates_resolved_by_correlation(self):
+        """Regression coverage for a real bug found live: two same-day, same-sport, still-
+        planned candidates (an AM and a PM slot) had no tie-break at all - whichever the DB
+        happened to return first won, regardless of which one the activity actually matched.
+        The correlating candidate must win even though it isn't first."""
+        matching_workout = _make_gorby_workout(self.athlete)
+        matching_workout.sport = "bike"
+        matching_workout.duration = 3600
+        matching_workout.save(update_fields=["sport", "duration"])
+        wrong_workout = Workout.objects.create(created_by=self.athlete, name="Steady ride", sport="bike", duration=3600)
+        WorkoutStep.objects.create(
+            workout=wrong_workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=3600,
+            target_type="power",
+            target_low=90,
+            target_high=90,
+        )
+        start = datetime(2026, 6, 21, 12, 0, tzinfo=UTC)
+        sched_am = ScheduledWorkout.objects.create(
+            workout=matching_workout, athlete=self.athlete, date=date(2026, 6, 21), time_of_day="AM"
+        )
+        sched_pm = ScheduledWorkout.objects.create(
+            workout=wrong_workout, athlete=self.athlete, date=date(2026, 6, 21), time_of_day="PM"
+        )
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Ride", start_date=start, moving_time=3600
+        )
+        _seed_matching_records(activity, 3601, ftp=250)
+
+        attempt_workout_match(activity, self.athlete)
+
+        sched_am.refresh_from_db()
+        sched_pm.refresh_from_db()
+        activity.refresh_from_db()
+        self.assertEqual(sched_am.status, "completed")
+        self.assertEqual(sched_am.activity_id, activity.id)
+        self.assertEqual(activity.workout_id, matching_workout.id)
+        self.assertEqual(sched_pm.status, "planned")
+        self.assertIsNone(sched_pm.activity_id)
+
+    def test_ambiguous_same_day_candidates_with_no_correlation_signal_left_unmatched(self):
+        """When correlation can't disambiguate at all (here: neither candidate workout has any
+        steps, so both fail scannability_error), the fix is to leave both candidates planned for
+        a human to resolve - not to silently guess, which is exactly how the real bug above went
+        unnoticed (the wrong guess still gets tagged "Auto-matched" and looks resolved)."""
+        workout_a = Workout.objects.create(created_by=self.athlete, name="Workout A", sport="run", duration=1800)
+        workout_b = Workout.objects.create(created_by=self.athlete, name="Workout B", sport="run", duration=1800)
+        sched_a = ScheduledWorkout.objects.create(
+            workout=workout_a, athlete=self.athlete, date=date(2026, 6, 22), time_of_day="AM"
+        )
+        sched_b = ScheduledWorkout.objects.create(
+            workout=workout_b, athlete=self.athlete, date=date(2026, 6, 22), time_of_day="PM"
+        )
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Run",
+            start_date=datetime(2026, 6, 22, 6, 0, tzinfo=UTC),
+            moving_time=1800,
+        )
+
+        attempt_workout_match(activity, self.athlete)
+
+        sched_a.refresh_from_db()
+        sched_b.refresh_from_db()
+        activity.refresh_from_db()
+        self.assertEqual(sched_a.status, "planned")
+        self.assertIsNone(sched_a.activity_id)
+        self.assertEqual(sched_b.status, "planned")
+        self.assertIsNone(sched_b.activity_id)
+        self.assertIsNone(activity.workout_id)

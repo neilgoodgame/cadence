@@ -17,6 +17,7 @@ from uploads.processing import backfill_extended_stats, compute_normalized_power
 from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
 from workouts.inference import infer_workout
+from workouts.match_scan import rank_workouts_for_activity
 from workouts.models import Workout
 
 from .comments import resolve_parent_comment
@@ -377,6 +378,41 @@ class InferWorkoutView(APIView):
 
         auto_detect_repeats = request.query_params.get("auto_detect_repeats", "true").lower() == "true"
         return Response(infer_workout(activity, auto_detect_repeats=auto_detect_repeats))
+
+
+class ActivityWorkoutMatchCandidatesView(APIView):
+    """Ranks the athlete's own workout library against this activity's actual power stream - the
+    reverse direction of WorkoutMatchScan (that scans an athlete's activities for a given
+    workout; this scans an athlete's workouts for a given activity). Cheap enough to run
+    synchronously: one activity's record stream, fetched once by rank_workouts_for_activity,
+    against however many workouts survive the duration/scannability pre-filters - unlike the
+    forward direction, which has to fetch full record streams for potentially dozens of
+    candidate activities. Purely a suggestion list - applying a match is still the existing
+    manual ActivityDetailView.patch's workout_id."""
+
+    def get(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+
+        candidates = Workout.objects.filter(created_by_id=activity.athlete_id, sport=activity.sport)
+        ranked = rank_workouts_for_activity(list(candidates), activity)
+        return Response(
+            {
+                "data": [
+                    {
+                        "workoutId": workout.id,
+                        "workoutName": workout.name,
+                        "correlation": r,
+                        "coverage": coverage,
+                        "impliedFtp": implied_ftp,
+                        "durationDiffSeconds": abs(workout.duration - activity.moving_time),
+                    }
+                    for workout, r, coverage, implied_ftp in ranked
+                ]
+            }
+        )
 
 
 class StreamsView(APIView):

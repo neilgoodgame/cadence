@@ -10,6 +10,11 @@ public interface WorkoutRepository extends JpaRepository<Workout, String> {
 
 	List<Workout> findByCreatedByIdOrderByIdDesc(String createdById);
 
+	/** Candidate pool for WorkoutMatchScanService#rankWorkoutsForActivity - every workout the
+	 * athlete owns in this sport, no steps fetched here (only the persisted `duration` column is
+	 * needed before the per-candidate steps fetch in rankWorkoutsForActivity). */
+	List<Workout> findByCreatedByIdAndSport(String createdById, com.cadence.api.common.domain.Sport sport);
+
 	// Export's "counts" metadata block.
 	long countByCreatedById(String createdById);
 

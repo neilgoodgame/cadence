@@ -1,10 +1,13 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.ActivityResponse;
+import com.cadence.api.activities.dto.ActivityWorkoutMatchCandidateResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.paging.CursorPage;
 import com.cadence.api.security.AccessGuard;
+import com.cadence.api.workouts.WorkoutMatchScanService;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -24,13 +27,16 @@ public class ActivityController {
 	private final ActivityService activityService;
 	private final TssRecomputeService tssRecomputeService;
 	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
+	private final WorkoutMatchScanService workoutMatchScanService;
 	private final AccessGuard accessGuard;
 
 	public ActivityController(ActivityService activityService, TssRecomputeService tssRecomputeService,
-			DerivedStatsRecomputeService derivedStatsRecomputeService, AccessGuard accessGuard) {
+			DerivedStatsRecomputeService derivedStatsRecomputeService, WorkoutMatchScanService workoutMatchScanService,
+			AccessGuard accessGuard) {
 		this.activityService = activityService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
+		this.workoutMatchScanService = workoutMatchScanService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -65,6 +71,24 @@ public class ActivityController {
 		accessGuard.requireWrite(activity.getAthlete().getId());
 		Activity updated = activityService.updateActivity(activity, body);
 		return activityService.toResponse(updated);
+	}
+
+	/** Ranks the athlete's own workout library against this activity's actual power stream - the
+	 * reverse direction of WorkoutMatchScan (that scans an athlete's activities for a given
+	 * workout; this scans an athlete's workouts for a given activity). Cheap enough to run
+	 * synchronously, unlike the forward direction: one activity's record stream, fetched once by
+	 * rankWorkoutsForActivity, against however many workouts survive the duration/scannability
+	 * pre-filters. Purely a suggestion list - applying a match is still the existing manual
+	 * PATCH's workoutId. */
+	@GetMapping("/v1/activities/{id}/workout-match-candidates")
+	public List<ActivityWorkoutMatchCandidateResponse> getWorkoutMatchCandidates(@PathVariable String id) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return workoutMatchScanService.findCandidateWorkoutsForActivity(activity).stream()
+				.map(ranked -> new ActivityWorkoutMatchCandidateResponse(ranked.workout().getId(),
+						ranked.workout().getName(), ranked.correlation(), ranked.coverage(), ranked.impliedFtp(),
+						Math.abs(ranked.workout().getDuration() - activity.getMovingTime())))
+				.toList();
 	}
 
 	@DeleteMapping("/v1/activities")

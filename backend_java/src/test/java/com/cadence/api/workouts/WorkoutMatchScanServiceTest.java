@@ -11,6 +11,7 @@ import com.cadence.api.common.domain.Sport;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import com.cadence.api.workouts.WorkoutMatchScanService.RankedWorkout;
 import com.cadence.api.workouts.WorkoutMatchScanService.Segment;
 import java.time.Instant;
 import java.util.List;
@@ -290,5 +291,70 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		assertThat(candidates).hasSize(1);
 		assertThat(candidates.get(0).getActivity().getId()).isEqualTo(match.getId());
 		assertThat(candidates.get(0).getCorrelation()).isGreaterThan(0.99);
+	}
+
+	/** The mirror image of the tests above: one activity ranked against many candidate
+	 * workouts, instead of one workout against many candidate activities. Backs the activity ->
+	 * workout-library endpoint and the ingest-time auto-match tie-break. */
+	@Test
+	void rankWorkoutsForActivityRanksTheCorrelatingWorkoutFirst() {
+		User athlete = newAthlete("rank-athlete@example.cc");
+		Workout matching = newGorbyWorkout(athlete);
+		matching.setDuration(3600);
+		matching = workoutRepository.saveAndFlush(matching);
+		Workout flat = new Workout();
+		flat.setCreatedBy(athlete);
+		flat.setName("Flat");
+		flat.setSport(Sport.BIKE);
+		flat.setDuration(3600);
+		WorkoutStep flatStep = new WorkoutStep();
+		flatStep.setWorkout(flat);
+		flatStep.setOrder(0);
+		flatStep.setKind(StepKind.BLOCK);
+		flatStep.setEndType(StepEndType.TIME);
+		flatStep.setDuration(3600);
+		flatStep.setTargetType(TargetType.POWER);
+		flatStep.setTargetLow(70.0);
+		flatStep.setTargetHigh(70.0);
+		flat.getSteps().add(flatStep);
+		flat = workoutRepository.saveAndFlush(flat);
+		Instant start = Instant.parse("2026-01-08T06:00:00Z");
+		Activity activity = newActivity(athlete, start, Sport.BIKE, 3600, null);
+		seedMatchingRecords(activity, start, 3601, 250);
+
+		List<RankedWorkout> ranked = workoutMatchScanService.rankWorkoutsForActivity(List.of(flat, matching), activity);
+
+		// flat is excluded entirely (zero-variance curve, undefined correlation), so matching
+		// isn't just ranked first, it's the only survivor.
+		assertThat(ranked).hasSize(1);
+		assertThat(ranked.get(0).workout().getId()).isEqualTo(matching.getId());
+		assertThat(ranked.get(0).correlation()).isGreaterThan(0.99);
+	}
+
+	@Test
+	void rankWorkoutsForActivityExcludesADurationMismatchBeforeFetchingSteps() {
+		User athlete = newAthlete("rank-duration-athlete@example.cc");
+		Instant start = Instant.parse("2026-01-09T06:00:00Z");
+		Activity activity = newActivity(athlete, start, Sport.BIKE, 3600, null);
+		seedMatchingRecords(activity, start, 3601, 250);
+		Workout tooShort = new Workout();
+		tooShort.setCreatedBy(athlete);
+		tooShort.setName("Short");
+		tooShort.setSport(Sport.BIKE);
+		tooShort.setDuration(600);
+		tooShort = workoutRepository.saveAndFlush(tooShort);
+
+		assertThat(workoutMatchScanService.rankWorkoutsForActivity(List.of(tooShort), activity)).isEmpty();
+	}
+
+	@Test
+	void rankWorkoutsForActivityReturnsEmptyWithNoRecords() {
+		User athlete = newAthlete("rank-norecords-athlete@example.cc");
+		Workout matching = newGorbyWorkout(athlete);
+		matching.setDuration(3600);
+		matching = workoutRepository.saveAndFlush(matching);
+		Activity activity = newActivity(athlete, Instant.parse("2026-01-10T06:00:00Z"), Sport.BIKE, 3600, null);
+
+		assertThat(workoutMatchScanService.rankWorkoutsForActivity(List.of(matching), activity)).isEmpty();
 	}
 }

@@ -76,6 +76,9 @@ public class WorkoutMatchScanService {
 	public record CorrelationResult(double correlation, double coverage, Integer impliedFtp) {
 	}
 
+	public record RankedWorkout(Workout workout, double correlation, double coverage, Integer impliedFtp) {
+	}
+
 	/** {@code null} if the workout can be scanned for matches; otherwise the reason it can't,
 	 * suitable for a 400 response. */
 	public String scannabilityError(String workoutId) {
@@ -113,11 +116,14 @@ public class WorkoutMatchScanService {
 	}
 
 	private List<Segment> buildCurveFor(Workout workout) {
-		User athlete = userService.getById(workout.getCreatedBy().getId());
-		ZoneType zoneType = workout.getSport() == Sport.BIKE ? ZoneType.BIKE_POWER : ZoneType.RUN_POWER;
-		Double reference = zoneService.referenceFor(athlete, zoneType);
-		double effectiveReference = reference != null ? reference : DEFAULT_POWER_REFERENCE;
+		return buildCurveFor(workout, referenceFor(workout));
+	}
 
+	/** Same as {@link #buildCurveFor(Workout)}, but takes an already-resolved power-zone
+	 * reference - for a caller ranking many candidate workouts for the same athlete (see
+	 * {@link #rankWorkoutsForActivity}), where looking it up once and reusing it avoids an
+	 * identical {@code userService}/{@code zoneService} round-trip per candidate. */
+	private List<Segment> buildCurveFor(Workout workout, double reference) {
 		List<Segment> curve = new ArrayList<>();
 		int offset = 0;
 		for (Flattened f : WorkoutStepFlattener.flatten(workout)) {
@@ -125,11 +131,18 @@ public class WorkoutMatchScanService {
 			double low = step.getTargetLow() != null ? step.getTargetLow() : 0.0;
 			double high = step.getTargetHigh() != null ? step.getTargetHigh() : low;
 			double mid = (low + high) / 2;
-			double pct = step.getPowerUnit() == PowerUnit.WATTS ? (mid / effectiveReference) * 100 : mid;
+			double pct = step.getPowerUnit() == PowerUnit.WATTS ? (mid / reference) * 100 : mid;
 			curve.add(new Segment(offset, offset + step.getDuration(), pct));
 			offset += step.getDuration();
 		}
 		return curve;
+	}
+
+	private double referenceFor(Workout workout) {
+		User athlete = userService.getById(workout.getCreatedBy().getId());
+		ZoneType zoneType = workout.getSport() == Sport.BIKE ? ZoneType.BIKE_POWER : ZoneType.RUN_POWER;
+		Double reference = zoneService.referenceFor(athlete, zoneType);
+		return reference != null ? reference : DEFAULT_POWER_REFERENCE;
 	}
 
 	// Fetch-joins steps - open-in-view is off, and WorkoutStepFlattener.flatten walks
@@ -188,9 +201,18 @@ public class WorkoutMatchScanService {
 
 	/** Returns correlation/coverage/impliedFtp for {@code activity} against {@code curve}, or
 	 * {@code null} if there's no usable overlap (no records, no power data, or nothing falls
-	 * inside the workout's planned duration). */
+	 * inside the workout's planned duration). Thin wrapper around {@link #correlateRecords} for
+	 * a caller that only has one workout to check and hasn't already fetched the activity's
+	 * records. */
 	public CorrelationResult correlateActivity(List<Segment> curve, Activity activity) {
-		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+		return correlateRecords(curve, recordRepository.findByActivityIdOrderByT(activity.getId()));
+	}
+
+	/** Same as {@link #correlateActivity}, but takes an already-fetched, {@code t}-ordered
+	 * record list - split out so a caller correlating one activity against many candidate
+	 * workouts (see {@link #rankWorkoutsForActivity}) can fetch the activity's records once and
+	 * reuse them, instead of re-fetching the same rows for every candidate. */
+	public CorrelationResult correlateRecords(List<Segment> curve, List<Record> records) {
 		if (records.isEmpty()) {
 			return null;
 		}
@@ -227,6 +249,64 @@ public class WorkoutMatchScanService {
 
 		double coverage = (double) xs.size() / records.size();
 		return new CorrelationResult(round4(r), round4(coverage), impliedFtp);
+	}
+
+	/** Ranks {@code workouts} by Pearson correlation of {@code activity}'s actual power stream
+	 * against each one's planned %FTP-vs-time curve - the mirror image of {@link #runScanSync}
+	 * (one activity vs. many candidate workouts, instead of one workout vs. many candidate
+	 * activities). Backs the on-demand activity -&gt; workout-library endpoint, and the
+	 * ingest-time auto-match tie-break for when more than one same-day/sport
+	 * {@code ScheduledWorkout} candidate exists.
+	 *
+	 * <p>Every candidate is assumed to share the same athlete and sport as {@code activity}
+	 * (both callers filter for this already), so the power-zone reference is looked up once and
+	 * reused rather than recomputed per workout. Non-scannable candidates and ones outside the
+	 * duration tolerance are skipped, cheapest check first: the persisted
+	 * {@code workout.getDuration()} column (no extra query) before {@code scannabilityErrorFor}/
+	 * {@code buildCurveFor} (which fetch {@code WorkoutStep} rows via {@link #fetchWithSteps}),
+	 * so a large library doesn't pay a per-candidate steps fetch for every candidate. Returns
+	 * best match first.
+	 */
+	public List<RankedWorkout> rankWorkoutsForActivity(List<Workout> workouts, Activity activity) {
+		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+		if (records.isEmpty()) {
+			return List.of();
+		}
+
+		Double reference = null;
+		List<RankedWorkout> results = new ArrayList<>();
+		for (Workout workout : workouts) {
+			if (Math.abs(workout.getDuration() - activity.getMovingTime()) > DURATION_TOLERANCE_SECONDS) {
+				continue;
+			}
+			Workout withSteps = fetchWithSteps(workout.getId());
+			if (scannabilityErrorFor(withSteps) != null) {
+				continue;
+			}
+			if (reference == null) {
+				reference = referenceFor(withSteps);
+			}
+			List<Segment> curve = buildCurveFor(withSteps, reference);
+			CorrelationResult result = correlateRecords(curve, records);
+			if (result == null) {
+				continue;
+			}
+			results.add(new RankedWorkout(workout, result.correlation(), result.coverage(), result.impliedFtp()));
+		}
+
+		results.sort((a, b) -> Double.compare(b.correlation(), a.correlation()));
+		return results;
+	}
+
+	/** Backs {@code GET /v1/activities/{id}/workout-match-candidates} - ranks every workout the
+	 * activity's athlete owns in the activity's sport against the activity's actual power
+	 * stream, via {@link #rankWorkoutsForActivity}. No archived/status concept exists on
+	 * {@code Workout} to filter on further; a flat/unstructured template self-excludes via
+	 * {@code pearson}'s zero-variance guard, so it doesn't need filtering out here either. */
+	public List<RankedWorkout> findCandidateWorkoutsForActivity(Activity activity) {
+		List<Workout> candidates =
+				workoutRepository.findByCreatedByIdAndSport(activity.getAthlete().getId(), activity.getSport());
+		return rankWorkoutsForActivity(candidates, activity);
 	}
 
 	private static double round4(double v) {

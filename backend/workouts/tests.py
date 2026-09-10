@@ -16,7 +16,13 @@ from .calculations import (
     normalize_power_units,
 )
 from .inference import Group, LeafCandidate, _compress_pass, infer_workout
-from .match_scan import build_expected_curve, correlate_activity, pearson, scannability_error
+from .match_scan import (
+    build_expected_curve,
+    correlate_activity,
+    pearson,
+    rank_workouts_for_activity,
+    scannability_error,
+)
 from .models import Workout, WorkoutMatchScan, WorkoutStep
 
 workouts_urlconf = override_settings(ROOT_URLCONF="workouts.urls")
@@ -1316,6 +1322,85 @@ class CorrelateActivityTests(TestCase):
         )
 
         self.assertIsNone(correlate_activity(curve, activity))
+
+
+class RankWorkoutsForActivityTests(TestCase):
+    """The mirror image of the CorrelateActivityTests/WorkoutMatchScanEndpointTests above: one
+    activity ranked against many candidate workouts, instead of one workout against many
+    candidate activities. Backs the activity -> workout-library endpoint and the ingest-time
+    auto-match tie-break."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="rank@example.cc", password="x", name="Athlete")
+
+    def _activity(self, **overrides):
+        defaults = {
+            "athlete": self.athlete,
+            "sport": "bike",
+            "name": "Ride",
+            "start_date": timezone.now(),
+            "moving_time": 3600,
+        }
+        defaults.update(overrides)
+        return Activity.objects.create(**defaults)
+
+    def test_ranks_the_correlating_workout_first(self):
+        matching = _make_gorby_workout(self.athlete)
+        matching.duration = 3600
+        matching.save(update_fields=["duration"])
+        flat = Workout.objects.create(created_by=self.athlete, name="Flat", sport="bike", duration=3600)
+        WorkoutStep.objects.create(
+            workout=flat,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=3600,
+            target_type="power",
+            target_low=70,
+            target_high=70,
+        )
+        activity = self._activity()
+        _seed_matching_records(activity, 3601, ftp=250)
+
+        ranked = rank_workouts_for_activity([flat, matching], activity)
+
+        # flat is excluded entirely (zero-variance curve, undefined correlation - see
+        # test_a_flat_candidate_is_excluded_as_undefined_correlation below), so the matching
+        # workout isn't just ranked first, it's the only survivor.
+        self.assertEqual([w.id for w, *_ in ranked], [matching.id])
+        self.assertGreater(ranked[0][1], 0.99)
+
+    def test_duration_mismatch_excludes_a_workout_before_fetching_its_steps(self):
+        activity = self._activity()
+        _seed_matching_records(activity, 3601, ftp=250)
+        too_short = Workout.objects.create(created_by=self.athlete, name="Short", sport="bike", duration=600)
+
+        self.assertEqual(rank_workouts_for_activity([too_short], activity), [])
+
+    def test_a_flat_candidate_is_excluded_as_undefined_correlation(self):
+        activity = self._activity()
+        _seed_matching_records(activity, 3601, ftp=250)
+        flat = Workout.objects.create(created_by=self.athlete, name="Flat", sport="bike", duration=3600)
+        WorkoutStep.objects.create(
+            workout=flat,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=3600,
+            target_type="power",
+            target_low=70,
+            target_high=70,
+        )
+
+        self.assertEqual(rank_workouts_for_activity([flat], activity), [])
+
+    def test_no_records_returns_empty(self):
+        matching = _make_gorby_workout(self.athlete)
+        matching.duration = 3600
+        matching.save(update_fields=["duration"])
+        activity = self._activity()
+
+        self.assertEqual(rank_workouts_for_activity([matching], activity), [])
 
 
 @workouts_urlconf
