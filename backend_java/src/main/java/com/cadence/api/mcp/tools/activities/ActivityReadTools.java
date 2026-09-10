@@ -105,6 +105,11 @@ public class ActivityReadTools {
 		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
 		Activity activity = activityService.getActivity(activityId);
 		accessGuard.requireRead(activity.getAthlete().getId());
-		return lapRepository.findByActivityIdOrderByIndex(activityId).stream().map(lapMapper::toResponse).toList();
+		// Fetch-joins workoutStep - open-in-view is off, and lapMapper reads workoutStep's fields
+		// (kind/targetType/.../powerUnit), which would otherwise throw LazyInitializationException
+		// once this method's implicit transaction closes. See LapController.listLaps for the same
+		// fix.
+		return lapRepository.findByActivityIdOrderByIndexFetchWorkoutStep(activityId).stream().map(lapMapper::toResponse)
+				.toList();
 	}
 }
