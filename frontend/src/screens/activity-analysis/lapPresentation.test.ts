@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Athlete, Lap } from "../../api/types";
-import { compliancePct, groupLaps, stepZonePct } from "./lapPresentation";
+import { compliancePct, groupLaps, stepZonePct, summarizeSteps } from "./lapPresentation";
 
 // Mirrors the real "The Gorby" structure this feature was built against: warmup, then
 // 5x[block @110% FTP, rec @52.5% FTP], then one trailing unlinked lap.
@@ -136,5 +136,35 @@ describe("compliancePct", () => {
   it("returns null when the athlete has no FTP to compare a %FTP target against", () => {
     const noFtp = { ftp: null, max_hr: 180 } as Athlete;
     expect(compliancePct(lap({ step_target_type: "power", step_target_low: 110, avg_power: 280 }), noFtp)).toBeNull();
+  });
+});
+
+describe("summarizeSteps", () => {
+  it("groups by workout_step_id (not step_kind), one row per distinct step, in first-seen order", () => {
+    const rows = summarizeSteps(gorbyLaps(), athlete);
+
+    expect(rows.map((r) => r.key)).toEqual(["1", "2", "3", "other"]);
+    expect(rows.map((r) => r.label)).toEqual(["Warm-up", "Work block", "Recovery", "Other"]);
+    expect(rows.map((r) => r.count)).toEqual([1, 5, 5, 1]);
+  });
+
+  it("averages avg_power across every rep of a step, not just one", () => {
+    const rows = summarizeSteps(gorbyLaps(), athlete);
+    const block = rows.find((r) => r.key === "2")!;
+
+    expect(block.avgPower).toBe(280); // every block rep is 280W in the fixture
+  });
+
+  it("keeps two different steps of the same kind separate (e.g. a pyramid with two distinct block targets)", () => {
+    const laps = [
+      lap({ index: 1, workout_step_id: 10, step_kind: "block", step_target_type: "power", step_target_low: 100, step_target_high: 100, avg_power: 250 }),
+      lap({ index: 2, workout_step_id: 11, step_kind: "block", step_target_type: "power", step_target_low: 120, step_target_high: 120, avg_power: 300 }),
+    ];
+
+    const rows = summarizeSteps(laps, athlete);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].avgPower).toBe(250);
+    expect(rows[1].avgPower).toBe(300);
   });
 });

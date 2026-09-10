@@ -1,4 +1,5 @@
 import type { Athlete, Lap } from "../../api/types";
+import { kindLabel, zoneColor } from "../workouts/workoutTree";
 
 /** Lightweight, reference-free target string for a lap's step (no FTP/max-HR/threshold-pace
  * available here to convert a % target into an absolute value - see workoutTree's targetInfo
@@ -142,4 +143,60 @@ export function weightedAvg(laps: Lap[], value: (l: Lap) => number | null): numb
     weight += l.duration;
   }
   return weight > 0 ? Math.round(weightedSum / weight) : null;
+}
+
+function mean(values: number[]): number | null {
+  return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
+}
+
+export interface StepSummaryRow {
+  key: string;
+  label: string;
+  target: string | null;
+  color: string;
+  count: number;
+  avgDuration: number;
+  avgDistanceKm: number;
+  avgPower: number | null;
+  avgHr: number | null;
+  avgCompliancePct: number | null;
+}
+
+/** One row per distinct WorkoutStep (grouped by workout_step_id, not step_kind - two different
+ * "block" steps with different targets, e.g. a pyramid, must not be averaged together), plus one
+ * "Other" row for any unlinked laps (unmatched activities, original-source laps, or a trailing
+ * remainder beyond the workout's plan). Order matches first appearance in `laps`, so it reads
+ * warmup -> work/rest -> other, matching the activity's own flow. */
+export function summarizeSteps(laps: Lap[], athlete: Athlete): StepSummaryRow[] {
+  const order: string[] = [];
+  const buckets = new Map<string, Lap[]>();
+  for (const lap of laps) {
+    const key = lap.workout_step_id != null ? String(lap.workout_step_id) : "other";
+    if (!buckets.has(key)) {
+      buckets.set(key, []);
+      order.push(key);
+    }
+    buckets.get(key)!.push(lap);
+  }
+  return order.map((key) => {
+    const group = buckets.get(key)!;
+    const first = group[0];
+    const powers = group.map((l) => l.avg_power).filter((v): v is number => v != null);
+    const hrs = group.map((l) => l.avg_hr).filter((v): v is number => v != null);
+    const compliances = group.map((l) => compliancePct(l, athlete)).filter((v): v is number => v != null);
+    const zonePct = stepZonePct(first, athlete);
+    const compliance = mean(compliances);
+    return {
+      key,
+      label: first.step_kind ? kindLabel(first.step_kind) : "Other",
+      target: formatStepTarget(first),
+      color: zonePct != null ? zoneColor(zonePct) : "var(--ink3)",
+      count: group.length,
+      avgDuration: mean(group.map((l) => l.duration)) ?? 0,
+      avgDistanceKm: mean(group.map((l) => l.distance_km)) ?? 0,
+      avgPower: mean(powers),
+      avgHr: mean(hrs),
+      avgCompliancePct: compliance != null ? Math.round(compliance) : null,
+    };
+  });
 }
