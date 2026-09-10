@@ -20,6 +20,7 @@ from workouts.inference import infer_workout
 from workouts.models import Workout
 
 from .comments import resolve_parent_comment
+from .lap_derivation import replace_laps_with_derived
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Record, Tag
 from .serializers import (
     ActivityCommentCreateSerializer,
@@ -338,7 +339,29 @@ class LapListView(APIView):
         sub, _ = get_effective_athlete_id(request)
         if not user_may_read(sub, activity.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
-        return Response({"data": LapSerializer(activity.laps.all(), many=True).data})
+        return Response({"data": LapSerializer(activity.laps.select_related("workout_step"), many=True).data})
+
+
+class RegenerateActivityLapsView(APIView):
+    """Manual, on-demand equivalent of attempt_workout_match's lap_source="matched_workout"
+    branch - always derives from the matched workout regardless of the athlete's current
+    lap_source preference (that preference only governs a *new* import's default), so an
+    already-matched activity (auto-matched before this feature existed, or linked manually via
+    ActivityDetailView.patch's workout_id, which never touches laps) can opt in on demand.
+    """
+
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        if activity.workout_id is None:
+            raise ValidationError({"workout_id": "This activity isn't linked to a workout."})
+        if not replace_laps_with_derived(activity, activity.workout):
+            raise ValidationError(
+                {"workout_id": "Laps can't be derived from this workout (a manual-ended step, or no recorded data)."}
+            )
+        return Response({"data": LapSerializer(activity.laps.select_related("workout_step"), many=True).data})
 
 
 class InferWorkoutView(APIView):

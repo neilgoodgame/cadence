@@ -11,6 +11,13 @@ export type FtpCalculationMethod = "twenty_min_test" | "sixty_min_direct";
  * at parse time, not used when the selected one is momentarily missing. */
 export type RunningPowerSource = "stryd" | "native";
 
+/** Where a matched activity's laps come from: "matched_workout" (default) derives them by
+ * slicing the activity's Record stream at the workout's own step boundaries, discarding the
+ * device's raw FIT-file laps; "original" leaves the device's own laps untouched. Only governs
+ * *new* imports - see Lap.workout_step_id and the "regenerate laps" action for existing
+ * activities. */
+export type LapSource = "matched_workout" | "original";
+
 export interface Athlete {
   id: string;
   name: string;
@@ -47,6 +54,7 @@ export interface Athlete {
   /** When an upload auto-matches a scheduled workout, also copies the workout's tags onto the
    * activity. Independent of the naming preferences above. */
   copy_matched_workout_tags: boolean;
+  lap_source: LapSource;
 }
 
 export interface TokenResponse {
@@ -276,6 +284,7 @@ export interface AthleteUpdate {
   rename_matched_activities?: boolean;
   append_match_date_to_name?: boolean;
   copy_matched_workout_tags?: boolean;
+  lap_source?: LapSource;
 }
 
 export interface ActivityComment {
@@ -316,6 +325,19 @@ export interface Lap {
   // power meter returns null for the corresponding field - confirmed against live data.
   avg_hr: number | null;
   avg_power: number | null;
+  /** The WorkoutStep this lap was derived from (lap_source=matched_workout laps only) - null
+   * for an unmatched/original-source lap, or a trailing remainder beyond the workout's plan. */
+  workout_step_id: number | null;
+  /** 1-based position within a repeat group (e.g. "rep 3 of 5") - null outside a repeat group
+   * and whenever workout_step_id is null. */
+  repeat_index: number | null;
+  /** Flattened directly onto the response to avoid an N+1 workout-step lookup per lap - null
+   * exactly when workout_step_id is null. */
+  step_kind: StepKind | null;
+  step_target_type: TargetType | null;
+  step_target_low: number | null;
+  step_target_high: number | null;
+  step_power_unit: PowerUnit | null;
 }
 
 export interface StreamsResponse {

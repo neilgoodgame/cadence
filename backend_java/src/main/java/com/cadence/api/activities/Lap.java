@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.workouts.WorkoutStep;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -36,6 +37,20 @@ public class Lap {
 
 	@Column(name = "avg_power")
 	private Integer avgPower;
+
+	// Set only for a lap derived from a matched Workout's own step boundaries
+	// (LapDerivationService) - null for a device-FIT-parsed lap (LapSource.ORIGINAL), an
+	// unmatched activity, or a trailing/leading segment outside the workout's own steps.
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "workout_step_id")
+	private WorkoutStep workoutStep;
+
+	// 1-based - which repetition of workoutStep's containing repeat group this lap came from
+	// (workoutStep itself is one DB row regardless of how many times it repeats, so multiple
+	// laps legitimately share the same workout_step_id). Null when workoutStep isn't a
+	// repeated step, or when workoutStep itself is null.
+	@Column(name = "repeat_index")
+	private Integer repeatIndex;
 
 	public Long getId() {
 		return id;
@@ -87,5 +102,21 @@ public class Lap {
 
 	public void setAvgPower(Integer avgPower) {
 		this.avgPower = avgPower;
+	}
+
+	public WorkoutStep getWorkoutStep() {
+		return workoutStep;
+	}
+
+	public void setWorkoutStep(WorkoutStep workoutStep) {
+		this.workoutStep = workoutStep;
+	}
+
+	public Integer getRepeatIndex() {
+		return repeatIndex;
+	}
+
+	public void setRepeatIndex(Integer repeatIndex) {
+		this.repeatIndex = repeatIndex;
 	}
 }

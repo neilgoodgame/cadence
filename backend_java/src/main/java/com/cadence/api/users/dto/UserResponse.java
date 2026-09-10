@@ -1,6 +1,7 @@
 package com.cadence.api.users.dto;
 
 import com.cadence.api.athletes.FtpCalculationMethod;
+import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.RunningPowerSource;
 
 public record UserResponse(
@@ -26,5 +27,6 @@ public record UserResponse(
 		boolean isAdmin,
 		boolean renameMatchedActivities,
 		boolean appendMatchDateToName,
-		boolean copyMatchedWorkoutTags) {
+		boolean copyMatchedWorkoutTags,
+		LapSource lapSource) {
 }

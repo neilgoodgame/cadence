@@ -10,6 +10,7 @@ export function WorkoutsTab() {
     rename_matched_activities: user?.rename_matched_activities ?? false,
     append_match_date_to_name: user?.append_match_date_to_name ?? false,
     copy_matched_workout_tags: user?.copy_matched_workout_tags ?? false,
+    lap_source: user?.lap_source ?? "matched_workout",
   });
 
   const mutation = useMutation({
@@ -87,6 +88,25 @@ export function WorkoutsTab() {
             </span>
           </label>
         </div>
+      </div>
+
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>Laps</h3>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+          <span>For activities matched to a workout, use</span>
+          <select
+            value={form.lap_source ?? "matched_workout"}
+            onChange={(e) => setForm({ ...form, lap_source: e.target.value as AthleteUpdate["lap_source"] })}
+            style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid var(--line)", fontSize: 13, maxWidth: 280 }}
+          >
+            <option value="matched_workout">Laps derived from the matched workout's steps</option>
+            <option value="original">Original laps from the device/file</option>
+          </select>
+          <div style={{ fontSize: 12, color: "var(--ink3)" }}>
+            Only affects new imports - use "Regenerate from workout" on an activity's Laps tab to re-derive laps for
+            one already imported.
+          </div>
+        </label>
       </div>
 
       <div>

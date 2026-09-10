@@ -148,6 +148,17 @@ class Lap(models.Model):
     distance_km = models.FloatField()
     avg_hr = models.IntegerField(null=True, blank=True)
     avg_power = models.IntegerField(null=True, blank=True)
+    # Set only for a lap derived from a matched Workout's own step boundaries
+    # (activities/lap_derivation.py) - null for a device-FIT-parsed lap (lap_source="original"),
+    # an unmatched activity, or a trailing/leading segment outside the workout's own steps.
+    workout_step = models.ForeignKey(
+        "workouts.WorkoutStep", null=True, blank=True, on_delete=models.SET_NULL, related_name="laps"
+    )
+    # 1-based - which repetition of workout_step's containing repeat group this lap came from
+    # (workout_step itself is one DB row regardless of how many times it repeats, so multiple
+    # laps legitimately share the same workout_step_id). Null when workout_step isn't a
+    # repeated step, or when workout_step itself is null.
+    repeat_index = models.IntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["index"]

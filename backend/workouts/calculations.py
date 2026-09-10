@@ -1,5 +1,8 @@
 import copy
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .models import Workout, WorkoutStep
 
 # Fallback power reference (watts) used to normalize a "watts"-unit step when the athlete
 # hasn't set a real ftp/critical_run_power - matches the display-only placeholder already used
@@ -159,3 +162,31 @@ def compute_chart_preview(
         high = high if high is not None else low
         preview.append({"intensity": (low + high) / 2, "duration_seconds": duration})
     return preview
+
+
+def flatten_persisted_steps(workout: "Workout") -> list[tuple["WorkoutStep", int | None]]:
+    """Walks a workout's actual persisted `WorkoutStep` rows (not the ephemeral dict/DTO tree
+    `_flatten_leaves` above operates on, which is used only for *planned* duration/TSS math and
+    carries no database row id at all) and unrolls `repeat` groups into an ordered list of
+    `(leaf_row, repeat_index)` pairs. `repeat_index` is the 1-based repetition number when the
+    leaf's parent is a repeat group, else `None`. Every repetition of a repeated leaf points at
+    the *same* `WorkoutStep` row - the DB only ever stores one row per template step, never one
+    per repetition - which is exactly what a derived `Lap.workout_step` FK is meant to capture.
+    Used by `activities.lap_derivation` to slice a matched activity's real records at each
+    step's boundary.
+    """
+    by_parent: dict[int | None, list[WorkoutStep]] = {}
+    for step in workout.steps.all():
+        by_parent.setdefault(step.parent_id, []).append(step)
+
+    def walk(parent_id: int | None) -> list[tuple["WorkoutStep", int | None]]:
+        out: list[tuple[WorkoutStep, int | None]] = []
+        for step in by_parent.get(parent_id, []):
+            if step.kind == "repeat":
+                for rep in range(1, (step.repeat or 1) + 1):
+                    out.extend((leaf, rep) for leaf, _ in walk(step.id))
+            else:
+                out.append((step, None))
+        return out
+
+    return walk(None)

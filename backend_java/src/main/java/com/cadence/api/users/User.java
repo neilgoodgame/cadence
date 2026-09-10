@@ -1,6 +1,7 @@
 package com.cadence.api.users;
 
 import com.cadence.api.athletes.FtpCalculationMethod;
+import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import jakarta.persistence.Column;
@@ -125,6 +126,9 @@ public class User extends PrefixedIdEntity {
 	 * (Workout.tags, a plain list of names) onto the activity. */
 	@Column(name = "copy_matched_workout_tags", nullable = false)
 	private boolean copyMatchedWorkoutTags = false;
+
+	@Column(name = "lap_source", nullable = false)
+	private LapSource lapSource = LapSource.MATCHED_WORKOUT;
 
 	@Column(name = "date_joined", nullable = false)
 	private Instant dateJoined;
@@ -347,6 +351,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setCopyMatchedWorkoutTags(boolean copyMatchedWorkoutTags) {
 		this.copyMatchedWorkoutTags = copyMatchedWorkoutTags;
+	}
+
+	public LapSource getLapSource() {
+		return lapSource;
+	}
+
+	public void setLapSource(LapSource lapSource) {
+		this.lapSource = lapSource;
 	}
 
 	public Instant getDateJoined() {

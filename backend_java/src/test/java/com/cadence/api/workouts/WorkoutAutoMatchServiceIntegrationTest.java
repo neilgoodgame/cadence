@@ -5,9 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.ActivityTagRepository;
+import com.cadence.api.activities.Lap;
+import com.cadence.api.activities.LapRepository;
+import com.cadence.api.activities.Record;
+import com.cadence.api.activities.RecordId;
+import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagOrigin;
 import com.cadence.api.activities.TagRepository;
+import com.cadence.api.athletes.LapSource;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.scheduling.ScheduledWorkout;
 import com.cadence.api.scheduling.ScheduledWorkoutRepository;
@@ -44,6 +50,12 @@ class WorkoutAutoMatchServiceIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private TagRepository tagRepository;
+
+	@Autowired
+	private RecordRepository recordRepository;
+
+	@Autowired
+	private LapRepository lapRepository;
 
 	private User newAthlete(String email, boolean renameMatched, boolean appendDate) {
 		return newAthlete(email, renameMatched, appendDate, false);
@@ -93,6 +105,38 @@ class WorkoutAutoMatchServiceIntegrationTest extends IntegrationTest {
 		activity.setName(name);
 		activity.setStartDate(startDate);
 		return activityRepository.save(activity);
+	}
+
+	/** A single flat 300s block - just enough structure to exercise the lap_source gate. */
+	private Workout newSingleStepWorkout(User athlete) {
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Tempo run");
+		workout.setSport(Sport.RUN);
+		workout = workoutRepository.save(workout);
+
+		WorkoutStep step = new WorkoutStep();
+		step.setWorkout(workout);
+		step.setOrder(0);
+		step.setKind(StepKind.BLOCK);
+		step.setEndType(StepEndType.TIME);
+		step.setDuration(300);
+		step.setTargetType(TargetType.POWER);
+		step.setTargetLow(100.0);
+		step.setTargetHigh(100.0);
+		workout.getSteps().add(step);
+		return workoutRepository.save(workout);
+	}
+
+	private void seedRecords(Activity activity, Instant start, int totalSeconds) {
+		for (int t = 0; t <= totalSeconds; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(200);
+			recordRepository.save(record);
+		}
 	}
 
 	@Test
@@ -233,5 +277,45 @@ class WorkoutAutoMatchServiceIntegrationTest extends IntegrationTest {
 		autoMatchService.attemptMatch(activity.getId());
 
 		assertThat(activityTagNames(activity)).isEqualTo(Set.of("Auto-matched"));
+	}
+
+	@Test
+	void derivesLapsFromTheMatchedWorkoutByDefault() {
+		User athlete = newAthlete("wm-laps-default@example.cc", false, false);
+		Workout workout = newSingleStepWorkout(athlete);
+		schedule(athlete, workout, LocalDate.of(2026, 6, 22));
+		Instant start = Instant.parse("2026-06-22T06:30:00Z");
+		Activity activity = newActivity(athlete, "Morning run", start);
+		seedRecords(activity, start, 300);
+
+		autoMatchService.attemptMatch(activity.getId());
+
+		List<Lap> laps = lapRepository.findByActivityIdOrderByIndex(activity.getId());
+		assertThat(laps).hasSize(1);
+		assertThat(laps.get(0).getWorkoutStep()).isNotNull();
+	}
+
+	@Test
+	void leavesLapsUntouchedWhenTheAthletePrefersTheOriginalFitLaps() {
+		User athlete = newAthlete("wm-laps-original@example.cc", false, false);
+		athlete.setLapSource(LapSource.ORIGINAL);
+		userRepository.save(athlete);
+		Workout workout = newSingleStepWorkout(athlete);
+		schedule(athlete, workout, LocalDate.of(2026, 6, 23));
+		Instant start = Instant.parse("2026-06-23T06:30:00Z");
+		Activity activity = newActivity(athlete, "Morning run", start);
+		seedRecords(activity, start, 300);
+		Lap existing = new Lap();
+		existing.setActivity(activity);
+		existing.setIndex(1);
+		existing.setDuration(301);
+		existing.setDistanceKm(1.0);
+		lapRepository.save(existing);
+
+		autoMatchService.attemptMatch(activity.getId());
+
+		List<Lap> laps = lapRepository.findByActivityIdOrderByIndex(activity.getId());
+		assertThat(laps).hasSize(1);
+		assertThat(laps.get(0).getWorkoutStep()).isNull();
 	}
 }

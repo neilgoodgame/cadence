@@ -89,6 +89,13 @@ export function getLaps(id: string): Promise<DataList<Lap>> {
   return apiFetch<DataList<Lap>>(`/v1/activities/${id}/laps`);
 }
 
+/** Re-derives laps from the activity's matched workout, replacing whatever laps it currently
+ * has - the manual, on-demand equivalent of the lap_source=matched_workout auto-import
+ * behavior, for activities matched before this feature existed or manually linked. */
+export function regenerateActivityLaps(id: string): Promise<DataList<Lap>> {
+  return apiFetch<DataList<Lap>>(`/v1/activities/${id}/regenerate-laps`, { method: "POST" });
+}
+
 export interface InferredWorkout {
   name: string;
   sport: WorkoutSport;

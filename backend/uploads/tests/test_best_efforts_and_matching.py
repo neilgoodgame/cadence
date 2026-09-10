@@ -3,9 +3,9 @@ from datetime import UTC, date, datetime, timedelta
 from django.test import TestCase
 
 from accounts.models import User
-from activities.models import Activity, ActivityTag, BestEffort, Tag
+from activities.models import Activity, ActivityTag, BestEffort, Lap, Record, Tag
 from scheduling.models import ScheduledWorkout
-from workouts.models import Workout
+from workouts.models import Workout, WorkoutStep
 
 from ..processing import BEST_EFFORT_TRIM_PERIOD_DAYS, _trim_kind_window, attempt_workout_match, update_best_efforts
 
@@ -193,6 +193,56 @@ class WorkoutMatchingTests(TestCase):
         self.assertTrue(
             ActivityTag.objects.filter(activity=activity, tag__name="Auto-matched", tag__origin="auto").exists()
         )
+
+    def test_derives_laps_from_the_matched_workout_by_default(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=100,
+            target_high=100,
+        )
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 13))
+        start = datetime(2026, 6, 13, 6, 30, tzinfo=UTC)
+        activity = Activity.objects.create(athlete=self.athlete, sport="run", name="Morning run", start_date=start)
+        for t in range(301):
+            Record.objects.create(activity=activity, t=t, ts=start + timedelta(seconds=t), power=200)
+
+        attempt_workout_match(activity, self.athlete)
+
+        self.assertEqual(activity.laps.count(), 1)
+        self.assertEqual(activity.laps.first().workout_step_id, WorkoutStep.objects.get().id)
+
+    def test_leaves_laps_untouched_when_the_athlete_prefers_the_original_fit_laps(self):
+        self.athlete.lap_source = "original"
+        self.athlete.save(update_fields=["lap_source"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=100,
+            target_high=100,
+        )
+        ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 14))
+        start = datetime(2026, 6, 14, 6, 30, tzinfo=UTC)
+        activity = Activity.objects.create(athlete=self.athlete, sport="run", name="Morning run", start_date=start)
+        for t in range(301):
+            Record.objects.create(activity=activity, t=t, ts=start + timedelta(seconds=t), power=200)
+        Lap.objects.create(activity=activity, index=1, duration=301, distance_km=1.0)
+
+        attempt_workout_match(activity, self.athlete)
+
+        laps = list(activity.laps.all())
+        self.assertEqual(len(laps), 1)
+        self.assertIsNone(laps[0].workout_step_id)
 
     def test_does_not_match_different_sport(self):
         workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run")
