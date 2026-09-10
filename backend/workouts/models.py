@@ -53,6 +53,67 @@ class Workout(PrefixedIDModel):
         return self.name
 
 
+MATCH_SCAN_STATUS_CHOICES = [
+    ("queued", "Queued"),
+    ("processing", "Processing"),
+    ("ready", "Ready"),
+    ("failed", "Failed"),
+]
+
+
+class WorkoutMatchScan(PrefixedIDModel):
+    """A background scan of the workout's athlete's own unmatched, same-sport activities for
+    likely matches, ranked by Pearson correlation between each activity's actual power stream
+    and the workout's planned %FTP-vs-time curve - see workouts.match_scan. Mirrors
+    dataexport.ExportJob's shape (same status lifecycle, same total/processed item-progress
+    pair) since fetching a full per-second Record stream per candidate is too slow to do
+    synchronously in the request.
+    """
+
+    id_prefix = "wms"
+
+    workout = models.ForeignKey(Workout, on_delete=models.CASCADE, related_name="match_scans")
+    status = models.CharField(max_length=12, choices=MATCH_SCAN_STATUS_CHOICES, default="queued")
+    # Null until the duration pre-filter has run (see match_scan.run_match_scan) - mirrors
+    # ExportJob.total_items's own null-until-upfront-count-query window.
+    total_candidates = models.IntegerField(null=True, blank=True)
+    processed_candidates = models.IntegerField(default=0)
+    error_message = models.CharField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.workout_id} match scan ({self.status})"
+
+
+class WorkoutMatchScanCandidate(models.Model):
+    """One candidate activity a scan evaluated, however low its correlation - not just the top
+    N - so the full ranked list stays inspectable (this is what let us work out, during manual
+    testing, that a real match was missing only because of a truncated search window, not a bad
+    score)."""
+
+    scan = models.ForeignKey(WorkoutMatchScan, on_delete=models.CASCADE, related_name="candidates")
+    # String FK to activities.Activity to avoid a circular import at model-definition time
+    # (activities already imports from workouts.calculations) - same convention Activity.workout
+    # uses in reverse.
+    activity = models.ForeignKey("activities.Activity", on_delete=models.CASCADE, related_name="+")
+    correlation = models.FloatField()
+    duration_diff_seconds = models.IntegerField()
+    coverage = models.FloatField()
+    # Informational only (regression-slope-derived), never used for ranking - see
+    # match_scan.correlate_activity.
+    implied_ftp = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-correlation"]
+
+    def __str__(self) -> str:
+        return f"{self.scan_id} candidate {self.activity_id} (r={self.correlation:.2f})"
+
+
 class WorkoutStep(models.Model):
     """Not fetched by its own id, so it uses a plain BigAutoField per the
     core.models.PrefixedIDModel convention. `order` (scoped to `parent`, or to

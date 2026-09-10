@@ -13,16 +13,19 @@ from core.auth_context import get_effective_athlete_id
 from core.permissions import user_may_read, user_may_write
 
 from .calculations import compute_chart_preview, compute_duration_and_tss, normalize_power_units
-from .models import Workout, WorkoutFolder, WorkoutStep
+from .match_scan import scannability_error
+from .models import Workout, WorkoutFolder, WorkoutMatchScan, WorkoutStep
 from .serializers import (
     WorkoutCreateSerializer,
     WorkoutDetailSerializer,
     WorkoutFolderSerializer,
+    WorkoutMatchScanSerializer,
     WorkoutMatchSerializer,
     WorkoutSerializer,
     WorkoutUpdateSerializer,
     clean_step_tree,
 )
+from .tasks import run_workout_match_scan_task
 
 MATCH_METHODS = ("auto", "manual", "all")
 SORT_OPTIONS = {
@@ -278,3 +281,41 @@ class WorkoutMatchListView(APIView):
                 }
             )
         return Response({"data": WorkoutMatchSerializer(matches, many=True).data})
+
+
+class WorkoutMatchScanCreateView(APIView):
+    def post(self, request: Request, id: str) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        workout = get_object_or_404(Workout, pk=id)
+        if not user_may_write(sub, workout.created_by_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        error = scannability_error(workout)
+        if error:
+            raise ValidationError({"workout": error})
+
+        # At most one active scan per workout - a re-POST while one is queued/processing just
+        # hands back that scan's id rather than starting a duplicate, loosely mirroring
+        # dataexport.ExportJob's one-active-job-per-athlete constraint.
+        existing = WorkoutMatchScan.objects.filter(workout_id=id, status__in=["queued", "processing"]).first()
+        scan = existing or WorkoutMatchScan.objects.create(workout=workout)
+        if not existing:
+            run_workout_match_scan_task.delay(scan.id)
+
+        response = Response(WorkoutMatchScanSerializer(scan).data, status=202)
+        response["Location"] = f"/v1/workouts/{id}/match-scans/{scan.id}"
+        response["Retry-After"] = "5"
+        return response
+
+
+class WorkoutMatchScanDetailView(APIView):
+    def get(self, request: Request, id: str, scan_id: str) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        scan = get_object_or_404(WorkoutMatchScan.objects.select_related("workout"), pk=scan_id, workout_id=id)
+        if not user_may_read(sub, scan.workout.created_by_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+
+        response = Response(WorkoutMatchScanSerializer(scan).data)
+        if scan.status in ("queued", "processing"):
+            response["Retry-After"] = "5"
+        return response

@@ -1,9 +1,11 @@
+from datetime import timedelta
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User, UserRelationship
-from activities.models import Activity, ActivityTag, Lap, Tag
+from activities.models import Activity, ActivityTag, Lap, Record, Tag
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 
@@ -14,7 +16,8 @@ from .calculations import (
     normalize_power_units,
 )
 from .inference import Group, LeafCandidate, _compress_pass, infer_workout
-from .models import Workout, WorkoutStep
+from .match_scan import build_expected_curve, correlate_activity, pearson, scannability_error
+from .models import Workout, WorkoutMatchScan, WorkoutStep
 
 workouts_urlconf = override_settings(ROOT_URLCONF="workouts.urls")
 
@@ -1085,3 +1088,308 @@ class WorkoutMatchListViewTests(TestCase):
     def test_outsider_forbidden(self):
         response = _bearer_client(self.outsider).get(f"/v1/workouts/{self.workout.id}/matches")
         self.assertEqual(response.status_code, 403)
+
+
+# Same "warmup 600s@60%, then 5x[work 300s@110%, rest 300s@52.5%]" structure as the real "The
+# Gorby" workout this whole feature was validated against this session.
+def _make_gorby_workout(athlete: User) -> Workout:
+    workout = Workout.objects.create(created_by=athlete, name="The Gorby", sport="bike")
+    WorkoutStep.objects.create(
+        workout=workout,
+        order=0,
+        kind="warmup",
+        end_type="time",
+        duration=600,
+        target_type="power",
+        target_low=60,
+        target_high=60,
+    )
+    group = WorkoutStep.objects.create(workout=workout, order=1, kind="repeat", repeat=5)
+    WorkoutStep.objects.create(
+        workout=workout,
+        parent=group,
+        order=0,
+        kind="block",
+        end_type="time",
+        duration=300,
+        target_type="power",
+        target_low=110,
+        target_high=110,
+    )
+    WorkoutStep.objects.create(
+        workout=workout,
+        parent=group,
+        order=1,
+        kind="rec",
+        end_type="time",
+        duration=300,
+        target_type="power",
+        target_low=52.5,
+        target_high=52.5,
+    )
+    return workout
+
+
+def _phase_power(t: int, ftp: float) -> int:
+    if t < 600:
+        return round(0.60 * ftp)
+    rep_t = (t - 600) % 600
+    return round((1.10 if rep_t < 300 else 0.525) * ftp)
+
+
+def _seed_matching_records(activity: Activity, total_seconds: int, ftp: float) -> None:
+    for t in range(total_seconds):
+        Record.objects.create(
+            activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=_phase_power(t, ftp)
+        )
+
+
+class PearsonTests(TestCase):
+    def test_perfect_positive_correlation(self):
+        self.assertAlmostEqual(pearson([1, 2, 3, 4], [10, 20, 30, 40]), 1.0)
+
+    def test_perfect_negative_correlation(self):
+        self.assertAlmostEqual(pearson([1, 2, 3, 4], [40, 30, 20, 10]), -1.0)
+
+    def test_a_constant_series_is_undefined(self):
+        self.assertIsNone(pearson([1, 1, 1, 1], [10, 20, 30, 40]))
+        self.assertIsNone(pearson([1, 2, 3, 4], [10, 10, 10, 10]))
+
+    def test_too_few_samples_is_undefined(self):
+        self.assertIsNone(pearson([1, 2], [10, 20]))
+
+
+class ScannabilityErrorTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="scannability@example.cc", password="x", name="Athlete")
+
+    def test_a_power_and_duration_based_workout_is_scannable(self):
+        workout = _make_gorby_workout(self.athlete)
+        self.assertIsNone(scannability_error(workout))
+
+    def test_a_workout_with_no_steps_is_not_scannable(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Empty", sport="bike")
+        self.assertIsNotNone(scannability_error(workout))
+
+    def test_a_pace_target_step_is_not_scannable(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Pace run", sport="run")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=1200,
+            target_type="pace",
+            target_low=90,
+            target_high=90,
+        )
+        self.assertIsNotNone(scannability_error(workout))
+
+    def test_a_manual_end_type_step_is_not_scannable(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Manual", sport="bike")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="manual",
+            target_type="power",
+            target_low=100,
+            target_high=100,
+        )
+        self.assertIsNotNone(scannability_error(workout))
+
+    def test_a_distance_end_type_step_is_not_scannable(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Distance", sport="bike")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="distance",
+            distance=5000,
+            target_type="power",
+            target_low=100,
+            target_high=100,
+        )
+        self.assertIsNotNone(scannability_error(workout))
+
+
+class BuildExpectedCurveTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="curve@example.cc", password="x", name="Athlete")
+
+    def test_pct_ftp_steps_pass_through_unchanged(self):
+        workout = _make_gorby_workout(self.athlete)
+
+        curve = build_expected_curve(workout)
+
+        self.assertEqual(
+            curve,
+            [
+                (0, 600, 60.0),
+                (600, 900, 110.0),
+                (900, 1200, 52.5),
+                (1200, 1500, 110.0),
+                (1500, 1800, 52.5),
+                (1800, 2100, 110.0),
+                (2100, 2400, 52.5),
+                (2400, 2700, 110.0),
+                (2700, 3000, 52.5),
+                (3000, 3300, 110.0),
+                (3300, 3600, 52.5),
+            ],
+        )
+
+    def test_a_watts_unit_step_is_converted_using_the_athletes_ftp(self):
+        self.athlete.ftp = 250
+        self.athlete.save(update_fields=["ftp"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Watts", sport="bike")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            power_unit="watts",
+            target_low=275,
+            target_high=275,
+        )
+
+        [(start, end, pct)] = build_expected_curve(workout)
+        self.assertEqual((start, end), (0, 300))
+        self.assertAlmostEqual(pct, 110.0)
+
+    def test_a_watts_unit_step_falls_back_to_the_default_reference_with_no_athlete_ftp_set(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Watts, no FTP", sport="bike")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            power_unit="watts",
+            target_low=265,
+            target_high=265,
+        )
+
+        # 265W / the same 265W default calculations.normalize_power_units falls back to = 100%.
+        self.assertEqual(build_expected_curve(workout), [(0, 300, 100.0)])
+
+
+class CorrelateActivityTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="correlate@example.cc", password="x", name="Athlete")
+
+    def test_a_perfectly_matching_activity_scores_close_to_1(self):
+        workout = _make_gorby_workout(self.athlete)
+        curve = build_expected_curve(workout)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Match", start_date=timezone.now(), moving_time=3600
+        )
+        _seed_matching_records(activity, 3601, ftp=250)
+
+        result = correlate_activity(curve, activity)
+
+        self.assertIsNotNone(result)
+        r, coverage, implied_ftp = result
+        self.assertGreater(r, 0.99)
+        self.assertEqual(coverage, 1.0)
+        self.assertAlmostEqual(implied_ftp, 250, delta=2)
+
+    def test_a_constant_power_activity_cannot_be_correlated_against_a_varying_target(self):
+        workout = _make_gorby_workout(self.athlete)
+        curve = build_expected_curve(workout)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Steady", start_date=timezone.now(), moving_time=3600
+        )
+        for t in range(3601):
+            Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=180)
+
+        self.assertIsNone(correlate_activity(curve, activity))
+
+    def test_no_records_returns_none(self):
+        workout = _make_gorby_workout(self.athlete)
+        curve = build_expected_curve(workout)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Empty", start_date=timezone.now(), moving_time=3600
+        )
+
+        self.assertIsNone(correlate_activity(curve, activity))
+
+
+@workouts_urlconf
+class WorkoutMatchScanEndpointTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="scan-athlete@example.cc", password="x", name="Athlete")
+        self.outsider = User.objects.create_user(email="scan-outsider@example.cc", password="x", name="Outsider")
+        self.workout = _make_gorby_workout(self.athlete)
+        self.start = timezone.now()
+
+    def _make_activity(self, **overrides):
+        defaults = {
+            "athlete": self.athlete,
+            "sport": "bike",
+            "name": "Ride",
+            "start_date": self.start,
+            "moving_time": 3600,
+        }
+        defaults.update(overrides)
+        return Activity.objects.create(**defaults)
+
+    def test_rejects_a_non_power_workout(self):
+        run = Workout.objects.create(created_by=self.athlete, name="Pace run", sport="run")
+        WorkoutStep.objects.create(
+            workout=run,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=1200,
+            target_type="pace",
+            target_low=90,
+            target_high=90,
+        )
+
+        response = _bearer_client(self.athlete).post(f"/v1/workouts/{run.id}/match-scans")
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_outsider_forbidden(self):
+        response = _bearer_client(self.outsider).post(f"/v1/workouts/{self.workout.id}/match-scans")
+        self.assertEqual(response.status_code, 403)
+
+    def test_finds_the_matching_activity_and_excludes_unrelated_candidates(self):
+        match = self._make_activity(name="Real match")
+        _seed_matching_records(match, 3601, ftp=250)
+
+        wrong_sport = self._make_activity(sport="run", name="Wrong sport")
+        _seed_matching_records(wrong_sport, 3601, ftp=250)
+
+        already_matched = self._make_activity(name="Already matched", workout=self.workout)
+        _seed_matching_records(already_matched, 3601, ftp=250)
+
+        too_short = self._make_activity(name="Too short", moving_time=1200)
+        _seed_matching_records(too_short, 1201, ftp=250)
+
+        client = _bearer_client(self.athlete)
+        create_response = client.post(f"/v1/workouts/{self.workout.id}/match-scans")
+        self.assertEqual(create_response.status_code, 202)
+        scan_id = create_response.json()["id"]
+
+        # CELERY_TASK_ALWAYS_EAGER (config/settings_test.py) runs the scan synchronously as
+        # part of the POST above, so it's already "ready" by the time we poll.
+        detail_response = client.get(f"/v1/workouts/{self.workout.id}/match-scans/{scan_id}")
+        data = detail_response.json()
+        self.assertEqual(data["status"], "ready")
+        self.assertEqual(data["processed_candidates"], 1)  # only `match` passes the duration pre-filter
+        self.assertEqual([c["activity_id"] for c in data["candidates"]], [match.id])
+        self.assertGreater(data["candidates"][0]["correlation"], 0.99)
+
+    def test_a_second_post_while_a_scan_is_active_returns_the_existing_one(self):
+        existing = WorkoutMatchScan.objects.create(workout=self.workout, status="processing")
+
+        response = _bearer_client(self.athlete).post(f"/v1/workouts/{self.workout.id}/match-scans")
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["id"], existing.id)
+        self.assertEqual(WorkoutMatchScan.objects.filter(workout=self.workout).count(), 1)
