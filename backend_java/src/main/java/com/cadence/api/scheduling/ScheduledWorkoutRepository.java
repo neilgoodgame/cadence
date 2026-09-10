@@ -1,9 +1,11 @@
 package com.cadence.api.scheduling;
 
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -18,6 +20,12 @@ public interface ScheduledWorkoutRepository extends JpaRepository<ScheduledWorko
 
 	long countByAthleteIdAndWorkoutSport(String athleteId, com.cadence.api.common.domain.Sport sport);
 
+	// PESSIMISTIC_WRITE - two concurrent ingests for the same athlete/date/sport could otherwise
+	// both read the same candidate row(s) before either claims one, a pre-existing race that
+	// WorkoutAutoMatchService#attemptMatch's tie-break widens slightly (more work now happens
+	// between this read and the eventual save). Locked rows release when attemptMatch's
+	// @Transactional method returns.
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select s from ScheduledWorkout s where s.athlete.id = :athleteId and s.date = :date "
 			+ "and s.status = com.cadence.api.scheduling.ScheduledWorkoutStatus.PLANNED and s.activity is null "
 			+ "and s.workout.sport = :sport order by s.id")

@@ -1,8 +1,10 @@
+import logging
 from collections import deque
 from collections.abc import Sequence
 from datetime import timedelta
 
 from django.core.files.storage import default_storage
+from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import User
@@ -13,6 +15,7 @@ from athletes.zones import get_or_create_zone_set, reference_for
 from scheduling.models import ScheduledWorkout
 from scheduling.serializers import ScheduledWorkoutSerializer
 from webhooks.events import fire_event
+from workouts.match_scan import rank_workouts_for_activity
 from workouts.models import Workout
 
 from .models import Upload
@@ -20,6 +23,8 @@ from .parsers import parse_file
 from .parsers.fit import NoActivityDataError
 from .parsers.types import Lap as LapDict
 from .parsers.types import Sample
+
+logger = logging.getLogger(__name__)
 
 POWER_CURVE_DURATIONS = [5, 15, 30, 60, 300, 600, 1200, 3600]
 HR_CURVE_DURATIONS = [60, 300, 600, 1200, 3600]
@@ -734,23 +739,66 @@ def _matched_activity_name(workout: Workout, activity: Activity, athlete: User) 
     return workout.name
 
 
-def attempt_workout_match(activity: Activity, athlete: User) -> None:
-    candidate = (
-        ScheduledWorkout.objects.filter(
-            athlete=athlete,
-            date=activity.start_date.date(),
-            status="planned",
-            activity__isnull=True,
-            workout__sport=activity.sport,
+def _resolve_workout_match_candidate(candidates: list[ScheduledWorkout], activity: Activity) -> ScheduledWorkout | None:
+    """Picks which of several same-day, same-sport, still-planned candidates this activity
+    actually belongs to. A single candidate needs no disambiguation - the common case, and the
+    only one that existed before this function did. With more than one, ranks their workouts by
+    correlation against the activity's actual power stream (rank_workouts_for_activity) and
+    takes the best; if none of them produce a usable correlation (no power-scannable candidate,
+    or the activity has no power data), leaves the ambiguity for a human rather than guessing -
+    a silent wrong auto-match is worse than a visibly-unmatched pair, since the wrong guess looks
+    resolved (tagged "Auto-matched") while an unmatched pair gets noticed.
+    """
+    if len(candidates) == 1:
+        return candidates[0]
+
+    candidate_ids = ", ".join(c.id for c in candidates)
+    ranked = rank_workouts_for_activity([c.workout for c in candidates], activity)
+    if not ranked:
+        logger.warning(
+            "Ambiguous workout match for activity %s: %d same-day/sport candidates (%s), none "
+            "correlated - leaving unmatched for manual resolution.",
+            activity.id,
+            len(candidates),
+            candidate_ids,
         )
-        .select_related("workout")
-        .first()
+        return None
+
+    best_workout, correlation, _coverage, _implied_ftp = ranked[0]
+    winner = next(c for c in candidates if c.workout_id == best_workout.id)
+    logger.warning(
+        "Ambiguous workout match for activity %s: %d same-day/sport candidates (%s), resolved "
+        "to %s via correlation (r=%.3f).",
+        activity.id,
+        len(candidates),
+        candidate_ids,
+        winner.id,
+        correlation,
     )
-    if candidate is None:
-        return
-    candidate.activity = activity
-    candidate.status = "completed"
-    candidate.save(update_fields=["activity", "status"])
+    return winner
+
+
+def attempt_workout_match(activity: Activity, athlete: User) -> None:
+    with transaction.atomic():
+        candidates = list(
+            ScheduledWorkout.objects.select_for_update()
+            .filter(
+                athlete=athlete,
+                date=activity.start_date.date(),
+                status="planned",
+                activity__isnull=True,
+                workout__sport=activity.sport,
+            )
+            .select_related("workout")
+        )
+        if not candidates:
+            return
+        candidate = _resolve_workout_match_candidate(candidates, activity)
+        if candidate is None:
+            return
+        candidate.activity = activity
+        candidate.status = "completed"
+        candidate.save(update_fields=["activity", "status"])
     activity.workout = candidate.workout
     update_fields = ["workout"]
     if athlete.rename_matched_activities:

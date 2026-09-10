@@ -47,7 +47,7 @@ def _power_reference(workout: "Workout") -> float:
     return reference_for(workout.created_by, zone_type) or _DEFAULT_POWER_REFERENCE
 
 
-def build_expected_curve(workout: "Workout") -> list[tuple[int, int, float]]:
+def build_expected_curve(workout: "Workout", reference: float | None = None) -> list[tuple[int, int, float]]:
     """Cumulative `(start_s, end_s, intensity_pct)` segments for `workout`'s flattened steps -
     `scannability_error` must already have confirmed every step is power/duration-based.
     `intensity_pct` is always expressed as %FTP: a `watts`-unit step is converted using the
@@ -56,8 +56,13 @@ def build_expected_curve(workout: "Workout") -> list[tuple[int, int, float]]:
     reference value barely matters for the correlation itself - Pearson is invariant to any
     single consistent rescale of the whole curve - it only affects the informational
     `implied_ftp` reported back per candidate.
+
+    `reference` lets a caller ranking many workouts for the same athlete (see
+    `rank_workouts_for_activity`) compute the zone lookup once and reuse it, instead of
+    repeating an identical lookup per candidate - left `None` to compute it here as before.
     """
-    reference = _power_reference(workout)
+    if reference is None:
+        reference = _power_reference(workout)
     curve: list[tuple[int, int, float]] = []
     offset = 0
     for step, _ in flatten_persisted_steps(workout):
@@ -97,13 +102,15 @@ def pearson(xs: list[float], ys: list[float]) -> float | None:
     return cov / math.sqrt(var_x * var_y)
 
 
-def correlate_activity(
-    curve: list[tuple[int, int, float]], activity: Activity
+def correlate_records(
+    curve: list[tuple[int, int, float]], records: list[tuple[int, int | None]]
 ) -> tuple[float, float, int | None] | None:
-    """Returns `(correlation, coverage, implied_ftp)` for `activity` against `curve`, or `None`
-    if there's no usable overlap (no records, no power data, or nothing falls inside the
-    workout's planned duration)."""
-    records = list(activity.records.order_by("t").values_list("t", "power"))
+    """Returns `(correlation, coverage, implied_ftp)` for `records` (`(t, power)` pairs, already
+    ordered by `t`) against `curve`, or `None` if there's no usable overlap (no records, no
+    power data, or nothing falls inside the workout's planned duration). Split out of
+    `correlate_activity` so a caller correlating one activity against many candidate workouts
+    (see `rank_workouts_for_activity`) can fetch the activity's records once and reuse them,
+    instead of re-fetching the same rows for every candidate."""
     if not records:
         return None
     start_t = records[0][0]
@@ -134,6 +141,57 @@ def correlate_activity(
 
     coverage = len(pairs) / len(records)
     return round(r, 4), round(coverage, 4), implied_ftp
+
+
+def correlate_activity(
+    curve: list[tuple[int, int, float]], activity: Activity
+) -> tuple[float, float, int | None] | None:
+    """Returns `(correlation, coverage, implied_ftp)` for `activity` against `curve`, or `None`
+    if there's no usable overlap. Thin wrapper around `correlate_records` for a caller that
+    only has one workout to check and hasn't already fetched the activity's records."""
+    records = list(activity.records.order_by("t").values_list("t", "power"))
+    return correlate_records(curve, records)
+
+
+def rank_workouts_for_activity(
+    workouts: list["Workout"], activity: Activity
+) -> list[tuple["Workout", float, float, int | None]]:
+    """Ranks `workouts` by Pearson correlation of `activity`'s actual power stream against each
+    one's planned %FTP-vs-time curve - the mirror image of `run_match_scan` (one activity vs.
+    many candidate workouts, instead of one workout vs. many candidate activities). Backs the
+    on-demand activity -> workout-library endpoint, and the ingest-time auto-match tie-break for
+    when more than one same-day/sport `ScheduledWorkout` candidate exists.
+
+    Every candidate is assumed to share the same athlete and sport as `activity` (both callers
+    filter for this already), so the power-zone reference is looked up once and reused rather
+    than recomputed per workout. Non-scannable candidates and ones outside the duration
+    tolerance are skipped, cheapest check first: the persisted `workout.duration` column (no
+    extra query) before `scannability_error`/`build_expected_curve` (which fetch `WorkoutStep`
+    rows), so a large library doesn't pay a per-candidate steps fetch for every candidate.
+    Returns `(workout, correlation, coverage, implied_ftp)` tuples, best match first.
+    """
+    records = list(activity.records.order_by("t").values_list("t", "power"))
+    if not records:
+        return []
+
+    reference: float | None = None
+    results = []
+    for workout in workouts:
+        if abs(workout.duration - activity.moving_time) > DURATION_TOLERANCE_SECONDS:
+            continue
+        if scannability_error(workout) is not None:
+            continue
+        if reference is None:
+            reference = _power_reference(workout)
+        curve = build_expected_curve(workout, reference=reference)
+        result = correlate_records(curve, records)
+        if result is None:
+            continue
+        r, coverage, implied_ftp = result
+        results.append((workout, r, coverage, implied_ftp))
+
+    results.sort(key=lambda row: -row[1])
+    return results
 
 
 def run_match_scan(scan: "WorkoutMatchScan") -> None:

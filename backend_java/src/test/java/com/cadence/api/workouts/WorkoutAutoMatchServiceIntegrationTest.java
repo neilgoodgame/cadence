@@ -139,6 +139,123 @@ class WorkoutAutoMatchServiceIntegrationTest extends IntegrationTest {
 		}
 	}
 
+	/** Two distinct constant-power phases - enough variance in the expected curve for a
+	 * meaningful (non-undefined) correlation, unlike a single flat step. */
+	private Workout newTwoPhaseWorkout(User athlete, String name, int phaseSeconds) {
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName(name);
+		workout.setSport(Sport.RUN);
+		workout.setDuration(phaseSeconds * 2);
+		workout = workoutRepository.save(workout);
+
+		WorkoutStep low = new WorkoutStep();
+		low.setWorkout(workout);
+		low.setOrder(0);
+		low.setKind(StepKind.BLOCK);
+		low.setEndType(StepEndType.TIME);
+		low.setDuration(phaseSeconds);
+		low.setTargetType(TargetType.POWER);
+		low.setTargetLow(60.0);
+		low.setTargetHigh(60.0);
+		workout.getSteps().add(low);
+
+		WorkoutStep high = new WorkoutStep();
+		high.setWorkout(workout);
+		high.setOrder(1);
+		high.setKind(StepKind.BLOCK);
+		high.setEndType(StepEndType.TIME);
+		high.setDuration(phaseSeconds);
+		high.setTargetType(TargetType.POWER);
+		high.setTargetLow(110.0);
+		high.setTargetHigh(110.0);
+		workout.getSteps().add(high);
+
+		return workoutRepository.save(workout);
+	}
+
+	private void seedTwoPhaseRecords(Activity activity, Instant start, int phaseSeconds) {
+		for (int t = 0; t <= phaseSeconds * 2; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(t < phaseSeconds ? 150 : 280);
+			recordRepository.save(record);
+		}
+	}
+
+	@Test
+	void ambiguousSameDayCandidatesResolvedByCorrelation() {
+		// Regression coverage for a real bug found live: two same-day, same-sport, still-planned
+		// candidates had no tie-break at all - whichever the DB happened to return first won,
+		// regardless of which one the activity actually matched. The correlating candidate must
+		// win even though findMatchCandidates orders by an opaque id, not by which one is right.
+		User athlete = newAthlete("wm-ambiguous-resolved@example.cc", false, false);
+		Workout matchingWorkout = newTwoPhaseWorkout(athlete, "Matching workout", 1800);
+		Workout wrongWorkout = newWorkout(athlete, "Steady run");
+		WorkoutStep flatStep = new WorkoutStep();
+		flatStep.setWorkout(wrongWorkout);
+		flatStep.setOrder(0);
+		flatStep.setKind(StepKind.BLOCK);
+		flatStep.setEndType(StepEndType.TIME);
+		flatStep.setDuration(3600);
+		flatStep.setTargetType(TargetType.POWER);
+		flatStep.setTargetLow(90.0);
+		flatStep.setTargetHigh(90.0);
+		wrongWorkout.getSteps().add(flatStep);
+		wrongWorkout.setDuration(3600);
+		wrongWorkout = workoutRepository.save(wrongWorkout);
+		String matchingWorkoutId = matchingWorkout.getId();
+		String wrongWorkoutId = wrongWorkout.getId();
+		schedule(athlete, matchingWorkout, LocalDate.of(2026, 6, 24));
+		schedule(athlete, wrongWorkout, LocalDate.of(2026, 6, 24));
+		Instant start = Instant.parse("2026-06-24T12:00:00Z");
+		Activity activity = newActivity(athlete, "Run", start);
+		activity.setMovingTime(3600);
+		activity = activityRepository.save(activity);
+		seedTwoPhaseRecords(activity, start, 1800);
+
+		autoMatchService.attemptMatch(activity.getId());
+
+		Activity reloadedActivity = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(reloadedActivity.getWorkout().getId()).isEqualTo(matchingWorkoutId);
+		List<ScheduledWorkout> scheduled = scheduledWorkoutRepository.findByAthleteIdOrderByDate(athlete.getId());
+		ScheduledWorkout matchedSlot =
+				scheduled.stream().filter(s -> s.getWorkout().getId().equals(matchingWorkoutId)).findFirst().orElseThrow();
+		ScheduledWorkout unmatchedSlot =
+				scheduled.stream().filter(s -> s.getWorkout().getId().equals(wrongWorkoutId)).findFirst().orElseThrow();
+		assertThat(matchedSlot.getStatus()).isEqualTo(ScheduledWorkoutStatus.COMPLETED);
+		assertThat(matchedSlot.getActivity().getId()).isEqualTo(activity.getId());
+		assertThat(unmatchedSlot.getStatus()).isEqualTo(ScheduledWorkoutStatus.PLANNED);
+		assertThat(unmatchedSlot.getActivity()).isNull();
+	}
+
+	@Test
+	void ambiguousSameDayCandidatesWithNoCorrelationSignalLeftUnmatched() {
+		// When correlation can't disambiguate at all (here: neither candidate workout has any
+		// steps, so both fail scannabilityErrorFor), the fix is to leave both candidates planned
+		// for a human to resolve - not to silently guess, which is exactly how the real bug
+		// above went unnoticed (the wrong guess still gets tagged "Auto-matched" and looks
+		// resolved).
+		User athlete = newAthlete("wm-ambiguous-unresolved@example.cc", false, false);
+		Workout workoutA = newWorkout(athlete, "Workout A");
+		Workout workoutB = newWorkout(athlete, "Workout B");
+		schedule(athlete, workoutA, LocalDate.of(2026, 6, 25));
+		schedule(athlete, workoutB, LocalDate.of(2026, 6, 25));
+		Activity activity = newActivity(athlete, "Run", Instant.parse("2026-06-25T06:00:00Z"));
+
+		autoMatchService.attemptMatch(activity.getId());
+
+		Activity reloadedActivity = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(reloadedActivity.getWorkout()).isNull();
+		List<ScheduledWorkout> scheduled = scheduledWorkoutRepository.findByAthleteIdOrderByDate(athlete.getId());
+		assertThat(scheduled).allSatisfy(s -> {
+			assertThat(s.getStatus()).isEqualTo(ScheduledWorkoutStatus.PLANNED);
+			assertThat(s.getActivity()).isNull();
+		});
+	}
+
 	@Test
 	void leavesNameUntouchedByDefault() {
 		User athlete = newAthlete("wm-default@example.cc", false, false);
