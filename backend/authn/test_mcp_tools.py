@@ -548,6 +548,68 @@ class ActivityToolsTests(TestCase):
         with self.assertRaises(PermissionDenied):
             tools.list_activity_comments(activity_id=activity.id)
 
+    def test_update_activity_renames_it(self) -> None:
+        athlete = User.objects.create_user(email="mcp-update-activity@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.update_activity(activity_id=activity.id, name="The Gorby")
+
+        self.assertEqual(result["name"], "The Gorby")
+        activity.refresh_from_db()
+        self.assertEqual(activity.name, "The Gorby")
+
+    def test_update_activity_rejects_a_blank_name(self) -> None:
+        athlete = User.objects.create_user(email="mcp-update-activity-blank@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.update_activity(activity_id=activity.id, name="  ")
+
+    def test_update_activity_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-update-activity-outsider-athlete@example.cc", password="x", name="Athlete"
+        )
+        outsider = User.objects.create_user(
+            email="mcp-update-activity-outsider@example.cc", password="x", name="Outsider"
+        )
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.update_activity(activity_id=activity.id, name="Should fail")
+
+    def test_tag_activity_attaches_a_new_tag(self) -> None:
+        athlete = User.objects.create_user(email="mcp-tag-activity@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.tag_activity(activity_id=activity.id, name="VO2 max")
+
+        self.assertIn("VO2 max", result["tags"])
+
+    def test_tag_activity_is_a_no_op_for_an_already_applied_tag(self) -> None:
+        athlete = User.objects.create_user(email="mcp-tag-activity-noop@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        tools.tag_activity(activity_id=activity.id, name="VO2 max")
+
+        result = tools.tag_activity(activity_id=activity.id, name="VO2 max")
+
+        self.assertEqual(result["tags"].count("VO2 max"), 1)
+
+    def test_tag_activity_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-tag-activity-outsider-athlete@example.cc", password="x", name="Athlete"
+        )
+        outsider = User.objects.create_user(email="mcp-tag-activity-outsider@example.cc", password="x", name="Outsider")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.tag_activity(activity_id=activity.id, name="VO2 max")
+
 
 class AthleteToolsTests(TestCase):
     def test_get_me_returns_the_callers_own_profile(self) -> None:

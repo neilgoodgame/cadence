@@ -23,7 +23,7 @@ from core.cql.compiler import compile_ast_to_q
 from core.cql.parser import parse
 
 from .comments import resolve_parent_comment
-from .models import Activity, ActivityComment, ActivityTag, DurationCurve
+from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Tag
 from .serializers import ActivityCommentSerializer
 
 ACTIVITY_FIELD_MAP = {
@@ -275,6 +275,34 @@ class ActivityMCPTools(ScopedMCPToolset):
 
         comment = ActivityComment.objects.create(activity=activity, author_id=sub, parent=parent, text=text)
         return ActivityCommentSerializer(comment).data
+
+    def update_activity(self, activity_id: str, name: str) -> dict[str, Any]:
+        """Rename an activity (from list_activities/get_activity). Only the name can be changed
+        through this tool - other fields (sport, linked workout/gear, weight/hydration/
+        temperature overrides) require the web app."""
+        self._require_scope(ACTIVITIES_WRITE)
+        if not name or not name.strip():
+            raise ValidationError({"name": "name cannot be empty."})
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        activity.name = name
+        activity.save(update_fields=["name"])
+        return self.get_activity(activity_id)
+
+    def tag_activity(self, activity_id: str, name: str) -> dict[str, Any]:
+        """Attach a tag to an activity (from list_activities/get_activity) by name - creates the
+        tag if the athlete doesn't already have one with this exact name, matching the web app's
+        tag picker. A no-op if the activity already carries this tag."""
+        self._require_scope(ACTIVITIES_WRITE)
+        if not name or not name.strip():
+            raise ValidationError({"name": "name cannot be empty."})
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        tag, _created = Tag.objects.get_or_create(
+            athlete_id=activity.athlete_id, name=name, defaults={"origin": "manual"}
+        )
+        ActivityTag.objects.get_or_create(activity=activity, tag=tag)
+        return self.get_activity(activity_id)
 
     def list_activity_comments(self, activity_id: str) -> dict[str, Any]:
         """List the comments on an activity (from list_activities/get_activity), oldest first -
