@@ -2,7 +2,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from .models import Workout, WorkoutFolder, WorkoutStep
+from .models import Workout, WorkoutFolder, WorkoutMatchScan, WorkoutStep
 
 LEAF_KINDS = {"warmup", "block", "rec", "cool"}
 
@@ -202,3 +202,56 @@ class WorkoutMatchSerializer(serializers.Serializer):
     moving_time = serializers.IntegerField()
     distance_km = serializers.FloatField()
     avg_power = serializers.IntegerField(allow_null=True)
+
+
+class WorkoutMatchScanCandidateSerializer(serializers.Serializer):
+    activity_id = serializers.CharField()
+    name = serializers.CharField()
+    date = serializers.DateField()
+    correlation = serializers.FloatField()
+    duration_diff_seconds = serializers.IntegerField()
+    coverage = serializers.FloatField()
+    implied_ftp = serializers.IntegerField(allow_null=True)
+    moving_time = serializers.IntegerField()
+    avg_power = serializers.IntegerField(allow_null=True)
+
+
+class WorkoutMatchScanSerializer(serializers.ModelSerializer):
+    candidates = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkoutMatchScan
+        fields = [
+            "id",
+            "workout_id",
+            "status",
+            "total_candidates",
+            "processed_candidates",
+            "error_message",
+            "created_at",
+            "completed_at",
+            "candidates",
+        ]
+
+    def get_candidates(self, scan: "WorkoutMatchScan") -> list[dict[str, Any]]:
+        # Only meaningful once the scan is done - a candidate row's own correlation/coverage
+        # never changes mid-scan, but the ranked LIST isn't final until every candidate has
+        # been evaluated (bulk_create happens once, at the end of run_match_scan).
+        if scan.status != "ready":
+            return []
+        rows = []
+        for c in scan.candidates.select_related("activity").order_by("-correlation"):
+            rows.append(
+                {
+                    "activity_id": c.activity_id,
+                    "name": c.activity.name,
+                    "date": c.activity.start_date.date(),
+                    "correlation": c.correlation,
+                    "duration_diff_seconds": c.duration_diff_seconds,
+                    "coverage": c.coverage,
+                    "implied_ftp": c.implied_ftp,
+                    "moving_time": c.activity.moving_time,
+                    "avg_power": c.activity.avg_power,
+                }
+            )
+        return WorkoutMatchScanCandidateSerializer(rows, many=True).data

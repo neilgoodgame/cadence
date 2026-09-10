@@ -31,6 +31,11 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 
 	List<Activity> findByWorkoutId(String workoutId);
 
+	// WorkoutMatchScanService's candidate pool - same athlete, same sport as the workout being
+	// scanned, not already linked to any workout. A real query against the whole table, so it
+	// doesn't share the truncated-history gap an ad-hoc paginated search would have.
+	List<Activity> findByAthleteIdAndSportAndWorkoutIsNull(String athleteId, com.cadence.api.common.domain.Sport sport);
+
 	// Ownership check for the zones endpoint's optional ?activityId= scoping (AthleteController)
 	// - confirms the activity actually belongs to the athlete being queried before using its
 	// threshold snapshot as the zone reference.
