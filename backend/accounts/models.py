@@ -96,6 +96,19 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # Independent of the naming preferences above - copies the matched Workout's tags
     # (workouts/models.py's Workout.tags, a plain list of names) onto the activity.
     copy_matched_workout_tags = models.BooleanField(default=False)
+    # Governs a *new import's* laps only (attempt_workout_match, right after a match is found) -
+    # not retroactive. "matched_workout" derives laps from the matched Workout's own step
+    # boundaries (activities/lap_derivation.py) instead of the device's own FIT-file lap
+    # markers, since a device lap and a workout step don't reliably line up 1:1 (a trailing
+    # "stop recording" lap, a skipped rep, an extra lap press). "original" keeps today's
+    # behavior - laps straight from the file, unlinked to any workout step. Either way, an
+    # already-matched activity's laps can be re-derived on demand via
+    # POST /v1/activities/{id}/regenerate-laps regardless of this preference's current value.
+    LAP_SOURCE_CHOICES = [
+        ("matched_workout", "Matched workout"),
+        ("original", "Original (FIT file)"),
+    ]
+    lap_source = models.CharField(max_length=20, choices=LAP_SOURCE_CHOICES, default="matched_workout")
 
     # Gates high-trust actions (full-account export/import - see dataexport/views.py's
     # _require_email_verified) behind a confirmed email address. Every account here goes

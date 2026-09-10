@@ -1,6 +1,7 @@
 package com.cadence.api.athletes.dto;
 
 import com.cadence.api.athletes.FtpCalculationMethod;
+import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.RunningPowerSource;
 
 public record AthleteUpdateRequest(
@@ -19,5 +20,6 @@ public record AthleteUpdateRequest(
 		RunningPowerSource runningPowerSource,
 		Boolean renameMatchedActivities,
 		Boolean appendMatchDateToName,
-		Boolean copyMatchedWorkoutTags) {
+		Boolean copyMatchedWorkoutTags,
+		LapSource lapSource) {
 }

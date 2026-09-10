@@ -27,6 +27,7 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "rename_matched_activities",
             "append_match_date_to_name",
             "copy_matched_workout_tags",
+            "lap_source",
         ]
         extra_kwargs = {
             field: {"required": False}
@@ -45,6 +46,7 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
                 "rename_matched_activities",
                 "append_match_date_to_name",
                 "copy_matched_workout_tags",
+                "lap_source",
             ]
         }
 

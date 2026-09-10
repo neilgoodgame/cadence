@@ -4,9 +4,11 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.ActivityTag;
 import com.cadence.api.activities.ActivityTagRepository;
+import com.cadence.api.activities.LapDerivationService;
 import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagOrigin;
 import com.cadence.api.activities.TagRepository;
+import com.cadence.api.athletes.LapSource;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.scheduling.ScheduledWorkout;
 import com.cadence.api.scheduling.ScheduledWorkoutRepository;
@@ -40,15 +42,18 @@ public class WorkoutAutoMatchService {
 	private final TagRepository tagRepository;
 	private final ActivityTagRepository activityTagRepository;
 	private final ApplicationEventPublisher eventPublisher;
+	private final LapDerivationService lapDerivationService;
 
 	public WorkoutAutoMatchService(ActivityRepository activityRepository,
 			ScheduledWorkoutRepository scheduledWorkoutRepository, TagRepository tagRepository,
-			ActivityTagRepository activityTagRepository, ApplicationEventPublisher eventPublisher) {
+			ActivityTagRepository activityTagRepository, ApplicationEventPublisher eventPublisher,
+			LapDerivationService lapDerivationService) {
 		this.activityRepository = activityRepository;
 		this.scheduledWorkoutRepository = scheduledWorkoutRepository;
 		this.tagRepository = tagRepository;
 		this.activityTagRepository = activityTagRepository;
 		this.eventPublisher = eventPublisher;
+		this.lapDerivationService = lapDerivationService;
 	}
 
 	@Transactional
@@ -111,6 +116,9 @@ public class WorkoutAutoMatchService {
 					activityTagRepository.save(link);
 				}
 			}
+		}
+		if (athlete.getLapSource() == LapSource.MATCHED_WORKOUT) {
+			lapDerivationService.replaceLapsWithDerived(activity, workout);
 		}
 		eventPublisher.publishEvent(new ScheduledWorkoutMatchedEvent(candidate.getId(), athlete.getId()));
 	}

@@ -108,6 +108,9 @@ public class AthleteService {
 		if (request.copyMatchedWorkoutTags() != null) {
 			athlete.setCopyMatchedWorkoutTags(request.copyMatchedWorkoutTags());
 		}
+		if (request.lapSource() != null) {
+			athlete.setLapSource(request.lapSource());
+		}
 		userRepository.save(athlete);
 		return zoneService.recomputedZoneTypes(athlete, changed);
 	}

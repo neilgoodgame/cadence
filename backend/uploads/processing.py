@@ -6,6 +6,7 @@ from django.core.files.storage import default_storage
 from django.utils import timezone
 
 from accounts.models import User
+from activities.lap_derivation import replace_laps_with_derived
 from activities.models import Activity, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
 from athletes.threshold_history import recompute_for_activity
 from athletes.zones import get_or_create_zone_set, reference_for
@@ -770,6 +771,8 @@ def attempt_workout_match(activity: Activity, athlete: User) -> None:
                 athlete=athlete, name=workout_tag_name, defaults={"origin": "manual"}
             )
             ActivityTag.objects.get_or_create(activity=activity, tag=workout_tag)
+    if athlete.lap_source == "matched_workout":
+        replace_laps_with_derived(activity, candidate.workout)
     fire_event("scheduled_workout.matched", athlete.id, ScheduledWorkoutSerializer(candidate).data)
 
 

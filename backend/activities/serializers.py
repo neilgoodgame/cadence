@@ -126,9 +126,47 @@ class ActivityUpdateSerializer(serializers.Serializer):
 
 
 class LapSerializer(serializers.ModelSerializer):
+    # step_* fields are flattened directly onto the lap (rather than a nested workout_step
+    # object) so the frontend can render step context without an N+1 workout-step lookup per
+    # lap. Null whenever workout_step_id is null (an "original"-sourced lap, an unmatched
+    # activity, or an unattributed trailing/leading segment - see lap_derivation.py).
+    step_kind = serializers.SerializerMethodField()
+    step_target_type = serializers.SerializerMethodField()
+    step_target_low = serializers.SerializerMethodField()
+    step_target_high = serializers.SerializerMethodField()
+    step_power_unit = serializers.SerializerMethodField()
+
     class Meta:
         model = Lap
-        fields = ["index", "duration", "distance_km", "avg_hr", "avg_power"]
+        fields = [
+            "index",
+            "duration",
+            "distance_km",
+            "avg_hr",
+            "avg_power",
+            "workout_step_id",
+            "repeat_index",
+            "step_kind",
+            "step_target_type",
+            "step_target_low",
+            "step_target_high",
+            "step_power_unit",
+        ]
+
+    def get_step_kind(self, obj: Lap) -> str | None:
+        return obj.workout_step.kind if obj.workout_step_id else None
+
+    def get_step_target_type(self, obj: Lap) -> str | None:
+        return obj.workout_step.target_type if obj.workout_step_id else None
+
+    def get_step_target_low(self, obj: Lap) -> float | None:
+        return obj.workout_step.target_low if obj.workout_step_id else None
+
+    def get_step_target_high(self, obj: Lap) -> float | None:
+        return obj.workout_step.target_high if obj.workout_step_id else None
+
+    def get_step_power_unit(self, obj: Lap) -> str | None:
+        return obj.workout_step.power_unit if obj.workout_step_id else None
 
 
 class TagSerializer(serializers.ModelSerializer):

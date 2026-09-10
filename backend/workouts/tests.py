@@ -7,7 +7,12 @@ from activities.models import Activity, ActivityTag, Lap, Tag
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 
-from .calculations import compute_chart_preview, compute_duration_and_tss, normalize_power_units
+from .calculations import (
+    compute_chart_preview,
+    compute_duration_and_tss,
+    flatten_persisted_steps,
+    normalize_power_units,
+)
 from .inference import Group, LeafCandidate, _compress_pass, infer_workout
 from .models import Workout, WorkoutStep
 
@@ -272,6 +277,103 @@ class PaceTssMatchesPowerTests(TestCase):
         ]
         _duration, tss = compute_duration_and_tss(steps)
         self.assertEqual(tss, 80)  # unchanged: hours * (avg/100) * 80
+
+
+class FlattenPersistedStepsTests(TestCase):
+    """`flatten_persisted_steps` walks real persisted WorkoutStep rows (unlike `_flatten_leaves`
+    above, which operates on the ephemeral dict tree and carries no row id) - used by
+    activities.lap_derivation to link a derived Lap back to the WorkoutStep it came from.
+    """
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="flatten-steps@example.cc", password="x", name="Athlete")
+
+    def test_flattens_a_flat_step_list_with_no_repeat_index(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Flat", sport="bike")
+        warmup = WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="warmup",
+            end_type="time",
+            duration=600,
+            target_type="power",
+            target_low=50,
+            target_high=50,
+        )
+        cool = WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="cool",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=40,
+            target_high=40,
+        )
+
+        flattened = flatten_persisted_steps(workout)
+
+        self.assertEqual([(s.id, rep) for s, rep in flattened], [(warmup.id, None), (cool.id, None)])
+
+    def test_unrolls_a_repeat_group_reusing_the_same_row_id_per_repetition(self):
+        # Mirrors "The Gorby": warmup, then 5x[work, rest].
+        workout = Workout.objects.create(created_by=self.athlete, name="The Gorby", sport="bike")
+        warmup = WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="warmup",
+            end_type="time",
+            duration=600,
+            target_type="power",
+            target_low=50,
+            target_high=70,
+        )
+        group = WorkoutStep.objects.create(workout=workout, order=1, kind="repeat", repeat=5)
+        work = WorkoutStep.objects.create(
+            workout=workout,
+            parent=group,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=110,
+            target_high=110,
+        )
+        rest = WorkoutStep.objects.create(
+            workout=workout,
+            parent=group,
+            order=1,
+            kind="rec",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=50,
+            target_high=55,
+        )
+
+        flattened = flatten_persisted_steps(workout)
+
+        self.assertEqual(
+            [(s.id, rep) for s, rep in flattened],
+            [
+                (warmup.id, None),
+                (work.id, 1),
+                (rest.id, 1),
+                (work.id, 2),
+                (rest.id, 2),
+                (work.id, 3),
+                (rest.id, 3),
+                (work.id, 4),
+                (rest.id, 4),
+                (work.id, 5),
+                (rest.id, 5),
+            ],
+        )
+        # The DB only ever stores one row per template step - every repetition of "work"
+        # points at the exact same WorkoutStep row, not a duplicate.
+        work_ids = {s.id for s, rep in flattened if rep is not None and s.kind == "block"}
+        self.assertEqual(work_ids, {work.id})
 
 
 class NormalizePowerUnitsTests(TestCase):
