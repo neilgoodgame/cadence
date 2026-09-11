@@ -3,6 +3,9 @@ package com.cadence.api.mcp.tools;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.mcp.dto.McpAthleteProfile;
@@ -24,7 +27,9 @@ import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutRepository;
+import com.cadence.api.workouts.dto.WorkoutMatchComparisonResponse;
 import com.cadence.api.workouts.dto.WorkoutResponse;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -56,6 +61,9 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private WorkoutRepository workoutRepository;
+
+	@Autowired
+	private ActivityRepository activityRepository;
 
 	@Autowired
 	private UserRepository userRepository;
@@ -256,6 +264,48 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		authAs(outsider.getId(), "activities:read");
 
 		assertThatThrownBy(() -> workoutReadTools.getWorkout(workout.id())).isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void getWorkoutMatchesReturnsComparisonDataForEachMatchedActivity() {
+		User athlete = saveAthlete("mcp-workout-matches@example.cc");
+		authAs(athlete.getId(), "workouts:write", "activities:read");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse workout = workoutWriteTools.createWorkout("Matched workout", "bike", steps, null);
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName("Ride");
+		activity.setStartDate(Instant.now());
+		activity.setMovingTime(1200);
+		activity.setDistanceKm(35.0);
+		activity.setAvgPower(210);
+		activity.setAvgHr(140);
+		activity.setTss(33);
+		activity.setWorkout(workoutRepository.findById(workout.id()).orElseThrow());
+		activityRepository.save(activity);
+
+		List<WorkoutMatchComparisonResponse> matches = workoutReadTools.getWorkoutMatches(workout.id());
+
+		assertThat(matches).hasSize(1);
+		WorkoutMatchComparisonResponse row = matches.get(0);
+		assertThat(row.activityId()).isEqualTo(activity.getId());
+		assertThat(row.ef()).isCloseTo(210.0 / 140, org.assertj.core.data.Offset.offset(0.001));
+	}
+
+	@Test
+	void getWorkoutMatchesFromAnotherAthleteIsRejected() {
+		User owner = saveAthlete("mcp-workout-matches-owner@example.cc");
+		authAs(owner.getId(), "workouts:write", "activities:read");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse workout = workoutWriteTools.createWorkout("Owner's workout", "bike", steps, null);
+
+		User outsider = saveAthlete("mcp-workout-matches-outsider@example.cc");
+		authAs(outsider.getId(), "activities:read");
+
+		assertThatThrownBy(() -> workoutReadTools.getWorkoutMatches(workout.id())).isInstanceOf(ForbiddenException.class);
 	}
 
 	@Test
