@@ -110,13 +110,22 @@ def correlate_records(
     power data, or nothing falls inside the workout's planned duration). Split out of
     `correlate_activity` so a caller correlating one activity against many candidate workouts
     (see `rank_workouts_for_activity`) can fetch the activity's records once and reuse them,
-    instead of re-fetching the same rows for every candidate."""
+    instead of re-fetching the same rows for every candidate.
+
+    A literal `0` reading is treated the same as missing data (excluded, not paired as a real
+    "no effort" sample): confirmed against a real activity's raw FIT records that a sensor/
+    connection dropout reads as `power=0` for a few seconds at a time while cadence and heart
+    rate carry on unaffected - real noise, not a genuine stop. No workout step ever targets 0
+    (every target is a positive %FTP/watts value), so this can't mask an intentionally flat
+    zero-effort block; it only drops noise that would otherwise count as a correlation outlier
+    against whatever the plan expects at that moment.
+    """
     if not records:
         return None
     start_t = records[0][0]
     pairs = []
     for t, power in records:
-        if power is None:
+        if not power:
             continue
         expected = _sample_expected_at(curve, t - start_t)
         if expected is not None:

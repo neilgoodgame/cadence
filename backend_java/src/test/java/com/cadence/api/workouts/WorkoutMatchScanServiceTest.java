@@ -230,6 +230,37 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void sporadicZeroPowerDropoutsAreExcludedNotPenalized() {
+		// Regression coverage for a real activity found live: a sensor/connection dropout reads
+		// as power=0 for a few seconds at a time (confirmed against the raw FIT records -
+		// cadence and heart rate carry on unaffected through the gap, so it isn't a genuine
+		// stop), which was dragging a structurally-strong match down to a mediocre correlation
+		// score. Zeros should be excluded like missing data, not paired as real "no effort"
+		// samples.
+		User athlete = newAthlete("correlate-dropouts@example.cc");
+		Workout workout = newGorbyWorkout(athlete);
+		List<Segment> curve = workoutMatchScanService.buildExpectedCurve(workout.getId());
+		Instant start = Instant.parse("2026-01-01T06:00:00Z");
+		Activity activity = newActivity(athlete, start, Sport.BIKE, 3600, null);
+		seedMatchingRecords(activity, start, 3601, 250);
+		// Sprinkle in dropouts throughout the ride, mirroring the real activity's pattern (many
+		// short zero-power runs scattered across the whole duration, not clustered in one spot).
+		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+		for (Record record : records) {
+			if (record.getT() % 137 == 50 % 137) {
+				record.setPower(0);
+				recordRepository.save(record);
+			}
+		}
+
+		var result = workoutMatchScanService.correlateActivity(curve, activity);
+
+		assertThat(result).isNotNull();
+		assertThat(result.correlation()).isGreaterThan(0.99);
+		assertThat(result.coverage()).isLessThan(1.0);
+	}
+
+	@Test
 	void correlateActivityReturnsNullForConstantPowerAgainstAVaryingTarget() {
 		User athlete = newAthlete("correlate-constant@example.cc");
 		Workout workout = newGorbyWorkout(athlete);
