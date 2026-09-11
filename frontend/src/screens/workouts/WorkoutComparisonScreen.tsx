@@ -7,19 +7,28 @@ import { Card } from "../../components/Card";
 import { formatDate } from "../../lib/format";
 import { WorkoutComparisonChart, type ComparisonPoint } from "./WorkoutComparisonChart";
 
-type MetricKey = "ef" | "avg_power" | "avg_hr" | "work_block_avg_power" | "avg_core_temp" | "avg_air_temp" | "avg_humidity";
+type MetricKey =
+  | "ef"
+  | "avg_power"
+  | "avg_hr"
+  | "work_block_avg_power"
+  | "work_block_avg_hr"
+  | "avg_core_temp"
+  | "avg_air_temp"
+  | "avg_humidity";
 
 const METRICS: { key: MetricKey; label: string; format: (v: number) => string }[] = [
   { key: "ef", label: "Aerobic Efficiency", format: (v) => v.toFixed(3) },
   { key: "avg_power", label: "Avg Power", format: (v) => `${Math.round(v)}W` },
   { key: "avg_hr", label: "Avg HR", format: (v) => `${Math.round(v)}bpm` },
   { key: "work_block_avg_power", label: "Work-block Power", format: (v) => `${Math.round(v)}W` },
+  { key: "work_block_avg_hr", label: "Work-block HR", format: (v) => `${Math.round(v)}bpm` },
   { key: "avg_core_temp", label: "Core Temp", format: (v) => `${v.toFixed(1)}°C` },
   { key: "avg_air_temp", label: "Air Temp", format: (v) => `${v.toFixed(1)}°C` },
   { key: "avg_humidity", label: "Humidity", format: (v) => `${Math.round(v)}%` },
 ];
 
-const GRID_COLS = "28px minmax(90px,0.8fr) minmax(140px,1.3fr) 0.55fr 0.5fr 0.6fr 0.75fr 0.6fr 0.5fr";
+const GRID_COLS = "28px minmax(90px,0.9fr) minmax(140px,1.3fr) 0.55fr 0.5fr 0.6fr 0.75fr 0.65fr 0.6fr 0.5fr";
 
 function segBtn(active: boolean) {
   return {
@@ -46,6 +55,7 @@ function ColHeaders() {
       <span style={style}>HR</span>
       <span style={style}>EF</span>
       <span style={style}>Work-block</span>
+      <span style={style}>Block HR</span>
       <span style={style}>Core temp</span>
       <span style={style}>TSS</span>
     </div>
@@ -69,7 +79,7 @@ function Row({ rank, entry }: { rank: number; entry: WorkoutMatchComparisonEntry
       }}
     >
       <span className="mono" style={{ fontSize: 11, color: "var(--ink3)" }}>{rank}</span>
-      <span className="mono" style={{ fontSize: 12, color: "var(--ink)" }}>{formatDate(entry.date)}</span>
+      <span className="mono" style={{ fontSize: 12, color: "var(--ink)" }}>{formatDate(entry.date, true)}</span>
       <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {entry.name}
       </span>
@@ -78,6 +88,9 @@ function Row({ rank, entry }: { rank: number; entry: WorkoutMatchComparisonEntry
       <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{entry.ef != null ? entry.ef.toFixed(3) : "—"}</span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
         {entry.work_block_avg_power != null ? `${entry.work_block_avg_power}W` : "—"}
+      </span>
+      <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
+        {entry.work_block_avg_hr != null ? entry.work_block_avg_hr : "—"}
       </span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
         {entry.avg_core_temp != null ? `${entry.avg_core_temp.toFixed(1)}°C` : "—"}

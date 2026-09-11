@@ -656,6 +656,7 @@ export interface WorkoutMatchComparisonEntry {
   avg_hr: number | null;
   ef: number | null;
   work_block_avg_power: number | null;
+  work_block_avg_hr: number | null;
   avg_core_temp: number | null;
   avg_air_temp: number | null;
   avg_humidity: number | null;

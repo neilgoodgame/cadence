@@ -302,20 +302,33 @@ class WorkoutMatchComparisonView(APIView):
         activities = list(Activity.objects.filter(workout_id=id).order_by("start_date"))
         activity_ids = [a.id for a in activities]
 
-        # Duration-weighted average of avg_power across each activity's work-block laps - not a
-        # bare mean-of-laps, since block laps can differ in length.
-        work_block_totals: dict[str, list[float]] = {}
+        # Duration-weighted average of avg_power/avg_hr across each activity's work-block laps -
+        # not a bare mean-of-laps, since block laps can differ in length. Power and HR are
+        # tracked independently (a lap missing one shouldn't skew the other's duration total).
+        power_totals: dict[str, list[float]] = {}
+        hr_totals: dict[str, list[float]] = {}
         for row in Lap.objects.filter(activity_id__in=activity_ids, workout_step__kind="block").values(
-            "activity_id", "avg_power", "duration"
+            "activity_id", "avg_power", "avg_hr", "duration"
         ):
-            if row["avg_power"] is None or not row["duration"]:
+            duration = row["duration"]
+            if not duration:
                 continue
-            totals = work_block_totals.setdefault(row["activity_id"], [0.0, 0])
-            totals[0] += row["avg_power"] * row["duration"]
-            totals[1] += row["duration"]
+            if row["avg_power"] is not None:
+                totals = power_totals.setdefault(row["activity_id"], [0.0, 0])
+                totals[0] += row["avg_power"] * duration
+                totals[1] += duration
+            if row["avg_hr"] is not None:
+                totals = hr_totals.setdefault(row["activity_id"], [0.0, 0])
+                totals[0] += row["avg_hr"] * duration
+                totals[1] += duration
         work_block_avg_power = {
             activity_id: round(weighted_sum / total_duration)
-            for activity_id, (weighted_sum, total_duration) in work_block_totals.items()
+            for activity_id, (weighted_sum, total_duration) in power_totals.items()
+            if total_duration
+        }
+        work_block_avg_hr = {
+            activity_id: round(weighted_sum / total_duration)
+            for activity_id, (weighted_sum, total_duration) in hr_totals.items()
             if total_duration
         }
 
@@ -344,6 +357,7 @@ class WorkoutMatchComparisonView(APIView):
                     "avg_hr": activity.avg_hr,
                     "ef": ef,
                     "work_block_avg_power": work_block_avg_power.get(activity.id),
+                    "work_block_avg_hr": work_block_avg_hr.get(activity.id),
                     "avg_core_temp": avg_core_temp.get(activity.id),
                     "avg_air_temp": activity.avg_air_temp,
                     "avg_humidity": activity.avg_humidity,

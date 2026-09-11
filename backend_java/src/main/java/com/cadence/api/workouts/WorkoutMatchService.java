@@ -62,23 +62,40 @@ public class WorkoutMatchService {
 				activityRepository.findByWorkoutId(workoutId).stream().sorted(Comparator.comparing(Activity::getStartDate)).toList();
 		List<String> activityIds = activities.stream().map(Activity::getId).toList();
 
-		// Duration-weighted average of avgPower across each activity's work-block laps - not a
-		// bare mean-of-laps, since block laps can differ in length.
-		Map<String, double[]> workBlockTotals = new HashMap<>();
+		// Duration-weighted average of avgPower/avgHr across each activity's work-block laps -
+		// not a bare mean-of-laps, since block laps can differ in length. Power and HR are
+		// tracked independently (a lap missing one shouldn't skew the other's duration total).
+		Map<String, double[]> workBlockPowerTotals = new HashMap<>();
+		Map<String, double[]> workBlockHrTotals = new HashMap<>();
 		for (Lap lap : lapRepository.findByActivityIdInAndWorkoutStepKindBlock(activityIds)) {
-			Integer avgPower = lap.getAvgPower();
 			int duration = lap.getDuration();
-			if (avgPower == null || duration <= 0) {
+			if (duration <= 0) {
 				continue;
 			}
-			double[] totals = workBlockTotals.computeIfAbsent(lap.getActivity().getId(), k -> new double[2]);
-			totals[0] += avgPower * duration;
-			totals[1] += duration;
+			String activityId = lap.getActivity().getId();
+			Integer avgPower = lap.getAvgPower();
+			if (avgPower != null) {
+				double[] totals = workBlockPowerTotals.computeIfAbsent(activityId, k -> new double[2]);
+				totals[0] += avgPower * duration;
+				totals[1] += duration;
+			}
+			Integer avgHr = lap.getAvgHr();
+			if (avgHr != null) {
+				double[] totals = workBlockHrTotals.computeIfAbsent(activityId, k -> new double[2]);
+				totals[0] += avgHr * duration;
+				totals[1] += duration;
+			}
 		}
 		Map<String, Integer> workBlockAvgPower = new HashMap<>();
-		workBlockTotals.forEach((activityId, totals) -> {
+		workBlockPowerTotals.forEach((activityId, totals) -> {
 			if (totals[1] > 0) {
 				workBlockAvgPower.put(activityId, (int) Math.round(totals[0] / totals[1]));
+			}
+		});
+		Map<String, Integer> workBlockAvgHr = new HashMap<>();
+		workBlockHrTotals.forEach((activityId, totals) -> {
+			if (totals[1] > 0) {
+				workBlockAvgHr.put(activityId, (int) Math.round(totals[0] / totals[1]));
 			}
 		});
 
@@ -97,8 +114,8 @@ public class WorkoutMatchService {
 					: null;
 			return new WorkoutMatchComparisonResponse(activity.getId(), activity.getName(),
 					activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), activity.getMovingTime(), avgPower, avgHr,
-					ef, workBlockAvgPower.get(activity.getId()), avgCoreTemp.get(activity.getId()), activity.getAvgAirTemp(),
-					activity.getAvgHumidity(), activity.getTss());
+					ef, workBlockAvgPower.get(activity.getId()), workBlockAvgHr.get(activity.getId()),
+					avgCoreTemp.get(activity.getId()), activity.getAvgAirTemp(), activity.getAvgHumidity(), activity.getTss());
 		}).toList();
 	}
 
