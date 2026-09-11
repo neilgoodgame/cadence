@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
+import { regenerateActivityLaps } from "../../api/activities";
 import { getWorkout, getWorkoutMatchComparison } from "../../api/workouts";
 import type { WorkoutMatchComparisonEntry } from "../../api/types";
 import { Card } from "../../components/Card";
@@ -62,7 +63,47 @@ function ColHeaders() {
   );
 }
 
-function Row({ rank, entry }: { rank: number; entry: WorkoutMatchComparisonEntry }) {
+// A row with no work-block averages never had its laps derived against this workout (an
+// unmatched-at-the-time import, or one that predates lap derivation) - regenerating fixes both
+// work_block_avg_power and work_block_avg_hr together, since they come from the same lap data.
+function RegenerateWorkBlockButton({ activityId, workoutId }: { activityId: string; workoutId: string }) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => regenerateActivityLaps(activityId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["workout-match-comparison", workoutId] }),
+  });
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        mutation.mutate();
+      }}
+      disabled={mutation.isPending}
+      title={
+        mutation.isError
+          ? "Couldn't regenerate laps for this activity - it may have no matched workout data to derive from."
+          : "Regenerate this activity's laps from the matched workout to fill in work-block power/HR."
+      }
+      style={{
+        border: "none",
+        background: "none",
+        padding: 0,
+        marginLeft: 4,
+        fontSize: 11,
+        cursor: "pointer",
+        color: mutation.isError ? "#e0442e" : "var(--ember)",
+        opacity: mutation.isPending ? 0.6 : 1,
+      }}
+    >
+      {mutation.isPending ? "…" : "↺"}
+    </button>
+  );
+}
+
+function Row({ rank, entry, workoutId }: { rank: number; entry: WorkoutMatchComparisonEntry; workoutId: string }) {
+  const missingWorkBlockData = entry.work_block_avg_power == null && entry.work_block_avg_hr == null;
   return (
     <Link
       to={`/activities/${entry.activity_id}`}
@@ -86,8 +127,9 @@ function Row({ rank, entry }: { rank: number; entry: WorkoutMatchComparisonEntry
       <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>{entry.avg_power != null ? `${entry.avg_power}W` : "—"}</span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>{entry.avg_hr != null ? entry.avg_hr : "—"}</span>
       <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{entry.ef != null ? entry.ef.toFixed(3) : "—"}</span>
-      <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
+      <span className="mono" style={{ fontSize: 12, color: "var(--ink2)", display: "flex", alignItems: "center" }}>
         {entry.work_block_avg_power != null ? `${entry.work_block_avg_power}W` : "—"}
+        {missingWorkBlockData && <RegenerateWorkBlockButton activityId={entry.activity_id} workoutId={workoutId} />}
       </span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
         {entry.work_block_avg_hr != null ? entry.work_block_avg_hr : "—"}
@@ -163,7 +205,7 @@ export function WorkoutComparisonScreen() {
           <div style={{ overflowX: "auto" }}>
             <ColHeaders />
             {ranked.map((entry, i) => (
-              <Row key={entry.activity_id} rank={i + 1} entry={entry} />
+              <Row key={entry.activity_id} rank={i + 1} entry={entry} workoutId={id!} />
             ))}
           </div>
         )}
