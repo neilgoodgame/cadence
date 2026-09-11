@@ -213,6 +213,7 @@ class WorkoutMatchComparisonSerializer(serializers.Serializer):
     avg_hr = serializers.IntegerField(allow_null=True)
     ef = serializers.FloatField(allow_null=True)
     work_block_avg_power = serializers.IntegerField(allow_null=True)
+    work_block_avg_hr = serializers.IntegerField(allow_null=True)
     avg_core_temp = serializers.FloatField(allow_null=True)
     avg_air_temp = serializers.FloatField(allow_null=True)
     avg_humidity = serializers.IntegerField(allow_null=True)

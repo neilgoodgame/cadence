@@ -170,12 +170,17 @@ class WorkoutMatchServiceIntegrationTest extends IntegrationTest {
 	}
 
 	private Lap newLap(Activity activity, int index, int duration, int avgPower, WorkoutStep workoutStep) {
+		return newLap(activity, index, duration, avgPower, null, workoutStep);
+	}
+
+	private Lap newLap(Activity activity, int index, int duration, Integer avgPower, Integer avgHr, WorkoutStep workoutStep) {
 		Lap lap = new Lap();
 		lap.setActivity(activity);
 		lap.setIndex(index);
 		lap.setDuration(duration);
 		lap.setDistanceKm(1.0);
 		lap.setAvgPower(avgPower);
+		lap.setAvgHr(avgHr);
 		lap.setWorkoutStep(workoutStep);
 		return lapRepository.save(lap);
 	}
@@ -233,16 +238,42 @@ class WorkoutMatchServiceIntegrationTest extends IntegrationTest {
 		workout.getSteps().add(recStep);
 		workout = workoutRepository.saveAndFlush(workout);
 		Activity activity = newActivity(athlete, workout, "Ride", 1200, 35.0, 210, 33);
-		// A short, high-power block and a long, lower-power block - a bare mean-of-laps would
-		// give (300+100)/2=200; duration-weighted gives (300*60 + 100*240)/300 = 140.
-		newLap(activity, 0, 60, 300, blockStep);
-		newLap(activity, 1, 240, 100, blockStep);
+		// A short, high-power/HR block and a long, lower-power/HR block - a bare mean-of-laps
+		// would give (300+100)/2=200; duration-weighted gives (300*60 + 100*240)/300 = 140.
+		// HR: (160*60 + 120*240)/300 = 128.
+		newLap(activity, 0, 60, 300, 160, blockStep);
+		newLap(activity, 1, 240, 100, 120, blockStep);
 		// A non-block lap must not be counted.
-		newLap(activity, 2, 60, 9999, recStep);
+		newLap(activity, 2, 60, 9999, 9999, recStep);
 
 		WorkoutMatchComparisonResponse row = compareByActivityId(workout.getId()).get(activity.getId());
 
 		assertThat(row.workBlockAvgPower()).isEqualTo(140);
+		assertThat(row.workBlockAvgHr()).isEqualTo(128);
+	}
+
+	@Test
+	void comparisonWorkBlockHrIsTrackedIndependentlyOfPower() {
+		User athlete = newAthlete("wm-compare-blocks-hr@example.cc");
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("VO2 Max 5x5");
+		workout.setSport(Sport.BIKE);
+		workout.setDuration(1200);
+		workout.setTss(33);
+		WorkoutStep blockStep = newStep(workout, StepKind.BLOCK, 0, 300);
+		workout.getSteps().add(blockStep);
+		workout = workoutRepository.saveAndFlush(workout);
+		Activity activity = newActivity(athlete, workout, "Ride", 1200, 35.0, 210, 33);
+		// A block lap missing avgPower (but not avgHr) must not be dropped from the HR duration
+		// total, and vice versa - each metric is weighted only over the laps that report it.
+		newLap(activity, 0, 100, null, 140, blockStep);
+		newLap(activity, 1, 100, 200, null, blockStep);
+
+		WorkoutMatchComparisonResponse row = compareByActivityId(workout.getId()).get(activity.getId());
+
+		assertThat(row.workBlockAvgPower()).isEqualTo(200);
+		assertThat(row.workBlockAvgHr()).isEqualTo(140);
 	}
 
 	@Test
@@ -254,6 +285,7 @@ class WorkoutMatchServiceIntegrationTest extends IntegrationTest {
 		WorkoutMatchComparisonResponse row = compareByActivityId(workout.getId()).get(activity.getId());
 
 		assertThat(row.workBlockAvgPower()).isNull();
+		assertThat(row.workBlockAvgHr()).isNull();
 	}
 
 	@Test

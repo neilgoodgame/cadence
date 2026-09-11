@@ -1151,13 +1151,26 @@ class WorkoutMatchComparisonViewTests(TestCase):
 
     def test_work_block_power_is_duration_weighted_across_block_laps(self):
         activity = self._activity()
-        # A short, high-power block and a long, lower-power block - a bare mean-of-laps would
-        # give (300+100)/2=200; duration-weighted gives (300*60 + 100*240)/300 = 140.
+        # A short, high-power/HR block and a long, lower-power/HR block - a bare mean-of-laps
+        # would give (300+100)/2=200; duration-weighted gives (300*60 + 100*240)/300 = 140.
+        # HR: (160*60 + 120*240)/300 = 128.
         Lap.objects.create(
-            activity=activity, index=0, duration=60, distance_km=0.3, avg_power=300, workout_step=self.block_step
+            activity=activity,
+            index=0,
+            duration=60,
+            distance_km=0.3,
+            avg_power=300,
+            avg_hr=160,
+            workout_step=self.block_step,
         )
         Lap.objects.create(
-            activity=activity, index=1, duration=240, distance_km=1.2, avg_power=100, workout_step=self.block_step
+            activity=activity,
+            index=1,
+            duration=240,
+            distance_km=1.2,
+            avg_power=100,
+            avg_hr=120,
+            workout_step=self.block_step,
         )
         # A non-block lap must not be counted.
         rec_step = WorkoutStep.objects.create(
@@ -1171,19 +1184,59 @@ class WorkoutMatchComparisonViewTests(TestCase):
             target_high=50,
         )
         Lap.objects.create(
-            activity=activity, index=2, duration=60, distance_km=0.2, avg_power=9999, workout_step=rec_step
+            activity=activity,
+            index=2,
+            duration=60,
+            distance_km=0.2,
+            avg_power=9999,
+            avg_hr=9999,
+            workout_step=rec_step,
         )
 
         response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches/compare")
 
-        self.assertEqual(response.json()["data"][0]["work_block_avg_power"], 140)
+        row = response.json()["data"][0]
+        self.assertEqual(row["work_block_avg_power"], 140)
+        self.assertEqual(row["work_block_avg_hr"], 128)
+
+    def test_work_block_hr_is_tracked_independently_of_power(self):
+        # A block lap missing avg_power (but not avg_hr) must not be dropped from the HR
+        # duration total, and vice versa - each metric is weighted only over the laps that
+        # actually report it.
+        activity = self._activity()
+        Lap.objects.create(
+            activity=activity,
+            index=0,
+            duration=100,
+            distance_km=0.5,
+            avg_power=None,
+            avg_hr=140,
+            workout_step=self.block_step,
+        )
+        Lap.objects.create(
+            activity=activity,
+            index=1,
+            duration=100,
+            distance_km=0.5,
+            avg_power=200,
+            avg_hr=None,
+            workout_step=self.block_step,
+        )
+
+        response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches/compare")
+
+        row = response.json()["data"][0]
+        self.assertEqual(row["work_block_avg_power"], 200)
+        self.assertEqual(row["work_block_avg_hr"], 140)
 
     def test_work_block_power_is_null_with_no_derived_laps(self):
         self._activity()
 
         response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches/compare")
 
-        self.assertIsNone(response.json()["data"][0]["work_block_avg_power"])
+        row = response.json()["data"][0]
+        self.assertIsNone(row["work_block_avg_power"])
+        self.assertIsNone(row["work_block_avg_hr"])
 
     def test_avg_core_temp_aggregates_records_and_is_null_without_sensor_data(self):
         with_sensor = self._activity(name="With sensor")
