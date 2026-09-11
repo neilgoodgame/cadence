@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { getUpload } from "../../api/uploads";
 import type { Upload } from "../../api/types";
-import { usePolling } from "./usePolling";
+import { usePolling } from "../../lib/usePolling";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed", "duplicate"]);
 

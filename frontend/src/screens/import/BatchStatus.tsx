@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { getUploadBatch } from "../../api/uploads";
 import type { Sport, Upload, UploadBatch } from "../../api/types";
-import { usePolling } from "./usePolling";
+import { usePolling } from "../../lib/usePolling";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed"]);
 

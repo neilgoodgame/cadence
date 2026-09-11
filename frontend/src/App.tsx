@@ -17,6 +17,7 @@ import { ScheduledWorkoutScreen } from "./screens/ScheduledWorkoutScreen";
 import { ThresholdHistoryScreen } from "./screens/ThresholdHistoryScreen";
 import { VerifyEmailScreen } from "./screens/VerifyEmailScreen";
 import { WorkoutDesignerScreen } from "./screens/WorkoutDesignerScreen";
+import { WorkoutDetailScreen } from "./screens/workouts/WorkoutDetailScreen";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ export function App() {
                 <Route path="/gear" element={<GearScreen />} />
                 <Route path="/import" element={<ImportScreen />} />
                 <Route path="/workouts" element={<WorkoutDesignerScreen />} />
+                <Route path="/workouts/:id" element={<WorkoutDetailScreen />} />
                 <Route path="/preferences" element={<PreferencesScreen />} />
                 <Route path="/scheduled/:id" element={<ScheduledWorkoutScreen />} />
                 <Route path="/thresholds/:field" element={<ThresholdHistoryScreen />} />

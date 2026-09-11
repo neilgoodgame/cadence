@@ -3,7 +3,7 @@ import { getImportJob, startImport } from "../../api/dataImport";
 import { downloadExport, getExportJob, startExport } from "../../api/export";
 import { ApiError } from "../../api/types";
 import type { ImportJob, ExportJob, Sport } from "../../api/types";
-import { usePolling } from "../import/usePolling";
+import { usePolling } from "../../lib/usePolling";
 import { DataTransferProgressDialog } from "./DataTransferProgressDialog";
 
 function errorMessage(err: unknown): string {

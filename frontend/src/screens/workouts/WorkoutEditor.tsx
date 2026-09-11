@@ -305,7 +305,7 @@ function WorkoutEditorForm({
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: string }) {
+export function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: "0.08em", color: "var(--ink3)" }}>{label}</div>

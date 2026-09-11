@@ -15,7 +15,10 @@ export function WorkoutDesignerScreen() {
   // Arriving here from the activity Laps tab's "Create workout from laps" action carries the
   // inferred draft in router state - read once via lazy init (this component only mounts fresh
   // when navigated to from elsewhere, which is the only way that action reaches this screen).
-  const [editing, setEditing] = useState<string | "new" | null>(() => (readInferredDraft(location.state) ? "new" : null));
+  // Editing an *existing* workout now routes to /workouts/:id (WorkoutDetailScreen) instead of
+  // going through this component - only "creating a new one" has nowhere read-only to show, so
+  // it stays here as local state.
+  const [creating, setCreating] = useState(() => readInferredDraft(location.state) !== null);
   const [initialDraft, setInitialDraft] = useState<InferredWorkout | null>(() => readInferredDraft(location.state));
 
   // Clears the draft from history (a pure navigation side effect, not local state) so a later
@@ -26,18 +29,18 @@ export function WorkoutDesignerScreen() {
     }
   }, [location.state, location.pathname, navigate]);
 
-  if (editing !== null) {
+  if (creating) {
     return (
       <WorkoutEditor
-        workoutId={editing}
-        initialDraft={editing === "new" ? initialDraft : null}
+        workoutId="new"
+        initialDraft={initialDraft}
         onDone={() => {
-          setEditing(null);
+          setCreating(false);
           setInitialDraft(null);
         }}
       />
     );
   }
 
-  return <WorkoutLibraryScreen onEdit={(id) => setEditing(id)} onNew={() => setEditing("new")} />;
+  return <WorkoutLibraryScreen onEdit={(id) => navigate(`/workouts/${id}`)} onNew={() => setCreating(true)} />;
 }

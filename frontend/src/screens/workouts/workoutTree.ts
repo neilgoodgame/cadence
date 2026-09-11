@@ -1,4 +1,22 @@
 import type { LeafStep, PowerUnit, RepeatGroup, StepKind, Target2Type, TargetType, WorkoutStep, WorkoutSport } from "../../api/types";
+import type { StructureActions } from "./WorkoutStructureList";
+
+// Read-only rendering (see WorkoutStructureList's readOnly prop) - none of these are ever
+// called, they just satisfy StructureActions' shape. Shared by ScheduledWorkoutScreen and
+// WorkoutDetailScreen, both of which show a workout's structure without editing it. Lives here
+// (not in a screen file) because react-refresh's lint rule refuses a plain value export
+// alongside a component export in the same file.
+export const NOOP_STRUCTURE_ACTIONS: StructureActions = {
+  selectedId: null,
+  onSelect: () => {},
+  onMoveUp: () => {},
+  onMoveDown: () => {},
+  onDuplicate: () => {},
+  onRemove: () => {},
+  onRepeatChange: () => {},
+  onAddChild: () => {},
+  onAddNestedGroup: () => {},
+};
 
 // Pure tree/calc/format helpers for the workout Build-mode editor. Ported from the
 // design prototype (Workout Designer.dc.html) so the frontend, Python, and Java
