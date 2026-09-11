@@ -218,4 +218,18 @@ describe("summarizeSteps", () => {
 
     expect(rows).toHaveLength(2);
   });
+
+  // The above stays true by default - collapseByTarget is an explicit opt-in (LapsTab's
+  // "Collapse by target" toggle) to merge them anyway for a coarser view.
+  it("merges same-target steps of different duration when collapseByTarget is set", () => {
+    const laps = [
+      lap({ index: 1, workout_step_id: 16, step_kind: "block", step_target_type: "power", step_target_low: 100, step_target_high: 100, step_power_unit: "pct_ftp", step_duration: 20, avg_power: 258 }),
+      lap({ index: 2, workout_step_id: 26, step_kind: "block", step_target_type: "power", step_target_low: 100, step_target_high: 100, step_power_unit: "pct_ftp", step_duration: 600, avg_power: 260 }),
+    ];
+
+    const rows = summarizeSteps(laps, athlete, powerReference, true);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].count).toBe(2);
+  });
 });
