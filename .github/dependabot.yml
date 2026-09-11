@@ -11,6 +11,13 @@ updates:
       python-dependencies:
         patterns:
           - "*"
+    ignore:
+      # mcp 2.x removed FastMCP from mcp.server, which django-mcp-server==0.5.7 still imports -
+      # bumping past 1.x breaks the whole MCP tool layer (see the pin comment in
+      # backend/pyproject.toml). Migrate deliberately once django-mcp-server supports it, not
+      # via an automated bump - this recurred once already (PR #289, then again PR #322).
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
 
   # Java backend (backend_java/build.gradle.kts).
   - package-ecosystem: "gradle"
