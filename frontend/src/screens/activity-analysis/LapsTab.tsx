@@ -19,8 +19,21 @@ import {
   type RepeatGroup,
 } from "./lapPresentation";
 
-function StepSummaryCards({ laps, athlete, powerReference }: { laps: Lap[]; athlete: Athlete; powerReference: number | null }) {
-  const rows = useMemo(() => summarizeSteps(laps, athlete, powerReference), [laps, athlete, powerReference]);
+function StepSummaryCards({
+  laps,
+  athlete,
+  powerReference,
+  collapseByTarget,
+}: {
+  laps: Lap[];
+  athlete: Athlete;
+  powerReference: number | null;
+  collapseByTarget: boolean;
+}) {
+  const rows = useMemo(
+    () => summarizeSteps(laps, athlete, powerReference, collapseByTarget),
+    [laps, athlete, powerReference, collapseByTarget],
+  );
   // Nothing worth summarizing for an activity with no step-derived laps at all (original-source
   // laps, or an unmatched activity) - every lap would land in one "Other" bucket.
   if (!rows.some((r) => r.key !== "other")) return null;
@@ -294,6 +307,9 @@ export function LapsTab({
   const zonesQuery = useQuery({ queryKey: ["zones", athlete.id, activityId], queryFn: () => listZones(athlete.id, activityId) });
   const powerReference = zonesQuery.data?.data.find((z) => z.type === powerZoneType(sport))?.reference ?? null;
   const [autoDetectRepeats, setAutoDetectRepeats] = useState(true);
+  // Off by default: a 20s rep and a 10min block at the same %FTP are different stimuli, so
+  // merging them into one average is opt-in, not automatic - see stepSignature's docstring.
+  const [collapseByTarget, setCollapseByTarget] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const groups = useMemo(() => groupLaps(laps), [laps]);
 
@@ -347,7 +363,11 @@ export function LapsTab({
         )}
         {workoutId && <RegenerateLapsButton activityId={activityId} />}
       </div>
-      <StepSummaryCards laps={laps} athlete={athlete} powerReference={powerReference} />
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink3)" }}>
+        <input type="checkbox" checked={collapseByTarget} onChange={(e) => setCollapseByTarget(e.target.checked)} />
+        Collapse by target (ignore duration)
+      </label>
+      <StepSummaryCards laps={laps} athlete={athlete} powerReference={powerReference} collapseByTarget={collapseByTarget} />
       <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--ink3)", fontSize: 11 }}>

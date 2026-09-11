@@ -171,25 +171,24 @@ export interface StepSummaryRow {
   avgCompliancePct: number | null;
 }
 
-/** Identifies "the same step, wherever it occurs" for summarizeSteps' grouping - kind + target +
- * the step's own planned duration/distance. Deliberately NOT workout_step_id: a workout authored
- * with the app's `repeat` construct reuses one WorkoutStep row across every rep (so
- * workout_step_id alone works there), but a workout with the same interval typed out as several
- * separate leaf steps (e.g. a manually-authored 3x[65/75/85% FTP] ladder) gives each occurrence
- * its own distinct row - grouping by raw id then shows three near-identical "1x avg" cards
- * instead of one real average. Duration/distance stay part of the signature so two steps that
- * only coincidentally share a %FTP target but are structurally different (a 20s 100%-FTP block
- * vs a 600s 100%-FTP block) are never merged. */
-function stepSignature(lap: Lap): string {
-  return [
-    lap.step_kind,
-    lap.step_target_type,
-    lap.step_target_low,
-    lap.step_target_high,
-    lap.step_power_unit,
-    lap.step_duration,
-    lap.step_distance,
-  ].join("|");
+/** Identifies "the same step, wherever it occurs" for summarizeSteps' grouping - kind + target,
+ * plus the step's own planned duration/distance when `collapseByTarget` is false (the default).
+ * Deliberately NOT workout_step_id: a workout authored with the app's `repeat` construct reuses
+ * one WorkoutStep row across every rep (so workout_step_id alone works there), but a workout with
+ * the same interval typed out as several separate leaf steps (e.g. a manually-authored
+ * 3x[65/75/85% FTP] ladder) gives each occurrence its own distinct row - grouping by raw id then
+ * shows three near-identical "1x avg" cards instead of one real average.
+ *
+ * Duration/distance stay part of the signature by default so two steps that only coincidentally
+ * share a %FTP target but are structurally different (a 20s 100%-FTP block vs a 600s 100%-FTP
+ * block) aren't blended into one misleading average. `collapseByTarget` is an explicit opt-in
+ * (see LapsTab's toggle) to merge purely by target instead, for a coarser "how did I do at each
+ * intensity overall" view - the resulting avgDuration is then a genuine mix of very different
+ * rep lengths, which is exactly what asking for this view means accepting. */
+function stepSignature(lap: Lap, collapseByTarget: boolean): string {
+  const parts = [lap.step_kind, lap.step_target_type, lap.step_target_low, lap.step_target_high, lap.step_power_unit];
+  if (!collapseByTarget) parts.push(lap.step_duration, lap.step_distance);
+  return parts.join("|");
 }
 
 /** One row per distinct step definition (see stepSignature), plus one "Other" row for any
@@ -197,11 +196,16 @@ function stepSignature(lap: Lap): string {
  * workout's plan). Order matches first appearance in `laps`, so it reads warmup -> work/rest ->
  * other, matching the activity's own flow. `powerReference` is passed straight through to
  * compliancePct/stepZonePct - see their docstrings for why it must be activity-date-scoped. */
-export function summarizeSteps(laps: Lap[], athlete: Athlete, powerReference: number | null): StepSummaryRow[] {
+export function summarizeSteps(
+  laps: Lap[],
+  athlete: Athlete,
+  powerReference: number | null,
+  collapseByTarget = false,
+): StepSummaryRow[] {
   const order: string[] = [];
   const buckets = new Map<string, Lap[]>();
   for (const lap of laps) {
-    const key = lap.workout_step_id != null ? stepSignature(lap) : "other";
+    const key = lap.workout_step_id != null ? stepSignature(lap, collapseByTarget) : "other";
     if (!buckets.has(key)) {
       buckets.set(key, []);
       order.push(key);
