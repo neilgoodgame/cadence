@@ -11,6 +11,8 @@ import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import com.cadence.api.workouts.dto.WorkoutMatchScanCreateRequest;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -86,7 +88,7 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 		String workoutId = workoutRepository.saveAndFlush(workout).getId();
 		authAs(athlete.getId(), "workouts:write");
 
-		assertThatThrownBy(() -> controller.createMatchScan(workoutId)).isInstanceOf(ValidationException.class);
+		assertThatThrownBy(() -> controller.createMatchScan(workoutId, null)).isInstanceOf(ValidationException.class);
 	}
 
 	@Test
@@ -96,7 +98,7 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 		Workout workout = newPowerWorkout(athlete);
 		authAs(outsider.getId(), "workouts:write");
 
-		assertThatThrownBy(() -> controller.createMatchScan(workout.getId())).isInstanceOf(ForbiddenException.class);
+		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(), null)).isInstanceOf(ForbiddenException.class);
 	}
 
 	@Test
@@ -105,12 +107,35 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 		Workout workout = newPowerWorkout(athlete);
 		authAs(athlete.getId(), "workouts:write");
 
-		var response = controller.createMatchScan(workout.getId());
+		var response = controller.createMatchScan(workout.getId(), null);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
 		assertThat(response.getBody()).isNotNull();
 		assertThat(response.getBody().workoutId()).isEqualTo(workout.getId());
 		assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("5");
+		assertThat(response.getBody().excludedStepKinds()).containsExactlyInAnyOrder("warmup", "cool");
+	}
+
+	@Test
+	void acceptsAnExplicitExcludedStepKindsList() {
+		User athlete = newUser("scan-controller-excluded@example.cc");
+		Workout workout = newPowerWorkout(athlete);
+		authAs(athlete.getId(), "workouts:write");
+
+		var response = controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("warmup")));
+
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().excludedStepKinds()).containsExactly("warmup");
+	}
+
+	@Test
+	void rejectsAnInvalidStepKind() {
+		User athlete = newUser("scan-controller-invalid-kind@example.cc");
+		Workout workout = newPowerWorkout(athlete);
+		authAs(athlete.getId(), "workouts:write");
+
+		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("nonsense"))))
+				.isInstanceOf(ValidationException.class);
 	}
 
 	@Test
@@ -123,7 +148,7 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 		existing = scanRepository.save(existing);
 		authAs(athlete.getId(), "workouts:write");
 
-		var response = controller.createMatchScan(workout.getId());
+		var response = controller.createMatchScan(workout.getId(), null);
 
 		// The dedup path returns the SAME existing scan id rather than creating a new one - the
 		// real assertion here; a workout-wide findAll().hasSize(1) would be a false negative in

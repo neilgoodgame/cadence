@@ -668,6 +668,7 @@ export interface WorkoutMatchScan {
   id: string;
   workout_id: string;
   status: WorkoutMatchScanStatus;
+  excluded_step_kinds: StepKind[];
   total_candidates: number | null;
   processed_candidates: number;
   error_message: string | null;

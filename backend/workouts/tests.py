@@ -1099,7 +1099,11 @@ class WorkoutMatchListViewTests(TestCase):
 # Same "warmup 600s@60%, then 5x[work 300s@110%, rest 300s@52.5%]" structure as the real "The
 # Gorby" workout this whole feature was validated against this session.
 def _make_gorby_workout(athlete: User) -> Workout:
-    workout = Workout.objects.create(created_by=athlete, name="The Gorby", sport="bike")
+    # duration=3600 matches the fixed structure below (600 warmup + 5x(300 work + 300 rec)) -
+    # normally kept in sync by the workout create/update view's compute_duration_and_tss, which
+    # this direct-ORM fixture bypasses; run_match_scan's duration pre-filter now reads this
+    # persisted column directly (see match_scan.py), so it has to be right here too.
+    workout = Workout.objects.create(created_by=athlete, name="The Gorby", sport="bike", duration=3600)
     WorkoutStep.objects.create(
         workout=workout,
         order=0,
@@ -1218,6 +1222,55 @@ class ScannabilityErrorTests(TestCase):
         )
         self.assertIsNotNone(scannability_error(workout))
 
+    def test_excluding_a_kind_still_scannable_if_other_steps_remain(self):
+        workout = _make_gorby_workout(self.athlete)
+
+        self.assertIsNone(scannability_error(workout, excluded_kinds=frozenset({"warmup"})))
+
+    def test_excluding_every_kind_present_is_not_scannable(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Warmup only", sport="bike", duration=300)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="warmup",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=60,
+            target_high=60,
+        )
+
+        self.assertIsNotNone(scannability_error(workout, excluded_kinds=frozenset({"warmup"})))
+
+    def test_an_excluded_steps_own_validity_is_irrelevant(self):
+        """A distance-ended cooldown would normally fail scannability - but not if the caller
+        has already chosen to exclude cooldowns entirely, since that step never reaches curve
+        construction either way."""
+        workout = Workout.objects.create(created_by=self.athlete, name="Distance cooldown", sport="bike", duration=600)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=100,
+            target_high=100,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="cool",
+            end_type="distance",
+            distance=1000,
+            target_type="power",
+            target_low=50,
+            target_high=50,
+        )
+
+        self.assertIsNotNone(scannability_error(workout))
+        self.assertIsNone(scannability_error(workout, excluded_kinds=frozenset({"cool"})))
+
 
 class BuildExpectedCurveTests(TestCase):
     def setUp(self):
@@ -1232,6 +1285,30 @@ class BuildExpectedCurveTests(TestCase):
             curve,
             [
                 (0, 600, 60.0),
+                (600, 900, 110.0),
+                (900, 1200, 52.5),
+                (1200, 1500, 110.0),
+                (1500, 1800, 52.5),
+                (1800, 2100, 110.0),
+                (2100, 2400, 52.5),
+                (2400, 2700, 110.0),
+                (2700, 3000, 52.5),
+                (3000, 3300, 110.0),
+                (3300, 3600, 52.5),
+            ],
+        )
+
+    def test_excluding_a_kind_drops_its_segment_but_keeps_later_offsets_absolute(self):
+        workout = _make_gorby_workout(self.athlete)
+
+        curve = build_expected_curve(workout, excluded_kinds=frozenset({"warmup"}))
+
+        # The leading warmup segment is gone entirely, but every remaining segment keeps its
+        # original 600-3600 timeline position - not renumbered to start at 0 - since the real
+        # activity recording still covers that first 600s in real time.
+        self.assertEqual(
+            curve,
+            [
                 (600, 900, 110.0),
                 (900, 1200, 52.5),
                 (1200, 1500, 110.0),
@@ -1466,6 +1543,27 @@ class WorkoutMatchScanEndpointTests(TestCase):
     def test_outsider_forbidden(self):
         response = _bearer_client(self.outsider).post(f"/v1/workouts/{self.workout.id}/match-scans")
         self.assertEqual(response.status_code, 403)
+
+    def test_defaults_to_excluding_warmup_and_cool_when_the_body_is_omitted(self):
+        response = _bearer_client(self.athlete).post(f"/v1/workouts/{self.workout.id}/match-scans")
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(sorted(response.json()["excluded_step_kinds"]), ["cool", "warmup"])
+
+    def test_accepts_an_explicit_excluded_step_kinds_list(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/workouts/{self.workout.id}/match-scans", {"excluded_step_kinds": ["warmup"]}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["excluded_step_kinds"], ["warmup"])
+
+    def test_rejects_an_invalid_step_kind(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/workouts/{self.workout.id}/match-scans", {"excluded_step_kinds": ["nonsense"]}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)
 
     def test_finds_the_matching_activity_and_excludes_unrelated_candidates(self):
         match = self._make_activity(name="Real match")

@@ -143,7 +143,7 @@ function WorkoutDetailView({ workout, onEdit }: { workout: WorkoutDetail; onEdit
         )}
       </Card>
 
-      <WorkoutMatchScanCard workoutId={workout.id} />
+      <WorkoutMatchScanCard workoutId={workout.id} steps={workout.steps} />
     </div>
   );
 }

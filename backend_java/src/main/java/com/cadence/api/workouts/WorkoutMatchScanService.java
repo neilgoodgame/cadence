@@ -14,6 +14,8 @@ import com.cadence.api.workouts.WorkoutStepFlattener.Flattened;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -82,11 +84,21 @@ public class WorkoutMatchScanService {
 	/** {@code null} if the workout can be scanned for matches; otherwise the reason it can't,
 	 * suitable for a 400 response. */
 	public String scannabilityError(String workoutId) {
-		return scannabilityErrorFor(fetchWithSteps(workoutId));
+		return scannabilityError(workoutId, Set.of());
 	}
 
-	private String scannabilityErrorFor(Workout workout) {
-		List<Flattened> flattened = WorkoutStepFlattener.flatten(workout);
+	/** Same as {@link #scannabilityError(String)}, but {@code excludedKinds} (leaf {@link
+	 * StepKind} values, e.g. warmup/cool) are skipped entirely before validation - a step that
+	 * won't be used to build the curve shouldn't be able to disqualify the whole workout (e.g. a
+	 * distance-ended cooldown the caller has chosen to exclude anyway). */
+	public String scannabilityError(String workoutId, Set<StepKind> excludedKinds) {
+		return scannabilityErrorFor(fetchWithSteps(workoutId), excludedKinds);
+	}
+
+	private String scannabilityErrorFor(Workout workout, Set<StepKind> excludedKinds) {
+		List<Flattened> flattened = WorkoutStepFlattener.flatten(workout).stream()
+				.filter(f -> !excludedKinds.contains(f.step().getKind()))
+				.toList();
 		if (flattened.isEmpty()) {
 			return "This workout has no steps to scan against.";
 		}
@@ -112,27 +124,45 @@ public class WorkoutMatchScanService {
 	 * curve - it only affects the informational {@code impliedFtp} reported back per candidate.
 	 */
 	public List<Segment> buildExpectedCurve(String workoutId) {
-		return buildCurveFor(fetchWithSteps(workoutId));
+		return buildExpectedCurve(workoutId, Set.of());
+	}
+
+	/** Same as {@link #buildExpectedCurve(String)}, but {@code excludedKinds} (leaf {@link
+	 * StepKind} values) skip emitting a curve segment for that step - see
+	 * {@link #buildCurveFor(Workout, double, Set)} for how the timeline stays aligned. */
+	public List<Segment> buildExpectedCurve(String workoutId, Set<StepKind> excludedKinds) {
+		Workout workout = fetchWithSteps(workoutId);
+		return buildCurveFor(workout, referenceFor(workout), excludedKinds);
 	}
 
 	private List<Segment> buildCurveFor(Workout workout) {
-		return buildCurveFor(workout, referenceFor(workout));
+		return buildCurveFor(workout, referenceFor(workout), Set.of());
 	}
 
 	/** Same as {@link #buildCurveFor(Workout)}, but takes an already-resolved power-zone
 	 * reference - for a caller ranking many candidate workouts for the same athlete (see
 	 * {@link #rankWorkoutsForActivity}), where looking it up once and reusing it avoids an
-	 * identical {@code userService}/{@code zoneService} round-trip per candidate. */
-	private List<Segment> buildCurveFor(Workout workout, double reference) {
+	 * identical {@code userService}/{@code zoneService} round-trip per candidate.
+	 *
+	 * <p>{@code excludedKinds} (leaf {@link StepKind} values) skip appending a curve segment for
+	 * that step, but the running {@code offset} still advances past its duration - later
+	 * segments keep their correct absolute position in the workout's timeline (the activity
+	 * recording still covers the excluded phase in real time; {@code sampleExpectedAt} already
+	 * returns {@code null} for any {@code t} no segment covers, so no other change is needed to
+	 * make those samples fall out of the correlation).
+	 */
+	private List<Segment> buildCurveFor(Workout workout, double reference, Set<StepKind> excludedKinds) {
 		List<Segment> curve = new ArrayList<>();
 		int offset = 0;
 		for (Flattened f : WorkoutStepFlattener.flatten(workout)) {
 			WorkoutStep step = f.step();
-			double low = step.getTargetLow() != null ? step.getTargetLow() : 0.0;
-			double high = step.getTargetHigh() != null ? step.getTargetHigh() : low;
-			double mid = (low + high) / 2;
-			double pct = step.getPowerUnit() == PowerUnit.WATTS ? (mid / reference) * 100 : mid;
-			curve.add(new Segment(offset, offset + step.getDuration(), pct));
+			if (!excludedKinds.contains(step.getKind())) {
+				double low = step.getTargetLow() != null ? step.getTargetLow() : 0.0;
+				double high = step.getTargetHigh() != null ? step.getTargetHigh() : low;
+				double mid = (low + high) / 2;
+				double pct = step.getPowerUnit() == PowerUnit.WATTS ? (mid / reference) * 100 : mid;
+				curve.add(new Segment(offset, offset + step.getDuration(), pct));
+			}
 			offset += step.getDuration();
 		}
 		return curve;
@@ -297,13 +327,13 @@ public class WorkoutMatchScanService {
 				continue;
 			}
 			Workout withSteps = fetchWithSteps(workout.getId());
-			if (scannabilityErrorFor(withSteps) != null) {
+			if (scannabilityErrorFor(withSteps, Set.of()) != null) {
 				continue;
 			}
 			if (reference == null) {
 				reference = referenceFor(withSteps);
 			}
-			List<Segment> curve = buildCurveFor(withSteps, reference);
+			List<Segment> curve = buildCurveFor(withSteps, reference, Set.of());
 			CorrelationResult result = correlateRecords(curve, records);
 			if (result == null) {
 				continue;
@@ -361,8 +391,14 @@ public class WorkoutMatchScanService {
 
 		try {
 			Workout workout = fetchWithSteps(scan.getWorkout().getId());
-			List<Segment> curve = buildCurveFor(workout);
-			int totalPlannedDuration = curve.isEmpty() ? 0 : curve.get(curve.size() - 1).endS();
+			Set<StepKind> excludedKinds = scan.getExcludedStepKinds().stream().map(StepKind::fromWireValue).collect(Collectors.toSet());
+			List<Segment> curve = buildCurveFor(workout, referenceFor(workout), excludedKinds);
+			// workout.getDuration(), not the curve's last entry: the curve can end before the
+			// workout's real total duration whenever a trailing step (typically the cooldown) is
+			// excluded - the activity recording still covers that phase in real time, so the
+			// duration pre-filter below needs the true total, which the persisted column always
+			// has regardless of exclusions.
+			int totalPlannedDuration = workout.getDuration();
 			String athleteId = workout.getCreatedBy().getId();
 			Sport sport = workout.getSport();
 

@@ -19,6 +19,7 @@ from .serializers import (
     WorkoutCreateSerializer,
     WorkoutDetailSerializer,
     WorkoutFolderSerializer,
+    WorkoutMatchScanCreateSerializer,
     WorkoutMatchScanSerializer,
     WorkoutMatchSerializer,
     WorkoutSerializer,
@@ -283,6 +284,9 @@ class WorkoutMatchListView(APIView):
         return Response({"data": WorkoutMatchSerializer(matches, many=True).data})
 
 
+DEFAULT_MATCH_SCAN_EXCLUDED_STEP_KINDS = ["warmup", "cool"]
+
+
 class WorkoutMatchScanCreateView(APIView):
     def post(self, request: Request, id: str) -> Response:
         sub, _ = get_effective_athlete_id(request)
@@ -290,15 +294,23 @@ class WorkoutMatchScanCreateView(APIView):
         if not user_may_write(sub, workout.created_by_id):
             raise PermissionDenied("You do not have write access to that athlete's data.")
 
-        error = scannability_error(workout)
+        body_serializer = WorkoutMatchScanCreateSerializer(data=request.data)
+        body_serializer.is_valid(raise_exception=True)
+        excluded_step_kinds = body_serializer.validated_data.get(
+            "excluded_step_kinds", DEFAULT_MATCH_SCAN_EXCLUDED_STEP_KINDS
+        )
+
+        error = scannability_error(workout, excluded_kinds=frozenset(excluded_step_kinds))
         if error:
             raise ValidationError({"workout": error})
 
         # At most one active scan per workout - a re-POST while one is queued/processing just
         # hands back that scan's id rather than starting a duplicate, loosely mirroring
-        # dataexport.ExportJob's one-active-job-per-athlete constraint.
+        # dataexport.ExportJob's one-active-job-per-athlete constraint. Its kind selection is
+        # whatever the FIRST of the concurrent requests set - a second request's selection is
+        # ignored in that case, same as any other field would be.
         existing = WorkoutMatchScan.objects.filter(workout_id=id, status__in=["queued", "processing"]).first()
-        scan = existing or WorkoutMatchScan.objects.create(workout=workout)
+        scan = existing or WorkoutMatchScan.objects.create(workout=workout, excluded_step_kinds=excluded_step_kinds)
         if not existing:
             run_workout_match_scan_task.delay(scan.id)
 
