@@ -1,13 +1,13 @@
 from typing import Any
 
-from django.db.models import Count
+from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from activities.models import Activity
+from activities.models import Activity, Lap, Record
 from athletes.zones import reference_for
 from core.auth_context import get_effective_athlete_id
 from core.permissions import user_may_read, user_may_write
@@ -19,6 +19,7 @@ from .serializers import (
     WorkoutCreateSerializer,
     WorkoutDetailSerializer,
     WorkoutFolderSerializer,
+    WorkoutMatchComparisonSerializer,
     WorkoutMatchScanCreateSerializer,
     WorkoutMatchScanSerializer,
     WorkoutMatchSerializer,
@@ -282,6 +283,74 @@ class WorkoutMatchListView(APIView):
                 }
             )
         return Response({"data": WorkoutMatchSerializer(matches, many=True).data})
+
+
+class WorkoutMatchComparisonView(APIView):
+    """Richer per-match data for the workout comparison screen (avg HR, aerobic efficiency,
+    environment/core-temp averages, work-block-only power) - split out from
+    WorkoutMatchListView above so its lighter-weight callers (MatchedWorkoutCard, the workout
+    detail screen's "linked activities" list) don't pay for the extra aggregate queries this
+    needs. Both extra data sources are fetched as one batch query across every matched activity
+    at once, not a per-activity loop, so cost doesn't scale with match count."""
+
+    def get(self, request: Request, id: str) -> Response:
+        sub, _ = get_effective_athlete_id(request)
+        workout = get_object_or_404(Workout, pk=id)
+        if not user_may_read(sub, workout.created_by_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+
+        activities = list(Activity.objects.filter(workout_id=id).order_by("start_date"))
+        activity_ids = [a.id for a in activities]
+
+        # Duration-weighted average of avg_power across each activity's work-block laps - not a
+        # bare mean-of-laps, since block laps can differ in length.
+        work_block_totals: dict[str, list[float]] = {}
+        for row in Lap.objects.filter(activity_id__in=activity_ids, workout_step__kind="block").values(
+            "activity_id", "avg_power", "duration"
+        ):
+            if row["avg_power"] is None or not row["duration"]:
+                continue
+            totals = work_block_totals.setdefault(row["activity_id"], [0.0, 0])
+            totals[0] += row["avg_power"] * row["duration"]
+            totals[1] += row["duration"]
+        work_block_avg_power = {
+            activity_id: round(weighted_sum / total_duration)
+            for activity_id, (weighted_sum, total_duration) in work_block_totals.items()
+            if total_duration
+        }
+
+        avg_core_temp = {
+            row["activity_id"]: round(row["avg_core_temp"], 1)
+            for row in Record.objects.filter(activity_id__in=activity_ids)
+            .values("activity_id")
+            .annotate(avg_core_temp=Avg("core_temp"))
+            if row["avg_core_temp"] is not None
+        }
+
+        rows = []
+        for activity in activities:
+            ef = (
+                round(activity.avg_power / activity.avg_hr, 3)
+                if activity.avg_power is not None and activity.avg_hr
+                else None
+            )
+            rows.append(
+                {
+                    "activity_id": activity.id,
+                    "name": activity.name,
+                    "date": activity.start_date.date(),
+                    "moving_time": activity.moving_time,
+                    "avg_power": activity.avg_power,
+                    "avg_hr": activity.avg_hr,
+                    "ef": ef,
+                    "work_block_avg_power": work_block_avg_power.get(activity.id),
+                    "avg_core_temp": avg_core_temp.get(activity.id),
+                    "avg_air_temp": activity.avg_air_temp,
+                    "avg_humidity": activity.avg_humidity,
+                    "tss": activity.tss,
+                }
+            )
+        return Response({"data": WorkoutMatchComparisonSerializer(rows, many=True).data})
 
 
 DEFAULT_MATCH_SCAN_EXCLUDED_STEP_KINDS = ["warmup", "cool"]
