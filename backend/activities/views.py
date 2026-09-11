@@ -17,7 +17,7 @@ from uploads.processing import backfill_extended_stats, compute_normalized_power
 from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
 from workouts.inference import infer_workout
-from workouts.match_scan import rank_workouts_for_activity
+from workouts.match_scan import DURATION_TOLERANCE_SECONDS, rank_workouts_for_activity
 from workouts.models import Workout
 
 from .comments import resolve_parent_comment
@@ -396,8 +396,19 @@ class ActivityWorkoutMatchCandidatesView(APIView):
         if not user_may_read(sub, activity.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
 
+        tolerance_param = request.query_params.get("toleranceSeconds")
+        if tolerance_param is None:
+            tolerance_seconds = DURATION_TOLERANCE_SECONDS
+        else:
+            try:
+                tolerance_seconds = int(tolerance_param)
+            except ValueError:
+                raise ValidationError({"toleranceSeconds": "Must be an integer."}) from None
+            if tolerance_seconds < 0:
+                raise ValidationError({"toleranceSeconds": "Must not be negative."})
+
         candidates = Workout.objects.filter(created_by_id=activity.athlete_id, sport=activity.sport)
-        ranked = rank_workouts_for_activity(list(candidates), activity)
+        ranked = rank_workouts_for_activity(list(candidates), activity, tolerance_seconds=tolerance_seconds)
         return Response(
             {
                 "data": [

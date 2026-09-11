@@ -3,6 +3,7 @@ package com.cadence.api.activities;
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.ActivityWorkoutMatchCandidateResponse;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.CursorPage;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.workouts.WorkoutMatchScanService;
@@ -81,13 +82,20 @@ public class ActivityController {
 	 * pre-filters. Purely a suggestion list - applying a match is still the existing manual
 	 * PATCH's workoutId. */
 	@GetMapping("/v1/activities/{id}/workout-match-candidates")
-	public List<ActivityWorkoutMatchCandidateResponse> getWorkoutMatchCandidates(@PathVariable String id) {
+	public List<ActivityWorkoutMatchCandidateResponse> getWorkoutMatchCandidates(
+			@PathVariable String id, @RequestParam(required = false) Integer toleranceSeconds) {
 		Activity activity = activityService.getActivity(id);
 		accessGuard.requireRead(activity.getAthlete().getId());
-		return workoutMatchScanService.findCandidateWorkoutsForActivity(activity).stream()
-				.map(ranked -> new ActivityWorkoutMatchCandidateResponse(ranked.workout().getId(),
-						ranked.workout().getName(), ranked.correlation(), ranked.coverage(), ranked.impliedFtp(),
-						Math.abs(ranked.workout().getDuration() - activity.getMovingTime())))
+		if (toleranceSeconds != null && toleranceSeconds < 0) {
+			throw new ValidationException("Must not be negative.", "toleranceSeconds");
+		}
+		List<WorkoutMatchScanService.RankedWorkout> ranked = toleranceSeconds != null
+				? workoutMatchScanService.findCandidateWorkoutsForActivity(activity, toleranceSeconds)
+				: workoutMatchScanService.findCandidateWorkoutsForActivity(activity);
+		return ranked.stream()
+				.map(candidate -> new ActivityWorkoutMatchCandidateResponse(candidate.workout().getId(),
+						candidate.workout().getName(), candidate.correlation(), candidate.coverage(), candidate.impliedFtp(),
+						Math.abs(candidate.workout().getDuration() - activity.getMovingTime())))
 				.toList();
 	}
 

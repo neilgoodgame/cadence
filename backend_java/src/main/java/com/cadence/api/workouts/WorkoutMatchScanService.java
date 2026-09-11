@@ -260,14 +260,22 @@ public class WorkoutMatchScanService {
 	 *
 	 * <p>Every candidate is assumed to share the same athlete and sport as {@code activity}
 	 * (both callers filter for this already), so the power-zone reference is looked up once and
-	 * reused rather than recomputed per workout. Non-scannable candidates and ones outside the
-	 * duration tolerance are skipped, cheapest check first: the persisted
-	 * {@code workout.getDuration()} column (no extra query) before {@code scannabilityErrorFor}/
-	 * {@code buildCurveFor} (which fetch {@code WorkoutStep} rows via {@link #fetchWithSteps}),
-	 * so a large library doesn't pay a per-candidate steps fetch for every candidate. Returns
-	 * best match first.
+	 * reused rather than recomputed per workout. Non-scannable candidates and ones outside
+	 * {@code toleranceSeconds} (the validated default, widenable per-call for the on-demand
+	 * endpoint - e.g. a distance-based activity's actual moving time can legitimately fall well
+	 * outside a fixed-duration workout's planned duration) are skipped, cheapest check first: the
+	 * persisted {@code workout.getDuration()} column (no extra query) before
+	 * {@code scannabilityErrorFor}/{@code buildCurveFor} (which fetch {@code WorkoutStep} rows
+	 * via {@link #fetchWithSteps}), so a large library doesn't pay a per-candidate steps fetch
+	 * for every candidate. Returns best match first.
 	 */
 	public List<RankedWorkout> rankWorkoutsForActivity(List<Workout> workouts, Activity activity) {
+		return rankWorkoutsForActivity(workouts, activity, DURATION_TOLERANCE_SECONDS);
+	}
+
+	/** Same as {@link #rankWorkoutsForActivity(List, Activity)}, but with an explicit duration
+	 * tolerance instead of the default. */
+	public List<RankedWorkout> rankWorkoutsForActivity(List<Workout> workouts, Activity activity, int toleranceSeconds) {
 		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 		if (records.isEmpty()) {
 			return List.of();
@@ -276,7 +284,7 @@ public class WorkoutMatchScanService {
 		Double reference = null;
 		List<RankedWorkout> results = new ArrayList<>();
 		for (Workout workout : workouts) {
-			if (Math.abs(workout.getDuration() - activity.getMovingTime()) > DURATION_TOLERANCE_SECONDS) {
+			if (Math.abs(workout.getDuration() - activity.getMovingTime()) > toleranceSeconds) {
 				continue;
 			}
 			Workout withSteps = fetchWithSteps(workout.getId());
@@ -304,9 +312,17 @@ public class WorkoutMatchScanService {
 	 * {@code Workout} to filter on further; a flat/unstructured template self-excludes via
 	 * {@code pearson}'s zero-variance guard, so it doesn't need filtering out here either. */
 	public List<RankedWorkout> findCandidateWorkoutsForActivity(Activity activity) {
+		return findCandidateWorkoutsForActivity(activity, DURATION_TOLERANCE_SECONDS);
+	}
+
+	/** Same as {@link #findCandidateWorkoutsForActivity(Activity)}, but with an explicit
+	 * duration tolerance instead of the default - lets the on-demand endpoint widen the
+	 * pre-filter per-call (e.g. a distance-based activity's actual moving time can legitimately
+	 * fall well outside a fixed-duration workout's planned duration). */
+	public List<RankedWorkout> findCandidateWorkoutsForActivity(Activity activity, int toleranceSeconds) {
 		List<Workout> candidates =
 				workoutRepository.findByCreatedByIdAndSport(activity.getAthlete().getId(), activity.getSport());
-		return rankWorkoutsForActivity(candidates, activity);
+		return rankWorkoutsForActivity(candidates, activity, toleranceSeconds);
 	}
 
 	private static double round4(double v) {

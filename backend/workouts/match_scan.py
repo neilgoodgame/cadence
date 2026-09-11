@@ -154,7 +154,7 @@ def correlate_activity(
 
 
 def rank_workouts_for_activity(
-    workouts: list["Workout"], activity: Activity
+    workouts: list["Workout"], activity: Activity, tolerance_seconds: int = DURATION_TOLERANCE_SECONDS
 ) -> list[tuple["Workout", float, float, int | None]]:
     """Ranks `workouts` by Pearson correlation of `activity`'s actual power stream against each
     one's planned %FTP-vs-time curve - the mirror image of `run_match_scan` (one activity vs.
@@ -164,11 +164,14 @@ def rank_workouts_for_activity(
 
     Every candidate is assumed to share the same athlete and sport as `activity` (both callers
     filter for this already), so the power-zone reference is looked up once and reused rather
-    than recomputed per workout. Non-scannable candidates and ones outside the duration
-    tolerance are skipped, cheapest check first: the persisted `workout.duration` column (no
-    extra query) before `scannability_error`/`build_expected_curve` (which fetch `WorkoutStep`
-    rows), so a large library doesn't pay a per-candidate steps fetch for every candidate.
-    Returns `(workout, correlation, coverage, implied_ftp)` tuples, best match first.
+    than recomputed per workout. Non-scannable candidates and ones outside `tolerance_seconds`
+    (the validated default, widenable per-call for the on-demand endpoint - e.g. a distance-
+    based activity's actual moving time can legitimately fall well outside a fixed-duration
+    workout's planned duration) are skipped, cheapest check first: the persisted
+    `workout.duration` column (no extra query) before `scannability_error`/`build_expected_curve`
+    (which fetch `WorkoutStep` rows), so a large library doesn't pay a per-candidate steps fetch
+    for every candidate. Returns `(workout, correlation, coverage, implied_ftp)` tuples, best
+    match first.
     """
     records = list(activity.records.order_by("t").values_list("t", "power"))
     if not records:
@@ -177,7 +180,7 @@ def rank_workouts_for_activity(
     reference: float | None = None
     results = []
     for workout in workouts:
-        if abs(workout.duration - activity.moving_time) > DURATION_TOLERANCE_SECONDS:
+        if abs(workout.duration - activity.moving_time) > tolerance_seconds:
             continue
         if scannability_error(workout) is not None:
             continue
