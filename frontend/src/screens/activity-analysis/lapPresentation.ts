@@ -26,14 +26,22 @@ export function formatStepTarget(lap: Lap): string | null {
 /** The step's own target expressed as a %-of-reference intensity, for zoneColor - same
  * direction/scale as workoutTree's targetInfo (higher % = harder), just resolved against the
  * real athlete reference on hand here instead of a placeholder. Null when there's no target, or
- * a watts target with no known FTP to convert it against. */
-export function stepZonePct(lap: Lap, athlete: Athlete): number | null {
+ * a watts target with no known power reference to convert it against.
+ *
+ * `powerReference` is the FTP/critical-run-power to convert a watts target against - callers
+ * must pass the value effective as of the *activity's own date* (via GET
+ * /v1/athletes/{id}/zones?activity_id=..., see LapsTab), not the athlete's current profile: an
+ * activity recorded before the athlete's most recent threshold change would otherwise have every
+ * lap compared against a reference that wasn't even true yet when it happened. HR keeps using
+ * the athlete's live max_hr - heart-rate zones intentionally have no per-activity history (see
+ * backend/athletes/zones.py::reference_for). */
+export function stepZonePct(lap: Lap, powerReference: number | null): number | null {
   if (!lap.step_target_type || lap.step_target_low == null) return null;
   const lo = lap.step_target_low;
   const hi = lap.step_target_high ?? lo;
   const mid = (lo + hi) / 2;
   if (lap.step_target_type === "power") {
-    if (lap.step_power_unit === "watts") return athlete.ftp ? (mid / athlete.ftp) * 100 : null;
+    if (lap.step_power_unit === "watts") return powerReference ? (mid / powerReference) * 100 : null;
     return mid;
   }
   // hr and pace targets are already stored as a %-of-reference (max HR / threshold pace), same
@@ -45,14 +53,15 @@ export function stepZonePct(lap: Lap, athlete: Athlete): number | null {
 /** How close the lap's actual avg power/HR came to its step's target, as a % of target (100 =
  * spot on). Power/HR only - pace compliance would need to parse athlete.threshold_pace's
  * "M:SS" string, which isn't worth the risk of a subtly-wrong conversion for a nice-to-have
- * badge; pace laps still get a zone-colored target, just no compliance number. */
-export function compliancePct(lap: Lap, athlete: Athlete): number | null {
+ * badge; pace laps still get a zone-colored target, just no compliance number. See
+ * stepZonePct's docstring for why `powerReference` must be activity-date-scoped, not live. */
+export function compliancePct(lap: Lap, athlete: Athlete, powerReference: number | null): number | null {
   if (!lap.step_target_type || lap.step_target_low == null) return null;
   const lo = lap.step_target_low;
   const hi = lap.step_target_high ?? lo;
   const mid = (lo + hi) / 2;
   if (lap.step_target_type === "power" && lap.avg_power != null) {
-    const targetWatts = lap.step_power_unit === "watts" ? mid : athlete.ftp ? (mid / 100) * athlete.ftp : null;
+    const targetWatts = lap.step_power_unit === "watts" ? mid : powerReference ? (mid / 100) * powerReference : null;
     if (!targetWatts) return null;
     return Math.round((lap.avg_power / targetWatts) * 100);
   }
@@ -162,16 +171,37 @@ export interface StepSummaryRow {
   avgCompliancePct: number | null;
 }
 
-/** One row per distinct WorkoutStep (grouped by workout_step_id, not step_kind - two different
- * "block" steps with different targets, e.g. a pyramid, must not be averaged together), plus one
- * "Other" row for any unlinked laps (unmatched activities, original-source laps, or a trailing
- * remainder beyond the workout's plan). Order matches first appearance in `laps`, so it reads
- * warmup -> work/rest -> other, matching the activity's own flow. */
-export function summarizeSteps(laps: Lap[], athlete: Athlete): StepSummaryRow[] {
+/** Identifies "the same step, wherever it occurs" for summarizeSteps' grouping - kind + target +
+ * the step's own planned duration/distance. Deliberately NOT workout_step_id: a workout authored
+ * with the app's `repeat` construct reuses one WorkoutStep row across every rep (so
+ * workout_step_id alone works there), but a workout with the same interval typed out as several
+ * separate leaf steps (e.g. a manually-authored 3x[65/75/85% FTP] ladder) gives each occurrence
+ * its own distinct row - grouping by raw id then shows three near-identical "1x avg" cards
+ * instead of one real average. Duration/distance stay part of the signature so two steps that
+ * only coincidentally share a %FTP target but are structurally different (a 20s 100%-FTP block
+ * vs a 600s 100%-FTP block) are never merged. */
+function stepSignature(lap: Lap): string {
+  return [
+    lap.step_kind,
+    lap.step_target_type,
+    lap.step_target_low,
+    lap.step_target_high,
+    lap.step_power_unit,
+    lap.step_duration,
+    lap.step_distance,
+  ].join("|");
+}
+
+/** One row per distinct step definition (see stepSignature), plus one "Other" row for any
+ * unlinked laps (unmatched activities, original-source laps, or a trailing remainder beyond the
+ * workout's plan). Order matches first appearance in `laps`, so it reads warmup -> work/rest ->
+ * other, matching the activity's own flow. `powerReference` is passed straight through to
+ * compliancePct/stepZonePct - see their docstrings for why it must be activity-date-scoped. */
+export function summarizeSteps(laps: Lap[], athlete: Athlete, powerReference: number | null): StepSummaryRow[] {
   const order: string[] = [];
   const buckets = new Map<string, Lap[]>();
   for (const lap of laps) {
-    const key = lap.workout_step_id != null ? String(lap.workout_step_id) : "other";
+    const key = lap.workout_step_id != null ? stepSignature(lap) : "other";
     if (!buckets.has(key)) {
       buckets.set(key, []);
       order.push(key);
@@ -183,8 +213,8 @@ export function summarizeSteps(laps: Lap[], athlete: Athlete): StepSummaryRow[] 
     const first = group[0];
     const powers = group.map((l) => l.avg_power).filter((v): v is number => v != null);
     const hrs = group.map((l) => l.avg_hr).filter((v): v is number => v != null);
-    const compliances = group.map((l) => compliancePct(l, athlete)).filter((v): v is number => v != null);
-    const zonePct = stepZonePct(first, athlete);
+    const compliances = group.map((l) => compliancePct(l, athlete, powerReference)).filter((v): v is number => v != null);
+    const zonePct = stepZonePct(first, powerReference);
     const compliance = mean(compliances);
     return {
       key,

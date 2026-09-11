@@ -55,6 +55,12 @@ class LapListViewTests(TestCase):
         self.assertEqual(lap["step_target_low"], 100)
         self.assertEqual(lap["step_target_high"], 110)
         self.assertEqual(lap["step_power_unit"], "pct_ftp")
+        # The step's own planned duration - distinct from the lap's own `duration` (300, matching
+        # here since the fixture's lap was recorded exactly as planned), used by the frontend to
+        # tell two identically-targeted-but-differently-timed steps apart (see
+        # lapPresentation.ts::summarizeSteps).
+        self.assertEqual(lap["step_duration"], 300)
+        self.assertIsNone(lap["step_distance"])
 
     def test_step_context_is_null_for_an_unlinked_lap(self):
         activity = _make_activity(self.athlete)
@@ -66,6 +72,8 @@ class LapListViewTests(TestCase):
         self.assertIsNone(lap["workout_step_id"])
         self.assertIsNone(lap["step_kind"])
         self.assertIsNone(lap["step_power_unit"])
+        self.assertIsNone(lap["step_duration"])
+        self.assertIsNone(lap["step_distance"])
 
 
 def _make_gorby_workout(athlete: User) -> Workout:

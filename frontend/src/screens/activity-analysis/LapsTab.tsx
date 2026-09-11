@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { getLaps, inferWorkout, regenerateActivityLaps } from "../../api/activities";
+import { listZones } from "../../api/athletes";
 import { ApiError, type Athlete, type Lap, type Sport } from "../../api/types";
 import { formatDuration } from "../../lib/format";
+import { powerZoneType } from "../../lib/zones";
 import { kindLabel, zoneColor } from "../workouts/workoutTree";
 import {
   compliancePct,
@@ -17,8 +19,8 @@ import {
   type RepeatGroup,
 } from "./lapPresentation";
 
-function StepSummaryCards({ laps, athlete }: { laps: Lap[]; athlete: Athlete }) {
-  const rows = useMemo(() => summarizeSteps(laps, athlete), [laps, athlete]);
+function StepSummaryCards({ laps, athlete, powerReference }: { laps: Lap[]; athlete: Athlete; powerReference: number | null }) {
+  const rows = useMemo(() => summarizeSteps(laps, athlete, powerReference), [laps, athlete, powerReference]);
   // Nothing worth summarizing for an activity with no step-derived laps at all (original-source
   // laps, or an unmatched activity) - every lap would land in one "Other" bucket.
   if (!rows.some((r) => r.key !== "other")) return null;
@@ -62,8 +64,8 @@ function StepSummaryCards({ laps, athlete }: { laps: Lap[]; athlete: Athlete }) 
   );
 }
 
-function ComplianceBadge({ lap, athlete }: { lap: Lap; athlete: Athlete }) {
-  const pct = compliancePct(lap, athlete);
+function ComplianceBadge({ lap, athlete, powerReference }: { lap: Lap; athlete: Athlete; powerReference: number | null }) {
+  const pct = compliancePct(lap, athlete, powerReference);
   if (pct == null) return null;
   return (
     <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: complianceColor(pct) }}>
@@ -72,10 +74,10 @@ function ComplianceBadge({ lap, athlete }: { lap: Lap; athlete: Athlete }) {
   );
 }
 
-function StepBadge({ lap, athlete }: { lap: Lap; athlete: Athlete }) {
+function StepBadge({ lap, powerReference }: { lap: Lap; powerReference: number | null }) {
   if (!lap.step_kind) return <span style={{ fontSize: 12.5, color: "var(--ink3)" }}>—</span>;
   const target = formatStepTarget(lap);
-  const zonePct = stepZonePct(lap, athlete);
+  const zonePct = stepZonePct(lap, powerReference);
   const color = zonePct != null ? zoneColor(zonePct) : "var(--ink3)";
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -97,12 +99,14 @@ function RepeatGroupRow({
   onToggle,
   maxPower,
   athlete,
+  powerReference,
 }: {
   group: RepeatGroup;
   expanded: boolean;
   onToggle: () => void;
   maxPower: number;
   athlete: Athlete;
+  powerReference: number | null;
 }) {
   const allLaps = group.reps.flat();
   const totalDuration = sum(allLaps.map((l) => l.duration));
@@ -130,7 +134,7 @@ function RepeatGroupRow({
         <td>
           <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             {group.reps[0].map((templateLap) => (
-              <StepBadge key={templateLap.workout_step_id ?? templateLap.index} lap={templateLap} athlete={athlete} />
+              <StepBadge key={templateLap.workout_step_id ?? templateLap.index} lap={templateLap} powerReference={powerReference} />
             ))}
           </span>
         </td>
@@ -161,8 +165,8 @@ function RepeatGroupRow({
             </td>
             <td>
               <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <StepBadge lap={lap} athlete={athlete} />
-                <ComplianceBadge lap={lap} athlete={athlete} />
+                <StepBadge lap={lap} powerReference={powerReference} />
+                <ComplianceBadge lap={lap} athlete={athlete} powerReference={powerReference} />
               </span>
             </td>
             <td className="mono">{lap.distance_km.toFixed(2)} km</td>
@@ -187,7 +191,17 @@ function RepeatGroupRow({
   );
 }
 
-function SingleLapRow({ lap, maxPower, athlete }: { lap: Lap; maxPower: number; athlete: Athlete }) {
+function SingleLapRow({
+  lap,
+  maxPower,
+  athlete,
+  powerReference,
+}: {
+  lap: Lap;
+  maxPower: number;
+  athlete: Athlete;
+  powerReference: number | null;
+}) {
   return (
     <tr style={{ borderTop: "1px solid var(--line)" }}>
       <td style={{ padding: "8px 0" }}>
@@ -197,8 +211,8 @@ function SingleLapRow({ lap, maxPower, athlete }: { lap: Lap; maxPower: number; 
       </td>
       <td>
         <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <StepBadge lap={lap} athlete={athlete} />
-          <ComplianceBadge lap={lap} athlete={athlete} />
+          <StepBadge lap={lap} powerReference={powerReference} />
+          <ComplianceBadge lap={lap} athlete={athlete} powerReference={powerReference} />
         </span>
       </td>
       <td className="mono">{lap.distance_km.toFixed(2)} km</td>
@@ -273,6 +287,12 @@ export function LapsTab({
   const { data } = useQuery({ queryKey: ["activity-laps", activityId], queryFn: () => getLaps(activityId) });
   const laps = useMemo(() => data?.data ?? [], [data]);
   const maxPower = Math.max(1, ...laps.map((l) => l.avg_power ?? 0));
+  // Same queryKey as ZonesTab's own fetch, so react-query serves this from the same cache entry
+  // when both tabs are visited. Scoped to this activity's own date (not the athlete's current
+  // profile) - see stepZonePct/compliancePct's docstrings for why that matters for an activity
+  // recorded before the athlete's most recent FTP/critical-power change.
+  const zonesQuery = useQuery({ queryKey: ["zones", athlete.id, activityId], queryFn: () => listZones(athlete.id, activityId) });
+  const powerReference = zonesQuery.data?.data.find((z) => z.type === powerZoneType(sport))?.reference ?? null;
   const [autoDetectRepeats, setAutoDetectRepeats] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const groups = useMemo(() => groupLaps(laps), [laps]);
@@ -327,7 +347,7 @@ export function LapsTab({
         )}
         {workoutId && <RegenerateLapsButton activityId={activityId} />}
       </div>
-      <StepSummaryCards laps={laps} athlete={athlete} />
+      <StepSummaryCards laps={laps} athlete={athlete} powerReference={powerReference} />
       <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--ink3)", fontSize: 11 }}>
@@ -343,7 +363,7 @@ export function LapsTab({
         <tbody>
           {groups.map((group) =>
             group.type === "single" ? (
-              <SingleLapRow key={group.lap.index} lap={group.lap} maxPower={maxPower} athlete={athlete} />
+              <SingleLapRow key={group.lap.index} lap={group.lap} maxPower={maxPower} athlete={athlete} powerReference={powerReference} />
             ) : (
               <RepeatGroupRow
                 key={group.key}
@@ -362,6 +382,7 @@ export function LapsTab({
                 }
                 maxPower={maxPower}
                 athlete={athlete}
+                powerReference={powerReference}
               />
             ),
           )}

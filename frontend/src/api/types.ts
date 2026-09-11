@@ -338,6 +338,12 @@ export interface Lap {
   step_target_low: number | null;
   step_target_high: number | null;
   step_power_unit: PowerUnit | null;
+  /** The step's own planned duration/distance (not this lap's recorded duration/distance_km) -
+   * lets two laps with an identical target be told apart when they're genuinely different steps
+   * (e.g. a 20s 100%-FTP block vs a 600s 100%-FTP block). Null exactly when workout_step_id is
+   * null. */
+  step_duration: number | null;
+  step_distance: number | null;
 }
 
 export interface StreamsResponse {
