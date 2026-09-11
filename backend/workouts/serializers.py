@@ -204,6 +204,21 @@ class WorkoutMatchSerializer(serializers.Serializer):
     avg_power = serializers.IntegerField(allow_null=True)
 
 
+class WorkoutMatchComparisonSerializer(serializers.Serializer):
+    activity_id = serializers.CharField()
+    name = serializers.CharField()
+    date = serializers.DateField()
+    moving_time = serializers.IntegerField()
+    avg_power = serializers.IntegerField(allow_null=True)
+    avg_hr = serializers.IntegerField(allow_null=True)
+    ef = serializers.FloatField(allow_null=True)
+    work_block_avg_power = serializers.IntegerField(allow_null=True)
+    avg_core_temp = serializers.FloatField(allow_null=True)
+    avg_air_temp = serializers.FloatField(allow_null=True)
+    avg_humidity = serializers.IntegerField(allow_null=True)
+    tss = serializers.IntegerField()
+
+
 class WorkoutMatchScanCandidateSerializer(serializers.Serializer):
     activity_id = serializers.CharField()
     name = serializers.CharField()

@@ -105,8 +105,15 @@ function WorkoutDetailView({ workout, onEdit }: { workout: WorkoutDetail; onEdit
       </Card>
 
       <Card>
-        <div className="mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", color: "var(--ink3)", marginBottom: 12 }}>
-          LINKED ACTIVITIES
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div className="mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", color: "var(--ink3)" }}>
+            LINKED ACTIVITIES
+          </div>
+          {linked.length >= 2 && (
+            <Link to={`/workouts/${workout.id}/compare`} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ember)" }}>
+              Compare all →
+            </Link>
+          )}
         </div>
         {linked.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--ink3)" }}>No activities linked to this workout yet.</div>

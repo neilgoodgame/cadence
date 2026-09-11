@@ -6,6 +6,7 @@ import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
 import com.cadence.api.workouts.dto.WorkoutCreateRequest;
 import com.cadence.api.workouts.dto.WorkoutDetailResponse;
+import com.cadence.api.workouts.dto.WorkoutMatchComparisonResponse;
 import com.cadence.api.workouts.dto.WorkoutMatchResponse;
 import com.cadence.api.workouts.dto.WorkoutResponse;
 import com.cadence.api.workouts.dto.WorkoutUpdateRequest;
@@ -95,5 +96,12 @@ public class WorkoutController {
 		Workout workout = workoutService.getWorkout(id);
 		accessGuard.requireRead(workout.getCreatedBy().getId());
 		return new DataListResponse<>(workoutMatchService.listMatches(id, method));
+	}
+
+	@GetMapping("/v1/workouts/{id}/matches/compare")
+	public DataListResponse<WorkoutMatchComparisonResponse> compareWorkoutMatches(@PathVariable String id) {
+		Workout workout = workoutService.getWorkout(id);
+		accessGuard.requireRead(workout.getCreatedBy().getId());
+		return new DataListResponse<>(workoutMatchService.listComparison(id));
 	}
 }

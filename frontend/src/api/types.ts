@@ -647,6 +647,21 @@ export interface WorkoutMatch {
   avg_power: number | null;
 }
 
+export interface WorkoutMatchComparisonEntry {
+  activity_id: string;
+  name: string;
+  date: string;
+  moving_time: number;
+  avg_power: number | null;
+  avg_hr: number | null;
+  ef: number | null;
+  work_block_avg_power: number | null;
+  avg_core_temp: number | null;
+  avg_air_temp: number | null;
+  avg_humidity: number | null;
+  tss: number;
+}
+
 // Not to be confused with WorkoutMatch/WorkoutMatchMethod above - those back the tag-based
 // already-linked-activities list (getWorkoutMatches). This is the on-demand Pearson-correlation
 // scan (POST/GET .../match-scans) that suggests likely-but-unlinked candidates.

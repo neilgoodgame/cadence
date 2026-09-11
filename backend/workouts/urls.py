@@ -5,6 +5,7 @@ from .views import (
     WorkoutFolderDetailView,
     WorkoutFolderListView,
     WorkoutListView,
+    WorkoutMatchComparisonView,
     WorkoutMatchListView,
     WorkoutMatchScanCreateView,
     WorkoutMatchScanDetailView,
@@ -14,6 +15,11 @@ urlpatterns = [
     path("v1/workouts", WorkoutListView.as_view(), name="workout-list"),
     path("v1/workouts/<str:id>", WorkoutDetailView.as_view(), name="workout-detail"),
     path("v1/workouts/<str:id>/matches", WorkoutMatchListView.as_view(), name="workout-matches"),
+    path(
+        "v1/workouts/<str:id>/matches/compare",
+        WorkoutMatchComparisonView.as_view(),
+        name="workout-match-comparison",
+    ),
     path("v1/workouts/<str:id>/match-scans", WorkoutMatchScanCreateView.as_view(), name="workout-match-scan-create"),
     path(
         "v1/workouts/<str:id>/match-scans/<str:scan_id>",

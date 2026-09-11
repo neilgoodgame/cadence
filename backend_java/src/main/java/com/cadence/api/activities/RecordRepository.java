@@ -24,4 +24,16 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 	long countByIdActivityId(String activityId);
 
 	boolean existsByIdActivityIdAndAirTempIsNotNull(String activityId);
+
+	/** One grouped-aggregate query across every matched activity at once (for
+	 * WorkoutMatchService's comparison endpoint), not a per-activity loop. */
+	interface ActivityAvgCoreTemp {
+		String getActivityId();
+
+		Double getAvgCoreTemp();
+	}
+
+	@Query("select r.id.activityId as activityId, avg(r.coreTemp) as avgCoreTemp from Record r "
+			+ "where r.id.activityId in :activityIds group by r.id.activityId")
+	List<ActivityAvgCoreTemp> findAvgCoreTempByActivityIdIn(@Param("activityIds") List<String> activityIds);
 }

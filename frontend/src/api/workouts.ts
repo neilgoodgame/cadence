@@ -5,6 +5,7 @@ import type {
   WorkoutDetail,
   WorkoutFolder,
   WorkoutMatch,
+  WorkoutMatchComparisonEntry,
   WorkoutMatchMethod,
   WorkoutSort,
   WorkoutSport,
@@ -57,6 +58,10 @@ export function deleteWorkout(id: string): Promise<void> {
 
 export function getWorkoutMatches(id: string, method: WorkoutMatchMethod | "all" = "all"): Promise<DataList<WorkoutMatch>> {
   return apiFetch<DataList<WorkoutMatch>>(`/v1/workouts/${id}/matches?method=${method}`);
+}
+
+export function getWorkoutMatchComparison(id: string): Promise<DataList<WorkoutMatchComparisonEntry>> {
+  return apiFetch<DataList<WorkoutMatchComparisonEntry>>(`/v1/workouts/${id}/matches/compare`);
 }
 
 export function listWorkoutFolders(): Promise<DataList<WorkoutFolder>> {

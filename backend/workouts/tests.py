@@ -1096,6 +1096,117 @@ class WorkoutMatchListViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class WorkoutMatchComparisonViewTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="compare-athlete@example.cc", password="x", name="Athlete")
+        self.outsider = User.objects.create_user(email="compare-outsider@example.cc", password="x", name="Outsider")
+        self.workout = Workout.objects.create(
+            created_by=self.athlete, name="VO2 Max 5x5", sport="bike", duration=1200, tss=33
+        )
+        self.block_step = WorkoutStep.objects.create(
+            workout=self.workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=110,
+            target_high=110,
+        )
+
+    def _activity(self, **overrides):
+        defaults = {
+            "athlete": self.athlete,
+            "sport": "bike",
+            "name": "Ride",
+            "start_date": timezone.now(),
+            "moving_time": 1200,
+            "avg_power": 200,
+            "avg_hr": 125,
+            "tss": 33,
+        }
+        defaults.update(overrides)
+        return Activity.objects.create(workout=self.workout, **defaults)
+
+    def test_includes_ef_and_environment_fields_from_the_activity(self):
+        activity = self._activity(avg_power=210, avg_hr=125, avg_air_temp=22.5, avg_humidity=45)
+
+        response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches/compare")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(len(data), 1)
+        row = data[0]
+        self.assertEqual(row["activity_id"], activity.id)
+        self.assertAlmostEqual(row["ef"], 210 / 125, places=3)
+        self.assertEqual(row["avg_air_temp"], 22.5)
+        self.assertEqual(row["avg_humidity"], 45)
+
+    def test_ef_is_null_when_hr_is_missing(self):
+        self._activity(avg_power=210, avg_hr=None)
+
+        response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches/compare")
+
+        self.assertIsNone(response.json()["data"][0]["ef"])
+
+    def test_work_block_power_is_duration_weighted_across_block_laps(self):
+        activity = self._activity()
+        # A short, high-power block and a long, lower-power block - a bare mean-of-laps would
+        # give (300+100)/2=200; duration-weighted gives (300*60 + 100*240)/300 = 140.
+        Lap.objects.create(
+            activity=activity, index=0, duration=60, distance_km=0.3, avg_power=300, workout_step=self.block_step
+        )
+        Lap.objects.create(
+            activity=activity, index=1, duration=240, distance_km=1.2, avg_power=100, workout_step=self.block_step
+        )
+        # A non-block lap must not be counted.
+        rec_step = WorkoutStep.objects.create(
+            workout=self.workout,
+            order=1,
+            kind="rec",
+            end_type="time",
+            duration=60,
+            target_type="power",
+            target_low=50,
+            target_high=50,
+        )
+        Lap.objects.create(
+            activity=activity, index=2, duration=60, distance_km=0.2, avg_power=9999, workout_step=rec_step
+        )
+
+        response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches/compare")
+
+        self.assertEqual(response.json()["data"][0]["work_block_avg_power"], 140)
+
+    def test_work_block_power_is_null_with_no_derived_laps(self):
+        self._activity()
+
+        response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches/compare")
+
+        self.assertIsNone(response.json()["data"][0]["work_block_avg_power"])
+
+    def test_avg_core_temp_aggregates_records_and_is_null_without_sensor_data(self):
+        with_sensor = self._activity(name="With sensor")
+        start = with_sensor.start_date
+        Record.objects.create(activity=with_sensor, t=0, ts=start, core_temp=37.0)
+        Record.objects.create(activity=with_sensor, t=1, ts=start + timedelta(seconds=1), core_temp=37.4)
+        without_sensor = self._activity(name="Without sensor")
+        Record.objects.create(activity=without_sensor, t=0, ts=without_sensor.start_date, core_temp=None)
+
+        response = _bearer_client(self.athlete).get(f"/v1/workouts/{self.workout.id}/matches/compare")
+
+        by_id = {row["activity_id"]: row for row in response.json()["data"]}
+        self.assertAlmostEqual(by_id[with_sensor.id]["avg_core_temp"], 37.2, places=1)
+        self.assertIsNone(by_id[without_sensor.id]["avg_core_temp"])
+
+    def test_outsider_forbidden(self):
+        self._activity()
+
+        response = _bearer_client(self.outsider).get(f"/v1/workouts/{self.workout.id}/matches/compare")
+
+        self.assertEqual(response.status_code, 403)
+
+
 # Same "warmup 600s@60%, then 5x[work 300s@110%, rest 300s@52.5%]" structure as the real "The
 # Gorby" workout this whole feature was validated against this session.
 def _make_gorby_workout(athlete: User) -> Workout:
