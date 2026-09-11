@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.cadence.api.activities.dto.ActivityWorkoutMatchCandidateResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.support.IntegrationTest;
@@ -121,11 +122,41 @@ class ActivityWorkoutMatchCandidatesControllerTest extends IntegrationTest {
 		seedTwoPhaseRecords(activity, start, 1800);
 		authAs(athlete.getId(), "activities:read");
 
-		List<ActivityWorkoutMatchCandidateResponse> response = controller.getWorkoutMatchCandidates(activity.getId());
+		List<ActivityWorkoutMatchCandidateResponse> response = controller.getWorkoutMatchCandidates(activity.getId(), null);
 
 		assertThat(response).hasSize(1);
 		assertThat(response.get(0).workoutId()).isEqualTo(matching.getId());
 		assertThat(response.get(0).correlation()).isGreaterThan(0.99);
+	}
+
+	@Test
+	void wideningToleranceIncludesACandidateOutsideTheDefaultWindow() {
+		// Regression coverage for a real case found live: a distance-based activity's actual
+		// moving time can legitimately fall well outside a fixed-duration workout's planned
+		// duration, well past the default 60s tolerance - toleranceSeconds lets a caller widen
+		// the pre-filter per-request to investigate that without changing the default.
+		User athlete = newAthlete("wmc-controller-tolerance@example.cc");
+		Workout matching = newTwoPhaseWorkout(athlete, 1700);
+		Instant start = Instant.parse("2026-07-03T06:00:00Z");
+		Activity activity = newActivity(athlete, start, Sport.BIKE, 3600);
+		seedTwoPhaseRecords(activity, start, 1700);
+		authAs(athlete.getId(), "activities:read");
+
+		assertThat(controller.getWorkoutMatchCandidates(activity.getId(), null)).isEmpty();
+
+		List<ActivityWorkoutMatchCandidateResponse> widened = controller.getWorkoutMatchCandidates(activity.getId(), 250);
+
+		assertThat(widened).hasSize(1);
+		assertThat(widened.get(0).workoutId()).isEqualTo(matching.getId());
+	}
+
+	@Test
+	void rejectsANegativeTolerance() {
+		User athlete = newAthlete("wmc-controller-negative@example.cc");
+		Activity activity = newActivity(athlete, Instant.parse("2026-07-04T06:00:00Z"), Sport.BIKE, 3600);
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> controller.getWorkoutMatchCandidates(activity.getId(), -1)).isInstanceOf(ValidationException.class);
 	}
 
 	@Test
@@ -135,6 +166,6 @@ class ActivityWorkoutMatchCandidatesControllerTest extends IntegrationTest {
 		Activity activity = newActivity(athlete, Instant.parse("2026-07-02T06:00:00Z"), Sport.BIKE, 3600);
 		authAs(outsider.getId(), "activities:read");
 
-		assertThatThrownBy(() -> controller.getWorkoutMatchCandidates(activity.getId())).isInstanceOf(ForbiddenException.class);
+		assertThatThrownBy(() -> controller.getWorkoutMatchCandidates(activity.getId(), null)).isInstanceOf(ForbiddenException.class);
 	}
 }
