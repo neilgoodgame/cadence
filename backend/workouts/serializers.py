@@ -216,6 +216,16 @@ class WorkoutMatchScanCandidateSerializer(serializers.Serializer):
     avg_power = serializers.IntegerField(allow_null=True)
 
 
+class WorkoutMatchScanCreateSerializer(serializers.Serializer):
+    """Optional request body for POST .../match-scans - the leaf step kinds to leave OUT of the
+    correlation for this one scan (not an athlete-wide preference). Omit the field entirely
+    (not just an empty list) to get the default of `["warmup", "cool"]`."""
+
+    excluded_step_kinds = serializers.ListField(
+        child=serializers.ChoiceField(choices=sorted(LEAF_KINDS)), required=False
+    )
+
+
 class WorkoutMatchScanSerializer(serializers.ModelSerializer):
     object = serializers.SerializerMethodField()
     candidates = serializers.SerializerMethodField()
@@ -227,6 +237,7 @@ class WorkoutMatchScanSerializer(serializers.ModelSerializer):
             "object",
             "workout_id",
             "status",
+            "excluded_step_kinds",
             "total_candidates",
             "processed_candidates",
             "error_message",

@@ -9,6 +9,10 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * A background scan of the workout's athlete's own unmatched, same-sport activities for likely
@@ -36,6 +40,13 @@ public class WorkoutMatchScan extends PrefixedIdEntity {
 
 	@Column(name = "processed_candidates", nullable = false)
 	private int processedCandidates;
+
+	// Which leaf step kinds counted toward the correlation for this scan - chosen once, at
+	// creation, by whoever triggered it (see WorkoutMatchScanController), not an athlete-wide
+	// preference. Same JSON-list mapping as Workout.tags.
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "excluded_step_kinds", nullable = false)
+	private List<String> excludedStepKinds = new ArrayList<>();
 
 	@Column(name = "error_message")
 	private String errorMessage;
@@ -88,6 +99,14 @@ public class WorkoutMatchScan extends PrefixedIdEntity {
 
 	public void setProcessedCandidates(int processedCandidates) {
 		this.processedCandidates = processedCandidates;
+	}
+
+	public List<String> getExcludedStepKinds() {
+		return excludedStepKinds;
+	}
+
+	public void setExcludedStepKinds(List<String> excludedStepKinds) {
+		this.excludedStepKinds = excludedStepKinds;
 	}
 
 	public String getErrorMessage() {

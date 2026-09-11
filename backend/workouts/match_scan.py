@@ -28,10 +28,15 @@ if TYPE_CHECKING:
 DURATION_TOLERANCE_SECONDS = 60
 
 
-def scannability_error(workout: "Workout") -> str | None:
+def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = frozenset()) -> str | None:
     """`None` if `workout` can be scanned for matches; otherwise the reason it can't, suitable
-    for a 400 response. See the module docstring for why v1 is power/duration-only."""
-    flattened = flatten_persisted_steps(workout)
+    for a 400 response. See the module docstring for why v1 is power/duration-only.
+
+    `excluded_kinds` (leaf `kind` values, e.g. `{"warmup", "cool"}`) are skipped entirely before
+    validation - a step that won't be used to build the curve shouldn't be able to disqualify
+    the whole workout (e.g. a distance-ended cooldown the caller has chosen to exclude anyway).
+    """
+    flattened = [(step, idx) for step, idx in flatten_persisted_steps(workout) if step.kind not in excluded_kinds]
     if not flattened:
         return "This workout has no steps to scan against."
     for step, _ in flattened:
@@ -47,7 +52,9 @@ def _power_reference(workout: "Workout") -> float:
     return reference_for(workout.created_by, zone_type) or _DEFAULT_POWER_REFERENCE
 
 
-def build_expected_curve(workout: "Workout", reference: float | None = None) -> list[tuple[int, int, float]]:
+def build_expected_curve(
+    workout: "Workout", reference: float | None = None, excluded_kinds: frozenset[str] = frozenset()
+) -> list[tuple[int, int, float]]:
     """Cumulative `(start_s, end_s, intensity_pct)` segments for `workout`'s flattened steps -
     `scannability_error` must already have confirmed every step is power/duration-based.
     `intensity_pct` is always expressed as %FTP: a `watts`-unit step is converted using the
@@ -60,17 +67,25 @@ def build_expected_curve(workout: "Workout", reference: float | None = None) -> 
     `reference` lets a caller ranking many workouts for the same athlete (see
     `rank_workouts_for_activity`) compute the zone lookup once and reuse it, instead of
     repeating an identical lookup per candidate - left `None` to compute it here as before.
+
+    `excluded_kinds` (leaf `kind` values) skip emitting a curve segment for that step, but the
+    running `offset` still advances past its duration - later segments keep their correct
+    absolute position in the workout's timeline (the activity recording still covers the
+    excluded phase in real time; `_sample_expected_at` already returns `None` for any `t` no
+    segment covers, so no other change is needed to make those samples fall out of the
+    correlation).
     """
     if reference is None:
         reference = _power_reference(workout)
     curve: list[tuple[int, int, float]] = []
     offset = 0
     for step, _ in flatten_persisted_steps(workout):
-        low = step.target_low if step.target_low is not None else 0.0
-        high = step.target_high if step.target_high is not None else low
-        mid = (low + high) / 2
-        pct = (mid / reference) * 100 if step.power_unit == "watts" else mid
-        curve.append((offset, offset + step.duration, pct))
+        if step.kind not in excluded_kinds:
+            low = step.target_low if step.target_low is not None else 0.0
+            high = step.target_high if step.target_high is not None else low
+            mid = (low + high) / 2
+            pct = (mid / reference) * 100 if step.power_unit == "watts" else mid
+            curve.append((offset, offset + step.duration, pct))
         offset += step.duration
     return curve
 
@@ -217,8 +232,13 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
     from .models import WorkoutMatchScanCandidate  # deferred: avoid a models.py <-> here import cycle
 
     workout = scan.workout
-    curve = build_expected_curve(workout)
-    total_planned_duration = curve[-1][1] if curve else 0
+    excluded_kinds = frozenset(scan.excluded_step_kinds)
+    curve = build_expected_curve(workout, excluded_kinds=excluded_kinds)
+    # workout.duration, not curve[-1][1]: the curve's last entry can end before the workout's
+    # real total duration whenever a trailing step (typically the cooldown) is excluded - the
+    # activity recording still covers that phase in real time, so the duration pre-filter below
+    # needs the true total, which the persisted column always has regardless of exclusions.
+    total_planned_duration = workout.duration
 
     all_candidates = Activity.objects.filter(
         athlete_id=workout.created_by_id, sport=workout.sport, workout__isnull=True

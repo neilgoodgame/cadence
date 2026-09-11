@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createWorkoutMatchScan, getWorkoutMatchScan } from "../../api/matchScans";
 import { updateActivity } from "../../api/activities";
-import type { WorkoutMatchScan, WorkoutMatchScanCandidate } from "../../api/types";
+import type { StepKind, WorkoutMatchScan, WorkoutMatchScanCandidate, WorkoutStep } from "../../api/types";
 import { Card } from "../../components/Card";
 import { formatDate, formatDuration } from "../../lib/format";
 import { usePolling } from "../../lib/usePolling";
+import { flattenLeaves, kindLabel } from "./workoutTree";
 
 const TERMINAL_STATUSES = new Set(["ready", "failed"]);
+
+// Order to show kind checkboxes in - matches StepDrawer.tsx's own kind ordering.
+const KIND_ORDER: StepKind[] = ["warmup", "block", "rec", "cool"];
+const DEFAULT_EXCLUDED_KINDS: StepKind[] = ["warmup", "cool"];
 
 const GRID_COLS = "minmax(140px,1.3fr) 0.6fr 0.7fr 0.55fr 0.9fr";
 
@@ -19,6 +24,13 @@ const actionBtn = {
   fontWeight: 600,
   background: "transparent",
   color: "var(--ink2)",
+};
+
+const primaryBtn = {
+  ...actionBtn,
+  background: "var(--ember)",
+  color: "#fff",
+  border: "none",
 };
 
 function ColHeaders() {
@@ -131,28 +143,73 @@ function ScanResults({
 /** Triggers POST /v1/workouts/{id}/match-scans (a Pearson-correlation scan of the athlete's own
  * unmatched, same-sport activities), polls it to completion, and lets the athlete apply one or
  * more ranked candidates. On-demand, not auto-run on mount - mirrors DuplicatesCard.tsx's
- * trigger pattern. */
-export function WorkoutMatchScanCard({ workoutId }: { workoutId: string }) {
+ * trigger pattern.
+ *
+ * Before actually starting a scan, shows a checkbox per leaf step kind present in THIS
+ * workout's own structure (not a fixed global list) so the athlete can choose which parts of
+ * the workout should count toward the correlation - pre-checked for everything except
+ * warmup/cooldown, since those tend to be loosely-executed and add noise rather than
+ * discriminating signal. */
+export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; steps: WorkoutStep[] }) {
   const queryClient = useQueryClient();
   const [scanResult, setScanResult] = useState<{ data: WorkoutMatchScan; retryAfterSeconds: number | null } | null>(null);
+  const [configuring, setConfiguring] = useState(false);
+
+  const presentKinds = useMemo(() => {
+    const present = new Set(flattenLeaves(steps).map((s) => s.kind));
+    return KIND_ORDER.filter((k) => present.has(k));
+  }, [steps]);
+  const [excludedKinds, setExcludedKinds] = useState<StepKind[]>(DEFAULT_EXCLUDED_KINDS);
+
+  function toggleKind(kind: StepKind) {
+    setExcludedKinds((prev) => (prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind]));
+  }
 
   const triggerMutation = useMutation({
-    mutationFn: () => createWorkoutMatchScan(workoutId),
-    onSuccess: setScanResult,
+    mutationFn: () => createWorkoutMatchScan(workoutId, excludedKinds),
+    onSuccess: (result) => {
+      setScanResult(result);
+      setConfiguring(false);
+    },
   });
 
   return (
     <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: scanResult ? 12 : 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: scanResult || configuring ? 12 : 0 }}>
         <div className="mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", color: "var(--ink3)" }}>
           CANDIDATE MATCHES
         </div>
-        {!scanResult && (
-          <button onClick={() => triggerMutation.mutate()} disabled={triggerMutation.isPending} style={{ ...actionBtn, cursor: triggerMutation.isPending ? "wait" : "pointer" }}>
-            {triggerMutation.isPending ? "Starting…" : "Scan for matches"}
+        {!scanResult && !configuring && (
+          <button onClick={() => setConfiguring(true)} style={actionBtn}>
+            Scan for matches
           </button>
         )}
       </div>
+
+      {configuring && (
+        <div>
+          <div style={{ fontSize: 12, color: "var(--ink2)", marginBottom: 10 }}>
+            Which parts of this workout should count toward the match?
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+            {presentKinds.map((kind) => (
+              <label key={kind} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink)", cursor: "pointer" }}>
+                <input type="checkbox" checked={!excludedKinds.includes(kind)} onChange={() => toggleKind(kind)} />
+                {kindLabel(kind)}
+              </label>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => triggerMutation.mutate()} disabled={triggerMutation.isPending} style={{ ...primaryBtn, cursor: triggerMutation.isPending ? "wait" : "pointer" }}>
+              {triggerMutation.isPending ? "Starting…" : "Start scan"}
+            </button>
+            <button onClick={() => setConfiguring(false)} disabled={triggerMutation.isPending} style={actionBtn}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {triggerMutation.isError && <div style={{ fontSize: 13, color: "#e0442e" }}>{(triggerMutation.error as Error).message}</div>}
       {scanResult && (
         <ScanResults

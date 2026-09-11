@@ -6,8 +6,8 @@ import java.time.Instant;
 import java.util.List;
 
 public record WorkoutMatchScanResponse(String id, String workoutId, WorkoutMatchScanStatus status,
-		Integer totalCandidates, int processedCandidates, String errorMessage, Instant createdAt, Instant completedAt,
-		List<WorkoutMatchScanCandidateResponse> candidates) {
+		List<String> excludedStepKinds, Integer totalCandidates, int processedCandidates, String errorMessage,
+		Instant createdAt, Instant completedAt, List<WorkoutMatchScanCandidateResponse> candidates) {
 
 	@JsonProperty("object")
 	public String object() {

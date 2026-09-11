@@ -78,6 +78,10 @@ class WorkoutMatchScan(PrefixedIDModel):
     # ExportJob.total_items's own null-until-upfront-count-query window.
     total_candidates = models.IntegerField(null=True, blank=True)
     processed_candidates = models.IntegerField(default=0)
+    # Which leaf step kinds counted toward the correlation for this scan - chosen once, at
+    # creation, by whoever triggered it (see WorkoutMatchScanCreateView), not an athlete-wide
+    # preference. Same JSON-list shape as Workout.tags below.
+    excluded_step_kinds = models.JSONField(default=list)
     error_message = models.CharField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)

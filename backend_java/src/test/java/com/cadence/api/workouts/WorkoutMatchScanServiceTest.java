@@ -15,6 +15,7 @@ import com.cadence.api.workouts.WorkoutMatchScanService.RankedWorkout;
 import com.cadence.api.workouts.WorkoutMatchScanService.Segment;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -58,6 +59,11 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		workout.setCreatedBy(athlete);
 		workout.setName("The Gorby");
 		workout.setSport(Sport.BIKE);
+		// Matches the fixed structure below (600 warmup + 5x(300 work + 300 rec)) - normally kept
+		// in sync by the workout create/update endpoint's duration/TSS computation, which this
+		// direct-entity fixture bypasses; runScanSync's duration pre-filter now reads this
+		// persisted column directly (see WorkoutMatchScanService), so it has to be right here too.
+		workout.setDuration(3600);
 
 		WorkoutStep warmup = leaf(workout, null, 0, StepKind.WARMUP, 600, 60.0, 60.0);
 		WorkoutStep group = new WorkoutStep();
@@ -163,6 +169,29 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void scannabilityErrorIgnoresAnExcludedStepsOwnValidity() {
+		// A distance-ended cooldown would normally fail scannability - but not if the caller has
+		// already chosen to exclude cooldowns entirely, since that step never reaches curve
+		// construction either way.
+		User athlete = newAthlete("distance-cooldown-excluded@example.cc");
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Distance cooldown");
+		workout.setSport(Sport.BIKE);
+		WorkoutStep work = leaf(workout, null, 0, StepKind.BLOCK, 300, 100.0, 100.0);
+		WorkoutStep cooldown = leaf(workout, null, 1, StepKind.COOL, 300, 50.0, 50.0);
+		cooldown.setEndType(StepEndType.DISTANCE);
+		cooldown.setDuration(null);
+		cooldown.setDistance(1000);
+		workout.getSteps().add(work);
+		workout.getSteps().add(cooldown);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		assertThat(workoutMatchScanService.scannabilityError(workout.getId())).isNotNull();
+		assertThat(workoutMatchScanService.scannabilityError(workout.getId(), Set.of(StepKind.COOL))).isNull();
+	}
+
+	@Test
 	void scannabilityErrorRejectsAWorkoutWithNoSteps() {
 		User athlete = newAthlete("empty-not-scannable@example.cc");
 		Workout workout = new Workout();
@@ -183,6 +212,24 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 
 		assertThat(curve).containsExactly(
 				new Segment(0, 600, 60.0),
+				new Segment(600, 900, 110.0), new Segment(900, 1200, 52.5),
+				new Segment(1200, 1500, 110.0), new Segment(1500, 1800, 52.5),
+				new Segment(1800, 2100, 110.0), new Segment(2100, 2400, 52.5),
+				new Segment(2400, 2700, 110.0), new Segment(2700, 3000, 52.5),
+				new Segment(3000, 3300, 110.0), new Segment(3300, 3600, 52.5));
+	}
+
+	@Test
+	void buildExpectedCurveExcludesAKindButKeepsLaterOffsetsAbsolute() {
+		User athlete = newAthlete("curve-excluded@example.cc");
+		Workout workout = newGorbyWorkout(athlete);
+
+		List<Segment> curve = workoutMatchScanService.buildExpectedCurve(workout.getId(), Set.of(StepKind.WARMUP));
+
+		// The leading warmup segment is gone entirely, but every remaining segment keeps its
+		// original 600-3600 timeline position - not renumbered to start at 0 - since the real
+		// activity recording still covers that first 600s in real time.
+		assertThat(curve).containsExactly(
 				new Segment(600, 900, 110.0), new Segment(900, 1200, 52.5),
 				new Segment(1200, 1500, 110.0), new Segment(1500, 1800, 52.5),
 				new Segment(1800, 2100, 110.0), new Segment(2100, 2400, 52.5),
