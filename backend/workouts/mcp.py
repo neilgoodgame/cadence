@@ -19,7 +19,7 @@ from authn.mcp_toolset import ScopedMCPToolset
 
 from .models import Workout
 from .serializers import build_step_tree
-from .views import SORT_OPTIONS, _replace_steps
+from .views import SORT_OPTIONS, _replace_steps, build_match_comparison_rows
 
 _DISTANCE_PATTERN = re.compile(
     r"^\s*(?P<magnitude>\d+(?:\.\d+)?)\s*(?P<unit>m|km|mi|meters?|kilometers?|miles?)\s*$", re.IGNORECASE
@@ -177,3 +177,20 @@ class WorkoutMCPTools(ScopedMCPToolset):
         workout = Workout.objects.create(created_by_id=athlete_id, name=name, sport=sport, folder=None, tags=tags or [])
         _replace_steps(workout, steps)
         return _workout_summary(workout)
+
+    def get_workout_matches(self, workout_id: str) -> dict[str, Any]:
+        """Compare every completed activity matched to a saved workout - average power, average
+        heart rate, aerobic efficiency (EF = avg_power / avg_hr), average power/HR for just the
+        work-interval blocks (excluding warmup/rest/cooldown), environment data (air temp,
+        humidity, core temperature), and TSS - chronologically ordered. Useful for tracking
+        fitness trends across repeated efforts at the same fixed-structure workout (e.g. "how has
+        my EF on this workout changed over time"). Any field can be null for a given activity if
+        that data wasn't captured (e.g. no HR strap, or laps never derived against the workout)."""
+        self._require_scope(ACTIVITIES_READ)
+        workout = get_object_or_404(Workout, pk=workout_id)
+        self._require_read(workout.created_by_id)
+
+        rows = build_match_comparison_rows(workout_id)
+        for row in rows:
+            row["date"] = row["date"].isoformat()
+        return {"data": rows}

@@ -5,8 +5,10 @@ import com.cadence.api.mcp.dispatch.McpToolAuthorizer;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutMapper;
+import com.cadence.api.workouts.WorkoutMatchService;
 import com.cadence.api.workouts.WorkoutService;
 import com.cadence.api.workouts.dto.WorkoutDetailResponse;
+import com.cadence.api.workouts.dto.WorkoutMatchComparisonResponse;
 import com.cadence.api.workouts.dto.WorkoutResponse;
 import java.util.List;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -14,22 +16,25 @@ import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
 
 /**
- * Calls the exact same {@link WorkoutService} the REST {@code WorkoutController} does -
- * {@code WorkoutResponse}/{@code WorkoutDetailResponse} are already compact enough to reuse
- * as-is, unlike {@code ActivityResponse}.
+ * Calls the exact same {@link WorkoutService}/{@link WorkoutMatchService} the REST
+ * {@code WorkoutController} does - {@code WorkoutResponse}/{@code WorkoutDetailResponse}/
+ * {@code WorkoutMatchComparisonResponse} are already compact enough to reuse as-is, unlike
+ * {@code ActivityResponse}.
  */
 @Component
 public class WorkoutReadTools {
 
 	private final WorkoutService workoutService;
 	private final WorkoutMapper workoutMapper;
+	private final WorkoutMatchService workoutMatchService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public WorkoutReadTools(WorkoutService workoutService, WorkoutMapper workoutMapper,
-			AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			WorkoutMatchService workoutMatchService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.workoutService = workoutService;
 		this.workoutMapper = workoutMapper;
+		this.workoutMatchService = workoutMatchService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -64,5 +69,23 @@ public class WorkoutReadTools {
 		accessGuard.requireRead(workout.getCreatedBy().getId());
 		var steps = workoutMapper.toStepTree(workout.getSteps());
 		return new WorkoutDetailResponse(workoutMapper.toResponse(workout), steps);
+	}
+
+	@McpTool(name = "get_workout_matches", description = "Compare every completed activity matched "
+			+ "to a saved workout - average power, average heart rate, aerobic efficiency "
+			+ "(EF = avgPower / avgHr), average power/HR for just the work-interval blocks "
+			+ "(excluding warmup/rest/cooldown), environment data (air temp, humidity, core "
+			+ "temperature), and TSS - chronologically ordered. Useful for tracking fitness trends "
+			+ "across repeated efforts at the same fixed-structure workout (e.g. \"how has my EF on "
+			+ "this workout changed over time\"). Any field can be null for a given activity if that "
+			+ "data wasn't captured (e.g. no HR strap, or laps never derived against the workout).",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public List<WorkoutMatchComparisonResponse> getWorkoutMatches(
+			@McpToolParam(description = "The workout id, e.g. wkt_xxxxxxxxxxxx", required = true) String workoutId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		Workout workout = workoutService.getWorkout(workoutId);
+		accessGuard.requireRead(workout.getCreatedBy().getId());
+		return workoutMatchService.listComparison(workoutId);
 	}
 }

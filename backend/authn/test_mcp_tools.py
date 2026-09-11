@@ -265,6 +265,43 @@ class WorkoutToolsTests(TestCase):
         result = tools.list_workouts()
         self.assertEqual(result, {"data": []})
 
+    def test_get_workout_matches_returns_comparison_data(self) -> None:
+        athlete = User.objects.create_user(email="mcp-workout-matches@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(
+            created_by=athlete, name="Matched workout", sport="bike", duration=1200, tss=33
+        )
+        activity = Activity.objects.create(
+            workout=workout,
+            athlete=athlete,
+            sport="bike",
+            name="Ride",
+            start_date=timezone.now(),
+            moving_time=1200,
+            avg_power=210,
+            avg_hr=140,
+            tss=33,
+        )
+
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.get_workout_matches(workout_id=workout.id)
+
+        self.assertEqual(len(result["data"]), 1)
+        row = result["data"][0]
+        self.assertEqual(row["activity_id"], activity.id)
+        self.assertAlmostEqual(row["ef"], 210 / 140, places=3)
+        self.assertIsInstance(row["date"], str)
+
+    def test_get_workout_matches_rejects_another_athletes_workout(self) -> None:
+        owner = User.objects.create_user(email="mcp-workout-matches-owner@example.cc", password="x", name="Owner")
+        outsider = User.objects.create_user(
+            email="mcp-workout-matches-outsider@example.cc", password="x", name="Outsider"
+        )
+        workout = Workout.objects.create(created_by=owner, name="Owner's workout", sport="bike")
+
+        tools = WorkoutMCPTools(request=_mcp_request(outsider, "activities:read"))
+        with self.assertRaises(PermissionDenied):
+            tools.get_workout_matches(workout_id=workout.id)
+
 
 class SchedulingToolsTests(TestCase):
     def test_schedule_workout_normalizes_time_of_day_and_creates_entry(self) -> None:
