@@ -29,7 +29,7 @@ const METRICS: { key: MetricKey; label: string; format: (v: number) => string }[
   { key: "avg_humidity", label: "Humidity", format: (v) => `${Math.round(v)}%` },
 ];
 
-const GRID_COLS = "28px minmax(90px,0.9fr) minmax(140px,1.3fr) 0.55fr 0.5fr 0.6fr 0.75fr 0.65fr 0.6fr 0.5fr";
+const GRID_COLS = "28px minmax(90px,0.9fr) minmax(140px,1.3fr) 0.55fr 0.5fr 0.6fr minmax(110px,1.1fr) 0.65fr 0.6fr 0.5fr";
 
 function segBtn(active: boolean) {
   return {
@@ -87,17 +87,20 @@ function RegenerateWorkBlockButton({ activityId, workoutId }: { activityId: stri
           : "Regenerate this activity's laps from the matched workout to fill in work-block power/HR."
       }
       style={{
-        border: "none",
-        background: "none",
-        padding: 0,
-        marginLeft: 4,
-        fontSize: 11,
-        cursor: "pointer",
+        width: "100%",
+        padding: "6px 8px",
+        fontSize: 11.5,
+        fontWeight: 600,
+        borderRadius: 7,
+        border: `1px solid ${mutation.isError ? "#e0442e" : "var(--line)"}`,
+        background: mutation.isError ? "rgba(224,68,46,0.08)" : "var(--card)",
         color: mutation.isError ? "#e0442e" : "var(--ember)",
+        cursor: "pointer",
+        whiteSpace: "nowrap" as const,
         opacity: mutation.isPending ? 0.6 : 1,
       }}
     >
-      {mutation.isPending ? "…" : "↺"}
+      {mutation.isPending ? "Regenerating…" : mutation.isError ? "Failed - retry" : "↺ Regenerate"}
     </button>
   );
 }
@@ -127,12 +130,17 @@ function Row({ rank, entry, workoutId }: { rank: number; entry: WorkoutMatchComp
       <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>{entry.avg_power != null ? `${entry.avg_power}W` : "—"}</span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>{entry.avg_hr != null ? entry.avg_hr : "—"}</span>
       <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{entry.ef != null ? entry.ef.toFixed(3) : "—"}</span>
-      <span className="mono" style={{ fontSize: 12, color: "var(--ink2)", display: "flex", alignItems: "center" }}>
-        {entry.work_block_avg_power != null ? `${entry.work_block_avg_power}W` : "—"}
-        {missingWorkBlockData && <RegenerateWorkBlockButton activityId={entry.activity_id} workoutId={workoutId} />}
+      <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
+        {missingWorkBlockData ? (
+          <RegenerateWorkBlockButton activityId={entry.activity_id} workoutId={workoutId} />
+        ) : entry.work_block_avg_power != null ? (
+          `${entry.work_block_avg_power}W`
+        ) : (
+          "—"
+        )}
       </span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
-        {entry.work_block_avg_hr != null ? entry.work_block_avg_hr : "—"}
+        {missingWorkBlockData ? "" : entry.work_block_avg_hr != null ? entry.work_block_avg_hr : "—"}
       </span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
         {entry.avg_core_temp != null ? `${entry.avg_core_temp.toFixed(1)}°C` : "—"}
