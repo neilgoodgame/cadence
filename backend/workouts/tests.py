@@ -1323,6 +1323,30 @@ class CorrelateActivityTests(TestCase):
 
         self.assertIsNone(correlate_activity(curve, activity))
 
+    def test_sporadic_zero_power_dropouts_are_excluded_not_penalized(self):
+        """Regression coverage for a real activity found live: a sensor/connection dropout reads
+        as power=0 for a few seconds at a time (confirmed against the raw FIT records - cadence
+        and heart rate carry on unaffected through the gap, so it isn't a genuine stop), which
+        was dragging a structurally-strong match down to a mediocre correlation score. Zeros
+        should be excluded like missing data, not paired as real "no effort" samples."""
+        workout = _make_gorby_workout(self.athlete)
+        curve = build_expected_curve(workout)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Dropouts", start_date=timezone.now(), moving_time=3600
+        )
+        _seed_matching_records(activity, 3601, ftp=250)
+        # Sprinkle in dropouts throughout the ride, mirroring the real activity's pattern (many
+        # short zero-power runs scattered across the whole duration, not clustered in one spot).
+        dropout_ts = list(range(50, 3550, 137))
+        Record.objects.filter(activity=activity, t__in=dropout_ts).update(power=0)
+
+        result = correlate_activity(curve, activity)
+
+        self.assertIsNotNone(result)
+        r, coverage, _implied_ftp = result
+        self.assertGreater(r, 0.99)
+        self.assertLess(coverage, 1.0)
+
 
 class RankWorkoutsForActivityTests(TestCase):
     """The mirror image of the CorrelateActivityTests/WorkoutMatchScanEndpointTests above: one

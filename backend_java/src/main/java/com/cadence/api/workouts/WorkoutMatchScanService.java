@@ -211,7 +211,16 @@ public class WorkoutMatchScanService {
 	/** Same as {@link #correlateActivity}, but takes an already-fetched, {@code t}-ordered
 	 * record list - split out so a caller correlating one activity against many candidate
 	 * workouts (see {@link #rankWorkoutsForActivity}) can fetch the activity's records once and
-	 * reuse them, instead of re-fetching the same rows for every candidate. */
+	 * reuse them, instead of re-fetching the same rows for every candidate.
+	 *
+	 * <p>A literal {@code 0} reading is treated the same as missing data (excluded, not paired
+	 * as a real "no effort" sample): confirmed against a real activity's raw FIT records that a
+	 * sensor/connection dropout reads as {@code power=0} for a few seconds at a time while
+	 * cadence and heart rate carry on unaffected - real noise, not a genuine stop. No workout
+	 * step ever targets 0 (every target is a positive %FTP/watts value), so this can't mask an
+	 * intentionally flat zero-effort block; it only drops noise that would otherwise count as a
+	 * correlation outlier against whatever the plan expects at that moment.
+	 */
 	public CorrelationResult correlateRecords(List<Segment> curve, List<Record> records) {
 		if (records.isEmpty()) {
 			return null;
@@ -220,7 +229,7 @@ public class WorkoutMatchScanService {
 		List<Double> xs = new ArrayList<>();
 		List<Double> ys = new ArrayList<>();
 		for (Record r : records) {
-			if (r.getPower() == null) {
+			if (r.getPower() == null || r.getPower() == 0) {
 				continue;
 			}
 			Double expected = sampleExpectedAt(curve, r.getT() - startT);
