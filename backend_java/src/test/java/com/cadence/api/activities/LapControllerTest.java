@@ -117,6 +117,13 @@ class LapControllerTest extends IntegrationTest {
 		var response = lapController.regenerateLaps(activity.getId());
 
 		assertThat(response.data()).hasSize(1);
+		// stepDuration is the step's own planned duration (300, matching newSingleStepWorkout) -
+		// distinct from the lap's own `duration`, which is what was actually recorded. Used by the
+		// frontend to tell two identically-targeted-but-differently-timed steps apart (see
+		// lapPresentation.ts::summarizeSteps).
+		var lap = response.data().get(0);
+		assertThat(lap.stepDuration()).isEqualTo(300);
+		assertThat(lap.stepDistance()).isNull();
 	}
 
 	@Test

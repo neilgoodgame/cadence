@@ -1,4 +1,9 @@
-import type { Zone, ZoneSet, ZoneType } from "../api/types";
+import type { Sport, Zone, ZoneSet, ZoneType } from "../api/types";
+
+/** Which ZoneType a sport's power target/zones are relative to. */
+export function powerZoneType(sport: Sport): ZoneType {
+  return sport === "run" ? "run_power" : "bike_power";
+}
 
 export interface ZoneTime {
   name: string;

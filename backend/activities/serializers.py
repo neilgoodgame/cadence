@@ -135,6 +135,12 @@ class LapSerializer(serializers.ModelSerializer):
     step_target_low = serializers.SerializerMethodField()
     step_target_high = serializers.SerializerMethodField()
     step_power_unit = serializers.SerializerMethodField()
+    # The step's own planned duration/distance - distinct from this lap's `duration`/
+    # `distance_km`, which are what was actually recorded. Lets the frontend tell two laps with
+    # an identical target apart when they're genuinely different steps (e.g. a 20s 100%-FTP
+    # block vs a 600s 100%-FTP block) - see lapPresentation.ts::summarizeSteps.
+    step_duration = serializers.SerializerMethodField()
+    step_distance = serializers.SerializerMethodField()
 
     class Meta:
         model = Lap
@@ -151,6 +157,8 @@ class LapSerializer(serializers.ModelSerializer):
             "step_target_low",
             "step_target_high",
             "step_power_unit",
+            "step_duration",
+            "step_distance",
         ]
 
     def get_step_kind(self, obj: Lap) -> str | None:
@@ -167,6 +175,12 @@ class LapSerializer(serializers.ModelSerializer):
 
     def get_step_power_unit(self, obj: Lap) -> str | None:
         return obj.workout_step.power_unit if obj.workout_step_id else None
+
+    def get_step_duration(self, obj: Lap) -> int | None:
+        return obj.workout_step.duration if obj.workout_step_id else None
+
+    def get_step_distance(self, obj: Lap) -> int | None:
+        return obj.workout_step.distance if obj.workout_step_id else None
 
 
 class TagSerializer(serializers.ModelSerializer):

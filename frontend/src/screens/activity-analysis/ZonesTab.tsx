@@ -1,17 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { getStreams } from "../../api/activities";
 import { listZones } from "../../api/athletes";
-import { bucketIntoZones } from "../../lib/zones";
+import { bucketIntoZones, powerZoneType } from "../../lib/zones";
 import { formatDuration, formatPace } from "../../lib/format";
 import type { Activity, ZoneSet, ZoneType } from "../../api/types";
 import { HeatStrainCard } from "./HeatStrainCard";
 
 const RESOLUTION_SECONDS = 5; // "medium" resolution steps every 5th sample
 const ZONE_COLORS = ["var(--zone-1)", "var(--zone-2)", "var(--zone-3)", "var(--zone-4)", "var(--zone-5)"];
-
-function powerZoneType(activity: Activity): ZoneType {
-  return activity.sport === "run" ? "run_power" : "bike_power";
-}
 
 /** The threshold values this activity's zones are actually computed from - the power/pace ones
  * come from the ThresholdHistory ledger entry effective as of this activity's own date (via
@@ -23,13 +19,13 @@ function referenceSummary(activity: Activity, zones: ZoneSet[] | undefined, lthr
   const referenceFor = (type: ZoneType) => zones?.find((z) => z.type === type)?.reference;
 
   if (activity.sport === "run") {
-    const criticalRunPower = referenceFor("run_power");
+    const criticalRunPower = referenceFor(powerZoneType(activity.sport));
     if (criticalRunPower != null) parts.push(`Critical power ${criticalRunPower}W`);
     const thresholdPace = referenceFor("pace");
     if (thresholdPace != null) parts.push(`Threshold pace ${formatPace(thresholdPace)}`);
   }
   else {
-    const ftp = referenceFor("bike_power");
+    const ftp = referenceFor(powerZoneType(activity.sport));
     if (ftp != null) parts.push(`FTP ${ftp}W`);
   }
   if (lthr != null) {
@@ -142,7 +138,7 @@ export function ZonesTab({ activity, athleteId }: { activity: Activity; athleteI
           athleteId={athleteId}
           activityId={activity.id}
           channel="power"
-          zoneType={powerZoneType(activity)}
+          zoneType={powerZoneType(activity.sport)}
           unit="W"
         />
         <ZoneList
