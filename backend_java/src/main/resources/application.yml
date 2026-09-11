@@ -10,9 +10,21 @@ spring:
       enabled: true
 
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:cadence_java}
+    # socketTimeout (seconds)/tcpKeepAlive: without these, a connection whose underlying TCP
+    # socket goes dead mid-query (RDS-side blip, network drop - happened live on staging
+    # 2026-09-11) blocks forever instead of throwing. HikariCP has no way to notice or evict a
+    # connection stuck like that - keepalive-time below only pings connections sitting IDLE in
+    # the pool, never one already checked out and hung. socketTimeout is what actually bounds
+    # a stuck read, so the exception propagates and HikariCP can discard and replace it.
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:cadence_java}?socketTimeout=30&tcpKeepAlive=true
     username: ${POSTGRES_USER:cadence}
     password: ${POSTGRES_PASSWORD:cadence}
+    hikari:
+      # Proactively validates idle pooled connections every 5 minutes (comfortably under the
+      # 30-minute default max-lifetime) so a connection that's gone stale while just sitting in
+      # the pool gets caught and replaced before a real request ever tries to use it - the
+      # complementary half of socketTimeout above, which only covers a connection already in use.
+      keepalive-time: 300000
 
   jackson:
     property-naming-strategy: SNAKE_CASE
