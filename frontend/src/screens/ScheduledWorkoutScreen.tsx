@@ -8,25 +8,11 @@ import { Card } from "../components/Card";
 import { formatDuration } from "../lib/format";
 import { sportColor, sportLabel } from "../lib/sportColors";
 import { useAuth } from "../auth/AuthContext";
-import { withIds } from "./workouts/workoutTree";
+import { NOOP_STRUCTURE_ACTIONS, withIds } from "./workouts/workoutTree";
 import { buildTcx, download, tcxHasApproximateTarget, thresholdsFromAthlete } from "./workouts/workoutExport";
 import { ExportModal } from "./workouts/ExportModal";
 import { MiniChart } from "./workouts/WorkoutLibraryScreen";
-import { WorkoutStructureList, type StructureActions } from "./workouts/WorkoutStructureList";
-
-// Read-only here (see WorkoutStructureList's readOnly prop) - none of these are ever called,
-// they just satisfy StructureActions' shape.
-const NOOP_STRUCTURE_ACTIONS: StructureActions = {
-  selectedId: null,
-  onSelect: () => {},
-  onMoveUp: () => {},
-  onMoveDown: () => {},
-  onDuplicate: () => {},
-  onRemove: () => {},
-  onRepeatChange: () => {},
-  onAddChild: () => {},
-  onAddNestedGroup: () => {},
-};
+import { WorkoutStructureList } from "./workouts/WorkoutStructureList";
 
 const TIME_OPTIONS: { value: TimeOfDay; label: string }[] = [
   { value: "AM", label: "Morning" },

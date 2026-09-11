@@ -217,12 +217,14 @@ class WorkoutMatchScanCandidateSerializer(serializers.Serializer):
 
 
 class WorkoutMatchScanSerializer(serializers.ModelSerializer):
+    object = serializers.SerializerMethodField()
     candidates = serializers.SerializerMethodField()
 
     class Meta:
         model = WorkoutMatchScan
         fields = [
             "id",
+            "object",
             "workout_id",
             "status",
             "total_candidates",
@@ -232,6 +234,11 @@ class WorkoutMatchScanSerializer(serializers.ModelSerializer):
             "completed_at",
             "candidates",
         ]
+
+    def get_object(self, scan: "WorkoutMatchScan") -> str:
+        # Matches the Java WorkoutMatchScanResponse DTO's @JsonProperty("object") - both
+        # backends should emit the same Stripe-style discriminator, same as ExportJob/ImportJob.
+        return "workout_match_scan"
 
     def get_candidates(self, scan: "WorkoutMatchScan") -> list[dict[str, Any]]:
         # Only meaningful once the scan is done - a candidate row's own correlation/coverage

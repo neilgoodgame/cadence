@@ -647,6 +647,35 @@ export interface WorkoutMatch {
   avg_power: number | null;
 }
 
+// Not to be confused with WorkoutMatch/WorkoutMatchMethod above - those back the tag-based
+// already-linked-activities list (getWorkoutMatches). This is the on-demand Pearson-correlation
+// scan (POST/GET .../match-scans) that suggests likely-but-unlinked candidates.
+export type WorkoutMatchScanStatus = "queued" | "processing" | "ready" | "failed";
+
+export interface WorkoutMatchScanCandidate {
+  activity_id: string;
+  name: string;
+  date: string;
+  correlation: number;
+  duration_diff_seconds: number;
+  coverage: number;
+  implied_ftp: number | null;
+  moving_time: number;
+  avg_power: number | null;
+}
+
+export interface WorkoutMatchScan {
+  id: string;
+  workout_id: string;
+  status: WorkoutMatchScanStatus;
+  total_candidates: number | null;
+  processed_candidates: number;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+  candidates: WorkoutMatchScanCandidate[];
+}
+
 export type TimeOfDay = "AM" | "MID" | "PM";
 export type ScheduledWorkoutStatus = "planned" | "completed" | "missed";
 
