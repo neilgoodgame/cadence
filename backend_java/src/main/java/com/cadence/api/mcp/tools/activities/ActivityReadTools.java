@@ -84,7 +84,9 @@ public class ActivityReadTools {
 
 	@McpTool(name = "get_activity", description = "Get full detail on a single activity by id "
 			+ "(from list_activities' results) - name, sport, duration, distance, power/HR/TSS, "
-			+ "elevation, calories, training effect, tags, and linked workout/gear ids.",
+			+ "elevation, calories, training effect, tags, linked workout/gear ids, and average "
+			+ "air temperature/humidity (device-reported ambient conditions - present for indoor "
+			+ "rides too, from a smart trainer's onboard sensor, not just outdoor weather).",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public McpActivityDetail getActivity(

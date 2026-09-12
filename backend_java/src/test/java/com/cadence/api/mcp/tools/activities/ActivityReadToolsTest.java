@@ -104,4 +104,23 @@ class ActivityReadToolsTest extends IntegrationTest {
 		assertThat(laps).hasSize(1);
 		assertThat(laps.get(0).stepKind()).isEqualTo(StepKind.BLOCK);
 	}
+
+	@Test
+	void getActivityIncludesAverageAirTemperatureAndHumidity() {
+		User athlete = newUser("read-tool-env-athlete@example.cc");
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName("Indoor trainer ride");
+		activity.setStartDate(Instant.parse("2026-01-01T06:00:00Z"));
+		activity.setAvgAirTemp(24.5);
+		activity.setAvgHumidity(58);
+		activity = activityRepository.save(activity);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = activityReadTools.getActivity(activity.getId());
+
+		assertThat(result.avgAirTemp()).isEqualTo(24.5);
+		assertThat(result.avgHumidity()).isEqualTo(58);
+	}
 }
