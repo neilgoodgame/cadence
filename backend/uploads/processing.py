@@ -8,7 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import User
-from activities.lap_derivation import replace_laps_with_derived
+from activities.match_preferences import apply_match_rename, apply_match_side_effects
 from activities.models import Activity, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
 from athletes.threshold_history import recompute_for_activity
 from athletes.zones import get_or_create_zone_set, reference_for
@@ -16,7 +16,6 @@ from scheduling.models import ScheduledWorkout
 from scheduling.serializers import ScheduledWorkoutSerializer
 from webhooks.events import fire_event
 from workouts.match_scan import rank_workouts_for_activity
-from workouts.models import Workout
 
 from .models import Upload
 from .parsers import parse_file
@@ -728,17 +727,6 @@ def update_best_efforts(
             _update_hr_best_efforts(activity, athlete, "running_hr", hr_series)
 
 
-def _matched_activity_name(workout: Workout, activity: Activity, athlete: User) -> str:
-    """athlete.rename_matched_activities's naming - the %Y-%m-%d format matches the
-    device-derived default name this replaces (see the "{sport} on {date}" f-string
-    below in _ingest_activity), so a renamed activity still sorts/reads consistently
-    with any sibling that wasn't matched (or whose athlete has the preference off).
-    """
-    if athlete.append_match_date_to_name:
-        return f"{workout.name} - {activity.start_date:%Y-%m-%d}"
-    return workout.name
-
-
 def _resolve_workout_match_candidate(candidates: list[ScheduledWorkout], activity: Activity) -> ScheduledWorkout | None:
     """Picks which of several same-day, same-sport, still-planned candidates this activity
     actually belongs to. A single candidate needs no disambiguation - the common case, and the
@@ -801,26 +789,14 @@ def attempt_workout_match(activity: Activity, athlete: User) -> None:
         candidate.save(update_fields=["activity", "status"])
     activity.workout = candidate.workout
     update_fields = ["workout"]
-    if athlete.rename_matched_activities:
-        activity.name = _matched_activity_name(candidate.workout, activity, athlete)
-        update_fields.append("name")
+    apply_match_rename(activity, candidate.workout.name, athlete, update_fields)
     activity.save(update_fields=update_fields)
+    # Auto-matched specifically marks a match the system made without a human confirming it -
+    # kept local to this ingest-time path, not part of apply_match_side_effects (which also
+    # runs when a human explicitly accepts a Scan-for-matches candidate).
     tag, _created = Tag.objects.get_or_create(athlete=athlete, name="Auto-matched", defaults={"origin": "auto"})
     ActivityTag.objects.get_or_create(activity=activity, tag=tag)
-    if athlete.copy_matched_workout_tags:
-        for workout_tag_name in candidate.workout.tags:
-            if not workout_tag_name.strip():
-                continue
-            # manual, not auto: these are the workout's own descriptive tags (e.g. "road",
-            # "marathon") - ordinary content that happens to be copied automatically, not a
-            # system marker like "Auto-matched" above. auto would permanently block removal
-            # (see views.py's untag_activity) on every activity that ever reuses this tag name.
-            workout_tag, _created = Tag.objects.get_or_create(
-                athlete=athlete, name=workout_tag_name, defaults={"origin": "manual"}
-            )
-            ActivityTag.objects.get_or_create(activity=activity, tag=workout_tag)
-    if athlete.lap_source == "matched_workout":
-        replace_laps_with_derived(activity, candidate.workout)
+    apply_match_side_effects(activity, candidate.workout, athlete)
     fire_event("scheduled_workout.matched", athlete.id, ScheduledWorkoutSerializer(candidate).data)
 
 

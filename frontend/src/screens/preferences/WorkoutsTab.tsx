@@ -42,9 +42,10 @@ export function WorkoutsTab() {
               style={{ marginTop: 2 }}
             />
             <span>
-              Rename auto-matched activities to their workout's name
+              Rename matched activities to their workout's name
               <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>
-                When an upload matches a scheduled workout, use the workout's name instead of the default.
+                Whenever an activity gets matched to a workout - on import, or when you accept a Scan-for-matches
+                candidate - use the workout's name instead of the default.
               </div>
             </span>
           </label>
@@ -81,9 +82,10 @@ export function WorkoutsTab() {
               style={{ marginTop: 2 }}
             />
             <span>
-              Copy the workout's tags to auto-matched activities
+              Copy the workout's tags to matched activities
               <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>
-                When an upload matches a scheduled workout, also apply the workout's tags to the activity.
+                Whenever an activity gets matched to a workout - on import, or when you accept a Scan-for-matches
+                candidate - also apply the workout's tags to the activity.
               </div>
             </span>
           </label>
@@ -103,8 +105,9 @@ export function WorkoutsTab() {
             <option value="original">Original laps from the device/file</option>
           </select>
           <div style={{ fontSize: 12, color: "var(--ink3)" }}>
-            Only affects new imports - use "Regenerate from workout" on an activity's Laps tab to re-derive laps for
-            one already imported.
+            Applies whenever an activity gets newly matched to a workout - on import, or when you accept a
+            Scan-for-matches candidate. Use "Regenerate from workout" on an activity's Laps tab to re-derive laps for
+            one already matched.
           </div>
         </label>
       </div>
