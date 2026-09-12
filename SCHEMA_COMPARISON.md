@@ -42,6 +42,8 @@ the same logical entity.
 | `race` | `races_race` |
 | `workout` | `workouts_workout` |
 | `workout_step` | `workouts_workoutstep` |
+| `workout_match_scan` | `workouts_workoutmatchscan` |
+| `workout_match_scan_candidate` | `workouts_workoutmatchscancandidate` |
 
 `oauth_authorization` (Java) has no single equivalent — see "Structural differences"
 below. Every other table on each side (Django's auth/admin/session machinery, Java's
@@ -403,6 +405,38 @@ and the matching columns, closing the gap. Both sides are at parity on this feat
 | repeat | integer NOT NULL DEFAULT 1 | integer NOT NULL | |
 | target_pct | double precision | double precision | |
 | workout_id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
+
+### `workout_match_scan` (Java) vs `workouts_workoutmatchscan` (Python)
+
+Tracks one background scan of a workout's athlete's own unmatched activities for likely
+correlation-based matches - see `ARCHITECTURE.md` §6.
+
+| Column | Java | Python | Note |
+|---|---|---|---|
+| completed_at | timestamptz | timestamptz | |
+| created_at | timestamptz NOT NULL DEFAULT now() | timestamptz NOT NULL | |
+| error_message | varchar(500) NOT NULL DEFAULT '' | varchar(500) NOT NULL | |
+| excluded_step_kinds | jsonb NOT NULL DEFAULT '[]' | jsonb NOT NULL | which leaf step kinds (e.g. `warmup`, `cool`) were excluded from the correlation for this scan - chosen once, at creation, not an athlete-wide preference |
+| id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
+| processed_candidates | integer NOT NULL DEFAULT 0 | integer NOT NULL | |
+| status | varchar(12) NOT NULL DEFAULT 'queued' | varchar(12) NOT NULL | |
+| total_candidates | integer | integer | null until the duration pre-filter has run |
+| workout_id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
+
+### `workout_match_scan_candidate` (Java) vs `workouts_workoutmatchscancandidate` (Python)
+
+One candidate activity a scan evaluated, however low its correlation - every candidate is
+stored, not just the top N, so the full ranked list stays inspectable.
+
+| Column | Java | Python | Note |
+|---|---|---|---|
+| activity_id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
+| correlation | double precision NOT NULL | double precision NOT NULL | Pearson correlation between the activity's power stream and the workout's planned curve |
+| coverage | double precision NOT NULL | double precision NOT NULL | fraction of the workout's planned duration the activity actually covers |
+| duration_diff_seconds | integer NOT NULL | integer NOT NULL | |
+| id | bigint (sequence) | bigint | |
+| implied_ftp | integer | integer | regression-slope-derived, informational only - never used for ranking |
+| scan_id | varchar(40) NOT NULL | varchar(40) NOT NULL | |
 
 ### `race` (Java) vs `races_race` (Python)
 
