@@ -15,13 +15,15 @@ public record McpActivityDetail(
 		String id, String name, Sport sport, Instant startDate, int movingTime, double distanceKm,
 		Integer avgPower, Integer avgHr, int tss, Double intensity,
 		Integer ascent, Integer calories, String trainingEffectLabel,
-		List<String> tags, String workoutId, String bikeId, String shoeId) {
+		List<String> tags, String workoutId, String bikeId, String shoeId,
+		Double avgAirTemp, Integer avgHumidity) {
 
 	public static McpActivityDetail from(ActivityResponse activity) {
 		return new McpActivityDetail(
 				activity.id(), activity.name(), activity.sport(), activity.startDate(), activity.movingTime(),
 				activity.distanceKm(), activity.avgPower(), activity.avgHr(), activity.tss(), activity.intensity(),
 				activity.ascent(), activity.calories(), activity.trainingEffectLabel(),
-				activity.tags(), activity.workoutId(), activity.bikeId(), activity.shoeId());
+				activity.tags(), activity.workoutId(), activity.bikeId(), activity.shoeId(),
+				activity.avgAirTemp(), activity.avgHumidity());
 	}
 }

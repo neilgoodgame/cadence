@@ -151,8 +151,10 @@ class ActivityMCPTools(ScopedMCPToolset):
 
     def get_activity(self, activity_id: str) -> dict[str, Any]:
         """Get full detail on a single activity by id (from list_activities' results) - name,
-        sport, duration, distance, power/HR/TSS, elevation, calories, training effect, tags, and
-        linked workout/gear ids."""
+        sport, duration, distance, power/HR/TSS, elevation, calories, training effect, tags,
+        linked workout/gear ids, and average air temperature/humidity (device-reported ambient
+        conditions - present for indoor rides too, from a smart trainer's onboard sensor, not
+        just outdoor weather)."""
         self._require_scope(ACTIVITIES_READ)
         activity = get_object_or_404(Activity, pk=activity_id)
         self._require_read(activity.athlete_id)
@@ -175,6 +177,8 @@ class ActivityMCPTools(ScopedMCPToolset):
             "workout_id": activity.workout_id,
             "bike_id": activity.bike_id,
             "shoe_id": activity.shoe_id,
+            "avg_air_temp": activity.avg_air_temp,
+            "avg_humidity": activity.avg_humidity,
         }
 
     def get_activity_laps(self, activity_id: str) -> dict[str, Any]:

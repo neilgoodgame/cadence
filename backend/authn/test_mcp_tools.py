@@ -438,6 +438,26 @@ class ActivityToolsTests(TestCase):
         with self.assertRaises(PermissionDenied):
             tools.get_activity(activity_id=activity.id)
 
+    def test_get_activity_includes_average_air_temperature_and_humidity(self) -> None:
+        athlete = User.objects.create_user(email="mcp-activity-env@example.cc", password="x", name="Athlete")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Indoor trainer ride",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+            avg_air_temp=24.5,
+            avg_humidity=58,
+        )
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.get_activity(activity_id=activity.id)
+
+        self.assertEqual(result["avg_air_temp"], 24.5)
+        self.assertEqual(result["avg_humidity"], 58)
+
     def test_list_activities_requires_activities_read_scope(self) -> None:
         athlete = User.objects.create_user(email="mcp-list-activities-scope@example.cc", password="x", name="Athlete")
         tools = ActivityMCPTools(request=_mcp_request(athlete, "workouts:write"))
