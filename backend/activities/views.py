@@ -22,6 +22,7 @@ from workouts.models import Workout
 
 from .comments import resolve_parent_comment
 from .lap_derivation import replace_laps_with_derived
+from .match_preferences import apply_match_rename, apply_match_side_effects
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Record, Tag
 from .serializers import (
     ActivityCommentCreateSerializer,
@@ -260,13 +261,24 @@ class ActivityDetailView(APIView):
         if "sport" in data:
             activity.sport = data["sport"]
             update_fields.append("sport")
+        newly_matched_workout = None
         if "workout_id" in data:
             workout_id = data["workout_id"]
+            previous_workout_id = activity.workout_id
             if workout_id is None:
                 activity.workout = None
             else:
                 activity.workout = get_object_or_404(Workout, pk=workout_id, created_by_id=activity.athlete_id)
+                # Accepting a Scan-for-matches candidate is this same PATCH, just with only
+                # workout_id in the body - a genuinely new match applies the athlete's match
+                # preferences (rename/copy-tags/regenerate-laps) exactly like ingest-time
+                # auto-match already does (see activities/match_preferences.py). Re-submitting
+                # the same workout_id is a no-op, not a fresh match.
+                if workout_id != previous_workout_id:
+                    newly_matched_workout = activity.workout
             update_fields.append("workout")
+            if newly_matched_workout is not None:
+                apply_match_rename(activity, newly_matched_workout.name, activity.athlete, update_fields)
         if "primary_activity_id" in data:
             primary_id = data["primary_activity_id"]
             activity.primary_activity = None if primary_id is None else _resolve_primary_activity(activity, primary_id)
@@ -292,6 +304,8 @@ class ActivityDetailView(APIView):
 
         if update_fields:
             activity.save(update_fields=update_fields)
+        if newly_matched_workout is not None:
+            apply_match_side_effects(activity, newly_matched_workout, activity.athlete)
         return Response(ActivitySerializer(activity).data)
 
     def delete(self, request: Request, id: str) -> Response:

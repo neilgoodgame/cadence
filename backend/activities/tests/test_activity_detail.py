@@ -1,10 +1,10 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from django.test import TestCase
 
 from accounts.models import User, UserRelationship
 from athletes.models import ThresholdHistory
-from workouts.models import Workout
+from workouts.models import Workout, WorkoutStep
 
 from ..models import Activity, ActivityTag, Lap, Record, Tag
 from .helpers import _bearer_client, _delegated_client, _make_activity
@@ -66,6 +66,125 @@ class ActivityDetailViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["workout_id"])
+
+    # The following cover accepting a Scan-for-matches candidate applying the same match
+    # preferences ingest-time auto-match already does (see activities/match_preferences.py) -
+    # this PATCH endpoint is exactly what the "accept" click in the UI calls.
+
+    def test_patch_link_workout_does_not_rename_by_default(self):
+        activity = _make_activity(self.athlete, name="Morning Run")
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run")
+
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json"
+        )
+
+        self.assertEqual(response.json()["name"], "Morning Run")
+
+    def test_patch_link_workout_renames_when_preference_enabled(self):
+        self.athlete.rename_matched_activities = True
+        self.athlete.save(update_fields=["rename_matched_activities"])
+        activity = _make_activity(self.athlete, name="Morning Run")
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run")
+
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json"
+        )
+
+        self.assertEqual(response.json()["name"], "Z2 long ride")
+
+    def test_patch_link_workout_prefers_an_explicit_name_over_the_rename_preference(self):
+        self.athlete.rename_matched_activities = True
+        self.athlete.save(update_fields=["rename_matched_activities"])
+        activity = _make_activity(self.athlete, name="Morning Run")
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run")
+
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}",
+            {"workout_id": workout.id, "name": "My own title"},
+            format="json",
+        )
+
+        self.assertEqual(response.json()["name"], "My own title")
+
+    def test_patch_link_workout_does_not_copy_tags_by_default(self):
+        activity = _make_activity(self.athlete)
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run", tags=["endurance"])
+
+        _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json")
+
+        self.assertFalse(ActivityTag.objects.filter(activity=activity, tag__name="endurance").exists())
+
+    def test_patch_link_workout_copies_tags_when_preference_enabled(self):
+        self.athlete.copy_matched_workout_tags = True
+        self.athlete.save(update_fields=["copy_matched_workout_tags"])
+        activity = _make_activity(self.athlete)
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run", tags=["endurance"])
+
+        _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json")
+
+        activity_tag = ActivityTag.objects.get(activity=activity, tag__name="endurance")
+        self.assertEqual(activity_tag.tag.origin, "manual")
+
+    def test_patch_link_workout_regenerates_laps_when_preference_enabled(self):
+        self.athlete.lap_source = "matched_workout"
+        self.athlete.save(update_fields=["lap_source"])
+        start = datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        activity = _make_activity(self.athlete, start_date=start)
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=100,
+            target_high=100,
+        )
+        for t in range(301):
+            Record.objects.create(activity=activity, t=t, ts=start + timedelta(seconds=t), power=200)
+
+        _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json")
+
+        self.assertEqual(activity.laps.count(), 1)
+        self.assertEqual(activity.laps.first().workout_step_id, WorkoutStep.objects.get().id)
+
+    def test_patch_leaves_laps_untouched_by_default(self):
+        activity = _make_activity(self.athlete)
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run")
+        Lap.objects.create(activity=activity, index=1, duration=1800, distance_km=5.0)
+
+        _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json")
+
+        laps = list(activity.laps.all())
+        self.assertEqual(len(laps), 1)
+        self.assertIsNone(laps[0].workout_step_id)
+
+    def test_patch_resubmitting_the_same_workout_id_does_not_reapply_preferences(self):
+        self.athlete.rename_matched_activities = True
+        self.athlete.save(update_fields=["rename_matched_activities"])
+        activity = _make_activity(self.athlete, name="Morning Run")
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run")
+        client = _bearer_client(self.athlete)
+        client.patch(f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json")
+        client.patch(f"/v1/activities/{activity.id}", {"name": "Renamed by me"}, format="json")
+
+        # Re-submitting the same workout_id (e.g. an unrelated form resave) must not clobber the
+        # name the athlete set afterwards - it isn't a new match.
+        response = client.patch(f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json")
+
+        self.assertEqual(response.json()["name"], "Renamed by me")
+
+    def test_patch_unlinking_a_workout_does_not_apply_match_preferences(self):
+        self.athlete.copy_matched_workout_tags = True
+        self.athlete.save(update_fields=["copy_matched_workout_tags"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run", tags=["endurance"])
+        activity = _make_activity(self.athlete, workout=workout)
+
+        _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"workout_id": None}, format="json")
+
+        self.assertFalse(ActivityTag.objects.filter(activity=activity, tag__name="endurance").exists())
 
     def test_patch_weights_and_fluids(self):
         activity = _make_activity(self.athlete)

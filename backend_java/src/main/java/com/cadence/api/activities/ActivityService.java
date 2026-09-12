@@ -13,6 +13,7 @@ import com.cadence.api.cql.CqlException;
 import com.cadence.api.cql.CqlNode;
 import com.cadence.api.cql.CqlParser;
 import com.cadence.api.cql.spec.CqlSpecification;
+import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutService;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -34,17 +35,19 @@ public class ActivityService {
 	private final ActivityCursorPagination pagination;
 	private final WorkoutService workoutService;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
+	private final WorkoutMatchPreferenceService matchPreferenceService;
 	private final ActivityFieldMap fieldMap = new ActivityFieldMap();
 
 	public ActivityService(ActivityRepository activityRepository, ActivityTagRepository activityTagRepository,
 			RecordRepository recordRepository, ActivityCursorPagination pagination, WorkoutService workoutService,
-			ThresholdHistoryRepository thresholdHistoryRepository) {
+			ThresholdHistoryRepository thresholdHistoryRepository, WorkoutMatchPreferenceService matchPreferenceService) {
 		this.activityRepository = activityRepository;
 		this.activityTagRepository = activityTagRepository;
 		this.recordRepository = recordRepository;
 		this.pagination = pagination;
 		this.workoutService = workoutService;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
+		this.matchPreferenceService = matchPreferenceService;
 	}
 
 	public Activity getActivity(String id) {
@@ -192,9 +195,29 @@ public class ActivityService {
 		if (body.containsKey("sport")) {
 			activity.setSport(Sport.fromWireValue((String) body.get("sport")));
 		}
+		Workout newlyMatchedWorkout = null;
 		if (body.containsKey("workout_id")) {
 			Object value = body.get("workout_id");
-			activity.setWorkout(value == null ? null : workoutService.getWorkout((String) value));
+			String previousWorkoutId = activity.getWorkout() == null ? null : activity.getWorkout().getId();
+			if (value == null) {
+				activity.setWorkout(null);
+			}
+			else {
+				Workout workout = workoutService.getWorkout((String) value);
+				activity.setWorkout(workout);
+				// Accepting a Scan-for-matches candidate is this same update, just with only
+				// workout_id in the body - a genuinely new match applies the athlete's match
+				// preferences (rename/copy-tags/regenerate-laps) exactly like ingest-time
+				// auto-match already does (see WorkoutMatchPreferenceService). Re-submitting the
+				// same workout_id is a no-op, not a fresh match.
+				if (!value.equals(previousWorkoutId)) {
+					newlyMatchedWorkout = workout;
+				}
+			}
+		}
+		if (newlyMatchedWorkout != null) {
+			matchPreferenceService.applyRename(activity, newlyMatchedWorkout, activity.getAthlete(),
+					body.containsKey("name"));
 		}
 		if (body.containsKey("primary_activity_id")) {
 			Object value = body.get("primary_activity_id");
@@ -221,7 +244,11 @@ public class ActivityService {
 				}
 			}
 		}
-		return activityRepository.save(activity);
+		Activity saved = activityRepository.save(activity);
+		if (newlyMatchedWorkout != null) {
+			matchPreferenceService.applySideEffects(saved, newlyMatchedWorkout, saved.getAthlete());
+		}
+		return saved;
 	}
 
 	@Transactional

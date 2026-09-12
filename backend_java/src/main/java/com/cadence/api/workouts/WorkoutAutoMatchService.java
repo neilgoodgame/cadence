@@ -4,11 +4,10 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.ActivityTag;
 import com.cadence.api.activities.ActivityTagRepository;
-import com.cadence.api.activities.LapDerivationService;
 import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagOrigin;
 import com.cadence.api.activities.TagRepository;
-import com.cadence.api.athletes.LapSource;
+import com.cadence.api.activities.WorkoutMatchPreferenceService;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.scheduling.ScheduledWorkout;
 import com.cadence.api.scheduling.ScheduledWorkoutRepository;
@@ -18,7 +17,6 @@ import com.cadence.api.webhooks.ScheduledWorkoutMatchedEvent;
 import com.cadence.api.workouts.WorkoutMatchScanService.RankedWorkout;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -39,28 +37,24 @@ public class WorkoutAutoMatchService {
 
 	private static final Logger log = LoggerFactory.getLogger(WorkoutAutoMatchService.class);
 
-	// Matches ParseFileTasklet.DATE_FORMAT - the same date format the default
-	// "{sport} on {date}" activity name already uses.
-	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
 	private final ActivityRepository activityRepository;
 	private final ScheduledWorkoutRepository scheduledWorkoutRepository;
 	private final TagRepository tagRepository;
 	private final ActivityTagRepository activityTagRepository;
 	private final ApplicationEventPublisher eventPublisher;
-	private final LapDerivationService lapDerivationService;
+	private final WorkoutMatchPreferenceService matchPreferenceService;
 	private final WorkoutMatchScanService workoutMatchScanService;
 
 	public WorkoutAutoMatchService(ActivityRepository activityRepository,
 			ScheduledWorkoutRepository scheduledWorkoutRepository, TagRepository tagRepository,
 			ActivityTagRepository activityTagRepository, ApplicationEventPublisher eventPublisher,
-			LapDerivationService lapDerivationService, WorkoutMatchScanService workoutMatchScanService) {
+			WorkoutMatchPreferenceService matchPreferenceService, WorkoutMatchScanService workoutMatchScanService) {
 		this.activityRepository = activityRepository;
 		this.scheduledWorkoutRepository = scheduledWorkoutRepository;
 		this.tagRepository = tagRepository;
 		this.activityTagRepository = activityTagRepository;
 		this.eventPublisher = eventPublisher;
-		this.lapDerivationService = lapDerivationService;
+		this.matchPreferenceService = matchPreferenceService;
 		this.workoutMatchScanService = workoutMatchScanService;
 	}
 
@@ -85,11 +79,12 @@ public class WorkoutAutoMatchService {
 
 		Workout workout = candidate.getWorkout();
 		activity.setWorkout(workout);
-		if (athlete.isRenameMatchedActivities()) {
-			activity.setName(matchedActivityName(workout, activity, athlete));
-		}
+		matchPreferenceService.applyRename(activity, workout, athlete, false);
 		activityRepository.save(activity);
 
+		// Auto-matched specifically marks a match the system made without a human confirming it
+		// - kept local to this ingest-time path, not part of WorkoutMatchPreferenceService (which
+		// also runs when a human explicitly accepts a Scan-for-matches candidate).
 		Tag tag = tagRepository.findByAthleteIdAndNameIgnoreCase(athlete.getId(), "Auto-matched").orElseGet(() -> {
 			Tag created = new Tag();
 			created.setAthlete(athlete);
@@ -103,34 +98,7 @@ public class WorkoutAutoMatchService {
 			link.setTag(tag);
 			activityTagRepository.save(link);
 		}
-		if (athlete.isCopyMatchedWorkoutTags()) {
-			for (String workoutTagName : workout.getTags()) {
-				if (workoutTagName.isBlank()) {
-					continue;
-				}
-				// MANUAL, not AUTO: these are the workout's own descriptive tags (e.g. "road",
-				// "marathon") - ordinary content that happens to be copied automatically, not a
-				// system marker like "Auto-matched" above. AUTO would permanently block removal
-				// (see TagService.detachTag) on every activity that ever reuses this tag name.
-				Tag workoutTag = tagRepository.findByAthleteIdAndNameIgnoreCase(athlete.getId(), workoutTagName)
-						.orElseGet(() -> {
-							Tag created = new Tag();
-							created.setAthlete(athlete);
-							created.setName(workoutTagName);
-							created.setOrigin(TagOrigin.MANUAL);
-							return tagRepository.save(created);
-						});
-				if (!activityTagRepository.existsByActivityIdAndTagId(activity.getId(), workoutTag.getId())) {
-					ActivityTag link = new ActivityTag();
-					link.setActivity(activity);
-					link.setTag(workoutTag);
-					activityTagRepository.save(link);
-				}
-			}
-		}
-		if (athlete.getLapSource() == LapSource.MATCHED_WORKOUT) {
-			lapDerivationService.replaceLapsWithDerived(activity, workout);
-		}
+		matchPreferenceService.applySideEffects(activity, workout, athlete);
 		eventPublisher.publishEvent(new ScheduledWorkoutMatchedEvent(candidate.getId(), athlete.getId()));
 	}
 
@@ -169,13 +137,5 @@ public class WorkoutAutoMatchService {
 						+ "correlation (r={}).",
 				activity.getId(), candidates.size(), candidateIds, winner.getId(), best.correlation());
 		return winner;
-	}
-
-	/** athlete.isRenameMatchedActivities()'s naming. */
-	private String matchedActivityName(Workout workout, Activity activity, User athlete) {
-		if (athlete.isAppendMatchDateToName()) {
-			return workout.getName() + " - " + DATE_FORMAT.format(activity.getStartDate().atZone(ZoneOffset.UTC));
-		}
-		return workout.getName();
 	}
 }
