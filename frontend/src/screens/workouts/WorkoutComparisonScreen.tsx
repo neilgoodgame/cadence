@@ -29,7 +29,7 @@ const METRICS: { key: MetricKey; label: string; format: (v: number) => string }[
   { key: "avg_humidity", label: "Humidity", format: (v) => `${Math.round(v)}%` },
 ];
 
-const GRID_COLS = "28px minmax(90px,0.9fr) minmax(140px,1.3fr) 0.55fr 0.5fr 0.6fr minmax(110px,1.1fr) 0.65fr 0.6fr 0.5fr";
+const GRID_COLS = "28px minmax(90px,0.9fr) minmax(140px,1.3fr) 0.55fr 0.5fr 0.6fr minmax(180px,1.8fr) 0.65fr 0.6fr 0.5fr";
 
 function segBtn(active: boolean) {
   return {
@@ -48,7 +48,7 @@ function segBtn(active: boolean) {
 function ColHeaders() {
   const style = { fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--ink3)", textTransform: "uppercase" as const };
   return (
-    <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, gap: 8, padding: "0 4px 8px", minWidth: 760 }}>
+    <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, gap: 8, padding: "0 4px 8px", minWidth: 830 }}>
       <span style={style}>#</span>
       <span style={style}>Date</span>
       <span style={style}>Activity</span>
@@ -87,20 +87,21 @@ function RegenerateWorkBlockButton({ activityId, workoutId }: { activityId: stri
           : "Regenerate this activity's laps from the matched workout to fill in work-block power/HR."
       }
       style={{
+        // Same style as LapsTab.tsx's "Create workout from laps" button.
         width: "100%",
-        padding: "6px 8px",
-        fontSize: 11.5,
-        fontWeight: 600,
-        borderRadius: 7,
         border: `1px solid ${mutation.isError ? "#e0442e" : "var(--line)"}`,
+        borderRadius: 8,
         background: mutation.isError ? "rgba(224,68,46,0.08)" : "var(--card)",
-        color: mutation.isError ? "#e0442e" : "var(--ember)",
+        color: mutation.isError ? "#e0442e" : "var(--ink2)",
+        fontSize: 12.5,
+        fontWeight: 700,
+        padding: "7px 14px",
         cursor: "pointer",
         whiteSpace: "nowrap" as const,
         opacity: mutation.isPending ? 0.6 : 1,
       }}
     >
-      {mutation.isPending ? "Regenerating…" : mutation.isError ? "Failed - retry" : "↺ Regenerate"}
+      {mutation.isPending ? "Regenerating…" : mutation.isError ? "Failed - retry" : "Regenerate laps from workout"}
     </button>
   );
 }
@@ -117,7 +118,7 @@ function Row({ rank, entry, workoutId }: { rank: number; entry: WorkoutMatchComp
         alignItems: "center",
         padding: "8px 4px",
         borderTop: "1px solid var(--line)",
-        minWidth: 760,
+        minWidth: 830,
         textDecoration: "none",
         color: "inherit",
       }}
