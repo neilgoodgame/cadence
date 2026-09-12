@@ -61,7 +61,8 @@ Django's, not because the schemas have diverged.
 | **Activities** | `Activity`, `Lap`, `Record` (1Hz stream, natively RANGE-partitioned on `ts`), `DurationCurve`, `BestEffort`, `Tag`/`ActivityTag` | The one table in the system that's partitioned — see `AWS_MIGRATION_PLAN.md` §4 for why (previously a TimescaleDB hypertable, moved to native partitioning once TimescaleDB was confirmed unsupported on AWS RDS/Aurora). |
 | **Athletes** | `ZoneSet` | HR/power/pace zone definitions, computed from profile thresholds (FTP, LTHR, threshold pace, etc.). |
 | **Workouts** | `Workout`, `WorkoutFolder`, `WorkoutStep` | `WorkoutStep` is a tree: leaf steps carry `target_low`/`target_high` as ramp *start*/*end* values (not min/max), plus `repeat` groups that nest. |
-| **Scheduling** | `ScheduledWorkout` | Links a `Workout` to a calendar date/assignee; resolves to `activity_id` once the planned session is actually completed (auto-matched via lap-structure inference, or manually). |
+| **Scheduling** | `ScheduledWorkout` | Links a `Workout` to a calendar date/assignee; resolves to `activity_id` once the planned session is actually completed — auto-matched by date at ingest (same-day, same-sport, still-planned, with a correlation-based tie-break when more than one candidate exists — §6.1), or linked manually. |
+| **Workout matching** | `WorkoutMatchScan`, `WorkoutMatchScanCandidate` | A background correlation-based scan of one workout against an athlete's own unmatched activities — see §6.1; distinct from the date-based `ScheduledWorkout` auto-match above. |
 | **Gear** | `Bike`, `Component`, `ServiceRecord`, `Shoe`, `ShoeModel`, `ShoeModelVersion` | Shoe catalog is two-tier (`ShoeModel` → `ShoeModelVersion`) so mileage tracking can be per-specific-version while the catalog picker browses by model. |
 | **Uploads** | `Upload`, `UploadBatch` | Tracks async ingestion job status (`queued\|processing\|ready\|failed\|duplicate\|skipped`); `stored_path` points at the raw file on `default_storage`. |
 | **Webhooks** | `Webhook`, `WebhookDelivery` | Outbound-only today — no inbound webhook receivers from Garmin/Strava; import is user-initiated file upload, not a push integration. |
@@ -275,6 +276,26 @@ erDiagram
         string status
         string activity_id FK
     }
+    WorkoutMatchScan {
+        string id PK
+        string workout_id FK
+        string status
+        int total_candidates
+        int processed_candidates
+        jsonb excluded_step_kinds
+        string error_message
+        datetime created_at
+        datetime completed_at
+    }
+    WorkoutMatchScanCandidate {
+        bigint id PK
+        string scan_id FK
+        string activity_id FK
+        float correlation
+        int duration_diff_seconds
+        float coverage
+        int implied_ftp
+    }
     Bike {
         string id PK
         string athlete_id FK
@@ -412,6 +433,9 @@ erDiagram
     User ||--o{ ScheduledWorkout : "athlete_id"
     User ||--o{ ScheduledWorkout : "assigned_by"
     Activity ||--o{ ScheduledWorkout : "activity_id"
+    Workout ||--o{ WorkoutMatchScan : "workout_id"
+    WorkoutMatchScan ||--o{ WorkoutMatchScanCandidate : "scan_id"
+    Activity ||--o{ WorkoutMatchScanCandidate : "activity_id"
     User ||--o{ Shoe : "athlete_id"
     ShoeModelVersion ||--o{ Shoe : "shoe_model_version_id"
     User ||--o{ ShoeModel : "created_by"
@@ -812,6 +836,102 @@ tree shape for:
   /v1/activities/{id}/infer-workout`) — nothing is persisted until the
   athlete explicitly saves the inferred draft from the Builder.
 
+### 6.1 Correlation-based workout matching
+
+Beyond the date-based auto-match at ingest (matches a new upload to a
+same-day, same-sport, still-planned `ScheduledWorkout` — see §2's domain
+model and §12), both backends can also match an activity to a workout
+**structurally**, by correlating the activity's actual per-second power
+stream against the workout's planned %FTP-vs-time curve (Python
+`workouts/match_scan.py`; Java `WorkoutMatchScanService`) — useful for a
+workout that was executed but never scheduled on the calendar, or
+scheduled for the wrong day.
+
+- **Shared primitives**: `build_expected_curve` flattens a workout's leaf
+  steps into cumulative `(start_s, end_s, %FTP)` segments (a `watts`-unit
+  target is converted via the athlete's current power reference — the
+  exact reference value barely matters since Pearson correlation is
+  invariant to any single consistent rescale of the whole curve);
+  `correlate_records`/`pearson` then correlate that curve against an
+  activity's `(t, power)` samples. **A literal `power=0` reading is
+  treated as missing data, not a real "no effort" sample** — confirmed
+  against a real FIT file where a sensor/connection dropout reads as `0`
+  for a few seconds at a time while cadence/HR carry on unaffected; no
+  workout step ever targets exactly 0, so this can't mask a genuinely flat
+  effort block. v1 only supports power-target, duration-ended workouts
+  (`scannability_error`) — pace-target workouts read too noisily off
+  GPS/treadmill speed to trust at the same confidence threshold, with no
+  forced-compliance mechanism like ERG mode holds power to.
+- **Two directions, both built on those primitives, architecturally
+  different**:
+  - *Workout → candidates* (`POST /v1/workouts/{id}/match-scans`, polled
+    via `GET .../match-scans/{scan_id}`) is an **async job**
+    (`WorkoutMatchScan`/`WorkoutMatchScanCandidate`, mirroring
+    `dataexport.ExportJob`'s status/progress shape) because it evaluates
+    every one of the athlete's own unmatched, same-sport activities —
+    fetching a full per-second `Record` stream per candidate is too slow
+    to do synchronously in the request. A duration pre-filter
+    (`DURATION_TOLERANCE_SECONDS = 60`, validated against real historical
+    matches — three independent matches all held r ≥ 0.87 with a 0–12s
+    duration diff, while widening to ±60s only ever added noise-floor
+    candidates, never a false positive) runs against the persisted
+    `workout.duration` column before fetching any `WorkoutStep` rows, so a
+    large activity library doesn't pay a per-candidate steps query. Every
+    evaluated candidate is stored, however low its correlation — not just
+    the top N — so the full ranked list stays inspectable. A per-scan
+    choice of leaf `kind`s to exclude from the correlation (e.g. `warmup`,
+    `cool` — `WorkoutMatchScan.excluded_step_kinds`) is presented as
+    checkboxes for whichever step kinds the target workout actually has,
+    not a stored athlete-wide preference; an excluded step still advances
+    the curve's running time offset without emitting a segment, so later
+    segments keep their correct absolute position (the activity recording
+    still covers the excluded phase in real time).
+  - *Activity → candidate workouts* (`GET
+    /v1/activities/{id}/workout-match-candidates`, `rank_workouts_for_activity`)
+    is **synchronous** — one activity's records fetched once, correlated
+    against a whole workout library — and doubles as the ingest-time
+    tie-break for when more than one same-day `ScheduledWorkout` candidate
+    exists for a single upload (`_resolve_workout_match_candidate` /
+    `resolveMatchCandidate`, in `uploads/processing.py`'s
+    `attempt_workout_match` / Java's `WorkoutAutoMatchService`).
+- **Accepting a match** — whether a scan candidate, or any other caller
+  linking an activity to a workout via `PATCH /v1/activities/{id}
+  {workout_id}` — optionally renames the activity to the workout's name,
+  copies the workout's tags, and re-derives laps from the workout's steps,
+  gated on the same three athlete preferences
+  (`rename_matched_activities`/`append_match_date_to_name`,
+  `copy_matched_workout_tags`, `lap_source`) that ingest-time auto-match
+  already used, via a function/service shared between both paths
+  (`activities/match_preferences.py` in Python,
+  `WorkoutMatchPreferenceService` in Java) — deliberately **excluding**
+  the "Auto-matched" system tag ingest-time auto-match also applies, since
+  that tag specifically means the system made the match without a human
+  confirming it, the opposite of accepting a candidate. Re-submitting the
+  same `workout_id` (e.g. an unrelated resave) is a no-op, not treated as
+  a fresh match; an explicit `name` in the same request wins over the
+  rename preference.
+
+### 6.2 Comparing matched activities
+
+`GET /v1/workouts/{id}/matches/compare` (frontend
+`WorkoutComparisonScreen`) trends and ranks every activity ever matched to
+one workout template — average power/HR, aerobic efficiency (`avg_power /
+avg_hr`, computed at read time, never stored), environment/core-temp
+averages, and a **work-block-only** average power/HR: a duration-weighted
+average over just the laps whose `WorkoutStep.kind == "block"` (excluding
+warmup/rest/cooldown), computed as one batched aggregate query across
+every matched activity at once rather than a per-activity loop. This
+depends on laps having actually been derived against the matched workout
+(`Lap.workout_step_id`, §2.1) — an activity matched before lap derivation
+existed, or one whose laps came from the original device file, shows a
+"Regenerate laps from workout" action inline instead of blank cells.
+
+The same read logic is also exposed as an MCP tool (`get_workout_matches`
+— `workouts/mcp.py` in Python, `WorkoutReadTools.java`'s `getWorkoutMatches`
+in Java) by calling the identical query function the REST endpoint calls,
+rather than a parallel implementation, so the two surfaces can't drift out
+of sync from each other.
+
 ## 7. Webhooks
 
 Outbound only: an athlete/coach registers a `Webhook` (URL + subscribed
@@ -852,7 +972,10 @@ build` produces a static `dist/`). Key structural choices:
   activities (`has_gps=false`) get a distance-source panel instead.
 - **Routing**: `react-router-dom`, one route per top-level screen
   (`/`, `/activities`, `/activities/:id`, `/best-efforts`, `/calendar`,
-  `/gear`, `/import`, `/workouts`, `/preferences`), gated behind
+  `/gear`, `/import`, `/workouts`, `/workouts/:id` (a read-only workout
+  detail screen — linked activities, upcoming scheduled occurrences, a
+  scan-for-matches action, an edit button to `WorkoutEditor`),
+  `/workouts/:id/compare` (§6.2), `/preferences`), gated behind
   `RequireAuth`.
 - **Theming**: three token-driven CSS-custom-property themes (Teal /
   Violet / Day), switched via a `data-theme` attribute, no per-component
@@ -938,3 +1061,22 @@ plus an anonymous volume over `.venv`/build output so the host's
   container but becomes a race condition the moment more than one task
   starts concurrently — already flagged as a pre-AWS-migration fix in
   `AWS_MIGRATION_PLAN.md` §8.3, not yet changed in the code.
+- **The Java backend's JDBC datasource sets an explicit `socketTimeout`
+  (30s) and Hikari `keepalive-time` (5min)** — found necessary live on
+  staging: a connection whose underlying TCP socket died mid-query (an
+  RDS-side blip) left HikariCP believing it still held an active,
+  in-use connection forever, since neither `max-lifetime` nor
+  `keepalive-time` alone ever touch a connection that's already checked
+  out and stuck — only a bounded socket read (`socketTimeout`) turns that
+  into an exception HikariCP can actually act on. `/healthz` doesn't touch
+  the database, so it stayed healthy throughout while every DB-backed
+  endpoint hung for 30s then failed — a full service restart was the only
+  way to recover before this fix.
+- **`mcp` (the Python MCP SDK) is pinned below its 2.0 line and
+  `dependabot.yml` excludes it from automated major-version bumps** —
+  `django-mcp-server==0.5.7` imports `FastMCP` from `mcp.server`, which
+  mcp's 2.0 release removed entirely. This has broken CI twice via an
+  otherwise-routine grouped dependency-bump PR before the ignore rule was
+  added; if `django-mcp-server` is ever upgraded to a version supporting
+  mcp 2.x, update both the pin in `backend/pyproject.toml` and the
+  ignore rule together, not just one.
