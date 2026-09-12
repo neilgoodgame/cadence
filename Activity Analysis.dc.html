@@ -300,19 +300,51 @@
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <div onClick="{{ inferWorkout }}" style="border:1px solid var(--line,#e6e2dc);border-radius:8px;background:var(--card,#fff);color:var(--ink2,#6f6b65);font-size:12.5px;font-weight:700;padding:7px 14px;cursor:pointer;">{{ inferLabel }}</div>
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink3,#9a958d);cursor:pointer;"><input type="checkbox" checked="{{ autoDetectRepeats }}" onChange="{{ toggleAutoDetect }}"></input>Auto-detect repeat groups</label>
+          <sc-if value="{{ hasWorkoutMatch }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ regenerateFromWorkout }}" style="{{ regenBtnStyle }}">{{ regenLabel }}</div>
+          </sc-if>
         </div>
-        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
-          <div style="display:grid;grid-template-columns:50px 1fr 90px 90px 1.1fr 80px;gap:12px;padding:13px 22px;border-bottom:1px solid var(--line,#e6e2dc);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);font-weight:600;">
-            <span>Lap</span><span>Distance</span><span>Time</span><span>Speed</span><span>Avg Power</span><span style="text-align:right;">Avg HR</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink3,#9a958d);cursor:pointer;"><input type="checkbox" checked="{{ collapseByTarget }}" onChange="{{ toggleCollapseByTarget }}"></input>Collapse by target (ignore duration)</label>
+
+        <!-- step-summary cards -->
+        <sc-if value="{{ hasStepSummary }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <sc-for list="{{ stepSummaryCards }}" as="c" hint-placeholder-count="3">
+              <div style="{{ c.cardStyle }}">
+                <div style="{{ c.colorBar }}"></div>
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                  <div style="font-size:12.5px;font-weight:700;color:var(--ink,#1b1a18);">{{ c.title }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink2,#6f6b65);">{{ c.statsLine }}</div>
+                  <sc-if value="{{ c.hasCompliance }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:{{ c.complianceColor }};">{{ c.complianceLabel }}</div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
           </div>
-          <sc-for list="{{ laps }}" as="lap" hint-placeholder-count="9">
-            <div style="display:grid;grid-template-columns:50px 1fr 90px 90px 1.1fr 80px;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink,#1b1a18);">
-              <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--elev,#faf9f7);font-weight:600;font-size:11px;">{{ lap.idx }}</span>
-              <span>{{ lap.dist }} <span style="color:var(--ink3,#9a958d);">km</span></span>
-              <span>{{ lap.time }}</span>
-              <span>{{ lap.speed }} <span style="color:var(--ink3,#9a958d);">km/h</span></span>
-              <span style="display:flex;align-items:center;gap:10px;"><span style="width:60px;height:6px;border-radius:3px;background:var(--elev,#faf9f7);overflow:hidden;display:inline-block;"><span style="display:block;height:100%;width:{{ lap.barPct }};background:var(--ember,#ec4a26);"></span></span>{{ lap.power }} <span style="color:var(--ink3,#9a958d);">w</span></span>
-              <span style="text-align:right;">{{ lap.hr }} <span style="color:var(--ink3,#9a958d);">bpm</span></span>
+        </sc-if>
+
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
+          <div style="display:grid;grid-template-columns:50px 1.6fr 0.7fr 78px 78px 1fr 70px;gap:12px;padding:13px 22px;border-bottom:1px solid var(--line,#e6e2dc);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);font-weight:600;">
+            <span>Lap</span><span>Step</span><span>Distance</span><span>Time</span><span>Speed</span><span>Avg Power</span><span style="text-align:right;">Avg HR</span>
+          </div>
+          <sc-for list="{{ lapRows }}" as="row" hint-placeholder-count="7">
+            <div onClick="{{ row.onToggle }}" style="{{ row.rowStyle }}">
+              <span style="{{ row.idxStyle }}">{{ row.idx }}</span>
+              <span style="display:flex;align-items:center;gap:6px;min-width:0;">
+                <sc-if value="{{ row.isGroupHeader }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;color:var(--ink3,#9a958d);width:10px;flex-shrink:0;">{{ row.caret }}</span></sc-if>
+                <span style="{{ row.stepBarStyle }}"></span>
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0;">
+                  <span style="font-family:'Hanken Grotesk',sans-serif;font-size:12.5px;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ row.stepLabel }}</span>
+                  <sc-if value="{{ row.hasTarget }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ row.stepTarget }}</span></sc-if>
+                  <sc-if value="{{ row.hasCompliance }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;color:{{ row.complianceColor }};">{{ row.complianceLabel }}</span></sc-if>
+                </span>
+              </span>
+              <span>{{ row.dist }} <span style="color:var(--ink3,#9a958d);">km</span></span>
+              <span>{{ row.time }}</span>
+              <span>{{ row.speed }} <span style="color:var(--ink3,#9a958d);">km/h</span></span>
+              <span style="display:flex;align-items:center;gap:10px;"><span style="width:60px;height:6px;border-radius:3px;background:var(--elev,#faf9f7);overflow:hidden;display:inline-block;"><span style="display:block;height:100%;width:{{ row.barPct }};background:var(--ember,#ec4a26);"></span></span>{{ row.power }} <span style="color:var(--ink3,#9a958d);">w</span></span>
+              <span style="text-align:right;">{{ row.hr }} <span style="color:var(--ink3,#9a958d);">bpm</span></span>
             </div>
           </sc-for>
         </div>
@@ -401,7 +433,13 @@ class Component extends DCLogic {
     confirmingDelete: false,
     autoDetectRepeats: true, inferring: false,
     recomputed: false,
+    collapseByTarget: false, expandedGroups: {}, workoutId: 'w-demo-1', regeneratingLaps: false,
   };
+
+  // matched-workout reference used for step target %/compliance math (see lapPresentation.ts's
+  // compliancePct/stepZonePct docstrings) — mirrors Preferences.dc.html's default athlete profile.
+  athlete = { ftp: 265, max_hr: 186 };
+  powerReference = 265;
 
   tagGroups = [
     { name: 'INTENSITY', tags: ['Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Recovery'] },
@@ -417,6 +455,124 @@ class Component extends DCLogic {
     return this.tagPalette[Math.abs(hash) % this.tagPalette.length];
   }
   tagRgba(name, a) { const c = this.tagColor(name); const n = parseInt(c.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; }
+
+  // ----- laps: ported from lapPresentation.ts / workoutTree.ts so the Laps tab's step badges,
+  // compliance %, repeat-group collapsing, and step-summary cards match the real app exactly. -----
+  zoneColor(pct) { if (pct < 56) return '#8a94a6'; if (pct < 76) return '#3d7fd6'; if (pct < 91) return '#2fa66a'; if (pct < 106) return '#f0a02e'; if (pct < 121) return '#ec4a26'; return '#c4332a'; }
+  kindLabel(k) { return { warmup: 'Warm-up', block: 'Work block', rec: 'Recovery', cool: 'Cooldown' }[k] || k; }
+  fmtDur(sec) { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return m + ':' + String(s).padStart(2, '0'); }
+
+  formatStepTarget(lap) {
+    if (!lap.step_target_type) return null;
+    const lo = lap.step_target_low ?? 0, hi = lap.step_target_high ?? lo;
+    const range = (unit) => (lo === hi ? (lo + unit) : (lo + '–' + hi + unit));
+    switch (lap.step_target_type) {
+      case 'power': return lap.step_power_unit === 'watts' ? range('W') : range('% FTP');
+      case 'hr': return range('% max HR');
+      case 'pace': return range('% threshold pace');
+      case 'cadence': return range(' rpm');
+      default: return 'Open';
+    }
+  }
+  stepZonePct(lap, powerReference) {
+    if (!lap.step_target_type || lap.step_target_low == null) return null;
+    const lo = lap.step_target_low, hi = lap.step_target_high ?? lo, mid = (lo + hi) / 2;
+    if (lap.step_target_type === 'power') {
+      if (lap.step_power_unit === 'watts') return powerReference ? (mid / powerReference) * 100 : null;
+      return mid;
+    }
+    if (lap.step_target_type === 'hr' || lap.step_target_type === 'pace') return mid;
+    return null;
+  }
+  compliancePct(lap, athlete, powerReference) {
+    if (!lap.step_target_type || lap.step_target_low == null) return null;
+    const lo = lap.step_target_low, hi = lap.step_target_high ?? lo, mid = (lo + hi) / 2;
+    if (lap.step_target_type === 'power' && lap.avg_power != null) {
+      const targetWatts = lap.step_power_unit === 'watts' ? mid : (powerReference ? (mid / 100) * powerReference : null);
+      if (!targetWatts) return null;
+      return Math.round((lap.avg_power / targetWatts) * 100);
+    }
+    if (lap.step_target_type === 'hr' && lap.avg_hr != null && athlete.max_hr) {
+      const targetBpm = (mid / 100) * athlete.max_hr;
+      if (!targetBpm) return null;
+      return Math.round((lap.avg_hr / targetBpm) * 100);
+    }
+    return null;
+  }
+  complianceColor(pct) { const deviation = Math.abs(pct - 100); if (deviation <= 5) return '#2fa66a'; if (deviation <= 15) return '#f0a02e'; return '#e0442e'; }
+
+  groupLaps(laps) {
+    const groups = [];
+    let i = 0;
+    while (i < laps.length) {
+      const lap = laps[i];
+      if (lap.repeat_index === 1) {
+        let j = i;
+        const rep1 = [];
+        while (j < laps.length && laps[j].repeat_index === 1) { rep1.push(laps[j]); j++; }
+        const cycleLen = rep1.length;
+        const reps = [rep1];
+        let k = j, expected = 2;
+        while (k + cycleLen <= laps.length) {
+          const slice = laps.slice(k, k + cycleLen);
+          const matches = slice.every((l, idx) => l.repeat_index === expected && l.workout_step_id === rep1[idx].workout_step_id);
+          if (!matches) break;
+          reps.push(slice); k += cycleLen; expected++;
+        }
+        if (reps.length > 1) { groups.push({ type: 'repeat', key: 'repeat-' + lap.index, reps }); i = k; continue; }
+        for (const l of rep1) groups.push({ type: 'single', lap: l });
+        i = j; continue;
+      }
+      groups.push({ type: 'single', lap });
+      i++;
+    }
+    return groups;
+  }
+  weightedAvg(laps, valueFn) {
+    let weightedSum = 0, weight = 0;
+    for (const l of laps) { const v = valueFn(l); if (v == null) continue; weightedSum += v * l.duration; weight += l.duration; }
+    return weight > 0 ? Math.round(weightedSum / weight) : null;
+  }
+  meanArr(vals) { return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null; }
+  stepSignature(lap, collapseByTarget) {
+    const parts = [lap.step_kind, lap.step_target_type, lap.step_target_low, lap.step_target_high, lap.step_power_unit];
+    if (!collapseByTarget) parts.push(lap.step_duration, lap.step_distance);
+    return parts.join('|');
+  }
+  summarizeSteps(laps, athlete, powerReference, collapseByTarget) {
+    const order = []; const buckets = new Map();
+    for (const lap of laps) {
+      const key = lap.workout_step_id != null ? this.stepSignature(lap, collapseByTarget) : 'other';
+      if (!buckets.has(key)) { buckets.set(key, []); order.push(key); }
+      buckets.get(key).push(lap);
+    }
+    return order.map(key => {
+      const group = buckets.get(key);
+      const first = group[0];
+      const powers = group.map(l => l.avg_power).filter(v => v != null);
+      const hrs = group.map(l => l.avg_hr).filter(v => v != null);
+      const compliances = group.map(l => this.compliancePct(l, athlete, powerReference)).filter(v => v != null);
+      const zonePct = this.stepZonePct(first, powerReference);
+      const compliance = this.meanArr(compliances);
+      return {
+        key,
+        label: first.step_kind ? this.kindLabel(first.step_kind) : 'Other',
+        target: this.formatStepTarget(first),
+        color: zonePct != null ? this.zoneColor(zonePct) : 'var(--ink3,#9a958d)',
+        count: group.length,
+        avgDuration: this.meanArr(group.map(l => l.duration)) ?? 0,
+        avgPower: this.meanArr(powers),
+        avgHr: this.meanArr(hrs),
+        avgCompliancePct: compliance != null ? Math.round(compliance) : null,
+      };
+    });
+  }
+  toggleGroup(key) { this.setState(s => ({ expandedGroups: { ...s.expandedGroups, [key]: !s.expandedGroups[key] } })); }
+  regenerateLapsFromWorkout() {
+    this.setState({ regeneratingLaps: true });
+    clearTimeout(this._regenTt);
+    this._regenTt = setTimeout(() => this.setState({ regeneratingLaps: false }), 700);
+  }
 
   // ----- header: rename -----
   startRename() { this.setState(s => ({ renaming: true, nameInput: s.activityName })); }
@@ -518,7 +674,9 @@ class Component extends DCLogic {
       if (i === RN) { ex = x; ey = y; }
     }
 
-    // laps (9)
+    // laps (9) — tagged with workout-step metadata (warmup, then 4x[block, rec]) mirroring
+    // "The Gorby" fixture in lapPresentation.test.ts, so the Laps tab's step-summary cards,
+    // compliance badges, and repeat-group collapsing all have real data to render against.
     const laps = [];
     const per = Math.floor(N / 9);
     for (let l = 0; l < 9; l++) {
@@ -528,14 +686,28 @@ class Component extends DCLogic {
       const sp = +avg('speed').toFixed(1);
       const secs = Math.round((dist / sp) * 3600);
       const pw = Math.round(avg('power'));
+      const hrAvg = Math.round(avg('hr'));
+      let stepMeta;
+      if (l === 0) {
+        stepMeta = { step_kind: 'warmup', step_target_type: 'power', step_target_low: 50, step_target_high: 70, step_power_unit: 'pct_ftp', step_duration: 600, workout_step_id: 1, repeat_index: null };
+      } else {
+        const pairIdx = l - 1;
+        const rep = Math.floor(pairIdx / 2) + 1;
+        const isBlock = pairIdx % 2 === 0;
+        stepMeta = isBlock
+          ? { step_kind: 'block', step_target_type: 'power', step_target_low: 110, step_target_high: 110, step_power_unit: 'pct_ftp', step_duration: 300, workout_step_id: 2, repeat_index: rep }
+          : { step_kind: 'rec', step_target_type: 'power', step_target_low: 50, step_target_high: 55, step_power_unit: 'pct_ftp', step_duration: 300, workout_step_id: 3, repeat_index: rep };
+      }
       laps.push({
-        idx: l + 1,
-        dist: dist.toFixed(2),
+        idx: l + 1, index: l + 1,
+        dist: dist.toFixed(2), distance_km: dist,
         time: Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'),
+        duration: secs,
         speed: sp.toFixed(1),
-        power: pw,
-        hr: Math.round(avg('hr')),
+        power: pw, avg_power: pw,
+        hr: hrAvg, avg_hr: hrAvg,
         barPct: Math.round((pw / 280) * 100) + '%',
+        ...stepMeta,
       });
     }
 
@@ -604,6 +776,103 @@ class Component extends DCLogic {
   }
 
   model = this.buildModel();
+
+  // Builds the step-summary cards and the flattened (group-header + optionally-expanded-child)
+  // lap rows for the Laps tab table — mirrors LapsTab.tsx's StepSummaryCards/RepeatGroupRow/
+  // SingleLapRow, flattened into one list since this DSL's sc-for doesn't nest well for a
+  // variable-depth expand/collapse table.
+  buildLapsView() {
+    const laps = this.model.laps;
+    const athlete = this.athlete, powerReference = this.powerReference;
+    const maxPower = Math.max(1, ...laps.map(l => l.avg_power || 0));
+
+    const summaryRows = this.summarizeSteps(laps, athlete, powerReference, this.state.collapseByTarget);
+    const stepSummaryCards = summaryRows.map(r => ({
+      key: r.key,
+      cardStyle: { display: 'flex', alignItems: 'stretch', gap: '10px', border: '1px solid var(--line,#e6e2dc)', borderRadius: '10px', padding: '8px 12px', background: 'var(--card,#fff)', minWidth: '150px' },
+      colorBar: { width: '4px', borderRadius: '2px', background: r.color, flexShrink: 0 },
+      title: r.label + (r.target ? (' · ' + r.target) : ''),
+      statsLine: r.count + '× avg ' + this.fmtDur(Math.round(r.avgDuration)) + (r.avgPower != null ? (' · ' + Math.round(r.avgPower) + 'w') : '') + (r.avgHr != null ? (' · ' + Math.round(r.avgHr) + 'bpm') : ''),
+      hasCompliance: r.avgCompliancePct != null,
+      complianceLabel: r.avgCompliancePct + '% of target',
+      complianceColor: r.avgCompliancePct != null ? this.complianceColor(r.avgCompliancePct) : 'var(--ink3,#9a958d)',
+    }));
+    // Nothing worth summarizing if every lap landed in one "Other" bucket (no step-derived laps).
+    const hasStepSummary = summaryRows.some(r => r.key !== 'other');
+
+    const stepBadge = (lap) => {
+      if (!lap.step_kind) return { label: '—', hasTarget: false, target: '', hasCompliance: false, complianceLabel: '', complianceColor: '', barColor: 'var(--ink3,#9a958d)' };
+      const target = this.formatStepTarget(lap);
+      const zonePct = this.stepZonePct(lap, powerReference);
+      const color = zonePct != null ? this.zoneColor(zonePct) : 'var(--ink3,#9a958d)';
+      const compliance = this.compliancePct(lap, athlete, powerReference);
+      return {
+        label: this.kindLabel(lap.step_kind) + (lap.repeat_index != null ? (' · rep ' + lap.repeat_index) : ''),
+        hasTarget: !!target, target: target || '',
+        hasCompliance: compliance != null,
+        complianceLabel: compliance != null ? (compliance + '% of target') : '',
+        complianceColor: compliance != null ? this.complianceColor(compliance) : '',
+        barColor: color,
+      };
+    };
+
+    const GRID = '50px 1.6fr 0.7fr 78px 78px 1fr 70px';
+    const baseRowStyle = { display: 'grid', gridTemplateColumns: GRID, gap: '12px', padding: '14px 22px', borderBottom: '1px solid var(--line,#e6e2dc)', alignItems: 'center', fontFamily: "'JetBrains Mono',monospace", fontSize: '13px', color: 'var(--ink,#1b1a18)' };
+
+    const leafRow = (lap, indented) => {
+      const sb = stepBadge(lap);
+      return {
+        key: 'lap-' + lap.index, isGroupHeader: false,
+        idx: String(lap.index),
+        idxStyle: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: indented ? '22px' : '24px', height: indented ? '22px' : '24px', borderRadius: '50%', background: indented ? 'var(--card,#fff)' : 'var(--elev,#faf9f7)', fontWeight: 600, fontSize: indented ? '10.5px' : '11px' },
+        caret: '', onToggle: () => {},
+        rowStyle: { ...baseRowStyle, padding: indented ? '10px 22px 10px 40px' : '14px 22px', background: indented ? 'var(--elev,#faf9f7)' : 'transparent', cursor: 'default' },
+        stepBarStyle: { width: '4px', alignSelf: 'stretch', minHeight: indented ? '20px' : '22px', borderRadius: '2px', background: sb.barColor, flexShrink: 0 },
+        stepLabel: sb.label, hasTarget: sb.hasTarget, stepTarget: sb.target,
+        hasCompliance: sb.hasCompliance, complianceLabel: sb.complianceLabel, complianceColor: sb.complianceColor,
+        dist: lap.dist, time: lap.time, speed: lap.speed, power: lap.power, hr: lap.hr,
+        barPct: Math.round((lap.power / maxPower) * 100) + '%',
+      };
+    };
+
+    const groups = this.groupLaps(laps);
+    const expanded = this.state.expandedGroups || {};
+    const lapRows = [];
+    groups.forEach(g => {
+      if (g.type === 'single') {
+        lapRows.push(leafRow(g.lap, false));
+        return;
+      }
+      const allLaps = g.reps.flat();
+      const totalDuration = allLaps.reduce((a, l) => a + l.duration, 0);
+      const totalDistance = allLaps.reduce((a, l) => a + l.distance_km, 0);
+      const avgPower = this.weightedAvg(allLaps, l => l.avg_power);
+      const avgHr = this.weightedAvg(allLaps, l => l.avg_hr);
+      const isExpanded = !!expanded[g.key];
+      const templateBadges = g.reps[0].map(l => stepBadge(l));
+      lapRows.push({
+        key: g.key, isGroupHeader: true,
+        idx: g.reps.length + '×',
+        idxStyle: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 700, color: 'var(--ember,#ec4a26)', background: 'rgba(236,74,38,0.1)', borderRadius: '6px', padding: '2px 6px' },
+        caret: isExpanded ? '▾' : '▸',
+        onToggle: () => this.toggleGroup(g.key),
+        rowStyle: { ...baseRowStyle, cursor: 'pointer', background: isExpanded ? 'var(--elev,#faf9f7)' : 'transparent' },
+        stepBarStyle: { display: 'none' },
+        stepLabel: templateBadges.map(b => b.label.split(' · rep')[0]).join(' + '),
+        hasTarget: templateBadges.some(b => b.hasTarget),
+        stepTarget: templateBadges.map(b => b.target).filter(Boolean).join(' · '),
+        hasCompliance: false, complianceLabel: '', complianceColor: '',
+        dist: totalDistance.toFixed(2),
+        time: Math.floor(totalDuration / 60) + ':' + String(Math.round(totalDuration % 60)).padStart(2, '0'),
+        speed: ((totalDistance / (totalDuration / 3600)) || 0).toFixed(1),
+        power: avgPower != null ? avgPower : '—', hr: avgHr != null ? avgHr : '—',
+        barPct: avgPower != null ? (Math.round((avgPower / maxPower) * 100) + '%') : '0%',
+      });
+      if (isExpanded) allLaps.forEach(lap => lapRows.push(leafRow(lap, true)));
+    });
+
+    return { stepSummaryCards, hasStepSummary, lapRows };
+  }
 
   renderVals() {
     const t = this.state.theme;
@@ -761,7 +1030,15 @@ class Component extends DCLogic {
       inferWorkout: () => this.inferWorkout(),
       inferLabel: this.state.inferring ? 'Building…' : 'Create workout from laps',
 
-      laps: this.model.laps,
+      hasWorkoutMatch: !!this.state.workoutId,
+      regenerateFromWorkout: () => this.regenerateLapsFromWorkout(),
+      regenLabel: this.state.regeneratingLaps ? 'Regenerating…' : '↺ Regenerate from workout',
+      regenBtnStyle: { fontSize: '12px', fontWeight: 600, padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--line,#e6e2dc)', background: 'none', color: 'var(--ink3,#9a958d)', cursor: this.state.regeneratingLaps ? 'default' : 'pointer', opacity: this.state.regeneratingLaps ? 0.6 : 1 },
+
+      collapseByTarget: this.state.collapseByTarget,
+      toggleCollapseByTarget: () => this.setState({ collapseByTarget: !this.state.collapseByTarget }),
+
+      ...this.buildLapsView(),
       powerZones: this.model.powerZones,
       hrZones: this.model.hrZones,
       pdcLine: this.model.pdc.line,
