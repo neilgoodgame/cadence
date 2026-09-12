@@ -279,6 +279,47 @@
             </div>
           </sc-if>
 
+          <sc-if value="{{ isWorkoutMatching }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:28px;">
+              <div>
+                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:12px;">Workout matching</div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div onClick="{{ toggleRenameMatched }}" style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink2,#6f6b65);cursor:pointer;">
+                    <div style="{{ renameMatchedBoxStyle }}"><sc-if value="{{ renameMatched }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
+                    <span>
+                      <span style="color:var(--ink,#1b1a18);font-weight:600;">Rename matched activities to their workout's name</span>
+                      <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;font-weight:400;">Whenever an activity gets matched to a workout — on import, or when you accept a Scan-for-matches candidate — use the workout's name instead of the default.</div>
+                    </span>
+                  </div>
+                  <div onClick="{{ toggleAppendDate }}" style="{{ appendDateRowStyle }}">
+                    <div style="{{ appendDateBoxStyle }}"><sc-if value="{{ appendDate }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
+                    <span>
+                      <span style="color:var(--ink,#1b1a18);font-weight:600;">Also append the date</span>
+                      <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;font-weight:400;">e.g. "Tempo run - 2026-06-15" instead of just "Tempo run".</div>
+                    </span>
+                  </div>
+                  <div onClick="{{ toggleCopyTags }}" style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink2,#6f6b65);cursor:pointer;">
+                    <div style="{{ copyTagsBoxStyle }}"><sc-if value="{{ copyTags }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
+                    <span>
+                      <span style="color:var(--ink,#1b1a18);font-weight:600;">Copy the workout's tags to matched activities</span>
+                      <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;font-weight:400;">Whenever an activity gets matched to a workout — on import, or when you accept a Scan-for-matches candidate — also apply the workout's tags to the activity.</div>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:12px;">Laps</div>
+                <div style="font-size:13px;color:var(--ink2,#6f6b65);margin-bottom:8px;">For activities matched to a workout, use</div>
+                <select class="preft" value="{{ lapSource }}" onChange="{{ onLapSource }}" style="width:auto;max-width:300px;padding:6px 8px;border-radius:6px;font-weight:400;">
+                  <option value="matched_workout">Laps derived from the matched workout's steps</option>
+                  <option value="original">Original laps from the device/file</option>
+                </select>
+                <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:8px;line-height:1.5;">Applies whenever an activity gets newly matched to a workout — on import, or when you accept a Scan-for-matches candidate. Use "Regenerate from workout" on an activity's Laps tab to re-derive laps for one already matched.</div>
+              </div>
+            </div>
+          </sc-if>
+
           <sc-if value="{{ isTokens }}" hint-placeholder-val="{{ false }}">
             <div style="display:flex;flex-direction:column;gap:18px;">
               <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);">Personal access tokens let you script against the API as yourself. Scope each one to only what it needs.</div>
@@ -390,6 +431,9 @@ class Component extends DCLogic {
       { id: 'r1', name: 'City Marathon', date: '2026-10-11', sport: 'Run', distanceKm: 42.2, goalTime: '3:15:00', resultTime: null, when: 'upcoming' },
       { id: 'r2', name: 'Half Iron Lakeside', date: '2026-05-03', sport: 'Multisport', distanceKm: null, goalTime: '5:10:00', resultTime: '5:07:42', when: 'past' },
     ],
+    // WorkoutsTab.tsx's AthleteUpdate fields, verbatim naming (rename_matched_activities,
+    // append_match_date_to_name, copy_matched_workout_tags, lap_source).
+    workoutMatching: { renameMatched: false, appendDate: false, copyTags: false, lapSource: 'matched_workout' },
     prefs: { name: 'Neil Goodgame', age: 34, ftp: 265, cp: 285, thrPace: '4:00', lthr: 155, maxHr: 186 },
     zones: {
       hr: [
@@ -578,13 +622,14 @@ class Component extends DCLogic {
   renderVals() {
     const p = this.state.prefs, tab = this.state.prefsTab;
     const railItem = (a) => ({ display: 'flex', alignItems: 'center', gap: '9px', padding: '9px 12px', borderRadius: '9px', fontSize: '13px', fontWeight: a ? 600 : 500, cursor: 'pointer', color: a ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', background: a ? 'var(--emberSoft,#fff5f1)' : 'transparent' });
-    const prefsTabs = [['profile', 'Profile'], ['hr', 'Heart rate'], ['bike', 'Bike power'], ['run', 'Run power'], ['pace', 'Pace'], ['best_efforts', 'Best efforts'], ['races', 'Races'], ['sharing', 'Sharing'], ['tokens', 'API tokens']].map(([k, l]) => ({ label: l, onClick: () => this.setState({ prefsTab: k }), style: railItem(tab === k) }));
+    const prefsTabs = [['profile', 'Profile'], ['hr', 'Heart rate'], ['bike', 'Bike power'], ['run', 'Run power'], ['pace', 'Pace'], ['workout_matching', 'Workout matching'], ['best_efforts', 'Best efforts'], ['races', 'Races'], ['sharing', 'Sharing'], ['tokens', 'API tokens']].map(([k, l]) => ({ label: l, onClick: () => this.setState({ prefsTab: k }), style: railItem(tab === k) }));
     const isProfile = tab === 'profile';
     const isTokens = tab === 'tokens';
     const isSharing = tab === 'sharing';
     const isBestEfforts = tab === 'best_efforts';
     const isRaces = tab === 'races';
-    const isZone = !isProfile && !isTokens && !isSharing && !isBestEfforts && !isRaces;
+    const isWorkoutMatching = tab === 'workout_matching';
+    const isZone = !isProfile && !isTokens && !isSharing && !isBestEfforts && !isRaces && !isWorkoutMatching;
     const isHr = tab === 'hr';
     const zone = isZone ? this.computeZone(tab) : { zoneRows: [], zoneRefLabel: '' };
 
@@ -667,6 +712,10 @@ class Component extends DCLogic {
       id: x.id, name: x.name, handle: x.handle, statusText: statusText(x),
       onRevoke: () => this.revokeShare(x.id),
     }));
+    // ---- workout matching ----
+    const wm = this.state.workoutMatching;
+    const checkBoxStyle = (checked) => ({ width: '16px', height: '16px', borderRadius: '5px', flexShrink: 0, marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: checked ? 'none' : '1.5px solid var(--line,#e6e2dc)', background: checked ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)' });
+
     return {
       prefsOpen: this.state.prefsOpen,
       openPrefs: () => this.setState({ prefsOpen: true }),
@@ -675,7 +724,23 @@ class Component extends DCLogic {
       stopP: (e) => e.stopPropagation(),
       confirmDeleteOpen: this.state.confirmDeleteOpen,
       openDeleteAll: () => this.openDeleteAll(), closeDeleteAll: () => this.closeDeleteAll(), confirmDeleteAll: () => this.confirmDeleteAll(),
-      prefsTabs, isProfile, isZone, isTokens, isSharing, isBestEfforts, isRaces, isHr,
+      prefsTabs, isProfile, isZone, isTokens, isSharing, isBestEfforts, isRaces, isWorkoutMatching, isHr,
+
+      renameMatched: wm.renameMatched,
+      renameMatchedBoxStyle: checkBoxStyle(wm.renameMatched),
+      toggleRenameMatched: () => this.setState(s => {
+        const checked = !s.workoutMatching.renameMatched;
+        return { workoutMatching: { ...s.workoutMatching, renameMatched: checked, appendDate: checked ? s.workoutMatching.appendDate : false } };
+      }),
+      appendDate: wm.appendDate,
+      appendDateBoxStyle: checkBoxStyle(wm.appendDate),
+      appendDateRowStyle: { display: 'flex', alignItems: 'flex-start', gap: '9px', fontSize: '13px', color: 'var(--ink2,#6f6b65)', marginLeft: '24px', cursor: wm.renameMatched ? 'pointer' : 'default', opacity: wm.renameMatched ? 1 : 0.5 },
+      toggleAppendDate: () => { if (!this.state.workoutMatching.renameMatched) return; this.setState(s => ({ workoutMatching: { ...s.workoutMatching, appendDate: !s.workoutMatching.appendDate } })); },
+      copyTags: wm.copyTags,
+      copyTagsBoxStyle: checkBoxStyle(wm.copyTags),
+      toggleCopyTags: () => this.setState(s => ({ workoutMatching: { ...s.workoutMatching, copyTags: !s.workoutMatching.copyTags } })),
+      lapSource: wm.lapSource,
+      onLapSource: (e) => { const v = e.target.value; this.setState(s => ({ workoutMatching: { ...s.workoutMatching, lapSource: v } })); },
       sharesView, coachesView, hasShares: this.state.shares.length > 0, noShares: this.state.shares.length === 0, hasCoaches: coachesView.length > 0, noCoaches: coachesView.length === 0,
       inviteValue: sf.invite, onInvite: (e) => this.setInvite(e),
       inviteRoleValue: sf.role, onInviteRole: (e) => this.setInviteRole(e.target.value),

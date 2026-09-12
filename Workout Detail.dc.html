@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  a{color:inherit;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- ============ SIDEBAR (same as Workout Library.dc.html, "Workouts" active) ============ -->
+  <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 26px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
+      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</a>
+      <a href="Activity Analysis.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</a>
+      <a href="Activity Analysis.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>Analysis</a>
+      <a href="Calendar.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</a>
+      <a href="Workout Library.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</a>
+      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</a>
+      <a href="Gear.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"></circle><circle cx="8" cy="8" r="2.1"></circle><line x1="8" y1="2" x2="8" y2="3.9"></line><line x1="8" y1="12.1" x2="8" y2="14"></line><line x1="2" y1="8" x2="3.9" y2="8"></line><line x1="12.1" y1="8" x2="14" y2="8"></line></svg>Gear</a>
+    </div>
+    <div style="margin-top:auto;padding:16px 16px 20px;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
+      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div><div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div data-screen-label="workout-detail" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+
+    <!-- ===== TOP BAR ===== -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);"><a href="Workout Library.dc.html" style="color:var(--ink3,#9a958d);text-decoration:none;">Workouts</a> <span style="margin:0 6px;">/</span> <span style="color:var(--ink,#1b1a18);">{{ workoutName }}</span></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <a href="Notifications.dc.html" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></a><dc-import name="Preferences" hint-size="218px,46px"></dc-import>
+      </div>
+    </div>
+
+    <div style="padding:24px 32px 64px;max-width:680px;width:100%;">
+      <a href="Workout Library.dc.html" style="display:inline-block;font-size:12px;font-weight:600;color:var(--ink3,#9a958d);text-decoration:none;margin-bottom:16px;">← Workout Library</a>
+
+      <div style="display:flex;flex-direction:column;gap:20px;">
+
+        <!-- ============ HEADER ============ -->
+        <div>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+            <div style="{{ sportBadgeStyle }}">{{ sportLabel }}</div>
+            <a href="Workout Designer.dc.html" style="border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:6px 14px;font-size:12.5px;font-weight:600;background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;">Edit</a>
+          </div>
+          <h1 style="font-size:22px;font-weight:800;letter-spacing:-0.02em;margin:8px 0 12px;color:var(--ink,#1b1a18);">{{ workoutName }}</h1>
+          <div style="display:flex;gap:22px;">
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;color:var(--ink3,#9a958d);">DURATION</div><div style="font-size:16px;font-weight:700;color:var(--ink,#1b1a18);">{{ durationLabel }}</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;color:var(--ink3,#9a958d);">EST. TSS</div><div style="font-size:16px;font-weight:700;color:var(--ink,#1b1a18);">{{ tssLabel }}</div></div>
+            <div><div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;color:var(--ink3,#9a958d);">STEPS</div><div style="font-size:16px;font-weight:700;color:var(--ink,#1b1a18);">{{ stepsLabel }}</div></div>
+          </div>
+          <div style="height:44px;display:flex;align-items:flex-end;gap:1px;background:var(--elev,#faf9f7);border-radius:6px;overflow:hidden;margin-top:10px;">
+            <sc-for list="{{ chartSegments }}" as="seg" hint-placeholder-count="11">
+              <div style="{{ seg.wrapStyle }}"><div style="{{ seg.barStyle }}"></div></div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- ============ WORKOUT STRUCTURE (read-only) ============ -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:12px;">STRUCTURE</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <sc-for list="{{ structureRows }}" as="row" hint-placeholder-count="2">
+              <div>
+                <div style="{{ row.rowStyle }}">
+                  <div style="{{ row.colorBar }}"></div>
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;">
+                    <span style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">{{ row.title }}</span>
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ row.detail }}</div>
+                  </div>
+                  <sc-if value="{{ row.isGroup }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--ink2,#6f6b65);flex-shrink:0;">× {{ row.repeatCount }}</span></sc-if>
+                </div>
+                <sc-if value="{{ row.isGroup }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:6px;margin:6px 0 2px 22px;padding-left:12px;border-left:2px solid var(--line,#e6e2dc);">
+                    <sc-for list="{{ row.children }}" as="child" hint-placeholder-count="2">
+                      <div style="{{ child.rowStyle }}">
+                        <div style="{{ child.colorBar }}"></div>
+                        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;">
+                          <span style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">{{ child.title }}</span>
+                          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ child.detail }}</div>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- ============ LINKED ACTIVITIES ============ -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);">LINKED ACTIVITIES</div>
+            <sc-if value="{{ showCompareAll }}" hint-placeholder-val="{{ true }}">
+              <a href="Workout Comparison.dc.html" style="font-size:12.5px;font-weight:600;color:var(--ember,#ec4a26);text-decoration:none;">Compare all →</a>
+            </sc-if>
+          </div>
+          <sc-if value="{{ hasLinked }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <sc-for list="{{ linkedRows }}" as="a" hint-placeholder-count="6">
+                <a href="Activity Analysis.dc.html" style="display:flex;align-items:center;gap:14px;padding:9px 12px;border-radius:9px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);text-decoration:none;">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--ink,#1b1a18);width:84px;flex-shrink:0;">{{ a.dateLabel }}</span>
+                  <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.name }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink3,#9a958d);white-space:nowrap;">{{ a.metric }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);flex-shrink:0;">TSS {{ a.tss }}</span>
+                </a>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasLinked }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;color:var(--ink3,#9a958d);">No activities linked to this workout yet.</div></sc-if>
+        </div>
+
+        <!-- ============ UPCOMING ============ -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:12px;">UPCOMING</div>
+          <sc-if value="{{ hasUpcoming }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <sc-for list="{{ upcomingRows }}" as="u" hint-placeholder-count="2">
+                <a href="Calendar.dc.html" style="display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:9px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);text-decoration:none;">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--ink,#1b1a18);">{{ u.dateLabel }}</span>
+                  <sc-if value="{{ u.hasTime }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ u.timeOfDay }}</span></sc-if>
+                </a>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasUpcoming }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;color:var(--ink3,#9a958d);">Not currently scheduled.</div></sc-if>
+        </div>
+
+        <!-- ============ SCAN FOR MATCHES ============ -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:{{ scanHeaderMargin }};">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);">CANDIDATE MATCHES</div>
+            <sc-if value="{{ showScanBtn }}" hint-placeholder-val="{{ true }}">
+              <div onClick="{{ beginConfigure }}" style="border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Scan for matches</div>
+            </sc-if>
+          </div>
+
+          <sc-if value="{{ isConfiguring }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="font-size:12px;color:var(--ink2,#6f6b65);margin-bottom:10px;">Which parts of this workout should count toward the match?</div>
+              <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+                <sc-for list="{{ kindChecks }}" as="k" hint-placeholder-count="3">
+                  <div onClick="{{ k.onClick }}" style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink,#1b1a18);cursor:pointer;">
+                    <div style="{{ k.boxStyle }}"><sc-if value="{{ k.checked }}" hint-placeholder-val="{{ true }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
+                    {{ k.label }}
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <div onClick="{{ startScan }}" style="border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;background:var(--ember,#ec4a26);color:#fff;cursor:pointer;">{{ startScanLabel }}</div>
+                <div onClick="{{ cancelScan }}" style="border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isScanning }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;color:var(--ink2,#6f6b65);">Scanning…</div>
+          </sc-if>
+
+          <sc-if value="{{ isReady }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="display:grid;grid-template-columns:minmax(140px,1.3fr) 0.6fr 0.7fr 0.55fr 0.9fr;gap:10px;padding:0 4px 8px;">
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Activity</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Match</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Duration diff</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Coverage</span>
+                <span></span>
+              </div>
+              <sc-for list="{{ candidateRows }}" as="c" hint-placeholder-count="3">
+                <div style="display:grid;grid-template-columns:minmax(140px,1.3fr) 0.6fr 0.7fr 0.55fr 0.9fr;gap:10px;align-items:center;padding:8px 4px;border-top:1px solid var(--line,#e6e2dc);">
+                  <div style="min-width:0;">
+                    <div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ c.name }}</div>
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ c.meta }}</div>
+                  </div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--ink,#1b1a18);">{{ c.correlationLabel }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ c.durationDiffLabel }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ c.coverageLabel }}</span>
+                  <div style="text-align:right;">
+                    <div onClick="{{ c.onApply }}" style="{{ c.btnStyle }}">{{ c.btnLabel }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  // ---- workout structure (mirrors workoutTree.ts's flatten/duration/tss math exactly, so the
+  // header stats and mini chart agree with the real app's calculations for the same steps). ----
+  workout = {
+    id: 'gorby', name: 'The Gorby', sport: 'bike',
+    steps: [
+      { kind: 'warmup', end_type: 'time', duration: 600, target_type: 'power', target_low: 50, target_high: 70, power_unit: 'pct_ftp' },
+      { kind: 'repeat', repeat: 5, children: [
+        { kind: 'block', end_type: 'time', duration: 300, target_type: 'power', target_low: 110, target_high: 110, power_unit: 'pct_ftp' },
+        { kind: 'rec', end_type: 'time', duration: 300, target_type: 'power', target_low: 50, target_high: 55, power_unit: 'pct_ftp' },
+      ] },
+    ],
+  };
+  FTP_DEFAULT = 265;
+
+  zoneColor(pct) { if (pct < 56) return '#8a94a6'; if (pct < 76) return '#3d7fd6'; if (pct < 91) return '#2fa66a'; if (pct < 106) return '#f0a02e'; if (pct < 121) return '#ec4a26'; return '#c4332a'; }
+  kindLabel(k) { return { warmup: 'Warm-up', block: 'Work block', rec: 'Recovery', cool: 'Cooldown', repeat: 'Repeat' }[k] || k; }
+  fmtDurHMS(sec) { sec = Math.max(0, Math.round(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return [h, m, s].map(v => String(v).padStart(2, '0')).join(':'); }
+  fmtDuration(sec) { const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60); return h > 0 ? (h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0')) : (m + ':' + String(s).padStart(2, '0')); }
+  fmtDateShort(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }); }
+  fmtDateFull(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); }
+
+  flattenLeaves(steps) { let out = []; for (const s of steps) { if (s.kind === 'repeat') { for (let r = 0; r < (s.repeat || 1); r++) out = out.concat(this.flattenLeaves(s.children)); } else out.push(s); } return out; }
+  totalDuration(steps) { return steps.reduce((sum, s) => s.kind === 'repeat' ? sum + this.totalDuration(s.children) * (s.repeat || 1) : sum + (s.duration || 0), 0); }
+  leafTss(step) { const lo = step.target_low ?? 60, hi = step.target_high ?? lo, avg = (lo + hi) / 2, hours = (step.duration || 0) / 3600; return hours * Math.pow(avg / 100, 2) * 100; }
+  totalTss(steps) { return steps.reduce((sum, s) => s.kind === 'repeat' ? sum + this.totalTss(s.children) * (s.repeat || 1) : sum + this.leafTss(s), 0); }
+  targetLabel(step) {
+    const lo = step.target_low ?? 0, hi = step.target_high ?? lo;
+    if (lo === hi) return lo + '% FTP · ' + Math.round((this.FTP_DEFAULT * lo) / 100) + 'W';
+    return lo + '→' + hi + '% FTP';
+  }
+  leafColor(step) { const lo = step.target_low ?? 0, hi = step.target_high ?? lo; return this.zoneColor((lo + hi) / 2); }
+  leafRow(step) {
+    const selectedStyle = { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--elev,#faf9f7)', border: '1px solid var(--line,#e6e2dc)' };
+    return {
+      isGroup: false, title: this.kindLabel(step.kind),
+      detail: this.fmtDurHMS(step.duration) + ' · ' + this.targetLabel(step),
+      colorBar: { width: 5, alignSelf: 'stretch', borderRadius: 3, background: this.leafColor(step), flexShrink: 0 },
+      rowStyle: selectedStyle,
+    };
+  }
+
+  // ---- seed data: activities matched to this workout, oldest first (dates chosen to land
+  // before "today" in this session, 2026-09-12) ----
+  matches = [
+    { id: 'a1', name: 'The Gorby', date: '2026-01-12', moving_time: 3600, distance_km: 29.4, avg_power: 178, avg_hr: 142, ef: 1.253, work_block_avg_power: null, work_block_avg_hr: null, avg_core_temp: null, avg_air_temp: 18.2, avg_humidity: 55, tss: 64 },
+    { id: 'a2', name: 'The Gorby', date: '2026-03-02', moving_time: 3612, distance_km: 29.8, avg_power: 182, avg_hr: 140, ef: 1.300, work_block_avg_power: 228, work_block_avg_hr: 158, avg_core_temp: 37.4, avg_air_temp: 16.0, avg_humidity: 48, tss: 67 },
+    { id: 'a3', name: 'The Gorby', date: '2026-04-18', moving_time: 3605, distance_km: 30.1, avg_power: 186, avg_hr: 139, ef: 1.338, work_block_avg_power: 231, work_block_avg_hr: 156, avg_core_temp: 37.5, avg_air_temp: 19.4, avg_humidity: 51, tss: 69 },
+    { id: 'a4', name: 'The Gorby', date: '2026-06-07', moving_time: 3598, distance_km: 30.6, avg_power: 190, avg_hr: 138, ef: 1.377, work_block_avg_power: 235, work_block_avg_hr: 155, avg_core_temp: 37.6, avg_air_temp: 22.1, avg_humidity: 60, tss: 70 },
+    { id: 'a5', name: 'The Gorby', date: '2026-07-22', moving_time: 3600, distance_km: 30.3, avg_power: 188, avg_hr: 141, ef: 1.333, work_block_avg_power: 233, work_block_avg_hr: 159, avg_core_temp: 37.8, avg_air_temp: 27.3, avg_humidity: 68, tss: 69 },
+    { id: 'a6', name: 'The Gorby', date: '2026-08-30', moving_time: 3610, distance_km: 31.0, avg_power: 194, avg_hr: 137, ef: 1.416, work_block_avg_power: 239, work_block_avg_hr: 154, avg_core_temp: 37.3, avg_air_temp: 15.5, avg_humidity: 44, tss: 71 },
+  ];
+  upcoming = [
+    { id: 'sch1', date: '2026-09-20', time_of_day: 'AM' },
+    { id: 'sch2', date: '2026-10-04', time_of_day: null },
+  ];
+  candidatePool = [
+    { id: 'u1', name: 'Morning ride', date: '2026-09-02', moving_time: 3580, avg_power: 181, correlation: 0.94, duration_diff_seconds: 40, coverage: 0.97, implied_ftp: 242 },
+    { id: 'u2', name: 'Zwift session', date: '2026-08-05', moving_time: 3475, avg_power: 176, correlation: 0.88, duration_diff_seconds: 125, coverage: 0.90, implied_ftp: 238 },
+    { id: 'u3', name: 'Indoor trainer block', date: '2026-06-30', moving_time: 3390, avg_power: 170, correlation: 0.81, duration_diff_seconds: 210, coverage: 0.85, implied_ftp: null },
+  ];
+
+  state = {
+    theme: 'lab',
+    scanState: 'idle', // idle | configuring | scanning | ready
+    excludedKinds: { warmup: true },
+    candidates: null,
+  };
+
+  toggleKind(kind) { this.setState(s => ({ excludedKinds: { ...s.excludedKinds, [kind]: !s.excludedKinds[kind] } })); }
+  beginConfigure() { this.setState({ scanState: 'configuring' }); }
+  cancelScan() { this.setState({ scanState: 'idle' }); }
+  startScan() {
+    this.setState({ scanState: 'scanning' });
+    setTimeout(() => this.setState({ scanState: 'ready', candidates: this.candidatePool.map(c => ({ ...c, applied: false })) }), 700);
+  }
+  applyCandidate(id) { this.setState(s => ({ candidates: s.candidates.map(c => c.id === id ? { ...c, applied: true } : c) })); }
+
+  renderVals() {
+    const st = this.state;
+    const isLab = st.theme === 'lab';
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)' };
+    const seg = (active) => ({ flex: 1, textAlign: 'center', padding: '5px 11px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', whiteSpace: 'nowrap', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent', boxShadow: active ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+
+    const steps = this.workout.steps;
+    const totalDur = this.totalDuration(steps);
+    const totalTss = Math.round(this.totalTss(steps));
+    const leaves = this.flattenLeaves(steps);
+
+    const chartSegments = leaves.map(l => ({
+      wrapStyle: { width: ((l.duration / totalDur) * 100).toFixed(3) + '%', height: '100%', display: 'flex', alignItems: 'flex-end' },
+      barStyle: { width: '100%', height: Math.min(100, (((l.target_low ?? 0) + (l.target_high ?? l.target_low ?? 0)) / 2 / 150) * 100).toFixed(0) + '%', background: this.leafColor(l), opacity: 0.85 },
+    }));
+
+    const structureRows = steps.map(s => {
+      if (s.kind === 'repeat') {
+        return {
+          isGroup: true, repeatCount: s.repeat,
+          title: 'Repeat group',
+          detail: s.children.length + ' steps × ' + s.repeat + ' · ' + this.fmtDurHMS(this.totalDuration(s.children) * s.repeat) + ' total',
+          colorBar: { width: 5, alignSelf: 'stretch', borderRadius: 3, background: 'var(--ember,#ec4a26)', flexShrink: 0 },
+          rowStyle: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(236,74,38,0.05)', border: '1px solid rgba(236,74,38,0.25)' },
+          children: s.children.map(c => this.leafRow(c)),
+        };
+      }
+      return this.leafRow(s);
+    });
+
+    const linkedRows = this.matches.map(m => {
+      const metricParts = [this.fmtDuration(m.moving_time), m.distance_km.toFixed(1) + ' km'];
+      if (m.avg_power != null) metricParts.push(Math.round(m.avg_power) + ' W');
+      return { id: m.id, dateLabel: this.fmtDateShort(m.date), name: m.name, metric: metricParts.join(' · '), tss: m.tss };
+    });
+
+    const upcomingRows = this.upcoming.map(u => ({ id: u.id, dateLabel: this.fmtDateFull(u.date), hasTime: !!u.time_of_day, timeOfDay: u.time_of_day || '' }));
+
+    // ---- scan-for-matches ----
+    const presentKinds = ['warmup', 'block', 'rec', 'cool'].filter(k => leaves.some(l => l.kind === k));
+    const kindChecks = presentKinds.map(k => {
+      const checked = !st.excludedKinds[k];
+      return {
+        key: k, label: this.kindLabel(k), checked,
+        onClick: () => this.toggleKind(k),
+        boxStyle: { width: '16px', height: '16px', borderRadius: '5px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: checked ? 'none' : '1.5px solid var(--line,#e6e2dc)', background: checked ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)' },
+      };
+    });
+    const candidateRows = (st.candidates || []).map(c => ({
+      id: c.id, name: c.name,
+      meta: this.fmtDateShort(c.date) + ' · ' + this.fmtDuration(c.moving_time) + (c.implied_ftp != null ? (' · implied FTP ' + c.implied_ftp + 'W') : ''),
+      correlationLabel: Math.round(c.correlation * 100) + '%',
+      durationDiffLabel: this.fmtDuration(c.duration_diff_seconds),
+      coverageLabel: Math.round(c.coverage * 100) + '%',
+      btnLabel: c.applied ? 'Applied' : 'Apply match',
+      onApply: () => this.applyCandidate(c.id),
+      btnStyle: { display: 'inline-block', border: '1px solid var(--line,#e6e2dc)', borderRadius: '8px', padding: '5px 12px', fontSize: '12px', fontWeight: 600, cursor: c.applied ? 'default' : 'pointer', background: c.applied ? 'rgba(47,166,106,0.13)' : 'transparent', color: c.applied ? '#2fa66a' : 'var(--ink2,#6f6b65)' },
+    }));
+
+    return {
+      themeVars: st.theme === 'day' ? day : (isLab ? lab : cockpit),
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(st.theme === 'lab'), cockpitBtn: seg(st.theme === 'cockpit'), dayBtn: seg(st.theme === 'day'),
+
+      workoutName: this.workout.name,
+      sportLabel: 'Ride',
+      sportBadgeStyle: { display: 'inline-flex', padding: '3px 9px', borderRadius: '6px', fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 700, background: 'rgba(61,127,214,0.13)', color: '#3d7fd6' },
+      durationLabel: this.fmtDuration(totalDur), tssLabel: String(totalTss), stepsLabel: String(steps.length),
+      chartSegments, structureRows,
+
+      hasLinked: linkedRows.length > 0, linkedRows,
+      showCompareAll: linkedRows.length >= 2,
+
+      hasUpcoming: upcomingRows.length > 0, upcomingRows,
+
+      scanHeaderMargin: (st.scanState !== 'idle') ? '12px' : '0',
+      showScanBtn: st.scanState === 'idle',
+      isConfiguring: st.scanState === 'configuring',
+      isScanning: st.scanState === 'scanning',
+      isReady: st.scanState === 'ready',
+      kindChecks,
+      startScan: () => this.startScan(), cancelScan: () => this.cancelScan(), beginConfigure: () => this.beginConfigure(),
+      startScanLabel: 'Start scan',
+      candidateRows,
+    };
+  }
+}
+</script>
+</body>
+</html>
