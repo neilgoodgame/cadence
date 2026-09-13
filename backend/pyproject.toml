@@ -30,7 +30,7 @@ dependencies = [
     # 1.x release available (1.9.4 -> 1.29.1) since that stays within the same constraint.
     "django-mcp-server==0.5.7",
     "mcp==1.30.0",
-    "boto3==1.43.89",
+    "boto3==1.43.91",
 ]
 
 [dependency-groups]
