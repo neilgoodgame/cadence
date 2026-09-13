@@ -4,7 +4,6 @@ import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.activities.dto.StreamsResponse;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -29,15 +28,19 @@ public class StreamService {
 	}
 
 	public StreamsResponse getStreams(Activity activity, String fieldsParam, String resolution) {
-		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 		int step = switch (resolution) {
 			case "medium" -> 5;
 			case "low" -> 15;
 			default -> 1;
 		};
-		List<Record> sampled = new ArrayList<>();
-		for (int i = 0; i < records.size(); i += step) {
-			sampled.add(records.get(i));
+		List<Record> sampled;
+		if (step > 1) {
+			Integer offset = recordRepository.findMinTByActivityId(activity.getId());
+			sampled = offset == null
+					? List.of()
+					: recordRepository.findByActivityIdDecimated(activity.getId(), offset, step);
+		} else {
+			sampled = recordRepository.findByActivityIdOrderByT(activity.getId());
 		}
 
 		Set<String> requestedFields = (fieldsParam == null || fieldsParam.isBlank())

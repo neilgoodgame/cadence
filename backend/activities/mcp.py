@@ -12,7 +12,8 @@ inherited scope/ownership helpers are underscore-prefixed instead.
 import base64
 from typing import Any
 
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, F, Min, OuterRef, Q
+from django.db.models.functions import Mod
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
@@ -222,8 +223,18 @@ class ActivityMCPTools(ScopedMCPToolset):
         else:
             channels = list(DEFAULT_STREAM_FIELDS)
 
-        records = list(activity.records.order_by("t"))
-        records = records[::STREAM_RESOLUTION_STEP]
+        # Decimated in the query itself, not by loading every 1Hz record and slicing in Python -
+        # see StreamsView.get's identical fix in activities/views.py for why.
+        offset = activity.records.aggregate(first_t=Min("t"))["first_t"]
+        records = (
+            list(
+                activity.records.annotate(mod_val=Mod(F("t") - offset, STREAM_RESOLUTION_STEP))
+                .filter(mod_val=0)
+                .order_by("t")
+            )
+            if offset is not None
+            else []
+        )
 
         series: dict[str, list[Any]] = {}
         stats: dict[str, dict[str, float]] = {}
