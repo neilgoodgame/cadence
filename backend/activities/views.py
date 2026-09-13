@@ -1,7 +1,7 @@
 from typing import Any
 
-from django.db.models import Count, Exists, FloatField, OuterRef, Q, Value
-from django.db.models.functions import Coalesce
+from django.db.models import Count, Exists, F, FloatField, Min, OuterRef, Q, Value
+from django.db.models.functions import Coalesce, Mod
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
@@ -460,10 +460,22 @@ class StreamsView(APIView):
         else:
             channels = list(SCALAR_STREAM_FIELDS) + (["latlng"] if activity.has_gps else [])
 
-        records = list(activity.records.order_by("t"))
         step = STREAM_RESOLUTION_STEP[resolution]
         if step > 1:
-            records = records[::step]
+            # Decimated in the query itself, not by loading every 1Hz record and slicing in
+            # Python - a multi-hour activity's full record set is large enough to matter, and
+            # several of these firing concurrently (e.g. expanding zone bars on the Activities
+            # list) has taken the backend OOM in production. offset anchors the kept-every-Nth
+            # pattern to the activity's own first sample (t may not start at 0), matching what
+            # records[::step] used to pick when it operated on the full ordered list.
+            offset = activity.records.aggregate(first_t=Min("t"))["first_t"]
+            records = (
+                list(activity.records.annotate(mod_val=Mod(F("t") - offset, step)).filter(mod_val=0).order_by("t"))
+                if offset is not None
+                else []
+            )
+        else:
+            records = list(activity.records.order_by("t"))
 
         fields_payload: dict[str, list[Any]] = {}
         for channel in channels:

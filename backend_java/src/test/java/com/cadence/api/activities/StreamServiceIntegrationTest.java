@@ -108,4 +108,41 @@ class StreamServiceIntegrationTest extends IntegrationTest {
 		List<Integer> power = (List<Integer>) streams.fields().get("power");
 		assertThat(power).containsExactly((Integer) null);
 	}
+
+	@Test
+	void getStreamsDecimatesRelativeToTheFirstSample() {
+		// Regression test: decimation moved from loading every 1Hz record via
+		// findByActivityIdOrderByT and slicing in application code to a DB-side MOD filter, to
+		// stop a long activity's full record set from being materialized just to throw most of
+		// it away (this was taking the backend OOM in production). t starts at 100, not 0, to
+		// prove the kept samples are anchored to the activity's own first sample rather than to
+		// t=0 - a plain "t % step == 0" would keep the wrong points here.
+		User athlete = new User();
+		athlete.setEmail("stream-decimation@example.cc");
+		athlete.setName("Stream Decimation Tester");
+		athlete.setPassword("irrelevant-for-this-test");
+		userRepository.save(athlete);
+
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setHasGps(false);
+		activity.setName("Long ride");
+		activity.setStartDate(Instant.parse("2026-01-01T08:00:00Z"));
+		activityRepository.save(activity);
+
+		for (int i = 0; i < 20; i++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(100 + i)));
+			record.setActivity(activity);
+			record.setT(100 + i);
+			record.setPower(i);
+			recordRepository.save(record);
+		}
+
+		var streams = streamService.getStreams(activity, "time", "medium");
+		@SuppressWarnings("unchecked")
+		List<Integer> time = (List<Integer>) streams.fields().get("time");
+		assertThat(time).containsExactly(100, 105, 110, 115);
+	}
 }
