@@ -12,7 +12,8 @@ inherited scope/ownership helpers are underscore-prefixed instead.
 import base64
 from typing import Any
 
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
@@ -25,6 +26,7 @@ from core.cql.parser import parse
 from .comments import resolve_parent_comment
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Tag
 from .serializers import ActivityCommentSerializer
+from .tag_management import rename_tag as tag_rename
 
 ACTIVITY_FIELD_MAP = {
     "date": "start_date",
@@ -329,6 +331,63 @@ class ActivityMCPTools(ScopedMCPToolset):
         )
         ActivityTag.objects.get_or_create(activity=activity, tag=tag)
         return self.get_activity(activity_id)
+
+    def list_tags(self) -> dict[str, Any]:
+        """List the authenticated athlete's tags with how many activities carry each one, most
+        used first - use this to find a tag's exact name before renaming or deleting it."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        tags = (
+            Tag.objects.filter(athlete_id=athlete_id).annotate(count=Count("activity_tags")).order_by("-count", "name")
+        )
+        return {
+            "data": [{"id": t.id, "name": t.name, "origin": t.origin, "color": t.color, "count": t.count} for t in tags]
+        }
+
+    def _find_tag_by_name(self, athlete_id: str, name: str) -> Tag:
+        # Exact match first: if the athlete has both "race" and "Race" (possible via the older
+        # exact-match attach-by-name path), an iexact-only lookup would be ambiguous about which
+        # one "race" refers to. Falls back to case-insensitive so a caller unsure of the exact
+        # casing still finds the tag in the common case where no such duplicate exists.
+        tag = Tag.objects.filter(athlete_id=athlete_id, name=name).first()
+        if tag is None:
+            tag = Tag.objects.filter(athlete_id=athlete_id, name__iexact=name).first()
+        if tag is None:
+            raise Http404(f'No tag named "{name}".')
+        return tag
+
+    def rename_tag(self, name: str, new_name: str) -> dict[str, Any]:
+        """Renames a tag (see list_tags for exact names) to new_name. If the athlete already has
+        a different tag with that name (case-insensitive), merges into it instead - every
+        activity carrying the old tag ends up carrying the existing one, and the old tag is
+        removed. Returns the tag that now holds new_name."""
+        self._require_scope(ACTIVITIES_WRITE)
+        if not new_name or not new_name.strip():
+            raise ValidationError({"new_name": "new_name cannot be empty."})
+        athlete_id = self._effective_athlete_id()
+        self._require_write(athlete_id)
+        tag = self._find_tag_by_name(athlete_id, name)
+        result = tag_rename(tag, new_name.strip())
+        result = Tag.objects.annotate(count=Count("activity_tags")).get(pk=result.pk)
+        return {
+            "id": result.id,
+            "name": result.name,
+            "origin": result.origin,
+            "color": result.color,
+            "count": result.count,
+        }
+
+    def delete_tag(self, name: str) -> dict[str, Any]:
+        """Deletes a tag (see list_tags for exact names) entirely, removing it from every
+        activity that carries it - not just an unused one."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        self._require_write(athlete_id)
+        tag = self._find_tag_by_name(athlete_id, name)
+        deleted_name = tag.name
+        tag.delete()
+        return {"deleted": True, "name": deleted_name}
 
     def list_activity_comments(self, activity_id: str) -> dict[str, Any]:
         """List the comments on an activity (from list_activities/get_activity), oldest first -
