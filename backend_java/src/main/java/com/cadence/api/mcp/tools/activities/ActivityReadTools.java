@@ -4,7 +4,9 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityService;
 import com.cadence.api.activities.LapMapper;
 import com.cadence.api.activities.LapRepository;
+import com.cadence.api.activities.TagService;
 import com.cadence.api.activities.dto.LapResponse;
+import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.mcp.dispatch.McpScopes;
@@ -31,14 +33,16 @@ public class ActivityReadTools {
 	private final ActivityService activityService;
 	private final LapRepository lapRepository;
 	private final LapMapper lapMapper;
+	private final TagService tagService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityReadTools(ActivityService activityService, LapRepository lapRepository, LapMapper lapMapper,
-			AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			TagService tagService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
 		this.lapMapper = lapMapper;
+		this.tagService = tagService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -117,5 +121,17 @@ public class ActivityReadTools {
 		// fix.
 		return lapRepository.findByActivityIdOrderByIndexFetchWorkoutStep(activityId).stream().map(lapMapper::toResponse)
 				.toList();
+	}
+
+	@McpTool(name = "list_tags", description = "List the authenticated athlete's tags with how "
+			+ "many activities carry each one, most used first - use this to find a tag's exact "
+			+ "name before renaming or deleting it.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public List<TagResponse> listTags() {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireRead(athleteId);
+		return tagService.listTagsWithCounts(athleteId);
 	}
 }

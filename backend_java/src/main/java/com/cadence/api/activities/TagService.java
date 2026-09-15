@@ -1,7 +1,6 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.TagResponse;
-import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -9,6 +8,7 @@ import com.cadence.api.users.User;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -74,10 +74,55 @@ public class TagService {
 	public void deleteTag(String athleteId, String tagId) {
 		Tag tag = tagRepository.findByIdAndAthleteId(tagId, athleteId)
 				.orElseThrow(() -> new NotFoundException("No such tag."));
-		if (activityTagRepository.existsByTagId(tag.getId())) {
-			throw new ConflictException("This tag is still linked to activities.");
-		}
+		// Cascades: activity_tag.tag_id is ON DELETE CASCADE, so every link to this tag goes
+		// with it - deleting a tag always fully removes it, not just when unused.
 		tagRepository.delete(tag);
+	}
+
+	/** Exact match first: if the athlete has both "race" and "Race" (possible via the older
+	 * exact-match attach-by-name path), an ignore-case-only lookup would be ambiguous about
+	 * which one "race" refers to. Falls back to case-insensitive so a caller unsure of the exact
+	 * casing still finds the tag in the common case where no such duplicate exists. */
+	public Tag findByName(String athleteId, String name) {
+		return tagRepository.findByAthleteIdAndName(athleteId, name)
+				.or(() -> tagRepository.findByAthleteIdAndNameIgnoreCase(athleteId, name))
+				.orElseThrow(() -> new NotFoundException("No tag named \"" + name + "\"."));
+	}
+
+	/** Renames `tag` to `newName`. If the athlete already has a different tag with that name
+	 * (case-insensitive), merges into it instead: every activity linked to `tag` ends up linked
+	 * to the existing tag (an activity that already carries both keeps just the one link), and
+	 * `tag` is deleted - its now-orphaned links go with it via activity_tag.tag_id's ON DELETE
+	 * CASCADE. Returns whichever tag now holds `newName`: `tag` itself (renamed in place) or the
+	 * pre-existing one it was merged into. */
+	@Transactional
+	public Tag renameTag(String athleteId, String tagId, String newName) {
+		Tag tag = tagRepository.findByIdAndAthleteId(tagId, athleteId)
+				.orElseThrow(() -> new NotFoundException("No such tag."));
+		String trimmed = newName == null ? "" : newName.trim();
+		if (trimmed.isEmpty()) {
+			throw new ValidationException("name cannot be empty.", "name");
+		}
+		List<Tag> candidates = tagRepository.findAllByAthleteIdAndNameIgnoreCase(athleteId, trimmed).stream()
+				.filter(t -> !t.getId().equals(tag.getId()))
+				.toList();
+		// Prefer an exact-name match among candidates (the tag that already is named exactly
+		// `trimmed`) over an arbitrary case-insensitive one, for the rare case where the athlete
+		// already has more than one case-variant of this name.
+		Optional<Tag> existing = candidates.stream().filter(t -> t.getName().equals(trimmed)).findFirst()
+				.or(() -> candidates.stream().findFirst());
+		if (existing.isEmpty()) {
+			tag.setName(trimmed);
+			return tagRepository.save(tag);
+		}
+		Tag target = existing.get();
+		// Drop the old-tag link for any activity that already carries the target tag too (would
+		// otherwise violate activity_tag's unique(activity_id, tag_id) once repointed), then
+		// repoint everything else.
+		activityTagRepository.deleteLinksAlreadyOnTarget(tag, target);
+		activityTagRepository.repointLinks(tag, target);
+		tagRepository.delete(tag);
+		return target;
 	}
 
 	/** Auto-applied tags (e.g. "Auto-matched" from workout matching) can't be detached by users. */

@@ -2,11 +2,13 @@ package com.cadence.api.mcp.tools.activities;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.ActivityTagRepository;
 import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagMapper;
 import com.cadence.api.activities.TagService;
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.TagAttachResponse;
+import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.mcp.dispatch.McpScopes;
 import com.cadence.api.mcp.dispatch.McpToolAuthorizer;
@@ -32,15 +34,18 @@ public class ActivityWriteTools {
 	private final ActivityService activityService;
 	private final TagService tagService;
 	private final TagMapper tagMapper;
+	private final ActivityTagRepository activityTagRepository;
 	private final UserService userService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityWriteTools(ActivityService activityService, TagService tagService, TagMapper tagMapper,
-			UserService userService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			ActivityTagRepository activityTagRepository, UserService userService, AccessGuard accessGuard,
+			McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.tagService = tagService;
 		this.tagMapper = tagMapper;
+		this.activityTagRepository = activityTagRepository;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
@@ -83,5 +88,39 @@ public class ActivityWriteTools {
 		User athlete = userService.getById(activity.getAthlete().getId());
 		Tag tag = tagService.attachTag(activity, athlete, null, name);
 		return new TagAttachResponse(activityId, tagMapper.toResponse(tag));
+	}
+
+	@McpTool(name = "rename_tag", description = "Renames a tag (see list_tags for exact names) "
+			+ "to new_name. If the athlete already has a different tag with that name "
+			+ "(case-insensitive), merges into it instead - every activity carrying the old tag "
+			+ "ends up carrying the existing one, and the old tag is removed. Returns the tag "
+			+ "that now holds new_name.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public TagResponse renameTag(
+			@McpToolParam(description = "The tag's current name, e.g. \"VO2 max\"", required = true) String name,
+			@McpToolParam(description = "The new name", required = true) String newName) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+		Tag tag = tagService.findByName(athleteId, name);
+		Tag result = tagService.renameTag(athleteId, tag.getId(), newName);
+		return new TagResponse(result.getId(), result.getName(), result.getOrigin(), result.getColor(),
+				activityTagRepository.countByTagId(result.getId()));
+	}
+
+	@McpTool(name = "delete_tag", description = "Deletes a tag (see list_tags for exact names) "
+			+ "entirely, removing it from every activity that carries it - not just an unused one.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = true, idempotentHint = false, openWorldHint = false))
+	public Map<String, Object> deleteTag(
+			@McpToolParam(description = "The tag's name, e.g. \"VO2 max\"", required = true) String name) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+		Tag tag = tagService.findByName(athleteId, name);
+		String deletedName = tag.getName();
+		tagService.deleteTag(athleteId, tag.getId());
+		return Map.of("deleted", true, "name", deletedName);
 	}
 }
