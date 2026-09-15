@@ -185,6 +185,33 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(updated.getAvgHumidity()).isCloseTo(57, org.assertj.core.data.Offset.offset(2));
 	}
 
+	@Test
+	void backfillComputesHeatStrainCoreAndSkinTempForAnySport() {
+		// Unlike air_temp/humidity (Stryd, running-only), a CORE body-temperature sensor is
+		// commonly paired for any sport - this must NOT be gated to Sport.RUN.
+		User athlete = newAthlete("bike-core-sensor@example.cc");
+		Activity activity = newActivity(athlete, 60);
+		for (int t = 0; t < 60; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setHeatStrain(1.0 + (t % 3) * 0.5);
+			record.setCoreTemp(37.0 + (t % 4) * 0.1);
+			record.setSkinTemp(33.0 + (t % 5) * 0.1);
+			recordRepository.save(record);
+		}
+
+		Activity updated = derivedStatsRecomputeService.recomputeForActivity(activity.getId());
+
+		assertThat(updated.getAvgHeatStrain()).isCloseTo(1.5, org.assertj.core.data.Offset.offset(0.2));
+		assertThat(updated.getMaxHeatStrain()).isEqualTo(2.0);
+		assertThat(updated.getAvgCoreTemp()).isCloseTo(37.15, org.assertj.core.data.Offset.offset(0.1));
+		assertThat(updated.getMaxCoreTemp()).isCloseTo(37.3, org.assertj.core.data.Offset.offset(0.05));
+		assertThat(updated.getAvgSkinTemp()).isCloseTo(33.2, org.assertj.core.data.Offset.offset(0.1));
+		assertThat(updated.getMaxSkinTemp()).isCloseTo(33.4, org.assertj.core.data.Offset.offset(0.05));
+	}
+
 	private void addRecords(Activity activity, int seconds) {
 		for (int t = 0; t < seconds; t++) {
 			Record record = new Record();

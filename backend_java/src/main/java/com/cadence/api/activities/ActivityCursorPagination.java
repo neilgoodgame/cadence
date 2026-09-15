@@ -36,10 +36,13 @@ public class ActivityCursorPagination {
 	// direction. It has to be applied consistently to the page ordering, the seek/cursor
 	// continuation predicate, AND the cursor encoding below - all three must agree on the
 	// same substituted value or pagination would skip or repeat rows at a null boundary.
-	private static final Set<String> NULLABLE_SORT_FIELDS = Set.of("avgHr", "maxHr", "avgPower", "avgHumidity", "avgAirTemp");
-	// avgAirTemp is the one nullable sort field stored as a real (not whole-number) column -
+	private static final Set<String> NULLABLE_SORT_FIELDS = Set.of(
+			"avgHr", "maxHr", "avgPower", "avgHumidity", "avgAirTemp",
+			"avgHeatStrain", "maxHeatStrain", "avgCoreTemp", "maxCoreTemp", "avgSkinTemp", "maxSkinTemp");
+	// avgAirTemp and the CORE-sensor fields are stored as real (not whole-number) columns -
 	// everything else above coalesces as Integer.
-	private static final Set<String> DOUBLE_NULLABLE_SORT_FIELDS = Set.of("avgAirTemp");
+	private static final Set<String> DOUBLE_NULLABLE_SORT_FIELDS = Set.of(
+			"avgAirTemp", "avgHeatStrain", "maxHeatStrain", "avgCoreTemp", "maxCoreTemp", "avgSkinTemp", "maxSkinTemp");
 	private static final int NULLS_LAST_SENTINEL = 100_000;
 	private static final double NULLS_LAST_SENTINEL_DOUBLE = 100_000.0;
 
@@ -129,7 +132,9 @@ public class ActivityCursorPagination {
 		return switch (field) {
 			case "startDate" -> Instant.parse(raw);
 			case "avgHr", "maxHr", "tss", "movingTime", "avgPower", "avgHumidity" -> Integer.valueOf(raw);
-			case "distanceKm", "avgAirTemp" -> Double.valueOf(raw);
+			case "distanceKm", "avgAirTemp", "avgHeatStrain", "maxHeatStrain", "avgCoreTemp", "maxCoreTemp",
+					"avgSkinTemp", "maxSkinTemp" ->
+				Double.valueOf(raw);
 			case "sport" -> Sport.valueOf(raw);
 			case "environment" -> Environment.valueOf(raw);
 			default -> raw;
@@ -154,6 +159,12 @@ public class ActivityCursorPagination {
 			case "avgPower" -> withSentinel(lastRow.getAvgPower(), sentinel);
 			case "avgHumidity" -> withSentinel(lastRow.getAvgHumidity(), sentinel);
 			case "avgAirTemp" -> withSentinel(lastRow.getAvgAirTemp(), sentinelDouble);
+			case "avgHeatStrain" -> withSentinel(lastRow.getAvgHeatStrain(), sentinelDouble);
+			case "maxHeatStrain" -> withSentinel(lastRow.getMaxHeatStrain(), sentinelDouble);
+			case "avgCoreTemp" -> withSentinel(lastRow.getAvgCoreTemp(), sentinelDouble);
+			case "maxCoreTemp" -> withSentinel(lastRow.getMaxCoreTemp(), sentinelDouble);
+			case "avgSkinTemp" -> withSentinel(lastRow.getAvgSkinTemp(), sentinelDouble);
+			case "maxSkinTemp" -> withSentinel(lastRow.getMaxSkinTemp(), sentinelDouble);
 			case "distanceKm" -> lastRow.getDistanceKm();
 			case "sport" -> lastRow.getSport().name();
 			case "environment" -> lastRow.getEnvironment().name();

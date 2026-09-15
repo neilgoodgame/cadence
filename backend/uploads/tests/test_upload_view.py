@@ -168,6 +168,20 @@ class RealFitIngestionTests(TestCase):
         self.assertIsNone(activity.avg_air_temp)
         self.assertIsNone(activity.avg_humidity)
 
+    def test_cycling_indoor_derives_avg_max_heat_strain_core_and_skin_temp_from_core_sensor(self):
+        # Unlike avg_air_temp/avg_humidity above, these are NOT run-only - a CORE sensor is
+        # commonly paired for indoor cycling too, and this fixture proves it.
+        activity = self._upload_fixture("cycling_indoor.fit")
+        self.assertIsNotNone(activity.avg_heat_strain)
+        self.assertIsNotNone(activity.max_heat_strain)
+        self.assertIsNotNone(activity.avg_core_temp)
+        self.assertIsNotNone(activity.max_core_temp)
+        self.assertIsNotNone(activity.avg_skin_temp)
+        self.assertIsNotNone(activity.max_skin_temp)
+        self.assertGreaterEqual(activity.max_heat_strain, activity.avg_heat_strain)
+        self.assertGreaterEqual(activity.max_core_temp, activity.avg_core_temp)
+        self.assertGreaterEqual(activity.max_skin_temp, activity.avg_skin_temp)
+
     def test_cycling_indoor_derives_garmin_training_effect(self):
         activity = self._upload_fixture("cycling_indoor.fit")
         self.assertAlmostEqual(activity.aerobic_training_effect, 4.2, places=1)

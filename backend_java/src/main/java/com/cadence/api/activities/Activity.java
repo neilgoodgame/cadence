@@ -143,6 +143,27 @@ public class Activity extends PrefixedIdEntity {
 	@Column(name = "avg_humidity")
 	private Integer avgHumidity;
 
+	/** CORE body-temperature sensor developer fields - unlike avgAirTemp/avgHumidity above, a
+	 * CORE sensor is commonly paired for any sport, so these are never sport-gated. Never
+	 * user-settable via PATCH (see ActivityService.updateActivity), unlike avgAirTemp/avgHumidity. */
+	@Column(name = "avg_heat_strain")
+	private Double avgHeatStrain;
+
+	@Column(name = "max_heat_strain")
+	private Double maxHeatStrain;
+
+	@Column(name = "avg_core_temp")
+	private Double avgCoreTemp;
+
+	@Column(name = "max_core_temp")
+	private Double maxCoreTemp;
+
+	@Column(name = "avg_skin_temp")
+	private Double avgSkinTemp;
+
+	@Column(name = "max_skin_temp")
+	private Double maxSkinTemp;
+
 	/** Garmin's Firstbeat-derived training load, from a FIT session message (no GPX/TCX equivalent). Device-computed, never user-settable. */
 	@Column(name = "aerobic_training_effect")
 	private Double aerobicTrainingEffect;
@@ -465,6 +486,54 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setAvgHumidity(Integer avgHumidity) {
 		this.avgHumidity = avgHumidity;
+	}
+
+	public Double getAvgHeatStrain() {
+		return avgHeatStrain;
+	}
+
+	public void setAvgHeatStrain(Double avgHeatStrain) {
+		this.avgHeatStrain = avgHeatStrain;
+	}
+
+	public Double getMaxHeatStrain() {
+		return maxHeatStrain;
+	}
+
+	public void setMaxHeatStrain(Double maxHeatStrain) {
+		this.maxHeatStrain = maxHeatStrain;
+	}
+
+	public Double getAvgCoreTemp() {
+		return avgCoreTemp;
+	}
+
+	public void setAvgCoreTemp(Double avgCoreTemp) {
+		this.avgCoreTemp = avgCoreTemp;
+	}
+
+	public Double getMaxCoreTemp() {
+		return maxCoreTemp;
+	}
+
+	public void setMaxCoreTemp(Double maxCoreTemp) {
+		this.maxCoreTemp = maxCoreTemp;
+	}
+
+	public Double getAvgSkinTemp() {
+		return avgSkinTemp;
+	}
+
+	public void setAvgSkinTemp(Double avgSkinTemp) {
+		this.avgSkinTemp = avgSkinTemp;
+	}
+
+	public Double getMaxSkinTemp() {
+		return maxSkinTemp;
+	}
+
+	public void setMaxSkinTemp(Double maxSkinTemp) {
+		this.maxSkinTemp = maxSkinTemp;
 	}
 
 	public Double getAerobicTrainingEffect() {

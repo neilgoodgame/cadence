@@ -77,6 +77,8 @@ public class ActivityService {
 				thresholdHistoryFor(activity),
 				activity.getStartWeightKg(), activity.getEndWeightKg(), activity.getFluidsMl(),
 				activity.getAvgAirTemp(), activity.getAvgHumidity(),
+				activity.getAvgHeatStrain(), activity.getMaxHeatStrain(), activity.getAvgCoreTemp(),
+				activity.getMaxCoreTemp(), activity.getAvgSkinTemp(), activity.getMaxSkinTemp(),
 				activity.getAerobicTrainingEffect(), activity.getAnaerobicTrainingEffect(), activity.getTrainingEffectLabel(),
 				tags,
 				activity.getWorkout() != null ? activity.getWorkout().getId() : null,

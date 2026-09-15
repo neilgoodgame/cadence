@@ -116,6 +116,22 @@ def _sanitize_environment_samples(
     return sanitized_air_temp, sanitized_humidity
 
 
+def _set_avg_max_field(
+    activity: Activity, update_fields: list[str], series: Sequence[float | None], field: str
+) -> None:
+    """Sets avg_<field>/max_<field> on `activity` from `series`, appending the changed field
+    names to `update_fields`. Shared by _ingest_activity and backfill_extended_stats for the
+    CORE-sensor-derived heat_strain/core_temp/skin_temp streams - unlike Stryd's air_temp/
+    humidity, a CORE sensor is commonly paired for any sport, so these are never sport-gated."""
+    if not any(v is not None for v in series):
+        return
+    avg_value = _mean(series)
+    max_value = _max(series)
+    setattr(activity, f"avg_{field}", round(avg_value, 1) if avg_value is not None else None)
+    setattr(activity, f"max_{field}", round(max_value, 1) if max_value is not None else None)
+    update_fields.extend([f"avg_{field}", f"max_{field}"])
+
+
 def _select_running_power_source(samples: list[Sample], source_format: str, athlete: User) -> tuple[list[Sample], str]:
     """Resolves each running sample's power to *only* the athlete's preferred source
     (User.running_power_source) - the other candidate is completely ignored, not used as a
@@ -432,7 +448,16 @@ def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
     """
     records = list(
         activity.records.order_by("t").values(
-            "power", "cadence", "speed", "altitude", "heartrate", "air_temp", "humidity"
+            "power",
+            "cadence",
+            "speed",
+            "altitude",
+            "heartrate",
+            "air_temp",
+            "humidity",
+            "heat_strain",
+            "core_temp",
+            "skin_temp",
         )
     )
 
@@ -501,6 +526,10 @@ def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
             avg_humidity = _mean(humidity_series)
             activity.avg_humidity = round(avg_humidity) if avg_humidity is not None else None
             update_fields.append("avg_humidity")
+
+    _set_avg_max_field(activity, update_fields, [r["heat_strain"] for r in records], "heat_strain")
+    _set_avg_max_field(activity, update_fields, [r["core_temp"] for r in records], "core_temp")
+    _set_avg_max_field(activity, update_fields, [r["skin_temp"] for r in records], "skin_temp")
 
     return update_fields
 
@@ -950,6 +979,10 @@ def _ingest_activity(
             avg_humidity = _mean(humidity_series)
             activity.avg_humidity = round(avg_humidity) if avg_humidity is not None else None
             update_fields.append("avg_humidity")
+
+    _set_avg_max_field(activity, update_fields, [s.get("heat_strain") for s in samples], "heat_strain")
+    _set_avg_max_field(activity, update_fields, [s.get("core_temp") for s in samples], "core_temp")
+    _set_avg_max_field(activity, update_fields, [s.get("skin_temp") for s in samples], "skin_temp")
 
     max_power = _max(power_series)
     if max_power is not None:

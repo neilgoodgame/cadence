@@ -76,6 +76,15 @@ class ActivityListViewTests(TestCase):
         names = [a["name"] for a in response.json()["data"]]
         self.assertEqual(names, ["Hard"])
 
+    def test_cql_filter_by_max_heat_strain(self):
+        _make_activity(self.athlete, name="Mild", max_heat_strain=1.5)
+        _make_activity(self.athlete, name="Severe", max_heat_strain=4.2)
+        _make_activity(self.athlete, name="No CORE sensor", max_heat_strain=None)
+
+        response = _bearer_client(self.athlete).get("/v1/activities?q=" + "max_heat_strain>3".replace(">", "%3E"))
+        names = [a["name"] for a in response.json()["data"]]
+        self.assertEqual(names, ["Severe"])
+
     def test_cql_tag_filter(self):
         tagged = _make_activity(self.athlete, name="Tagged")
         _make_activity(self.athlete, name="Untagged")
@@ -160,6 +169,17 @@ class ActivityListViewTests(TestCase):
 
         asc = _bearer_client(self.athlete).get("/v1/activities?sort=humidity")
         self.assertEqual([a["name"] for a in asc.json()["data"]], ["Dry", "Humid", "No Humidity"])
+
+    def test_sort_by_avg_heat_strain_puts_activities_without_core_sensor_data_last_in_both_directions(self):
+        _make_activity(self.athlete, name="No CORE sensor", avg_heat_strain=None)
+        _make_activity(self.athlete, name="Low strain", avg_heat_strain=1.2)
+        _make_activity(self.athlete, name="High strain", avg_heat_strain=3.8)
+
+        desc = _bearer_client(self.athlete).get("/v1/activities?sort=-avg_heat_strain")
+        self.assertEqual([a["name"] for a in desc.json()["data"]], ["High strain", "Low strain", "No CORE sensor"])
+
+        asc = _bearer_client(self.athlete).get("/v1/activities?sort=avg_heat_strain")
+        self.assertEqual([a["name"] for a in asc.json()["data"]], ["Low strain", "High strain", "No CORE sensor"])
 
     def test_sort_by_date_ascending_and_descending(self):
         _make_activity(self.athlete, name="Earlier", start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC))

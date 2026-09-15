@@ -11,11 +11,15 @@ import java.time.Instant;
  */
 public record McpActivitySummary(
 		String id, String name, Sport sport, Instant startDate, int movingTime, double distanceKm,
-		Integer avgPower, Integer avgHr, int tss, Double intensity) {
+		Integer avgPower, Integer avgHr, int tss, Double intensity,
+		Double avgHeatStrain, Double maxHeatStrain, Double avgCoreTemp, Double maxCoreTemp,
+		Double avgSkinTemp, Double maxSkinTemp) {
 
 	public static McpActivitySummary from(ActivityResponse activity) {
 		return new McpActivitySummary(
 				activity.id(), activity.name(), activity.sport(), activity.startDate(), activity.movingTime(),
-				activity.distanceKm(), activity.avgPower(), activity.avgHr(), activity.tss(), activity.intensity());
+				activity.distanceKm(), activity.avgPower(), activity.avgHr(), activity.tss(), activity.intensity(),
+				activity.avgHeatStrain(), activity.maxHeatStrain(), activity.avgCoreTemp(), activity.maxCoreTemp(),
+				activity.avgSkinTemp(), activity.maxSkinTemp());
 	}
 }

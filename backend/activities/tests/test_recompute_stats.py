@@ -112,6 +112,30 @@ class RecomputeActivityStatsViewTests(TestCase):
         self.assertAlmostEqual(response.json()["avg_air_temp"], 19.0, delta=0.5)
         self.assertAlmostEqual(response.json()["avg_humidity"], 57, delta=2)
 
+    def test_backfill_computes_heat_strain_core_and_skin_temp_for_any_sport(self):
+        # Unlike air_temp/humidity (Stryd, running-only), a CORE body-temperature sensor is
+        # commonly paired for any sport - this must NOT be gated to sport == "run".
+        activity = _make_activity(self.athlete, sport="bike", moving_time=60)
+        for t in range(60):
+            Record.objects.create(
+                activity=activity,
+                t=t,
+                ts=activity.start_date + timedelta(seconds=t),
+                heat_strain=1.0 + (t % 3) * 0.5,
+                core_temp=37.0 + (t % 4) * 0.1,
+                skin_temp=33.0 + (t % 5) * 0.1,
+            )
+
+        response = _bearer_client(self.athlete).post(f"/v1/activities/{activity.id}/recompute-stats")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertAlmostEqual(body["avg_heat_strain"], 1.5, delta=0.2)
+        self.assertEqual(body["max_heat_strain"], 2.0)
+        self.assertAlmostEqual(body["avg_core_temp"], 37.15, delta=0.1)
+        self.assertAlmostEqual(body["max_core_temp"], 37.3, delta=0.05)
+        self.assertAlmostEqual(body["avg_skin_temp"], 33.2, delta=0.1)
+        self.assertAlmostEqual(body["max_skin_temp"], 33.4, delta=0.05)
+
 
 class RecomputeActivityTssViewTests(TestCase):
     """recompute-tss reads the ThresholdHistory value effective as of the activity's own date,

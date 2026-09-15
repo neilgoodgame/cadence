@@ -17,6 +17,12 @@ public final class ActivityFieldMap implements FieldMap {
 			Map.entry("power", "avgPower"),
 			Map.entry("temperature", "avgAirTemp"),
 			Map.entry("humidity", "avgHumidity"),
+			Map.entry("avg_heat_strain", "avgHeatStrain"),
+			Map.entry("max_heat_strain", "maxHeatStrain"),
+			Map.entry("avg_core_temp", "avgCoreTemp"),
+			Map.entry("max_core_temp", "maxCoreTemp"),
+			Map.entry("avg_skin_temp", "avgSkinTemp"),
+			Map.entry("max_skin_temp", "maxSkinTemp"),
 			Map.entry("sport", "sport"),
 			Map.entry("environment", "environment"),
 			Map.entry("name", "name"));
