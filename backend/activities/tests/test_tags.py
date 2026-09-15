@@ -105,15 +105,16 @@ class TagViewTests(TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertFalse(Tag.objects.filter(id=tag.id).exists())
 
-    def test_delete_tag_still_in_use_conflicts(self):
+    def test_delete_tag_in_use_removes_it_and_its_links(self):
         activity = _make_activity(self.athlete)
         tag = Tag.objects.create(athlete=self.athlete, name="Race")
         ActivityTag.objects.create(activity=activity, tag=tag)
 
         response = _bearer_client(self.athlete).delete(f"/v1/tags/{tag.id}")
 
-        self.assertEqual(response.status_code, 409)
-        self.assertTrue(Tag.objects.filter(id=tag.id).exists())
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Tag.objects.filter(id=tag.id).exists())
+        self.assertFalse(ActivityTag.objects.filter(activity=activity, tag_id=tag.id).exists())
 
     def test_delete_tag_not_found(self):
         response = _bearer_client(self.athlete).delete("/v1/tags/tag_bogus")
@@ -130,3 +131,74 @@ class TagViewTests(TestCase):
         response = client.delete(f"/v1/tags/{tag.id}")
         self.assertEqual(response.status_code, 403)
         self.assertTrue(Tag.objects.filter(id=tag.id).exists())
+
+    def test_rename_tag_to_a_free_name(self):
+        tag = Tag.objects.create(athlete=self.athlete, name="Race")
+
+        response = _bearer_client(self.athlete).patch(f"/v1/tags/{tag.id}", {"name": "Key Race"}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], "Key Race")
+        tag.refresh_from_db()
+        self.assertEqual(tag.name, "Key Race")
+
+    def test_rename_tag_merges_into_an_existing_tag_case_insensitively(self):
+        a1 = _make_activity(self.athlete)
+        a2 = _make_activity(self.athlete)
+        old = Tag.objects.create(athlete=self.athlete, name="race")
+        target = Tag.objects.create(athlete=self.athlete, name="Race")
+        ActivityTag.objects.create(activity=a1, tag=old)
+        ActivityTag.objects.create(activity=a2, tag=target)
+
+        response = _bearer_client(self.athlete).patch(f"/v1/tags/{old.id}", {"name": "Race"}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["id"], target.id)
+        self.assertEqual(body["count"], 2)
+        self.assertFalse(Tag.objects.filter(id=old.id).exists())
+        self.assertTrue(ActivityTag.objects.filter(activity=a1, tag=target).exists())
+        self.assertTrue(ActivityTag.objects.filter(activity=a2, tag=target).exists())
+
+    def test_rename_tag_merge_does_not_duplicate_a_link_an_activity_already_has_on_both_sides(self):
+        activity = _make_activity(self.athlete)
+        old = Tag.objects.create(athlete=self.athlete, name="race")
+        target = Tag.objects.create(athlete=self.athlete, name="Race")
+        ActivityTag.objects.create(activity=activity, tag=old)
+        ActivityTag.objects.create(activity=activity, tag=target)
+
+        response = _bearer_client(self.athlete).patch(f"/v1/tags/{old.id}", {"name": "Race"}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(ActivityTag.objects.filter(activity=activity, tag=target).count(), 1)
+
+    def test_rename_tag_to_its_own_current_name_is_a_no_op(self):
+        tag = Tag.objects.create(athlete=self.athlete, name="Race")
+
+        response = _bearer_client(self.athlete).patch(f"/v1/tags/{tag.id}", {"name": "Race"}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Tag.objects.filter(id=tag.id, name="Race").exists())
+
+    def test_rename_tag_rejects_empty_name(self):
+        tag = Tag.objects.create(athlete=self.athlete, name="Race")
+        response = _bearer_client(self.athlete).patch(f"/v1/tags/{tag.id}", {"name": "  "}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_rename_tag_not_found(self):
+        response = _bearer_client(self.athlete).patch("/v1/tags/tag_bogus", {"name": "Whatever"}, format="json")
+        self.assertEqual(response.status_code, 404)
+
+    def test_cannot_rename_other_athletes_tag(self):
+        tag = Tag.objects.create(athlete=self.other_athlete, name="Not mine")
+        response = _bearer_client(self.athlete).patch(f"/v1/tags/{tag.id}", {"name": "Mine now"}, format="json")
+        self.assertEqual(response.status_code, 404)
+
+    def test_outsider_without_write_cannot_rename_tag(self):
+        tag = Tag.objects.create(athlete=self.athlete, name="Race")
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.patch(f"/v1/tags/{tag.id}", {"name": "Renamed"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        tag.refresh_from_db()
+        self.assertEqual(tag.name, "Race")

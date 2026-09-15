@@ -18,7 +18,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from accounts.models import PersonalAccessToken, User, UserRelationship
 from accounts.tokens import generate_secret, hash_secret, visible_prefix
 from activities.mcp import ActivityMCPTools
-from activities.models import Activity, Record
+from activities.models import Activity, ActivityTag, Record, Tag
 from athletes.mcp import AthleteMCPTools
 from authn.oauth_utils import issue_token_pair
 from core.models import generate_id
@@ -729,6 +729,52 @@ class ActivityToolsTests(TestCase):
 
         with self.assertRaises(PermissionDenied):
             tools.tag_activity(activity_id=activity.id, name="VO2 max")
+
+    def test_list_tags_includes_usage_counts(self) -> None:
+        athlete = User.objects.create_user(email="mcp-list-tags@example.cc", password="x", name="Athlete")
+        tag = Tag.objects.create(athlete=athlete, name="Race")
+        ActivityTag.objects.create(activity=self._new_activity(athlete), tag=tag)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_tags()
+
+        self.assertEqual(result["data"], [{"id": tag.id, "name": "Race", "origin": "manual", "color": "", "count": 1}])
+
+    def test_rename_tag_merges_case_insensitively(self) -> None:
+        athlete = User.objects.create_user(email="mcp-rename-tag@example.cc", password="x", name="Athlete")
+        a1 = self._new_activity(athlete)
+        a2 = self._new_activity(athlete)
+        old = Tag.objects.create(athlete=athlete, name="race")
+        target = Tag.objects.create(athlete=athlete, name="Race")
+        ActivityTag.objects.create(activity=a1, tag=old)
+        ActivityTag.objects.create(activity=a2, tag=target)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.rename_tag(name="race", new_name="Race")
+
+        self.assertEqual(result["id"], target.id)
+        self.assertEqual(result["count"], 2)
+        self.assertFalse(Tag.objects.filter(id=old.id).exists())
+
+    def test_rename_tag_rejects_empty_new_name(self) -> None:
+        athlete = User.objects.create_user(email="mcp-rename-tag-empty@example.cc", password="x", name="Athlete")
+        Tag.objects.create(athlete=athlete, name="Race")
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.rename_tag(name="Race", new_name="  ")
+
+    def test_delete_tag_removes_it_and_its_links(self) -> None:
+        athlete = User.objects.create_user(email="mcp-delete-tag@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tag = Tag.objects.create(athlete=athlete, name="Race")
+        ActivityTag.objects.create(activity=activity, tag=tag)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.delete_tag(name="Race")
+
+        self.assertEqual(result, {"deleted": True, "name": "Race"})
+        self.assertFalse(Tag.objects.filter(id=tag.id).exists())
 
 
 class AthleteToolsTests(TestCase):

@@ -5,8 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.ActivityTag;
+import com.cadence.api.activities.ActivityTagRepository;
+import com.cadence.api.activities.Tag;
+import com.cadence.api.activities.TagRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
+import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
@@ -14,6 +19,7 @@ import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +35,12 @@ class ActivityWriteToolsTest extends IntegrationTest {
 
 	@Autowired
 	private UserRepository userRepository;
+
+	@Autowired
+	private TagRepository tagRepository;
+
+	@Autowired
+	private ActivityTagRepository activityTagRepository;
 
 	@AfterEach
 	void clearAuthContext() {
@@ -122,5 +134,70 @@ class ActivityWriteToolsTest extends IntegrationTest {
 
 		assertThatThrownBy(() -> activityWriteTools.tagActivity(activity.getId(), "VO2 max"))
 				.isInstanceOf(ForbiddenException.class);
+	}
+
+	private Tag newTag(User athlete, String name) {
+		Tag tag = new Tag();
+		tag.setAthlete(athlete);
+		tag.setName(name);
+		return tagRepository.save(tag);
+	}
+
+	private void attach(Activity activity, Tag tag) {
+		ActivityTag link = new ActivityTag();
+		link.setActivity(activity);
+		link.setTag(tag);
+		activityTagRepository.save(link);
+	}
+
+	@Test
+	void renameTagMergesCaseInsensitively() {
+		User athlete = newUser("write-tool-rename-tag-athlete@example.cc");
+		Activity a1 = newActivity(athlete);
+		Activity a2 = newActivity(athlete);
+		Tag oldTag = newTag(athlete, "race");
+		Tag target = newTag(athlete, "Race");
+		attach(a1, oldTag);
+		attach(a2, target);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var result = activityWriteTools.renameTag("race", "Race");
+
+		assertThat(result.id()).isEqualTo(target.getId());
+		assertThat(result.count()).isEqualTo(2);
+		assertThat(tagRepository.findById(oldTag.getId())).isEmpty();
+	}
+
+	@Test
+	void renameTagRejectsEmptyNewName() {
+		User athlete = newUser("write-tool-rename-tag-empty-athlete@example.cc");
+		newTag(athlete, "Race");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> activityWriteTools.renameTag("Race", "  "))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void renameTagNotFound() {
+		User athlete = newUser("write-tool-rename-tag-missing-athlete@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> activityWriteTools.renameTag("Nonexistent", "New"))
+				.isInstanceOf(NotFoundException.class);
+	}
+
+	@Test
+	void deleteTagRemovesItAndItsLinks() {
+		User athlete = newUser("write-tool-delete-tag-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		Tag tag = newTag(athlete, "Race");
+		attach(activity, tag);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var result = activityWriteTools.deleteTag("Race");
+
+		assertThat(result).isEqualTo(Map.of("deleted", true, "name", "Race"));
+		assertThat(tagRepository.findById(tag.getId())).isEmpty();
 	}
 }

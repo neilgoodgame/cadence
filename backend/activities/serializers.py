@@ -224,6 +224,16 @@ class TagAttachSerializer(serializers.Serializer):
         return attrs
 
 
+class TagRenameSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=100)
+
+    def validate_name(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("name cannot be empty.")
+        return value
+
+
 class ActivityCommentSerializer(serializers.ModelSerializer):
     author_id = serializers.CharField(read_only=True)
     author_name = serializers.CharField(source="author.name", read_only=True)
