@@ -21,6 +21,8 @@ public record ActivityResponse(
 		// so embedding it here too would just be duplicated data.
 		List<ActivityThresholdHistoryEntry> thresholdHistory,
 		Double startWeightKg, Double endWeightKg, Integer fluidsMl, Double avgAirTemp, Integer avgHumidity,
+		Double avgHeatStrain, Double maxHeatStrain, Double avgCoreTemp, Double maxCoreTemp,
+		Double avgSkinTemp, Double maxSkinTemp,
 		Double aerobicTrainingEffect, Double anaerobicTrainingEffect, String trainingEffectLabel,
 		List<String> tags, String workoutId, String bikeId, String shoeId,
 		// Multisport linkage: children carry parentActivityId, the parent lists childActivityIds
@@ -36,7 +38,8 @@ public record ActivityResponse(
 				id, athleteId, sport, environment, hasGps, name, startDate, source, device, movingTime, distanceKm,
 				distanceSource, powerSource, avgPower, normPower, intensity, tss, avgHr, maxHr, ascent, maxPower, avgCadence,
 				maxCadence, maxSpeed, totalDescent, elevationMin, elevationMax, calories, trimp, avgLeftBalancePct,
-				List.of(), startWeightKg, endWeightKg, fluidsMl, avgAirTemp, avgHumidity, aerobicTrainingEffect,
+				List.of(), startWeightKg, endWeightKg, fluidsMl, avgAirTemp, avgHumidity,
+				avgHeatStrain, maxHeatStrain, avgCoreTemp, maxCoreTemp, avgSkinTemp, maxSkinTemp, aerobicTrainingEffect,
 				anaerobicTrainingEffect, trainingEffectLabel, tags, workoutId, bikeId, shoeId, parentActivityId,
 				childActivityIds, primaryActivityId, duplicateActivityIds);
 	}

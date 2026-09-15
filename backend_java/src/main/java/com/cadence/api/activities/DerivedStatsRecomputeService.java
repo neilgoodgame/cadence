@@ -221,6 +221,34 @@ public class DerivedStatsRecomputeService {
 			}
 		}
 
+		// CORE body-temperature sensor developer fields - unlike air_temp/humidity above (Stryd,
+		// running-only), a CORE sensor is commonly paired for any sport, so these are never
+		// sport-gated.
+		List<Double> heatStrainSeries = records.stream().map(Record::getHeatStrain).toList();
+		if (heatStrainSeries.stream().anyMatch(Objects::nonNull)) {
+			Double avgHeatStrain = meanDouble(heatStrainSeries);
+			Double maxHeatStrain = maxDouble(heatStrainSeries);
+			activity.setAvgHeatStrain(avgHeatStrain != null ? round1(avgHeatStrain) : null);
+			activity.setMaxHeatStrain(maxHeatStrain != null ? round1(maxHeatStrain) : null);
+			changed = true;
+		}
+		List<Double> coreTempSeries = records.stream().map(Record::getCoreTemp).toList();
+		if (coreTempSeries.stream().anyMatch(Objects::nonNull)) {
+			Double avgCoreTemp = meanDouble(coreTempSeries);
+			Double maxCoreTemp = maxDouble(coreTempSeries);
+			activity.setAvgCoreTemp(avgCoreTemp != null ? round1(avgCoreTemp) : null);
+			activity.setMaxCoreTemp(maxCoreTemp != null ? round1(maxCoreTemp) : null);
+			changed = true;
+		}
+		List<Double> skinTempSeries = records.stream().map(Record::getSkinTemp).toList();
+		if (skinTempSeries.stream().anyMatch(Objects::nonNull)) {
+			Double avgSkinTemp = meanDouble(skinTempSeries);
+			Double maxSkinTemp = maxDouble(skinTempSeries);
+			activity.setAvgSkinTemp(avgSkinTemp != null ? round1(avgSkinTemp) : null);
+			activity.setMaxSkinTemp(maxSkinTemp != null ? round1(maxSkinTemp) : null);
+			changed = true;
+		}
+
 		List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
 		List<Zone> hrZones = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE).getZones();
 		Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);

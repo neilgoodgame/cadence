@@ -71,6 +71,17 @@ class Activity(PrefixedIDModel):
     fluids_ml = models.IntegerField(null=True, blank=True)
     avg_air_temp = models.FloatField(null=True, blank=True)
     avg_humidity = models.IntegerField(null=True, blank=True)
+    # CORE body-temperature sensor developer fields, same "average over the record stream" shape
+    # as avg_air_temp/avg_humidity above - added specifically so heat-strain/core-temp questions
+    # (e.g. "which sessions had the highest heat strain in the last 3 months") can be answered by
+    # one CQL-filtered list_activities call instead of an MCP client fetching every activity's
+    # full stream and computing this itself.
+    avg_heat_strain = models.FloatField(null=True, blank=True)
+    max_heat_strain = models.FloatField(null=True, blank=True)
+    avg_core_temp = models.FloatField(null=True, blank=True)
+    max_core_temp = models.FloatField(null=True, blank=True)
+    avg_skin_temp = models.FloatField(null=True, blank=True)
+    max_skin_temp = models.FloatField(null=True, blank=True)
     # Garmin's Firstbeat-derived training load metrics, from a FIT session
     # message (no GPX/TCX equivalent). Device-computed, never user-settable.
     aerobic_training_effect = models.FloatField(null=True, blank=True)

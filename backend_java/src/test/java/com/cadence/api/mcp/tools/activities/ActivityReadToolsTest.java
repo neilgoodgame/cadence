@@ -106,6 +106,40 @@ class ActivityReadToolsTest extends IntegrationTest {
 	}
 
 	@Test
+	void listActivitiesQueryFiltersAndReturnsHeatStrainStats() {
+		// This is the motivating case: an MCP client asking "which sessions had the highest
+		// heat strain" needs both the CQL filter AND the actual value back in one call, not a
+		// separate get_activity_stream_summary per activity.
+		User athlete = newUser("mcp-list-heat-strain@example.cc");
+		Activity severe = new Activity();
+		severe.setAthlete(athlete);
+		severe.setSport(Sport.BIKE);
+		severe.setName("Severe");
+		severe.setStartDate(Instant.parse("2026-01-01T08:00:00Z"));
+		severe.setAvgHeatStrain(1.5);
+		severe.setMaxHeatStrain(4.2);
+		activityRepository.save(severe);
+
+		Activity mild = new Activity();
+		mild.setAthlete(athlete);
+		mild.setSport(Sport.BIKE);
+		mild.setName("Mild");
+		mild.setStartDate(Instant.parse("2026-01-01T08:00:00Z"));
+		mild.setAvgHeatStrain(0.5);
+		mild.setMaxHeatStrain(1.1);
+		activityRepository.save(mild);
+
+		authAs(athlete.getId(), "activities:read");
+
+		var result = activityReadTools.listActivities("max_heat_strain>3", null, null, null, null, null);
+
+		assertThat(result.data()).hasSize(1);
+		assertThat(result.data().get(0).name()).isEqualTo("Severe");
+		assertThat(result.data().get(0).maxHeatStrain()).isEqualTo(4.2);
+		assertThat(result.data().get(0).avgHeatStrain()).isEqualTo(1.5);
+	}
+
+	@Test
 	void getActivityIncludesAverageAirTemperatureAndHumidity() {
 		User athlete = newUser("read-tool-env-athlete@example.cc");
 		Activity activity = new Activity();

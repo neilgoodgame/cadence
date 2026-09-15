@@ -535,6 +535,12 @@ public class ImportReader {
 		activity.setFluidsMl(ar.fluidsMl());
 		activity.setAvgAirTemp(ar.avgAirTemp());
 		activity.setAvgHumidity(ar.avgHumidity());
+		activity.setAvgHeatStrain(ar.avgHeatStrain());
+		activity.setMaxHeatStrain(ar.maxHeatStrain());
+		activity.setAvgCoreTemp(ar.avgCoreTemp());
+		activity.setMaxCoreTemp(ar.maxCoreTemp());
+		activity.setAvgSkinTemp(ar.avgSkinTemp());
+		activity.setMaxSkinTemp(ar.maxSkinTemp());
 		activity.setAerobicTrainingEffect(ar.aerobicTrainingEffect());
 		activity.setAnaerobicTrainingEffect(ar.anaerobicTrainingEffect());
 		activity.setTrainingEffectLabel(ar.trainingEffectLabel());

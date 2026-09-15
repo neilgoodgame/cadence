@@ -493,6 +493,42 @@ class ActivityToolsTests(TestCase):
         self.assertEqual(len(result["data"]), 1)
         self.assertEqual(result["data"][0]["name"], "Mine")
 
+    def test_list_activities_query_filters_and_returns_heat_strain_stats(self) -> None:
+        # This is the motivating case: an MCP client asking "which sessions had the highest
+        # heat strain" needs both the CQL filter AND the actual value back in one call, not a
+        # separate get_activity_stream_summary per activity.
+        athlete = User.objects.create_user(email="mcp-list-heat-strain@example.cc", password="x", name="Athlete")
+        Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Severe",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+            avg_heat_strain=1.5,
+            max_heat_strain=4.2,
+        )
+        Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Mild",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+            avg_heat_strain=0.5,
+            max_heat_strain=1.1,
+        )
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.list_activities(query="max_heat_strain>3")
+
+        self.assertEqual(len(result["data"]), 1)
+        self.assertEqual(result["data"][0]["name"], "Severe")
+        self.assertEqual(result["data"][0]["max_heat_strain"], 4.2)
+        self.assertEqual(result["data"][0]["avg_heat_strain"], 1.5)
+
     def _new_activity(self, athlete: User) -> Activity:
         return Activity.objects.create(
             id=generate_id("act"),

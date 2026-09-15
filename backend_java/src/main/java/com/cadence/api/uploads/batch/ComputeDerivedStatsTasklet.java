@@ -121,6 +121,31 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 			}
 		}
 
+		// CORE body-temperature sensor developer fields - unlike air_temp/humidity above (Stryd,
+		// running-only), a CORE sensor is commonly paired for any sport, so these are never
+		// sport-gated.
+		List<Double> heatStrainSeries = parsed.samples().stream().map(ParsedActivity.Sample::heatStrain).toList();
+		if (heatStrainSeries.stream().anyMatch(Objects::nonNull)) {
+			Double avgHeatStrain = meanDouble(heatStrainSeries);
+			Double maxHeatStrain = maxDouble(heatStrainSeries);
+			activity.setAvgHeatStrain(avgHeatStrain != null ? round1(avgHeatStrain) : null);
+			activity.setMaxHeatStrain(maxHeatStrain != null ? round1(maxHeatStrain) : null);
+		}
+		List<Double> coreTempSeries = parsed.samples().stream().map(ParsedActivity.Sample::coreTemp).toList();
+		if (coreTempSeries.stream().anyMatch(Objects::nonNull)) {
+			Double avgCoreTemp = meanDouble(coreTempSeries);
+			Double maxCoreTemp = maxDouble(coreTempSeries);
+			activity.setAvgCoreTemp(avgCoreTemp != null ? round1(avgCoreTemp) : null);
+			activity.setMaxCoreTemp(maxCoreTemp != null ? round1(maxCoreTemp) : null);
+		}
+		List<Double> skinTempSeries = parsed.samples().stream().map(ParsedActivity.Sample::skinTemp).toList();
+		if (skinTempSeries.stream().anyMatch(Objects::nonNull)) {
+			Double avgSkinTemp = meanDouble(skinTempSeries);
+			Double maxSkinTemp = maxDouble(skinTempSeries);
+			activity.setAvgSkinTemp(avgSkinTemp != null ? round1(avgSkinTemp) : null);
+			activity.setMaxSkinTemp(maxSkinTemp != null ? round1(maxSkinTemp) : null);
+		}
+
 		Integer maxPower = max(powerSeries);
 		if (maxPower != null) {
 			activity.setMaxPower(maxPower);

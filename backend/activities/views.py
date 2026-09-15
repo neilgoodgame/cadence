@@ -62,6 +62,12 @@ ACTIVITY_FIELD_MAP = {
     "power": "avg_power",
     "temperature": "avg_air_temp",
     "humidity": "avg_humidity",
+    "avg_heat_strain": "avg_heat_strain",
+    "max_heat_strain": "max_heat_strain",
+    "avg_core_temp": "avg_core_temp",
+    "max_core_temp": "max_core_temp",
+    "avg_skin_temp": "avg_skin_temp",
+    "max_skin_temp": "max_skin_temp",
     "sport": "sport",
     "environment": "environment",
     "name": "name",
@@ -73,7 +79,31 @@ ACTIVITY_FIELD_MAP = {
 # "sort by heart rate" means to a user. The value is a sentinel safely outside any real
 # reading for these fields, used to push nulls to the end regardless of direction.
 NULLABLE_SORT_SENTINEL = 100_000
-NULLABLE_SORT_FIELDS = {"avg_hr", "max_hr", "avg_power", "avg_air_temp", "avg_humidity"}
+NULLABLE_SORT_FIELDS = {
+    "avg_hr",
+    "max_hr",
+    "avg_power",
+    "avg_air_temp",
+    "avg_humidity",
+    "avg_heat_strain",
+    "max_heat_strain",
+    "avg_core_temp",
+    "max_core_temp",
+    "avg_skin_temp",
+    "max_skin_temp",
+}
+# Coalesce can't infer an output_field from a bare int Value() mixed with a float column
+# ("mixed types: FloatField, IntegerField") - every field in NULLABLE_SORT_FIELDS not listed
+# here is an IntegerField, where the plain int sentinel already matches.
+FLOAT_NULLABLE_SORT_FIELDS = {
+    "avg_air_temp",
+    "avg_heat_strain",
+    "max_heat_strain",
+    "avg_core_temp",
+    "max_core_temp",
+    "avg_skin_temp",
+    "max_skin_temp",
+}
 
 
 def _tag_filter(value: str) -> Q:
@@ -193,14 +223,9 @@ class ActivityListView(APIView):
                 descending = order_field.startswith("-")
                 annotation = f"{raw_order_field}_sort"
                 sentinel = -1 if descending else NULLABLE_SORT_SENTINEL
-                # avg_air_temp is a FloatField; Coalesce can't infer an output_field from a
-                # bare int Value() mixed with a float column ("mixed types: FloatField,
-                # IntegerField") - every other nullable field here is an IntegerField, where
-                # the plain int sentinel already matches, so only this one needs an explicit
-                # output_field.
                 sentinel_value = (
                     Value(float(sentinel), output_field=FloatField())
-                    if raw_order_field == "avg_air_temp"
+                    if raw_order_field in FLOAT_NULLABLE_SORT_FIELDS
                     else Value(sentinel)
                 )
                 qs = qs.annotate(**{annotation: Coalesce(raw_order_field, sentinel_value)})

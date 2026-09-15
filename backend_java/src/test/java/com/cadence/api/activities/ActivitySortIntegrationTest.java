@@ -73,6 +73,16 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		activityRepository.save(activity);
 	}
 
+	private void newActivityWithMaxHeatStrain(User athlete, String name, Double maxHeatStrain) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName(name);
+		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		activity.setMaxHeatStrain(maxHeatStrain);
+		activityRepository.save(activity);
+	}
+
 	@Test
 	void sortByDateAscendingAndDescending() {
 		User athlete = newUser("sort-date-athlete@example.cc");
@@ -177,5 +187,35 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		CursorPage<ActivityResponse> asc =
 				activityService.list(athlete.getId(), "orderby humidity asc", null, null, null, null, null, null, 50);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Dry", "Humid", "No Humidity");
+	}
+
+	// avg_heat_strain/max_heat_strain etc. are the newest nullable-sort fields - added
+	// specifically so an MCP client can ask "which sessions had the highest heat strain" in one
+	// CQL-filtered/sorted call instead of fetching every activity's full stream itself.
+	@Test
+	void sortByMaxHeatStrainPutsActivitiesWithoutCoreSensorDataLastInBothDirections() {
+		User athlete = newUser("sort-heat-strain-athlete@example.cc");
+		newActivityWithMaxHeatStrain(athlete, "No CORE sensor", null);
+		newActivityWithMaxHeatStrain(athlete, "Mild", 1.1);
+		newActivityWithMaxHeatStrain(athlete, "Severe", 4.2);
+
+		CursorPage<ActivityResponse> desc =
+				activityService.list(athlete.getId(), "orderby max_heat_strain desc", null, null, null, null, null, null, 50);
+		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("Severe", "Mild", "No CORE sensor");
+
+		CursorPage<ActivityResponse> asc =
+				activityService.list(athlete.getId(), "orderby max_heat_strain asc", null, null, null, null, null, null, 50);
+		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Mild", "Severe", "No CORE sensor");
+	}
+
+	@Test
+	void cqlFiltersByMaxHeatStrain() {
+		User athlete = newUser("cql-heat-strain-athlete@example.cc");
+		newActivityWithMaxHeatStrain(athlete, "Mild", 1.5);
+		newActivityWithMaxHeatStrain(athlete, "Severe", 4.2);
+
+		CursorPage<ActivityResponse> result =
+				activityService.list(athlete.getId(), "max_heat_strain>3", null, null, null, null, null, null, 50);
+		assertThat(result.data()).extracting(ActivityResponse::name).containsExactly("Severe");
 	}
 }
