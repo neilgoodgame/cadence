@@ -10,5 +10,12 @@ public interface TagRepository extends JpaRepository<Tag, String> {
 
 	Optional<Tag> findByAthleteIdAndNameIgnoreCase(String athleteId, String name);
 
+	// Plural form for callers that must tolerate more than one case-insensitive match (e.g. the
+	// athlete already has both "race" and "Race" via the older exact-match attach-by-name path) -
+	// the singular findByAthleteIdAndNameIgnoreCase throws NonUniqueResultException in that case.
+	List<Tag> findAllByAthleteIdAndNameIgnoreCase(String athleteId, String name);
+
+	Optional<Tag> findByAthleteIdAndName(String athleteId, String name);
+
 	Optional<Tag> findByIdAndAthleteId(String id, String athleteId);
 }

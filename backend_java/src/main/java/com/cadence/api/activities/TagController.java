@@ -2,6 +2,7 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.TagAttachRequest;
 import com.cadence.api.activities.dto.TagAttachResponse;
+import com.cadence.api.activities.dto.TagRenameRequest;
 import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AccessGuard;
@@ -11,6 +12,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,14 +27,16 @@ public class TagController {
 	private final ActivityService activityService;
 	private final UserService userService;
 	private final AccessGuard accessGuard;
+	private final ActivityTagRepository activityTagRepository;
 
 	public TagController(TagService tagService, TagMapper tagMapper, ActivityService activityService,
-			UserService userService, AccessGuard accessGuard) {
+			UserService userService, AccessGuard accessGuard, ActivityTagRepository activityTagRepository) {
 		this.tagService = tagService;
 		this.tagMapper = tagMapper;
 		this.activityService = activityService;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
+		this.activityTagRepository = activityTagRepository;
 	}
 
 	@GetMapping("/v1/tags")
@@ -66,5 +70,14 @@ public class TagController {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		tagService.deleteTag(athleteId, id);
+	}
+
+	@PatchMapping("/v1/tags/{id}")
+	public TagResponse renameTag(@PathVariable String id, @Valid @RequestBody TagRenameRequest request) {
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+		Tag result = tagService.renameTag(athleteId, id, request.name());
+		return new TagResponse(result.getId(), result.getName(), result.getOrigin(), result.getColor(),
+				activityTagRepository.countByTagId(result.getId()));
 	}
 }

@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.common.domain.Sport;
-import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -100,14 +100,16 @@ class TagServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void deleteTagStillInUseConflicts() {
+	void deleteTagInUseRemovesItAndItsLinks() {
 		User athlete = newUser("delete-in-use-athlete@example.cc");
 		Tag tag = newTag(athlete, "Race");
-		attach(newActivity(athlete), tag);
+		Activity activity = newActivity(athlete);
+		attach(activity, tag);
 
-		assertThatThrownBy(() -> tagService.deleteTag(athlete.getId(), tag.getId()))
-				.isInstanceOf(ConflictException.class);
-		assertThat(tagRepository.findById(tag.getId())).isPresent();
+		tagService.deleteTag(athlete.getId(), tag.getId());
+
+		assertThat(tagRepository.findById(tag.getId())).isEmpty();
+		assertThat(activityTagRepository.existsByActivityIdAndTagId(activity.getId(), tag.getId())).isFalse();
 	}
 
 	@Test
@@ -119,5 +121,79 @@ class TagServiceIntegrationTest extends IntegrationTest {
 		assertThatThrownBy(() -> tagService.deleteTag(athlete.getId(), tag.getId()))
 				.isInstanceOf(NotFoundException.class);
 		assertThat(tagRepository.findById(tag.getId())).isPresent();
+	}
+
+	@Test
+	void renameTagToAFreeName() {
+		User athlete = newUser("rename-free-athlete@example.cc");
+		Tag tag = newTag(athlete, "Race");
+
+		Tag result = tagService.renameTag(athlete.getId(), tag.getId(), "Key Race");
+
+		assertThat(result.getId()).isEqualTo(tag.getId());
+		assertThat(result.getName()).isEqualTo("Key Race");
+	}
+
+	@Test
+	void renameTagMergesIntoAnExistingTagCaseInsensitively() {
+		User athlete = newUser("rename-merge-athlete@example.cc");
+		Activity a1 = newActivity(athlete);
+		Activity a2 = newActivity(athlete);
+		Tag oldTag = newTag(athlete, "race");
+		Tag target = newTag(athlete, "Race");
+		attach(a1, oldTag);
+		attach(a2, target);
+
+		Tag result = tagService.renameTag(athlete.getId(), oldTag.getId(), "Race");
+
+		assertThat(result.getId()).isEqualTo(target.getId());
+		assertThat(tagRepository.findById(oldTag.getId())).isEmpty();
+		assertThat(activityTagRepository.existsByActivityIdAndTagId(a1.getId(), target.getId())).isTrue();
+		assertThat(activityTagRepository.existsByActivityIdAndTagId(a2.getId(), target.getId())).isTrue();
+		assertThat(activityTagRepository.countByTagId(target.getId())).isEqualTo(2);
+	}
+
+	@Test
+	void renameTagMergeDoesNotDuplicateALinkAnActivityAlreadyHasOnBothSides() {
+		User athlete = newUser("rename-merge-dedupe-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		Tag oldTag = newTag(athlete, "race");
+		Tag target = newTag(athlete, "Race");
+		attach(activity, oldTag);
+		attach(activity, target);
+
+		tagService.renameTag(athlete.getId(), oldTag.getId(), "Race");
+
+		assertThat(activityTagRepository.countByTagId(target.getId())).isEqualTo(1);
+	}
+
+	@Test
+	void renameTagToItsOwnCurrentNameIsANoOp() {
+		User athlete = newUser("rename-noop-athlete@example.cc");
+		Tag tag = newTag(athlete, "Race");
+
+		Tag result = tagService.renameTag(athlete.getId(), tag.getId(), "Race");
+
+		assertThat(result.getId()).isEqualTo(tag.getId());
+		assertThat(result.getName()).isEqualTo("Race");
+	}
+
+	@Test
+	void renameTagRejectsEmptyName() {
+		User athlete = newUser("rename-empty-athlete@example.cc");
+		Tag tag = newTag(athlete, "Race");
+
+		assertThatThrownBy(() -> tagService.renameTag(athlete.getId(), tag.getId(), "  "))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void cannotRenameOtherAthletesTag() {
+		User athlete = newUser("rename-not-mine-athlete@example.cc");
+		User other = newUser("rename-not-mine-other@example.cc");
+		Tag tag = newTag(other, "Not mine");
+
+		assertThatThrownBy(() -> tagService.renameTag(athlete.getId(), tag.getId(), "Mine now"))
+				.isInstanceOf(NotFoundException.class);
 	}
 }

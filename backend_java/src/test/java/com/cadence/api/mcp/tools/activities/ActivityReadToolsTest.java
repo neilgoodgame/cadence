@@ -1,11 +1,17 @@
 package com.cadence.api.mcp.tools.activities;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.ActivityTag;
+import com.cadence.api.activities.ActivityTagRepository;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
+import com.cadence.api.activities.Tag;
+import com.cadence.api.activities.TagRepository;
+import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
@@ -40,6 +46,12 @@ class ActivityReadToolsTest extends IntegrationTest {
 
 	@Autowired
 	private LapRepository lapRepository;
+
+	@Autowired
+	private TagRepository tagRepository;
+
+	@Autowired
+	private ActivityTagRepository activityTagRepository;
 
 	@AfterEach
 	void clearAuthContext() {
@@ -156,5 +168,29 @@ class ActivityReadToolsTest extends IntegrationTest {
 
 		assertThat(result.avgAirTemp()).isEqualTo(24.5);
 		assertThat(result.avgHumidity()).isEqualTo(58);
+	}
+
+	@Test
+	void listTagsIncludesUsageCounts() {
+		User athlete = newUser("read-tool-list-tags-athlete@example.cc");
+		Tag tag = new Tag();
+		tag.setAthlete(athlete);
+		tag.setName("Race");
+		tag = tagRepository.save(tag);
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("Morning Run");
+		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		activity = activityRepository.save(activity);
+		ActivityTag link = new ActivityTag();
+		link.setActivity(activity);
+		link.setTag(tag);
+		activityTagRepository.save(link);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = activityReadTools.listTags();
+
+		assertThat(result).extracting(TagResponse::name, TagResponse::count).containsExactly(tuple("Race", 1L));
 	}
 }

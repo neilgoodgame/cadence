@@ -10,7 +10,6 @@ from rest_framework.views import APIView
 
 from core.auth_context import get_effective_athlete_id
 from core.cql import compile_ast_to_q, parse, resolve_order_by
-from core.exceptions import ConflictError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
 from uploads.processing import backfill_extended_stats, compute_normalized_power, compute_tss
@@ -32,8 +31,10 @@ from .serializers import (
     DurationCurveSerializer,
     LapSerializer,
     TagAttachSerializer,
+    TagRenameSerializer,
     TagSerializer,
 )
+from .tag_management import rename_tag
 
 SCALAR_STREAM_FIELDS = {
     "time": "t",
@@ -540,12 +541,22 @@ class TagListView(APIView):
 
 
 class TagDetailView(APIView):
+    def patch(self, request: Request, id: str) -> Response:
+        _, athlete_id = get_effective_athlete_id(request)
+        _require_write(request, athlete_id)
+        tag = get_object_or_404(Tag, pk=id, athlete_id=athlete_id)
+        serializer = TagRenameSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = rename_tag(tag, serializer.validated_data["name"])
+        result = Tag.objects.annotate(count=Count("activity_tags")).get(pk=result.pk)
+        return Response(TagSerializer(result).data)
+
     def delete(self, request: Request, id: str) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
         tag = get_object_or_404(Tag, pk=id, athlete_id=athlete_id)
-        if ActivityTag.objects.filter(tag=tag).exists():
-            raise ConflictError("This tag is still linked to activities.")
+        # Cascades: ActivityTag.tag is on_delete=CASCADE, so every link to this tag goes with it -
+        # deleting a tag always fully removes it, not just when unused.
         tag.delete()
         return Response(status=204)
 
