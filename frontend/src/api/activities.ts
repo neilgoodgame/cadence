@@ -131,9 +131,16 @@ export function untagActivity(activityId: string, tagId: string): Promise<void> 
   return apiFetch<void>(`/v1/activities/${activityId}/tags/${tagId}`, { method: "DELETE" });
 }
 
-/** Only allowed when the tag has zero linked activities - the backend 409s otherwise. */
+/** Removes the tag entirely, including every activity link it has - not just an unused one. */
 export function deleteTag(tagId: string): Promise<void> {
   return apiFetch<void>(`/v1/tags/${tagId}`, { method: "DELETE" });
+}
+
+/** If `name` collides with an existing tag (case-insensitive), merges into it instead - every
+ * activity linked to this tag ends up linked to the existing one, and this tag is removed.
+ * Returns whichever tag now holds `name`. */
+export function renameTag(tagId: string, name: string): Promise<Tag> {
+  return apiFetch<Tag>(`/v1/tags/${tagId}`, { method: "PATCH", body: { name } });
 }
 
 export function listComments(activityId: string): Promise<DataList<ActivityComment>> {
