@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.support.IntegrationTest;
@@ -87,6 +88,46 @@ class TagServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(tags).extracting(TagResponse::name, TagResponse::count)
 				.containsExactly(tuple("Popular", 2L), tuple("Rare", 1L));
+	}
+
+	@Test
+	void createTagSucceeds() {
+		User athlete = newUser("create-tag-athlete@example.cc");
+
+		Tag tag = tagService.createTag(athlete.getId(), athlete, "Trail");
+
+		assertThat(tag.getName()).isEqualTo("Trail");
+		assertThat(tag.getOrigin()).isEqualTo(TagOrigin.MANUAL);
+		assertThat(tagRepository.findById(tag.getId())).isPresent();
+	}
+
+	@Test
+	void createTagRejectsEmptyName() {
+		User athlete = newUser("create-tag-empty-athlete@example.cc");
+
+		assertThatThrownBy(() -> tagService.createTag(athlete.getId(), athlete, "  "))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void createTagConflictsCaseInsensitivelyWithAnExistingTag() {
+		User athlete = newUser("create-tag-conflict-athlete@example.cc");
+		newTag(athlete, "Race");
+
+		assertThatThrownBy(() -> tagService.createTag(athlete.getId(), athlete, "race"))
+				.isInstanceOf(ConflictException.class);
+		assertThat(tagRepository.findAllByAthleteIdAndNameIgnoreCase(athlete.getId(), "race")).hasSize(1);
+	}
+
+	@Test
+	void createTagDoesNotConflictWithAnotherAthletesTag() {
+		User athlete = newUser("create-tag-scoped-athlete@example.cc");
+		User other = newUser("create-tag-scoped-other@example.cc");
+		newTag(other, "Race");
+
+		Tag tag = tagService.createTag(athlete.getId(), athlete, "Race");
+
+		assertThat(tag.getAthlete().getId()).isEqualTo(athlete.getId());
 	}
 
 	@Test

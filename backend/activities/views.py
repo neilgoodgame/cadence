@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from core.auth_context import get_effective_athlete_id
 from core.cql import compile_ast_to_q, parse, resolve_order_by
+from core.exceptions import ConflictError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
 from uploads.processing import backfill_extended_stats, compute_normalized_power, compute_tss
@@ -31,7 +32,7 @@ from .serializers import (
     DurationCurveSerializer,
     LapSerializer,
     TagAttachSerializer,
-    TagRenameSerializer,
+    TagNameSerializer,
     TagSerializer,
 )
 from .tag_management import rename_tag
@@ -539,13 +540,27 @@ class TagListView(APIView):
         )
         return Response({"data": TagSerializer(tags, many=True).data})
 
+    def post(self, request: Request) -> Response:
+        """Creates a standalone tag with no activities yet - for the Preferences tag manager.
+        Attaching a tag to an activity by name (ActivityTagView.post) already creates one
+        implicitly; this is for the case where nothing to attach to exists yet."""
+        _, athlete_id = get_effective_athlete_id(request)
+        _require_write(request, athlete_id)
+        serializer = TagNameSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data["name"]
+        if Tag.objects.filter(athlete_id=athlete_id, name__iexact=name).exists():
+            raise ConflictError(f'A tag named "{name}" already exists.')
+        tag = Tag.objects.create(athlete_id=athlete_id, name=name, origin="manual")
+        return Response(TagSerializer(tag).data, status=201)
+
 
 class TagDetailView(APIView):
     def patch(self, request: Request, id: str) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
         tag = get_object_or_404(Tag, pk=id, athlete_id=athlete_id)
-        serializer = TagRenameSerializer(data=request.data)
+        serializer = TagNameSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         result = rename_tag(tag, serializer.validated_data["name"])
         result = Tag.objects.annotate(count=Count("activity_tags")).get(pk=result.pk)

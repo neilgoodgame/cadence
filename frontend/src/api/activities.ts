@@ -123,6 +123,12 @@ export function listTags(): Promise<DataList<Tag>> {
   return apiFetch<DataList<Tag>>("/v1/tags");
 }
 
+/** Creates a standalone tag with no activities yet. Rejects (409) if the athlete already has a
+ * tag with this name, case-insensitive. */
+export function createTag(name: string): Promise<Tag> {
+  return apiFetch<Tag>("/v1/tags", { method: "POST", body: { name } });
+}
+
 export function tagActivity(activityId: string, name: string): Promise<{ activity_id: string; tag: Tag }> {
   return apiFetch(`/v1/activities/${activityId}/tags`, { method: "POST", body: { name } });
 }
