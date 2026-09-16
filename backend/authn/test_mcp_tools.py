@@ -7,6 +7,7 @@ authn/tests.py) with a lightweight fake request carrying just .user/.auth - the 
 core.auth_context's helpers and ScopedMCPToolset actually read.
 """
 
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -17,7 +18,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from accounts.models import PersonalAccessToken, User, UserRelationship
 from accounts.tokens import generate_secret, hash_secret, visible_prefix
 from activities.mcp import ActivityMCPTools
-from activities.models import Activity
+from activities.models import Activity, Record
 from athletes.mcp import AthleteMCPTools
 from authn.oauth_utils import issue_token_pair
 from core.models import generate_id
@@ -457,6 +458,32 @@ class ActivityToolsTests(TestCase):
 
         self.assertEqual(result["avg_air_temp"], 24.5)
         self.assertEqual(result["avg_humidity"], 58)
+
+    def test_get_activity_stream_summary_decimates_relative_to_the_first_sample(self) -> None:
+        # Regression test: decimation moved from Python-slicing a fully-materialized record list
+        # to a DB-side MOD filter, to stop a long activity's full 1Hz record set from being
+        # loaded into memory just to throw most of it away (this was taking the backend OOM in
+        # production). t starts at 100, not 0, to prove the kept samples are anchored to the
+        # activity's own first sample rather than to t=0.
+        athlete = User.objects.create_user(email="mcp-stream-summary@example.cc", password="x", name="Athlete")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Long ride",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+        )
+        for i in range(20):
+            Record.objects.create(
+                activity=activity, t=100 + i, ts=activity.start_date + timedelta(seconds=100 + i), power=i
+            )
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.get_activity_stream_summary(activity_id=activity.id, fields="time")
+
+        self.assertEqual(result["series"]["time"], [100, 115])
 
     def test_list_activities_requires_activities_read_scope(self) -> None:
         athlete = User.objects.create_user(email="mcp-list-activities-scope@example.cc", password="x", name="Athlete")

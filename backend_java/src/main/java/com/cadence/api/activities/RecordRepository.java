@@ -21,6 +21,20 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 	@Query("select r from Record r where r.id.activityId = :activityId order by r.t")
 	List<Record> findByActivityIdOrderByT(@Param("activityId") String activityId);
 
+	@Query("select min(r.t) from Record r where r.id.activityId = :activityId")
+	Integer findMinTByActivityId(@Param("activityId") String activityId);
+
+	/** Decimated in the query itself rather than loading every 1Hz record and slicing in
+	 * application code - a multi-hour activity's full record set is large enough that several of
+	 * these firing concurrently (e.g. expanding zone bars on the Activities list) has taken the
+	 * backend OOM in production. offset anchors the kept-every-Nth pattern to the activity's own
+	 * first sample (t may not start at 0), matching what index-based slicing over the full
+	 * ordered list used to pick. */
+	@Query("select r from Record r where r.id.activityId = :activityId and mod(r.t - :offset, :step) = 0 "
+			+ "order by r.t")
+	List<Record> findByActivityIdDecimated(
+			@Param("activityId") String activityId, @Param("offset") int offset, @Param("step") int step);
+
 	long countByIdActivityId(String activityId);
 
 	boolean existsByIdActivityIdAndAirTempIsNotNull(String activityId);
