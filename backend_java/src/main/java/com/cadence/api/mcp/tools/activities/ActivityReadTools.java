@@ -49,11 +49,12 @@ public class ActivityReadTools {
 
 	@McpTool(name = "list_activities", description = "List the authenticated athlete's activities, "
 			+ "most recent first, optionally filtered by sport and/or date range. Returns compact "
-			+ "summaries (name, sport, date, duration, distance, avg power/HR, TSS, and - when a CORE "
-			+ "body-temperature sensor was worn - avg/max heat strain/core temp/skin temp) - use "
-			+ "get_activity for the full detail on one activity. `query` also supports filtering on "
-			+ "these fields, e.g. \"avg_heat_strain > 5 and date > 2026-06-01\" to find "
-			+ "high-heat-strain sessions in a date range. Paginated via next_cursor.",
+			+ "summaries (name, sport, date, duration, distance, avg power/HR, TSS, - when a CORE "
+			+ "body-temperature sensor was worn - avg/max heat strain/core temp/skin temp, and - when "
+			+ "weigh-ins were recorded - start/end weight and fluids consumed) - use get_activity for "
+			+ "the full detail on one activity. `query` also supports filtering on these fields, e.g. "
+			+ "\"avg_heat_strain > 5 and date > 2026-06-01\" to find high-heat-strain sessions in a "
+			+ "date range. Paginated via next_cursor.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = false, openWorldHint = false))
 	public McpActivityPage listActivities(
@@ -93,8 +94,11 @@ public class ActivityReadTools {
 			+ "(from list_activities' results) - name, sport, duration, distance, power/HR/TSS, "
 			+ "elevation, calories, training effect, tags, linked workout/gear ids, average "
 			+ "air temperature/humidity (device-reported ambient conditions - present for indoor "
-			+ "rides too, from a smart trainer's onboard sensor, not just outdoor weather), and - "
-			+ "when a CORE body-temperature sensor was worn - avg/max heat strain/core temp/skin temp.",
+			+ "rides too, from a smart trainer's onboard sensor, not just outdoor weather), - when a "
+			+ "CORE body-temperature sensor was worn - avg/max heat strain/core temp/skin temp, and - "
+			+ "when weigh-ins were recorded - start/end weight (kg) and fluids consumed (ml). Sweat "
+			+ "rate isn't stored directly - compute it as ((startWeightKg - endWeightKg) + fluidsMl / "
+			+ "1000) / (movingTime / 3600) L/h.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public McpActivityDetail getActivity(

@@ -69,6 +69,9 @@ ACTIVITY_FIELD_MAP = {
     "max_core_temp": "max_core_temp",
     "avg_skin_temp": "avg_skin_temp",
     "max_skin_temp": "max_skin_temp",
+    "start_weight_kg": "start_weight_kg",
+    "end_weight_kg": "end_weight_kg",
+    "fluids_ml": "fluids_ml",
     "sport": "sport",
     "environment": "environment",
     "name": "name",
@@ -92,6 +95,9 @@ NULLABLE_SORT_FIELDS = {
     "max_core_temp",
     "avg_skin_temp",
     "max_skin_temp",
+    "start_weight_kg",
+    "end_weight_kg",
+    "fluids_ml",
 }
 # Coalesce can't infer an output_field from a bare int Value() mixed with a float column
 # ("mixed types: FloatField, IntegerField") - every field in NULLABLE_SORT_FIELDS not listed
@@ -104,6 +110,8 @@ FLOAT_NULLABLE_SORT_FIELDS = {
     "max_core_temp",
     "avg_skin_temp",
     "max_skin_temp",
+    "start_weight_kg",
+    "end_weight_kg",
 }
 
 

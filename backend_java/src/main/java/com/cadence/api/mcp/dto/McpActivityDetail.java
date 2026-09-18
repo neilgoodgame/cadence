@@ -18,7 +18,8 @@ public record McpActivityDetail(
 		List<String> tags, String workoutId, String bikeId, String shoeId,
 		Double avgAirTemp, Integer avgHumidity,
 		Double avgHeatStrain, Double maxHeatStrain, Double avgCoreTemp, Double maxCoreTemp,
-		Double avgSkinTemp, Double maxSkinTemp) {
+		Double avgSkinTemp, Double maxSkinTemp,
+		Double startWeightKg, Double endWeightKg, Integer fluidsMl) {
 
 	public static McpActivityDetail from(ActivityResponse activity) {
 		return new McpActivityDetail(
@@ -28,6 +29,7 @@ public record McpActivityDetail(
 				activity.tags(), activity.workoutId(), activity.bikeId(), activity.shoeId(),
 				activity.avgAirTemp(), activity.avgHumidity(),
 				activity.avgHeatStrain(), activity.maxHeatStrain(), activity.avgCoreTemp(), activity.maxCoreTemp(),
-				activity.avgSkinTemp(), activity.maxSkinTemp());
+				activity.avgSkinTemp(), activity.maxSkinTemp(),
+				activity.startWeightKg(), activity.endWeightKg(), activity.fluidsMl());
 	}
 }
