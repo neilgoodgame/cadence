@@ -45,6 +45,9 @@ ACTIVITY_FIELD_MAP = {
     "max_core_temp": "max_core_temp",
     "avg_skin_temp": "avg_skin_temp",
     "max_skin_temp": "max_skin_temp",
+    "start_weight_kg": "start_weight_kg",
+    "end_weight_kg": "end_weight_kg",
+    "fluids_ml": "fluids_ml",
     "sport": "sport",
     "environment": "environment",
     "name": "name",
@@ -93,6 +96,9 @@ def _activity_summary(activity: Activity) -> dict[str, Any]:
         "max_core_temp": activity.max_core_temp,
         "avg_skin_temp": activity.avg_skin_temp,
         "max_skin_temp": activity.max_skin_temp,
+        "start_weight_kg": activity.start_weight_kg,
+        "end_weight_kg": activity.end_weight_kg,
+        "fluids_ml": activity.fluids_ml,
     }
 
 
@@ -119,11 +125,11 @@ class ActivityMCPTools(ScopedMCPToolset):
     ) -> dict[str, Any]:
         """List the authenticated athlete's activities, most recent first, optionally filtered
         by sport and/or date range. Returns compact summaries (name, sport, date, duration,
-        distance, avg power/HR, TSS, and - when a CORE body-temperature sensor was worn -
-        avg/max heat strain/core temp/skin temp) - use get_activity for the full detail on one
-        activity. `query` also supports filtering on these fields, e.g.
-        "avg_heat_strain > 5 and date > 2026-06-01" to find high-heat-strain sessions in a date
-        range. Paginated via next_cursor."""
+        distance, avg power/HR, TSS, - when a CORE body-temperature sensor was worn - avg/max
+        heat strain/core temp/skin temp, and - when weigh-ins were recorded - start/end weight
+        and fluids consumed) - use get_activity for the full detail on one activity. `query` also
+        supports filtering on these fields, e.g. "avg_heat_strain > 5 and date > 2026-06-01" to
+        find high-heat-strain sessions in a date range. Paginated via next_cursor."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
@@ -172,8 +178,10 @@ class ActivityMCPTools(ScopedMCPToolset):
         sport, duration, distance, power/HR/TSS, elevation, calories, training effect, tags,
         linked workout/gear ids, average air temperature/humidity (device-reported ambient
         conditions - present for indoor rides too, from a smart trainer's onboard sensor, not
-        just outdoor weather), and - when a CORE body-temperature sensor was worn - avg/max heat
-        strain/core temp/skin temp."""
+        just outdoor weather), - when a CORE body-temperature sensor was worn - avg/max heat
+        strain/core temp/skin temp, and - when weigh-ins were recorded - start/end weight (kg)
+        and fluids consumed (ml). Sweat rate isn't stored directly - compute it yourself as
+        ((start_weight_kg - end_weight_kg) + fluids_ml / 1000) / (moving_time / 3600) L/h."""
         self._require_scope(ACTIVITIES_READ)
         activity = get_object_or_404(Activity, pk=activity_id)
         self._require_read(activity.athlete_id)
@@ -204,6 +212,9 @@ class ActivityMCPTools(ScopedMCPToolset):
             "max_core_temp": activity.max_core_temp,
             "avg_skin_temp": activity.avg_skin_temp,
             "max_skin_temp": activity.max_skin_temp,
+            "start_weight_kg": activity.start_weight_kg,
+            "end_weight_kg": activity.end_weight_kg,
+            "fluids_ml": activity.fluids_ml,
         }
 
     def get_activity_laps(self, activity_id: str) -> dict[str, Any]:

@@ -556,6 +556,57 @@ class ActivityToolsTests(TestCase):
         self.assertEqual(result["data"][0]["max_heat_strain"], 4.2)
         self.assertEqual(result["data"][0]["avg_heat_strain"], 1.5)
 
+    def test_get_activity_includes_weight_and_fluids_for_sweat_rate(self) -> None:
+        athlete = User.objects.create_user(email="mcp-weigh-in@example.cc", password="x", name="Athlete")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Hot long run",
+            start_date=timezone.now(),
+            moving_time=3600,
+            distance_km=15,
+            start_weight_kg=72.4,
+            end_weight_kg=71.1,
+            fluids_ml=600,
+        )
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.get_activity(activity_id=activity.id)
+
+        self.assertEqual(result["start_weight_kg"], 72.4)
+        self.assertEqual(result["end_weight_kg"], 71.1)
+        self.assertEqual(result["fluids_ml"], 600)
+
+    def test_list_activities_query_filters_by_fluids_ml(self) -> None:
+        athlete = User.objects.create_user(email="mcp-list-fluids@example.cc", password="x", name="Athlete")
+        Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Chugged",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+            fluids_ml=900,
+        )
+        Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Sipped",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+            fluids_ml=200,
+        )
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.list_activities(query="fluids_ml>500")
+
+        self.assertEqual(len(result["data"]), 1)
+        self.assertEqual(result["data"][0]["name"], "Chugged")
+
     def _new_activity(self, athlete: User) -> Activity:
         return Activity.objects.create(
             id=generate_id("act"),

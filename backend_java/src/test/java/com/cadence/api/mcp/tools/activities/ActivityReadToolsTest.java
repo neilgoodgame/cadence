@@ -171,6 +171,54 @@ class ActivityReadToolsTest extends IntegrationTest {
 	}
 
 	@Test
+	void getActivityIncludesWeightAndFluidsForSweatRate() {
+		User athlete = newUser("read-tool-weigh-in-athlete@example.cc");
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("Hot long run");
+		activity.setStartDate(Instant.parse("2026-01-01T06:00:00Z"));
+		activity.setStartWeightKg(72.4);
+		activity.setEndWeightKg(71.1);
+		activity.setFluidsMl(600);
+		activity = activityRepository.save(activity);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = activityReadTools.getActivity(activity.getId());
+
+		assertThat(result.startWeightKg()).isEqualTo(72.4);
+		assertThat(result.endWeightKg()).isEqualTo(71.1);
+		assertThat(result.fluidsMl()).isEqualTo(600);
+	}
+
+	@Test
+	void listActivitiesQueryFiltersByFluidsMl() {
+		User athlete = newUser("read-tool-list-fluids-athlete@example.cc");
+		Activity chugged = new Activity();
+		chugged.setAthlete(athlete);
+		chugged.setSport(Sport.RUN);
+		chugged.setName("Chugged");
+		chugged.setStartDate(Instant.parse("2026-01-01T08:00:00Z"));
+		chugged.setFluidsMl(900);
+		activityRepository.save(chugged);
+
+		Activity sipped = new Activity();
+		sipped.setAthlete(athlete);
+		sipped.setSport(Sport.RUN);
+		sipped.setName("Sipped");
+		sipped.setStartDate(Instant.parse("2026-01-01T08:00:00Z"));
+		sipped.setFluidsMl(200);
+		activityRepository.save(sipped);
+
+		authAs(athlete.getId(), "activities:read");
+
+		var result = activityReadTools.listActivities("fluids_ml>500", null, null, null, null, null);
+
+		assertThat(result.data()).hasSize(1);
+		assertThat(result.data().get(0).name()).isEqualTo("Chugged");
+	}
+
+	@Test
 	void listTagsIncludesUsageCounts() {
 		User athlete = newUser("read-tool-list-tags-athlete@example.cc");
 		Tag tag = new Tag();

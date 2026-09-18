@@ -38,11 +38,14 @@ public class ActivityCursorPagination {
 	// same substituted value or pagination would skip or repeat rows at a null boundary.
 	private static final Set<String> NULLABLE_SORT_FIELDS = Set.of(
 			"avgHr", "maxHr", "avgPower", "avgHumidity", "avgAirTemp",
-			"avgHeatStrain", "maxHeatStrain", "avgCoreTemp", "maxCoreTemp", "avgSkinTemp", "maxSkinTemp");
-	// avgAirTemp and the CORE-sensor fields are stored as real (not whole-number) columns -
-	// everything else above coalesces as Integer.
+			"avgHeatStrain", "maxHeatStrain", "avgCoreTemp", "maxCoreTemp", "avgSkinTemp", "maxSkinTemp",
+			"startWeightKg", "endWeightKg", "fluidsMl");
+	// avgAirTemp, the CORE-sensor fields, and the weigh-in fields (not fluidsMl, a whole-number
+	// ml count) are stored as real (not whole-number) columns - everything else above coalesces
+	// as Integer.
 	private static final Set<String> DOUBLE_NULLABLE_SORT_FIELDS = Set.of(
-			"avgAirTemp", "avgHeatStrain", "maxHeatStrain", "avgCoreTemp", "maxCoreTemp", "avgSkinTemp", "maxSkinTemp");
+			"avgAirTemp", "avgHeatStrain", "maxHeatStrain", "avgCoreTemp", "maxCoreTemp", "avgSkinTemp", "maxSkinTemp",
+			"startWeightKg", "endWeightKg");
 	private static final int NULLS_LAST_SENTINEL = 100_000;
 	private static final double NULLS_LAST_SENTINEL_DOUBLE = 100_000.0;
 
@@ -131,9 +134,9 @@ public class ActivityCursorPagination {
 	private Comparable<?> parseSortValue(String field, String raw) {
 		return switch (field) {
 			case "startDate" -> Instant.parse(raw);
-			case "avgHr", "maxHr", "tss", "movingTime", "avgPower", "avgHumidity" -> Integer.valueOf(raw);
+			case "avgHr", "maxHr", "tss", "movingTime", "avgPower", "avgHumidity", "fluidsMl" -> Integer.valueOf(raw);
 			case "distanceKm", "avgAirTemp", "avgHeatStrain", "maxHeatStrain", "avgCoreTemp", "maxCoreTemp",
-					"avgSkinTemp", "maxSkinTemp" ->
+					"avgSkinTemp", "maxSkinTemp", "startWeightKg", "endWeightKg" ->
 				Double.valueOf(raw);
 			case "sport" -> Sport.valueOf(raw);
 			case "environment" -> Environment.valueOf(raw);
@@ -165,6 +168,9 @@ public class ActivityCursorPagination {
 			case "maxCoreTemp" -> withSentinel(lastRow.getMaxCoreTemp(), sentinelDouble);
 			case "avgSkinTemp" -> withSentinel(lastRow.getAvgSkinTemp(), sentinelDouble);
 			case "maxSkinTemp" -> withSentinel(lastRow.getMaxSkinTemp(), sentinelDouble);
+			case "startWeightKg" -> withSentinel(lastRow.getStartWeightKg(), sentinelDouble);
+			case "endWeightKg" -> withSentinel(lastRow.getEndWeightKg(), sentinelDouble);
+			case "fluidsMl" -> withSentinel(lastRow.getFluidsMl(), sentinel);
 			case "distanceKm" -> lastRow.getDistanceKm();
 			case "sport" -> lastRow.getSport().name();
 			case "environment" -> lastRow.getEnvironment().name();

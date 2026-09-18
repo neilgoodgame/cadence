@@ -83,6 +83,16 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		activityRepository.save(activity);
 	}
 
+	private void newActivityWithFluidsMl(User athlete, String name, Integer fluidsMl) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName(name);
+		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		activity.setFluidsMl(fluidsMl);
+		activityRepository.save(activity);
+	}
+
 	@Test
 	void sortByDateAscendingAndDescending() {
 		User athlete = newUser("sort-date-athlete@example.cc");
@@ -217,5 +227,36 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		CursorPage<ActivityResponse> result =
 				activityService.list(athlete.getId(), "max_heat_strain>3", null, null, null, null, null, null, 50);
 		assertThat(result.data()).extracting(ActivityResponse::name).containsExactly("Severe");
+	}
+
+	// start_weight_kg/end_weight_kg/fluids_ml are the raw inputs an MCP client needs to compute
+	// sweat rate itself, since the app only derives that client-side (HydrationBlock.tsx) - see
+	// the CQL/sort tests for the two other nullable-sort fields above for why this needed both
+	// the plain-Integer coalesce path (fluidsMl) and its own encode()/parseSortValue() cases.
+	@Test
+	void sortByFluidsMlPutsActivitiesWithoutAWeighInLastInBothDirections() {
+		User athlete = newUser("sort-fluids-athlete@example.cc");
+		newActivityWithFluidsMl(athlete, "No weigh-in", null);
+		newActivityWithFluidsMl(athlete, "Sipped", 200);
+		newActivityWithFluidsMl(athlete, "Chugged", 900);
+
+		CursorPage<ActivityResponse> desc =
+				activityService.list(athlete.getId(), "orderby fluids_ml desc", null, null, null, null, null, null, 50);
+		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("Chugged", "Sipped", "No weigh-in");
+
+		CursorPage<ActivityResponse> asc =
+				activityService.list(athlete.getId(), "orderby fluids_ml asc", null, null, null, null, null, null, 50);
+		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Sipped", "Chugged", "No weigh-in");
+	}
+
+	@Test
+	void cqlFiltersByFluidsMl() {
+		User athlete = newUser("cql-fluids-athlete@example.cc");
+		newActivityWithFluidsMl(athlete, "Sipped", 200);
+		newActivityWithFluidsMl(athlete, "Chugged", 900);
+
+		CursorPage<ActivityResponse> result =
+				activityService.list(athlete.getId(), "fluids_ml>500", null, null, null, null, null, null, 50);
+		assertThat(result.data()).extracting(ActivityResponse::name).containsExactly("Chugged");
 	}
 }

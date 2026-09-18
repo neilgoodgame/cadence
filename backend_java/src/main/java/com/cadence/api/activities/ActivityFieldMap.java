@@ -23,6 +23,9 @@ public final class ActivityFieldMap implements FieldMap {
 			Map.entry("max_core_temp", "maxCoreTemp"),
 			Map.entry("avg_skin_temp", "avgSkinTemp"),
 			Map.entry("max_skin_temp", "maxSkinTemp"),
+			Map.entry("start_weight_kg", "startWeightKg"),
+			Map.entry("end_weight_kg", "endWeightKg"),
+			Map.entry("fluids_ml", "fluidsMl"),
 			Map.entry("sport", "sport"),
 			Map.entry("environment", "environment"),
 			Map.entry("name", "name"));
