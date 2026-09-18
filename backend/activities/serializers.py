@@ -224,7 +224,9 @@ class TagAttachSerializer(serializers.Serializer):
         return attrs
 
 
-class TagRenameSerializer(serializers.Serializer):
+class TagNameSerializer(serializers.Serializer):
+    """A bare tag name - used for both creating a standalone tag and renaming one."""
+
     name = serializers.CharField(max_length=100)
 
     def validate_name(self, value: str) -> str:

@@ -34,6 +34,35 @@ class TagViewTests(TestCase):
         data = response.json()["data"]
         self.assertEqual([(t["name"], t["count"]) for t in data], [("Popular", 2), ("Rare", 1)])
 
+    def test_create_tag(self):
+        response = _bearer_client(self.athlete).post("/v1/tags", {"name": "Trail"}, format="json")
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body["name"], "Trail")
+        self.assertEqual(body["origin"], "manual")
+        self.assertEqual(body["count"], 0)
+        self.assertTrue(Tag.objects.filter(athlete=self.athlete, name="Trail").exists())
+
+    def test_create_tag_rejects_empty_name(self):
+        response = _bearer_client(self.athlete).post("/v1/tags", {"name": "  "}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_create_tag_conflicts_case_insensitively_with_an_existing_tag(self):
+        Tag.objects.create(athlete=self.athlete, name="Race")
+        response = _bearer_client(self.athlete).post("/v1/tags", {"name": "race"}, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(Tag.objects.filter(athlete=self.athlete, name__iexact="race").count(), 1)
+
+    def test_create_tag_scoped_to_athlete_does_not_conflict_with_another_athletes_tag(self):
+        Tag.objects.create(athlete=self.other_athlete, name="Race")
+        response = _bearer_client(self.athlete).post("/v1/tags", {"name": "Race"}, format="json")
+        self.assertEqual(response.status_code, 201)
+
+    def test_outsider_without_write_cannot_create_tag(self):
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.post("/v1/tags", {"name": "Race"}, format="json")
+        self.assertEqual(response.status_code, 403)
+
     def test_attach_existing_tag_by_id(self):
         activity = _make_activity(self.athlete)
         tag = Tag.objects.create(athlete=self.athlete, name="Race")

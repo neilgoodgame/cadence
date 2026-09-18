@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { deleteTag, listTags, renameTag } from "../../api/activities";
+import { createTag, deleteTag, listTags, renameTag } from "../../api/activities";
 import { ApiError } from "../../api/types";
 import type { Tag } from "../../api/types";
 import { tagColor, tagRgba } from "../../lib/tagColors";
@@ -187,6 +187,74 @@ function TagRow({ tag, allTags }: { tag: Tag; allTags: Tag[] }) {
   );
 }
 
+function NewTagForm({ existingTags }: { existingTags: Tag[] }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+
+  const mutation = useMutation({
+    mutationFn: (name: string) => createTag(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+      setName("");
+    },
+  });
+
+  const trimmed = name.trim();
+  const collides = trimmed !== "" && existingTags.some((t) => t.name.toLowerCase() === trimmed.toLowerCase());
+
+  function submit() {
+    if (!trimmed || collides) return;
+    mutation.mutate(trimmed);
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          placeholder="New tag name"
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--line)",
+            background: "var(--elev)",
+            color: "var(--ink)",
+            fontSize: 13,
+          }}
+        />
+        <button
+          onClick={submit}
+          disabled={!trimmed || collides || mutation.isPending}
+          style={{
+            padding: "8px 16px",
+            borderRadius: 8,
+            border: "none",
+            background: "var(--ember)",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 700,
+            opacity: trimmed && !collides && !mutation.isPending ? 1 : 0.4,
+            cursor: trimmed && !collides && !mutation.isPending ? "pointer" : "not-allowed",
+          }}
+        >
+          {mutation.isPending ? "Creating…" : "Create"}
+        </button>
+      </div>
+      {collides && (
+        <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 6 }}>A tag with this name already exists.</div>
+      )}
+      {mutation.isError && (
+        <div style={{ fontSize: 12, color: "#e0442e", marginTop: 6 }}>
+          {mutation.error instanceof ApiError ? mutation.error.message : "Could not create the tag."}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TagsTab() {
   const { data } = useQuery({ queryKey: ["tags"], queryFn: listTags });
   const tags = data?.data ?? [];
@@ -201,6 +269,8 @@ export function TagsTab() {
           carries it.
         </p>
       </div>
+
+      <NewTagForm existingTags={tags} />
 
       {tags.length === 0 ? (
         <div style={{ fontSize: 13, color: "var(--ink3)" }}>No tags yet.</div>

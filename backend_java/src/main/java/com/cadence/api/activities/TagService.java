@@ -1,6 +1,7 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.TagResponse;
+import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -40,6 +41,27 @@ public class TagService {
 						counts.getOrDefault(t.getId(), 0L)))
 				.sorted(Comparator.comparingLong(TagResponse::count).reversed())
 				.toList();
+	}
+
+	/** Creates a standalone tag with no activities yet - for the Preferences tag manager.
+	 * {@link #attachTag} already creates one implicitly when attaching by name; this is for the
+	 * case where nothing to attach to exists yet. Rejects a name that collides
+	 * case-insensitively with an existing tag rather than silently reusing it, since a person
+	 * explicitly creating a new tag should be told it already exists. */
+	@Transactional
+	public Tag createTag(String athleteId, User athlete, String name) {
+		String trimmed = name == null ? "" : name.trim();
+		if (trimmed.isEmpty()) {
+			throw new ValidationException("name cannot be empty.", "name");
+		}
+		if (!tagRepository.findAllByAthleteIdAndNameIgnoreCase(athleteId, trimmed).isEmpty()) {
+			throw new ConflictException("A tag named \"" + trimmed + "\" already exists.");
+		}
+		Tag tag = new Tag();
+		tag.setAthlete(athlete);
+		tag.setName(trimmed);
+		tag.setOrigin(TagOrigin.MANUAL);
+		return tagRepository.save(tag);
 	}
 
 	@Transactional

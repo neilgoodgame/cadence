@@ -2,7 +2,7 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.TagAttachRequest;
 import com.cadence.api.activities.dto.TagAttachResponse;
-import com.cadence.api.activities.dto.TagRenameRequest;
+import com.cadence.api.activities.dto.TagNameRequest;
 import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AccessGuard;
@@ -46,6 +46,16 @@ public class TagController {
 		return new DataListResponse<>(tagService.listTagsWithCounts(athleteId));
 	}
 
+	@PostMapping("/v1/tags")
+	@ResponseStatus(HttpStatus.CREATED)
+	public TagResponse createTag(@Valid @RequestBody TagNameRequest request) {
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+		User athlete = userService.getById(athleteId);
+		Tag tag = tagService.createTag(athleteId, athlete, request.name());
+		return tagMapper.toResponse(tag);
+	}
+
 	@PostMapping("/v1/activities/{id}/tags")
 	@ResponseStatus(HttpStatus.CREATED)
 	public TagAttachResponse tagActivity(@PathVariable String id, @Valid @RequestBody TagAttachRequest request) {
@@ -73,7 +83,7 @@ public class TagController {
 	}
 
 	@PatchMapping("/v1/tags/{id}")
-	public TagResponse renameTag(@PathVariable String id, @Valid @RequestBody TagRenameRequest request) {
+	public TagResponse renameTag(@PathVariable String id, @Valid @RequestBody TagNameRequest request) {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		Tag result = tagService.renameTag(athleteId, id, request.name());
