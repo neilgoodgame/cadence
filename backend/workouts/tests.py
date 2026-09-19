@@ -1423,7 +1423,7 @@ class ScannabilityErrorTests(TestCase):
         )
         self.assertIsNotNone(scannability_error(workout))
 
-    def test_a_manual_end_type_step_is_not_scannable(self):
+    def test_a_manual_end_type_step_with_a_real_target_is_not_scannable(self):
         workout = Workout.objects.create(created_by=self.athlete, name="Manual", sport="bike")
         WorkoutStep.objects.create(
             workout=workout,
@@ -1435,6 +1435,17 @@ class ScannabilityErrorTests(TestCase):
             target_high=100,
         )
         self.assertIsNotNone(scannability_error(workout))
+
+    def test_a_manual_end_type_step_with_an_open_target_is_scannable(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Manual, open", sport="bike")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="manual",
+            target_type="open",
+        )
+        self.assertIsNone(scannability_error(workout))
 
     def test_a_distance_end_type_step_is_scannable_if_power_targeted(self):
         workout = Workout.objects.create(created_by=self.athlete, name="Distance", sport="bike")
@@ -1681,7 +1692,7 @@ class CorrelateRecordsByStepBoundaryTests(TestCase):
         _seed_matching_records_with_distance(activity, 1426, ftp=250)
         records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
 
-        result = correlate_records_by_step_boundary(workout, records, reference=250)
+        result = correlate_records_by_step_boundary(workout, activity, records, reference=250)
 
         self.assertIsNotNone(result)
         r, coverage, implied_ftp = result
@@ -1694,8 +1705,11 @@ class CorrelateRecordsByStepBoundaryTests(TestCase):
 
     def test_no_records_returns_none(self):
         workout = _make_distance_gorby_workout(self.athlete)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Empty", start_date=timezone.now(), moving_time=1425
+        )
 
-        self.assertIsNone(correlate_records_by_step_boundary(workout, [], reference=250))
+        self.assertIsNone(correlate_records_by_step_boundary(workout, activity, [], reference=250))
 
     def test_excluded_kinds_still_advance_the_offset(self):
         """Mirrors build_expected_curve's own exclusion semantics: an excluded step's span is
@@ -1710,13 +1724,131 @@ class CorrelateRecordsByStepBoundaryTests(TestCase):
         records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
 
         result = correlate_records_by_step_boundary(
-            workout, records, reference=250, excluded_kinds=frozenset({"warmup"})
+            workout, activity, records, reference=250, excluded_kinds=frozenset({"warmup"})
         )
 
         self.assertIsNotNone(result)
         r, coverage, _implied_ftp = result
         self.assertGreater(r, 0.98)
         self.assertLess(coverage, 1.0)  # the warmup's 300 samples are dropped from the numerator
+
+
+def _make_manual_step_workout(athlete: User) -> Workout:
+    """warmup 300s@70%, then an open-target manual step (no plan boundary at all - real length
+    comes from whichever of the candidate's own device laps the boundary walk lands on), then a
+    400s@100% block. Deliberately only 2 leaf steps besides the manual one, since the point of
+    these tests is the manual step's own boundary resolution, not a repeat structure.
+
+    `duration=900` matches `_seed_manual_step_records`'s own real total exactly (warmup's 300s +
+    the manual step's real 200s + the block's 400s) - a manual step has no plan-side duration to
+    contribute of its own, so this can only ever be an approximation of a real matching
+    candidate's actual moving time, same as any workout containing one; the duration pre-filter
+    (`DURATION_TOLERANCE_SECONDS`) still needs it in the right ballpark to let a real match
+    through at all.
+    """
+    workout = Workout.objects.create(created_by=athlete, name="Manual Middle", sport="bike", duration=900)
+    WorkoutStep.objects.create(
+        workout=workout,
+        order=0,
+        kind="warmup",
+        end_type="time",
+        duration=300,
+        target_type="power",
+        target_low=70,
+        target_high=70,
+    )
+    WorkoutStep.objects.create(
+        workout=workout,
+        order=1,
+        kind="block",
+        end_type="manual",
+        target_type="open",
+    )
+    WorkoutStep.objects.create(
+        workout=workout,
+        order=2,
+        kind="block",
+        end_type="time",
+        duration=400,
+        target_type="power",
+        target_low=100,
+        target_high=100,
+    )
+    return workout
+
+
+def _seed_manual_step_records(
+    activity: Activity, warmup_seconds: int = 301, manual_seconds: int = 200, block_seconds: int = 400, ftp: float = 250
+) -> None:
+    """901 records total (matching `_make_manual_step_workout`'s warmup(300)+manual+block(400)
+    shape): t=0..300 at the warmup's 175W (70%*250), t=301..500 at a junk power the manual step
+    must never surface in the correlation, t=501..900 at the block's 250W (100%*250). Two real
+    device laps: one covering the warmup's own 300s span exactly (so the manual step's boundary
+    search starts from a lap that's already "used up" by the time the walk reaches it) and a
+    second covering exactly the manual step's real 200s span - the one the boundary walk is
+    actually meant to find."""
+    for t in range(warmup_seconds + manual_seconds + block_seconds):
+        if t < warmup_seconds:
+            power = round(0.70 * ftp)
+        elif t < warmup_seconds + manual_seconds:
+            power = 999  # a real, but structurally meaningless, reading - must be excluded
+        else:
+            power = round(1.00 * ftp)
+        Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=power)
+    Lap.objects.create(activity=activity, index=1, duration=warmup_seconds - 1, distance_km=0.0)
+    Lap.objects.create(activity=activity, index=2, duration=manual_seconds, distance_km=0.0)
+    Lap.objects.create(activity=activity, index=3, duration=block_seconds, distance_km=0.0)
+
+
+class CorrelateRecordsByStepBoundaryManualStepTests(TestCase):
+    """Exercises the "manual"-end_type branch of correlate_records_by_step_boundary - see that
+    function's own docstring for the full reasoning on why it consults the candidate's own real
+    device laps rather than any plan value."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="correlate-manual@example.cc", password="x", name="Athlete")
+
+    def test_the_manual_step_contributes_nothing_but_correctly_advances_the_walk(self):
+        workout = _make_manual_step_workout(self.athlete)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Match", start_date=timezone.now(), moving_time=900
+        )
+        _seed_manual_step_records(activity)
+        records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
+
+        result = correlate_records_by_step_boundary(workout, activity, records, reference=250)
+
+        self.assertIsNotNone(result)
+        r, coverage, _implied_ftp = result
+        # Only warmup (301 samples) and block (400 samples) ever reach the correlation - a
+        # clean two-level relationship (175W at 70%, 250W at 100%), so this should read as an
+        # essentially perfect match despite the manual step's junk power sitting right between
+        # them in the raw stream.
+        self.assertGreater(r, 0.99)
+        self.assertAlmostEqual(coverage, 701 / 901, places=3)  # 200 manual-step samples excluded
+
+    def test_running_out_of_laps_folds_the_remainder_into_the_manual_step(self):
+        """If the candidate has fewer real device laps than the walk needs (a merged or missing
+        lap press), the remaining records are folded into the manual step and the walk ends
+        there - the same "activity's own recording came up short" fallback every other end_type
+        gets naturally when its own boundary is never reached."""
+        workout = _make_manual_step_workout(self.athlete)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Short on laps", start_date=timezone.now(), moving_time=900
+        )
+        _seed_manual_step_records(activity)
+        # Only one real lap - covering just the warmup's own span - so the boundary walk has
+        # nothing left to resolve the manual step's real length with.
+        activity.laps.all().delete()
+        Lap.objects.create(activity=activity, index=1, duration=300, distance_km=0.0)
+        records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
+
+        result = correlate_records_by_step_boundary(workout, activity, records, reference=250)
+
+        # The trailing block step never gets reached at all (record_idx runs out on the manual
+        # step), so only the warmup's 301 samples exist to correlate against - a single-value x
+        # series, which pearson() correctly reports as undefined.
+        self.assertIsNone(result)
 
 
 class RankWorkoutsForActivityTests(TestCase):
@@ -1903,6 +2035,27 @@ class WorkoutMatchScanEndpointTests(TestCase):
         self.assertEqual(data["status"], "ready")
         self.assertEqual([c["activity_id"] for c in data["candidates"]], [match.id])
         self.assertGreater(data["candidates"][0]["correlation"], 0.98)
+
+    def test_finds_the_matching_activity_for_a_workout_with_a_manual_open_step(self):
+        workout = _make_manual_step_workout(self.athlete)
+        match = self._make_activity(sport="bike", name="Real match", moving_time=900)
+        _seed_manual_step_records(match)
+
+        client = _bearer_client(self.athlete)
+        # Explicit empty exclusion list - the endpoint's own default excludes "warmup", which
+        # would leave only the block step's samples (a single, constant target%/power pair) to
+        # correlate against, an unrelated degenerate case this test isn't about.
+        create_response = client.post(
+            f"/v1/workouts/{workout.id}/match-scans", {"excluded_step_kinds": []}, format="json"
+        )
+        self.assertEqual(create_response.status_code, 202)
+        scan_id = create_response.json()["id"]
+
+        detail_response = client.get(f"/v1/workouts/{workout.id}/match-scans/{scan_id}")
+        data = detail_response.json()
+        self.assertEqual(data["status"], "ready")
+        self.assertEqual([c["activity_id"] for c in data["candidates"]], [match.id])
+        self.assertGreater(data["candidates"][0]["correlation"], 0.99)
 
     def test_a_second_post_while_a_scan_is_active_returns_the_existing_one(self):
         existing = WorkoutMatchScan.objects.create(workout=self.workout, status="processing")

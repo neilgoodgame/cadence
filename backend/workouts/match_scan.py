@@ -9,15 +9,22 @@ confidence threshold validated for power (no forced compliance mechanism the way
 power steady), so they're intentionally out of scope for now. Follow-up: validate against a
 real pace-based workout before adding support.
 
-Both `time`- and `distance`-ended steps are supported, but need two different strategies: a
-`time`-ended step's boundary is the same for every candidate (it's baked into the plan), so
+`time`-, `distance`-, and `manual`-ended steps are all supported, but need different strategies.
+A `time`-ended step's boundary is the same for every candidate (it's baked into the plan), so
 `build_expected_curve`/`correlate_records` build one reusable (start_s, end_s, intensity_pct)
 curve per workout and correlate many candidates against it. A `distance`-ended step's boundary
-depends on how fast *this specific* candidate actually covered that distance - there's no
-single time-based curve that's valid for every candidate - so a workout with any distance-ended
-step instead walks each candidate's own record stream directly (`correlate_records_by_step_
-boundary`), assigning each record to whichever step it falls in the same dual time-or-distance
-way `activities.lap_derivation` slices a matched activity's laps, and correlating as it goes.
+depends on how fast *this specific* candidate actually covered that distance, and a
+`manual`-ended step's boundary depends on whenever *this specific* candidate's athlete pressed
+lap - neither can be predicted from the plan alone, so there's no single curve valid for every
+candidate. A workout with any such step instead walks each candidate's own record stream
+directly (`correlate_records_by_step_boundary`), assigning each record to whichever step it
+falls in - for `manual`, by consulting that candidate's own real device laps (see that
+function's docstring for the full reasoning) rather than any plan value at all, since a manual
+step's real length is *defined* as "however long until the athlete pressed lap", not something
+the plan ever stores. Manual-ended steps are only scannable when paired with `target_type=
+"open"` (no target to correlate against anyway) - an established combination (see workouts/
+inference.py, which produces exactly this when a real device lap has no power/HR signal); a
+manual step with a real target is intentionally still rejected as unvalidated.
 
 Validated this session against a real distance-ended run-power workout (4 distance blocks at
 80/90/97/105% CP with timed recoveries) and its real matched activity: the boundary walk itself
@@ -53,7 +60,7 @@ DURATION_TOLERANCE_SECONDS = 60
 def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = frozenset()) -> str | None:
     """`None` if `workout` can be scanned for matches; otherwise the reason it can't, suitable
     for a 400 response. See the module docstring for why v1 is power-only, and for why a
-    distance-ended step is still scannable despite having no fixed time boundary.
+    distance-ended or manual+open step is still scannable despite having no fixed time boundary.
 
     `excluded_kinds` (leaf `kind` values, e.g. `{"warmup", "cool"}`) are skipped entirely before
     validation - a step that won't be used to build the curve shouldn't be able to disqualify
@@ -63,21 +70,35 @@ def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = froz
     if not flattened:
         return "This workout has no steps to scan against."
     for step, _ in flattened:
+        if step.end_type == "manual":
+            # A manual-ended step's real boundary is whatever the athlete's own device lap
+            # says, never something the plan can predict - see correlate_records_by_step_
+            # boundary for how that's resolved per candidate. That's only harmless when there's
+            # no target to correlate against anyway (target_type="open" - "lap whenever, no
+            # target" is an established combination: see workouts/inference.py, which produces
+            # exactly this when a real device lap has no power/HR signal to characterize it). A
+            # manual step WITH a real target (e.g. "hold zone 3 until you decide to stop") is
+            # intentionally still rejected - correlating a real target against a boundary this
+            # loosely inferred hasn't been validated against a real workout of that shape yet.
+            if step.target_type != "open":
+                return "A manual-ended step needs an open target to be scanned right now."
+            continue
         if step.target_type != "power":
             return "Only power-target workouts can be scanned for matches right now."
         if step.end_type == "time" and not step.duration:
             return "Every time-ended step needs a duration to be scanned."
         if step.end_type == "distance" and not step.distance:
             return "Every distance-ended step needs a distance to be scanned."
-        if step.end_type == "manual":
-            return "Manual-ended steps can't be scanned for matches - there's no derivable boundary."
     return None
 
 
-def _needs_distance_walk(flattened: list[tuple["WorkoutStep", int | None]]) -> bool:
-    """Whether `flattened` contains any distance-ended step - see the module docstring for why
-    that forces the per-candidate boundary walk instead of one reusable time-based curve."""
-    return any(step.end_type == "distance" for step, _ in flattened)
+def _needs_step_boundary_walk(flattened: list[tuple["WorkoutStep", int | None]]) -> bool:
+    """Whether `flattened` contains any step whose boundary can't be placed on a single
+    time-based curve reusable across every candidate - a distance-ended step (its real time
+    window depends on how fast *this* candidate covered that distance) or a manual-ended one
+    (its real time window depends on whenever *this* candidate's athlete pressed lap) - see the
+    module docstring and `correlate_records_by_step_boundary`."""
+    return any(step.end_type in ("distance", "manual") for step, _ in flattened)
 
 
 def _power_reference(workout: "Workout") -> float:
@@ -104,9 +125,10 @@ def build_expected_curve(
     workout: "Workout", reference: float | None = None, excluded_kinds: frozenset[str] = frozenset()
 ) -> list[tuple[int, int, float]]:
     """Cumulative `(start_s, end_s, intensity_pct)` segments for `workout`'s flattened steps -
-    callers must already have confirmed every step is time-ended (`_needs_distance_walk` is
-    `False`); a distance-ended step has no fixed time boundary to place in this curve at all -
-    see `correlate_records_by_step_boundary` and the module docstring for that case instead.
+    callers must already have confirmed every step is time-ended (`_needs_step_boundary_walk` is
+    `False`); a distance- or manual-ended step has no fixed time boundary to place in this curve
+    at all - see `correlate_records_by_step_boundary` and the module docstring for that case
+    instead.
 
     `reference` lets a caller ranking many workouts for the same athlete (see
     `rank_workouts_for_activity`) compute the zone lookup once and reuse it, instead of
@@ -215,22 +237,74 @@ def correlate_records(
     return _correlate_pairs(pairs, len(records))
 
 
+def _cumulative_lap_ends(activity: Activity) -> list[int]:
+    """`[lap 1's end, lap 1+2's end, lap 1+2+3's end, ...]`, in seconds from the start of the
+    recording - the running total of `activity`'s own real device laps' `duration`, in `index`
+    order. Every activity gets its raw, device-recorded laps persisted at upload time
+    unconditionally (`uploads/processing.py::_ingest_activity`), before any workout-matching
+    happens - and a match-scan candidate is by definition unmatched (`workout_id IS NULL`), so
+    it's never had those replaced by `lap_derivation.replace_laps_with_derived` (which only ever
+    runs against an activity's *matched* workout). So this is always the athlete's own real
+    lap-button presses for a match-scan candidate, never anything derived from a plan - exactly
+    the real-world signal `correlate_records_by_step_boundary` needs for a manual-ended step.
+    """
+    cumulative: list[int] = []
+    total = 0
+    for duration in activity.laps.order_by("index").values_list("duration", flat=True):
+        total += duration
+        cumulative.append(total)
+    return cumulative
+
+
 def correlate_records_by_step_boundary(
     workout: "Workout",
+    activity: Activity,
     records: list[tuple[int, float | None, int | None]],
     reference: float,
     excluded_kinds: frozenset[str] = frozenset(),
 ) -> tuple[float, float, int | None] | None:
-    """The distance-ended-step counterpart to `correlate_records`/`build_expected_curve` - see
-    the module docstring for why a distance-ended step can't be placed on a fixed, reusable
-    time-based curve the way a time-ended one can. Walks `records` (`(t, distance_km, power)`
-    tuples, already ordered by `t`) against `workout`'s own flattened steps directly, assigning
-    each record to whichever step it falls in via the same dual time-or-distance boundary walk
-    `activities.lap_derivation` uses to slice a matched activity's laps (a running `offset_t`/
-    `offset_distance` carried forward across steps, each step's own `end_type` deciding which
-    one governs its boundary), then correlates the resulting (expected_pct, actual_power) pairs.
+    """The distance-ended/manual-ended-step counterpart to `correlate_records`/
+    `build_expected_curve` - see the module docstring for why those two step shapes can't be
+    placed on a fixed, reusable time-based curve the way a time-ended one can. Walks `records`
+    (`(t, distance_km, power)` tuples, already ordered by `t`) against `workout`'s own flattened
+    steps directly, assigning each record to whichever step it falls in via a running `offset_t`/
+    `offset_distance` carried forward across steps (the same technique `activities.
+    lap_derivation` uses to slice a matched activity's laps), then correlates the resulting
+    (expected_pct, actual_power) pairs.
 
-    Unlike lap derivation, this doesn't need pause-robust active-time accounting: a correlation
+    Three separate boundary strategies, one per `end_type`, chosen per step inside the loop:
+
+    - `"time"`: the plan's own `duration` past wherever the walk currently is
+      (`offset_t + step.duration`) - identical to `build_expected_curve`'s own segments, just
+      evaluated fresh per candidate instead of precomputed once.
+    - `"distance"`: the plan's own `distance` past wherever the walk currently is
+      (`offset_distance + step.distance / 1000`) - see the module docstring for why this can't
+      be predicted as a fixed time offset ahead of time (it depends on how fast *this*
+      candidate actually covered it).
+    - `"manual"` (only reachable when `target_type="open"` - `scannability_error` guarantees
+      this pairing): there is no plan value to walk toward at all - a `WorkoutStep` with
+      `end_type="manual"` never has a `duration` or `distance` (see the model's own
+      `repeat_step_has_no_leaf_fields`-adjacent CHECK constraint), because a manual step's real
+      length is *defined* as "however long until the athlete pressed lap." The only place that
+      real length is recorded is the candidate's own raw device laps (`_cumulative_lap_ends`).
+      So this branch instead finds the first of *this candidate's own* lap boundaries that falls
+      at-or-after the walk's current position (`lap_ends`/`lap_idx`, both advanced monotonically
+      so a later manual step never re-uses an earlier lap), and boundary-walks toward that,
+      exactly like the `"time"` branch does toward a planned duration. This deliberately does
+      *not* try to match "the Nth manual step" to "the Nth device lap" positionally - device
+      laps don't reliably line up with a structured plan's own step count or order (see
+      `lap_derivation`'s own docstring on why it doesn't trust them for boundaries either); the
+      *next* lap boundary the walk encounters, whatever its index, is the most defensible
+      available signal for "when did this specific open segment end". A manual step never
+      contributes to the correlation itself (there's no target - `target_type="open"` means
+      exactly that), it only needs to advance the walk correctly so the *next* real step's
+      pairs are measured from the right starting point. If the candidate runs out of laps
+      before this point (a device lap count smaller than expected, e.g. a merged/missing
+      press), the remaining records are folded into this step and the walk ends there - the
+      same "activity's own recording came up short" fallback every other end_type gets
+      naturally when its own boundary is never reached.
+
+    Unlike lap derivation, none of this needs pause-robust active-time accounting: a correlation
     over a full activity's worth of samples tolerates a handful of samples landing in the wrong
     step's bucket near a pause without materially moving the result, which a single lap's
     average power cannot.
@@ -242,6 +316,8 @@ def correlate_records_by_step_boundary(
     offset_t = records[0][0]
     offset_distance = records[0][1] or 0.0
     pairs: list[tuple[float, int]] = []
+    lap_ends: list[int] | None = None  # lazily fetched - most workouts have no manual step at all
+    lap_idx = 0
 
     for step, _ in flatten_persisted_steps(workout):
         if record_idx >= n:
@@ -251,13 +327,29 @@ def correlate_records_by_step_boundary(
             end_idx = record_idx
             while end_idx < n - 1 and records[end_idx][0] < boundary:
                 end_idx += 1
-        else:  # "distance"
+        elif step.end_type == "distance":
             boundary = offset_distance + step.distance / 1000
             end_idx = record_idx
             while end_idx < n - 1 and (records[end_idx][1] is None or records[end_idx][1] < boundary):
                 end_idx += 1
+        else:  # "manual" - see this function's own docstring for the full reasoning.
+            if lap_ends is None:
+                lap_ends = _cumulative_lap_ends(activity)
+            elapsed_so_far = offset_t - records[0][0]
+            while lap_idx < len(lap_ends) and lap_ends[lap_idx] <= elapsed_so_far:
+                lap_idx += 1
+            end_idx = record_idx
+            if lap_idx < len(lap_ends):
+                boundary = records[0][0] + lap_ends[lap_idx]
+                while end_idx < n - 1 and records[end_idx][0] < boundary:
+                    end_idx += 1
+                lap_idx += 1
+            else:
+                end_idx = n - 1
 
-        if step.kind not in excluded_kinds:
+        # A manual/open step never contributes to the correlation - there's no target to
+        # correlate against - regardless of excluded_kinds.
+        if step.kind not in excluded_kinds and step.end_type != "manual":
             pct = _step_intensity_pct(step, reference)
             for _, _, power in records[record_idx : end_idx + 1]:
                 if power:
@@ -316,10 +408,10 @@ def rank_workouts_for_activity(
         if reference is None:
             reference = _power_reference(workout)
         flattened = flatten_persisted_steps(workout)
-        if _needs_distance_walk(flattened):
+        if _needs_step_boundary_walk(flattened):
             if records_with_distance is None:
                 records_with_distance = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
-            result = correlate_records_by_step_boundary(workout, records_with_distance, reference)
+            result = correlate_records_by_step_boundary(workout, activity, records_with_distance, reference)
         else:
             curve = build_expected_curve(workout, reference=reference)
             result = correlate_records(curve, records)
@@ -345,9 +437,13 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
     workout = scan.workout
     excluded_kinds = frozenset(scan.excluded_step_kinds)
     flattened = flatten_persisted_steps(workout)
-    distance_walk = _needs_distance_walk(flattened)
+    needs_boundary_walk = _needs_step_boundary_walk(flattened)
     reference = _power_reference(workout)
-    curve = None if distance_walk else build_expected_curve(workout, reference=reference, excluded_kinds=excluded_kinds)
+    curve = (
+        None
+        if needs_boundary_walk
+        else build_expected_curve(workout, reference=reference, excluded_kinds=excluded_kinds)
+    )
     # workout.duration, not curve[-1][1]: the curve's last entry can end before the workout's
     # real total duration whenever a trailing step (typically the cooldown) is excluded - the
     # activity recording still covers that phase in real time, so the duration pre-filter below
@@ -365,9 +461,9 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
 
     rows = []
     for i, activity in enumerate(candidates, start=1):
-        if distance_walk:
+        if needs_boundary_walk:
             records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
-            result = correlate_records_by_step_boundary(workout, records, reference, excluded_kinds)
+            result = correlate_records_by_step_boundary(workout, activity, records, reference, excluded_kinds)
         else:
             result = correlate_activity(curve, activity)
         if result is not None:

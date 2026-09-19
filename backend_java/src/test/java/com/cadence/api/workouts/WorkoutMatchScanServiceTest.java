@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.Lap;
+import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
@@ -39,6 +41,9 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 
 	@Autowired
 	private RecordRepository recordRepository;
+
+	@Autowired
+	private LapRepository lapRepository;
 
 	@Autowired
 	private WorkoutMatchScanRepository scanRepository;
@@ -153,6 +158,83 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		}
 	}
 
+	/** warmup 300s@70%, then an open-target manual step (no plan boundary at all - real length
+	 * comes from whichever of the candidate's own device laps the boundary walk lands on), then
+	 * a 400s@100% block. Deliberately only 2 leaf steps besides the manual one, since the point
+	 * of these tests is the manual step's own boundary resolution, not a repeat structure.
+	 *
+	 * <p>{@code duration=900} matches {@link #seedManualStepRecords}'s own real total exactly
+	 * (warmup's 300s + the manual step's real 200s + the block's 400s) - a manual step has no
+	 * plan-side duration to contribute of its own, so this can only ever be an approximation of
+	 * a real matching candidate's actual moving time, same as any workout containing one; the
+	 * duration pre-filter still needs it in the right ballpark to let a real match through at
+	 * all.
+	 */
+	private Workout newManualStepWorkout(User athlete) {
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Manual Middle");
+		workout.setSport(Sport.BIKE);
+		workout.setDuration(900);
+
+		WorkoutStep warmup = leaf(workout, null, 0, StepKind.WARMUP, 300, 70.0, 70.0);
+		WorkoutStep manual = new WorkoutStep();
+		manual.setWorkout(workout);
+		manual.setOrder(1);
+		manual.setKind(StepKind.BLOCK);
+		manual.setEndType(StepEndType.MANUAL);
+		manual.setTargetType(TargetType.OPEN);
+		WorkoutStep block = leaf(workout, null, 2, StepKind.BLOCK, 400, 100.0, 100.0);
+		workout.getSteps().add(warmup);
+		workout.getSteps().add(manual);
+		workout.getSteps().add(block);
+		return workoutRepository.saveAndFlush(workout);
+	}
+
+	/** 901 records total (matching {@link #newManualStepWorkout}'s warmup(300)+manual+block(400)
+	 * shape): t=0..300 at the warmup's 175W (70%*250), t=301..500 at a junk power the manual
+	 * step must never surface in the correlation, t=501..900 at the block's 250W (100%*250). Two
+	 * real device laps: one covering the warmup's own 300s span exactly (so the manual step's
+	 * boundary search starts from a lap that's already "used up" by the time the walk reaches
+	 * it) and a second covering exactly the manual step's real 200s span - the one the boundary
+	 * walk is actually meant to find. */
+	private void seedManualStepRecords(Activity activity, Instant start) {
+		int warmupSeconds = 301;
+		int manualSeconds = 200;
+		int blockSeconds = 400;
+		double ftp = 250;
+		for (int t = 0; t < warmupSeconds + manualSeconds + blockSeconds; t++) {
+			int power;
+			if (t < warmupSeconds) {
+				power = (int) Math.round(0.70 * ftp);
+			}
+			else if (t < warmupSeconds + manualSeconds) {
+				power = 999; // a real, but structurally meaningless, reading - must be excluded
+			}
+			else {
+				power = (int) Math.round(1.00 * ftp);
+			}
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(power);
+			recordRepository.save(record);
+		}
+		saveLap(activity, 1, warmupSeconds - 1);
+		saveLap(activity, 2, manualSeconds);
+		saveLap(activity, 3, blockSeconds);
+	}
+
+	private void saveLap(Activity activity, int index, int duration) {
+		Lap lap = new Lap();
+		lap.setActivity(activity);
+		lap.setIndex(index);
+		lap.setDuration(duration);
+		lap.setDistanceKm(0.0);
+		lapRepository.save(lap);
+	}
+
 	private Activity newActivity(User athlete, Instant start, Sport sport, int movingTime, Workout workout) {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
@@ -207,7 +289,7 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 	}
 
 	@Test
-	void scannabilityErrorRejectsAManualEndTypeStep() {
+	void scannabilityErrorRejectsAManualEndTypeStepWithARealTarget() {
 		User athlete = newAthlete("manual-not-scannable@example.cc");
 		Workout workout = new Workout();
 		workout.setCreatedBy(athlete);
@@ -220,6 +302,25 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		workout = workoutRepository.saveAndFlush(workout);
 
 		assertThat(workoutMatchScanService.scannabilityError(workout.getId())).isNotNull();
+	}
+
+	@Test
+	void scannabilityErrorAllowsAManualEndTypeStepWithAnOpenTarget() {
+		User athlete = newAthlete("manual-open-scannable@example.cc");
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Manual, open");
+		workout.setSport(Sport.BIKE);
+		WorkoutStep step = leaf(workout, null, 0, StepKind.BLOCK, 300, 100.0, 100.0);
+		step.setEndType(StepEndType.MANUAL);
+		step.setDuration(null);
+		step.setTargetType(TargetType.OPEN);
+		step.setTargetLow(null);
+		step.setTargetHigh(null);
+		workout.getSteps().add(step);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		assertThat(workoutMatchScanService.scannabilityError(workout.getId())).isNull();
 	}
 
 	@Test
@@ -432,7 +533,7 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		seedMatchingRecordsWithDistance(activity, start, 1426, 250, 4.0);
 		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 
-		var result = workoutMatchScanService.correlateRecordsByStepBoundary(workout, records, 250, Set.of());
+		var result = workoutMatchScanService.correlateRecordsByStepBoundary(workout, activity, records, 250, Set.of());
 
 		assertThat(result).isNotNull();
 		// Fewer, larger steps than the time-based Gorby fixture (3 reps of 2 steps vs 5), so
@@ -447,8 +548,10 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 	void correlateRecordsByStepBoundaryReturnsNullWithNoRecords() {
 		User athlete = newAthlete("correlate-distance-empty@example.cc");
 		Workout workout = newDistanceGorbyWorkout(athlete);
+		Activity activity = newActivity(athlete, Instant.parse("2026-01-05T07:00:00Z"), Sport.RUN, 1425, null);
 
-		assertThat(workoutMatchScanService.correlateRecordsByStepBoundary(workout, List.of(), 250, Set.of())).isNull();
+		assertThat(workoutMatchScanService.correlateRecordsByStepBoundary(workout, activity, List.of(), 250, Set.of()))
+				.isNull();
 	}
 
 	@Test
@@ -464,11 +567,82 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		seedMatchingRecordsWithDistance(activity, start, 1426, 250, 4.0);
 		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 
-		var result = workoutMatchScanService.correlateRecordsByStepBoundary(workout, records, 250, Set.of(StepKind.WARMUP));
+		var result =
+				workoutMatchScanService.correlateRecordsByStepBoundary(workout, activity, records, 250, Set.of(StepKind.WARMUP));
 
 		assertThat(result).isNotNull();
 		assertThat(result.correlation()).isGreaterThan(0.98);
 		assertThat(result.coverage()).isLessThan(1.0); // the warmup's 300 samples are dropped from the numerator
+	}
+
+	@Test
+	void correlateRecordsByStepBoundaryManualStepContributesNothingButCorrectlyAdvancesTheWalk() {
+		User athlete = newAthlete("correlate-manual@example.cc");
+		Workout workout = newManualStepWorkout(athlete);
+		Instant start = Instant.parse("2026-01-08T06:00:00Z");
+		Activity activity = newActivity(athlete, start, Sport.BIKE, 900, null);
+		seedManualStepRecords(activity, start);
+		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+
+		var result = workoutMatchScanService.correlateRecordsByStepBoundary(workout, activity, records, 250, Set.of());
+
+		assertThat(result).isNotNull();
+		// Only warmup (301 samples) and block (400 samples) ever reach the correlation - a
+		// clean two-level relationship (175W at 70%, 250W at 100%), so this should read as an
+		// essentially perfect match despite the manual step's junk power sitting right between
+		// them in the raw stream.
+		assertThat(result.correlation()).isGreaterThan(0.99);
+		assertThat(result.coverage()).isCloseTo(701.0 / 901, org.assertj.core.data.Offset.offset(0.001));
+	}
+
+	@Test
+	void correlateRecordsByStepBoundaryRunningOutOfLapsFoldsTheRemainderIntoTheManualStep() {
+		// If the candidate has fewer real device laps than the walk needs (a merged or missing
+		// lap press), the remaining records are folded into the manual step and the walk ends
+		// there - the same "activity's own recording came up short" fallback every other
+		// endType gets naturally when its own boundary is never reached.
+		User athlete = newAthlete("correlate-manual-short-laps@example.cc");
+		Workout workout = newManualStepWorkout(athlete);
+		Instant start = Instant.parse("2026-01-09T06:00:00Z");
+		Activity activity = newActivity(athlete, start, Sport.BIKE, 900, null);
+		seedManualStepRecords(activity, start);
+		// Only one real lap - covering just the warmup's own span - so the boundary walk has
+		// nothing left to resolve the manual step's real length with.
+		lapRepository.deleteAll(lapRepository.findByActivityIdOrderByIndex(activity.getId()));
+		saveLap(activity, 1, 300);
+		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+
+		var result = workoutMatchScanService.correlateRecordsByStepBoundary(workout, activity, records, 250, Set.of());
+
+		// The trailing block step never gets reached at all (recordIdx runs out on the manual
+		// step), so only the warmup's 301 samples exist to correlate against - a single-value x
+		// series, which pearson() correctly reports as undefined.
+		assertThat(result).isNull();
+	}
+
+	@Test
+	void runScanFindsTheMatchingActivityForAWorkoutWithAManualOpenStep() {
+		User athlete = newAthlete("scan-manual-athlete@example.cc");
+		Workout workout = newManualStepWorkout(athlete);
+		Instant start = Instant.parse("2026-01-10T06:00:00Z");
+
+		Activity match = newActivity(athlete, start, Sport.BIKE, 900, null);
+		seedManualStepRecords(match, start);
+
+		WorkoutMatchScan scan = new WorkoutMatchScan();
+		scan.setWorkout(workout);
+		scan = scanRepository.save(scan);
+
+		workoutMatchScanService.runScanSync(scan.getId());
+
+		WorkoutMatchScan finished = scanRepository.findById(scan.getId()).orElseThrow();
+		assertThat(finished.getStatus()).isEqualTo(WorkoutMatchScanStatus.READY);
+
+		List<WorkoutMatchScanCandidate> candidates =
+				candidateRepository.findByScanIdOrderByCorrelationDescFetchActivity(scan.getId());
+		assertThat(candidates).hasSize(1);
+		assertThat(candidates.get(0).getActivity().getId()).isEqualTo(match.getId());
+		assertThat(candidates.get(0).getCorrelation()).isGreaterThan(0.99);
 	}
 
 	@Test
