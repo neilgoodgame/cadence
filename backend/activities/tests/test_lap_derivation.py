@@ -69,6 +69,27 @@ def _seed_records(activity, total_seconds: int) -> None:
         )
 
 
+def _seed_records_with_pause(activity, total_seconds: int, pause_at: int, pause_duration: int) -> None:
+    """Same phase content as `_seed_records` (one record per real, active second - no reps or
+    samples are actually skipped), but every record from `pause_at` onward has its `t`
+    permanently shifted forward by `pause_duration` - mirroring a real device pause/resume:
+    the elapsed-time clock jumps across the paused span, leaving a gap in `Record.t`, even
+    though every planned active second was still recorded."""
+    t = 0
+    for i in range(total_seconds):
+        if i == pause_at:
+            t += pause_duration
+        Record.objects.create(
+            activity=activity,
+            t=t,
+            ts=activity.start_date + timedelta(seconds=t),
+            power=_phase_power(i),
+            heartrate=130 + (i % 20),
+            distance_km=i * 0.01,
+        )
+        t += 1
+
+
 class DeriveLapsFromWorkoutTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="lap-derivation@example.cc", password="x", name="Athlete")
@@ -143,6 +164,32 @@ class DeriveLapsFromWorkoutTests(TestCase):
         _seed_records(activity, 600)
 
         self.assertIsNone(derive_laps_from_workout(activity, workout))
+
+    def test_pause_mid_activity_does_not_change_which_samples_land_in_which_lap(self):
+        """Regression test for the reported bug ("Lap auto-detection mis-segments power data
+        around pause events"): a device pause/resume leaves a gap in Record.t, but every
+        planned active second still gets recorded. Lap boundaries must be computed from active
+        (recorded) time, not wall-clock t, or the whole gap gets silently donated to whichever
+        step's boundary walk happens to cross it - pushing that step's real end (and every
+        later step's) later than the true transition and sweeping in samples from the wrong
+        phase. Asserted directly as pause-invariance: a paused recording must derive laps with
+        the exact same per-lap sample composition (and therefore avg_power) as the same ride
+        with no pause at all."""
+        control_activity = _make_activity(self.athlete, sport="bike")
+        workout = _make_gorby_workout(self.athlete)
+        _seed_records(control_activity, 3601)
+        control_laps = derive_laps_from_workout(control_activity, workout)
+
+        paused_activity = _make_activity(self.athlete, sport="bike")
+        # A 90s pause starting 8 real (active) seconds before block (rep 1) would otherwise
+        # end - the same shape as the reported bug, where the pause's wall-clock span
+        # straddled a step's naive time boundary.
+        _seed_records_with_pause(paused_activity, total_seconds=3601, pause_at=892, pause_duration=90)
+        paused_laps = derive_laps_from_workout(paused_activity, workout)
+
+        self.assertEqual(len(paused_laps), len(control_laps))
+        self.assertEqual([lap.avg_power for lap in paused_laps], [lap.avg_power for lap in control_laps])
+        self.assertEqual([lap.duration for lap in paused_laps], [lap.duration for lap in control_laps])
 
     def test_no_records_returns_none(self):
         activity = _make_activity(self.athlete, sport="bike")

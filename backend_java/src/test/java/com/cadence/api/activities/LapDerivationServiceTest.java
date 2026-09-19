@@ -115,6 +115,29 @@ class LapDerivationServiceTest extends IntegrationTest {
 		}
 	}
 
+	/** Same phase content as {@link #seedRecords}, but every record from {@code pauseAt} onward
+	 * has its {@code t} permanently shifted forward by {@code pauseDuration} - mirroring a real
+	 * device pause/resume: the elapsed-time clock jumps across the paused span, leaving a gap
+	 * in {@code record.t}, even though every planned active second was still recorded. */
+	private void seedRecordsWithPause(Activity activity, Instant start, int totalSeconds, int pauseAt,
+			int pauseDuration) {
+		int t = 0;
+		for (int i = 0; i < totalSeconds; i++) {
+			if (i == pauseAt) {
+				t += pauseDuration;
+			}
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(phasePower(i));
+			record.setHeartrate(130 + (i % 20));
+			record.setDistanceKm(i * 0.01);
+			recordRepository.save(record);
+			t += 1;
+		}
+	}
+
 	@Test
 	void derives11LapsMatchingTheGorbysRealStructure() {
 		User athlete = newAthlete("lap-derivation@example.cc");
@@ -198,6 +221,38 @@ class LapDerivationServiceTest extends IntegrationTest {
 		seedRecords(activity, activity.getStartDate(), 600);
 
 		assertThat(lapDerivationService.deriveLaps(activity, workout)).isNull();
+	}
+
+	@Test
+	void pauseMidActivityDoesNotChangeWhichSamplesLandInWhichLap() {
+		// Regression test for the reported bug ("Lap auto-detection mis-segments power data
+		// around pause events"): a device pause/resume leaves a gap in record.t, but every
+		// planned active second still gets recorded. Lap boundaries must be computed from
+		// active (recorded) time, not wall-clock t, or the whole gap gets silently donated to
+		// whichever step's boundary walk happens to cross it - pushing that step's real end
+		// (and every later step's) later than the true transition and sweeping in samples
+		// from the wrong phase. Asserted directly as pause-invariance: a paused recording must
+		// derive laps with the exact same per-lap sample composition (and therefore avgPower)
+		// as the same ride with no pause at all.
+		User athlete = newAthlete("lap-derivation-pause@example.cc");
+		Workout workout = newGorbyWorkout(athlete);
+
+		Activity controlActivity = newActivity(athlete, Instant.parse("2026-01-08T06:00:00Z"));
+		seedRecords(controlActivity, controlActivity.getStartDate(), 3601);
+		List<Lap> controlLaps = lapDerivationService.deriveLaps(controlActivity, workout);
+
+		Activity pausedActivity = newActivity(athlete, Instant.parse("2026-01-09T06:00:00Z"));
+		// A 90s pause starting 8 real (active) seconds before block (rep 1) would otherwise
+		// end - the same shape as the reported bug, where the pause's wall-clock span
+		// straddled a step's naive time boundary.
+		seedRecordsWithPause(pausedActivity, pausedActivity.getStartDate(), 3601, 892, 90);
+		List<Lap> pausedLaps = lapDerivationService.deriveLaps(pausedActivity, workout);
+
+		assertThat(pausedLaps).hasSize(controlLaps.size());
+		assertThat(pausedLaps).extracting(Lap::getAvgPower).containsExactlyElementsOf(
+				controlLaps.stream().map(Lap::getAvgPower).collect(Collectors.toList()));
+		assertThat(pausedLaps).extracting(Lap::getDuration).containsExactlyElementsOf(
+				controlLaps.stream().map(Lap::getDuration).collect(Collectors.toList()));
 	}
 
 	@Test
