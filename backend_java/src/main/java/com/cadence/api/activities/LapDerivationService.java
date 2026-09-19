@@ -78,8 +78,27 @@ public class LapDerivationService {
 		}
 
 		int n = records.size();
+		// A synthetic "active time" clock, running alongside the real per-record t: it advances
+		// exactly like t (and is identical to it) except that any single inter-sample gap - a
+		// pause/resume leaves one, since the device stops recording rather than freezing its
+		// clock - contributes at most one second, matching how a device's own laps track
+		// totalTimerTime (excluding paused duration) rather than totalElapsedTime. Using this in
+		// place of raw t for time-based boundaries stops a pause from being silently donated in
+		// full to whichever step's boundary walk happens to cross it, which would otherwise push
+		// that step's real end (and every later step's) later than the true transition and sweep
+		// in samples from the wrong phase. It has to be a single running clock carried forward
+		// across steps, the same way offsetT/boundary already worked - resetting it fresh at
+		// each step's own start would make every step (not just the ones actually touching a
+		// gap) end one sample later than its target, since adjacent segments share their
+		// boundary sample.
+		int[] activeT = new int[n];
+		activeT[0] = records.get(0).getT();
+		for (int i = 1; i < n; i++) {
+			activeT[i] = activeT[i - 1] + Math.min(records.get(i).getT() - records.get(i - 1).getT(), 1);
+		}
+
 		int recordIdx = 0;
-		double offsetT = records.get(0).getT();
+		int offsetT = activeT[0];
 		double offsetDistance = records.get(0).getDistanceKm() != null ? records.get(0).getDistanceKm() : 0.0;
 		List<Lap> laps = new ArrayList<>();
 		int index = 1;
@@ -90,17 +109,16 @@ public class LapDerivationService {
 			}
 			WorkoutStep step = f.step();
 			int endIdx = recordIdx;
-			double boundary;
 			boolean reached;
 			if (step.getEndType() == StepEndType.TIME) {
-				boundary = offsetT + step.getDuration();
-				while (endIdx < n - 1 && records.get(endIdx).getT() < boundary) {
+				int boundary = offsetT + step.getDuration();
+				while (endIdx < n - 1 && activeT[endIdx] < boundary) {
 					endIdx++;
 				}
-				reached = records.get(endIdx).getT() >= boundary;
+				reached = activeT[endIdx] >= boundary;
 			}
 			else {
-				boundary = offsetDistance + step.getDistance() / 1000.0;
+				double boundary = offsetDistance + step.getDistance() / 1000.0;
 				while (endIdx < n - 1
 						&& (records.get(endIdx).getDistanceKm() == null || records.get(endIdx).getDistanceKm() < boundary)) {
 					endIdx++;
@@ -140,7 +158,7 @@ public class LapDerivationService {
 
 			index++;
 			recordIdx = endIdx + 1;
-			offsetT = records.get(endIdx).getT();
+			offsetT = activeT[endIdx];
 			if (records.get(endIdx).getDistanceKm() != null) {
 				offsetDistance = records.get(endIdx).getDistanceKm();
 			}

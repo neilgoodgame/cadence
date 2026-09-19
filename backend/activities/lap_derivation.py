@@ -63,8 +63,24 @@ def derive_laps_from_workout(activity: Activity, workout: "Workout") -> list[Lap
         return None
 
     n = len(records)
+    # A synthetic "active time" clock, running alongside the real per-record t: it advances
+    # exactly like t (and is identical to it) except that any single inter-sample gap - a
+    # pause/resume leaves one, since the device stops recording rather than freezing its clock
+    # - contributes at most one second, matching how a device's own laps track
+    # total_timer_time (excluding paused duration) rather than total_elapsed_time. Using this
+    # in place of raw t for time-based boundaries stops a pause from being silently donated in
+    # full to whichever step's boundary walk happens to cross it, which would otherwise push
+    # that step's real end (and every later step's) later than the true transition and sweep in
+    # samples from the wrong phase. It has to be a single running clock carried forward across
+    # steps, the same way offset_t/boundary already worked - resetting it fresh at each step's
+    # own start would make every step (not just the ones actually touching a gap) end one
+    # sample later than its target, since adjacent segments share their boundary sample.
+    active_t = [records[0][0]] * n
+    for i in range(1, n):
+        active_t[i] = active_t[i - 1] + min(records[i][0] - records[i - 1][0], 1)
+
     record_idx = 0
-    offset_t = records[0][0]
+    offset_t = active_t[0]
     offset_distance = records[0][1] or 0.0
     laps: list[Lap] = []
     index = 1
@@ -75,9 +91,9 @@ def derive_laps_from_workout(activity: Activity, workout: "Workout") -> list[Lap
         if step.end_type == "time":
             boundary = offset_t + step.duration
             end_idx = record_idx
-            while end_idx < n - 1 and records[end_idx][0] < boundary:
+            while end_idx < n - 1 and active_t[end_idx] < boundary:
                 end_idx += 1
-            reached = records[end_idx][0] >= boundary
+            reached = active_t[end_idx] >= boundary
         else:  # "distance"
             boundary = offset_distance + step.distance / 1000
             end_idx = record_idx
@@ -112,7 +128,7 @@ def derive_laps_from_workout(activity: Activity, workout: "Workout") -> list[Lap
         )
         index += 1
         record_idx = end_idx + 1
-        offset_t = records[end_idx][0]
+        offset_t = active_t[end_idx]
         if records[end_idx][1] is not None:
             offset_distance = records[end_idx][1]
 
