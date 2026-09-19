@@ -99,6 +99,60 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		return step;
 	}
 
+	/** warmup 300s@60%, then 3x[block 1000m@110%, rec 500m@52.5%] - the distance-ended
+	 * counterpart to {@link #newGorbyWorkout}, for exercising {@code correlateRecordsByStepBoundary}.
+	 * At the constant 4m/s {@link #seedMatchingRecordsWithDistance} assumes, the block/rec steps
+	 * take exactly 250s/125s each, so duration=1425 (300 + 3*(250+125)) is exact, matching the
+	 * same convention {@link #newGorbyWorkout} documents. */
+	private Workout newDistanceGorbyWorkout(User athlete) {
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Distance Gorby");
+		workout.setSport(Sport.RUN);
+		workout.setDuration(1425);
+
+		WorkoutStep warmup = leaf(workout, null, 0, StepKind.WARMUP, 300, 60.0, 60.0);
+		WorkoutStep group = new WorkoutStep();
+		group.setWorkout(workout);
+		group.setOrder(1);
+		group.setKind(StepKind.REPEAT);
+		group.setRepeat(3);
+		WorkoutStep work = leaf(workout, group, 0, StepKind.BLOCK, 300, 110.0, 110.0);
+		work.setEndType(StepEndType.DISTANCE);
+		work.setDuration(null);
+		work.setDistance(1000);
+		WorkoutStep rest = leaf(workout, group, 1, StepKind.REC, 300, 52.5, 52.5);
+		rest.setEndType(StepEndType.DISTANCE);
+		rest.setDuration(null);
+		rest.setDistance(500);
+		workout.getSteps().add(warmup);
+		workout.getSteps().add(group);
+		workout.getSteps().add(work);
+		workout.getSteps().add(rest);
+		return workoutRepository.saveAndFlush(workout);
+	}
+
+	private static int phasePowerDistance(int t, double ftp) {
+		if (t < 300) {
+			return (int) Math.round(0.60 * ftp);
+		}
+		int repT = (t - 300) % 375;
+		return (int) Math.round((repT < 250 ? 1.10 : 0.525) * ftp);
+	}
+
+	private void seedMatchingRecordsWithDistance(Activity activity, Instant start, int totalSeconds, double ftp,
+			double speedMps) {
+		for (int t = 0; t < totalSeconds; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(phasePowerDistance(t, ftp));
+			record.setDistanceKm(t * speedMps / 1000);
+			recordRepository.save(record);
+		}
+	}
+
 	private Activity newActivity(User athlete, Instant start, Sport sport, int movingTime, Workout workout) {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
@@ -170,25 +224,58 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 
 	@Test
 	void scannabilityErrorIgnoresAnExcludedStepsOwnValidity() {
-		// A distance-ended cooldown would normally fail scannability - but not if the caller has
+		// A manual-ended cooldown would normally fail scannability - but not if the caller has
 		// already chosen to exclude cooldowns entirely, since that step never reaches curve
 		// construction either way.
-		User athlete = newAthlete("distance-cooldown-excluded@example.cc");
+		User athlete = newAthlete("manual-cooldown-excluded@example.cc");
 		Workout workout = new Workout();
 		workout.setCreatedBy(athlete);
-		workout.setName("Distance cooldown");
+		workout.setName("Manual cooldown");
 		workout.setSport(Sport.BIKE);
 		WorkoutStep work = leaf(workout, null, 0, StepKind.BLOCK, 300, 100.0, 100.0);
 		WorkoutStep cooldown = leaf(workout, null, 1, StepKind.COOL, 300, 50.0, 50.0);
-		cooldown.setEndType(StepEndType.DISTANCE);
+		cooldown.setEndType(StepEndType.MANUAL);
 		cooldown.setDuration(null);
-		cooldown.setDistance(1000);
 		workout.getSteps().add(work);
 		workout.getSteps().add(cooldown);
 		workout = workoutRepository.saveAndFlush(workout);
 
 		assertThat(workoutMatchScanService.scannabilityError(workout.getId())).isNotNull();
 		assertThat(workoutMatchScanService.scannabilityError(workout.getId(), Set.of(StepKind.COOL))).isNull();
+	}
+
+	@Test
+	void scannabilityErrorAllowsADistanceEndTypeStepIfPowerTargeted() {
+		User athlete = newAthlete("distance-scannable@example.cc");
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Distance");
+		workout.setSport(Sport.BIKE);
+		WorkoutStep step = leaf(workout, null, 0, StepKind.BLOCK, 300, 100.0, 100.0);
+		step.setEndType(StepEndType.DISTANCE);
+		step.setDuration(null);
+		step.setDistance(5000);
+		workout.getSteps().add(step);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		assertThat(workoutMatchScanService.scannabilityError(workout.getId())).isNull();
+	}
+
+	@Test
+	void scannabilityErrorRejectsADistanceStepWithNoDistanceValue() {
+		User athlete = newAthlete("distance-no-value@example.cc");
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Distance, no value");
+		workout.setSport(Sport.BIKE);
+		WorkoutStep step = leaf(workout, null, 0, StepKind.BLOCK, 300, 100.0, 100.0);
+		step.setEndType(StepEndType.DISTANCE);
+		step.setDuration(null);
+		step.setDistance(null);
+		workout.getSteps().add(step);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		assertThat(workoutMatchScanService.scannabilityError(workout.getId())).isNotNull();
 	}
 
 	@Test
@@ -334,6 +421,82 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		Activity activity = newActivity(athlete, Instant.parse("2026-01-03T06:00:00Z"), Sport.BIKE, 3600, null);
 
 		assertThat(workoutMatchScanService.correlateActivity(curve, activity)).isNull();
+	}
+
+	@Test
+	void correlateRecordsByStepBoundaryScoresAPerfectlyMatchingActivityCloseToOne() {
+		User athlete = newAthlete("correlate-distance-match@example.cc");
+		Workout workout = newDistanceGorbyWorkout(athlete);
+		Instant start = Instant.parse("2026-01-05T06:00:00Z");
+		Activity activity = newActivity(athlete, start, Sport.RUN, 1425, null);
+		seedMatchingRecordsWithDistance(activity, start, 1426, 250, 4.0);
+		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+
+		var result = workoutMatchScanService.correlateRecordsByStepBoundary(workout, records, 250, Set.of());
+
+		assertThat(result).isNotNull();
+		// Fewer, larger steps than the time-based Gorby fixture (3 reps of 2 steps vs 5), so
+		// boundary-sample dilution costs slightly more of the correlation - still unambiguously
+		// a near-perfect match.
+		assertThat(result.correlation()).isGreaterThan(0.98);
+		assertThat(result.coverage()).isEqualTo(1.0);
+		assertThat(result.impliedFtp()).isCloseTo(250, org.assertj.core.data.Offset.offset(2));
+	}
+
+	@Test
+	void correlateRecordsByStepBoundaryReturnsNullWithNoRecords() {
+		User athlete = newAthlete("correlate-distance-empty@example.cc");
+		Workout workout = newDistanceGorbyWorkout(athlete);
+
+		assertThat(workoutMatchScanService.correlateRecordsByStepBoundary(workout, List.of(), 250, Set.of())).isNull();
+	}
+
+	@Test
+	void correlateRecordsByStepBoundaryExcludedKindsStillAdvanceTheOffset() {
+		// Mirrors buildCurveFor's own exclusion semantics: an excluded step's span is dropped
+		// from the correlation, but the boundary walk still advances past it - a later step's
+		// own distance boundary is measured from where the excluded step actually ended in the
+		// real data, not as if it never existed.
+		User athlete = newAthlete("correlate-distance-excluded@example.cc");
+		Workout workout = newDistanceGorbyWorkout(athlete);
+		Instant start = Instant.parse("2026-01-06T06:00:00Z");
+		Activity activity = newActivity(athlete, start, Sport.RUN, 1425, null);
+		seedMatchingRecordsWithDistance(activity, start, 1426, 250, 4.0);
+		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+
+		var result = workoutMatchScanService.correlateRecordsByStepBoundary(workout, records, 250, Set.of(StepKind.WARMUP));
+
+		assertThat(result).isNotNull();
+		assertThat(result.correlation()).isGreaterThan(0.98);
+		assertThat(result.coverage()).isLessThan(1.0); // the warmup's 300 samples are dropped from the numerator
+	}
+
+	@Test
+	void runScanFindsTheMatchingActivityForADistanceEndedWorkout() {
+		User athlete = newAthlete("scan-distance-athlete@example.cc");
+		Workout workout = newDistanceGorbyWorkout(athlete);
+		Instant start = Instant.parse("2026-01-07T06:00:00Z");
+
+		Activity match = newActivity(athlete, start, Sport.RUN, 1425, null);
+		seedMatchingRecordsWithDistance(match, start, 1426, 250, 4.0);
+
+		Activity wrongSport = newActivity(athlete, start, Sport.BIKE, 1425, null);
+		seedMatchingRecordsWithDistance(wrongSport, start, 1426, 250, 4.0);
+
+		WorkoutMatchScan scan = new WorkoutMatchScan();
+		scan.setWorkout(workout);
+		scan = scanRepository.save(scan);
+
+		workoutMatchScanService.runScanSync(scan.getId());
+
+		WorkoutMatchScan finished = scanRepository.findById(scan.getId()).orElseThrow();
+		assertThat(finished.getStatus()).isEqualTo(WorkoutMatchScanStatus.READY);
+
+		List<WorkoutMatchScanCandidate> candidates =
+				candidateRepository.findByScanIdOrderByCorrelationDescFetchActivity(scan.getId());
+		assertThat(candidates).hasSize(1);
+		assertThat(candidates.get(0).getActivity().getId()).isEqualTo(match.getId());
+		assertThat(candidates.get(0).getCorrelation()).isGreaterThan(0.98);
 	}
 
 	@Test

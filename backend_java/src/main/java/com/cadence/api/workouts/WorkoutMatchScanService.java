@@ -27,12 +27,34 @@ import org.springframework.stereotype.Service;
  * planned %FTP-vs-time curve. See {@link WorkoutMatchScan}'s Javadoc for why this needs to be a
  * background job rather than a synchronous request.
  *
- * <p>v1 only supports power-target, duration-based workouts (every flattened leaf step must
- * have {@code TargetType.POWER} and {@code StepEndType.TIME}) - pace-target workouts read too
- * noisily off GPS/treadmill speed to trust at the same confidence threshold validated for
- * power (no forced compliance mechanism the way ERG mode holds power steady), so they're
- * intentionally out of scope for now. Follow-up: validate against a real pace-based workout
- * before adding support.
+ * <p>v1 only supports power-target workouts (every flattened leaf step must have {@code
+ * TargetType.POWER}) - pace-target workouts read too noisily off GPS/treadmill speed to trust
+ * at the same confidence threshold validated for power (no forced compliance mechanism the way
+ * ERG mode holds power steady), so they're intentionally out of scope for now. Follow-up:
+ * validate against a real pace-based workout before adding support.
+ *
+ * <p>Both {@code TIME}- and {@code DISTANCE}-ended steps are supported, but need two different
+ * strategies: a {@code TIME}-ended step's boundary is the same for every candidate (it's baked
+ * into the plan), so {@link #buildCurveFor}/{@link #correlateRecords} build one reusable
+ * (startS, endS, intensityPct) curve per workout and correlate many candidates against it. A
+ * {@code DISTANCE}-ended step's boundary depends on how fast *this specific* candidate actually
+ * covered that distance - there's no single time-based curve that's valid for every candidate -
+ * so a workout with any distance-ended step instead walks each candidate's own record stream
+ * directly ({@link #correlateRecordsByStepBoundary}), assigning each record to whichever step
+ * it falls in the same dual time-or-distance way {@code LapDerivationService} slices a matched
+ * activity's laps, and correlating as it goes.
+ *
+ * <p>Validated this session against a real distance-ended run-power workout (4 distance blocks
+ * at 80/90/97/105% CP with timed recoveries) and its real matched activity: the boundary walk
+ * itself tracked essentially exactly (each block's real distance covered within ~1% of its
+ * planned distance, power rising monotonically block-to-block with the target). The resulting
+ * correlation (~0.55-0.65) reads noticeably lower than bike power's validated ~0.87 baseline
+ * though - not a bug in the boundary logic, but a real property of running power meters:
+ * there's a large fixed biomechanical cost to running at any pace (unlike a bike, which can
+ * freewheel to near-zero power), so an easy recovery jog's actual power compresses far less
+ * below a hard interval's than the %-of-threshold target design assumes. Still clearly useful
+ * for <em>ranking</em> candidates (an unrelated activity scores far lower still), just don't
+ * expect run-power distance-interval scans to read as high in absolute terms as bike's.
  */
 @Service
 public class WorkoutMatchScanService {
@@ -107,11 +129,24 @@ public class WorkoutMatchScanService {
 			if (step.getTargetType() != TargetType.POWER) {
 				return "Only power-target workouts can be scanned for matches right now.";
 			}
-			if (step.getEndType() != StepEndType.TIME || step.getDuration() == null) {
-				return "Only duration-based steps (not distance- or manual-ended) can be scanned for matches right now.";
+			if (step.getEndType() == StepEndType.TIME && step.getDuration() == null) {
+				return "Every time-ended step needs a duration to be scanned.";
+			}
+			if (step.getEndType() == StepEndType.DISTANCE && step.getDistance() == null) {
+				return "Every distance-ended step needs a distance to be scanned.";
+			}
+			if (step.getEndType() == StepEndType.MANUAL) {
+				return "Manual-ended steps can't be scanned for matches - there's no derivable boundary.";
 			}
 		}
 		return null;
+	}
+
+	/** Whether {@code flattened} contains any distance-ended step - see the class Javadoc for
+	 * why that forces the per-candidate boundary walk instead of one reusable time-based
+	 * curve. */
+	private static boolean needsDistanceWalk(List<Flattened> flattened) {
+		return flattened.stream().anyMatch(f -> f.step().getEndType() == StepEndType.DISTANCE);
 	}
 
 	/** Cumulative {@code (startS, endS, intensityPct)} segments for the workout's flattened
@@ -157,15 +192,22 @@ public class WorkoutMatchScanService {
 		for (Flattened f : WorkoutStepFlattener.flatten(workout)) {
 			WorkoutStep step = f.step();
 			if (!excludedKinds.contains(step.getKind())) {
-				double low = step.getTargetLow() != null ? step.getTargetLow() : 0.0;
-				double high = step.getTargetHigh() != null ? step.getTargetHigh() : low;
-				double mid = (low + high) / 2;
-				double pct = step.getPowerUnit() == PowerUnit.WATTS ? (mid / reference) * 100 : mid;
-				curve.add(new Segment(offset, offset + step.getDuration(), pct));
+				curve.add(new Segment(offset, offset + step.getDuration(), stepIntensityPct(step, reference)));
 			}
 			offset += step.getDuration();
 		}
 		return curve;
+	}
+
+	/** A single step's expected intensity, always expressed as %FTP - see {@link #buildCurveFor}
+	 * for the exact meaning. Shared between {@link #buildCurveFor} (every step time-ended, one
+	 * curve reusable across candidates) and {@link #correlateRecordsByStepBoundary} (any step
+	 * distance-ended, walked fresh per candidate). */
+	private static double stepIntensityPct(WorkoutStep step, double reference) {
+		double low = step.getTargetLow() != null ? step.getTargetLow() : 0.0;
+		double high = step.getTargetHigh() != null ? step.getTargetHigh() : low;
+		double mid = (low + high) / 2;
+		return step.getPowerUnit() == PowerUnit.WATTS ? (mid / reference) * 100 : mid;
 	}
 
 	private double referenceFor(Workout workout) {
@@ -268,6 +310,81 @@ public class WorkoutMatchScanService {
 				ys.add((double) r.getPower());
 			}
 		}
+		return correlatePairs(xs, ys, records.size());
+	}
+
+	/** The {@code DISTANCE}-ended-step counterpart to {@link #correlateRecords}/{@link
+	 * #buildCurveFor} - see the class Javadoc for why a distance-ended step can't be placed on a
+	 * fixed, reusable time-based curve the way a time-ended one can. Walks {@code records}
+	 * (already {@code t}-ordered) against {@code workout}'s own flattened steps directly,
+	 * assigning each record to whichever step it falls in via the same dual time-or-distance
+	 * boundary walk {@code LapDerivationService} uses to slice a matched activity's laps (a
+	 * running {@code offsetT}/{@code offsetDistance} carried forward across steps, each step's
+	 * own {@code endType} deciding which one governs its boundary), then correlates the
+	 * resulting (expectedPct, actualPower) pairs.
+	 *
+	 * <p>Unlike lap derivation, this doesn't need pause-robust active-time accounting: a
+	 * correlation over a full activity's worth of samples tolerates a handful of samples
+	 * landing in the wrong step's bucket near a pause without materially moving the result,
+	 * which a single lap's average power cannot.
+	 */
+	public CorrelationResult correlateRecordsByStepBoundary(Workout workout, List<Record> records, double reference,
+			Set<StepKind> excludedKinds) {
+		if (records.isEmpty()) {
+			return null;
+		}
+		int n = records.size();
+		int recordIdx = 0;
+		int offsetT = records.get(0).getT();
+		double offsetDistance = records.get(0).getDistanceKm() != null ? records.get(0).getDistanceKm() : 0.0;
+		List<Double> xs = new ArrayList<>();
+		List<Double> ys = new ArrayList<>();
+
+		for (Flattened f : WorkoutStepFlattener.flatten(workout)) {
+			if (recordIdx >= n) {
+				break;
+			}
+			WorkoutStep step = f.step();
+			int endIdx = recordIdx;
+			if (step.getEndType() == StepEndType.TIME) {
+				int boundary = offsetT + step.getDuration();
+				while (endIdx < n - 1 && records.get(endIdx).getT() < boundary) {
+					endIdx++;
+				}
+			}
+			else {
+				double boundary = offsetDistance + step.getDistance() / 1000.0;
+				while (endIdx < n - 1
+						&& (records.get(endIdx).getDistanceKm() == null || records.get(endIdx).getDistanceKm() < boundary)) {
+					endIdx++;
+				}
+			}
+
+			if (!excludedKinds.contains(step.getKind())) {
+				double pct = stepIntensityPct(step, reference);
+				for (Record r : records.subList(recordIdx, endIdx + 1)) {
+					if (r.getPower() != null && r.getPower() != 0) {
+						xs.add(pct);
+						ys.add((double) r.getPower());
+					}
+				}
+			}
+
+			recordIdx = endIdx + 1;
+			offsetT = records.get(endIdx).getT();
+			if (records.get(endIdx).getDistanceKm() != null) {
+				offsetDistance = records.get(endIdx).getDistanceKm();
+			}
+		}
+
+		return correlatePairs(xs, ys, n);
+	}
+
+	/** Shared tail of {@link #correlateRecords} and {@link #correlateRecordsByStepBoundary}:
+	 * turns paired (expectedPct, actualPower) series into a {@link CorrelationResult}, or {@code
+	 * null} if there's nothing to correlate. {@code impliedFtp} is a regression-slope-derived
+	 * value, informational only, never used for ranking. */
+	private CorrelationResult correlatePairs(List<Double> xs, List<Double> ys, int totalRecords) {
 		if (xs.isEmpty()) {
 			return null;
 		}
@@ -286,7 +403,7 @@ public class WorkoutMatchScanService {
 		}
 		Integer impliedFtp = varX > 0 ? (int) Math.round((cov / varX) * 100) : null;
 
-		double coverage = (double) xs.size() / records.size();
+		double coverage = (double) xs.size() / totalRecords;
 		return new CorrelationResult(round4(r), round4(coverage), impliedFtp);
 	}
 
@@ -333,8 +450,15 @@ public class WorkoutMatchScanService {
 			if (reference == null) {
 				reference = referenceFor(withSteps);
 			}
-			List<Segment> curve = buildCurveFor(withSteps, reference, Set.of());
-			CorrelationResult result = correlateRecords(curve, records);
+			List<Flattened> flattened = WorkoutStepFlattener.flatten(withSteps);
+			CorrelationResult result;
+			if (needsDistanceWalk(flattened)) {
+				result = correlateRecordsByStepBoundary(withSteps, records, reference, Set.of());
+			}
+			else {
+				List<Segment> curve = buildCurveFor(withSteps, reference, Set.of());
+				result = correlateRecords(curve, records);
+			}
 			if (result == null) {
 				continue;
 			}
@@ -392,7 +516,10 @@ public class WorkoutMatchScanService {
 		try {
 			Workout workout = fetchWithSteps(scan.getWorkout().getId());
 			Set<StepKind> excludedKinds = scan.getExcludedStepKinds().stream().map(StepKind::fromWireValue).collect(Collectors.toSet());
-			List<Segment> curve = buildCurveFor(workout, referenceFor(workout), excludedKinds);
+			List<Flattened> flattened = WorkoutStepFlattener.flatten(workout);
+			boolean distanceWalk = needsDistanceWalk(flattened);
+			double reference = referenceFor(workout);
+			List<Segment> curve = distanceWalk ? null : buildCurveFor(workout, reference, excludedKinds);
 			// workout.getDuration(), not the curve's last entry: the curve can end before the
 			// workout's real total duration whenever a trailing step (typically the cooldown) is
 			// excluded - the activity recording still covers that phase in real time, so the
@@ -411,7 +538,14 @@ public class WorkoutMatchScanService {
 			List<WorkoutMatchScanCandidate> rows = new ArrayList<>();
 			int processed = 0;
 			for (Activity activity : candidates) {
-				CorrelationResult result = correlateActivity(curve, activity);
+				CorrelationResult result;
+				if (distanceWalk) {
+					List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+					result = correlateRecordsByStepBoundary(workout, records, reference, excludedKinds);
+				}
+				else {
+					result = correlateActivity(curve, activity);
+				}
 				if (result != null) {
 					WorkoutMatchScanCandidate row = new WorkoutMatchScanCandidate();
 					row.setScan(scan);

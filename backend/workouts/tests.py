@@ -19,6 +19,7 @@ from .inference import Group, LeafCandidate, _compress_pass, infer_workout
 from .match_scan import (
     build_expected_curve,
     correlate_activity,
+    correlate_records_by_step_boundary,
     pearson,
     rank_workouts_for_activity,
     scannability_error,
@@ -1318,6 +1319,69 @@ def _seed_matching_records(activity: Activity, total_seconds: int, ftp: float) -
         )
 
 
+def _make_distance_gorby_workout(athlete: User) -> Workout:
+    """warmup 300s@60%, then 3x[block 1000m@110%, rec 500m@52.5%] - the distance-ended
+    counterpart to `_make_gorby_workout`, for exercising `correlate_records_by_step_boundary`.
+    At the constant 4m/s `_seed_matching_records_with_distance` assumes, the block/rec steps
+    take exactly 250s/125s each, so `duration=1425` (300 + 3*(250+125)) is exact, matching the
+    same convention `_make_gorby_workout` documents."""
+    workout = Workout.objects.create(created_by=athlete, name="Distance Gorby", sport="run", duration=1425)
+    WorkoutStep.objects.create(
+        workout=workout,
+        order=0,
+        kind="warmup",
+        end_type="time",
+        duration=300,
+        target_type="power",
+        target_low=60,
+        target_high=60,
+    )
+    group = WorkoutStep.objects.create(workout=workout, order=1, kind="repeat", repeat=3)
+    WorkoutStep.objects.create(
+        workout=workout,
+        parent=group,
+        order=0,
+        kind="block",
+        end_type="distance",
+        distance=1000,
+        target_type="power",
+        target_low=110,
+        target_high=110,
+    )
+    WorkoutStep.objects.create(
+        workout=workout,
+        parent=group,
+        order=1,
+        kind="rec",
+        end_type="distance",
+        distance=500,
+        target_type="power",
+        target_low=52.5,
+        target_high=52.5,
+    )
+    return workout
+
+
+def _phase_power_distance(t: int, ftp: float) -> int:
+    if t < 300:
+        return round(0.60 * ftp)
+    rep_t = (t - 300) % 375
+    return round((1.10 if rep_t < 250 else 0.525) * ftp)
+
+
+def _seed_matching_records_with_distance(
+    activity: Activity, total_seconds: int, ftp: float, speed_mps: float = 4.0
+) -> None:
+    for t in range(total_seconds):
+        Record.objects.create(
+            activity=activity,
+            t=t,
+            ts=activity.start_date + timedelta(seconds=t),
+            power=_phase_power_distance(t, ftp),
+            distance_km=t * speed_mps / 1000,
+        )
+
+
 class PearsonTests(TestCase):
     def test_perfect_positive_correlation(self):
         self.assertAlmostEqual(pearson([1, 2, 3, 4], [10, 20, 30, 40]), 1.0)
@@ -1372,7 +1436,7 @@ class ScannabilityErrorTests(TestCase):
         )
         self.assertIsNotNone(scannability_error(workout))
 
-    def test_a_distance_end_type_step_is_not_scannable(self):
+    def test_a_distance_end_type_step_is_scannable_if_power_targeted(self):
         workout = Workout.objects.create(created_by=self.athlete, name="Distance", sport="bike")
         WorkoutStep.objects.create(
             workout=workout,
@@ -1380,6 +1444,20 @@ class ScannabilityErrorTests(TestCase):
             kind="block",
             end_type="distance",
             distance=5000,
+            target_type="power",
+            target_low=100,
+            target_high=100,
+        )
+        self.assertIsNone(scannability_error(workout))
+
+    def test_a_distance_end_type_step_with_no_distance_value_is_not_scannable(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Distance, no value", sport="bike")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="distance",
+            distance=None,
             target_type="power",
             target_low=100,
             target_high=100,
@@ -1407,10 +1485,10 @@ class ScannabilityErrorTests(TestCase):
         self.assertIsNotNone(scannability_error(workout, excluded_kinds=frozenset({"warmup"})))
 
     def test_an_excluded_steps_own_validity_is_irrelevant(self):
-        """A distance-ended cooldown would normally fail scannability - but not if the caller
-        has already chosen to exclude cooldowns entirely, since that step never reaches curve
+        """A manual-ended cooldown would normally fail scannability - but not if the caller has
+        already chosen to exclude cooldowns entirely, since that step never reaches curve
         construction either way."""
-        workout = Workout.objects.create(created_by=self.athlete, name="Distance cooldown", sport="bike", duration=600)
+        workout = Workout.objects.create(created_by=self.athlete, name="Manual cooldown", sport="bike", duration=600)
         WorkoutStep.objects.create(
             workout=workout,
             order=0,
@@ -1425,8 +1503,7 @@ class ScannabilityErrorTests(TestCase):
             workout=workout,
             order=1,
             kind="cool",
-            end_type="distance",
-            distance=1000,
+            end_type="manual",
             target_type="power",
             target_low=50,
             target_high=50,
@@ -1587,6 +1664,59 @@ class CorrelateActivityTests(TestCase):
         r, coverage, _implied_ftp = result
         self.assertGreater(r, 0.99)
         self.assertLess(coverage, 1.0)
+
+
+class CorrelateRecordsByStepBoundaryTests(TestCase):
+    """The distance-ended-step counterpart to CorrelateActivityTests - see match_scan.py's
+    module docstring for why a distance-ended step can't use the reusable time-based curve."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="correlate-distance@example.cc", password="x", name="Athlete")
+
+    def test_a_perfectly_matching_activity_scores_close_to_1(self):
+        workout = _make_distance_gorby_workout(self.athlete)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Match", start_date=timezone.now(), moving_time=1425
+        )
+        _seed_matching_records_with_distance(activity, 1426, ftp=250)
+        records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
+
+        result = correlate_records_by_step_boundary(workout, records, reference=250)
+
+        self.assertIsNotNone(result)
+        r, coverage, implied_ftp = result
+        # Fewer, larger steps than the time-based Gorby fixture (3 reps of 2 steps vs 5), so
+        # boundary-sample dilution costs slightly more of the correlation - still unambiguously
+        # a near-perfect match.
+        self.assertGreater(r, 0.98)
+        self.assertEqual(coverage, 1.0)
+        self.assertAlmostEqual(implied_ftp, 250, delta=2)
+
+    def test_no_records_returns_none(self):
+        workout = _make_distance_gorby_workout(self.athlete)
+
+        self.assertIsNone(correlate_records_by_step_boundary(workout, [], reference=250))
+
+    def test_excluded_kinds_still_advance_the_offset(self):
+        """Mirrors build_expected_curve's own exclusion semantics: an excluded step's span is
+        dropped from the correlation, but the boundary walk still advances past it - a later
+        step's own distance boundary is measured from where the excluded step actually ended in
+        the real data, not as if it never existed."""
+        workout = _make_distance_gorby_workout(self.athlete)
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Match", start_date=timezone.now(), moving_time=1425
+        )
+        _seed_matching_records_with_distance(activity, 1426, ftp=250)
+        records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
+
+        result = correlate_records_by_step_boundary(
+            workout, records, reference=250, excluded_kinds=frozenset({"warmup"})
+        )
+
+        self.assertIsNotNone(result)
+        r, coverage, _implied_ftp = result
+        self.assertGreater(r, 0.98)
+        self.assertLess(coverage, 1.0)  # the warmup's 300 samples are dropped from the numerator
 
 
 class RankWorkoutsForActivityTests(TestCase):
@@ -1755,6 +1885,24 @@ class WorkoutMatchScanEndpointTests(TestCase):
         self.assertEqual(data["processed_candidates"], 1)  # only `match` passes the duration pre-filter
         self.assertEqual([c["activity_id"] for c in data["candidates"]], [match.id])
         self.assertGreater(data["candidates"][0]["correlation"], 0.99)
+
+    def test_finds_the_matching_activity_for_a_distance_ended_workout(self):
+        workout = _make_distance_gorby_workout(self.athlete)
+        match = self._make_activity(sport="run", name="Real match", moving_time=1425)
+        _seed_matching_records_with_distance(match, 1426, ftp=250)
+        wrong_sport = self._make_activity(sport="bike", name="Wrong sport", moving_time=1425)
+        _seed_matching_records_with_distance(wrong_sport, 1426, ftp=250)
+
+        client = _bearer_client(self.athlete)
+        create_response = client.post(f"/v1/workouts/{workout.id}/match-scans")
+        self.assertEqual(create_response.status_code, 202)
+        scan_id = create_response.json()["id"]
+
+        detail_response = client.get(f"/v1/workouts/{workout.id}/match-scans/{scan_id}")
+        data = detail_response.json()
+        self.assertEqual(data["status"], "ready")
+        self.assertEqual([c["activity_id"] for c in data["candidates"]], [match.id])
+        self.assertGreater(data["candidates"][0]["correlation"], 0.98)
 
     def test_a_second_post_while_a_scan_is_active_returns_the_existing_one(self):
         existing = WorkoutMatchScan.objects.create(workout=self.workout, status="processing")

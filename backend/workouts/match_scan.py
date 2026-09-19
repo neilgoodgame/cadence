@@ -3,11 +3,33 @@ correlating (Pearson) each candidate's actual per-second power stream against th
 planned %FTP-vs-time curve. See the `WorkoutMatchScan` model's docstring for why this needs to
 be a background job rather than a synchronous request.
 
-v1 only supports power-target, duration-based workouts (every flattened leaf step must have
-`target_type="power"` and `end_type="time"`) - pace-target workouts read too noisily off
-GPS/treadmill speed to trust at the same confidence threshold validated for power (no forced
-compliance mechanism the way ERG mode holds power steady), so they're intentionally out of
-scope for now. Follow-up: validate against a real pace-based workout before adding support.
+v1 only supports power-target workouts (every flattened leaf step must have `target_type=
+"power"`) - pace-target workouts read too noisily off GPS/treadmill speed to trust at the same
+confidence threshold validated for power (no forced compliance mechanism the way ERG mode holds
+power steady), so they're intentionally out of scope for now. Follow-up: validate against a
+real pace-based workout before adding support.
+
+Both `time`- and `distance`-ended steps are supported, but need two different strategies: a
+`time`-ended step's boundary is the same for every candidate (it's baked into the plan), so
+`build_expected_curve`/`correlate_records` build one reusable (start_s, end_s, intensity_pct)
+curve per workout and correlate many candidates against it. A `distance`-ended step's boundary
+depends on how fast *this specific* candidate actually covered that distance - there's no
+single time-based curve that's valid for every candidate - so a workout with any distance-ended
+step instead walks each candidate's own record stream directly (`correlate_records_by_step_
+boundary`), assigning each record to whichever step it falls in the same dual time-or-distance
+way `activities.lap_derivation` slices a matched activity's laps, and correlating as it goes.
+
+Validated this session against a real distance-ended run-power workout (4 distance blocks at
+80/90/97/105% CP with timed recoveries) and its real matched activity: the boundary walk itself
+tracked essentially exactly (each block's real distance covered within ~1% of its planned
+distance, power rising monotonically block-to-block with the target). The resulting correlation
+(~0.55-0.65) reads noticeably lower than bike power's validated ~0.87 baseline though - not a
+bug in the boundary logic, but a real property of running power meters: there's a large fixed
+biomechanical cost to running at any pace (unlike a bike, which can freewheel to near-zero
+power), so an easy recovery jog's actual power compresses far less below a hard interval's than
+the %-of-threshold target design assumes. Still clearly useful for *ranking* candidates (an
+unrelated activity scores far lower still), just don't expect run-power distance-interval scans
+to read as high in absolute terms as bike's.
 """
 
 import math
@@ -19,7 +41,7 @@ from athletes.zones import reference_for
 from .calculations import _DEFAULT_POWER_REFERENCE, flatten_persisted_steps
 
 if TYPE_CHECKING:
-    from .models import Workout, WorkoutMatchScan
+    from .models import Workout, WorkoutMatchScan, WorkoutStep
 
 # Validated this session against real historical data: three independent matches all held
 # r >= 0.87 with a duration diff of 0-12s, while widening the window to +/-60s only ever added
@@ -30,7 +52,8 @@ DURATION_TOLERANCE_SECONDS = 60
 
 def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = frozenset()) -> str | None:
     """`None` if `workout` can be scanned for matches; otherwise the reason it can't, suitable
-    for a 400 response. See the module docstring for why v1 is power/duration-only.
+    for a 400 response. See the module docstring for why v1 is power-only, and for why a
+    distance-ended step is still scannable despite having no fixed time boundary.
 
     `excluded_kinds` (leaf `kind` values, e.g. `{"warmup", "cool"}`) are skipped entirely before
     validation - a step that won't be used to build the curve shouldn't be able to disqualify
@@ -42,9 +65,19 @@ def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = froz
     for step, _ in flattened:
         if step.target_type != "power":
             return "Only power-target workouts can be scanned for matches right now."
-        if step.end_type != "time" or not step.duration:
-            return "Only duration-based steps (not distance- or manual-ended) can be scanned for matches right now."
+        if step.end_type == "time" and not step.duration:
+            return "Every time-ended step needs a duration to be scanned."
+        if step.end_type == "distance" and not step.distance:
+            return "Every distance-ended step needs a distance to be scanned."
+        if step.end_type == "manual":
+            return "Manual-ended steps can't be scanned for matches - there's no derivable boundary."
     return None
+
+
+def _needs_distance_walk(flattened: list[tuple["WorkoutStep", int | None]]) -> bool:
+    """Whether `flattened` contains any distance-ended step - see the module docstring for why
+    that forces the per-candidate boundary walk instead of one reusable time-based curve."""
+    return any(step.end_type == "distance" for step, _ in flattened)
 
 
 def _power_reference(workout: "Workout") -> float:
@@ -52,17 +85,28 @@ def _power_reference(workout: "Workout") -> float:
     return reference_for(workout.created_by, zone_type) or _DEFAULT_POWER_REFERENCE
 
 
+def _step_intensity_pct(step: "WorkoutStep", reference: float) -> float:
+    """A single step's expected intensity, always expressed as %FTP: a `watts`-unit step is
+    converted using the athlete's current bike/run power reference (falling back to the same
+    default `calculations.normalize_power_units` uses when the athlete hasn't set one). The
+    exact reference value barely matters for the correlation itself - Pearson is invariant to
+    any single consistent rescale of the whole curve - it only affects the informational
+    `implied_ftp` reported back per candidate. Shared between `build_expected_curve` (every step
+    time-ended, one curve reusable across candidates) and `correlate_records_by_step_boundary`
+    (any step distance-ended, walked fresh per candidate) - see the module docstring."""
+    low = step.target_low if step.target_low is not None else 0.0
+    high = step.target_high if step.target_high is not None else low
+    mid = (low + high) / 2
+    return (mid / reference) * 100 if step.power_unit == "watts" else mid
+
+
 def build_expected_curve(
     workout: "Workout", reference: float | None = None, excluded_kinds: frozenset[str] = frozenset()
 ) -> list[tuple[int, int, float]]:
     """Cumulative `(start_s, end_s, intensity_pct)` segments for `workout`'s flattened steps -
-    `scannability_error` must already have confirmed every step is power/duration-based.
-    `intensity_pct` is always expressed as %FTP: a `watts`-unit step is converted using the
-    athlete's current bike/run power reference (falling back to the same default
-    `calculations.normalize_power_units` uses when the athlete hasn't set one). The exact
-    reference value barely matters for the correlation itself - Pearson is invariant to any
-    single consistent rescale of the whole curve - it only affects the informational
-    `implied_ftp` reported back per candidate.
+    callers must already have confirmed every step is time-ended (`_needs_distance_walk` is
+    `False`); a distance-ended step has no fixed time boundary to place in this curve at all -
+    see `correlate_records_by_step_boundary` and the module docstring for that case instead.
 
     `reference` lets a caller ranking many workouts for the same athlete (see
     `rank_workouts_for_activity`) compute the zone lookup once and reuse it, instead of
@@ -81,11 +125,7 @@ def build_expected_curve(
     offset = 0
     for step, _ in flatten_persisted_steps(workout):
         if step.kind not in excluded_kinds:
-            low = step.target_low if step.target_low is not None else 0.0
-            high = step.target_high if step.target_high is not None else low
-            mid = (low + high) / 2
-            pct = (mid / reference) * 100 if step.power_unit == "watts" else mid
-            curve.append((offset, offset + step.duration, pct))
+            curve.append((offset, offset + step.duration, _step_intensity_pct(step, reference)))
         offset += step.duration
     return curve
 
@@ -117,6 +157,33 @@ def pearson(xs: list[float], ys: list[float]) -> float | None:
     return cov / math.sqrt(var_x * var_y)
 
 
+def _correlate_pairs(pairs: list[tuple[float, int]], total_records: int) -> tuple[float, float, int | None] | None:
+    """Shared tail of `correlate_records` and `correlate_records_by_step_boundary`: turns a list
+    of (expected_pct, actual_power) pairs into `(correlation, coverage, implied_ftp)`, or `None`
+    if there's nothing to correlate. `implied_ftp` is a regression-slope-derived value,
+    informational only, never used for ranking."""
+    if not pairs:
+        return None
+
+    xs = [p[0] for p in pairs]
+    ys = [p[1] for p in pairs]
+    r = pearson(xs, ys)
+    if r is None:
+        return None
+
+    n = len(pairs)
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    implied_ftp = None
+    if var_x > 0:
+        cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
+        implied_ftp = round((cov / var_x) * 100)
+
+    coverage = len(pairs) / total_records
+    return round(r, 4), round(coverage, 4), implied_ftp
+
+
 def correlate_records(
     curve: list[tuple[int, int, float]], records: list[tuple[int, int | None]]
 ) -> tuple[float, float, int | None] | None:
@@ -145,26 +212,63 @@ def correlate_records(
         expected = _sample_expected_at(curve, t - start_t)
         if expected is not None:
             pairs.append((expected, power))
-    if not pairs:
+    return _correlate_pairs(pairs, len(records))
+
+
+def correlate_records_by_step_boundary(
+    workout: "Workout",
+    records: list[tuple[int, float | None, int | None]],
+    reference: float,
+    excluded_kinds: frozenset[str] = frozenset(),
+) -> tuple[float, float, int | None] | None:
+    """The distance-ended-step counterpart to `correlate_records`/`build_expected_curve` - see
+    the module docstring for why a distance-ended step can't be placed on a fixed, reusable
+    time-based curve the way a time-ended one can. Walks `records` (`(t, distance_km, power)`
+    tuples, already ordered by `t`) against `workout`'s own flattened steps directly, assigning
+    each record to whichever step it falls in via the same dual time-or-distance boundary walk
+    `activities.lap_derivation` uses to slice a matched activity's laps (a running `offset_t`/
+    `offset_distance` carried forward across steps, each step's own `end_type` deciding which
+    one governs its boundary), then correlates the resulting (expected_pct, actual_power) pairs.
+
+    Unlike lap derivation, this doesn't need pause-robust active-time accounting: a correlation
+    over a full activity's worth of samples tolerates a handful of samples landing in the wrong
+    step's bucket near a pause without materially moving the result, which a single lap's
+    average power cannot.
+    """
+    if not records:
         return None
+    n = len(records)
+    record_idx = 0
+    offset_t = records[0][0]
+    offset_distance = records[0][1] or 0.0
+    pairs: list[tuple[float, int]] = []
 
-    xs = [p[0] for p in pairs]
-    ys = [p[1] for p in pairs]
-    r = pearson(xs, ys)
-    if r is None:
-        return None
+    for step, _ in flatten_persisted_steps(workout):
+        if record_idx >= n:
+            break
+        if step.end_type == "time":
+            boundary = offset_t + step.duration
+            end_idx = record_idx
+            while end_idx < n - 1 and records[end_idx][0] < boundary:
+                end_idx += 1
+        else:  # "distance"
+            boundary = offset_distance + step.distance / 1000
+            end_idx = record_idx
+            while end_idx < n - 1 and (records[end_idx][1] is None or records[end_idx][1] < boundary):
+                end_idx += 1
 
-    n = len(pairs)
-    mean_x = sum(xs) / n
-    mean_y = sum(ys) / n
-    var_x = sum((x - mean_x) ** 2 for x in xs)
-    implied_ftp = None
-    if var_x > 0:
-        cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
-        implied_ftp = round((cov / var_x) * 100)
+        if step.kind not in excluded_kinds:
+            pct = _step_intensity_pct(step, reference)
+            for _, _, power in records[record_idx : end_idx + 1]:
+                if power:
+                    pairs.append((pct, power))
 
-    coverage = len(pairs) / len(records)
-    return round(r, 4), round(coverage, 4), implied_ftp
+        record_idx = end_idx + 1
+        offset_t = records[end_idx][0]
+        if records[end_idx][1] is not None:
+            offset_distance = records[end_idx][1]
+
+    return _correlate_pairs(pairs, n)
 
 
 def correlate_activity(
@@ -200,6 +304,7 @@ def rank_workouts_for_activity(
     records = list(activity.records.order_by("t").values_list("t", "power"))
     if not records:
         return []
+    records_with_distance: list[tuple[int, float | None, int | None]] | None = None
 
     reference: float | None = None
     results = []
@@ -210,8 +315,14 @@ def rank_workouts_for_activity(
             continue
         if reference is None:
             reference = _power_reference(workout)
-        curve = build_expected_curve(workout, reference=reference)
-        result = correlate_records(curve, records)
+        flattened = flatten_persisted_steps(workout)
+        if _needs_distance_walk(flattened):
+            if records_with_distance is None:
+                records_with_distance = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
+            result = correlate_records_by_step_boundary(workout, records_with_distance, reference)
+        else:
+            curve = build_expected_curve(workout, reference=reference)
+            result = correlate_records(curve, records)
         if result is None:
             continue
         r, coverage, implied_ftp = result
@@ -233,7 +344,10 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
 
     workout = scan.workout
     excluded_kinds = frozenset(scan.excluded_step_kinds)
-    curve = build_expected_curve(workout, excluded_kinds=excluded_kinds)
+    flattened = flatten_persisted_steps(workout)
+    distance_walk = _needs_distance_walk(flattened)
+    reference = _power_reference(workout)
+    curve = None if distance_walk else build_expected_curve(workout, reference=reference, excluded_kinds=excluded_kinds)
     # workout.duration, not curve[-1][1]: the curve's last entry can end before the workout's
     # real total duration whenever a trailing step (typically the cooldown) is excluded - the
     # activity recording still covers that phase in real time, so the duration pre-filter below
@@ -251,7 +365,11 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
 
     rows = []
     for i, activity in enumerate(candidates, start=1):
-        result = correlate_activity(curve, activity)
+        if distance_walk:
+            records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
+            result = correlate_records_by_step_boundary(workout, records, reference, excluded_kinds)
+        else:
+            result = correlate_activity(curve, activity)
         if result is not None:
             r, coverage, implied_ftp = result
             rows.append(
