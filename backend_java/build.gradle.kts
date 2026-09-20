@@ -43,7 +43,7 @@ dependencies {
 
 	// Auth via the default credentials/region provider chain (the EC2 instance profile in
 	// prod, ~/.aws/credentials locally) - no static keys configured anywhere in this repo.
-	implementation("software.amazon.awssdk:sesv2:2.54.13")
+	implementation("software.amazon.awssdk:sesv2:2.54.20")
 
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1")
 	implementation("com.garmin:fit:21.214.0")
