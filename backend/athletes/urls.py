@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    ActivityBestEffortRanksView,
     AthleteDetailView,
     AthleteThresholdsView,
     BestEffortExcludeView,
@@ -40,6 +41,11 @@ urlpatterns = [
         name="athlete-best-efforts-recompute-detail",
     ),
     path("v1/athletes/<str:id>/best-efforts/trim", BestEffortTrimView.as_view(), name="athlete-best-efforts-trim"),
+    path(
+        "v1/athletes/<str:id>/best-efforts/ranks",
+        ActivityBestEffortRanksView.as_view(),
+        name="athlete-best-efforts-ranks",
+    ),
     path("v1/athletes/<str:id>/fitness", FitnessListView.as_view(), name="athlete-fitness"),
     path("v1/athletes/<str:id>/recompute-tss", RecomputeAthleteTssView.as_view(), name="athlete-recompute-tss"),
     path("v1/athletes/<str:id>/recompute-stats", RecomputeAthleteStatsView.as_view(), name="athlete-recompute-stats"),

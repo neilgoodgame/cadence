@@ -2,7 +2,19 @@ import { useQuery, useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { Activity } from "../../api/types";
 import { getActivity, getStreams } from "../../api/activities";
-import { listZones } from "../../api/athletes";
+import { getActivityBestEffortRanks, listZones } from "../../api/athletes";
+import {
+  BEST_EFFORT_FAMILY,
+  MEDAL_COLORS,
+  MEDAL_INK,
+  effortLabel,
+  formatBestEffortValue,
+  groupRecentEffortsByActivity,
+  hexToRgba,
+  qualifyingRecentEfforts,
+  windowLabel,
+  type RecentTopEffortGroup,
+} from "../../lib/bestEfforts";
 import { bucketIntoZones } from "../../lib/zones";
 import { formatDuration, formatPace } from "../../lib/format";
 import { sportColor } from "../../lib/sportColors";
@@ -90,8 +102,45 @@ function WeekHrDistribution({ activities, athleteId }: { activities: Activity[];
   );
 }
 
-export function WeekCalendar({ activities, athleteId }: { activities: Activity[]; athleteId: string }) {
+/** The single badge/label/hover-title a qualifying activity block shows - always built from
+ * the group's best (headline) effort, with any additional qualifying efforts folded into the
+ * label's "+N" suffix and the hover title's extra lines. */
+function topEffortBadge(group: RecentTopEffortGroup): { badgeText: string; labelText: string; titleText: string; medalColor: string } {
+  const best = group.items[0];
+  const family = BEST_EFFORT_FAMILY[best.kind];
+  const extra = group.items.length - 1;
+  const labelText = effortLabel(family, windowLabel(best.window)) + (extra > 0 ? ` +${extra}` : "");
+  const titleText = group.items
+    .map(
+      (e) =>
+        `${e.hl.adj} #${e.hl.rank} · ${BEST_EFFORT_FAMILY[e.kind]} · ${windowLabel(e.window)} — ${formatBestEffortValue(e.kind, e.window, e.value)}`,
+    )
+    .join("\n");
+  return { badgeText: `#${best.hl.rank} ${best.hl.code}`, labelText, titleText, medalColor: MEDAL_COLORS[best.hl.rank as 1 | 2 | 3] };
+}
+
+export function WeekCalendar({
+  activities,
+  athleteId,
+  recentActivityIds,
+}: {
+  activities: Activity[];
+  athleteId: string;
+  recentActivityIds: string[];
+}) {
   const navigate = useNavigate();
+
+  const recentTopEffortsQuery = useQuery({
+    queryKey: ["best-efforts", "ranks", athleteId, recentActivityIds],
+    queryFn: () => getActivityBestEffortRanks(athleteId, recentActivityIds),
+    enabled: !!athleteId,
+  });
+  // Loading/error both fall back to an empty list - additive UI, never its own loading/error
+  // state (see the design handoff's States section): the calendar just renders with no badges
+  // until data arrives, or forever if it never does.
+  const topEffortsByActivity = new Map(
+    groupRecentEffortsByActivity(qualifyingRecentEfforts(recentTopEffortsQuery.data?.data ?? [])).map((g) => [g.activityId, g]),
+  );
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -235,37 +284,73 @@ export function WeekCalendar({ activities, athleteId }: { activities: Activity[]
                 {dayActivities.length === 0 ? (
                   <div style={{ fontSize: 12, color: "var(--ink3)", textAlign: "center", paddingTop: 4 }}>—</div>
                 ) : (
-                  dayActivities.map((a) => (
-                    <div
-                      key={a.id}
-                      onClick={() => navigate(`/activities/${a.id}`)}
-                      style={{
-                        padding: "6px 8px",
-                        borderRadius: 6,
-                        background: "var(--elev)",
-                        cursor: "pointer",
-                        borderLeft: `3px solid ${sportColor(a.sport)}`,
-                      }}
-                    >
+                  dayActivities.map((a) => {
+                    const topGroup = topEffortsByActivity.get(a.id);
+                    const badge = topGroup ? topEffortBadge(topGroup) : null;
+                    return (
                       <div
+                        key={a.id}
+                        onClick={() => navigate(`/activities/${a.id}`)}
+                        title={badge?.titleText}
                         style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          overflow: "hidden",
-                          whiteSpace: "nowrap",
-                          textOverflow: "ellipsis",
-                          color: "var(--ink)",
-                          marginBottom: 2,
+                          padding: "6px 8px",
+                          borderRadius: 6,
+                          background: badge ? hexToRgba(badge.medalColor, 0.1) : "var(--elev)",
+                          boxShadow: badge ? `inset 0 0 0 1px ${hexToRgba(badge.medalColor, 0.45)}` : "none",
+                          cursor: "pointer",
+                          borderLeft: `3px solid ${sportColor(a.sport)}`,
                         }}
                       >
-                        {a.name}
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            overflow: "hidden",
+                            whiteSpace: "nowrap",
+                            textOverflow: "ellipsis",
+                            color: "var(--ink)",
+                            marginBottom: 2,
+                          }}
+                        >
+                          {a.name}
+                        </div>
+                        <div className="mono" style={{ fontSize: 11, color: "var(--ink3)" }}>
+                          {a.distance_km > 0 ? `${a.distance_km.toFixed(1)} km · ` : ""}
+                          {formatDuration(a.moving_time)}
+                        </div>
+                        {badge && (
+                          <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", gap: "3px 4px" }}>
+                            <span
+                              className="mono"
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 800,
+                                color: MEDAL_INK,
+                                background: badge.medalColor,
+                                borderRadius: 4,
+                                padding: "1px 5px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {badge.badgeText}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: 600,
+                                color: "var(--ink2)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: "100%",
+                              }}
+                            >
+                              {badge.labelText}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <div className="mono" style={{ fontSize: 11, color: "var(--ink3)" }}>
-                        {a.distance_km > 0 ? `${a.distance_km.toFixed(1)} km · ` : ""}
-                        {formatDuration(a.moving_time)}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

@@ -6,6 +6,7 @@ import { listActivities, getActivity } from "../api/activities";
 import { ActivityNameLink } from "../components/ActivityNameLink";
 import { useAuth } from "../auth/AuthContext";
 import { formatDuration, formatPace } from "../lib/format";
+import { windowLabel, windowToKm, windowToSeconds } from "../lib/bestEfforts";
 import type { Activity, BestEffort, BestEffortKind, BestEffortPeriod } from "../api/types";
 
 // ─── Period config ────────────────────────────────────────────────────────────
@@ -35,24 +36,6 @@ const PERIOD_CONFIG: Record<DisplayPeriod, { apiPeriod: BestEffortPeriod; label:
   all: { apiPeriod: "all", label: "All time" },
 };
 const DISPLAY_PERIODS: DisplayPeriod[] = ["4w", "16w", "1y", "all"];
-
-function windowToSeconds(w: string): number {
-  const m = w.match(/^(\d+)\s*(s|sec|m|min|h|hr)/i);
-  if (!m) return 0;
-  const n = parseInt(m[1]);
-  const unit = m[2].toLowerCase();
-  if (unit.startsWith("h")) return n * 3600;
-  if (unit.startsWith("m")) return n * 60;
-  return n;
-}
-
-function windowToKm(w: string): number {
-  if (/marathon/i.test(w)) return /half/i.test(w) ? 21.097 : 42.195;
-  const mile = w.match(/^([\d.]+)\s*mile/i);
-  if (mile) return parseFloat(mile[1]) * 1.609344;
-  const m = w.match(/^([\d.]+)\s*km/i);
-  return m ? parseFloat(m[1]) : 0;
-}
 
 /** True only for the #1 all-time effort for a given window. */
 function isPR(effort: BestEffort, allTimeEfforts: BestEffort[], lowerIsBetter: boolean): boolean {
@@ -191,7 +174,7 @@ function TabBar({
     >
       {tabs.map((t) => (
         <div key={t} onClick={() => onChange(t)} style={pillStyle(t === active)}>
-          {t}
+          {windowLabel(t)}
         </div>
       ))}
     </div>
@@ -327,7 +310,7 @@ function RunHrRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: {
         {fmtShortDate(effort.date)}
       </span>
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
-        {effort.window}
+        {windowLabel(effort.window)}
       </span>
       <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
         <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, fontWeight: 700, color: "var(--run,#ec4a26)" }}>
@@ -416,7 +399,7 @@ function BikeHrRow({ effort, rank, allTimeEfforts, onExclude, excludePending }: 
         {fmtShortDate(effort.date)}
       </span>
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
-        {effort.window}
+        {windowLabel(effort.window)}
       </span>
       <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
         <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, fontWeight: 700, color: "var(--bike,#3d7fd6)" }}>
@@ -502,7 +485,7 @@ function RunPowerRow({ effort, rank, allTimeEfforts, onExclude, excludePending }
         {fmtShortDate(effort.date)}
       </span>
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
-        {effort.window}
+        {windowLabel(effort.window)}
       </span>
       <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
         <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, fontWeight: 700, color: "var(--run,#ec4a26)" }}>
@@ -722,7 +705,7 @@ function BikePowerRow({
         {fmtShortDate(effort.date)}
       </span>
       <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--ink2)" }}>
-        {effort.window}
+        {windowLabel(effort.window)}
       </span>
       <span style={{ display: "flex", alignItems: "baseline", gap: 5, whiteSpace: "nowrap" }}>
         <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 15, fontWeight: 700, color: "var(--bike,#3d7fd6)" }}>

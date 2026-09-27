@@ -618,6 +618,120 @@ class BestEffortListViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class ActivityBestEffortRanksViewTests(TestCase):
+    """Backs the Dashboard "Top efforts this week" card - see ActivityBestEffortRanksView's
+    docstring for why this takes explicit activity ids rather than a "days back" cutoff."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="recent-top@example.cc", password="x", name="Athlete")
+        self.outsider = User.objects.create_user(email="recent-top-outsider@example.cc", password="x", name="Outsider")
+
+    def _make_effort(self, kind, window, value, unit, days_ago, sport="run"):
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport=sport,
+            name=f"Activity -{days_ago}d",
+            start_date=timezone.now() - timedelta(days=days_ago),
+        )
+        return BestEffort.objects.create(
+            athlete=self.athlete,
+            kind=kind,
+            window=window,
+            value=value,
+            unit=unit,
+            date=date.today() - timedelta(days=days_ago),
+            activity=activity,
+        )
+
+    def _get(self, athlete, *activity_ids):
+        return _bearer_client(athlete).get(
+            f"/v1/athletes/{athlete.id}/best-efforts/ranks?activity_ids={','.join(activity_ids)}"
+        )
+
+    def test_outsider_forbidden(self):
+        response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts/ranks")
+        self.assertEqual(response.status_code, 403)
+
+    def test_no_activity_ids_returns_no_data(self):
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/best-efforts/ranks")
+        self.assertEqual(response.json()["data"], [])
+
+    def test_a_requested_activity_ranking_top_3_is_returned_with_its_ranks_per_period(self):
+        recent = self._make_effort("running_power", "5min", 342, "w", days_ago=2)
+
+        response = self._get(self.athlete, recent.activity_id)
+        data = response.json()["data"]
+
+        self.assertEqual(len(data), 1)
+        entry = data[0]
+        self.assertEqual(entry["activity_id"], recent.activity_id)
+        self.assertEqual(entry["sport"], "run")
+        self.assertEqual(entry["kind"], "running_power")
+        self.assertEqual(entry["window"], "5min")
+        self.assertEqual(entry["value"], 342)
+        self.assertEqual(entry["unit"], "w")
+        # The sole effort for this window - rank 1 in every period it's old enough to belong to.
+        self.assertEqual(entry["ranks"], {"16w": 1, "1y": 1, "all": 1})
+
+    def test_an_entry_with_no_top_3_rank_in_any_period_is_not_returned(self):
+        # Four efforts in the same window, all requested - the 4th-best never ranks <= 3
+        # anywhere, even though its id was explicitly included in the request.
+        efforts = [
+            self._make_effort("cycling_power", "5min", v, "w", days_ago=1, sport="bike") for v in (400, 390, 380, 370)
+        ]
+
+        response = self._get(self.athlete, *(e.activity_id for e in efforts))
+        data = response.json()["data"]
+
+        self.assertEqual(len(data), 3)
+        self.assertEqual({e["value"] for e in data}, {400, 390, 380})
+
+    def test_an_activity_not_included_in_the_request_is_never_returned_even_if_it_would_rank_1(self):
+        self._make_effort("running_power", "5min", 999, "w", days_ago=1)
+
+        response = self._get(self.athlete)  # no activity_ids at all
+
+        self.assertEqual(response.json()["data"], [])
+
+    def test_an_old_activity_is_returned_if_its_id_is_explicitly_requested(self):
+        # The view has no date logic of its own at all - "recent" is entirely the caller's
+        # judgement, made by which ids it asks about, not something this endpoint re-derives.
+        old = self._make_effort("running_power", "5min", 999, "w", days_ago=400)
+
+        response = self._get(self.athlete, old.activity_id)
+
+        self.assertEqual(len(response.json()["data"]), 1)
+
+    def test_pace_ranks_the_lowest_value_as_rank_1(self):
+        slow = self._make_effort("running_pace", "10km", 300.0, "sec_per_km", days_ago=1)
+        mid = self._make_effort("running_pace", "10km", 250.0, "sec_per_km", days_ago=1)
+        fast = self._make_effort("running_pace", "10km", 200.0, "sec_per_km", days_ago=1)
+
+        response = self._get(self.athlete, slow.activity_id, mid.activity_id, fast.activity_id)
+        by_activity = {e["activity_id"]: e["ranks"]["all"] for e in response.json()["data"]}
+
+        self.assertEqual(by_activity[fast.activity_id], 1)
+        self.assertEqual(by_activity[mid.activity_id], 2)
+        self.assertEqual(by_activity[slow.activity_id], 3)
+
+    def test_a_period_the_activity_does_not_reach_top_n_in_is_null_not_zero(self):
+        self.athlete.best_effort_top_n = 1
+        self.athlete.save()
+        # An old, faster effort occupies the sole all-time/1y top-1 slot for this window - not
+        # itself requested, but still counted when ranking the one that is. A newer, slower one
+        # can still rank #1 within the narrower 16w period (nothing else competes there), but
+        # must show null for 1y/all, not a real numeric rank.
+        self._make_effort("cycling_power", "20min", 400, "w", days_ago=300)
+        recent = self._make_effort("cycling_power", "20min", 350, "w", days_ago=1)
+
+        response = self._get(self.athlete, recent.activity_id)
+        data = response.json()["data"]
+
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["activity_id"], recent.activity_id)
+        self.assertEqual(data[0]["ranks"], {"16w": 1, "1y": None, "all": None})
+
+
 class FitnessListViewTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")
