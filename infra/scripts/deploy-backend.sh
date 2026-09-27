@@ -50,6 +50,20 @@ echo "Updating $PARAM_NAME to $TAG..."
 $AWS ssm put-parameter --name "$PARAM_NAME" --value "$TAG" --overwrite --query 'Version' --output text
 
 ID=$(instance_id)
+# The instance's root volume is only 8GB, and `docker run --rm` never leaves a stopped
+# container to mark an old image "in use" - every previous deploy's image just sits there
+# unused forever otherwise. Seen live: 47 accumulated images (5.7GB, 100% reclaimable) filled
+# the disk to 97% and crash-looped the service on "no space left on device" for several
+# minutes until pruned by hand. Pruning before the restart, not after, guarantees the new
+# image always has room to unpack - the trade is every deploy re-pulls from ECR instead of
+# potentially reusing a very recent layer, which costs a few seconds on AWS's own network.
+echo "Pruning unused Docker images on $ID before restart..."
+PRUNE_CMD_ID=$($AWS ssm send-command --instance-ids "$ID" \
+	--document-name AWS-RunShellScript \
+	--parameters 'commands=["docker image prune -a -f"]' \
+	--query 'Command.CommandId' --output text)
+$AWS ssm wait command-executed --command-id "$PRUNE_CMD_ID" --instance-id "$ID"
+
 echo "Restarting cadence-backend.service on $ID..."
 CMD_ID=$($AWS ssm send-command --instance-ids "$ID" \
 	--document-name AWS-RunShellScript \
