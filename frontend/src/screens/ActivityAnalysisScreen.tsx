@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getActivity } from "../api/activities";
 import { useAuth } from "../auth/AuthContext";
+import { ActivityBestEffortsCard } from "./activity-analysis/ActivityBestEffortsCard";
 import { CommentsSection } from "./activity-analysis/CommentsSection";
 import { CurvesTab } from "./activity-analysis/CurvesTab";
 import { DuplicateBanner, DuplicatesCard } from "./activity-analysis/DuplicatesCard";
@@ -58,6 +59,7 @@ export function ActivityAnalysisScreen() {
       <Header activity={activity} />
       <StatRow activity={activity} />
       {activity.workout_id && <MatchedWorkoutCard activity={activity} />}
+      <ActivityBestEffortsCard activity={activity} athleteId={user.id} />
 
       {activity.sport === "multisport" && <MultisportLegs activity={activity} />}
 
