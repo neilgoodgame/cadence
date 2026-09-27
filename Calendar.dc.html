@@ -18,410 +18,254 @@
   ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
   @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
   @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+  input.cad,input.cadt{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
+  input.cad{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
+  input.cadt{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
+  input.cad:focus,input.cadt:focus{border-color:var(--ember,#ec4a26);}
+  input.cad::placeholder,input.cadt::placeholder{color:var(--ink3,#9a958d);font-weight:400;}
 </style>
 </helmet>
 
 <div style="{{ themeVars }}">
 <div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
-
-  <!-- SIDEBAR -->
+  <!-- ============ SIDEBAR ============ -->
   <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
     <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 26px;">
       <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
       <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
-      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</a>
-      <a href="Activity Analysis.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</a>
-      <a href="Activity Analysis.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>Analysis</a>
-      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</div>
-      <a href="Workout Designer.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</a>
-      <a href="Dashboard.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</a>
-      <a href="Gear.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"></circle><circle cx="8" cy="8" r="2.1"></circle><line x1="8" y1="2" x2="8" y2="3.9"></line><line x1="8" y1="12.1" x2="8" y2="14"></line><line x1="2" y1="8" x2="3.9" y2="8"></line><line x1="12.1" y1="8" x2="14" y2="8"></line></svg>Gear</a>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:default;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</a>
+      <a href="Activities.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</a>
+      <a href="Best Efforts.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2h6v4a3 3 0 0 1-6 0Z"></path><path d="M5 3.5H2.5a2.5 2.5 0 0 0 2.6 3M11 3.5h2.5a2.5 2.5 0 0 1-2.6 3"></path><line x1="8" y1="9" x2="8" y2="12"></line><line x1="5" y1="14" x2="11" y2="14"></line></svg>Best efforts</a>
+      <a href="Import.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</a>
+      <a href="Calendar.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</div>
+      <a href="Workout Library.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</a>
+      <a href="Gear.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="11" r="2.6"></circle><circle cx="12" cy="11" r="2.6"></circle><polyline points="4,11 7,5 10.5,5 12,11"></polyline><line x1="7" y1="5" x2="8.5" y2="11"></line></svg>Gear</a>
+      <a href="Preferences.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>Preferences</a>
     </div>
     <div style="margin-top:auto;padding:16px 16px 20px;">
-      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
-      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
         <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
-        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div><div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
       </div>
+      <a href="Login.dc.html" style="display:block;margin-top:12px;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
     </div>
   </div>
 
-  <!-- MAIN -->
   <div data-screen-label="calendar" style="flex:1;min-width:0;display:flex;flex-direction:column;">
-    <!-- top bar -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
-      <div style="display:flex;align-items:center;gap:16px;">
-        <h1 style="font-size:21px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">July 2026</h1>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <div style="width:30px;height:30px;border-radius:8px;border:1px solid var(--line,#e6e2dc);display:flex;align-items:center;justify-content:center;color:var(--ink2,#6f6b65);cursor:pointer;font-size:15px;">‹</div>
-          <div style="padding:7px 13px;border-radius:8px;border:1px solid var(--line,#e6e2dc);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Today</div>
-          <div style="width:30px;height:30px;border-radius:8px;border:1px solid var(--line,#e6e2dc);display:flex;align-items:center;justify-content:center;color:var(--ink2,#6f6b65);cursor:pointer;font-size:15px;">›</div>
-        </div>
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div onClick="{{ openRaceModal }}" style="display:flex;align-items:center;gap:6px;padding:8px 15px;border-radius:8px;border:1px solid var(--ember,#ec4a26);color:var(--ember,#ec4a26);background:transparent;font-size:13px;font-weight:600;cursor:pointer;">Add race</div>
-        <div onClick="{{ openScheduler }}" style="display:flex;align-items:center;gap:6px;padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Schedule workout</div>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <a href="Notifications.dc.html" title="Proposed — not in the app yet (inert placeholder in AppShell)" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px dashed var(--ink3,#9a958d);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></a>
         <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
-        <a href="Notifications.dc.html" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg><span style="position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--ember,#ec4a26);border:1.5px solid var(--card,#fff);"></span></a><dc-import name="Preferences" hint-size="218px,46px"></dc-import>
-      </div>
-    </div>
-
-    <div style="padding:22px 32px 60px;">
-      <!-- weekday header -->
-      <div style="display:grid;grid-template-columns:repeat(7,1fr) 176px;gap:8px;margin-bottom:8px;">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink3,#9a958d);padding-left:4px;">Mon</div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink3,#9a958d);padding-left:4px;">Tue</div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink3,#9a958d);padding-left:4px;">Wed</div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink3,#9a958d);padding-left:4px;">Thu</div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink3,#9a958d);padding-left:4px;">Fri</div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink3,#9a958d);padding-left:4px;">Sat</div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink3,#9a958d);padding-left:4px;">Sun</div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink3,#9a958d);padding-left:4px;">Week</div>
-      </div>
-
-      <!-- weeks -->
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <sc-for list="{{ weeks }}" as="week" hint-placeholder-count="5">
-          <div style="display:grid;grid-template-columns:repeat(7,1fr) 176px;gap:8px;">
-            <sc-for list="{{ week.days }}" as="day" hint-placeholder-count="7">
-              <div style="{{ day.cellStyle }}" onClick="{{ day.onAdd }}">
-                <div style="margin-bottom:7px;">
-                  <span style="{{ day.numStyle }}">{{ day.num }}</span>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:5px;">
-                  <sc-for list="{{ day.items }}" as="item" hint-placeholder-count="0">
-                    <div style="{{ item.cardStyle }}">
-                      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0;">
-                        <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-                          <span style="width:7px;height:7px;border-radius:2px;background:{{ item.color }};flex-shrink:0;"></span>
-                          <span style="flex:1;min-width:0;font-size:11.5px;font-weight:600;color:{{ item.titleColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ item.title }}</span>
-                        </div>
-                        <sc-if value="{{ item.timeBadge }}" hint-placeholder-val="{{ false }}">
-                          <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:0.04em;color:var(--ink3,#9a958d);flex-shrink:0;">{{ item.timeBadge }}</span>
-                        </sc-if>
-                      </div>
-                      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);">{{ item.statsLine }}</div>
-                    </div>
-                  </sc-for>
-                </div>
-              </div>
-            </sc-for>
-            <!-- weekly summary -->
-            <div style="background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:12px;">
-              <sc-if value="{{ week.showPlanned }}" hint-placeholder-val="{{ false }}">
-                <div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:4px;">PLANNED</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink,#1b1a18);">{{ week.planLabel }}</div>
-                </div>
-              </sc-if>
-              <sc-if value="{{ week.showActual }}" hint-placeholder-val="{{ false }}">
-                <div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:4px;">ACTUAL</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink,#1b1a18);">{{ week.actualLabel }}</div>
-                </div>
-              </sc-if>
-              <sc-if value="{{ week.showRun }}" hint-placeholder-val="{{ false }}">
-                <div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:4px;">RUN</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink,#1b1a18);">{{ week.runLabel }}</div>
-                </div>
-              </sc-if>
-            </div>
-          </div>
-        </sc-for>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ SCHEDULE MODAL ============ -->
-  <sc-if value="{{ modalOpen }}" hint-placeholder-val="{{ false }}">
-    <div onClick="{{ close }}" style="position:fixed;inset:0;z-index:50;background:rgba(20,17,15,0.42);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:32px;animation:fadeIn 0.14s ease;">
-      <div onClick="{{ stop }}" style="width:420px;max-width:100%;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:18px;box-shadow:0 24px 60px rgba(20,17,15,0.28);display:flex;flex-direction:column;overflow:hidden;animation:popIn 0.18s cubic-bezier(0.2,0.8,0.2,1);">
-        <!-- header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line,#e6e2dc);">
-          <div style="font-size:16px;font-weight:800;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Schedule a workout</div>
-          <div onClick="{{ close }}" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink3,#9a958d);cursor:pointer;font-size:18px;border:1px solid var(--line,#e6e2dc);">×</div>
-        </div>
-
-        <div style="padding:20px 22px;display:flex;flex-direction:column;gap:16px;">
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:8px;">Workout</div>
-            <div onClick="{{ cycleWorkout }}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);cursor:pointer;">
-              <span style="font-size:13px;color:{{ sel.textColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ sel.label }}</span>
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.8" style="flex-shrink:0;"><polyline points="4,6 8,10 12,6"></polyline></svg>
-            </div>
-          </div>
-
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:8px;">Date</div>
-            <div style="padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink,#1b1a18);">{{ dateLabel }}</div>
-          </div>
-
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:9px;">Time of day (optional)</div>
-            <div style="display:flex;gap:4px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
-              <sc-for list="{{ times }}" as="tm" hint-placeholder-count="3">
-                <div onClick="{{ tm.onClick }}" style="{{ tm.style }}">{{ tm.label }}</div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
               </sc-for>
             </div>
-          </div>
+          </sc-if>
         </div>
-
-        <!-- footer -->
-        <div style="display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:14px 22px;border-top:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);">
-          <div onClick="{{ close }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
-          <div onClick="{{ schedule }}" style="padding:9px 18px;border-radius:9px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Add to calendar</div>
-        </div>
+        </sc-if>
+        <a href="Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
       </div>
     </div>
-  </sc-if>
 
-  <!-- ============ ADD RACE MODAL ============ -->
-  <sc-if value="{{ raceModalOpen }}" hint-placeholder-val="{{ false }}">
-    <div onClick="{{ closeRace }}" style="position:fixed;inset:0;z-index:50;background:rgba(20,17,15,0.42);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:32px;animation:fadeIn 0.14s ease;">
-      <div onClick="{{ stop }}" style="width:440px;max-width:100%;max-height:88vh;overflow-y:auto;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:18px;box-shadow:0 24px 60px rgba(20,17,15,0.28);display:flex;flex-direction:column;animation:popIn 0.18s cubic-bezier(0.2,0.8,0.2,1);">
-        <!-- header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line,#e6e2dc);">
-          <div style="font-size:16px;font-weight:800;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Add race</div>
-          <div onClick="{{ closeRace }}" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink3,#9a958d);cursor:pointer;font-size:18px;border:1px solid var(--line,#e6e2dc);">×</div>
+    <div style="padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0;">
+      <div style="display:flex;flex-direction:column;gap:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">{{ monthLabel }}</h1>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <div onClick="{{ prev }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--ink,#1b1a18);">‹</div>
+          <div onClick="{{ goToday }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink,#1b1a18);">Today</div>
+          <div onClick="{{ next }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--ink,#1b1a18);">›</div>
+          <div onClick="{{ openRace }}" style="border:1px solid var(--ember,#ec4a26);border-radius:8px;color:var(--ember,#ec4a26);font-size:13px;font-weight:700;padding:8px 16px;margin-left:8px;cursor:pointer;">Add race</div>
+          <div onClick="{{ openSchedToday }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Schedule workout</div>
         </div>
+      </div>
 
-        <div style="padding:20px 22px;display:flex;flex-direction:column;gap:14px;">
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:8px;">Name</div>
-            <div style="padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink3,#9a958d);">e.g. London Marathon</div>
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:8px;">Date</div>
-            <div style="padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink,#1b1a18);">{{ dateLabel }}</div>
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:8px;">Sport (optional)</div>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);">
-              <span style="font-size:13px;color:var(--ink3,#9a958d);">—</span>
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.8"><polyline points="4,6 8,10 12,6"></polyline></svg>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr)) minmax(110px,0.7fr);gap:1px;background:var(--line,#e6e2dc);border:1px solid var(--line,#e6e2dc);border-radius:10px;overflow:hidden;">
+        <sc-for list="{{ heads }}" as="h" hint-placeholder-count="8"><div style="background:var(--elev,#faf9f7);padding:8px 10px;font-size:11px;font-weight:600;color:var(--ink3,#9a958d);">{{ h }}</div></sc-for>
+        <sc-for list="{{ cells }}" as="c" hint-placeholder-count="40">
+          <sc-if value="{{ c.isDay }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ c.onClick }}" style="{{ c.style }}">
+              <div style="{{ c.numStyle }}">{{ c.num }}</div>
+              <sc-for list="{{ c.items }}" as="e" hint-placeholder-count="1">
+                <a href="{{ e.href }}" onClick="{{ e.stop }}" style="{{ e.style }}">
+                  <sc-if value="{{ e.hasTod }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:0.05em;color:var(--ink3,#9a958d);border:1px solid var(--line,#e6e2dc);border-radius:4px;padding:0 3px;margin-right:5px;vertical-align:1px;">{{ e.tod }}</span></sc-if>{{ e.name }}<sc-if value="{{ e.hasNote }}" hint-placeholder-val="{{ false }}"><span style="margin-left:4px;">📝</span></sc-if>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);margin-top:1px;">{{ e.stats }}</div>
+                </a>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ c.isWeek }}" hint-placeholder-val="{{ false }}">
+            <div style="background:var(--elev,#faf9f7);padding:8px;display:flex;flex-direction:column;gap:4px;">
+              <sc-if value="{{ c.none }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:var(--ink3,#9a958d);">—</div></sc-if>
+              <sc-for list="{{ c.blocks }}" as="b" hint-placeholder-count="2">
+                <div><div style="font-size:9px;font-weight:600;letter-spacing:0.06em;color:var(--ink3,#9a958d);">{{ b.label }}</div><div style="{{ b.style }}">{{ b.value }}</div></div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      </div>
+
+      <sc-if value="{{ schedOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeAll }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+          <div onClick="{{ stop }}" style="background:var(--card,#fff);backdrop-filter:blur(14px);border-radius:14px;padding:24px;width:420px;max-width:calc(100% - 32px);display:flex;flex-direction:column;gap:16px;">
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Schedule a workout</h2>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Workout</div><select style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"><option>Choose a workout…</option><sc-for list="{{ workoutOpts }}" as="o" hint-placeholder-count="4"><option>{{ o }}</option></sc-for></select></label>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Date</div><input type="date" value="{{ schedDate }}" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <div><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Time of day (optional)</div><div style="display:flex;gap:6px;"><sc-for list="{{ todOpts }}" as="t" hint-placeholder-count="3"><div onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</div></sc-for></div></div>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Notes (optional)</div><textarea rows="2" placeholder="e.g. swap if it rains" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;resize:vertical;"></textarea></label>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+              <div onClick="{{ closeAll }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;font-size:13px;padding:8px 16px;cursor:pointer;color:var(--ink,#1b1a18);">Cancel</div>
+              <div onClick="{{ closeAll }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add to calendar</div>
             </div>
           </div>
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:8px;">Distance km (optional)</div>
-            <div style="padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink3,#9a958d);">km</div>
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:8px;">Goal time (optional)</div>
-            <div style="padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink3,#9a958d);">H:MM:SS</div>
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:8px;">Race website (optional)</div>
-            <div style="padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink3,#9a958d);">https://…</div>
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:8px;">Notes (optional)</div>
-            <div style="padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);min-height:36px;"></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ raceOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeAll }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+          <div onClick="{{ stop }}" style="background:var(--card,#fff);backdrop-filter:blur(14px);border-radius:14px;padding:24px;width:420px;max-width:calc(100% - 32px);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:16px;">
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Add race</h2>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Name</div><input placeholder="e.g. London Marathon" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Date</div><input type="date" value="2026-09-26" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <div><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Sport (optional)</div><div style="display:flex;gap:6px;flex-wrap:wrap;"><sc-for list="{{ raceSports }}" as="s" hint-placeholder-count="5"><div onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.label }}</div></sc-for></div></div>
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Distance km (optional)</div>
+              <sc-if value="{{ isRunRace }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"><sc-for list="{{ presets }}" as="p" hint-placeholder-count="7"><div onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</div></sc-for></div></sc-if>
+              <input type="number" value="{{ raceKm }}" placeholder="km" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/>
+            </div>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Goal time (optional)</div><input placeholder="H:MM:SS" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Race website (optional)</div><input placeholder="https://…" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Notes (optional)</div><input style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+              <div onClick="{{ closeAll }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;font-size:13px;padding:8px 16px;cursor:pointer;color:var(--ink,#1b1a18);">Cancel</div>
+              <div onClick="{{ closeAll }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add race</div>
+            </div>
           </div>
         </div>
-
-        <!-- footer -->
-        <div style="display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:14px 22px;border-top:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);">
-          <div onClick="{{ closeRace }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
-          <div onClick="{{ closeRace }}" style="padding:9px 18px;border-radius:9px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Add race</div>
-        </div>
-      </div>
+      </sc-if>
     </div>
-  </sc-if>
-
-  <!-- toast -->
-  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
-    <div style="position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:11px;background:var(--ink,#1b1a18);color:var(--card,#fff);font-size:13px;font-weight:600;box-shadow:0 12px 30px rgba(20,17,15,0.3);animation:popIn 0.2s ease;">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#2fa66a" stroke-width="2.2"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg>
-      {{ toast }}
-    </div>
-  </sc-if>
-
+  </div>
 </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:1020}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900}}">
 class Component extends DCLogic {
-  state = { theme: 'lab', modalOpen: false, raceModalOpen: false, workoutIdx: -1, day: '2026-07-29', timeIdx: -1, toast: '' };
+  state = { theme: 'lab', offset: 0, sched: null, race: false, tod: '', raceSport: '', raceKm: '' };
 
-  // mutable plan data, keyed by ISO date — tuples: [sport, dur('h:mm'), km|null, tss, planned, timeBadge|null]
-  data = {
-    '2026-06-29': [['bike', '1:30', 44.8, 82, false, null]],
-    '2026-06-30': [['walk', '0:20', 3.4, 19, false, null], ['walk', '0:22', 3.4, 45, false, null]],
-    '2026-07-01': [['run', '1:45', 16.2, 104, false, null]],
-    '2026-07-02': [['walk', '0:20', 3.1, 20, false, null]],
-    '2026-07-03': [['bike', '1:30', 45.4, 89, false, null], ['walk', '0:15', 2.7, 39, false, null]],
-    '2026-07-06': [['bike', '1:50', 42.3, 100, false, null], ['walk', '0:22', 2.6, 32, false, null]],
-    '2026-07-07': [['run', '1:10', 16.1, 112, false, null]],
-    '2026-07-08': [['walk', '0:20', 2.7, 26, false, null]],
-    '2026-07-09': [['run', '0:55', 13.0, 87, false, null]],
-    '2026-07-10': [['bike', '2:05', 50.6, 95, false, null]],
-    '2026-07-11': [['run', '1:15', 17.0, 118, false, null]],
-    '2026-07-12': [['run', '1:30', 20.0, 144, false, null]],
-    '2026-07-13': [['run', '0:50', 8.2, 60, false, null]],
-    '2026-07-14': [['walk', '0:35', 2.4, 33, false, null], ['run', '1:20', 13.0, 94, false, null]],
-    '2026-07-15': [['walk', '0:22', 3.0, 51, false, null]],
-    '2026-07-16': [['run', '1:20', 16.2, 113, false, null]],
-    '2026-07-17': [['bike', '2:10', 49.3, 146, false, null]],
-    '2026-07-18': [['run', '1:35', 18.1, 132, false, null]],
-    '2026-07-19': [['bike', '1:20', 21.0, 65, false, null]],
-    '2026-07-20': [['run', '1:25', 16.5, 123, false, null]],
-    '2026-07-21': [['run', '1:15', 16.2, 113, false, null]],
-    '2026-07-22': [['bike', '2:20', 58.2, 125, false, null]],
-    '2026-07-23': [['run', '2:15', 26.0, 179, false, null]],
-    '2026-07-24': [['run', '0:45', 8.3, 60, false, null]],
-    '2026-07-25': [['run', '3:05', 37.0, 253, false, null]],
-    '2026-07-26': [['run', '1:00', 11.5, 84, false, null]],
-    '2026-07-27': [['run', '1:20', 16.1, 114, false, null]],
-    '2026-07-28': [['walk', '0:15', 1.3, 12, false, null]],
-    '2026-07-29': [['bike', '1:05', 19.0, 93, false, null]],
-    '2026-07-31': [['bike', '1:00', null, 68, true, 'AM']],
-  };
-
-  C = { bike: '#3d7fd6', run: '#ec4a26', walk: '#8b95a1', swim: '#2fa66a' };
-  SPORT_LABEL = { bike: 'Bike', run: 'Run', walk: 'Walk', swim: 'Swim' };
-
-  workouts = [
-    { name: 'The Gorby', dur: '1:00', tss: 68 },
-    { name: 'Bricolage', dur: '2:00', tss: 113 },
-    { name: 'Exigent', dur: '1:30', tss: 101 },
-    { name: 'Aspire', dur: '2:00', tss: 137 },
-    { name: 'Serrated', dur: '1:30', tss: 108 },
-    { name: '4x15 Threshold', dur: '1:45', tss: 110 },
-    { name: 'Zone 3 Workout', dur: '1:05', tss: 71 },
-    { name: 'Zone 2 Workout', dur: '1:00', tss: 59 },
-    { name: 'Zone 5 Intervals', dur: '1:13', tss: 87 },
-  ];
-
-  timeLabels = ['Morning', 'Midday', 'Evening'];
-  timeBadges = ['AM', 'MID', 'PM'];
-
-  rgba(hex, a) {
-    const n = parseInt(hex.slice(1), 16);
-    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
-  }
-  toMin(d) { const [h, m] = d.split(':').map(Number); return h * 60 + m; }
-  toHours(m) { return (m / 60).toFixed(1) + 'h'; }
-  pad2(n) { return n < 10 ? '0' + n : '' + n; }
-  paceLabel(min, km) {
-    if (!km) return '';
-    const p = min / km;
-    const mm = Math.floor(p), ss = Math.round((p - mm) * 60);
-    return mm + ':' + this.pad2(ss) + ' /km';
-  }
-
-  openScheduler() { this.setState({ modalOpen: true, workoutIdx: -1, timeIdx: -1 }); }
-  openDay(dateStr) { this.setState({ modalOpen: true, day: dateStr, workoutIdx: -1, timeIdx: -1 }); }
-  close() { this.setState({ modalOpen: false }); }
-  openRaceModal() { this.setState({ raceModalOpen: true }); }
-  closeRace() { this.setState({ raceModalOpen: false }); }
-  stop(e) { e.stopPropagation(); }
-  cycleWorkout() { this.setState(s => ({ workoutIdx: (s.workoutIdx + 2) % (this.workouts.length + 1) - 1 })); }
-  setTime(i) { this.setState(s => ({ timeIdx: s.timeIdx === i ? -1 : i })); }
-
-  schedule() {
-    const w = this.workouts[this.state.workoutIdx];
-    if (!w) { this.setState({ modalOpen: false }); return; }
-    const dateStr = this.state.day;
-    if (!this.data[dateStr]) this.data[dateStr] = [];
-    const badge = this.state.timeIdx >= 0 ? this.timeBadges[this.state.timeIdx] : null;
-    this.data[dateStr].push(['bike', w.dur, null, w.tss, true, badge]);
-    this.setState({ modalOpen: false, toast: w.name + ' scheduled' });
-    clearTimeout(this._tt);
-    this._tt = setTimeout(() => this.setState({ toast: '' }), 3200);
-  }
-
-  styleItem(it, dateStr) {
-    const [sport, dur, km, tss, planned, timeBadge] = it;
-    const c = this.C[sport];
-    const card = planned
-      ? { display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px 8px', borderRadius: '7px', cursor: 'pointer', background: 'transparent', borderTop: '1px dashed ' + this.rgba(c, 0.5), borderRight: '1px dashed ' + this.rgba(c, 0.5), borderBottom: '1px dashed ' + this.rgba(c, 0.5), borderLeft: '3px solid ' + c }
-      : { display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px 8px', borderRadius: '7px', cursor: 'pointer', background: this.rgba(c, 0.13), border: '1px solid ' + this.rgba(c, 0.22), borderLeft: '3px solid ' + c };
-    const title = this.SPORT_LABEL[sport] + ' on ' + dateStr;
-    const statsLine = planned ? (dur + ' · ' + tss + ' TSS') : ((km != null ? km + ' km' : dur) + ' · ' + tss + ' TSS');
-    return { color: c, title, titleColor: planned ? 'var(--ink2,#6f6b65)' : 'var(--ink,#1b1a18)', statsLine, timeBadge, cardStyle: card, _sport: sport, _tss: tss, _min: this.toMin(dur), _km: km || 0, _planned: planned };
-  }
-
-  buildMonth() {
-    const todayStr = '2026-07-29';
-    const start = new Date(2026, 5, 29); // Mon of the row containing Jul 1 (2026-06-29)
-    const weeks = [];
-    for (let w = 0; w < 5; w++) {
-      const days = [];
-      for (let d = 0; d < 7; d++) {
-        const cellDate = new Date(start);
-        cellDate.setDate(start.getDate() + w * 7 + d);
-        const dateStr = cellDate.getFullYear() + '-' + this.pad2(cellDate.getMonth() + 1) + '-' + this.pad2(cellDate.getDate());
-        const om = cellDate.getMonth() !== 6; // 6 = July
-        const num = cellDate.getDate();
-        const items = (this.data[dateStr] || []).map(it => this.styleItem(it, dateStr));
-        const isToday = dateStr === todayStr;
-        const cellStyle = {
-          background: om ? 'var(--elev,#faf9f7)' : 'var(--card,#fff)',
-          border: '1px solid var(--line,#e6e2dc)',
-          borderRadius: '10px', padding: '9px', minHeight: '152px', minWidth: 0, display: 'flex', flexDirection: 'column',
-          opacity: om ? 0.55 : 1, cursor: 'pointer',
-        };
-        const numStyle = { fontSize: '13px', fontWeight: 600, fontFamily: "'JetBrains Mono',monospace", color: isToday ? 'var(--ember,#2dd4bf)' : (om ? 'var(--ink3,#9a958d)' : 'var(--ink2,#6f6b65)') };
-        days.push({ num, items, cellStyle, numStyle, onAdd: () => this.openDay(dateStr) });
-      }
-      const all = days.flatMap(d => d.items);
-      const comp = all.filter(i => !i._planned);
-      const plan = all.filter(i => i._planned);
-      const compMin = comp.reduce((a, i) => a + i._min, 0);
-      const planMin = plan.reduce((a, i) => a + i._min, 0);
-      const compTss = comp.reduce((a, i) => a + i._tss, 0);
-      const planTss = plan.reduce((a, i) => a + i._tss, 0);
-      const runs = comp.filter(i => i._sport === 'run');
-      const runMin = runs.reduce((a, i) => a + i._min, 0);
-      const runKm = runs.reduce((a, i) => a + i._km, 0);
-      weeks.push({
-        days,
-        showPlanned: planTss > 0, planLabel: planTss + ' TSS · ' + this.toHours(planMin),
-        showActual: compTss > 0, actualLabel: compTss + ' TSS · ' + this.toHours(compMin),
-        showRun: runKm > 0, runLabel: runKm.toFixed(1) + ' km · ' + this.paceLabel(runMin, runKm),
-      });
-    }
-    return { weeks };
-  }
-
-  renderVals() {
-    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
-    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)' };
-    const isLab = this.state.theme === 'lab';
-    const seg = (active) => ({ flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent', boxShadow: active ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
-
-    const month = this.buildMonth();
-
-    // ----- schedule modal pieces -----
-    const w = this.workouts[this.state.workoutIdx];
-    const sel = w ? { label: w.name + ' · ' + w.dur + ' · ' + w.tss + ' TSS', textColor: 'var(--ink,#1b1a18)' } : { label: 'Choose a workout…', textColor: 'var(--ink3,#9a958d)' };
-    const [dY, dM, dD] = this.state.day.split('-');
-    const dateLabel = dD + '/' + dM + '/' + dY;
-    const times = this.timeLabels.map((label, i) => ({
-      label, onClick: () => this.setTime(i),
-      style: { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: this.state.timeIdx === i ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: this.state.timeIdx === i ? 'var(--card,#fff)' : 'transparent', boxShadow: this.state.timeIdx === i ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' },
-    }));
-
+  shellState = { theme: 'lab', ctxOpen: false, ctxAthlete: null, emailSent: false };
+  coached = ['Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'];
+  shellVals() {
+    const st = { ...this.shellState, ...this.state };
+    const t = st.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const on = { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--elev,#f2f6f7)' };
+    const off = { ...on, color: 'var(--ink3,#9a958d)', background: 'transparent' };
     return {
-      themeVars: this.state.theme === 'day' ? { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--emberLine': 'rgba(13,148,136,0.30)', '--grid': 'rgba(14,24,32,0.06)' } : (isLab ? lab : cockpit),
-      setLab: () => this.setState({ theme: 'lab' }),
-      setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
-      labBtn: seg(this.state.theme === 'lab'), cockpitBtn: seg(this.state.theme === 'cockpit'), dayBtn: seg(this.state.theme === 'day'),
-      ...month,
-      modalOpen: this.state.modalOpen,
-      openScheduler: () => this.openScheduler(),
-      close: () => this.close(),
-      stop: (e) => this.stop(e),
-      schedule: () => this.schedule(),
-      cycleWorkout: () => this.cycleWorkout(),
-      sel, dateLabel, times,
-      raceModalOpen: this.state.raceModalOpen,
-      openRaceModal: () => this.openRaceModal(),
-      closeRace: () => this.closeRace(),
-      toast: this.state.toast,
+      themeVars: { '--sport-ride': '#3d7fd6', '--sport-run': '#ec4a26', '--sport-swim': '#2fa66a', '--sport-walk': '#8b95a1', '--sport-row': '#1b8fa8', '--sport-multisport': '#a86fd6', '--sport-transition': '#6b7683', '--role-coach': '#c084fc', ...({ lab, cockpit, day }[t] || lab) },
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: t === 'lab' ? on : off, cockpitBtn: t === 'cockpit' ? on : off, dayBtn: t === 'day' ? on : off,
+      pName: 'Neil Goodgame', chipMeta: 'FTP 265 \u00b7 LTHR 155', isCoach: true,
+      ctxOpen: st.ctxOpen, toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })), closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: st.ctxAthlete ? 'Coaching \u00b7 ' + st.ctxAthlete : 'My training',
+      ctxItems: [null, ...this.coached].map(id => { const act = (st.ctxAthlete || null) === id; return { name: id || 'My training', onClick: () => this.setState({ ctxOpen: false, ctxAthlete: id }), rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: act ? 700 : 500, color: 'var(--ink,#1b1a18)', background: act ? 'var(--elev,#faf9f7)' : 'transparent' } }; }),
+      showEmailBanner: false, emailNotSent: true, emailBannerText: '', resendEmail: () => {},
+    };
+  }
+
+  sc = { bike: '#3d7fd6', run: '#ec4a26', swim: '#2fa66a', row: '#1b8fa8', multisport: '#a86fd6' };
+  wk = { w1: ['Threshold 3\u00d710', 'run', 4320, 96], w2: ['Sweet Spot 3\u00d712', 'bike', 3600, 71], w3: ['Long run \u2014 easy', 'run', 6300, 88], w4: ['Recovery spin', 'bike', 2700, 28], w5: ['5\u00d75min Run VO2', 'run', 3000, 68] };
+  entries = [
+    ['2026-09-01', 'w2', 'completed', 'PM', '19.8 km \u00b7 74 TSS'], ['2026-09-03', 'w1', 'completed', 'AM', '15.1 km \u00b7 94 TSS'], ['2026-09-06', 'w3', 'completed', '', '24.2 km \u00b7 91 TSS'],
+    ['2026-09-08', 'w2', 'completed', '', '20.4 km \u00b7 72 TSS'], ['2026-09-10', 'w1', 'missed', 'AM', ''], ['2026-09-13', 'w3', 'completed', '', '26.0 km \u00b7 98 TSS'],
+    ['2026-09-15', 'w4', 'completed', 'PM', '12.2 km \u00b7 26 TSS'], ['2026-09-17', 'w5', 'completed', 'AM', '11.0 km \u00b7 71 TSS'], ['2026-09-20', 'w3', 'completed', '', '25.1 km \u00b7 93 TSS'],
+    ['2026-09-22', 'w2', 'completed', 'MID', '19.6 km \u00b7 70 TSS'], ['2026-09-24', 'w1', 'completed', 'AM', '15.2 km \u00b7 96 TSS'],
+    ['2026-09-27', 'w3', 'planned', 'AM', '', 'Hilly route if dry'], ['2026-09-29', 'w2', 'planned', 'PM', ''], ['2026-10-01', 'w5', 'planned', 'AM', ''], ['2026-10-03', 'w4', 'planned', '', ''],
+  ];
+  unplanned = [['2026-09-05', 'Saturday parkrun', 'run', '5.0 km \u00b7 38 TSS'], ['2026-09-12', 'RowErg 5k steady', 'row', '5.0 km \u00b7 31 TSS'], ['2026-09-19', 'Sprint triathlon', 'multisport', '25.8 km \u00b7 104 TSS'], ['2026-09-26', 'Saturday parkrun', 'run', '5.0 km \u00b7 39 TSS']];
+  races = [['2026-10-04', 'City Marathon', '42.195 km \u00b7 Goal: 3:15:00']];
+  key(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  renderVals() {
+    const st = this.state;
+    const today = new Date(2026, 8, 26);
+    const first = new Date(2026, 8 + st.offset, 1);
+    const month = first.getMonth();
+    const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
+    const last = new Date(first.getFullYear(), month + 1, 0);
+    const end = new Date(last); end.setDate(last.getDate() + (7 - ((last.getDay() + 6) % 7) - 1));
+    const days = []; for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) days.push(new Date(d));
+    const tk = this.key(today);
+    const stop = (e) => e.stopPropagation();
+    const cells = [];
+    for (let w = 0; w < days.length; w += 7) {
+      const t = { pt: 0, ps: 0, at: 0, as: 0, rk: 0 };
+      days.slice(w, w + 7).forEach(d => {
+        const k = this.key(d);
+        const items = [];
+        this.entries.filter(e => e[0] === k).sort((a, b) => ({ AM: 0, MID: 1, PM: 2 }[a[3]] ?? 3) - ({ AM: 0, MID: 1, PM: 2 }[b[3]] ?? 3)).forEach(([_, wid, status, tod, actual, note]) => {
+          const [name, sport, dur, tss] = this.wk[wid]; const c = this.sc[sport];
+          t.pt += tss; t.ps += dur;
+          const done = status === 'completed';
+          if (done) { t.at += tss; t.as += dur; if (sport === 'run') { t.rk += parseFloat(actual); } }
+          items.push({ name, tod, hasTod: !!tod, hasNote: !!note, href: done ? 'Activity Analysis.dc.html' : 'Scheduled Workout.dc.html', stop,
+            stats: done ? actual : (Math.floor(dur / 3600) ? Math.floor(dur / 3600) + ':' + String(Math.floor(dur % 3600 / 60)).padStart(2, '0') + ':00' : Math.floor(dur / 60) + ':00') + ' \u00b7 ' + tss + ' TSS',
+            style: done ? { fontSize: '11px', padding: '3px 6px', borderRadius: '6px', borderLeft: '3px solid ' + c, background: c + '22', color: 'var(--ink,#1b1a18)', textDecoration: 'none', display: 'block' }
+              : { fontSize: '11px', padding: '3px 6px', borderRadius: '6px', borderLeft: '3px solid ' + c, borderTop: '1px dashed ' + c + '88', borderRight: '1px dashed ' + c + '88', borderBottom: '1px dashed ' + c + '88', color: status === 'missed' ? '#e0442e' : 'var(--ink2,#6f6b65)', textDecoration: 'none', display: 'block' } });
+        });
+        this.unplanned.filter(u => u[0] === k).forEach(([_, name, sport, stats]) => { const c = this.sc[sport]; t.at += parseInt(stats.split('\u00b7 ')[1]); t.as += 3000; if (sport === 'run') t.rk += parseFloat(stats);
+          items.push({ name, stats, tod: '', hasTod: false, hasNote: false, href: 'Activity Analysis.dc.html', stop, style: { fontSize: '11px', padding: '3px 6px', borderRadius: '6px', borderLeft: '3px solid ' + c, background: c + '22', color: 'var(--ink,#1b1a18)', textDecoration: 'none', display: 'block' } }); });
+        this.races.filter(r => r[0] === k).forEach(([_, name, stats]) => items.push({ name: '\ud83c\udfc1 ' + name, stats, tod: '', hasTod: false, hasNote: false, href: 'Preferences.dc.html', stop, style: { fontSize: '11px', padding: '3px 6px', borderRadius: '6px', borderLeft: '3px solid var(--ember,#ec4a26)', background: 'var(--emberSoft,rgba(236,74,38,0.13))', color: 'var(--ink,#1b1a18)', textDecoration: 'none', display: 'block' } }));
+        cells.push({ isDay: true, isWeek: false, num: d.getDate(), items, onClick: () => this.setState({ sched: k }),
+          style: { background: 'var(--card,#fff)', padding: '8px', minHeight: '96px', opacity: d.getMonth() !== month ? 0.55 : 1, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 },
+          numStyle: { fontSize: '12px', fontWeight: k === tk ? 800 : 600, color: k === tk ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)' } });
+      });
+      const blocks = [];
+      const h = (s) => (s / 3600).toFixed(1) + 'h';
+      if (t.pt) blocks.push({ label: 'PLANNED', value: t.pt + ' TSS \u00b7 ' + h(t.ps), style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', color: 'var(--ink2,#6f6b65)' } });
+      if (t.at) blocks.push({ label: 'ACTUAL', value: t.at + ' TSS \u00b7 ' + h(t.as), style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', color: 'var(--ink,#1b1a18)' } });
+      if (t.rk) blocks.push({ label: 'RUN', value: t.rk.toFixed(1) + ' km \u00b7 5:12 /km', style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', color: 'var(--ink,#1b1a18)' } });
+      cells.push({ isDay: false, isWeek: true, none: blocks.length === 0, blocks });
+    }
+    const chip = (a) => ({ flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: '8px', border: '1px solid var(--line,#e6e2dc)', background: a ? 'var(--elev,#faf9f7)' : 'transparent', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink2,#6f6b65)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' });
+    const pill = (a) => ({ padding: '4px 10px', borderRadius: '20px', border: '1px solid ' + (a ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), background: a ? 'var(--emberSoft,rgba(236,74,38,0.13))' : 'transparent', color: a ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' });
+    const presets = [['5K', 5], ['10K', 10], ['10 Mile', 16.0934], ['Half', 21.0975], ['Marathon', 42.195], ['50K', 50], ['100K', 100]];
+    return {
+      ...this.shellVals(),
+      monthLabel: first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+      prev: () => this.setState(s => ({ offset: s.offset - 1 })), next: () => this.setState(s => ({ offset: s.offset + 1 })), goToday: () => this.setState({ offset: 0 }),
+      heads: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Week'], cells,
+      schedOpen: !!st.sched, schedDate: st.sched || tk, openSchedToday: () => this.setState({ sched: tk }),
+      raceOpen: st.race, openRace: () => this.setState({ race: true }), closeAll: () => this.setState({ sched: null, race: false }), stop,
+      workoutOpts: Object.values(this.wk).map(([n, , d, t]) => n + ' \u00b7 ' + Math.round(d / 60) + ' min \u00b7 ' + t + ' TSS'),
+      todOpts: [['AM', 'Morning'], ['MID', 'Midday'], ['PM', 'Evening']].map(([v, l]) => ({ label: l, style: chip(st.tod === v), onClick: () => this.setState(s => ({ tod: s.tod === v ? '' : v })) })),
+      raceSports: [['', '\u2014'], ['run', 'Run'], ['bike', 'Bike'], ['swim', 'Swim'], ['multisport', 'Multisport']].map(([v, l]) => ({ label: l, style: pill(st.raceSport === v), onClick: () => this.setState({ raceSport: v }) })),
+      isRunRace: st.raceSport === 'run', raceKm: st.raceKm,
+      presets: presets.map(([l, k]) => ({ label: l, style: pill(st.raceKm === String(k)), onClick: () => this.setState({ raceKm: String(k) }) })),
     };
   }
 }

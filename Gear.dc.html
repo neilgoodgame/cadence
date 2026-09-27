@@ -16,12 +16,18 @@
   body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
   ::-webkit-scrollbar{width:10px;height:10px;}
   ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+  input.cad,input.cadt{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
+  input.cad{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
+  input.cadt{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
+  input.cad:focus,input.cadt:focus{border-color:var(--ember,#ec4a26);}
+  input.cad::placeholder,input.cadt::placeholder{color:var(--ink3,#9a958d);font-weight:400;}
 </style>
 </helmet>
 
 <div style="{{ themeVars }}">
 <div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
-
   <!-- ============ SIDEBAR ============ -->
   <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
     <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 26px;">
@@ -29,316 +35,236 @@
       <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
-      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</div>
-      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</div>
-      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><polyline points="1,9 4,9 6,3 9,13 11,7 15,7"></polyline></svg>Analysis</div>
-      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</div>
-      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</div>
-      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</div>
-      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"></circle><circle cx="8" cy="8" r="2.1"></circle><line x1="8" y1="2" x2="8" y2="3.9"></line><line x1="8" y1="12.1" x2="8" y2="14"></line><line x1="2" y1="8" x2="3.9" y2="8"></line><line x1="12.1" y1="8" x2="14" y2="8"></line></svg>Gear</div>
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:default;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</a>
+      <a href="Activities.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</a>
+      <a href="Best Efforts.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2h6v4a3 3 0 0 1-6 0Z"></path><path d="M5 3.5H2.5a2.5 2.5 0 0 0 2.6 3M11 3.5h2.5a2.5 2.5 0 0 1-2.6 3"></path><line x1="8" y1="9" x2="8" y2="12"></line><line x1="5" y1="14" x2="11" y2="14"></line></svg>Best efforts</a>
+      <a href="Import.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</a>
+      <a href="Calendar.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</a>
+      <a href="Workout Library.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</a>
+      <a href="Gear.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="11" r="2.6"></circle><circle cx="12" cy="11" r="2.6"></circle><polyline points="4,11 7,5 10.5,5 12,11"></polyline><line x1="7" y1="5" x2="8.5" y2="11"></line></svg>Gear</div>
+      <a href="Preferences.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>Preferences</a>
     </div>
     <div style="margin-top:auto;padding:16px 16px 20px;">
-      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink3,#9a958d);margin:0 6px 8px;">APPEARANCE</div>
-      <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
         <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
-        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div><div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
       </div>
+      <a href="Login.dc.html" style="display:block;margin-top:12px;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
     </div>
   </div>
 
-  <!-- ============ MAIN ============ -->
   <div data-screen-label="gear" style="flex:1;min-width:0;display:flex;flex-direction:column;">
-    <!-- top bar -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:5;">
-      <div>
-        <h1 style="font-size:21px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Gear</h1>
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <a href="Notifications.dc.html" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg><span style="position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--ember,#ec4a26);border:1.5px solid var(--card,#fff);"></span></a><dc-import name="Preferences" hint-size="218px,46px"></dc-import>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <a href="Notifications.dc.html" title="Proposed — not in the app yet (inert placeholder in AppShell)" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px dashed var(--ink3,#9a958d);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></a>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
       </div>
     </div>
 
-    <div style="padding:22px 32px 64px;display:flex;flex-direction:column;gap:36px;">
+    <div style="padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0;">
+      <div style="display:flex;flex-direction:column;gap:36px;">
+      <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Gear</h1>
 
-      <!-- BIKES -->
       <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <h2 style="font-size:19px;font-weight:800;letter-spacing:-0.01em;margin:0;color:var(--ink,#1b1a18);">Bikes</h2>
-          <sc-if value="{{ addBikeOpen }}" hint-placeholder-val="{{ false }}">
-            <div onClick="{{ closeAddBike }}" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
-          </sc-if>
-          <sc-if value="{{ !addBikeOpen }}" hint-placeholder-val="{{ true }}">
-            <div onClick="{{ openAddBike }}" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink,#1b1a18);cursor:pointer;">+ Add bike</div>
-          </sc-if>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Bikes</h2>
+          <div onClick="{{ toggleAddBike }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink,#1b1a18);">{{ addBikeLabel }}</div>
         </div>
-
-        <sc-if value="{{ addBikeOpen }}" hint-placeholder-val="{{ false }}">
-          <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
-            <div style="padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink3,#9a958d);">Name</div>
-            <div style="display:flex;align-items:center;gap:6px;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink,#1b1a18);">road<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.8"><polyline points="4,6 8,10 12,6"></polyline></svg></div>
-            <div style="padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink3,#9a958d);">Groupset (optional)</div>
-            <div style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Add</div>
+        <sc-if value="{{ addingBike }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+            <input placeholder="Name" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <select style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"><option>road</option><option>indoor</option><option>gravel</option><option>tt</option></select>
+            <input placeholder="Groupset (optional)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <div onClick="{{ toggleAddBike }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add</div>
           </div>
         </sc-if>
-
-        <sc-if value="{{ hasBikes }}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;flex-direction:column;gap:14px;">
-            <sc-for list="{{ bikes }}" as="bike" hint-placeholder-count="1">
-              <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
-                <!-- header -->
-                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px;">
-                  <div style="min-width:0;">
-                    <div style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ bike.name }}</div>
-                    <div style="display:flex;gap:7px;margin-top:7px;flex-wrap:wrap;">
-                      <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:6px;background:{{ bike.tintBg }};color:{{ bike.tint }};text-transform:uppercase;">{{ bike.kind }}</span>
-                      <sc-if value="{{ bike.groupset }}" hint-placeholder-val="{{ false }}">
-                        <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:500;padding:3px 9px;border-radius:6px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);">{{ bike.groupset }}</span>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <sc-for list="{{ bikes }}" as="b" hint-placeholder-count="2">
+            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+              <div onClick="{{ b.toggle }}" style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer;">
+                <div>
+                  <div style="font-size:16px;font-weight:700;color:var(--ink,#1b1a18);">{{ b.name }}</div>
+                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ b.meta }}</div>
+                </div>
+                <sc-if value="{{ b.expanded }}" hint-placeholder-val="{{ false }}"><span style="{{ b.statusStyle }}">{{ b.status }}</span></sc-if>
+              </div>
+              <div style="display:flex;gap:18px;margin-top:12px;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);flex-wrap:wrap;">
+                <span>{{ b.km }} km</span><span>{{ b.hours }}h</span><span>{{ b.rides }} rides</span><span>{{ b.compCount }} components</span>
+              </div>
+              <sc-if value="{{ b.expanded }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:14px;">
+                  <sc-for list="{{ b.components }}" as="c" hint-placeholder-count="3">
+                    <div style="display:flex;flex-direction:column;gap:6px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
+                      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">
+                        <div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ c.name }}<span style="color:var(--ink3,#9a958d);font-weight:400;"> · {{ c.model }}</span></div>
+                        <div style="display:flex;gap:10px;align-items:center;">
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ c.km }} / {{ c.limit }} km</span>
+                          <span style="{{ c.pill }}">{{ c.label }}</span>
+                        </div>
+                      </div>
+                      <div style="height:6px;border-radius:4px;background:var(--elev,#faf9f7);overflow:hidden;"><div style="{{ c.bar }}"></div></div>
+                      <div style="display:flex;gap:12px;">
+                        <div onClick="{{ c.logService }}" style="color:var(--ember,#ec4a26);font-size:12px;font-weight:600;cursor:pointer;">Log replacement</div>
+                        <div style="color:#e0442e;font-size:12px;font-weight:600;cursor:pointer;">Remove</div>
+                      </div>
+                      <sc-if value="{{ c.confirming }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:12px;color:var(--ink2,#6f6b65);display:flex;gap:6px;">Resets this component's distance to 0. <span onClick="{{ c.confirm }}" style="color:var(--ember,#ec4a26);font-weight:700;cursor:pointer;">Confirm</span> <span onClick="{{ c.cancel }}" style="color:var(--ink3,#9a958d);cursor:pointer;">Cancel</span></div>
                       </sc-if>
                     </div>
-                  </div>
-                  <span style="{{ bike.statusStyle }}">{{ bike.statusText }}</span>
-                </div>
-                <!-- components -->
-                <div style="padding:2px 20px 8px;">
-                  <div style="display:grid;grid-template-columns:minmax(0,150px) 1fr 100px 128px;gap:14px;padding:8px 0 9px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);">
-                    <span>Component</span><span>Wear</span><span style="text-align:right;">Distance</span><span></span>
-                  </div>
-                  <sc-for list="{{ bike.components }}" as="c" hint-placeholder-count="4">
-                    <div style="display:grid;grid-template-columns:minmax(0,150px) 1fr 100px 128px;gap:14px;padding:12px 0;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
-                      <div style="min-width:0;">
-                        <div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ c.name }}</div>
-                        <span style="{{ c.chipStyle }}">{{ c.chipText }}</span>
-                      </div>
-                      <div style="height:7px;border-radius:4px;background:var(--canvas,#f3f1ee);overflow:hidden;">
-                        <div style="{{ c.barFillStyle }}"></div>
-                      </div>
-                      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);text-align:right;">{{ c.kmLabel }}</span>
-                      <div style="text-align:right;font-size:11px;color:var(--ink3,#9a958d);white-space:nowrap;">
-                        <span style="cursor:pointer;">Log replacement</span> · <span style="cursor:pointer;">Remove</span>
-                      </div>
-                    </div>
                   </sc-for>
+                  <div style="color:var(--ember,#ec4a26);font-size:12px;font-weight:600;margin-top:10px;cursor:pointer;">+ Add component</div>
                 </div>
-              </div>
-            </sc-for>
-          </div>
-        </sc-if>
-        <sc-if value="{{ !hasBikes }}" hint-placeholder-val="{{ false }}">
-          <div style="font-size:13px;color:var(--ink3,#9a958d);">No bikes in the garage yet.</div>
-        </sc-if>
-      </div>
-
-      <!-- RUN SHOES -->
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <h2 style="font-size:19px;font-weight:800;letter-spacing:-0.01em;margin:0;color:var(--ink,#1b1a18);">Run shoes</h2>
-          <sc-if value="{{ addShoeOpen }}" hint-placeholder-val="{{ false }}">
-            <div onClick="{{ closeAddShoe }}" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
-          </sc-if>
-          <sc-if value="{{ !addShoeOpen }}" hint-placeholder-val="{{ true }}">
-            <div onClick="{{ openAddShoe }}" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink,#1b1a18);cursor:pointer;">+ Add shoes</div>
-          </sc-if>
+              </sc-if>
+            </div>
+          </sc-for>
         </div>
-
-        <sc-if value="{{ addShoeOpen }}" hint-placeholder-val="{{ false }}">
-          <sc-if value="{{ !shoePicked }}" hint-placeholder-val="{{ true }}">
-            <div style="margin-bottom:10px;">
-              <div style="padding:11px 14px;border-radius:9px;border:1.5px solid var(--ember,#ec4a26);background:var(--card,#fff);font-size:13px;color:var(--ink,#1b1a18);">{{ shoeQuery }}</div>
-              <div style="border:1px solid var(--line,#e6e2dc);border-top:none;border-radius:0 0 9px 9px;background:var(--card,#fff);overflow:hidden;">
-                <sc-for list="{{ catalogResults }}" as="r" hint-placeholder-count="4">
-                  <div onClick="{{ r.onPick }}" style="padding:10px 14px;font-size:13px;color:var(--ink,#1b1a18);cursor:pointer;border-top:1px solid var(--line,#e6e2dc);">{{ r.label }}</div>
-                </sc-for>
-              </div>
-              <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:8px;cursor:pointer;">+ Can't find your shoe? Add it to the catalog</div>
-            </div>
-          </sc-if>
-          <sc-if value="{{ shoePicked }}" hint-placeholder-val="{{ false }}">
-            <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
-              <span style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">{{ shoePickedName }}</span>
-              <div style="padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink3,#9a958d);">Colourway</div>
-              <div style="padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink3,#9a958d);">Custom name (optional)</div>
-              <div style="width:70px;padding:9px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink,#1b1a18);">600</div>
-              <div style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Add</div>
-              <span onClick="{{ shoeBack }}" style="font-size:13px;color:var(--ink3,#9a958d);cursor:pointer;">Back</span>
-            </div>
-          </sc-if>
-        </sc-if>
-
-        <sc-if value="{{ hasShoes }}" hint-placeholder-val="{{ true }}">
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
-            <sc-for list="{{ shoes }}" as="sh" hint-placeholder-count="1">
-              <div style="border:1px solid var(--line,#e6e2dc);border-radius:12px;padding:18px;display:flex;gap:16px;align-items:center;">
-                <div style="position:relative;width:84px;height:84px;flex-shrink:0;">
-                  <svg width="84" height="84" viewBox="0 0 84 84">
-                    <circle cx="42" cy="42" r="32" fill="none" stroke="var(--canvas,#f3f1ee)" stroke-width="7"></circle>
-                    <circle cx="42" cy="42" r="32" fill="none" stroke="{{ sh.ringColor }}" stroke-width="7" stroke-linecap="round" stroke-dasharray="{{ sh.dash }}" stroke-dashoffset="{{ sh.offset }}" transform="rotate(-90 42 42)"></circle>
-                  </svg>
-                  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                    <span style="font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:600;color:var(--ink,#1b1a18);line-height:1;">{{ sh.pct }}</span>
-                    <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink3,#9a958d);margin-top:2px;">used</span>
-                  </div>
-                </div>
-                <div style="min-width:0;">
-                  <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);line-height:1.25;">{{ sh.name }}</div>
-                  <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);margin-top:10px;">{{ sh.kmLabel }}</div>
-                  <span style="{{ sh.chipStyle }}">{{ sh.status }}</span>
-                  <div style="margin-top:8px;font-size:12px;color:var(--ink3,#9a958d);cursor:pointer;">Retire</div>
-                </div>
-              </div>
-            </sc-for>
-          </div>
-        </sc-if>
-        <sc-if value="{{ !hasShoes }}" hint-placeholder-val="{{ false }}">
-          <div style="font-size:13px;color:var(--ink3,#9a958d);">No shoes tracked yet.</div>
-        </sc-if>
       </div>
 
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Run shoes</h2>
+          <div onClick="{{ toggleAddShoe }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink,#1b1a18);">{{ addShoeLabel }}</div>
+        </div>
+        <sc-if value="{{ shoeStepSearch }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+            <input value="{{ shoeQuery }}" onInput="{{ onShoeQuery }}" placeholder="Search the shoe catalog (e.g. Nike Vaporfly)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <sc-if value="{{ hasResults }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;border:1px solid var(--line,#e6e2dc);border-radius:8px;overflow:hidden;">
+                <sc-for list="{{ results }}" as="r" hint-placeholder-count="3"><div onClick="{{ r.pick }}" style="text-align:left;padding:8px 12px;border-top:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink,#1b1a18);cursor:pointer;">{{ r.name }}</div></sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ hasQuery }}" hint-placeholder-val="{{ false }}"><div onClick="{{ startNewModel }}" style="align-self:flex-start;color:var(--ink3,#9a958d);font-size:13px;cursor:pointer;">+ Can't find your shoe? Add it to the catalog</div></sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ shoeStepNewModel }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+            <span style="font-size:13px;color:var(--ink3,#9a958d);">Add a new shoe model to the catalog</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input placeholder="Manufacturer (e.g. Nike)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+              <input placeholder="Model (e.g. Pegasus)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+              <input placeholder="Version (e.g. 41, optional)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;width:150px;"/>
+              <div onClick="{{ pickNewModel }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add to catalog</div>
+              <div onClick="{{ backToSearch }}" style="color:var(--ink3,#9a958d);font-size:13px;padding:8px 4px;cursor:pointer;">Cancel</div>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ shoeStepDetails }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ pickedModel }}</span>
+            <input placeholder="Colourway" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <input placeholder="Custom name (optional)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <input placeholder="Limit km" type="number" value="600" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;width:100px;"/>
+            <div onClick="{{ toggleAddShoe }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add</div>
+            <div onClick="{{ backToSearch }}" style="color:var(--ink3,#9a958d);font-size:13px;cursor:pointer;">Back</div>
+          </div>
+        </sc-if>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;">
+          <sc-for list="{{ shoes }}" as="s" hint-placeholder-count="4">
+            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
+              <svg width="76" height="76" viewBox="0 0 76 76">
+                <circle cx="38" cy="38" r="30" fill="none" stroke="var(--line,#e6e2dc)" stroke-width="6"></circle>
+                <circle cx="38" cy="38" r="30" fill="none" stroke="{{ s.color }}" stroke-width="6" stroke-dasharray="188.5" stroke-dashoffset="{{ s.offset }}" stroke-linecap="round" transform="rotate(-90 38 38)"></circle>
+                <text x="38" y="38" text-anchor="middle" dominant-baseline="middle" font-size="14" font-weight="700" fill="var(--ink,#1b1a18)">{{ s.pct }}</text>
+              </svg>
+              <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);">{{ s.name }}</div>
+              <sc-if value="{{ s.hasRole }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ s.role }}</div></sc-if>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ s.km }} / {{ s.limit }} km</div>
+              <span style="{{ s.pill }}">{{ s.label }}</span>
+              <div onClick="{{ s.retire }}" style="color:var(--ink3,#9a958d);font-size:12px;font-weight:600;cursor:pointer;">Retire</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </div>
     </div>
   </div>
 </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:1020}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900}}">
 class Component extends DCLogic {
-  state = { theme: 'lab', addBikeOpen: false, addShoeOpen: false, shoeQuery: 'Nike', shoePicked: false, shoePickedName: '' };
+  state = { theme: 'lab', addingBike: false, shoeStep: null, shoeQuery: '', picked: null, expanded: { b1: true }, confirming: null, retired: [], resets: {} };
 
-  rgba(hex, a) {
-    const n = parseInt(hex.slice(1), 16);
-    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
-  }
-
-  fmt(n) { return n.toLocaleString('en-US'); }
-
-  // wear evaluation -> color + status label (Good < 85%, Soon >= 85%, Replace >= 100%)
-  wear(km, limit) {
-    const w = km / limit;
-    const over = km >= limit;
-    let color, status;
-    if (over) { color = '#e0442e'; status = 'Replace'; }
-    else if (w >= 0.85) { color = '#f0a02e'; status = 'Soon'; }
-    else { color = '#2fa66a'; status = 'Good'; }
-    return { w, over, color, status };
-  }
-
-  miniChip(color, text) {
+  shellState = { theme: 'lab', ctxOpen: false, ctxAthlete: null, emailSent: false };
+  coached = ['Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'];
+  shellVals() {
+    const st = { ...this.shellState, ...this.state };
+    const t = st.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const on = { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--elev,#f2f6f7)' };
+    const off = { ...on, color: 'var(--ink3,#9a958d)', background: 'transparent' };
     return {
-      text,
-      style: {
-        display: 'inline-block', marginTop: '4px',
-        fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 600,
-        padding: '2px 7px', borderRadius: '5px', color, background: this.rgba(color, 0.13),
-      },
+      themeVars: { '--sport-ride': '#3d7fd6', '--sport-run': '#ec4a26', '--sport-swim': '#2fa66a', '--sport-walk': '#8b95a1', '--sport-row': '#1b8fa8', '--sport-multisport': '#a86fd6', '--sport-transition': '#6b7683', '--role-coach': '#c084fc', ...({ lab, cockpit, day }[t] || lab) },
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: t === 'lab' ? on : off, cockpitBtn: t === 'cockpit' ? on : off, dayBtn: t === 'day' ? on : off,
+      pName: 'Neil Goodgame', chipMeta: 'FTP 265 \u00b7 LTHR 155', isCoach: true,
+      ctxOpen: st.ctxOpen, toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })), closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: st.ctxAthlete ? 'Coaching \u00b7 ' + st.ctxAthlete : 'My training',
+      ctxItems: [null, ...this.coached].map(id => { const act = (st.ctxAthlete || null) === id; return { name: id || 'My training', onClick: () => this.setState({ ctxOpen: false, ctxAthlete: id }), rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: act ? 700 : 500, color: 'var(--ink,#1b1a18)', background: act ? 'var(--elev,#faf9f7)' : 'transparent' } }; }),
+      showEmailBanner: false, emailNotSent: true, emailBannerText: '', resendEmail: () => {},
     };
   }
 
-  comp(name, km, limit) {
-    const wi = this.wear(km, limit);
-    const chip = this.miniChip(wi.color, wi.status);
-    return {
-      name, _km: km, _limit: limit, _wi: wi,
-      kmLabel: this.fmt(km) + ' / ' + this.fmt(limit),
-      barFillStyle: { height: '100%', width: (Math.min(wi.w, 1) * 100).toFixed(1) + '%', background: wi.color, borderRadius: '4px' },
-      chipText: chip.text, chipStyle: chip.style,
-    };
-  }
-
-  bike(def) {
-    const components = def.comps.map(c => this.comp(c[0], c[1], c[2]));
-    const due = components.filter(c => c._wi.over).length;
-    const soon = components.filter(c => !c._wi.over && c._wi.w >= 0.85).length;
-    let statusText, statusColor;
-    if (due) { statusText = due + ' due'; statusColor = '#e0442e'; }
-    else if (soon) { statusText = soon + ' soon'; statusColor = '#f0a02e'; }
-    else { statusText = 'All healthy'; statusColor = '#2fa66a'; }
-    return {
-      name: def.name, kind: def.kind, groupset: def.groupset,
-      tint: def.tint, tintBg: this.rgba(def.tint, 0.13),
-      statusText,
-      statusStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600, padding: '4px 9px', borderRadius: '20px', color: statusColor, background: this.rgba(statusColor, 0.14), whiteSpace: 'nowrap', flexShrink: 0 },
-      components,
-    };
-  }
-
-  build() {
-    const bikeDefs = [
-      {
-        name: 'Canyon Aeroad CF SLX', kind: 'road', groupset: 'Dura-Ace Di2',
-        tint: '#3d7fd6',
-        comps: [
-          ['Chain', 4080, 4000],
-          ['Rear tyre', 4520, 4500],
-          ['Cassette', 6900, 8000],
-          ['Brake pads', 3050, 6000],
-        ],
-      },
-    ];
-    const bikes = bikeDefs.map(d => this.bike(d));
-
-    const shoeDefs = [
-      { manufacturer: 'Nike', model: 'Vaporfly', version: '3', colourway: 'red', km: 0, limit: 600 },
-      { manufacturer: 'Hoka', model: 'Mach', version: '6', colourway: 'Coastal Sky', km: 712, limit: 800 },
-    ];
-    const R = 32, C = 2 * Math.PI * R;
-    const shoes = shoeDefs.map(s => {
-      const wi = this.wear(s.km, s.limit);
-      const displayName = s.manufacturer + ' ' + s.model + ' ' + s.version + ' ' + s.colourway;
-      return {
-        name: displayName,
-        ringColor: wi.color,
-        dash: C.toFixed(1),
-        offset: (C * (1 - Math.min(wi.w, 1))).toFixed(1),
-        pct: Math.round(wi.w * 100) + '%',
-        kmLabel: this.fmt(s.km) + ' / ' + this.fmt(s.limit) + ' km',
-        status: wi.over ? 'Retire now' : wi.w >= 0.85 ? 'Near limit' : 'In rotation',
-        chipStyle: {
-          display: 'inline-block', marginTop: '8px',
-          fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600,
-          padding: '3px 9px', borderRadius: '6px', color: wi.color, background: this.rgba(wi.color, 0.13),
-        },
-      };
-    });
-
-    return { bikes, shoes, hasBikes: bikes.length > 0, hasShoes: shoes.length > 0 };
-  }
-
-  model = this.build();
-
-  catalog = ['Nike Alphafly 3', 'Nike Invincible 3', 'Nike Pegasus 41', 'Nike Vaporfly 3'];
-
-  openAddBike() { this.setState({ addBikeOpen: true }); }
-  closeAddBike() { this.setState({ addBikeOpen: false }); }
-  openAddShoe() { this.setState({ addShoeOpen: true, shoePicked: false }); }
-  closeAddShoe() { this.setState({ addShoeOpen: false, shoePicked: false }); }
-  pickShoe(name) { this.setState({ shoePicked: true, shoePickedName: name }); }
-  shoeBack() { this.setState({ shoePicked: false }); }
-
+  bikes = [
+    { id: 'b1', name: 'Canyon Ultimate CF SLX', kind: 'road', groupset: 'Shimano Ultegra Di2', km: '8,412', hours: 286, rides: 214, comps: [['c1', 'Chain', 'Ultegra CN-M8100', 2780, 3000], ['c2', 'Cassette', '11-30', 5120, 12000], ['c3', 'Tyres', 'GP5000 28mm', 3520, 4000], ['c4', 'Brake pads', 'L05A', 1200, 3500]] },
+    { id: 'b2', name: 'Wahoo KICKR setup', kind: 'indoor', groupset: '', km: '3,960', hours: 131, rides: 118, comps: [['c5', 'Chain', 'KMC X11', 3050, 3000]] },
+  ];
+  shoesData = [['s1', 'Nike Vaporfly 3', 'Race & threshold', 212, 400], ['s2', 'ASICS Novablast 4', 'Daily trainer', 548, 650], ['s3', 'Saucony Endorphin Speed 4', '', 310, 600], ['s4', 'Hoka Clifton 9', 'Recovery', 702, 700]];
+  catalog = ['Nike Vaporfly 3', 'Nike Pegasus 41', 'Nike Zoom Fly 6', 'Nike Invincible 3'];
+  st(km, lim) { const f = lim > 0 ? km / lim : 0; return f >= 1 ? 'replace' : f >= 0.85 ? 'soon' : 'good'; }
+  C = { good: '#2fa66a', soon: '#f0a02e', replace: '#e0442e' };
+  L = { good: 'Good', soon: 'Soon', replace: 'Replace' };
+  pill(c) { return { fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', color: c, background: c + '22' }; }
   renderVals() {
-    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
-    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)' };
-    const isLab = this.state.theme === 'lab';
-    const segActive = { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--card,#fff)', boxShadow: '0 1px 2px rgba(0,0,0,0.14)' };
-    const segIdle = { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink3,#9a958d)', background: 'transparent' };
-
-    const catalogResults = this.catalog.map(name => ({ label: name, onPick: () => this.pickShoe(name) }));
-
+    const s = this.state;
+    const bikes = this.bikes.map(b => {
+      const comps = b.comps.map(([id, name, model, km0, lim]) => { const km = s.resets[id] ? 0 : km0; const k = this.st(km, lim); return { id, name, model, km, limit: lim, k, label: this.L[k], pill: this.pill(this.C[k]), bar: { height: '100%', width: Math.min(km / lim, 1) * 100 + '%', background: this.C[k] }, confirming: s.confirming === id, logService: () => this.setState({ confirming: id }), confirm: () => this.setState(x => ({ confirming: null, resets: { ...x.resets, [id]: true } })), cancel: () => this.setState({ confirming: null }) }; });
+      const ks = comps.map(c => c.k); const worst = ks.includes('replace') ? 'replace' : ks.includes('soon') ? 'soon' : 'good';
+      return { name: b.name, meta: b.kind.toUpperCase() + (b.groupset ? ' \u00b7 ' + b.groupset : ''), km: b.km, hours: b.hours, rides: b.rides, compCount: comps.length, expanded: !!s.expanded[b.id], toggle: () => this.setState(x => ({ expanded: { ...x.expanded, [b.id]: !x.expanded[b.id] } })), components: comps, status: worst === 'good' ? 'All healthy' : this.L[worst], statusStyle: this.pill(this.C[worst]) };
+    });
+    const shoes = this.shoesData.filter(x => !s.retired.includes(x[0])).map(([id, name, role, km, lim]) => { const k = this.st(km, lim); const f = Math.min(km / lim, 1); return { name, role, hasRole: !!role, km, limit: lim, color: this.C[k], offset: (188.5 * (1 - f)).toFixed(1), pct: Math.round(f * 100) + '%', label: k === 'good' ? 'In rotation' : k === 'soon' ? 'Near limit' : 'Retire now', pill: this.pill(this.C[k]), retire: () => this.setState(x => ({ retired: [...x.retired, id] })) }; });
+    const q = s.shoeQuery.trim().toLowerCase();
+    const results = q ? this.catalog.filter(c => c.toLowerCase().includes(q)).map(n => ({ name: n, pick: () => this.setState({ shoeStep: 'details', picked: n }) })) : [];
     return {
-      themeVars: this.state.theme === 'day' ? { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--emberLine': 'rgba(13,148,136,0.30)', '--grid': 'rgba(14,24,32,0.06)' } : (isLab ? lab : cockpit),
-      setLab: () => this.setState({ theme: 'lab' }),
-      setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
-      labBtn: this.state.theme === 'lab' ? segActive : segIdle,
-      cockpitBtn: this.state.theme === 'cockpit' ? segActive : segIdle, dayBtn: this.state.theme === 'day' ? segActive : segIdle,
-      addBikeOpen: this.state.addBikeOpen,
-      openAddBike: () => this.openAddBike(),
-      closeAddBike: () => this.closeAddBike(),
-      addShoeOpen: this.state.addShoeOpen,
-      openAddShoe: () => this.openAddShoe(),
-      closeAddShoe: () => this.closeAddShoe(),
-      shoeQuery: this.state.shoeQuery,
-      shoePicked: this.state.shoePicked,
-      shoePickedName: this.state.shoePickedName,
-      shoeBack: () => this.shoeBack(),
-      catalogResults,
-      ...this.model,
+      ...this.shellVals(),
+      addingBike: s.addingBike, addBikeLabel: s.addingBike ? 'Cancel' : '+ Add bike', toggleAddBike: () => this.setState(x => ({ addingBike: !x.addingBike })),
+      bikes, shoes,
+      addShoeLabel: s.shoeStep ? 'Cancel' : '+ Add shoes', toggleAddShoe: () => this.setState(x => ({ shoeStep: x.shoeStep ? null : 'search', shoeQuery: '', picked: null })),
+      shoeStepSearch: s.shoeStep === 'search', shoeStepNewModel: s.shoeStep === 'newModel', shoeStepDetails: s.shoeStep === 'details',
+      shoeQuery: s.shoeQuery, onShoeQuery: (e) => this.setState({ shoeQuery: e.target.value }), results, hasResults: results.length > 0, hasQuery: !!q,
+      startNewModel: () => this.setState({ shoeStep: 'newModel' }), pickNewModel: () => this.setState({ shoeStep: 'details', picked: 'New model' }), backToSearch: () => this.setState({ shoeStep: 'search', picked: null }),
+      pickedModel: s.picked || '',
     };
   }
 }

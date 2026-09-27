@@ -12,766 +12,345 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  @keyframes prefPop{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
-  @keyframes prefFade{0%{opacity:0;}100%{opacity:1;}}
-  input.prefn,input.preft{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
-  input.prefn{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
-  input.preft{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
-  input.prefn:focus,input.preft:focus{border-color:var(--ember,#ec4a26);}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+  input.cad,input.cadt{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
+  input.cad{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
+  input.cadt{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
+  input.cad:focus,input.cadt:focus{border-color:var(--ember,#ec4a26);}
+  input.cad::placeholder,input.cadt::placeholder{color:var(--ink3,#9a958d);font-weight:400;}
 </style>
 </helmet>
 
-<div onClick="{{ openPrefs }}" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;">
-  <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
-  <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
-  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
-</div>
-
-<sc-if value="{{ prefsOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closePrefs }}" style="position:fixed;inset:0;z-index:60;background:rgba(20,17,15,0.42);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:32px;animation:prefFade 0.14s ease;">
-    <div onClick="{{ stopP }}" style="width:780px;max-width:100%;max-height:90vh;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:18px;box-shadow:0 24px 60px rgba(20,17,15,0.28);display:flex;flex-direction:column;overflow:hidden;animation:prefPop 0.18s cubic-bezier(0.2,0.8,0.2,1);text-align:left;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line,#e6e2dc);">
-        <div>
-          <div style="font-size:16px;font-weight:800;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Preferences</div>
-          <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:1px;">Profile, thresholds &amp; training zones</div>
-        </div>
-        <div onClick="{{ closePrefs }}" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink3,#9a958d);cursor:pointer;font-size:18px;border:1px solid var(--line,#e6e2dc);">×</div>
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+  <!-- ============ SIDEBAR ============ -->
+  <div style="width:228px;flex-shrink:0;background:var(--card,#fff);border-right:1px solid var(--line,#e6e2dc);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:11px;padding:22px 22px 26px;">
+      <div style="width:26px;height:26px;border-radius:7px;background:var(--ember,#ec4a26);display:flex;align-items:center;justify-content:center;"><div style="width:11px;height:11px;border-radius:3px;background:#fff;"></div></div>
+      <span style="font-weight:700;font-size:15px;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;padding:0 12px;">
+      <div style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;background:var(--emberSoft,#fff5f1);color:var(--ember,#ec4a26);font-size:14px;font-weight:600;cursor:default;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="5" height="5" rx="1"></rect><rect x="9" y="2" width="5" height="5" rx="1"></rect><rect x="2" y="9" width="5" height="5" rx="1"></rect><rect x="9" y="9" width="5" height="5" rx="1"></rect></svg>Dashboard</a>
+      <a href="Activities.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="14" y2="12"></line></svg>Activities</a>
+      <a href="Best Efforts.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2h6v4a3 3 0 0 1-6 0Z"></path><path d="M5 3.5H2.5a2.5 2.5 0 0 0 2.6 3M11 3.5h2.5a2.5 2.5 0 0 1-2.6 3"></path><line x1="8" y1="9" x2="8" y2="12"></line><line x1="5" y1="14" x2="11" y2="14"></line></svg>Best efforts</a>
+      <a href="Import.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10 V2 M5 5 L8 2 L11 5"></path><path d="M2 10 v3 a1 1 0 0 0 1 1 h10 a1 1 0 0 0 1 -1 v-3"></path></svg>Import</a>
+      <a href="Calendar.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="12" rx="2"></rect><line x1="2" y1="6" x2="14" y2="6"></line><line x1="6" y1="6" x2="6" y2="14"></line></svg>Calendar</a>
+      <a href="Workout Library.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="2.5" height="4"></rect><rect x="10.5" y="6" width="2.5" height="4"></rect><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="6.5" x2="1.5" y2="9.5"></line><line x1="14.5" y1="6.5" x2="14.5" y2="9.5"></line></svg>Workouts</a>
+      <a href="Gear.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="11" r="2.6"></circle><circle cx="12" cy="11" r="2.6"></circle><polyline points="4,11 7,5 10.5,5 12,11"></polyline><line x1="7" y1="5" x2="8.5" y2="11"></line></svg>Gear</a>
+      <a href="Preferences.dc.html" style="text-decoration:none;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--ink2,#6f6b65);font-size:14px;font-weight:500;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>Preferences</div>
+    </div>
+    <div style="margin-top:auto;padding:16px 16px 20px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
       </div>
+      <a href="Login.dc.html" style="display:block;margin-top:12px;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
 
-      <div style="display:flex;min-height:0;flex:1;">
-        <div style="width:178px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:14px 12px;display:flex;flex-direction:column;gap:3px;">
-          <sc-for list="{{ prefsTabs }}" as="t" hint-placeholder-count="5">
-            <div onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</div>
-          </sc-for>
+  <div data-screen-label="preferences" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
+      </div>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <a href="Notifications.dc.html" title="Proposed — not in the app yet (inert placeholder in AppShell)" style="position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px dashed var(--ink3,#9a958d);background:var(--card,#fff);color:var(--ink2,#6f6b65);text-decoration:none;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></a>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
         </div>
+        </sc-if>
+        <a href="Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
 
-        <div style="flex:1;min-width:0;overflow-y:auto;padding:20px 24px;">
+    <div style="padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0;">
+      <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;margin:0 0 8px;color:var(--ink,#1b1a18);">Preferences</h1>
+      <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap;">
+        <nav style="width:178px;flex-shrink:0;display:flex;flex-direction:column;gap:2px;">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="12"><div onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</div></sc-for>
+        </nav>
+        <div style="flex:1;min-width:280px;">
+
           <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ true }}">
-            <div style="display:flex;flex-direction:column;gap:22px;">
-              <div>
-                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:12px;">Athlete</div>
-                <div style="display:grid;grid-template-columns:2fr 1fr;gap:13px;">
-                  <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Name</label><input class="preft" type="text" value="{{ pName }}" onInput="{{ onName }}"/></div>
-                  <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Age</label><input class="prefn" type="number" value="{{ pAge }}" onInput="{{ onAge }}"/></div>
-                </div>
-              </div>
-              <div>
-                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:12px;">Thresholds</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:13px;">
-                  <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">FTP <span style="color:var(--ink3,#9a958d);font-weight:400;">W</span></label><input class="prefn" type="number" value="{{ pFtp }}" onInput="{{ onFtp }}"/></div>
-                  <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Critical run power <span style="color:var(--ink3,#9a958d);font-weight:400;">W</span></label><input class="prefn" type="number" value="{{ pCp }}" onInput="{{ onCp }}"/></div>
-                  <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Threshold pace <span style="color:var(--ink3,#9a958d);font-weight:400;">/km</span></label><input class="preft" type="text" value="{{ pThrPace }}" onInput="{{ onThrPace }}"/></div>
-                  <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">LTHR <span style="color:var(--ink3,#9a958d);font-weight:400;">bpm</span></label><input class="prefn" type="number" value="{{ pLthr }}" onInput="{{ onLthr }}"/></div>
-                  <div><label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Max heart rate <span style="color:var(--ink3,#9a958d);font-weight:400;">bpm</span></label><input class="prefn" type="number" value="{{ pMaxHr }}" onInput="{{ onMaxHr }}"/></div>
-                </div>
-              </div>
-
+            <div style="display:flex;flex-direction:column;gap:20px;max-width:460px;">
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Athlete</h3><div style="display:flex;flex-direction:column;gap:12px;"><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Name</div><input value="Neil Goodgame" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Age</div><input value="34" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Weight<span style="color:var(--ink3,#9a958d);font-weight:400;"> (kg)</span></div><input value="72.0" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label></div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Thresholds</h3><div style="display:flex;flex-direction:column;gap:12px;">
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">FTP<span style="color:var(--ink3,#9a958d);font-weight:400;"> (W)</span></div><input value="265" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label>
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">FTP calculation method</div><select style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"><option>20-minute test (best 20-min power × 0.95)</option><option>60-minute direct (best 60-min power)</option></select></label>
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Critical run power<span style="color:var(--ink3,#9a958d);font-weight:400;"> (W)</span></div><input value="285" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label>
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Running power source</div><select style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"><option>Stryd</option><option>Native (e.g. Garmin Running Power)</option></select></label>
+                <p style="font-size:12px;color:var(--ink3,#9a958d);margin:-6px 0 0;line-height:1.5;">Native running-power algorithms tend to read meaningfully higher than Stryd for the same effort - the source you don't pick is ignored entirely on future uploads, not used as a fallback. Doesn't retroactively change already-imported activities' stored data, but best efforts, TSS, and critical running power all re-check this preference whenever recomputed.</p>
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Threshold pace<span style="color:var(--ink3,#9a958d);font-weight:400;"> (MM:SS /km)</span></div><input value="4:00" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">LTHR<span style="color:var(--ink3,#9a958d);font-weight:400;"> (bpm)</span></div><input value="155" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Max heart rate<span style="color:var(--ink3,#9a958d);font-weight:400;"> (bpm)</span></div><input value="186" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Resting heart rate<span style="color:var(--ink3,#9a958d);font-weight:400;"> (bpm)</span></div><input value="46" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label>
+              </div></div>
+              <div style="display:flex;align-items:center;"><div onClick="{{ doSave }}" style="align-self:flex-start;padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;width:fit-content;">Save changes</div><sc-if value="{{ savedShown }}" hint-placeholder-val="{{ false }}"><span style="margin-left:10px;font-size:13px;color:#2fa66a;">{{ savedText }}</span></sc-if></div>
               <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:20px;">
-                <div style="font-size:14px;font-weight:700;color:#e0442e;margin-bottom:6px;">Danger zone</div>
-                <div style="font-size:13px;color:var(--ink2,#6f6b65);margin-bottom:12px;line-height:1.5;">Remove every activity from your account. Uploaded files can be imported again afterwards.</div>
-                <div onClick="{{ openDeleteAll }}" style="display:inline-block;padding:9px 16px;border-radius:9px;border:1px solid #e0442e;background:transparent;color:#e0442e;font-size:13px;font-weight:700;cursor:pointer;">Remove all activities&hellip;</div>
+                <h3 style="font-size:14px;font-weight:700;margin:0 0 6px;color:#e0442e;">Danger zone</h3>
+                <p style="font-size:13px;color:var(--ink2,#6f6b65);margin:0 0 12px;">Remove every activity from your account. Uploaded files can be imported again afterwards.</p>
+                <div onClick="{{ openDanger }}" style="width:fit-content;padding:8px 16px;border-radius:8px;border:1px solid #e0442e;color:#e0442e;font-size:13px;font-weight:700;cursor:pointer;">Remove all activities…</div>
               </div>
             </div>
           </sc-if>
 
-          <sc-if value="{{ confirmDeleteOpen }}" hint-placeholder-val="{{ false }}">
-            <div onClick="{{ closeDeleteAll }}" style="position:fixed;inset:0;z-index:100;background:rgba(20,17,15,0.42);display:flex;align-items:center;justify-content:center;">
-              <div onClick="{{ stopP }}" style="width:420px;max-width:90%;background:var(--card,#fff);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:16px;">
-                <div style="font-size:16px;font-weight:700;color:var(--ink,#1b1a18);">Remove all activities?</div>
-                <div style="font-size:13px;color:var(--ink2,#6f6b65);line-height:1.5;">This will permanently remove all existing activities from your account, including their laps, streams, and tags. This cannot be undone. Do you want to proceed?</div>
-                <div style="display:flex;justify-content:flex-end;gap:8px;">
-                  <div onClick="{{ closeDeleteAll }}" style="padding:8px 16px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;cursor:pointer;">Cancel</div>
-                  <div onClick="{{ confirmDeleteAll }}" style="padding:8px 16px;border-radius:8px;border:none;background:#e0442e;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Remove all activities</div>
-                </div>
-              </div>
+          <sc-if value="{{ isWorkouts }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:20px;max-width:460px;">
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Workout matching</h3><div style="display:flex;flex-direction:column;gap:10px;">
+                <label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink,#1b1a18);"><input type="checkbox" checked="{{ renameOn }}" onChange="{{ toggleRename }}" style="margin-top:2px;"/><span>Rename matched activities to their workout's name<div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">Whenever an activity gets matched to a workout - on import, or when you accept a Scan-for-matches candidate - use the workout's name instead of the default.</div></span></label>
+                <label style="{{ appendStyle }}"><input type="checkbox" disabled="{{ renameOff }}" style="margin-top:2px;"/><span>Also append the date<div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">e.g. "Tempo run - 2026-06-15" instead of just "Tempo run".</div></span></label>
+                <label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink,#1b1a18);"><input type="checkbox" style="margin-top:2px;"/><span>Copy the workout's tags to matched activities<div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">Whenever an activity gets matched to a workout - on import, or when you accept a Scan-for-matches candidate - also apply the workout's tags to the activity.</div></span></label>
+              </div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Laps</h3><label style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--ink,#1b1a18);"><span>For activities matched to a workout, use</span><select style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;max-width:280px;"><option>Laps derived from the matched workout's steps</option><option>Original laps from the device/file</option></select><div style="font-size:12px;color:var(--ink3,#9a958d);">Applies whenever an activity gets newly matched to a workout - on import, or when you accept a Scan-for-matches candidate. Use "Regenerate from workout" on an activity's Laps tab to re-derive laps for one already matched.</div></label></div>
+              <div style="display:flex;align-items:center;"><div onClick="{{ doSave }}" style="align-self:flex-start;padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;width:fit-content;">Save changes</div><sc-if value="{{ savedShown }}" hint-placeholder-val="{{ false }}"><span style="margin-left:10px;font-size:13px;color:#2fa66a;">{{ savedText }}</span></sc-if></div>
             </div>
           </sc-if>
 
           <sc-if value="{{ isZone }}" hint-placeholder-val="{{ false }}">
             <div>
               <sc-if value="{{ isHr }}" hint-placeholder-val="{{ false }}">
-                <div style="border:1px solid var(--line,#e6e2dc);border-radius:12px;padding:18px;margin-bottom:24px;">
-                  <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:4px;">Recompute zones</div>
-                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:14px;">Generate all five zones from your physiology. Applying updates your profile's LTHR and max HR too.</div>
-                  <div style="display:flex;gap:4px;margin-bottom:10px;">
-                    <sc-for list="{{ hrMethods }}" as="m" hint-placeholder-count="3">
-                      <div onClick="{{ m.onClick }}" style="{{ m.style }}">{{ m.label }}</div>
-                    </sc-for>
+                <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;margin-bottom:20px;max-width:560px;">
+                  <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;color:var(--ink,#1b1a18);">Recompute zones</h3>
+                  <p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;margin-bottom:12px;">Generate a fresh 5-zone set from your heart-rate markers.</p>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                    <div><div style="font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">RESTING HR</div><input placeholder="45" value="46" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;width:90px;"/></div>
+                    <div><div style="font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">LTHR</div><input placeholder="155" value="155" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;width:90px;"/></div>
+                    <div><div style="font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">MAX HR</div><input placeholder="176" value="186" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;width:90px;"/></div>
+                    <div style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;cursor:pointer;">Generate</div>
                   </div>
-                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:14px;">{{ hrMethodBlurb }}</div>
-                  <div style="display:flex;gap:18px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;">
-                    <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">RESTING HR</label><input class="prefn" style="width:72px;" type="number" value="{{ hrRestingHr }}" onInput="{{ onHrResting }}" placeholder="45"/></div>
-                    <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">LTHR</label><input class="prefn" style="width:72px;" type="number" value="{{ hrLthr }}" onInput="{{ onHrLthr }}"/></div>
-                    <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">MAX HR</label><input class="prefn" style="width:72px;" type="number" value="{{ hrMaxHr }}" onInput="{{ onHrMaxHr }}"/></div>
-                  </div>
-                  <div onClick="{{ applyHrZones }}" style="display:inline-block;padding:9px 16px;border-radius:9px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Apply zones</div>
                 </div>
               </sc-if>
-              <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:14px;">Edit boundaries <span style="color:var(--ink2,#6f6b65);font-weight:600;">{{ zoneRefLabel }}</span></div>
-              <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:20px;">
-                <sc-for list="{{ zoneRows }}" as="z" hint-placeholder-count="5">
-                  <div style="{{ z.barStyle }}"></div>
+              <div style="font-size:13px;color:var(--ink3,#9a958d);margin-bottom:16px;">Reference threshold: <span style="font-family:'JetBrains Mono',monospace;">{{ zoneRef }}</span> {{ zoneUnit }}</div>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 80px 80px 140px;gap:8px 12px;font-size:13px;max-width:620px;">
+                <div style="color:var(--ink3,#9a958d);font-size:11px;font-weight:700;">Zone</div><div style="color:var(--ink3,#9a958d);font-size:11px;font-weight:700;">Low %</div><div style="color:var(--ink3,#9a958d);font-size:11px;font-weight:700;">High %</div><div style="color:var(--ink3,#9a958d);font-size:11px;font-weight:700;">Range</div>
+                <sc-for list="{{ zones }}" as="z" hint-placeholder-count="5">
+                  <input value="{{ z.name }}" style="border:none;border-top:1px solid var(--line,#e6e2dc);padding:8px 0;background:none;color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/>
+                  <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:6px;"><input value="{{ z.lo }}" style="width:60px;border:1px solid var(--line,#e6e2dc);border-radius:6px;padding:4px;background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></div>
+                  <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:6px;"><input value="{{ z.hi }}" style="width:60px;border:1px solid var(--line,#e6e2dc);border-radius:6px;padding:4px;background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></div>
+                  <div style="border-top:1px solid var(--line,#e6e2dc);padding:8px 0;font-family:'JetBrains Mono',monospace;color:var(--ink2,#6f6b65);">{{ z.range }}</div>
                 </sc-for>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 80px 80px 150px;gap:12px;padding:0 2px 9px;font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);">
-                <span>Zone</span><span style="text-align:center;">Low %</span><span style="text-align:center;">High %</span><span style="text-align:right;">Range</span>
-              </div>
-              <sc-for list="{{ zoneRows }}" as="z" hint-placeholder-count="5">
-                <div style="display:grid;grid-template-columns:1fr 80px 80px 150px;gap:12px;align-items:center;padding:7px 2px;border-top:1px solid var(--line,#e6e2dc);">
-                  <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                    <span style="width:11px;height:11px;border-radius:3px;background:{{ z.color }};flex-shrink:0;"></span>
-                    <input class="preft" type="text" value="{{ z.name }}" onInput="{{ z.onName }}"/>
+              <div style="margin-top:16px;"><div style="display:flex;align-items:center;"><div onClick="{{ doSave }}" style="align-self:flex-start;padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;width:fit-content;">Save zones</div><sc-if value="{{ savedShown }}" hint-placeholder-val="{{ false }}"><span style="margin-left:10px;font-size:13px;color:#2fa66a;">{{ savedText }}</span></sc-if></div></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isBest }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:24px;max-width:560px;">
+              <sc-for list="{{ bestSections }}" as="b" hint-placeholder-count="5">
+                <div style="display:flex;flex-direction:column;gap:8px;padding-bottom:20px;border-bottom:1px solid var(--line,#e6e2dc);">
+                  <h2 style="font-size:15px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">{{ b.title }}</h2>
+                  <p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;">{{ b.desc }}</p>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <sc-if value="{{ b.hasInput }}" hint-placeholder-val="{{ false }}"><input value="{{ b.value }}" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;width:90px;"/><span style="font-size:12px;color:var(--ink3,#9a958d);">{{ b.unit }}</span></sc-if>
+                    <div onClick="{{ b.run }}" style="{{ b.btnStyle }}">{{ b.btn }}</div>
                   </div>
-                  <input class="prefn" type="number" value="{{ z.lo }}" onInput="{{ z.onLo }}"/>
-                  <sc-if value="{{ z.hiClosed }}" hint-placeholder-val="{{ true }}"><input class="prefn" type="number" value="{{ z.hi }}" onInput="{{ z.onHi }}"/></sc-if>
-                  <sc-if value="{{ z.hiOpen }}" hint-placeholder-val="{{ false }}"><div style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:16px;color:var(--ink3,#9a958d);">∞</div></sc-if>
-                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-align:right;">{{ z.range }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isTags }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:16px;max-width:520px;">
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 4px;color:var(--ink,#1b1a18);">Tags</h3><p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;">Rename a tag to merge it into another tag of that name - every activity carrying either one ends up with just the merged tag. Deleting a tag removes it from every activity that carries it.</p></div>
+              <div style="display:flex;gap:8px;"><input placeholder="New tag name" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;flex:1;"/><div style="padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;opacity:0.4;">Create</div></div>
+              <div>
+                <sc-for list="{{ tagRows }}" as="t" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line,#e6e2dc);">
+                    <span style="{{ t.dot }}"></span>
+                    <div style="flex:1;min-width:0;"><span style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ t.name }}</span><sc-if value="{{ t.auto }}" hint-placeholder-val="{{ false }}"><span style="margin-left:8px;font-size:11px;font-weight:600;color:var(--ink3,#9a958d);">auto</span></sc-if></div>
+                    <span style="{{ t.count }}">{{ t.n }}</span>
+                    <div style="display:flex;gap:14px;"><span style="color:var(--ink2,#6f6b65);font-size:12px;font-weight:600;cursor:pointer;">Rename</span><span style="color:#e0442e;font-size:12px;font-weight:600;cursor:pointer;">Delete</span></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isRaces }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:24px;max-width:560px;">
+              <p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;">Add races from the Calendar view. Link a completed race to an activity to track your result automatically.</p>
+              <sc-for list="{{ raceGroups }}" as="g" hint-placeholder-count="2">
+                <div>
+                  <h3 style="font-size:13px;font-weight:700;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">{{ g.label }}</h3>
+                  <sc-for list="{{ g.races }}" as="r" hint-placeholder-count="2">
+                    <div style="{{ r.style }}">
+                      <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;font-size:14px;color:var(--ink,#1b1a18);">{{ r.name }}</div>
+                        <div style="font-size:12px;color:var(--ink3,#9a958d);">{{ r.meta }}</div>
+                        <sc-if value="{{ r.hasUrl }}" hint-placeholder-val="{{ false }}"><a href="#" style="font-size:12px;color:var(--ember,#ec4a26);margin-top:2px;display:block;">{{ r.host }}</a></sc-if>
+                        <sc-if value="{{ r.hasResults }}" hint-placeholder-val="{{ false }}"><a href="#" style="font-size:12px;color:var(--ember,#ec4a26);margin-top:2px;display:block;">Results ↗</a></sc-if>
+                      </div>
+                      <sc-if value="{{ r.noResult }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:var(--ink3,#9a958d);font-style:italic;">no result</span></sc-if>
+                      <sc-if value="{{ r.linked }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:#2fa66a;font-weight:600;">linked</span></sc-if>
+                      <div style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;cursor:pointer;">Edit</div><div style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;cursor:pointer;color:#e0442e;">Delete</div>
+                    </div>
+                  </sc-for>
                 </div>
               </sc-for>
             </div>
           </sc-if>
 
           <sc-if value="{{ isSharing }}" hint-placeholder-val="{{ false }}">
-            <div style="display:flex;flex-direction:column;gap:18px;">
-              <!-- MY COACHES (read-only: filtered from the same shares list below) -->
-              <div>
-                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:10px;">My coaches</div>
-                <sc-if value="{{ hasCoaches }}" hint-placeholder-val="{{ true }}">
-                  <div style="display:flex;flex-direction:column;gap:9px;">
-                    <sc-for list="{{ coachesView }}" as="c" hint-placeholder-count="1">
-                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
-                        <div>
-                          <div style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ c.name }}</div>
-                          <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ c.handle }} · {{ c.statusText }}</div>
-                        </div>
-                        <div onClick="{{ c.onRevoke }}" style="font-size:12px;font-weight:600;color:#e0442e;cursor:pointer;">Revoke</div>
-                      </div>
-                    </sc-for>
-                  </div>
-                </sc-if>
-                <sc-if value="{{ noCoaches }}" hint-placeholder-val="{{ false }}">
-                  <div style="font-size:13px;color:var(--ink3,#9a958d);">No one has coach access yet.</div>
-                </sc-if>
+            <div style="display:flex;flex-direction:column;gap:28px;max-width:520px;">
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">My coaches</h3><sc-for list="{{ coachShares }}" as="s" hint-placeholder-count="1"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);"><div><div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;color:var(--ink,#1b1a18);">{{ s.name }}<sc-if value="{{ s.ai }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:700;color:var(--ink3,#9a958d);border:1px solid var(--line,#e6e2dc);border-radius:4px;padding:1px 5px;">AI</span></sc-if></div><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ s.meta }}</div></div><div style="display:flex;gap:8px;align-items:center;"><span style="{{ s.viewer }}">Viewer</span><span style="{{ s.coach }}">Coach</span><span style="color:#e0442e;font-size:12px;font-weight:600;cursor:pointer;">Revoke</span></div></div></sc-for></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Invite someone</h3><div style="display:flex;gap:8px;flex-wrap:wrap;"><input placeholder="Email or @handle" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;flex:1;min-width:160px;"/><select style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"><option>Viewer</option><option>Coach</option></select><div style="padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Invite</div></div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Add an AI coach</h3><p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;margin-bottom:12px;">Creates a coach account for an AI assistant like Claude.ai to connect to over MCP, separate from your own login. It can view your training data, schedule or create workouts, and comment on activities, the same as a human coach.</p>
+                <sc-if value="{{ aiNotCreated }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:8px;"><input placeholder="Name, e.g. Claude.ai" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;flex:1;"/><div onClick="{{ createAi }}" style="padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Create</div></div></sc-if>
+                <sc-if value="{{ aiCreated }}" hint-placeholder-val="{{ false }}"><div style="border:1px solid #2fa66a;border-radius:10px;padding:16px;background:var(--elev,#faf9f7);"><div style="font-weight:700;font-size:14px;color:#2fa66a;margin-bottom:8px;">Claude.ai created — copy this now, you won't see it again</div><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">Login — use this if an MCP client's setup asks you to sign in (e.g. Claude.ai's OAuth step)</div><div style="padding:10px 12px;border-radius:8px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);font-size:13px;word-break:break-all;font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">vc-7f3a@coach.cadence.app<br/>q8W-2mZt-Lp4r-x9Hc</div><div style="display:flex;gap:8px;margin-top:10px;"><div style="font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--line,#e6e2dc);color:var(--ink,#1b1a18);cursor:pointer;">Copy</div><div onClick="{{ dismissAi }}" style="font-size:12px;font-weight:600;padding:6px 12px;color:var(--ink3,#9a958d);cursor:pointer;">Done</div></div></div></sc-if>
               </div>
-
-              <div>
-                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:12px;">Invite someone</div>
-                <div style="display:flex;gap:9px;">
-                  <input class="preft" type="text" value="{{ inviteValue }}" onInput="{{ onInvite }}" placeholder="Email or @handle" style="flex:1;"/>
-                  <select class="preft" value="{{ inviteRoleValue }}" onChange="{{ onInviteRole }}" style="width:auto;">
-                    <option value="viewer">Viewer</option>
-                    <option value="coach">Coach</option>
-                  </select>
-                  <div onClick="{{ sendInvite }}" style="{{ inviteBtnStyle }}">Invite</div>
-                </div>
-              </div>
-
-              <div>
-                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:10px;">People with access</div>
-                <sc-if value="{{ hasShares }}" hint-placeholder-val="{{ true }}">
-                  <div style="display:flex;flex-direction:column;gap:0;">
-                    <sc-for list="{{ sharesView }}" as="p" hint-placeholder-count="2">
-                      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
-                        <div>
-                          <div style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ p.name }}</div>
-                          <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ p.handle }} · {{ p.statusText }}</div>
-                        </div>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                          <div onClick="{{ p.toViewer }}" style="{{ p.viewerBtnStyle }}">Viewer</div>
-                          <div onClick="{{ p.toCoach }}" style="{{ p.coachBtnStyle }}">Coach</div>
-                          <div onClick="{{ p.onRevoke }}" style="font-size:12px;font-weight:600;color:#e0442e;cursor:pointer;margin-left:4px;">Revoke</div>
-                        </div>
-                      </div>
-                    </sc-for>
-                  </div>
-                </sc-if>
-                <sc-if value="{{ noShares }}" hint-placeholder-val="{{ false }}">
-                  <div style="font-size:13px;color:var(--ink3,#9a958d);">You haven't shared your training with anyone yet.</div>
-                </sc-if>
-              </div>
-            </div>
-          </sc-if>
-
-          <sc-if value="{{ isBestEfforts }}" hint-placeholder-val="{{ false }}">
-            <div style="display:flex;flex-direction:column;gap:28px;">
-              <div>
-                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:10px;">Entries per window</div>
-                <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);margin-bottom:12px;">How many top efforts to track per time window (e.g. top {{ topNLabel }} for 5-minute power). Applied on the next upload and after a recompute.</div>
-                <div onClick="{{ toggleAllEfforts }}" style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink2,#6f6b65);cursor:pointer;margin-bottom:12px;">
-                  <div style="{{ allEffortsBoxStyle }}"><sc-if value="{{ allEfforts }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
-                  Store best efforts for every activity (no limit)
-                </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <input class="prefn" style="width:80px;" type="number" min="1" max="50" value="{{ topN }}" onInput="{{ onTopN }}"/>
-                  <div onClick="{{ saveBestEfforts }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Save</div>
-                  <div onClick="{{ recomputeAll }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Save &amp; recompute all</div>
-                </div>
-              </div>
-
-              <div>
-                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:6px;">Recompute best efforts</div>
-                <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);margin-bottom:14px;">Recalculates best efforts from your stored activity records. Use this after changing the entries-per-window setting, or to fix records that were computed from bad data.</div>
-                <div style="display:flex;flex-direction:column;gap:8px;">
-                  <sc-for list="{{ beKinds }}" as="k" hint-placeholder-count="5">
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:9px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);">
-                      <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ k.label }}</span>
-                      <div onClick="{{ k.onClick }}" style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">{{ k.btnLabel }}</div>
-                    </div>
-                  </sc-for>
-                </div>
-              </div>
-
-              <div>
-                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:10px;">Threshold history</div>
-                <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);margin-bottom:14px;">FTP, critical running power, and threshold pace are each the best qualifying effort within a trailing window, so they can go down as an old best effort ages out, not just up. A candidate effort that deviates too far from your current value (e.g. corrupt power-meter data) is excluded automatically.</div>
-                <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
-                  <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">WINDOW (DAYS)</label><input class="prefn" style="width:80px;" type="number" value="{{ thrWindowDays }}" onInput="{{ onThrWindow }}"/></div>
-                  <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">SANITY LIMIT (%)</label><input class="prefn" style="width:80px;" type="number" value="{{ thrSanityPct }}" onInput="{{ onThrSanity }}"/></div>
-                  <div onClick="{{ saveThrSettings }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Save</div>
-                </div>
-                <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:18px;">Changing these doesn't retroactively update your history - rebuild a field below to replay it under the new settings.</div>
-
-                <div style="margin-bottom:14px;">
-                  <div onClick="{{ regenerateAll }}" style="display:inline-block;padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">{{ regenerateAllLabel }}</div>
-                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:6px;">Rebuilds all three fields from scratch, one after another. Useful after a bulk import, since the rolling-window algorithm replays activities oldest-first and a bulk import doesn't guarantee that order.</div>
-                </div>
-
-                <div style="display:flex;flex-direction:column;gap:8px;">
-                  <sc-for list="{{ thrFields }}" as="f" hint-placeholder-count="3">
-                    <div style="display:flex;flex-direction:column;gap:6px;padding:10px 14px;border-radius:9px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);">
-                      <div style="display:flex;align-items:center;justify-content:space-between;">
-                        <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ f.label }}</span>
-                        <div onClick="{{ f.onRebuild }}" style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">{{ f.btnLabel }}</div>
-                      </div>
-                      <sc-if value="{{ f.running }}" hint-placeholder-val="{{ false }}">
-                        <div style="display:flex;flex-direction:column;gap:6px;">
-                          <div style="height:6px;border-radius:3px;background:var(--line,#e6e2dc);overflow:hidden;"><div style="{{ f.barStyle }}"></div></div>
-                          <span style="font-size:12px;color:var(--ink3,#9a958d);">{{ f.progressLabel }}</span>
-                        </div>
-                      </sc-if>
-                      <sc-if value="{{ f.hasResult }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ f.resultLabel }}</div></sc-if>
-                    </div>
-                  </sc-for>
-                </div>
-              </div>
-            </div>
-          </sc-if>
-
-          <sc-if value="{{ isRaces }}" hint-placeholder-val="{{ false }}">
-            <div style="display:flex;flex-direction:column;gap:22px;">
-              <div style="font-size:12.5px;color:var(--ink3,#9a958d);">Add races from the Calendar view. Link a completed race to an activity to track your result automatically.</div>
-              <div>
-                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:4px;">Upcoming</div>
-                <sc-for list="{{ racesUpcoming }}" as="r" hint-placeholder-count="1">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
-                    <div><div style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ r.name }}</div><div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ r.meta }}</div></div>
-                  </div>
-                </sc-for>
-              </div>
-              <div>
-                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:4px;">Past</div>
-                <sc-for list="{{ racesPast }}" as="r" hint-placeholder-count="1">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
-                    <div><div style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ r.name }}</div><div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ r.meta }}</div></div>
-                  </div>
-                </sc-for>
-              </div>
-            </div>
-          </sc-if>
-
-          <sc-if value="{{ isWorkoutMatching }}" hint-placeholder-val="{{ false }}">
-            <div style="display:flex;flex-direction:column;gap:28px;">
-              <div>
-                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:12px;">Workout matching</div>
-                <div style="display:flex;flex-direction:column;gap:10px;">
-                  <div onClick="{{ toggleRenameMatched }}" style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink2,#6f6b65);cursor:pointer;">
-                    <div style="{{ renameMatchedBoxStyle }}"><sc-if value="{{ renameMatched }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
-                    <span>
-                      <span style="color:var(--ink,#1b1a18);font-weight:600;">Rename matched activities to their workout's name</span>
-                      <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;font-weight:400;">Whenever an activity gets matched to a workout — on import, or when you accept a Scan-for-matches candidate — use the workout's name instead of the default.</div>
-                    </span>
-                  </div>
-                  <div onClick="{{ toggleAppendDate }}" style="{{ appendDateRowStyle }}">
-                    <div style="{{ appendDateBoxStyle }}"><sc-if value="{{ appendDate }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
-                    <span>
-                      <span style="color:var(--ink,#1b1a18);font-weight:600;">Also append the date</span>
-                      <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;font-weight:400;">e.g. "Tempo run - 2026-06-15" instead of just "Tempo run".</div>
-                    </span>
-                  </div>
-                  <div onClick="{{ toggleCopyTags }}" style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink2,#6f6b65);cursor:pointer;">
-                    <div style="{{ copyTagsBoxStyle }}"><sc-if value="{{ copyTags }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
-                    <span>
-                      <span style="color:var(--ink,#1b1a18);font-weight:600;">Copy the workout's tags to matched activities</span>
-                      <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;font-weight:400;">Whenever an activity gets matched to a workout — on import, or when you accept a Scan-for-matches candidate — also apply the workout's tags to the activity.</div>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:12px;">Laps</div>
-                <div style="font-size:13px;color:var(--ink2,#6f6b65);margin-bottom:8px;">For activities matched to a workout, use</div>
-                <select class="preft" value="{{ lapSource }}" onChange="{{ onLapSource }}" style="width:auto;max-width:300px;padding:6px 8px;border-radius:6px;font-weight:400;">
-                  <option value="matched_workout">Laps derived from the matched workout's steps</option>
-                  <option value="original">Original laps from the device/file</option>
-                </select>
-                <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:8px;line-height:1.5;">Applies whenever an activity gets newly matched to a workout — on import, or when you accept a Scan-for-matches candidate. Use "Regenerate from workout" on an activity's Laps tab to re-derive laps for one already matched.</div>
-              </div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">People with access</h3><sc-for list="{{ allShares }}" as="s" hint-placeholder-count="3"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);"><div><div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;color:var(--ink,#1b1a18);">{{ s.name }}<sc-if value="{{ s.ai }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:700;color:var(--ink3,#9a958d);border:1px solid var(--line,#e6e2dc);border-radius:4px;padding:1px 5px;">AI</span></sc-if></div><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ s.meta }}</div></div><div style="display:flex;gap:8px;align-items:center;"><span style="{{ s.viewer }}">Viewer</span><span style="{{ s.coach }}">Coach</span><span style="color:#e0442e;font-size:12px;font-weight:600;cursor:pointer;">Revoke</span></div></div></sc-for></div>
             </div>
           </sc-if>
 
           <sc-if value="{{ isTokens }}" hint-placeholder-val="{{ false }}">
-            <div style="display:flex;flex-direction:column;gap:18px;">
-              <div style="font-size:12.5px;line-height:1.5;color:var(--ink2,#6f6b65);">Personal access tokens let you script against the API as yourself. Scope each one to only what it needs.</div>
+            <div style="display:flex;flex-direction:column;gap:24px;max-width:520px;">
+              <p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;">Personal access tokens let you script against the API as yourself. Scope each one to only what it needs.</p>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Generate token</h3><div style="display:flex;flex-direction:column;gap:12px;"><input placeholder="Name, e.g. Home server sync" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"/><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;"><sc-for list="{{ scopes }}" as="sc" hint-placeholder-count="4"><label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink,#1b1a18);"><input type="checkbox"/>{{ sc }}</label></sc-for></div><div style="padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;opacity:0.4;width:fit-content;">Generate</div></div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Active tokens</h3><sc-for list="{{ tokens }}" as="t" hint-placeholder-count="2"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);"><div><div style="font-weight:600;font-size:14px;color:var(--ink,#1b1a18);">{{ t.name }}</div><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ t.meta }}</div></div><div style="display:flex;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Rotate</span><span style="font-size:12px;font-weight:600;color:#e0442e;cursor:pointer;">Revoke</span></div></div></sc-for></div>
+            </div>
+          </sc-if>
 
-              <sc-if value="{{ revealed }}" hint-placeholder-val="{{ false }}">
-                <div style="border:1px solid rgba(47,166,106,0.4);background:rgba(47,166,106,0.07);border-radius:12px;padding:14px 16px;">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;">
-                    <div style="display:flex;align-items:center;gap:8px;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#2fa66a" stroke-width="2.2"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg><span style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">Token created — copy it now, you won't see it again</span></div>
-                    <div onClick="{{ dismissReveal }}" style="font-size:11px;font-weight:600;color:var(--ink3,#9a958d);cursor:pointer;">Done</div>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <div style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink,#1b1a18);background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:9px 11px;overflow-x:auto;white-space:nowrap;">{{ revealSecret }}</div>
-                    <div onClick="{{ copySecret }}" style="flex-shrink:0;display:flex;align-items:center;gap:6px;padding:9px 13px;border-radius:8px;background:var(--ink,#1b1a18);color:var(--card,#fff);font-size:12px;font-weight:600;cursor:pointer;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg>Copy</div>
-                  </div>
-                </div>
-              </sc-if>
-
-              <div style="border:1px solid var(--line,#e6e2dc);border-radius:12px;padding:16px;background:var(--elev,#faf9f7);">
-                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:12px;">Generate a token</div>
-                <div style="display:flex;flex-direction:column;gap:13px;">
-                  <div>
-                    <label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Name</label>
-                    <input class="preft" type="text" value="{{ tokenName }}" onInput="{{ onTokenName }}" placeholder="e.g. Home server sync"/>
-                  </div>
-                  <div>
-                    <label style="display:block;font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:7px;">Scopes</label>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
-                      <sc-for list="{{ scopeOptions }}" as="s" hint-placeholder-count="4">
-                        <div onClick="{{ s.onClick }}" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--line,#e6e2dc);border-radius:9px;background:var(--card,#fff);cursor:pointer;">
-                          <div style="{{ s.boxStyle }}"><sc-if value="{{ s.checked }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.6"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg></sc-if></div>
-                          <div style="min-width:0;"><div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink,#1b1a18);">{{ s.key }}</div><div style="font-size:10.5px;color:var(--ink3,#9a958d);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ s.label }}</div></div>
-                        </div>
-                      </sc-for>
-                    </div>
-                  </div>
-                  <div onClick="{{ createToken }}" style="{{ createBtnStyle }}">Generate</div>
-                </div>
+          <sc-if value="{{ isExport }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:28px;max-width:480px;">
+              <div style="display:flex;flex-direction:column;gap:16px;">
+                <div><h3 style="margin:0 0 4px;font-size:16px;color:var(--ink,#1b1a18);">Export your data</h3><p style="margin:0;color:var(--ink2,#6f6b65);font-size:14px;line-height:1.5;">Download all of your activities (including recorded streams), races, workouts, and equipment as a single compressed JSON file (.json.gz). Optionally narrow it to a single sport.</p></div>
+                <div style="display:flex;gap:10px;align-items:center;"><select style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-size:14px;"><option>All sports</option><option>Bike</option><option>Run</option><option>Swim</option><option>Walk</option><option>Row</option></select><div onClick="{{ startExport }}" style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Generate export</div></div>
               </div>
-
-              <div>
-                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);margin-bottom:10px;">Active tokens</div>
-                <sc-if value="{{ hasTokens }}" hint-placeholder-val="{{ true }}">
-                  <div style="display:flex;flex-direction:column;gap:9px;">
-                    <sc-for list="{{ tokensView }}" as="t" hint-placeholder-count="2">
-                      <div style="{{ t.rowStyle }}">
-                        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-                          <div style="min-width:0;">
-                            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
-                              <span style="font-size:13.5px;font-weight:700;color:var(--ink,#1b1a18);">{{ t.name }}</span>
-                              <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink3,#9a958d);">{{ t.mask }}</span>
-                            </div>
-                            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ember,#ec4a26);margin-top:6px;">{{ t.scopeText }}</div>
-                          </div>
-                        </div>
-                        <div style="display:flex;gap:14px;margin-top:9px;">
-                          <div onClick="{{ t.onRotate }}" style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Rotate</div>
-                          <div onClick="{{ t.onRevoke }}" style="font-size:12px;font-weight:600;color:#e0442e;cursor:pointer;">Revoke</div>
-                        </div>
-                      </div>
-                    </sc-for>
-                  </div>
-                </sc-if>
-                <sc-if value="{{ hasTokens }}" hint-placeholder-val="{{ false }}"></sc-if>
+              <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:20px;">
+                <h3 style="margin:0 0 4px;font-size:16px;color:var(--ink,#1b1a18);">Import your data</h3>
+                <p style="margin:0 0 12px;color:var(--ink2,#6f6b65);font-size:14px;line-height:1.5;">Restore activities, races, workouts, and equipment from a previously-exported .json.gz file. This always creates new entries - importing the same file twice will create duplicates.</p>
+                <div style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:14px;font-weight:600;cursor:pointer;width:fit-content;">Choose file to import</div>
               </div>
             </div>
           </sc-if>
         </div>
       </div>
 
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 22px;border-top:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);">
-        <div style="font-size:12px;color:var(--ink3,#9a958d);">Zones recompute automatically from your thresholds</div>
-        <div style="display:flex;gap:9px;">
-          <div onClick="{{ closePrefs }}" style="padding:9px 16px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
-          <div onClick="{{ savePrefs }}" style="display:flex;align-items:center;gap:7px;padding:9px 18px;border-radius:9px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,8 6.5,11.5 13,4.5"></polyline></svg>Save preferences</div>
+      <sc-if value="{{ dangerOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeDanger }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+          <div onClick="{{ stop }}" style="background:var(--card,#fff);backdrop-filter:blur(14px);border-radius:14px;padding:24px;width:420px;max-width:calc(100% - 32px);display:flex;flex-direction:column;gap:16px;">
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Remove all activities?</h2>
+            <p style="font-size:13px;color:var(--ink2,#6f6b65);margin:0;line-height:1.5;">This will permanently remove all existing activities from your account, including their laps, streams, and tags. This cannot be undone. Do you want to proceed?</p>
+            <div style="display:flex;justify-content:flex-end;gap:8px;"><div onClick="{{ closeDanger }}" style="border:1px solid var(--line,#e6e2dc);border-radius:8px;color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;padding:8px 16px;cursor:pointer;">Cancel</div><div onClick="{{ closeDanger }}" style="border-radius:8px;background:#e0442e;color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Remove all activities</div></div>
+          </div>
         </div>
-      </div>
+      </sc-if>
+
+      <sc-if value="{{ exportOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeExport }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+          <div onClick="{{ stop }}" style="background:var(--card,#fff);backdrop-filter:blur(14px);border-radius:14px;padding:24px;width:420px;max-width:calc(100% - 32px);display:flex;flex-direction:column;gap:14px;">
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Exporting your data</h2>
+            <div style="font-size:13px;color:var(--ink2,#6f6b65);">{{ exportStep }}</div>
+            <div style="height:6px;border-radius:4px;background:var(--elev,#faf9f7);overflow:hidden;"><div style="{{ exportBar }}"></div></div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ exportCount }}</div>
+            <sc-if value="{{ exportReady }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:12px;"><div style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Download export</div><div onClick="{{ closeExport }}" style="border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);cursor:pointer;">Close</div></div></sc-if>
+          </div>
+        </div>
+      </sc-if>
     </div>
   </div>
-</sc-if>
+</div>
+</div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:240,&quot;height&quot;:48}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900},&quot;initialTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;profile&quot;,&quot;workouts&quot;,&quot;heart_rate&quot;,&quot;bike_power&quot;,&quot;run_power&quot;,&quot;pace&quot;,&quot;best_efforts&quot;,&quot;tags&quot;,&quot;races&quot;,&quot;sharing&quot;,&quot;tokens&quot;,&quot;export&quot;],&quot;default&quot;:&quot;profile&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 class Component extends DCLogic {
-  state = {
-    prefsOpen: false, prefsTab: 'profile',
-    confirmDeleteOpen: false,
-    revealed: null,
-    tokenForm: { name: '', scopes: { 'activities:read': true, 'activities:write': false, 'workouts:write': false, 'gear:write': false } },
-    tokens: [
-      { id: 't1', name: 'Home server sync', prefix: 'cad_pat_7Qda', scopes: ['activities:read'] },
-      { id: 't2', name: 'Strava bridge', prefix: 'cad_pat_M2pK', scopes: ['activities:read', 'activities:write'] },
-    ],
-    shareForm: { invite: '', role: 'viewer' },
-    shares: [
-      { id: 's1', name: 'Mara Køhl', handle: '@marakohl', role: 'coach', status: 'active', since: '2026-01-08' },
-      { id: 's2', name: 'Dr. Lena Voss', handle: '@lenavoss.physio', role: 'viewer', status: 'active', since: '2026-03-21' },
-    ],
-    hrGen: { method: 'coggan', restingHr: '', lthr: '155', maxHr: '186' },
-    bestEfforts: { allActivities: false, topN: 10, recomputing: null },
-    thresholdHistory: {
-      windowDays: 112, sanityPct: 30,
-      fields: {
-        ftp: { running: false, current: 0, total: 0, result: null },
-        critical_run_power: { running: false, current: 0, total: 0, result: null },
-        threshold_pace: { running: false, current: 0, total: 0, result: null },
-      },
-    },
-    thresholdRegenStep: null,
-    races: [
-      { id: 'r1', name: 'City Marathon', date: '2026-10-11', sport: 'Run', distanceKm: 42.2, goalTime: '3:15:00', resultTime: null, when: 'upcoming' },
-      { id: 'r2', name: 'Half Iron Lakeside', date: '2026-05-03', sport: 'Multisport', distanceKm: null, goalTime: '5:10:00', resultTime: '5:07:42', when: 'past' },
-    ],
-    // WorkoutsTab.tsx's AthleteUpdate fields, verbatim naming (rename_matched_activities,
-    // append_match_date_to_name, copy_matched_workout_tags, lap_source).
-    workoutMatching: { renameMatched: false, appendDate: false, copyTags: false, lapSource: 'matched_workout' },
-    prefs: { name: 'Neil Goodgame', age: 34, ftp: 265, cp: 285, thrPace: '4:00', lthr: 155, maxHr: 186 },
-    zones: {
-      hr: [
-        { name: 'Z1 Recovery', lo: 0, hi: 80, color: '#8b95a1' },
-        { name: 'Z2 Aerobic', lo: 81, hi: 89, color: '#3d7fd6' },
-        { name: 'Z3 Tempo', lo: 90, hi: 93, color: '#2fa66a' },
-        { name: 'Z4 Threshold', lo: 94, hi: 99, color: '#f0a02e' },
-        { name: 'Z5 VO2 Max', lo: 100, hi: null, color: '#e0442e' },
-      ],
-      bike: [
-        { name: 'Z1 Active Recovery', lo: 0, hi: 55, color: '#8b95a1' },
-        { name: 'Z2 Endurance', lo: 56, hi: 75, color: '#3d7fd6' },
-        { name: 'Z3 Tempo', lo: 76, hi: 90, color: '#2fa66a' },
-        { name: 'Z4 Threshold', lo: 91, hi: 105, color: '#f0a02e' },
-        { name: 'Z5 VO2 Max', lo: 106, hi: null, color: '#e0442e' },
-      ],
-      run: [
-        { name: 'Z1 Easy', lo: 0, hi: 80, color: '#8b95a1' },
-        { name: 'Z2 Moderate', lo: 81, hi: 90, color: '#3d7fd6' },
-        { name: 'Z3 Threshold', lo: 91, hi: 100, color: '#f0a02e' },
-        { name: 'Z4 Interval', lo: 101, hi: 115, color: '#ec4a26' },
-        { name: 'Z5 Repetition', lo: 116, hi: null, color: '#9a6ad0' },
-      ],
-      pace: [
-        { name: 'Z1 Easy', lo: 0, hi: 76, color: '#8b95a1' },
-        { name: 'Z2 Endurance', lo: 77, hi: 87, color: '#3d7fd6' },
-        { name: 'Z3 Tempo', lo: 88, hi: 95, color: '#2fa66a' },
-        { name: 'Z4 Threshold', lo: 96, hi: 102, color: '#f0a02e' },
-        { name: 'Z5 Interval', lo: 103, hi: null, color: '#e0442e' },
-      ],
-    },
-  };
+  state = { theme: 'lab', tab: this.props.initialTab || 'profile', saved: false, rename: true, danger: false, ai: false, exp: null, bestRun: {} };
 
-  TODAY = '2026-06-15';
-  scopeList = [
-    ['activities:read', 'Read activities & streams'],
-    ['activities:write', 'Upload & edit activities'],
-    ['workouts:write', 'Create & edit workouts'],
-    ['gear:write', 'Manage gear'],
-  ];
-
-  genStr(n) { const c = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; let s = ''; for (let i = 0; i < n; i++) s += c[Math.floor(Math.random() * c.length)]; return s; }
-  makeSecret() { const prefix = 'cad_pat_' + this.genStr(4); return { prefix, secret: prefix + this.genStr(28) }; }
-
-  setTokenName(e) { const v = e.target.value; this.setState(s => ({ tokenForm: { ...s.tokenForm, name: v } })); }
-  toggleScope(key) { this.setState(s => ({ tokenForm: { ...s.tokenForm, scopes: { ...s.tokenForm.scopes, [key]: !s.tokenForm.scopes[key] } } })); }
-  createToken() {
-    const f = this.state.tokenForm;
-    const scopes = this.scopeList.map(x => x[0]).filter(k => f.scopes[k]);
-    if (!f.name.trim() || scopes.length === 0) return;
-    const { prefix, secret } = this.makeSecret();
-    const tok = { id: 'tok_' + this.genStr(6), name: f.name.trim(), prefix, scopes };
-    this.setState(s => ({
-      tokens: [tok, ...s.tokens],
-      tokenForm: { ...s.tokenForm, name: '', scopes: { 'activities:read': false, 'activities:write': false, 'workouts:write': false, 'gear:write': false } },
-      revealed: { secret, name: tok.name },
-    }));
-  }
-  rotateToken(id) {
-    const { prefix, secret } = this.makeSecret();
-    let name = '';
-    this.setState(s => ({
-      tokens: s.tokens.map(t => { if (t.id === id) { name = t.name; return { ...t, prefix }; } return t; }),
-      revealed: { secret, name },
-    }));
-  }
-  revokeToken(id) { this.setState(s => ({ tokens: s.tokens.filter(t => t.id !== id) })); }
-  dismissReveal() { this.setState({ revealed: null }); }
-  copySecret() { try { navigator.clipboard.writeText(this.state.revealed.secret); } catch (e) {} }
-
-  openDeleteAll() { this.setState({ confirmDeleteOpen: true }); }
-  closeDeleteAll() { this.setState({ confirmDeleteOpen: false }); }
-  confirmDeleteAll() { this.setState({ confirmDeleteOpen: false }); }
-
-  setInvite(e) { const v = e.target.value; this.setState(s => ({ shareForm: { ...s.shareForm, invite: v } })); }
-  setInviteRole(r) { this.setState(s => ({ shareForm: { ...s.shareForm, role: r } })); }
-  sendInvite() {
-    const f = this.state.shareForm;
-    const v = f.invite.trim();
-    if (!v) return;
-    const handle = v.startsWith('@') ? v : '@' + v.split('@')[0];
-    const name = v.replace(/^@/, '').split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const grant = { id: 'shr_' + this.genStr(6), name, handle, role: f.role, status: 'pending', since: this.TODAY };
-    this.setState(s => ({ shares: [...s.shares, grant], shareForm: { ...s.shareForm, invite: '' } }));
-  }
-  setShareRole(id, r) { this.setState(s => ({ shares: s.shares.map(x => x.id === id ? { ...x, role: r } : x) })); }
-  revokeShare(id) { this.setState(s => ({ shares: s.shares.filter(x => x.id !== id) })); }
-
-  HR_METHODS = {
-    max_hr: { label: '% of max HR', blurb: 'Zones as a percentage of maximum heart rate (Fox 1971 / Garmin default).' },
-    karvonen: { label: 'Karvonen', blurb: 'Zones as a percentage of heart rate reserve (max HR − resting HR).' },
-    coggan: { label: 'Coggan', blurb: 'Zones anchored to lactate threshold heart rate (68/83/94/105%).' },
-  };
-  setHrMethod(m) { this.setState(s => ({ hrGen: { ...s.hrGen, method: m } })); }
-  onHrField(k) { return (e) => { const v = e.target.value; this.setState(s => ({ hrGen: { ...s.hrGen, [k]: v } })); }; }
-  applyHrZones() {
-    const lthr = parseInt(this.state.hrGen.lthr, 10) || this.state.prefs.lthr;
-    const maxHr = parseInt(this.state.hrGen.maxHr, 10) || this.state.prefs.maxHr;
-    this.setState(s => ({ prefs: { ...s.prefs, lthr, maxHr } }));
-  }
-
-  toggleAllEfforts() { this.setState(s => ({ bestEfforts: { ...s.bestEfforts, allActivities: !s.bestEfforts.allActivities } })); }
-  onTopN(e) { const v = Math.max(1, Math.min(50, Number(e.target.value) || 1)); this.setState(s => ({ bestEfforts: { ...s.bestEfforts, topN: v } })); }
-  saveBestEfforts() { }
-  recomputeBestEfforts(kind) {
-    this.setState(s => ({ bestEfforts: { ...s.bestEfforts, recomputing: kind || 'all' } }));
-    clearTimeout(this._reTt);
-    this._reTt = setTimeout(() => this.setState(s => ({ bestEfforts: { ...s.bestEfforts, recomputing: null } })), 900);
-  }
-
-  // ---- threshold history (BestEffortsTab.tsx's "Threshold history" section) - the real
-  // activity totals/rebuilt-change counts from the account this feature was verified against,
-  // so the demo numbers aren't arbitrary.
-  THRESHOLD_FIELD_SPECS = {
-    ftp: { label: 'FTP', total: 731, result: 29 },
-    critical_run_power: { label: 'Critical running power', total: 1044, result: 33 },
-    threshold_pace: { label: 'Threshold pace', total: 1044, result: 38 },
-  };
-  onThrSetting(k) { return (e) => { const v = Math.max(1, Number(e.target.value) || 1); this.setState(s => ({ thresholdHistory: { ...s.thresholdHistory, [k]: v } })); }; }
-  saveThrSettings() { }
-
-  startFieldRebuild(key, onDone) {
-    const spec = this.THRESHOLD_FIELD_SPECS[key];
-    this.setState(s => ({ thresholdHistory: { ...s.thresholdHistory, fields: { ...s.thresholdHistory.fields, [key]: { running: true, current: 0, total: spec.total, result: null } } } }));
-    const steps = 10;
-    let tick = 0;
-    const iv = setInterval(() => {
-      tick++;
-      if (tick >= steps) {
-        clearInterval(iv);
-        this.setState(s => ({ thresholdHistory: { ...s.thresholdHistory, fields: { ...s.thresholdHistory.fields, [key]: { running: false, current: spec.total, total: spec.total, result: spec.result } } } }));
-        if (onDone) onDone();
-        return;
-      }
-      const current = Math.round(spec.total * (tick / steps));
-      this.setState(s => ({ thresholdHistory: { ...s.thresholdHistory, fields: { ...s.thresholdHistory.fields, [key]: { ...s.thresholdHistory.fields[key], current } } } }));
-    }, 130);
-  }
-
-  regenerateAllThresholds() {
-    const order = ['ftp', 'critical_run_power', 'threshold_pace'];
-    const runNext = (i) => {
-      if (i >= order.length) { this.setState({ thresholdRegenStep: null }); return; }
-      this.setState({ thresholdRegenStep: i });
-      this.startFieldRebuild(order[i], () => runNext(i + 1));
-    };
-    runNext(0);
-  }
-
-  paceToSec(str) { const p = String(str).split(':').map(Number); return p.length === 2 ? p[0] * 60 + p[1] : (parseFloat(str) || 0); }
-  secToPace(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return m + ':' + String(s).padStart(2, '0'); }
-
-  onPref(k) { return (e) => { const raw = e.target.value; const val = (k === 'name' || k === 'thrPace') ? raw : (raw === '' ? '' : (parseFloat(raw) || 0)); this.setState(s => ({ prefs: { ...s.prefs, [k]: val } })); }; }
-  onZone(type, idx, field) { return (e) => { const raw = e.target.value; const val = field === 'name' ? raw : (raw === '' ? 0 : (parseFloat(raw) || 0)); this.setState(s => ({ zones: { ...s.zones, [type]: s.zones[type].map((z, i) => i === idx ? { ...z, [field]: val } : z) } })); }; }
-
-  computeZone(type) {
-    const p = this.state.prefs;
-    const zs = this.state.zones[type];
-    const base = (type === 'hr' ? +p.lthr : type === 'bike' ? +p.ftp : type === 'run' ? +p.cp : this.paceToSec(p.thrPace)) || 0;
-    const unit = type === 'hr' ? ' bpm' : type === 'pace' ? ' /km' : ' w';
-    const refLabel = type === 'hr' ? 'as % of LTHR (' + p.lthr + ' bpm)' : type === 'bike' ? 'as % of FTP (' + p.ftp + ' W)' : type === 'run' ? 'as % of critical power (' + p.cp + ' W)' : 'as % of threshold pace (' + p.thrPace + ' /km)';
-    const spans = zs.map(z => (z.hi == null ? z.lo + (type === 'bike' ? 40 : 25) : z.hi) - z.lo);
-    const totalSpan = spans.reduce((a, b) => a + Math.max(b, 1), 0) || 1;
-    const rows = zs.map((z, i) => {
-      let range;
-      if (type === 'pace') {
-        const paceAt = (pct) => pct <= 0 ? 0 : base / (pct / 100);
-        if (z.lo <= 0) range = '> ' + this.secToPace(paceAt(z.hi)) + ' /km';
-        else if (z.hi == null) range = '< ' + this.secToPace(paceAt(z.lo)) + ' /km';
-        else range = this.secToPace(paceAt(z.hi)) + '\u2013' + this.secToPace(paceAt(z.lo)) + ' /km';
-      } else {
-        const lo = Math.round(base * z.lo / 100), hi = z.hi == null ? null : Math.round(base * z.hi / 100);
-        if (z.lo <= 0) range = '\u2264 ' + hi + unit;
-        else if (z.hi == null) range = '\u2265 ' + lo + unit;
-        else range = lo + '\u2013' + hi + unit;
-      }
-      return {
-        name: z.name, color: z.color, lo: z.lo, hi: z.hi == null ? '' : z.hi, hiOpen: z.hi == null, hiClosed: z.hi != null, range,
-        onName: this.onZone(type, i, 'name'), onLo: this.onZone(type, i, 'lo'), onHi: this.onZone(type, i, 'hi'),
-        barStyle: { width: (Math.max(spans[i], 1) / totalSpan * 100).toFixed(1) + '%', background: z.color, height: '100%' },
-      };
-    });
-    return { zoneRows: rows, zoneRefLabel: refLabel };
-  }
-
-  renderVals() {
-    const p = this.state.prefs, tab = this.state.prefsTab;
-    const railItem = (a) => ({ display: 'flex', alignItems: 'center', gap: '9px', padding: '9px 12px', borderRadius: '9px', fontSize: '13px', fontWeight: a ? 600 : 500, cursor: 'pointer', color: a ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', background: a ? 'var(--emberSoft,#fff5f1)' : 'transparent' });
-    const prefsTabs = [['profile', 'Profile'], ['hr', 'Heart rate'], ['bike', 'Bike power'], ['run', 'Run power'], ['pace', 'Pace'], ['workout_matching', 'Workout matching'], ['best_efforts', 'Best efforts'], ['races', 'Races'], ['sharing', 'Sharing'], ['tokens', 'API tokens']].map(([k, l]) => ({ label: l, onClick: () => this.setState({ prefsTab: k }), style: railItem(tab === k) }));
-    const isProfile = tab === 'profile';
-    const isTokens = tab === 'tokens';
-    const isSharing = tab === 'sharing';
-    const isBestEfforts = tab === 'best_efforts';
-    const isRaces = tab === 'races';
-    const isWorkoutMatching = tab === 'workout_matching';
-    const isZone = !isProfile && !isTokens && !isSharing && !isBestEfforts && !isRaces && !isWorkoutMatching;
-    const isHr = tab === 'hr';
-    const zone = isZone ? this.computeZone(tab) : { zoneRows: [], zoneRefLabel: '' };
-
-    // ---- API tokens ----
-    const f = this.state.tokenForm;
-    const scopeOptions = this.scopeList.map(([key, label]) => ({
-      key, label, checked: !!f.scopes[key],
-      onClick: () => this.toggleScope(key),
-      boxStyle: { width: '16px', height: '16px', borderRadius: '5px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: f.scopes[key] ? 'none' : '1.5px solid var(--line,#e6e2dc)', background: f.scopes[key] ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)' },
-    }));
-    const canCreate = !!f.name.trim() && this.scopeList.some(x => f.scopes[x[0]]);
-
-    const tokensView = this.state.tokens.map(t => ({
-      id: t.id, name: t.name, mask: t.prefix + '\u2026',
-      scopeText: t.scopes.join(', '),
-      rowStyle: { border: '1px solid var(--line,#e6e2dc)', borderRadius: '11px', padding: '13px 15px', background: 'var(--card,#fff)' },
-      onRotate: () => this.rotateToken(t.id),
-      onRevoke: () => this.revokeToken(t.id),
-    }));
-    const rv = this.state.revealed;
-
-    // ---- heart-rate zone generator ----
-    const hg = this.state.hrGen;
-    const hrMethods = Object.keys(this.HR_METHODS).map(k => ({
-      key: k, label: this.HR_METHODS[k].label,
-      onClick: () => this.setHrMethod(k),
-      style: { border: '1px solid var(--line,#e6e2dc)', borderRadius: '8px', padding: '6px 12px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: hg.method === k ? 'var(--elev,#faf9f7)' : 'transparent', color: hg.method === k ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)' },
-    }));
-
-    // ---- best efforts ----
-    const be = this.state.bestEfforts;
-    const beKinds = ['Running HR', 'Running Power', 'Running Pace', 'Cycling HR', 'Cycling Power'].map(label => ({
-      label, btnLabel: be.recomputing === label ? 'Working\u2026' : 'Recompute',
-      onClick: () => this.recomputeBestEfforts(label),
-    }));
-
-    // ---- threshold history ----
-    const th = this.state.thresholdHistory;
-    const thrFields = Object.keys(this.THRESHOLD_FIELD_SPECS).map(key => {
-      const spec = this.THRESHOLD_FIELD_SPECS[key];
-      const fs = th.fields[key];
-      const pct = fs.total > 0 ? Math.round(fs.current / fs.total * 100) : 0;
-      return {
-        label: spec.label,
-        running: fs.running,
-        btnLabel: fs.running ? 'Rebuilding…' : 'Rebuild from oldest',
-        onRebuild: () => this.startFieldRebuild(key),
-        barStyle: { height: '100%', width: pct + '%', background: 'var(--ember,#ec4a26)', borderRadius: '3px', transition: 'width 0.2s' },
-        progressLabel: fs.current + ' / ' + fs.total + ' activities',
-        hasResult: fs.result != null && !fs.running,
-        resultLabel: fs.result === 0 ? 'No qualifying efforts found.' : ('Ledger rebuilt — ' + fs.result + ' change' + (fs.result === 1 ? '' : 's') + ' recorded.'),
-      };
-    });
-    const regenStep = this.state.thresholdRegenStep;
-    const regenerateAllLabel = regenStep != null ? ('Regenerating all… (' + (regenStep + 1) + '/3)') : 'Regenerate all from oldest';
-
-    // ---- races ----
-    const racesUpcoming = this.state.races.filter(r => r.when === 'upcoming').map(raceRow => ({
-      name: raceRow.name,
-      meta: raceRow.date + (raceRow.sport ? ' \u00b7 ' + raceRow.sport : '') + (raceRow.distanceKm ? ' \u00b7 ' + raceRow.distanceKm + ' km' : '') + (raceRow.goalTime ? ' \u00b7 Goal: ' + raceRow.goalTime : '') + (raceRow.resultTime ? ' \u00b7 Result: ' + raceRow.resultTime : ''),
-    }));
-    const racesPast = this.state.races.filter(r => r.when === 'past').map(raceRow => ({
-      name: raceRow.name,
-      meta: raceRow.date + (raceRow.sport ? ' \u00b7 ' + raceRow.sport : '') + (raceRow.distanceKm ? ' \u00b7 ' + raceRow.distanceKm + ' km' : '') + (raceRow.goalTime ? ' \u00b7 Goal: ' + raceRow.goalTime : '') + (raceRow.resultTime ? ' \u00b7 Result: ' + raceRow.resultTime : ''),
-    }));
-
-    // ---- sharing (role toggle buttons, no capability blurbs \u2014 matches the live Sharing tab) ----
-    const sf = this.state.shareForm;
-    const shareBtn = (active, color) => ({ padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', border: '1px solid var(--line,#e6e2dc)', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--elev,#faf9f7)' : 'transparent' });
-    const canInvite = !!sf.invite.trim();
-    const statusText = (x) => x.status === 'pending' ? 'Pending' : ('Since ' + x.since);
-    const sharesView = this.state.shares.map(x => ({
-      id: x.id, name: x.name, handle: x.handle, statusText: statusText(x),
-      toViewer: () => this.setShareRole(x.id, 'viewer'),
-      toCoach: () => this.setShareRole(x.id, 'coach'),
-      viewerBtnStyle: shareBtn(x.role === 'viewer'), coachBtnStyle: shareBtn(x.role === 'coach'),
-      onRevoke: () => this.revokeShare(x.id),
-    }));
-    const coachesView = this.state.shares.filter(x => x.role === 'coach').map(x => ({
-      id: x.id, name: x.name, handle: x.handle, statusText: statusText(x),
-      onRevoke: () => this.revokeShare(x.id),
-    }));
-    // ---- workout matching ----
-    const wm = this.state.workoutMatching;
-    const checkBoxStyle = (checked) => ({ width: '16px', height: '16px', borderRadius: '5px', flexShrink: 0, marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: checked ? 'none' : '1.5px solid var(--line,#e6e2dc)', background: checked ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)' });
-
+  shellState = { theme: 'lab', ctxOpen: false, ctxAthlete: null, emailSent: false };
+  coached = ['Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'];
+  shellVals() {
+    const st = { ...this.shellState, ...this.state };
+    const t = st.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const on = { flex: 1, textAlign: 'center', padding: '6px 0', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--elev,#f2f6f7)' };
+    const off = { ...on, color: 'var(--ink3,#9a958d)', background: 'transparent' };
     return {
-      prefsOpen: this.state.prefsOpen,
-      openPrefs: () => this.setState({ prefsOpen: true }),
-      closePrefs: () => this.setState({ prefsOpen: false }),
-      savePrefs: () => this.setState({ prefsOpen: false }),
-      stopP: (e) => e.stopPropagation(),
-      confirmDeleteOpen: this.state.confirmDeleteOpen,
-      openDeleteAll: () => this.openDeleteAll(), closeDeleteAll: () => this.closeDeleteAll(), confirmDeleteAll: () => this.confirmDeleteAll(),
-      prefsTabs, isProfile, isZone, isTokens, isSharing, isBestEfforts, isRaces, isWorkoutMatching, isHr,
+      themeVars: { '--sport-ride': '#3d7fd6', '--sport-run': '#ec4a26', '--sport-swim': '#2fa66a', '--sport-walk': '#8b95a1', '--sport-row': '#1b8fa8', '--sport-multisport': '#a86fd6', '--sport-transition': '#6b7683', '--role-coach': '#c084fc', ...({ lab, cockpit, day }[t] || lab) },
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: t === 'lab' ? on : off, cockpitBtn: t === 'cockpit' ? on : off, dayBtn: t === 'day' ? on : off,
+      pName: 'Neil Goodgame', chipMeta: 'FTP 265 \u00b7 LTHR 155', isCoach: true,
+      ctxOpen: st.ctxOpen, toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })), closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: st.ctxAthlete ? 'Coaching \u00b7 ' + st.ctxAthlete : 'My training',
+      ctxItems: [null, ...this.coached].map(id => { const act = (st.ctxAthlete || null) === id; return { name: id || 'My training', onClick: () => this.setState({ ctxOpen: false, ctxAthlete: id }), rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: act ? 700 : 500, color: 'var(--ink,#1b1a18)', background: act ? 'var(--elev,#faf9f7)' : 'transparent' } }; }),
+      showEmailBanner: false, emailNotSent: true, emailBannerText: '', resendEmail: () => {},
+    };
+  }
 
-      renameMatched: wm.renameMatched,
-      renameMatchedBoxStyle: checkBoxStyle(wm.renameMatched),
-      toggleRenameMatched: () => this.setState(s => {
-        const checked = !s.workoutMatching.renameMatched;
-        return { workoutMatching: { ...s.workoutMatching, renameMatched: checked, appendDate: checked ? s.workoutMatching.appendDate : false } };
-      }),
-      appendDate: wm.appendDate,
-      appendDateBoxStyle: checkBoxStyle(wm.appendDate),
-      appendDateRowStyle: { display: 'flex', alignItems: 'flex-start', gap: '9px', fontSize: '13px', color: 'var(--ink2,#6f6b65)', marginLeft: '24px', cursor: wm.renameMatched ? 'pointer' : 'default', opacity: wm.renameMatched ? 1 : 0.5 },
-      toggleAppendDate: () => { if (!this.state.workoutMatching.renameMatched) return; this.setState(s => ({ workoutMatching: { ...s.workoutMatching, appendDate: !s.workoutMatching.appendDate } })); },
-      copyTags: wm.copyTags,
-      copyTagsBoxStyle: checkBoxStyle(wm.copyTags),
-      toggleCopyTags: () => this.setState(s => ({ workoutMatching: { ...s.workoutMatching, copyTags: !s.workoutMatching.copyTags } })),
-      lapSource: wm.lapSource,
-      onLapSource: (e) => { const v = e.target.value; this.setState(s => ({ workoutMatching: { ...s.workoutMatching, lapSource: v } })); },
-      sharesView, coachesView, hasShares: this.state.shares.length > 0, noShares: this.state.shares.length === 0, hasCoaches: coachesView.length > 0, noCoaches: coachesView.length === 0,
-      inviteValue: sf.invite, onInvite: (e) => this.setInvite(e),
-      inviteRoleValue: sf.role, onInviteRole: (e) => this.setInviteRole(e.target.value),
-      sendInvite: () => this.sendInvite(), canInvite,
-      inviteBtnStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '9px 16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, whiteSpace: 'nowrap', cursor: canInvite ? 'pointer' : 'not-allowed', background: canInvite ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)', color: canInvite ? '#fff' : 'var(--ink3,#9a958d)' },
-      tokensView, scopeOptions, canCreate,
-      tokenName: f.name,
-      createBtnStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', padding: '10px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, cursor: canCreate ? 'pointer' : 'not-allowed', background: canCreate ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)', color: canCreate ? '#fff' : 'var(--ink3,#9a958d)' },
-      onTokenName: (e) => this.setTokenName(e),
-      createToken: () => this.createToken(),
-      hasTokens: this.state.tokens.length > 0,
-      revealed: !!rv, revealSecret: rv ? rv.secret : '', revealName: rv ? rv.name : '',
-      dismissReveal: () => this.dismissReveal(),
-      copySecret: () => this.copySecret(),
-      hrMethods, hrRestingHr: hg.restingHr, hrLthr: hg.lthr, hrMaxHr: hg.maxHr,
-      onHrResting: this.onHrField('restingHr'), onHrLthr: this.onHrField('lthr'), onHrMaxHr: this.onHrField('maxHr'),
-      hrMethodBlurb: this.HR_METHODS[hg.method].blurb,
-      applyHrZones: () => this.applyHrZones(),
-      beKinds, allEfforts: be.allActivities, topN: be.topN, topNLabel: be.allActivities ? 'all' : be.topN,
-      allEffortsBoxStyle: { width: '16px', height: '16px', borderRadius: '5px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: be.allActivities ? 'none' : '1.5px solid var(--line,#e6e2dc)', background: be.allActivities ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)' },
-      toggleAllEfforts: () => this.toggleAllEfforts(), onTopN: (e) => this.onTopN(e),
-      saveBestEfforts: () => this.saveBestEfforts(), recomputeAll: () => this.recomputeBestEfforts(),
-      thrWindowDays: th.windowDays, thrSanityPct: th.sanityPct,
-      onThrWindow: this.onThrSetting('windowDays'), onThrSanity: this.onThrSetting('sanityPct'),
-      saveThrSettings: () => this.saveThrSettings(),
-      thrFields, regenerateAllLabel, regenerateAll: () => this.regenerateAllThresholds(),
-      racesUpcoming, racesPast,
-      pName: p.name, pAge: p.age, pFtp: p.ftp, pCp: p.cp, pThrPace: p.thrPace, pLthr: p.lthr, pMaxHr: p.maxHr,
-      onName: this.onPref('name'), onAge: this.onPref('age'), onFtp: this.onPref('ftp'), onCp: this.onPref('cp'), onThrPace: this.onPref('thrPace'), onLthr: this.onPref('lthr'), onMaxHr: this.onPref('maxHr'),
-      chipMeta: 'FTP ' + p.ftp + ' \u00b7 LTHR ' + p.lthr,
-      ...zone,
+  componentWillUnmount() { clearInterval(this.t); }
+  palette = ['#3d7fd6', '#2fa66a', '#f0a02e', '#e0442e', '#ec4a26', '#9a6ad0', '#8b95a1', '#0d9488', '#f0823a', '#7e858e'];
+  tagColor(n) { let h = 0; for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) | 0; return this.palette[Math.abs(h) % this.palette.length]; }
+  zoneData = {
+    heart_rate: [155, 'bpm', [['Z1 Recovery', 0, 81], ['Z2 Aerobic', 81, 89], ['Z3 Tempo', 90, 93], ['Z4 Threshold', 94, 99], ['Z5 VO2 Max', 100, 106]]],
+    bike_power: [265, 'w', [['Z1 Active Recovery', 0, 55], ['Z2 Endurance', 56, 75], ['Z3 Tempo', 76, 90], ['Z4 Threshold', 91, 105], ['Z5 VO2 Max', 106, 120]]],
+    run_power: [285, 'w', [['Z1 Easy', 0, 80], ['Z2 Moderate', 81, 90], ['Z3 Threshold', 91, 100], ['Z4 Interval', 101, 115], ['Z5 Repetition', 116, 130]]],
+    pace: ['4:00', '/km', [['Z1 Easy', 0, 76], ['Z2 Endurance', 77, 87], ['Z3 Tempo', 88, 95], ['Z4 Threshold', 96, 102], ['Z5 Interval', 103, 110]]],
+  };
+  renderVals() {
+    const st = this.state;
+    const T = [['profile', 'Profile'], ['workouts', 'Workouts'], ['heart_rate', 'Heart rate'], ['bike_power', 'Bike power'], ['run_power', 'Run power'], ['pace', 'Pace'], ['best_efforts', 'Best efforts'], ['tags', 'Tags'], ['races', 'Races'], ['sharing', 'Sharing'], ['tokens', 'API tokens'], ['export', 'Export data']];
+    const isZone = ['heart_rate', 'bike_power', 'run_power', 'pace'].includes(st.tab);
+    let zones = [], zoneRef = '', zoneUnit = '';
+    if (isZone) { const [ref, unit, zs] = this.zoneData[st.tab]; zoneRef = ref; zoneUnit = unit;
+      const num = typeof ref === 'number' ? ref : 240;
+      zones = zs.map(([name, lo, hi], i) => { const last = i === zs.length - 1; let range;
+        if (st.tab === 'pace') { const p = (pct) => { const s = Math.round(num / (pct / 100)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }; range = lo === 0 ? '> ' + p(hi) + ' /km' : p(hi) + '\u2013' + p(lo) + ' /km'; }
+        else range = Math.round(num * lo / 100) + (last ? '+' : '\u2013' + Math.round(num * hi / 100)) + ' ' + unit;
+        return { name, lo, hi, range }; }); }
+    const pill = (a) => ({ border: '1px solid var(--line,#e6e2dc)', borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: 600, background: a ? 'var(--elev,#faf9f7)' : 'transparent', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', cursor: 'pointer' });
+    const shares = [['Mara K\u00f8hl', '@mara', 'coach', 'Since 2026-03-02', false], ['Claude.ai', 'vc-7f3a', 'coach', 'Since 2026-08-19', true], ['Sam Ortiz', '@sam.o', 'viewer', 'Pending', false]].map(([name, handle, role, since, ai]) => ({ name, ai, meta: handle + ' \u00b7 ' + since, role, viewer: pill(role === 'viewer'), coach: pill(role === 'coach') }));
+    const bestDefs = [['entries', 'Entries per window', 'How many ranked entries to keep for each best-effort window (per period).', true, '10', 'entries', 'Save'], ['be', 'Recompute best efforts', 'Re-scan every activity\'s stored streams and rebuild all best-effort leaderboards from scratch.', false, '', '', 'Recompute'], ['stats', 'Recompute derived stats', 'Backfill max power, cadence, elevation, calories and TRIMP on activities imported before those fields existed.', false, '', '', 'Recompute'], ['curves', 'Recompute duration curves', 'Rebuild the power/HR/pace duration curves used by the Curves tab.', false, '', '', 'Recompute'], ['window', 'Threshold history', 'Trailing window used to pick your current FTP, critical running power and threshold pace.', true, '112', 'days', 'Save']];
+    const exp = st.exp;
+    return {
+      ...this.shellVals(),
+      tabs: T.map(([k, l]) => ({ label: l, onClick: () => this.setState({ tab: k, saved: false }), style: { textAlign: 'left', padding: '9px 12px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', background: st.tab === k ? 'var(--elev,#faf9f7)' : 'transparent', color: st.tab === k ? 'var(--ink,#1b1a18)' : 'var(--ink2,#6f6b65)' } })),
+      isProfile: st.tab === 'profile', isWorkouts: st.tab === 'workouts', isZone, isHr: st.tab === 'heart_rate', isBest: st.tab === 'best_efforts', isTags: st.tab === 'tags', isRaces: st.tab === 'races', isSharing: st.tab === 'sharing', isTokens: st.tab === 'tokens', isExport: st.tab === 'export',
+      doSave: () => this.setState({ saved: true }), savedShown: st.saved, savedText: st.tab === 'profile' ? 'Saved - recomputed heart_rate, bike_power zones.' : 'Saved.',
+      openDanger: () => this.setState({ danger: true }), closeDanger: () => this.setState({ danger: false }), dangerOpen: st.danger, stop: (e) => e.stopPropagation(),
+      renameOn: st.rename, renameOff: !st.rename, toggleRename: () => this.setState(s => ({ rename: !s.rename })),
+      appendStyle: { display: 'flex', alignItems: 'flex-start', gap: '9px', fontSize: '13px', marginLeft: '24px', opacity: st.rename ? 1 : 0.5, color: 'var(--ink,#1b1a18)' },
+      zones, zoneRef, zoneUnit,
+      bestSections: bestDefs.map(([id, title, desc, hasInput, value, unit, btn]) => { const r = st.bestRun[id]; return { title, desc, hasInput, value, unit, btn: r === 'busy' ? (btn === 'Save' ? 'Saving\u2026' : 'Recomputing\u2026') : r === 'done' ? (btn === 'Save' ? 'Saved' : 'Done') : btn,
+        btnStyle: { padding: '8px 16px', borderRadius: '8px', background: 'var(--ember,#ec4a26)', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer', opacity: r === 'busy' ? 0.6 : 1 },
+        run: () => { this.setState(s => ({ bestRun: { ...s.bestRun, [id]: 'busy' } })); setTimeout(() => this.setState(s => ({ bestRun: { ...s.bestRun, [id]: 'done' } })), 900); } }; }),
+      tagRows: [['Heat Training', 7, false], ['long run', 9, false], ['parkrun', 12, true], ['race', 4, false], ['brick', 0, false]].map(([n, c, auto]) => { const col = this.tagColor(n); const x = parseInt(col.slice(1), 16); return { name: n, n: c, auto, dot: { width: '10px', height: '10px', borderRadius: '50%', background: col, flexShrink: 0 }, count: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600, padding: '2px 7px', borderRadius: '20px', background: 'rgba(' + ((x >> 16) & 255) + ',' + ((x >> 8) & 255) + ',' + (x & 255) + ',0.12)', color: 'var(--ink2,#6f6b65)' } }; }),
+      raceGroups: [
+        { label: 'Upcoming', races: [['City Marathon', '2026-10-04 \u00b7 Run \u00b7 42.195 km \u00b7 Goal: 3:15:00', 'citymarathon.org', false, false, false, false], ['Autumn Half', '2026-11-15 \u00b7 Run \u00b7 21.0975 km \u00b7 Goal: 1:28:00', '', false, false, false, false]] },
+        { label: 'Past', races: [['Sprint triathlon', '2026-09-19 \u00b7 Multisport \u00b7 25.8 km \u00b7 Goal: 1:16:00 \u00b7 Result: 1:14:52', 'trifest.co.uk', true, false, true, false], ['Spring 10K', '2026-04-12 \u00b7 Run \u00b7 10 km \u00b7 Goal: 38:30', '', false, true, false, false]] },
+      ].map(g => ({ label: g.label, races: g.races.map(([name, meta, host, results, noResult, linked]) => ({ name, meta, host, hasUrl: !!host, hasResults: results, noResult, linked, style: { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderTop: '1px solid var(--line,#e6e2dc)', opacity: noResult ? 0.6 : 1, flexWrap: 'wrap' } })) })),
+      coachShares: shares.filter(s => s.role === 'coach'), allShares: shares,
+      aiCreated: st.ai, aiNotCreated: !st.ai, createAi: () => this.setState({ ai: true }), dismissAi: () => this.setState({ ai: false }),
+      scopes: ['activities:read', 'activities:write', 'workouts:write', 'gear:write'],
+      tokens: [['Home server sync', 'cad_pat_8Hq2\u2026 \u00b7 activities:read, activities:write'], ['Sheets export', 'cad_pat_x71L\u2026 \u00b7 activities:read']].map(([name, meta]) => ({ name, meta })),
+      exportOpen: !!exp, closeExport: () => { clearInterval(this.t); this.setState({ exp: null }); },
+      startExport: () => { this.setState({ exp: 0 }); clearInterval(this.t); this.t = setInterval(() => this.setState(s => { const n = Math.min(412, (s.exp || 0) + 37); if (n >= 412) clearInterval(this.t); return { exp: n }; }), 250); },
+      exportStep: exp >= 412 ? 'Ready' : 'Writing activities\u2026', exportCount: (exp || 0) + ' / 412 items', exportReady: exp >= 412,
+      exportBar: { height: '100%', width: ((exp || 0) / 412 * 100) + '%', background: 'var(--ember,#ec4a26)' },
     };
   }
 }
