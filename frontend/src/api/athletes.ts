@@ -240,11 +240,19 @@ export function listBestEfforts(
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts?kind=${kind}&period=${period}`);
 }
 
-/** Backs the Dashboard's "Top efforts this week" card - which activities from the last `days`
- * ranked top-3 in any of the athlete's best-effort leaderboards. See RecentTopEffort's own
- * doc comment for the exact shape. */
-export function getRecentTopEfforts(athleteId: string, days = 7): Promise<{ since: string; data: RecentTopEffort[] }> {
-  return apiFetch(`/v1/athletes/${athleteId}/best-efforts/recent-ranks${toQueryString({ days })}`);
+/** Backs the Dashboard's "Top efforts this week" card - which of the given activities ranked
+ * top-3 in any of the athlete's best-effort leaderboards. Takes explicit activity ids rather
+ * than a "how far back" window - deciding what counts as recent is a local-date/timezone
+ * concern the caller already has to get right for its own display (the This Week calendar),
+ * so it's on the caller to pass in exactly the activities it cares about. See RecentTopEffort's
+ * own doc comment for the exact response shape. Skips the request entirely (never calls
+ * `apiFetch`) when `activityIds` is empty - there's nothing to ask about, and the backend
+ * would just return no data anyway. */
+export function getActivityBestEffortRanks(athleteId: string, activityIds: string[]): Promise<{ data: RecentTopEffort[] }> {
+  if (activityIds.length === 0) {
+    return Promise.resolve({ data: [] });
+  }
+  return apiFetch(`/v1/athletes/${athleteId}/best-efforts/ranks${toQueryString({ activity_ids: activityIds.join(",") })}`);
 }
 
 /** With `activityId`, bike_power/run_power/pace's reference comes from the ThresholdHistory

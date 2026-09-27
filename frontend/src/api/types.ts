@@ -370,9 +370,9 @@ export interface BestEffort {
 export type BestEffortKind = "cycling_hr" | "cycling_power" | "running_hr" | "running_pace" | "running_power";
 export type BestEffortPeriod = "4w" | "3m" | "16w" | "1y" | "all";
 
-/** One (activity, kind, window) entry from GET /v1/athletes/{id}/best-efforts/recent-ranks -
- * backs the Dashboard's "Top efforts this week" card. `ranks` holds this entry's 1-based rank
- * in each tracked period, or `null` for a period it didn't reach the top-N of at all. */
+/** One (activity, kind, window) entry from GET /v1/athletes/{id}/best-efforts/ranks - backs
+ * the Dashboard's "Top efforts this week" card. `ranks` holds this entry's 1-based rank in
+ * each tracked period, or `null` for a period it didn't reach the top-N of at all. */
 export interface RecentTopEffort {
   activity_id: string;
   date: string;

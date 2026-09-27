@@ -2,7 +2,7 @@ import { useQuery, useQueries } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { Activity } from "../../api/types";
 import { getActivity, getStreams } from "../../api/activities";
-import { getRecentTopEfforts, listZones } from "../../api/athletes";
+import { getActivityBestEffortRanks, listZones } from "../../api/athletes";
 import {
   BEST_EFFORT_FAMILY,
   MEDAL_COLORS,
@@ -119,12 +119,20 @@ function topEffortBadge(group: RecentTopEffortGroup): { badgeText: string; label
   return { badgeText: `#${best.hl.rank} ${best.hl.code}`, labelText, titleText, medalColor: MEDAL_COLORS[best.hl.rank as 1 | 2 | 3] };
 }
 
-export function WeekCalendar({ activities, athleteId }: { activities: Activity[]; athleteId: string }) {
+export function WeekCalendar({
+  activities,
+  athleteId,
+  recentActivityIds,
+}: {
+  activities: Activity[];
+  athleteId: string;
+  recentActivityIds: string[];
+}) {
   const navigate = useNavigate();
 
   const recentTopEffortsQuery = useQuery({
-    queryKey: ["best-efforts", "recent-ranks", athleteId],
-    queryFn: () => getRecentTopEfforts(athleteId, 7),
+    queryKey: ["best-efforts", "ranks", athleteId, recentActivityIds],
+    queryFn: () => getActivityBestEffortRanks(athleteId, recentActivityIds),
     enabled: !!athleteId,
   });
   // Loading/error both fall back to an empty list - additive UI, never its own loading/error

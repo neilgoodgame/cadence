@@ -87,12 +87,19 @@ export function DashboardScreen() {
   const activities = useMemo(() => activitiesQuery.data?.data ?? [], [activitiesQuery.data]);
   const historyActivities = useMemo(() => historyActivitiesQuery.data ?? [], [historyActivitiesQuery.data]);
 
-  const weekTss = useMemo(() => {
+  const recentActivities = useMemo(() => {
     const cutoff = isoDaysAgo(7);
-    return activities
-      .filter((a) => a.start_date.slice(0, 10) >= cutoff)
-      .reduce((sum, a) => sum + a.tss, 0);
+    return activities.filter((a) => a.start_date.slice(0, 10) >= cutoff);
   }, [activities]);
+
+  const weekTss = useMemo(() => recentActivities.reduce((sum, a) => sum + a.tss, 0), [recentActivities]);
+
+  // Which activities count as "recent" for the Top Efforts card/badges is decided once, here,
+  // from the same local-date cutoff weekTss already uses - not re-derived per surface, and not
+  // left to the backend, which has no correct notion of the athlete's own local "today" (see
+  // ActivityBestEffortRanksView's docstring for why that endpoint takes explicit ids instead
+  // of a days-back parameter).
+  const recentActivityIds = useMemo(() => recentActivities.map((a) => a.id), [recentActivities]);
 
   if (!user) {
     return null;
@@ -103,10 +110,10 @@ export function DashboardScreen() {
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>Welcome back, {user.name}.</h1>
 
       <Card>
-        <WeekCalendar activities={activities} athleteId={user.id} />
+        <WeekCalendar activities={activities} athleteId={user.id} recentActivityIds={recentActivityIds} />
       </Card>
 
-      <TopEffortsCard athleteId={user.id} activities={activities} />
+      <TopEffortsCard athleteId={user.id} activities={activities} recentActivityIds={recentActivityIds} />
 
       <NextRaceCard />
 

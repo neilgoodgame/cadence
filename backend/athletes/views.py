@@ -169,19 +169,27 @@ class BestEffortListView(APIView):
 
 # The 4w/3m periods are deliberately excluded here (unlike BEST_EFFORT_PERIOD_DAYS above) - they
 # flag almost everything recent, which is exactly what the Dashboard "Top efforts this week" card
-# is trying to avoid drowning the athlete in. See RecentTopEffortsView's docstring.
+# is trying to avoid drowning the athlete in. See ActivityBestEffortRanksView's docstring.
 RECENT_TOP_EFFORT_PERIODS = ("16w", "1y", "all")
 
 
-class RecentTopEffortsView(APIView):
-    """Backs the Dashboard's "Top efforts this week" card: which of an athlete's activities from
-    the last `days` were good enough to rank top-3 in any of their best-effort leaderboards
-    (16-week, 1-year, or all-time - 4w/3m excluded, see RECENT_TOP_EFFORT_PERIODS).
+class ActivityBestEffortRanksView(APIView):
+    """Backs the Dashboard's "Top efforts this week" card: for a caller-supplied batch of
+    activity ids, which ones were good enough to rank top-3 in any of the athlete's best-effort
+    leaderboards (16-week, 1-year, or all-time - 4w/3m excluded, see RECENT_TOP_EFFORT_PERIODS).
 
-    An "entry" is one activity x one best-effort category (kind + window). For each kind and
-    each tracked period, this takes the exact same (capped, top-N) row set BestEffortListView
-    would return for that period, ranks each window's rows by value (respecting direction), and
-    keeps only the ones whose activity falls within the last `days`. The same (activity, kind,
+    Deliberately takes activity ids rather than a "how many days back" parameter: "which
+    activities count as recent" is a local-date/timezone-sensitive judgement the frontend
+    already has to make correctly for its own display (the This Week calendar), so it's the
+    caller's job to decide that and pass in exactly the activities it cares about - this view
+    only ever answers "what are these specific activities' ranks", with no date logic of its
+    own to drift out of sync with the frontend's.
+
+    An "entry" is one activity x one best-effort category (kind + window). Only kinds/windows
+    that at least one of the given activities actually holds a BestEffort row for are ever
+    queried at all - for each of those, this takes the exact same (capped, top-N) row set
+    BestEffortListView would return for that period, ranks it by value (respecting direction),
+    and keeps the ranks belonging to the requested activities. The same (activity, kind,
     window) triple can appear across multiple periods - its `ranks` dict accumulates one entry
     per period it showed up in, `None` for a period it didn't reach the top-N of at all (not "0
     rank", a real absence). Only entries with at least one period's rank <= 3 are returned -
@@ -198,15 +206,24 @@ class RecentTopEffortsView(APIView):
         _require_read(request, id)
         athlete = get_object_or_404(User, pk=id)
 
-        days_param = request.query_params.get("days", "7")
-        try:
-            days = int(days_param)
-        except ValueError:
-            raise ValidationError({"days": "Must be an integer."}) from None
-        since = timezone.now().date() - timedelta(days=days)
+        activity_ids = [a for a in request.query_params.get("activity_ids", "").split(",") if a]
+        if not activity_ids:
+            return Response({"data": []})
+
+        # Only the (kind, window) pairs these specific activities actually hold a row for are
+        # worth ranking at all - a kind none of them touched needs no query, and a window one
+        # of them touched still needs every *other* athlete row for that window to rank
+        # correctly against, hence the second, unfiltered-by-activity query below.
+        target_rows = list(BestEffort.objects.filter(athlete_id=id, activity_id__in=activity_ids))
+        if not target_rows:
+            return Response({"data": []})
+        target_ids = {row.activity_id for row in target_rows}
+        windows_by_kind: dict[str, set[str]] = {}
+        for row in target_rows:
+            windows_by_kind.setdefault(row.kind, set()).add(row.window)
 
         entries: dict[tuple[str, str, str], dict] = {}
-        for kind, _ in BestEffort.KIND_CHOICES:
+        for kind, windows_needed in windows_by_kind.items():
             lower_is_better = kind in LOWER_IS_BETTER_KINDS
             for period in RECENT_TOP_EFFORT_PERIODS:
                 qs = BestEffort.objects.filter(athlete_id=id, kind=kind).select_related("activity")
@@ -217,7 +234,8 @@ class RecentTopEffortsView(APIView):
 
                 by_window: dict[str, list[BestEffort]] = {}
                 for effort in capped:
-                    by_window.setdefault(effort.window, []).append(effort)
+                    if effort.window in windows_needed:
+                        by_window.setdefault(effort.window, []).append(effort)
 
                 for window_efforts in by_window.values():
                     # Rank order is direction-aware and computed fresh here, not inherited from
@@ -227,7 +245,7 @@ class RecentTopEffortsView(APIView):
                     # re-sort ascending for exactly this reason (see RunPaceCard).
                     window_efforts.sort(key=lambda e: e.value, reverse=not lower_is_better)
                     for rank, effort in enumerate(window_efforts, start=1):
-                        if effort.date < since:
+                        if effort.activity_id not in target_ids:
                             continue
                         key = (effort.activity_id, effort.kind, effort.window)
                         entry = entries.get(key)
@@ -246,7 +264,7 @@ class RecentTopEffortsView(APIView):
                         entry["ranks"][period] = rank
 
         data = [e for e in entries.values() if any(r is not None and r <= 3 for r in e["ranks"].values())]
-        return Response({"since": since.isoformat(), "data": data})
+        return Response({"data": data})
 
 
 class FitnessListView(APIView):

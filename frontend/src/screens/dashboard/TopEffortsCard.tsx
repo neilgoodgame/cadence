@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { Activity } from "../../api/types";
-import { getRecentTopEfforts } from "../../api/athletes";
+import { getActivityBestEffortRanks } from "../../api/athletes";
 import { Card } from "../../components/Card";
 import {
   BEST_EFFORT_FAMILY,
@@ -159,10 +159,18 @@ function ActivityBlock({ group, activity }: { group: RecentTopEffortGroup; activ
  * Renders nothing while loading, on error, or when nothing qualifies (additive UI, never a
  * loading/error state of its own - see the handoff's States section), which the `?? []`
  * fallback below achieves without any extra branching. */
-export function TopEffortsCard({ athleteId, activities }: { athleteId: string; activities: Activity[] }) {
+export function TopEffortsCard({
+  athleteId,
+  activities,
+  recentActivityIds,
+}: {
+  athleteId: string;
+  activities: Activity[];
+  recentActivityIds: string[];
+}) {
   const { data } = useQuery({
-    queryKey: ["best-efforts", "recent-ranks", athleteId],
-    queryFn: () => getRecentTopEfforts(athleteId, 7),
+    queryKey: ["best-efforts", "ranks", athleteId, recentActivityIds],
+    queryFn: () => getActivityBestEffortRanks(athleteId, recentActivityIds),
     enabled: !!athleteId,
   });
 

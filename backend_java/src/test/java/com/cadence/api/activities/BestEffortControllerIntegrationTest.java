@@ -156,22 +156,32 @@ class BestEffortControllerIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void recentTopEffortRanksRejectsAnOutsider() {
+	void activityBestEffortRanksRejectsAnOutsider() {
 		User athlete = newAthlete("recent-top-athlete@example.cc", 10);
 		User outsider = newAthlete("recent-top-outsider@example.cc", 10);
 		AuthContextHolder.set(AuthContext.self(outsider.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
 
-		assertThatThrownBy(() -> bestEffortController.recentTopEffortRanks(athlete.getId(), 7))
+		assertThatThrownBy(() -> bestEffortController.activityBestEffortRanks(athlete.getId(), ""))
 				.isInstanceOf(ForbiddenException.class);
 	}
 
 	@Test
-	void recentTopEffortRanksReturnsARecentActivitysRanksPerPeriod() {
+	void activityBestEffortRanksReturnsNoDataWithNoActivityIds() {
+		User athlete = newAthlete("recent-top-empty@example.cc", 10);
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+
+		RecentTopEffortsListResponse response = bestEffortController.activityBestEffortRanks(athlete.getId(), "");
+
+		assertThat(response.data()).isEmpty();
+	}
+
+	@Test
+	void activityBestEffortRanksReturnsARequestedActivitysRanksPerPeriod() {
 		User athlete = newAthlete("recent-top-basic@example.cc", 10);
 		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
 		BestEffort recent = makeEffort(athlete, BestEffortKind.RUNNING_POWER, Sport.RUN, "5min", 342, 2);
 
-		RecentTopEffortsListResponse response = bestEffortController.recentTopEffortRanks(athlete.getId(), 7);
+		RecentTopEffortsListResponse response = bestEffortController.activityBestEffortRanks(athlete.getId(), recent.getActivity().getId());
 
 		assertThat(response.data()).hasSize(1);
 		RecentTopEffortResponse entry = response.data().get(0);
@@ -185,52 +195,57 @@ class BestEffortControllerIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void recentTopEffortRanksExcludesAnEntryWithNoTop3RankInAnyPeriod() {
+	void activityBestEffortRanksExcludesAnEntryWithNoTop3RankInAnyPeriod() {
 		User athlete = newAthlete("recent-top-notop3@example.cc", 10);
 		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
-		// Four recent efforts in the same window - the 4th-best never ranks <= 3 anywhere.
-		makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 400, 1);
-		makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 390, 1);
-		makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 380, 1);
-		makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 370, 1);
+		// Four efforts in the same window, all requested - the 4th-best never ranks <= 3
+		// anywhere, even though its id was explicitly included in the request.
+		BestEffort a = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 400, 1);
+		BestEffort b = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 390, 1);
+		BestEffort c = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 380, 1);
+		BestEffort d = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 370, 1);
+		String ids = String.join(",", a.getActivity().getId(), b.getActivity().getId(), c.getActivity().getId(), d.getActivity().getId());
 
-		RecentTopEffortsListResponse response = bestEffortController.recentTopEffortRanks(athlete.getId(), 7);
+		RecentTopEffortsListResponse response = bestEffortController.activityBestEffortRanks(athlete.getId(), ids);
 
 		assertThat(response.data()).extracting(RecentTopEffortResponse::value)
 				.containsExactlyInAnyOrder(400.0, 390.0, 380.0);
 	}
 
 	@Test
-	void recentTopEffortRanksExcludesActivitiesOlderThanTheCutoffEvenIfTheyRank1() {
-		User athlete = newAthlete("recent-top-cutoff@example.cc", 10);
+	void activityBestEffortRanksNeverReturnsAnActivityNotIncludedInTheRequestEvenIfItWouldRank1() {
+		User athlete = newAthlete("recent-top-notrequested@example.cc", 10);
 		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
-		makeEffort(athlete, BestEffortKind.RUNNING_POWER, Sport.RUN, "5min", 999, 10);
+		makeEffort(athlete, BestEffortKind.RUNNING_POWER, Sport.RUN, "5min", 999, 1);
 
-		RecentTopEffortsListResponse response = bestEffortController.recentTopEffortRanks(athlete.getId(), 7);
+		RecentTopEffortsListResponse response = bestEffortController.activityBestEffortRanks(athlete.getId(), "");
 
 		assertThat(response.data()).isEmpty();
 	}
 
 	@Test
-	void recentTopEffortRanksDaysParamWidensTheCutoff() {
-		User athlete = newAthlete("recent-top-days@example.cc", 10);
+	void activityBestEffortRanksReturnsAnOldActivityIfItsIdIsExplicitlyRequested() {
+		// The method has no date logic of its own at all - "recent" is entirely the caller's
+		// judgement, made by which ids it asks about, not something it re-derives.
+		User athlete = newAthlete("recent-top-old@example.cc", 10);
 		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
-		makeEffort(athlete, BestEffortKind.RUNNING_POWER, Sport.RUN, "5min", 999, 10);
+		BestEffort old = makeEffort(athlete, BestEffortKind.RUNNING_POWER, Sport.RUN, "5min", 999, 400);
 
-		RecentTopEffortsListResponse response = bestEffortController.recentTopEffortRanks(athlete.getId(), 14);
+		RecentTopEffortsListResponse response = bestEffortController.activityBestEffortRanks(athlete.getId(), old.getActivity().getId());
 
 		assertThat(response.data()).hasSize(1);
 	}
 
 	@Test
-	void recentTopEffortRanksRanksPaceLowestValueAsRank1() {
+	void activityBestEffortRanksRanksPaceLowestValueAsRank1() {
 		User athlete = newAthlete("recent-top-pace@example.cc", 10);
 		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
 		BestEffort slow = makeEffort(athlete, BestEffortKind.RUNNING_PACE, Sport.RUN, "10km", 300.0, 1);
 		BestEffort mid = makeEffort(athlete, BestEffortKind.RUNNING_PACE, Sport.RUN, "10km", 250.0, 1);
 		BestEffort fast = makeEffort(athlete, BestEffortKind.RUNNING_PACE, Sport.RUN, "10km", 200.0, 1);
+		String ids = String.join(",", slow.getActivity().getId(), mid.getActivity().getId(), fast.getActivity().getId());
 
-		RecentTopEffortsListResponse response = bestEffortController.recentTopEffortRanks(athlete.getId(), 7);
+		RecentTopEffortsListResponse response = bestEffortController.activityBestEffortRanks(athlete.getId(), ids);
 		var byActivity = response.data().stream()
 				.collect(Collectors.toMap(RecentTopEffortResponse::activityId, e -> e.ranks().get("all")));
 
@@ -240,16 +255,17 @@ class BestEffortControllerIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void recentTopEffortRanksIsNullNotZeroForAPeriodTheActivityDoesNotReachTopNIn() {
+	void activityBestEffortRanksIsNullNotZeroForAPeriodTheActivityDoesNotReachTopNIn() {
 		User athlete = newAthlete("recent-top-nullrank@example.cc", 1);
 		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
-		// An old, faster effort occupies the sole all-time/1y top-1 slot for this window - a
-		// slower recent one can still rank #1 within the narrower 16w period (nothing else
-		// competes there), but must show null for 1y/all, not a real numeric rank.
+		// An old, faster effort occupies the sole all-time/1y top-1 slot for this window - not
+		// itself requested, but still counted when ranking the one that is. A newer, slower one
+		// can still rank #1 within the narrower 16w period (nothing else competes there), but
+		// must show null for 1y/all, not a real numeric rank.
 		makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "20min", 400, 300);
 		BestEffort recent = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "20min", 350, 1);
 
-		RecentTopEffortsListResponse response = bestEffortController.recentTopEffortRanks(athlete.getId(), 7);
+		RecentTopEffortsListResponse response = bestEffortController.activityBestEffortRanks(athlete.getId(), recent.getActivity().getId());
 
 		assertThat(response.data()).hasSize(1);
 		RecentTopEffortResponse entry = response.data().get(0);
