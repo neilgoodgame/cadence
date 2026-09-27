@@ -11,6 +11,7 @@ import { ThresholdSummaryCard } from "./dashboard/ThresholdSummaryCard";
 import { NextRaceCard } from "./dashboard/NextRaceCard";
 import { UpcomingWorkoutsCard } from "./dashboard/UpcomingWorkoutsCard";
 import { WeekCalendar } from "./dashboard/WeekCalendar";
+import { TopEffortsCard } from "./dashboard/TopEffortsCard";
 import { TrainingHistory } from "./dashboard/TrainingHistory";
 
 // new Date(...).toISOString().slice(0,10) reads back the *UTC* calendar date - for a UTC+ user,
@@ -104,6 +105,8 @@ export function DashboardScreen() {
       <Card>
         <WeekCalendar activities={activities} athleteId={user.id} />
       </Card>
+
+      <TopEffortsCard athleteId={user.id} activities={activities} />
 
       <NextRaceCard />
 

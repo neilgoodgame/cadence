@@ -9,6 +9,7 @@ import type {
   BestEffortPeriod,
   DataList,
   FitnessPoint,
+  RecentTopEffort,
   ThresholdFieldName,
   ThresholdHistoryResponse,
   ThresholdsSummary,
@@ -237,6 +238,13 @@ export function listBestEfforts(
   period: BestEffortPeriod = "all",
 ): Promise<{ kind: string; period: string; data: BestEffort[] }> {
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts?kind=${kind}&period=${period}`);
+}
+
+/** Backs the Dashboard's "Top efforts this week" card - which activities from the last `days`
+ * ranked top-3 in any of the athlete's best-effort leaderboards. See RecentTopEffort's own
+ * doc comment for the exact shape. */
+export function getRecentTopEfforts(athleteId: string, days = 7): Promise<{ since: string; data: RecentTopEffort[] }> {
+  return apiFetch(`/v1/athletes/${athleteId}/best-efforts/recent-ranks${toQueryString({ days })}`);
 }
 
 /** With `activityId`, bike_power/run_power/pace's reference comes from the ThresholdHistory

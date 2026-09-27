@@ -940,6 +940,40 @@ paths:
                     items:
                       $ref: "#/components/schemas/BestEffort"
 
+  /v1/athletes/{id}/best-efforts/recent-ranks:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Best efforts]
+      summary: Recent top-3 best efforts
+      operationId: listRecentTopEfforts
+      description: >
+        Backs the Dashboard "Top efforts this week" card: which activities from the last
+        `days` ranked top-3 in any best-effort leaderboard (16-week, 1-year, or all-time -
+        4-week/3-month are excluded, they flag almost everything recent). One entry is one
+        activity x one best-effort category (kind + window); `ranks` holds that entry's
+        1-based rank in each tracked period, or null for a period it didn't reach the
+        top-N of at all. Only entries with at least one period's rank <= 3 are returned -
+        sorting/grouping/headline-period selection are a client concern.
+      parameters:
+        - name: days
+          in: query
+          description: How far back to look for qualifying activities.
+          schema: { type: integer, default: 7 }
+      responses:
+        "200":
+          description: Recent top-3 best efforts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  since: { type: string, format: date }
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RecentTopEffort"
+
   /v1/tags:
     get:
       tags: [Tags]
@@ -2776,6 +2810,27 @@ components:
         unit: { type: string, example: watts }
         date: { type: string, format: date }
         activity_id: { type: string }
+
+    RecentTopEffort:
+      type: object
+      properties:
+        activity_id: { type: string }
+        date: { type: string, format: date }
+        sport: { type: string, example: run }
+        kind:
+          type: string
+          enum: [cycling_hr, cycling_power, running_hr, running_pace, running_power]
+        window: { type: string, example: 5min }
+        value: { type: number, example: 342 }
+        unit: { type: string, example: w }
+        ranks:
+          type: object
+          description: 1-based rank per period, or null if not in that period's top-N.
+          properties:
+            16w: { type: integer, nullable: true }
+            1y: { type: integer, nullable: true }
+            all: { type: integer, nullable: true }
+          example: { "16w": 1, "1y": 1, "all": 3 }
 
     Tag:
       type: object

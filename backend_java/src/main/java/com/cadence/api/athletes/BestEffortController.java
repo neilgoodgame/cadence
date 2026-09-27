@@ -6,8 +6,11 @@ import com.cadence.api.activities.BestEffortRepository;
 import com.cadence.api.activities.BestEffortRecomputeService;
 import com.cadence.api.athletes.dto.BestEffortListResponse;
 import com.cadence.api.athletes.dto.BestEffortResponse;
+import com.cadence.api.athletes.dto.RecentTopEffortResponse;
+import com.cadence.api.athletes.dto.RecentTopEffortsListResponse;
 import com.cadence.api.common.RecomputeLockRegistry;
 import com.cadence.api.common.SseHeartbeat;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
@@ -107,6 +110,122 @@ public class BestEffortController {
 		capped.sort(Comparator.comparing(BestEffort::getWindow)
 				.thenComparing(Comparator.comparingDouble(BestEffort::getValue).reversed()));
 		return capped;
+	}
+
+	// The 4w/3m periods are deliberately excluded here (unlike listBestEfforts above) - they
+	// flag almost everything recent, which is exactly what the Dashboard "Top efforts this
+	// week" card is trying to avoid drowning the athlete in.
+	private static final List<String> RECENT_TOP_EFFORT_PERIODS = List.of("16w", "1y", "all");
+
+	/**
+	 * Backs the Dashboard's "Top efforts this week" card: which of an athlete's activities from
+	 * the last {@code days} were good enough to rank top-3 in any of their best-effort
+	 * leaderboards (16-week, 1-year, or all-time - see {@link #RECENT_TOP_EFFORT_PERIODS}).
+	 *
+	 * <p>An "entry" is one activity x one best-effort category (kind + window). For each kind
+	 * and each tracked period, this takes the exact same (capped, top-N) row set {@link
+	 * #listBestEfforts} would return for that period, ranks each window's rows by value
+	 * (respecting direction), and keeps only the ones whose activity falls within the last
+	 * {@code days}. The same (activity, kind, window) triple can appear across multiple
+	 * periods - its {@code ranks} map accumulates one entry per period it showed up in, {@code
+	 * null} for a period it didn't reach the top-N of at all (not "0 rank", a real absence).
+	 * Only entries with at least one period's rank &lt;= 3 are returned - sorting/grouping/
+	 * headline-period selection all happen client-side (see the design handoff's
+	 * TopEffortsCard.tsx).
+	 *
+	 * <p>Retention caveat: trim keeps {@code bestEffortTopN} rows per window <em>per period</em>
+	 * independently (see {@link #capPerWindow}'s own Javadoc), so ranks 1-3 are always
+	 * recoverable as long as {@code bestEffortTopN >= 3}. An athlete with it set to 1-2 just
+	 * gets ranked out of whatever smaller set actually exists - not an error case, nothing extra
+	 * to handle here.
+	 */
+	@Transactional
+	@GetMapping("/v1/athletes/{id}/best-efforts/recent-ranks")
+	public RecentTopEffortsListResponse recentTopEffortRanks(@PathVariable String id,
+			@RequestParam(defaultValue = "7") int days) {
+		accessGuard.requireRead(id);
+		User athlete = userService.getById(id);
+		LocalDate since = LocalDate.now().minusDays(days);
+
+		record EntryKey(String activityId, BestEffortKind kind, String window) {
+		}
+
+		Map<EntryKey, RecentTopEffortAccumulator> entries = new LinkedHashMap<>();
+		for (BestEffortKind kind : BestEffortKind.values()) {
+			boolean lowerIsBetter = kind == BestEffortKind.RUNNING_PACE;
+			for (String period : RECENT_TOP_EFFORT_PERIODS) {
+				LocalDate periodSince = recentTopEffortPeriodCutoff(period);
+				List<BestEffort> efforts = periodSince != null
+						? bestEffortRepository.findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, periodSince)
+						: bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(id, kind);
+				List<BestEffort> capped = capPerWindow(efforts, lowerIsBetter, athlete.getBestEffortTopN());
+
+				Map<String, List<BestEffort>> byWindow = capped.stream()
+						.collect(Collectors.groupingBy(BestEffort::getWindow, LinkedHashMap::new, Collectors.toList()));
+				for (List<BestEffort> windowEfforts : byWindow.values()) {
+					// Rank order is direction-aware and computed fresh here, not inherited from
+					// capPerWindow's own return order - that method's final sort is always
+					// value-desc for display purposes, which is actually *reverse* rank order
+					// for a lower-is-better kind (pace).
+					Comparator<BestEffort> byRank = lowerIsBetter
+							? Comparator.comparingDouble(BestEffort::getValue)
+							: Comparator.comparingDouble(BestEffort::getValue).reversed();
+					List<BestEffort> ranked = windowEfforts.stream().sorted(byRank).toList();
+					for (int i = 0; i < ranked.size(); i++) {
+						BestEffort effort = ranked.get(i);
+						if (effort.getDate().isBefore(since)) {
+							continue;
+						}
+						EntryKey key = new EntryKey(effort.getActivity().getId(), effort.getKind(), effort.getWindow());
+						RecentTopEffortAccumulator entry =
+								entries.computeIfAbsent(key, k -> new RecentTopEffortAccumulator(effort));
+						entry.ranks.put(period, i + 1);
+					}
+				}
+			}
+		}
+
+		List<RecentTopEffortResponse> data = entries.values().stream()
+				.filter(e -> e.ranks.values().stream().anyMatch(r -> r <= 3))
+				.map(e -> new RecentTopEffortResponse(e.activityId, e.date, e.sport, e.kind, e.window, e.value, e.unit, e.ranks))
+				.toList();
+		return new RecentTopEffortsListResponse(since.toString(), data);
+	}
+
+	private static LocalDate recentTopEffortPeriodCutoff(String period) {
+		return switch (period) {
+			case "16w" -> LocalDate.now().minusDays(112);
+			case "1y" -> LocalDate.now().minusDays(365);
+			default -> null; // "all"
+		};
+	}
+
+	/** Mutable accumulator for one (activity, kind, window) entry while {@link
+	 * #recentTopEffortRanks} walks every kind/period combination - a plain record can't be
+	 * built incrementally, since the same entry's {@code ranks} map gets filled in across
+	 * multiple, separate period passes. */
+	private static final class RecentTopEffortAccumulator {
+		final String activityId;
+		final LocalDate date;
+		final Sport sport;
+		final BestEffortKind kind;
+		final String window;
+		final double value;
+		final String unit;
+		final Map<String, Integer> ranks = new LinkedHashMap<>();
+
+		RecentTopEffortAccumulator(BestEffort effort) {
+			this.activityId = effort.getActivity().getId();
+			this.date = effort.getDate();
+			this.sport = effort.getActivity().getSport();
+			this.kind = effort.getKind();
+			this.window = effort.getWindow();
+			this.value = effort.getValue();
+			this.unit = effort.getUnit();
+			for (String period : RECENT_TOP_EFFORT_PERIODS) {
+				this.ranks.put(period, null);
+			}
+		}
 	}
 
 	@DeleteMapping("/v1/athletes/{id}/best-efforts/by-activity/{activityId}")
