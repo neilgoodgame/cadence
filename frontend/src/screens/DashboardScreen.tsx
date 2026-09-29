@@ -10,9 +10,10 @@ import { StatCardsRow } from "./dashboard/StatCardsRow";
 import { ThresholdSummaryCard } from "./dashboard/ThresholdSummaryCard";
 import { NextRaceCard } from "./dashboard/NextRaceCard";
 import { UpcomingWorkoutsCard } from "./dashboard/UpcomingWorkoutsCard";
-import { WeekCalendar } from "./dashboard/WeekCalendar";
+import { WeekCalendar, WeekHrDistribution } from "./dashboard/WeekCalendar";
 import { TopEffortsCard } from "./dashboard/TopEffortsCard";
 import { TrainingHistory } from "./dashboard/TrainingHistory";
+import { thisWeeksTrainingActivities } from "../lib/week";
 
 // new Date(...).toISOString().slice(0,10) reads back the *UTC* calendar date - for a UTC+ user,
 // local midnight is still the previous day in UTC, silently shifting these date-range boundaries
@@ -101,6 +102,8 @@ export function DashboardScreen() {
   // of a days-back parameter).
   const recentActivityIds = useMemo(() => recentActivities.map((a) => a.id), [recentActivities]);
 
+  const weekTrainingActivities = useMemo(() => thisWeeksTrainingActivities(activities), [activities]);
+
   if (!user) {
     return null;
   }
@@ -114,6 +117,8 @@ export function DashboardScreen() {
       </Card>
 
       <TopEffortsCard athleteId={user.id} activities={activities} recentActivityIds={recentActivityIds} />
+
+      <WeekHrDistribution activities={weekTrainingActivities} athleteId={user.id} />
 
       <NextRaceCard />
 
