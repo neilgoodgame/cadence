@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { Activity } from "../../api/types";
 import { getActivity, getStreams } from "../../api/activities";
 import { getActivityBestEffortRanks, listZones } from "../../api/athletes";
+import { Card } from "../../components/Card";
 import {
   BEST_EFFORT_FAMILY,
   MEDAL_COLORS,
@@ -18,19 +19,18 @@ import {
 import { bucketIntoZones } from "../../lib/zones";
 import { formatDuration, formatPace } from "../../lib/format";
 import { sportColor } from "../../lib/sportColors";
+import { localIso, thisWeeksTrainingActivities } from "../../lib/week";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ZONE_COLORS = ["var(--zone-1)", "var(--zone-2)", "var(--zone-3)", "var(--zone-4)", "var(--zone-5)"];
 const RESOLUTION_SECONDS = 5;
 
-function localIso(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function WeekHrDistribution({ activities, athleteId }: { activities: Activity[]; athleteId: string }) {
+/** This week's heart-rate zone distribution, as its own standalone Dashboard card - separate
+ * from WeekCalendar so it can be positioned independently of it (e.g. below Top Efforts).
+ * Takes `activities` pre-filtered to this week's training activities - see
+ * thisWeeksTrainingActivities(), the single source of truth WeekCalendar itself also uses, so
+ * both stay in sync with exactly the same "this week" window. */
+export function WeekHrDistribution({ activities, athleteId }: { activities: Activity[]; athleteId: string }) {
   const hrActivities = activities.filter((a) => a.avg_hr != null);
 
   const zonesQuery = useQuery({
@@ -53,12 +53,12 @@ function WeekHrDistribution({ activities, athleteId }: { activities: Activity[];
   const allLoaded = streamQueries.every((q) => q.data != null);
   if (!allLoaded) {
     return (
-      <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+      <Card>
         <div className="mono" style={{ fontSize: 11, color: "#e0442e", fontWeight: 600, letterSpacing: "0.06em", marginBottom: 10 }}>
           HEART RATE ZONES
         </div>
         <div style={{ fontSize: 13, color: "var(--ink3)" }}>Loading…</div>
-      </div>
+      </Card>
     );
   }
 
@@ -67,7 +67,7 @@ function WeekHrDistribution({ activities, athleteId }: { activities: Activity[];
   const maxSeconds = Math.max(1, ...zoneTimes.map((z) => z.seconds));
 
   return (
-    <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+    <Card>
       <div className="mono" style={{ fontSize: 11, color: "#e0442e", fontWeight: 600, letterSpacing: "0.06em", marginBottom: 10 }}>
         HEART RATE ZONES
       </div>
@@ -98,7 +98,7 @@ function WeekHrDistribution({ activities, athleteId }: { activities: Activity[];
         </div>
         );
       })}
-    </div>
+    </Card>
   );
 }
 
@@ -163,8 +163,7 @@ export function WeekCalendar({
     }
   }
 
-  const weekActivities = [...byDate.values()].flat();
-  const trainingActivities = weekActivities.filter((a) => a.sport !== "walk");
+  const trainingActivities = thisWeeksTrainingActivities(activities);
   const totalTimeS = trainingActivities.reduce((s, a) => s + a.moving_time, 0);
   const weekTss = trainingActivities.reduce((s, a) => s + a.tss, 0);
 
@@ -357,8 +356,6 @@ export function WeekCalendar({
           );
         })}
       </div>
-
-      <WeekHrDistribution activities={trainingActivities} athleteId={athleteId} />
     </div>
   );
 }
