@@ -46,6 +46,9 @@ export function App() {
                 <Route path="/preferences" element={<PreferencesScreen />} />
                 <Route path="/scheduled/:id" element={<ScheduledWorkoutScreen />} />
                 <Route path="/thresholds/:field" element={<ThresholdHistoryScreen />} />
+                {/* ThresholdHistoryScreen itself redirects an invalid :field to /thresholds/ftp
+                    (via Navigate) - it already needs the field param to build the Current zones
+                    card and field tabs, so the guard lives there rather than duplicated here. */}
               </Route>
             </Route>
           </Routes>
