@@ -2,15 +2,23 @@ repo: neilgoodgame/cadence
 branch: main
 
 ## Last sync
-date: 2026-09-30T14:07:18Z
+date: 2026-10-01T10:24:56Z
+branch: main (tree 31f3fc75a616)
+
+### Updated in this project
+- "Thresholds & zones" is shipped: the Dashboard `ThresholdSummaryCard.tsx` dropped its "Show zones" expander for a single "Zones & history →" link shown on all four tabs (LTHR included); zones moved to `/thresholds/:field` (`ThresholdHistoryScreen.tsx`), which gained field tabs (including LTHR), a Current zones card (now vs. before the previous threshold), and a redesigned `ThresholdHistoryChart.tsx` (range toggle, year bands, best-in-range line, improvement/drop dot styling, hover tooltip). LTHR shows the zones card plus a note - no chart or ledger.
+- Dropped the PROPOSED marker/dashed border from `ThresholdHistory.dc.html`'s header and the "(PROPOSED refresh)" chart comment - both are shipped now, not proposed.
+- Backend: none (frontend-only feature).
+
+## Sync history
+
+### 2026-09-30T14:07:18Z
 branch: main (tree 9768ad174651)
 
 ### Updated in this project
 - Dashboard "Top efforts this week" is shipped (`dashboard/TopEffortsCard.tsx`, `WeekCalendar.tsx` badges, `components/BestEffortRow.tsx`, `lib/bestEfforts.ts`): dropped the PROPOSED marker/dashed border, adopted the app's trophy icon, sample data limited to v1 kinds (Power/Pace/HR; Distance/Elevation deferred).
 - Activity Analysis: added the per-activity "Top efforts" card (`activity-analysis/ActivityBestEffortsCard.tsx`) after the matched-workout card.
 - Endpoint shipped as `GET …/best-efforts/ranks` with explicit activity ids (not `recent-ranks?days=7`).
-
-## Sync history
 
 ### 2026-09-26T15:51:21Z
 branch: main (tree 750c6bb6e985)
@@ -56,7 +64,6 @@ commit: main (92 commits since 58b900204ea6)
 
 ### Not synced yet — large surface added since last full design pass (not read in detail this turn, flagging for a future sync pass)
 - Admin backend fully implemented (`backend/adminapi/*`, `backend_java/.../admin/*`): shoe catalog CRUD, user role toggles, coach-athlete relationship oversight, audit log — matches `Admin.dc.html` intent, not diffed line-by-line.
-- New `ThresholdHistory` feature (screen + chart + backend `athletes/threshold_history.py`, `ThresholdHistoryService` etc.) — no corresponding design file yet (`ThresholdHistory.dc.html` was added in the repo, not by this project).
 - New `EnvironmentCard`, `HeatStrainCard`, `CommentsSection`, `StatsTab` on Activity Analysis — check against `Activity Analysis.dc.html` next pass.
 - Export/Import job system (`backend/dataexport/*`, `frontend/src/api/export.ts`, `dataImport.ts`) — not represented in any design file.
 - `TrainingContextSwitcher`, `ProfileChip` added to `AppShell` — check against `Dashboard.dc.html`/nav design next pass.
@@ -68,6 +75,7 @@ commit: main (92 commits since 58b900204ea6)
 | Data Dictionary.dc.html | `CHANGES.md`, `SCHEMA_COMPARISON.md`, `openapi.yaml` |
 | Activity Analysis.dc.html | `frontend/src/screens/ActivityAnalysisScreen.tsx`, `screens/activity-analysis/*` (StatsTab, EnvironmentCard, HeatStrainCard, HydrationBlock, ThresholdHistoryIndicator, MultisportLegs) |
 | Dashboard.dc.html (refreshed) | `screens/DashboardScreen.tsx`, `screens/dashboard/*`, `layout/*` |
+| ThresholdHistory.dc.html (refreshed) | `screens/ThresholdHistoryScreen.tsx`, `screens/ThresholdHistoryChart.tsx`, `lib/thresholdFields.ts` |
 | Activities.dc.html | `screens/ActivitiesScreen.tsx`, `screens/activities/*`, `components/LinkedActivityRow.tsx` |
 | Best Efforts.dc.html | `screens/BestEffortsScreen.tsx` |
 | Calendar.dc.html | `screens/CalendarScreen.tsx`, `screens/calendar/*` |
