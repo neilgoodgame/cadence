@@ -121,9 +121,15 @@
               <div style="display:flex;flex-direction:column;gap:6px;">
                 <sc-if value="{{ d.empty }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--ink3,#9a958d);text-align:center;padding-top:4px;">—</div></sc-if>
                 <sc-for list="{{ d.acts }}" as="a" hint-placeholder-count="2">
-                  <a href="Activity Analysis.dc.html" style="{{ a.blockStyle }}">
+                  <a href="Activity Analysis.dc.html" title="{{ a.topTitle }}" style="{{ a.blockStyle }}">
                     <div style="font-size:12px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--ink,#1b1a18);margin-bottom:2px;">{{ a.name }}</div>
                     <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ a.meta }}</div>
+                    <sc-if value="{{ a.hasTop }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:3px 4px;margin-top:5px;min-width:0;">
+                        <span style="{{ a.topBadgeStyle }}">#{{ a.topRank }}</span>
+                        <span style="font-size:10.5px;font-weight:600;color:var(--ink2,#6f6b65);min-width:0;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{{ a.topLabel }}</span>
+                      </div>
+                    </sc-if>
                   </a>
                 </sc-for>
               </div>
@@ -146,6 +152,59 @@
           </sc-for>
         </div>
       </div>
+
+      <!-- TOP EFFORTS THIS WEEK (TopEffortsCard.tsx; components/BestEffortRow.tsx; lib/bestEfforts.ts) (last-7-day activities ranking top 3 over 16 weeks, 1 year or all time; headline = widest qualifying period) -->
+      <sc-if value="{{ hasTopEfforts }}" hint-placeholder-val="{{ true }}">
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9981a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8v5a4 4 0 0 1-8 0V3Z"></path><path d="M8 4H5a2 2 0 0 0 0 4h1.5M16 4h3a2 2 0 0 1 0 4h-1.5"></path><path d="M10 15v2M14 15v2M8 21h8M9 17h6l1 4H8l1-4Z"></path></svg>
+            <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Top efforts this week</div>
+            
+          </div>
+          <a href="Best Efforts.dc.html" style="font-size:13px;font-weight:600;color:var(--ember,#ec4a26);text-decoration:none;">Best Efforts →</a>
+        </div>
+        <div style="font-size:12.5px;color:var(--ink3,#9a958d);margin-bottom:10px;">{{ topEffortsSummary }}</div>
+        <div style="display:flex;flex-direction:column;">
+          <sc-for list="{{ topActivities }}" as="g" hint-placeholder-count="4">
+            <div style="display:flex;gap:14px;padding:12px 6px;border-top:1px solid var(--line,#e6e2dc);">
+              <span style="{{ g.rankStyle }}">#{{ g.rank }}</span>
+              <div style="{{ g.sportBarStyle }}"></div>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;">
+                <a href="Activity Analysis.dc.html" style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;text-decoration:none;">
+                  <span style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);">{{ g.activityName }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink3,#9a958d);">{{ g.date }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink2,#6f6b65);">{{ g.headline }} · {{ g.countLabel }}</span>
+                </a>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <sc-for list="{{ g.families }}" as="f" hint-placeholder-count="2">
+                    <div style="display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px;align-items:start;">
+                      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3,#9a958d);padding-top:4px;">{{ f.label }}</div>
+                      <div style="display:flex;flex-direction:column;gap:4px;">
+                        <sc-for list="{{ f.efforts }}" as="e" hint-placeholder-count="1">
+                          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);min-width:96px;">{{ e.metric }}</span>
+                            <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--ink,#1b1a18);min-width:64px;">{{ e.value }}</span>
+                            <div style="display:flex;align-items:center;gap:4px;">
+                              <sc-for list="{{ e.chips }}" as="c" hint-placeholder-count="3">
+                                <span title="{{ c.title }}" style="{{ c.style }}">{{ c.label }} {{ c.rankText }}</span>
+                              </sc-for>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ g.hasMore }}" hint-placeholder-val="{{ false }}">
+                  <div onClick="{{ g.toggleMore }}" style="align-self:flex-start;margin-left:94px;font-size:12px;font-weight:600;color:var(--ember,#ec4a26);cursor:pointer;">{{ g.moreLabel }}</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
 
       <!-- NEXT RACE CARD -->
       <div onClick="{{ openRace }}" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-radius:12px;border:1px solid var(--ember,#ec4a26);background:var(--card,#fff);cursor:pointer;">
@@ -303,32 +362,6 @@
       </div>
       </sc-if>
 
-<!-- PROPOSED (design-only) -->
-      <!-- RECENT PR (only shown for an all-time PR within the last 7 days) -->
-      <sc-if value="{{ hasPr }}" hint-placeholder-val="{{ true }}">
-      <div style="background:var(--card,#fff);border:1px dashed var(--ink3,#9a958d);border-radius:14px;padding:18px;position:relative;overflow:hidden;">
-        <div style="{{ prGlowStyle }}"></div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;position:relative;">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="{{ prAccent }}" stroke-width="1.6"><path d="M5 2h6v3a3 3 0 0 1-3 3 3 3 0 0 1-3-3V2Z"></path><path d="M5 3H3a2 2 0 0 0 2 3.2M11 3h2a2 2 0 0 1-2 3.2"></path><path d="M8 8v3M6 14h4M7 11h2v3H7z"></path></svg>
-            <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">New personal best</div>
-            <span title="Design-only — not built in the app yet" style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:0.08em;color:var(--ink3,#9a958d);border:1px dashed var(--ink3,#9a958d);border-radius:5px;padding:2px 6px;">PROPOSED</span>
-          </div>
-          <a href="Best Efforts.dc.html" style="font-size:13px;font-weight:600;color:var(--ember,#ec4a26);text-decoration:none;">Best Efforts →</a>
-        </div>
-        <a href="Best Efforts.dc.html" style="display:flex;align-items:center;gap:16px;text-decoration:none;position:relative;">
-          <div style="{{ prSportDotStyle }}"></div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);">{{ prMetricLabel }}</div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ prActivityName }} · {{ prDate }}</div>
-          </div>
-          <div style="text-align:right;flex-shrink:0;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:{{ prAccent }};">{{ prValue }}</div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink3,#9a958d);margin-top:1px;">{{ prDelta }}</div>
-          </div>
-        </a>
-      </div>
-      </sc-if>
 
           </div>
   </div>
@@ -481,29 +514,87 @@ class Component extends DCLogic {
     };
   }
 
-  // ---- recent PR callout: shows the most recent all-time PR across run time/HR/power, bike HR/power/distance/elevation, set within the last 7 days ----
-  recentPrs = [
-    { sport: 'run', kind: 'time', metric: '5K', value: '18:42', activityName: 'Tuesday AM — VO2 intervals', date: 'Jul 29', delta: '-0:11 vs. prior best', daysAgo: 3 },
-    { sport: 'run', kind: 'hr', metric: '20min Peak HR', value: '178 bpm', activityName: 'Hill Repeats 6×3', date: 'Jul 27', delta: '+2 bpm vs. prior best', daysAgo: 5 },
-    { sport: 'bike', kind: 'power', metric: '5min Peak Power', value: '412w', activityName: 'VO2 Max · 5×5', date: 'Jul 26', delta: '+9w vs. prior best', daysAgo: 6 },
-    { sport: 'bike', kind: 'hr', metric: '60min Peak HR', value: '171 bpm', activityName: 'Threshold 3×10', date: 'Jul 22', delta: '+1 bpm vs. prior best', daysAgo: 10 },
-    { sport: 'bike', kind: 'distance', metric: 'Longest Ride', value: '142.6 km', activityName: 'Saturday Century Attempt', date: 'Jul 25', delta: '+8.2 km vs. prior best', daysAgo: 7 },
-    { sport: 'bike', kind: 'elevation', metric: 'Biggest Climb', value: '1,840 m', activityName: 'Alpine Loop', date: 'Jul 24', delta: '+120 m vs. prior best', daysAgo: 8 },
+  // ---- top efforts this week (shipped: lib/bestEfforts.ts) ----
+  // Entry = activity x Best Efforts category (family + metric), with its rank per qualifying period.
+  // Qualifies if top 3 in any of 16w / 1y / all (4 weeks excluded). Headline = WIDEST period with rank <= 3.
+  // Card groups by activity -> family (Power, Pace, Heart rate, Distance, Elevation) -> effort.
+  periodDefs = [['all', 'All time', 'All-time', 'AT'], ['1y', '1 yr', '1-year', '1Y'], ['16w', '16 wk', '16-week', '16W']];
+  familyOrder = ['Power', 'Pace', 'Heart rate', 'Distance', 'Elevation'];
+  effortsCap = 3; // per activity; rest behind "+N more"
+  // v1 (shipped): only the five BestEffortKinds — Power / Pace / Heart rate. Distance & Elevation families are deferred (not periodized).
+  recentTopEfforts = [
+    { day: 29, act: 0, sport: 'bike', family: 'Power', metric: '20 min', value: '248 W', ranks: { '16w': 1, '1y': 2, all: 7 } },
+    { day: 29, act: 0, sport: 'bike', family: 'Power', metric: '60 min', value: '221 W', ranks: { '16w': 2, '1y': 4, all: 10 } },
+    { day: 29, act: 0, sport: 'bike', family: 'Heart rate', metric: '20 min', value: '158 bpm', ranks: { '16w': 3, '1y': 8, all: 19 } },
+    { day: 28, act: 1, sport: 'run', family: 'Power', metric: '5 min', value: '342 W', ranks: { '16w': 1, '1y': 1, all: 3 } },
+    { day: 28, act: 1, sport: 'run', family: 'Pace', metric: '10 km', value: '49:52', ranks: { '16w': 2, '1y': 4, all: 11 } },
+    { day: 28, act: 1, sport: 'run', family: 'Heart rate', metric: '20 min', value: '176 bpm', ranks: { '16w': 2, '1y': 5, all: 12 } },
+    { day: 25, act: 0, sport: 'run', family: 'Pace', metric: '30 km', value: '2:58:40', ranks: { '16w': 1, '1y': 2, all: 2 } },
+    { day: 25, act: 0, sport: 'run', family: 'Pace', metric: 'Half marathon', value: '2:03:55', ranks: { '16w': 1, '1y': 2, all: 3 } },
+    { day: 25, act: 0, sport: 'run', family: 'Pace', metric: '10 mile', value: '1:34:02', ranks: { '16w': 1, '1y': 2, all: 5 } },
+    { day: 25, act: 0, sport: 'run', family: 'Pace', metric: '10 km', value: '58:10', ranks: { '16w': 2, '1y': 6, all: 18 } },
+    { day: 23, act: 0, sport: 'run', family: 'Pace', metric: 'Half marathon', value: '2:06:14', ranks: { '16w': 3, '1y': 5, all: 14 } },
   ];
-  buildPr() {
-    const eligible = this.recentPrs.filter(p => p.daysAgo <= 7).sort((a, b) => a.daysAgo - b.daysAgo);
-    const pr = eligible[0];
-    if (!pr) return { hasPr: false };
-    const accent = pr.sport === 'run' ? '#ec4a26' : '#3d7fd6';
-    const kindLabel = { time: 'Best Time', hr: 'Peak HR', power: 'Peak Power', distance: 'Longest Ride', elevation: 'Biggest Climb' }[pr.kind];
+  rankColors = { 1: '#c9981a', 2: '#8e98a3', 3: '#c98a52' };
+  rankInk = '#1b1a18'; // dark text on medal fills (white fails 4.5:1)
+  headlineOf(e) {
+    for (let i = 0; i < this.periodDefs.length; i++) {
+      const [k, , adj, code] = this.periodDefs[i];
+      if (e.ranks[k] && e.ranks[k] <= 3) return { key: k, width: this.periodDefs.length - i, rank: e.ranks[k], adj, code };
+    }
+    return null;
+  }
+  cmpEffort(x, y) { return y.hl.width - x.hl.width || x.hl.rank - y.hl.rank || y.day - x.day; }
+  qualifyingEfforts() {
+    return this.recentTopEfforts.map(e => ({ ...e, hl: this.headlineOf(e) })).filter(e => e.hl).sort((x, y) => this.cmpEffort(x, y));
+  }
+  topEffortsFor(day, act) { return this.qualifyingEfforts().filter(e => e.day === day && e.act === act); }
+  effortLabel(e) { return e.family === 'Distance' || e.family === 'Elevation' ? e.metric : e.metric + ' ' + e.family.toLowerCase(); }
+  buildTopEfforts() {
+    const C = { bike: '#3d7fd6', run: '#ec4a26', walk: '#8b95a1' };
+    const list = this.qualifyingEfforts();
+    if (!list.length) return { hasTopEfforts: false };
+    const groups = [];
+    list.forEach(e => { const k = e.day + ':' + e.act; let g = groups.find(x => x.k === k); if (!g) groups.push(g = { k, items: [] }); g.items.push(e); });
+    const famCounts = this.familyOrder.map(f => [f, list.filter(e => e.family === f).length]).filter(x => x[1]);
     return {
-      hasPr: true,
-      prAccent: accent,
-      prGlowStyle: { position: 'absolute', top: '-40%', right: '-10%', width: '220px', height: '220px', borderRadius: '50%', background: this.rgba ? this.rgba(accent, 0.08) : accent + '14', filter: 'blur(10px)', pointerEvents: 'none' },
-      prSportDotStyle: { width: '4px', height: '38px', borderRadius: '3px', flexShrink: 0, background: accent },
-      prMetricLabel: pr.metric + ' — ' + kindLabel + ' (' + (pr.sport === 'run' ? 'Run' : 'Bike') + ')',
-      prActivityName: pr.activityName, prDate: pr.date,
-      prValue: pr.value, prDelta: pr.delta,
+      hasTopEfforts: true,
+      topEffortsSummary: list.length + ' top-3 efforts across ' + groups.length + ' activities in the last 7 days \u00b7 ' + famCounts.map(([f, n]) => f + ' ' + n).join(' \u00b7 '),
+      topActivities: groups.map(g => {
+        const best = g.items[0];
+        const open = !!(this.state.effortsOpen || {})[g.k];
+        const hidden = Math.max(0, g.items.length - this.effortsCap);
+        const shown = open ? g.items : g.items.slice(0, this.effortsCap);
+        const d = this.weekDaysData.find(x => x.date === best.day);
+        const a = d && d.acts[best.act];
+        return {
+          rank: best.hl.rank,
+          activityName: a ? a[1] : '', date: (d ? d.dow.charAt(0) + d.dow.slice(1).toLowerCase() : '') + ' ' + best.day + ' Jul',
+          headline: best.hl.adj + ' #' + best.hl.rank,
+          countLabel: g.items.length + (g.items.length === 1 ? ' effort' : ' efforts'),
+          hasMore: hidden > 0,
+          moreLabel: open ? 'Show fewer' : '+' + hidden + ' more effort' + (hidden === 1 ? '' : 's'),
+          toggleMore: () => this.setState(st => ({ effortsOpen: { ...(st.effortsOpen || {}), [g.k]: !open } })),
+          families: this.familyOrder.filter(f => shown.some(e => e.family === f)).map(f => ({
+            label: f,
+            efforts: shown.filter(e => e.family === f).map(e => ({
+              metric: e.metric, value: e.value,
+              chips: this.periodDefs.map(([k, label]) => {
+                const r = e.ranks[k], top = r && r <= 3;
+                return {
+                  label, rankText: top ? '#' + r : '\u2014',
+                  title: label + ': ' + (r ? 'rank ' + r : 'not ranked'),
+                  style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 700, whiteSpace: 'nowrap', padding: '2px 7px', borderRadius: '5px',
+                    color: top ? this.rankInk : 'var(--ink3,#9a958d)', background: top ? this.rankColors[r] : 'transparent',
+                    border: '1px solid ' + (top ? this.rankColors[r] : 'var(--line,#e6e2dc)') },
+                };
+              }),
+            })),
+          })),
+          rankStyle: { width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono',monospace", fontSize: '12px', fontWeight: 800, color: this.rankInk, background: this.rankColors[best.hl.rank] },
+          sportBarStyle: { width: '4px', alignSelf: 'stretch', borderRadius: '3px', flexShrink: 0, background: C[best.sport] },
+        };
+      }),
     };
   }
 
@@ -552,10 +643,20 @@ class Component extends DCLogic {
       headStyle: { paddingBottom: '8px', marginBottom: '8px', borderBottom: '2px solid ' + (d.today ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)') },
       dowStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: d.today ? 'var(--ember,#ec4a26)' : 'var(--ink3,#9a958d)' },
       dateStyle: { fontSize: '20px', fontWeight: 800, lineHeight: '1.2', color: d.today ? 'var(--ink,#1b1a18)' : 'var(--ink2,#6f6b65)' },
-      acts: d.acts.map(([sport, name, meta]) => ({
-        name, meta, onClick: () => {},
-        blockStyle: { padding: '6px 8px', borderRadius: '6px', background: 'var(--elev,#faf9f7)', cursor: 'pointer', borderLeft: '3px solid ' + C[sport], textDecoration: 'none', display: 'block' },
-      })),
+      acts: d.acts.map(([sport, name, meta], i) => {
+        const top = this.topEffortsFor(d.date, i);
+        const best = top[0];
+        const rc = best ? this.rankColors[best.hl.rank] : null;
+        return {
+          name, meta, onClick: () => {},
+          hasTop: !!best,
+          topRank: best ? best.hl.rank + ' ' + best.hl.code : '',
+          topLabel: best ? this.effortLabel(best) + (top.length > 1 ? ' +' + (top.length - 1) : '') : '',
+          topTitle: top.map(e => e.hl.adj + ' #' + e.hl.rank + ' \u00b7 ' + e.family + ' \u00b7 ' + e.metric + ' \u2014 ' + e.value).join('\n'),
+          topBadgeStyle: { flexShrink: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 800, color: this.rankInk, background: rc, borderRadius: '4px', padding: '1px 5px' },
+          blockStyle: { padding: '6px 8px', borderRadius: '6px', background: best ? this.rgba(rc, 0.1) : 'var(--elev,#faf9f7)', boxShadow: best ? 'inset 0 0 0 1px ' + this.rgba(rc, 0.45) : 'none', cursor: 'pointer', borderLeft: '3px solid ' + C[sport], textDecoration: 'none', display: 'block' },
+        };
+      }),
     }));
 
     const maxSeconds = Math.max(1, ...this.hrZonesData.map(z => z.seconds));
@@ -735,7 +836,7 @@ class Component extends DCLogic {
       ...this.model,
       ...this.buildRace(),
       ...this.buildThresholds(),
-      ...this.buildPr(),
+      ...this.buildTopEfforts(),
       ...this.buildUpcoming(),
       ...this.buildWeek(),
       ...this.buildHistory(),

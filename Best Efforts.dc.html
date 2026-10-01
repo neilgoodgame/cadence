@@ -207,7 +207,7 @@ class Component extends DCLogic {
     const val = (text, color, pr) => ({ text, style: mono(15, color, 700), pr, prStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', background: color === RUN ? 'rgba(236,74,38,0.15)' : 'rgba(61,127,214,0.15)', color, letterSpacing: '0.04em' } });
     const sub = (text) => ({ text, style: mono(12, 'var(--ink2,#6f6b65)'), pr: false });
     const G8 = '28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr 64px';
-    const km = { '1 km': 1, '1 mile': 1.609, '5 km': 5, '10 km': 10, 'Half marathon': 21.097 };
+    const km = { '1 km': 1, '5 km': 5, '10 km': 10, '10 mile': 16.093, 'Half marathon': 21.097, '30 km': 30, 'Marathon': 42.195 };
     const runPace = card('rpace', 'run', 'BEST TIME \u00b7 BY DISTANCE', '', Object.keys(km), ['#', 'Activity', 'Date', 'Time', 'Pace', 'Avg HR', 'Power'], '28px minmax(120px,1.3fr) 0.5fr 0.85fr 0.55fr 0.5fr 0.55fr 64px',
       (i, t) => { const p = 222 + i * 6 + km[t] * 3; return [val(this.dur(p * km[t]), RUN, i === 0 && st.period !== '4w'), sub(this.pace(p)), sub((158 + (i % 4) * 3) + ' bpm'), sub((292 - i * 4) + 'w')]; }, 'No running pace data for this period.');
     const secW = ['1 min', '5 min', '20 min', '60 min'];

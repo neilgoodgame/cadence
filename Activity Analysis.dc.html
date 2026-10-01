@@ -228,6 +228,40 @@
         </sc-if>
       </div>
 
+      <!-- TOP EFFORTS (ActivityBestEffortsCard.tsx — renders nothing unless this activity ranks top 3 over 16 wk / 1 yr / all time) -->
+      <sc-if value="{{ hasTopEfforts }}" hint-placeholder-val="{{ true }}">
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:16px 22px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9981a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8v5a4 4 0 0 1-8 0V3Z"></path><path d="M8 4H5a2 2 0 0 0 0 4h1.5M16 4h3a2 2 0 0 1 0 4h-1.5"></path><path d="M10 15v2M14 15v2M8 21h8M9 17h6l1 4H8l1-4Z"></path></svg>
+          <span style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);">Top efforts</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink2,#6f6b65);">{{ topHeadline }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <sc-for list="{{ topFamilies }}" as="f" hint-placeholder-count="2">
+            <div style="display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px;">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink3,#9a958d);padding-top:4px;">{{ f.label }}</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <sc-for list="{{ f.efforts }}" as="e" hint-placeholder-count="1">
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);min-width:96px;">{{ e.metric }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--ink,#1b1a18);min-width:64px;">{{ e.value }}</span>
+                    <div style="display:flex;gap:4px;">
+                      <sc-for list="{{ e.chips }}" as="c" hint-placeholder-count="3">
+                        <span title="{{ c.title }}" style="{{ c.style }}">{{ c.label }} {{ c.rankText }}</span>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ topHasMore }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ toggleTopMore }}" style="font-size:12px;font-weight:600;color:var(--ember,#ec4a26);cursor:pointer;margin-left:94px;">{{ topMoreLabel }}</div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+
       <!-- MULTISPORT LEGS (MultisportLegs.tsx) -->
       <sc-if value="{{ isMultisport }}" hint-placeholder-val="{{ false }}">
       <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;margin-bottom:14px;">
@@ -626,6 +660,43 @@
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;variant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;standard&quot;,&quot;duplicate&quot;,&quot;multisport&quot;,&quot;multisport-leg&quot;],&quot;default&quot;:&quot;standard&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;indoor&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;weight&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:72,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;},&quot;startWeight&quot;:{&quot;editor&quot;:&quot;float&quot;,&quot;default&quot;:72,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;},&quot;endWeight&quot;:{&quot;editor&quot;:&quot;float&quot;,&quot;default&quot;:71.1,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;},&quot;fluids&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:750,&quot;min&quot;:0,&quot;max&quot;:3000,&quot;tsType&quot;:&quot;number&quot;}}">
 class Component extends DCLogic {
+  // ---- Top efforts (ActivityBestEffortsCard.tsx / lib/bestEfforts.ts). Sample: this ride's own ranks. ----
+  topEffortsData = [
+    { family: 'Power', metric: '20 min', value: '228 W', ranks: { '16w': 1, '1y': 3, all: 8 } },
+    { family: 'Power', metric: '60 min', value: '196 W', ranks: { '16w': 2, '1y': 5, all: 14 } },
+    { family: 'Power', metric: '5 min', value: '262 W', ranks: { '16w': 3, '1y': 9, all: 22 } },
+    { family: 'Heart rate', metric: '60 min', value: '130 bpm', ranks: { '16w': 3, '1y': 11, all: 30 } },
+  ];
+  buildTopEfforts() {
+    const P = [['all', 'All time', 'All-time'], ['1y', '1 yr', '1-year'], ['16w', '16 wk', '16-week']];
+    const M = { 1: '#c9981a', 2: '#8e98a3', 3: '#c98a52' }, INK = '#1b1a18';
+    const FAM = ['Power', 'Pace', 'Heart rate', 'Distance', 'Elevation'], CAP = 3;
+    const hl = e => { for (let i = 0; i < P.length; i++) { const r = e.ranks[P[i][0]]; if (r != null && r <= 3) return { w: P.length - i, rank: r, adj: P[i][2] }; } return null; };
+    const list = this.topEffortsData.map(e => ({ ...e, hl: hl(e) })).filter(e => e.hl).sort((x, y) => y.hl.w - x.hl.w || x.hl.rank - y.hl.rank);
+    if (!list.length) return { hasTopEfforts: false };
+    const open = !!this.state.topOpen, hidden = list.length - CAP;
+    const shown = open ? list : list.slice(0, CAP);
+    return {
+      hasTopEfforts: true,
+      topHeadline: list[0].hl.adj + ' #' + list[0].hl.rank + ' · ' + list.length + ' effort' + (list.length === 1 ? '' : 's'),
+      topHasMore: hidden > 0,
+      topMoreLabel: open ? 'Show fewer' : '+' + hidden + ' more effort' + (hidden === 1 ? '' : 's'),
+      toggleTopMore: () => this.setState(st => ({ topOpen: !st.topOpen })),
+      topFamilies: FAM.filter(f => shown.some(e => e.family === f)).map(f => ({
+        label: f,
+        efforts: shown.filter(e => e.family === f).map(e => ({
+          metric: e.metric, value: e.value,
+          chips: P.map(([k, label]) => {
+            const r = e.ranks[k], top = r != null && r <= 3;
+            return { label, rankText: top ? '#' + r : '\u2014', title: label + ': ' + (r != null ? 'rank ' + r : 'not ranked'),
+              style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 700, whiteSpace: 'nowrap', padding: '2px 7px', borderRadius: '5px',
+                color: top ? INK : 'var(--ink3,#9a958d)', background: top ? M[r] : 'transparent', border: '1px solid ' + (top ? M[r] : 'var(--line,#e6e2dc)') } };
+          }),
+        })),
+      })),
+    };
+  }
+
   state = { dupState: { linked: ['d1'], cands: ['c1'] }, ctxOpen: false, theme: 'lab', tab: 'stats', stream: 'power', hover: null, linkedOpen: false, tags: ['Tempo', 'Key session'], tagMenuOpen: false, tagDraft: '', commentDraft: '', asCoach: true, comments: [
     { id: 'c1', author: 'Mara Køhl', role: 'coach', time: '2h ago', text: 'Great power hold on reps 3–4 — your VO2 numbers are trending up nicely. Ease the openers next time so you hit the main set fresher.' },
     { id: 'c2', author: 'Neil Goodgame', role: 'athlete', time: '1h ago', text: 'Thanks — legs felt good. The last rep was a stretch but held it. Will dial back the warm-up.' },
@@ -877,6 +948,7 @@ class Component extends DCLogic {
     const SC = { swim: '#2fa66a', bike: '#3d7fd6', run: '#ec4a26', transition: '#6b7683' };
     const shellCtx = ['Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'];
     return {
+      ...this.buildTopEfforts(),
       isLeg: variant === 'multisport-leg', isDuplicate: variant === 'duplicate', isMultisport: variant === 'multisport',
       showDuplicates: variant === 'standard' && (ds.linked.length + ds.cands.length) > 0,
       dupes: ds.linked.map((id, i) => ({ ...dupAll[id], rowStyle: { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderTop: i > 0 ? '1px solid var(--line,#e6e2dc)' : 'none', flexWrap: 'wrap' },
