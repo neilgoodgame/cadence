@@ -278,25 +278,7 @@
             <div onClick="{{ thrRefresh }}" style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);cursor:pointer;">{{ thrRefreshLabel }}</div>
           </div>
         </sc-if>
-        <sc-if value="{{ thrHasHistory }}" hint-placeholder-val="{{ true }}"><a href="ThresholdHistory.dc.html" style="display:inline-block;margin-top:10px;font-size:12px;color:var(--ember,#ec4a26);font-weight:600;">View history</a></sc-if>
-        <div onClick="{{ toggleThrZones }}" style="display:flex;align-items:center;gap:5px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line,#e6e2dc);font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;width:fit-content;">
-          <span style="{{ thrCaretStyle }}">▸</span>{{ thrZonesLabel }}
-        </div>
-        <sc-if value="{{ thrZonesOpen }}" hint-placeholder-val="{{ false }}">
-          <div style="margin-top:12px;">
-            <div style="font-size:11px;color:var(--ink3,#9a958d);margin-bottom:10px;">{{ dashZoneRefLabel }}</div>
-            <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:6px;">
-              <sc-for list="{{ dashZoneRows }}" as="z" hint-placeholder-count="5"><div style="{{ z.barStyle }}"></div></sc-for>
-            </div>
-            <sc-for list="{{ dashZoneRows }}" as="z" hint-placeholder-count="5">
-              <div style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px;border-top:1px solid var(--line,#e6e2dc);">
-                <span style="width:8px;height:8px;border-radius:2px;flex-shrink:0;background:{{ z.color }};"></span>
-                <span style="flex:1;color:var(--ink,#1b1a18);">{{ z.name }}</span>
-                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ z.range }}</span>
-              </div>
-            </sc-for>
-          </div>
-        </sc-if>
+        <a href="ThresholdHistory.dc.html" style="display:inline-block;margin-top:14px;padding-top:12px;border-top:1px solid var(--line,#e6e2dc);width:100%;font-size:12px;color:var(--ember,#ec4a26);font-weight:600;text-decoration:none;">Zones &amp; history →</a>
       </div>
 
       <!-- 16-WEEK BLOCK -->
