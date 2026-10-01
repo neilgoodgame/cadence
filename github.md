@@ -2,7 +2,17 @@ repo: neilgoodgame/cadence
 branch: main
 
 ## Last sync
-date: 2026-09-26T15:51:21Z
+date: 2026-09-30T14:07:18Z
+branch: main (tree 9768ad174651)
+
+### Updated in this project
+- Dashboard "Top efforts this week" is shipped (`dashboard/TopEffortsCard.tsx`, `WeekCalendar.tsx` badges, `components/BestEffortRow.tsx`, `lib/bestEfforts.ts`): dropped the PROPOSED marker/dashed border, adopted the app's trophy icon, sample data limited to v1 kinds (Power/Pace/HR; Distance/Elevation deferred).
+- Activity Analysis: added the per-activity "Top efforts" card (`activity-analysis/ActivityBestEffortsCard.tsx`) after the matched-workout card.
+- Endpoint shipped as `GET …/best-efforts/ranks` with explicit activity ids (not `recent-ranks?days=7`).
+
+## Sync history
+
+### 2026-09-26T15:51:21Z
 branch: main (tree 750c6bb6e985)
 
 ### Updated in this project
@@ -10,8 +20,8 @@ branch: main (tree 750c6bb6e985)
 - Rebuilt from source: Dashboard (order, Thresholds card), Activities (CQL help, Row/Multisport, tag chips, sort), Best Efforts, Calendar (+ Schedule/Add race modals), new `Scheduled Workout.dc.html`, Gear, Preferences (full 12-tab page), Admin (shoe catalog), Import (single + zip batch).
 - Patched: Activity Analysis (duplicates card/banner, multisport legs + leg banner via `variant` prop, comment Reply), Workout Library (Import button, per-card folder picker, Folder column).
 - Kept as PROPOSED (design-only): Dashboard New-PR callout, Notifications bell, Admin Users/Grants/Audit tabs.
+- 2026-09-27: pushed to repo via handoff `design_handoff_design_refresh/` → PR `design/refresh-sep-2026`, merged into `main`. Repo-root `.dc.html` files now match this project.
 
-## Sync history
 
 ### 2026-09-13T00:00:00Z
 - The design `.dc.html` files now live at the repo root (20 of them). Pulled in the three that did not exist in this project: `ThresholdHistory.dc.html`, `Workout Comparison.dc.html`, `Workout Detail.dc.html`.
