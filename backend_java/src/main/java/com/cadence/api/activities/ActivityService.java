@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.activities.calc.TrainingEffectLabel;
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.ActivityThresholdHistoryEntry;
 import com.cadence.api.athletes.ThresholdField;
@@ -246,6 +247,20 @@ public class ActivityService {
 				}
 			}
 		}
+		// Unlike avg_air_temp/avg_humidity above, there's no "real device data" to protect - a
+		// FIT-embedded total_training_effect is Garmin-device-only to begin with, and a
+		// Zwift-originated file routed through Garmin Connect often carries a meaningless 0.0
+		// placeholder rather than Connect's own (better) cloud-computed value, which never gets
+		// written back into the downloadable FIT at all. So this is always directly
+		// user-editable, not gated behind "only if currently null".
+		if (body.containsKey("aerobic_training_effect")) {
+			Double aerobic = toTrainingEffect(body.get("aerobic_training_effect"));
+			activity.setAerobicTrainingEffect(aerobic);
+			activity.setTrainingEffectLabel(TrainingEffectLabel.of(aerobic));
+		}
+		if (body.containsKey("anaerobic_training_effect")) {
+			activity.setAnaerobicTrainingEffect(toTrainingEffect(body.get("anaerobic_training_effect")));
+		}
 		Activity saved = activityRepository.save(activity);
 		if (newlyMatchedWorkout != null) {
 			matchPreferenceService.applySideEffects(saved, newlyMatchedWorkout, saved.getAthlete());
@@ -313,5 +328,13 @@ public class ActivityService {
 			return n.intValue();
 		}
 		throw new ValidationException("Expected a number.");
+	}
+
+	private Double toTrainingEffect(Object value) {
+		Double parsed = toDouble(value);
+		if (parsed != null && (parsed < 0.0 || parsed > 5.0)) {
+			throw new ValidationException("Training effect must be between 0.0 and 5.0.");
+		}
+		return parsed;
 	}
 }

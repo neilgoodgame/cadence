@@ -129,6 +129,8 @@ class ActivityUpdateSerializer(serializers.Serializer):
     fluids_ml = serializers.IntegerField(required=False, allow_null=True)
     avg_air_temp = serializers.FloatField(required=False, allow_null=True)
     avg_humidity = serializers.IntegerField(required=False, allow_null=True)
+    aerobic_training_effect = serializers.FloatField(required=False, allow_null=True, min_value=0.0, max_value=5.0)
+    anaerobic_training_effect = serializers.FloatField(required=False, allow_null=True, min_value=0.0, max_value=5.0)
 
 
 class LapSerializer(serializers.ModelSerializer):
