@@ -555,3 +555,83 @@ table above: somewhere past a few thousand active users).
    rollback plan that matters for real people, or is just "flip it."
 5. **Target AWS region(s)** and whether multi-region DR is a real
    requirement or aspirational — everything above assumes single-region.
+
+## 14. What actually got built (as deployed, 2026-10-02)
+
+This section replaces planning with fact — pulled directly from the live
+`cadence-terraform` AWS account (`eu-west-2`, not the `us-east-1`-ish rates
+§11 assumed) rather than re-estimated. **The real staging deployment is
+substantially simpler than §2/§7's ECS/Fargate/ALB/NAT-Gateway design** —
+appropriate for a pre-launch, low-traffic staging environment, and a
+deliberate divergence worth folding back into this plan rather than letting
+the plan silently go stale.
+
+### 14.1 What's actually running
+
+| Component | Plan said (§2) | What's actually deployed |
+|---|---|---|
+| Backend compute | ECS Fargate service behind an ALB | **One EC2 instance** (`t4g.micro`, `eu-west-2a`), running the Java backend's Docker image directly via `systemd` (`cadence-backend.service`), restarted on deploy via SSM `send-command` — no ECS, no ALB, no Auto Scaling Group. |
+| Backend-or-both decision (§13 #1) | Open | **Effectively decided: Java only.** ECR has exactly one repository (`cadence-backend-java`); nothing suggests a Python deployment exists in this account. Worth closing §13 #1 formally rather than leaving it listed as open. |
+| Networking | Private subnets + NAT Gateway for ECS tasks, public ALB only | **No NAT Gateway, no ALB.** The EC2 instance holds its own Elastic IP (`18.134.221.241`) directly and sits behind **CloudFront** as a custom origin (`backend-origin.cadence.bioinform.co.uk`, distribution `E263S74XVV68Z2`) — CloudFront does the TLS/edge layer §2 assigned to the ALB, without paying for either an ALB or a NAT Gateway. |
+| Database | RDS, native partitioning, Multi-AZ in prod | **RDS Postgres 16.14**, `db.t4g.micro`, single-AZ, 20GB gp3 — matches §4's "native partitioning, no Timescale extension" recommendation; Multi-AZ correctly skipped for a staging-tier instance per §8 item 5's own guidance ("staging can run on smaller instance sizes / single-AZ to control cost"). |
+| Frontend | S3 + CloudFront (OAC) | **Exactly as planned**: S3 bucket `cadence-staging-frontend-423351912929` (~2.2MB, build artifacts only) behind CloudFront (`E20TKS0GHWLARX`). |
+| Media/uploads storage | S3 bucket, `default_storage.path()` fixed (§5.3) | **Not provisioned.** No uploads bucket exists in this account — media is still implicitly on the EC2 instance's own disk. §5.3's pre-migration code fix was never load-bearing because uploads never actually moved off local storage; this is a real gap if upload volume grows, not a resolved item. |
+| Secrets | Secrets Manager (DB password, JWT keys, OAuth secrets) | **Exactly as planned**: 4 secrets — `cadence-staging-jwt-keys`, `cadence-staging-oauth-first-party-client-secret`, `cadence-staging-oauth-mcp-client-secret`, plus RDS's own auto-rotated credential secret. |
+| Config | SSM Parameter Store | **Exactly as planned**: e.g. `/cadence/staging/backend-image-tag`, read by `deploy-backend.sh`. |
+| CI/CD → deploy | GitHub Actions → OIDC → ECR → `ecs update-service` | GitHub Actions → OIDC → ECR push (as planned), but the deploy step is a **hand-rolled script** (`infra/scripts/deploy-backend.sh`) doing SSM `send-command` (`docker image prune -a -f` then `systemctl restart`) against the one EC2 instance, not an ECS service update — there is no ECS cluster to update. |
+| Redis / Celery worker | ElastiCache + worker ECS service (if Python kept) | **Not provisioned** — consistent with the Java-only decision above; this was always conditional on Python being chosen (§3), and it wasn't. |
+| Lambda ingestion (§5/Phase 3) | Conditional on backend choice | **Not started** — correctly deferred per §10's phasing; moot anyway under the Java-only shape per §5.4's own analysis. |
+
+The net shape: a single EC2 instance plus a single small RDS instance plus
+CloudFront/S3 for the frontend — no ECS, no ALB, no NAT Gateway, no
+ElastiCache. This is a legitimate, much cheaper alternative to §2's design
+for a pre-launch low-traffic stage, at the cost of the things ECS/ALB
+normally buy you (rolling zero-downtime deploys, horizontal scale-out,
+multi-task redundancy) — worth an explicit decision before any real user
+launch, not a default to carry forward silently.
+
+### 14.2 Known gap this shape already hit once
+
+The EC2 instance's root volume is only **8GB** — small enough that it
+already caused a real incident (47 accumulated `docker run --rm` images
+filling the disk to 97%, crash-looping the service on deploy). Fixed short
+term via a manual prune, fixed permanently by adding `docker image prune
+-a -f` to `deploy-backend.sh` itself, run immediately before every restart.
+The same unbounded-growth shape exists one layer up, in ECR: **57 images,
+≈9.7GB**, with no lifecycle policy found — not yet a problem, but the same
+class of issue, worth a lifecycle policy (expire untagged/old-tagged images
+past N) before it is one.
+
+### 14.3 Real cost (measured, not estimated)
+
+Pulled from the account's actual resource sizes against current `eu-west-2`
+on-demand rates — a real bill, not a planning placeholder. Compare against
+§11's "staging (minimal): ~$150-180/mo" estimate, which assumed the
+ECS+ALB+NAT+both-backends shape this deployment didn't take.
+
+| Item | Resource | Est. monthly cost |
+|---|---|---|
+| EC2 (backend) | `t4g.micro`, on-demand | ~$6.90 |
+| EBS (EC2 root volume) | 8GB gp3 | ~$0.90 |
+| RDS (Postgres) | `db.t4g.micro`, single-AZ | ~$13.00 |
+| RDS storage | 20GB gp3 | ~$2.75 |
+| S3 (frontend) | ~2.2MB, negligible | <$0.05 |
+| CloudFront ×2 (frontend + API origin) | low staging traffic | ~$1-3 |
+| Secrets Manager | 4 secrets × $0.40 + API calls | ~$2.00 |
+| ECR | ~9.7GB image storage, 57 images | ~$1.00 |
+| Route 53 | 1 hosted zone (`bioinform.co.uk`) + queries | ~$1.00 |
+| Elastic IP | attached to a running instance | $0 (free while attached) |
+| NAT Gateway | not provisioned | $0 |
+| ALB | not provisioned | $0 |
+| ElastiCache | not provisioned | $0 |
+| **Total** | | **≈$28-31/mo** |
+
+That's roughly a **fifth** of §11's "staging (minimal)" estimate — almost
+entirely because the real deployment skipped the NAT Gateway (§11 priced at
+~$33/mo alone), the ALB (~$16/mo+), ECS Fargate's per-task pricing in favor
+of one flat-rate EC2 instance, and running only one backend instead of two.
+This is the actual, current staging spend — not a projection for a
+production launch, which would reasonably add back at minimum Multi-AZ RDS
+and more than one backend task/instance for redundancy before carrying
+real user traffic (see §13 #4's open question on whether that's needed
+yet).
