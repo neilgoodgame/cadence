@@ -236,6 +236,39 @@ class ActivityDetailViewTests(TestCase):
         self.assertEqual(activity.avg_air_temp, 21.5)
         self.assertEqual(activity.avg_humidity, 57)
 
+    def test_patch_aerobic_and_anaerobic_training_effect_manual(self):
+        activity = _make_activity(self.athlete)
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}",
+            {"aerobic_training_effect": 3.3, "anaerobic_training_effect": 0.0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["aerobic_training_effect"], 3.3)
+        self.assertEqual(data["anaerobic_training_effect"], 0.0)
+        self.assertEqual(data["training_effect_label"], "Improving")
+
+    def test_patch_aerobic_training_effect_overwrites_an_existing_value(self):
+        # Unlike avg_air_temp/avg_humidity, there's no "real device data" guard - a FIT-embedded
+        # 0.0 from a Zwift-originated file is itself untrustworthy (the exact scenario this
+        # feature exists for), so a manual edit must always be able to replace it.
+        activity = _make_activity(self.athlete, aerobic_training_effect=0.0, anaerobic_training_effect=0.0)
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"aerobic_training_effect": 3.3}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["aerobic_training_effect"], 3.3)
+        activity.refresh_from_db()
+        self.assertEqual(activity.aerobic_training_effect, 3.3)
+
+    def test_patch_training_effect_out_of_range_rejected(self):
+        activity = _make_activity(self.athlete)
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"aerobic_training_effect": 5.5}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_viewer_cannot_patch(self):
         UserRelationship.objects.create(
             owner=self.athlete,

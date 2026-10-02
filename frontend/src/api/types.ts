@@ -315,6 +315,8 @@ export interface ActivityUpdate {
   fluids_ml?: number | null;
   avg_air_temp?: number | null;
   avg_humidity?: number | null;
+  aerobic_training_effect?: number | null;
+  anaerobic_training_effect?: number | null;
 }
 
 export interface Lap {

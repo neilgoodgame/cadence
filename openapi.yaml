@@ -657,7 +657,9 @@ paths:
         workout for matching. For activities without sensor-derived environmental
         data (rides, or runs without a Stryd) avg_air_temp and avg_humidity may be
         set manually here; for runs that carry Stryd stream data they are computed
-        and read-only. Set primary_activity_id to mark this activity as a
+        and read-only. aerobic_training_effect/anaerobic_training_effect may
+        always be set manually, with no such guard - see their own description.
+        Set primary_activity_id to mark this activity as a
         duplicate recording of another (or null to unlink); duplicates drop out
         of lists, the calendar, and training load until unlinked.
       requestBody:
@@ -697,6 +699,21 @@ paths:
                     Manually set the average relative humidity (% RH). Ignored for runs
                     with computed Stryd values.
                   example: 60
+                aerobic_training_effect:
+                  type: [number, "null"]
+                  description: >
+                    Manually set aerobic training effect (0.0-5.0). Unlike avg_air_temp/
+                    avg_humidity, always directly writable, never ignored - a FIT-embedded
+                    total_training_effect is Garmin-device-only to begin with, and a
+                    Zwift-originated file routed through Garmin Connect often carries a
+                    meaningless 0.0 placeholder rather than Connect's own cloud-computed
+                    value, which never gets written back into the downloadable FIT.
+                    Recomputes training_effect_label.
+                  example: 3.3
+                anaerobic_training_effect:
+                  type: [number, "null"]
+                  description: Manually set anaerobic training effect (0.0-5.0). Same rationale/availability as aerobic_training_effect.
+                  example: 0.0
       responses:
         "200":
           description: The updated activity.
@@ -2618,13 +2635,16 @@ components:
         aerobic_training_effect:
           type: [number, "null"]
           description: >
-            Garmin's Firstbeat-derived aerobic training load, 0.0-5.0. Read-only;
-            from the FIT session message (no GPX/TCX equivalent), so null for
-            activities not uploaded as .fit or from devices that don't compute it.
+            Garmin's Firstbeat-derived aerobic training load, 0.0-5.0. From the FIT
+            session message (no GPX/TCX equivalent), so null for activities not
+            uploaded as .fit or from devices/platforms that don't compute it - also
+            editable via PATCH (see updateActivity) for exactly that case, e.g. a
+            Zwift-originated file whose downloadable FIT never carries Garmin
+            Connect's own better cloud-computed value.
           example: 4.2
         anaerobic_training_effect:
           type: [number, "null"]
-          description: Garmin's Firstbeat-derived anaerobic training load, 0.0-5.0. Same source/availability as aerobic_training_effect.
+          description: Garmin's Firstbeat-derived anaerobic training load, 0.0-5.0. Same source/availability/editability as aerobic_training_effect.
           example: 0.0
         training_effect_label:
           type: string

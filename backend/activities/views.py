@@ -13,7 +13,7 @@ from core.cql import compile_ast_to_q, parse, resolve_order_by
 from core.exceptions import ConflictError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
-from uploads.processing import backfill_extended_stats, compute_normalized_power, compute_tss
+from uploads.processing import backfill_extended_stats, compute_normalized_power, compute_tss, training_effect_label
 from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
 from workouts.inference import infer_workout
@@ -336,6 +336,21 @@ class ActivityDetailView(APIView):
                 if "avg_humidity" in data:
                     activity.avg_humidity = data["avg_humidity"]
                     update_fields.append("avg_humidity")
+
+        if "aerobic_training_effect" in data or "anaerobic_training_effect" in data:
+            # Unlike avg_air_temp/avg_humidity above, there's no "real device data" to protect -
+            # a FIT-embedded total_training_effect is Garmin-device-only to begin with, and a
+            # Zwift-originated file routed through Garmin Connect often carries a meaningless 0.0
+            # placeholder rather than Connect's own (better) cloud-computed value, which never
+            # gets written back into the downloadable FIT at all. So this is always directly
+            # user-editable, not gated behind "only if currently null".
+            if "aerobic_training_effect" in data:
+                activity.aerobic_training_effect = data["aerobic_training_effect"]
+                activity.training_effect_label = training_effect_label(data["aerobic_training_effect"])
+                update_fields.extend(["aerobic_training_effect", "training_effect_label"])
+            if "anaerobic_training_effect" in data:
+                activity.anaerobic_training_effect = data["anaerobic_training_effect"]
+                update_fields.append("anaerobic_training_effect")
 
         if update_fields:
             activity.save(update_fields=update_fields)
