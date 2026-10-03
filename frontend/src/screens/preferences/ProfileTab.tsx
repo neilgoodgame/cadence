@@ -96,6 +96,7 @@ export function ProfileTab() {
     lthr: user?.lthr ?? undefined,
     max_hr: user?.max_hr ?? undefined,
     resting_hr: user?.resting_hr ?? undefined,
+    threshold_warning_days: user?.threshold_warning_days ?? 21,
     ftp_calculation_method: user?.ftp_calculation_method ?? undefined,
     running_power_source: user?.running_power_source ?? undefined,
   });
@@ -227,6 +228,25 @@ export function ProfileTab() {
               onChange={(e) => setForm({ ...form, resting_hr: Number(e.target.value) })}
             />
           </Field>
+          <Field label="Expiry warning" unit="days before a threshold's best effort ages out">
+            <select
+              style={inputStyle}
+              value={String(form.threshold_warning_days ?? 21)}
+              onChange={(e) => setForm({ ...form, threshold_warning_days: Number(e.target.value) })}
+            >
+              <option value="14">14 days</option>
+              <option value="21">21 days (recommended)</option>
+              <option value="28">28 days</option>
+              <option value="0">Off</option>
+            </select>
+          </Field>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: "-6px 0 0", lineHeight: 1.5 }}>
+            Expiring thresholds appear under Suggestions on Thresholds &amp; zones from this many
+            days out, and on the Dashboard from 10 days. Small drops (under 2%), thresholds
+            you've nearly matched in the last 14 days, and ones a booked race should refresh are
+            skipped. With a trailing window shorter than 12 weeks, a quarter of the window is
+            used instead.
+          </p>
         </div>
       </div>
 
