@@ -15,17 +15,25 @@ public class AthleteService {
 	private final UserRepository userRepository;
 	private final ZoneService zoneService;
 	private final ThresholdHistoryService thresholdHistoryService;
+	private final ThresholdSuggestionService thresholdSuggestionService;
 
-	public AthleteService(UserRepository userRepository, ZoneService zoneService, ThresholdHistoryService thresholdHistoryService) {
+	public AthleteService(UserRepository userRepository, ZoneService zoneService, ThresholdHistoryService thresholdHistoryService,
+			ThresholdSuggestionService thresholdSuggestionService) {
 		this.userRepository = userRepository;
 		this.zoneService = zoneService;
 		this.thresholdHistoryService = thresholdHistoryService;
+		this.thresholdSuggestionService = thresholdSuggestionService;
 	}
 
 	/** Applies the patch and returns the zone types to report as recomputed - see {@link ZoneService#recomputedZoneTypes}. */
 	@Transactional
 	public List<ZoneType> updateProfile(User athlete, AthleteUpdateRequest request) {
 		Set<String> changed = new HashSet<>();
+		// Settings whose change can affect which Threshold suggestions are current (lead time
+		// feeds detection directly) - tracked separately from `changed` (which only maps to zone
+		// recomputation) so the suggestion cache invalidation below covers exactly these plus
+		// ftp/criticalRunPower/thresholdPace, not every unrelated profile field too.
+		boolean suggestionsAffected = false;
 		if (request.name() != null) {
 			athlete.setName(request.name());
 			changed.add("name");
@@ -46,16 +54,19 @@ public class AthleteService {
 			athlete.setFtp(request.ftp());
 			changed.add("ftp");
 			thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, request.ftp(), null);
+			suggestionsAffected = true;
 		}
 		if (request.criticalRunPower() != null) {
 			athlete.setCriticalRunPower(request.criticalRunPower());
 			changed.add("criticalRunPower");
 			thresholdHistoryService.recordManualValue(athlete, ThresholdField.CRITICAL_RUN_POWER, request.criticalRunPower(), null);
+			suggestionsAffected = true;
 		}
 		if (request.thresholdPace() != null) {
 			athlete.setThresholdPace(request.thresholdPace());
 			changed.add("thresholdPace");
 			thresholdHistoryService.recordManualValue(athlete, ThresholdField.THRESHOLD_PACE, null, request.thresholdPace());
+			suggestionsAffected = true;
 		}
 		if (request.lthr() != null) {
 			athlete.setLthr(request.lthr());
@@ -88,6 +99,11 @@ public class AthleteService {
 			// want past entries re-evaluated under the new method too.
 			athlete.setFtpCalculationMethod(request.ftpCalculationMethod());
 			changed.add("ftpCalculationMethod");
+			suggestionsAffected = true;
+		}
+		if (request.thresholdWarningDays() != null) {
+			athlete.setThresholdWarningDays(request.thresholdWarningDays());
+			suggestionsAffected = true;
 		}
 		if (request.runningPowerSource() != null) {
 			// Doesn't retroactively touch already-imported activities' stored Record.power
@@ -112,6 +128,9 @@ public class AthleteService {
 			athlete.setLapSource(request.lapSource());
 		}
 		userRepository.save(athlete);
+		if (suggestionsAffected) {
+			thresholdSuggestionService.invalidate(athlete.getId());
+		}
 		return zoneService.recomputedZoneTypes(athlete, changed);
 	}
 }

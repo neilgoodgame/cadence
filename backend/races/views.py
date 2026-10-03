@@ -5,6 +5,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from athletes import threshold_suggestions
 from core.auth_context import get_effective_athlete_id
 from core.permissions import user_may_read, user_may_write
 
@@ -37,6 +38,7 @@ class RaceListCreateView(APIView):
         serializer = RaceCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         race = Race.objects.create(athlete_id=athlete_id, **serializer.validated_data)
+        threshold_suggestions.invalidate(athlete_id)
         return Response(RaceSerializer(race).data, status=status.HTTP_201_CREATED)
 
 
@@ -49,6 +51,7 @@ class RaceDetailView(APIView):
         serializer = RaceUpdateSerializer(race, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        threshold_suggestions.invalidate(race.athlete_id)
         return Response(RaceSerializer(race).data)
 
     def delete(self, request: Request, id: str) -> Response:
@@ -56,5 +59,7 @@ class RaceDetailView(APIView):
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, race.athlete_id):
             raise PermissionDenied("You do not have write access to that athlete's data.")
+        athlete_id = race.athlete_id
         race.delete()
+        threshold_suggestions.invalidate(athlete_id)
         return Response(status=status.HTTP_204_NO_CONTENT)

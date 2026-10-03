@@ -1,12 +1,21 @@
 package com.cadence.api.races;
 
+import com.cadence.api.common.domain.Sport;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface RaceRepository extends JpaRepository<Race, String> {
 	List<Race> findByAthleteIdOrderByDateAsc(String athleteId);
+
+	// The Threshold suggestions feature's "race booked" suppression rule (upcomingDrop) - the
+	// earliest race in the field's sport between today (inclusive) and the current value's
+	// expiry (exclusive).
+	Optional<Race> findFirstByAthleteIdAndSportAndDateGreaterThanEqualAndDateLessThanOrderByDateAsc(
+			String athleteId, Sport sport, LocalDate from, LocalDate to);
 
 	long countByAthleteId(String athleteId);
 

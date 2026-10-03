@@ -26,6 +26,7 @@ class UserSerializer(serializers.ModelSerializer):
             "best_effort_top_n",
             "threshold_window_days",
             "threshold_sanity_pct",
+            "threshold_warning_days",
             "ftp_calculation_method",
             "running_power_source",
             "rename_matched_activities",

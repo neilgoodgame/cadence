@@ -21,5 +21,6 @@ public record AthleteUpdateRequest(
 		Boolean renameMatchedActivities,
 		Boolean appendMatchDateToName,
 		Boolean copyMatchedWorkoutTags,
-		LapSource lapSource) {
+		LapSource lapSource,
+		Integer thresholdWarningDays) {
 }

@@ -3,6 +3,8 @@ package com.cadence.api.uploads.batch;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.athletes.ThresholdHistoryService;
+import com.cadence.api.athletes.ThresholdSuggestionService;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import org.springframework.batch.core.step.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
@@ -23,12 +25,14 @@ public class ThresholdHistoryTasklet implements Tasklet {
 	private final UploadJobContextRegistry contextRegistry;
 	private final ActivityRepository activityRepository;
 	private final ThresholdHistoryService thresholdHistoryService;
+	private final ThresholdSuggestionService thresholdSuggestionService;
 
 	public ThresholdHistoryTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
-			ThresholdHistoryService thresholdHistoryService) {
+			ThresholdHistoryService thresholdHistoryService, ThresholdSuggestionService thresholdSuggestionService) {
 		this.contextRegistry = contextRegistry;
 		this.activityRepository = activityRepository;
 		this.thresholdHistoryService = thresholdHistoryService;
+		this.thresholdSuggestionService = thresholdSuggestionService;
 	}
 
 	@Override
@@ -40,6 +44,13 @@ public class ThresholdHistoryTasklet implements Tasklet {
 			Activity activity = activityRepository.findById(segment.activityId())
 					.orElseThrow(() -> new NotFoundException("No such activity."));
 			thresholdHistoryService.recomputeForActivity(activity);
+			// A new bike/run activity can change the Threshold suggestions list even when it
+			// didn't change the current threshold itself - e.g. it's now the "near match" that
+			// suppresses an upcoming_drop warning. Invalidated unconditionally for bike/run, not
+			// just on an actual threshold change.
+			if (activity.getSport() == Sport.BIKE || activity.getSport() == Sport.RUN) {
+				thresholdSuggestionService.invalidate(activity.getAthlete().getId());
+			}
 		}
 		return RepeatStatus.FINISHED;
 	}

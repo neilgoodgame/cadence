@@ -8,11 +8,14 @@ import com.cadence.api.activities.calc.DurationCurveCalculator;
 import com.cadence.api.activities.calc.PaceBestEffortCalculator;
 import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.races.Race;
+import com.cadence.api.races.RaceRepository;
 import com.cadence.api.users.User;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -43,6 +46,24 @@ public class ThresholdHistoryCalculator {
 			ThresholdField field, double value, String activityId, LocalDate effectiveFrom, LocalDate currentFrom) {
 	}
 
+	/** Like {@link Candidate}, but also carries the window label and the raw pre-transform value
+	 * (e.g. the raw 20-min power before FTP's x0.95 multiplier) - used by the Threshold
+	 * suggestions feature's "implies" copy for a rejected candidate. */
+	public record RejectedCandidate(String activityId, LocalDate date, double impliedValue, String window, double rawValue) {
+	}
+
+	/** Result of {@link #upcomingDrop} - shape varies with which of the two kinds applies. See
+	 * that method's Javadoc for the suppression rules that decide between them (or neither, via
+	 * a null return). */
+	public sealed interface UpcomingDropResult {
+		record UpcomingDrop(ThresholdHistory currentEntry, Candidate successor, LocalDate expiry, int daysLeft)
+				implements UpcomingDropResult {
+		}
+
+		record RaceWillRefresh(Race race, LocalDate expiry, int daysLeft) implements UpcomingDropResult {
+		}
+	}
+
 	// Pace is seconds/km - a *lower* value is the improvement, the opposite of every other field.
 	private static final Set<ThresholdField> LOWER_IS_BETTER = Set.of(ThresholdField.THRESHOLD_PACE);
 
@@ -58,22 +79,34 @@ public class ThresholdHistoryCalculator {
 	private final ActivityRepository activityRepository;
 	private final RecordRepository recordRepository;
 	private final EntityManager entityManager;
+	private final ThresholdHistoryRepository thresholdHistoryRepository;
+	private final AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository;
+	private final RaceRepository raceRepository;
 
 	public ThresholdHistoryCalculator(ActivityRepository activityRepository, RecordRepository recordRepository,
-			EntityManager entityManager) {
+			EntityManager entityManager, ThresholdHistoryRepository thresholdHistoryRepository,
+			AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository, RaceRepository raceRepository) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.entityManager = entityManager;
+		this.thresholdHistoryRepository = thresholdHistoryRepository;
+		this.acceptedThresholdCandidateRepository = acceptedThresholdCandidateRepository;
+		this.raceRepository = raceRepository;
 	}
 
 	private static Sport sportFor(ThresholdField field) {
 		return field == ThresholdField.FTP ? Sport.BIKE : Sport.RUN;
 	}
 
-	/** The value this one activity's own best effort implies for `field` - raw units (watts for
-	 * ftp/criticalRunPower, seconds/km for thresholdPace), or null if the activity has no
-	 * qualifying effort (e.g. too short for the field's window). */
-	private Double impliedValue(Activity activity, User athlete, ThresholdField field) {
+	/** Like {@link #impliedValue}, but also returns the window label and the raw pre-transform
+	 * value (e.g. the raw 20-min power before FTP's x0.95 multiplier) - used directly by the
+	 * Threshold suggestions feature's "implies" copy for a rejected candidate; impliedValue below
+	 * is a thin wrapper over this for every other, much more numerous caller that only ever
+	 * wanted the final value. */
+	private record ImpliedValueDetail(String window, double rawValue, double value) {
+	}
+
+	private ImpliedValueDetail impliedValueDetail(Activity activity, User athlete, ThresholdField field) {
 		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 		if (records.isEmpty()) {
 			return null;
@@ -87,10 +120,11 @@ public class ThresholdHistoryCalculator {
 			case FTP -> {
 				if (athlete.getFtpCalculationMethod() == FtpCalculationMethod.SIXTY_MIN_DIRECT) {
 					Double best60Min = DurationCurveCalculator.bestAverage(powerSeries, RUNNING_THRESHOLD_WINDOW_SECONDS);
-					yield best60Min == null ? null : (double) Math.round(best60Min);
+					yield best60Min == null ? null : new ImpliedValueDetail("60min", best60Min, Math.round(best60Min));
 				}
 				Double best20Min = DurationCurveCalculator.bestAverage(powerSeries, FTP_TEST_WINDOW_SECONDS);
-				yield best20Min == null ? null : (double) Math.round(FTP_TEST_MULTIPLIER * best20Min);
+				yield best20Min == null ? null
+						: new ImpliedValueDetail("20min", best20Min, Math.round(FTP_TEST_MULTIPLIER * best20Min));
 			}
 			case CRITICAL_RUN_POWER -> {
 				// Excluded (source doesn't match the athlete's current preference), or every
@@ -102,7 +136,7 @@ public class ThresholdHistoryCalculator {
 					yield null;
 				}
 				Double best60Min = DurationCurveCalculator.bestAverage(powerSeries, RUNNING_THRESHOLD_WINDOW_SECONDS);
-				yield best60Min == null ? null : (double) Math.round(best60Min);
+				yield best60Min == null ? null : new ImpliedValueDetail("60min", best60Min, Math.round(best60Min));
 			}
 			case THRESHOLD_PACE -> {
 				Double bestPace = PaceBestEffortCalculator.bestPaceSecondsPerKmOverDuration(
@@ -112,9 +146,17 @@ public class ThresholdHistoryCalculator {
 				// whole-second "M:SS", so a raw sub-second double here could never compare equal to
 				// the already-rounded stored value: every re-ingest inserted a spurious duplicate
 				// row for the same still-current pace instead of recognizing it as unchanged.
-				yield bestPace == null ? null : (double) Math.round(bestPace);
+				yield bestPace == null ? null : new ImpliedValueDetail("60min", bestPace, Math.round(bestPace));
 			}
 		};
+	}
+
+	/** The value this one activity's own best effort implies for `field` - raw units (watts for
+	 * ftp/criticalRunPower, seconds/km for thresholdPace), or null if the activity has no
+	 * qualifying effort (e.g. too short for the field's window). */
+	private Double impliedValue(Activity activity, User athlete, ThresholdField field) {
+		ImpliedValueDetail detail = impliedValueDetail(activity, athlete, field);
+		return detail == null ? null : detail.value();
 	}
 
 	/** Whether candidate value `a` beats existing value `b` for this field. */
@@ -166,15 +208,27 @@ public class ThresholdHistoryCalculator {
 		return activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
 	}
 
+	/** Activity ids the athlete has explicitly accepted as real despite failing the sanity band -
+	 * see the Threshold suggestions feature's AcceptedThresholdCandidate. Bypasses the band in
+	 * both currentWindowValue and replayFullHistory below, so an accepted candidate survives a
+	 * full rebuild/replay instead of being rejected again against a moving reference. */
+	private Set<String> acceptedActivityIds(User athlete, ThresholdField field) {
+		return acceptedThresholdCandidateRepository.findByAthleteIdAndField(athlete.getId(), field).stream()
+				.map(c -> c.getActivity().getId())
+				.collect(Collectors.toSet());
+	}
+
 	/** The best qualifying candidate among the athlete's activities in the trailing window ending
 	 * asOf (default today) for `field` - cheap, bounded to ~windowDays worth of activities. Used
 	 * by both the ingest hook and the manual-refresh endpoint. Sanity-filters each candidate
 	 * against the athlete's current profile value (not a moving reference - this is a single
-	 * snapshot-in-time scan, not a chronological replay; see replayFullHistory for that). */
+	 * snapshot-in-time scan, not a chronological replay; see replayFullHistory for that), except
+	 * for an explicitly accepted candidate (see acceptedActivityIds), which always qualifies. */
 	public Candidate currentWindowValue(User athlete, ThresholdField field, LocalDate asOf) {
 		LocalDate effectiveAsOf = asOf != null ? asOf : LocalDate.now();
 		LocalDate windowStart = effectiveAsOf.minusDays(athlete.getThresholdWindowDays());
 		Double referenceValue = athleteReferenceValue(athlete, field);
+		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
 
 		Instant start = windowStart.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant end = effectiveAsOf.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
@@ -184,8 +238,9 @@ public class ThresholdHistoryCalculator {
 		Candidate best = null;
 		for (Activity activity : activities) {
 			Double implied = impliedValue(activity, athlete, field);
-			if (implied != null && withinSanityBand(implied, referenceValue, athlete.getThresholdSanityPct())
-					&& (best == null || isBetter(field, implied, best.impliedValue()))) {
+			boolean qualifies = implied != null && (acceptedIds.contains(activity.getId())
+					|| withinSanityBand(implied, referenceValue, athlete.getThresholdSanityPct()));
+			if (qualifies && (best == null || isBetter(field, implied, best.impliedValue()))) {
 				best = new Candidate(activity.getId(), dateOf(activity), implied);
 			}
 			// Load-bearing, not cosmetic (see ExportWriter's Javadoc for the same pattern):
@@ -217,6 +272,7 @@ public class ThresholdHistoryCalculator {
 	 * reads. */
 	public List<ThresholdHistoryEntry> replayFullHistory(User athlete, ThresholdField field, BiConsumer<Integer, Integer> onProgress) {
 		List<Activity> activities = activityRepository.findByAthleteIdAndSportOrderByStartDate(athlete.getId(), sportFor(field));
+		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
 
 		List<ThresholdHistoryEntry> entries = new ArrayList<>();
 		List<Candidate> window = new ArrayList<>();
@@ -230,7 +286,9 @@ public class ThresholdHistoryCalculator {
 			window = window.stream().filter(c -> c.date().isAfter(cutoff)).collect(Collectors.toCollection(ArrayList::new));
 
 			Double implied = impliedValue(activity, athlete, field);
-			if (implied != null && withinSanityBand(implied, currentValue, athlete.getThresholdSanityPct())) {
+			boolean qualifies = implied != null && (acceptedIds.contains(activity.getId())
+					|| withinSanityBand(implied, currentValue, athlete.getThresholdSanityPct()));
+			if (qualifies) {
 				Candidate candidate = new Candidate(activity.getId(), activityDate, implied);
 				window = window.stream()
 						.filter(c -> !isBetter(field, implied, c.impliedValue()))
@@ -262,5 +320,134 @@ public class ThresholdHistoryCalculator {
 			entityManager.clear();
 		}
 		return entries;
+	}
+
+	// --- Threshold suggestions: detection only (pure/read-only, like the rest of this class) ---
+	// Response formatting, dismissal filtering, and caching live in ThresholdSuggestionService,
+	// which is also where the AcceptedThresholdCandidate/ThresholdSuggestionDismissal
+	// repositories get consumed for anything beyond the sanity-band bypass above.
+
+	/** Qualifying efforts that *beat* the athlete's current value but were excluded by the
+	 * sanity band (thresholdSanityPct) - a real breakthrough, or a recalibrated/corrupt sensor;
+	 * the athlete decides (see the Threshold suggestions feature). Same trailing-window scan as
+	 * currentWindowValue, but keeps exactly what that one excludes: upward outliers only (a
+	 * corrupt-LOW reading is simply wrong, not an actionable "maybe you're fitter now"
+	 * suggestion - withinSanityBand already treats it identically to a corrupt-high one, so the
+	 * direction check here is what narrows to just the interesting case). Already-accepted
+	 * candidates are excluded - they're part of the real ledger now, not a pending suggestion.
+	 * Returns every qualifying candidate, best first. */
+	public List<RejectedCandidate> rejectedCandidates(User athlete, ThresholdField field, LocalDate asOf) {
+		LocalDate effectiveAsOf = asOf != null ? asOf : LocalDate.now();
+		LocalDate windowStart = effectiveAsOf.minusDays(athlete.getThresholdWindowDays());
+		Double referenceValue = athleteReferenceValue(athlete, field);
+		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
+
+		Instant start = windowStart.atStartOfDay(ZoneOffset.UTC).toInstant();
+		Instant end = effectiveAsOf.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+		List<Activity> activities =
+				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
+
+		List<RejectedCandidate> candidates = new ArrayList<>();
+		for (Activity activity : activities) {
+			if (!acceptedIds.contains(activity.getId())) {
+				ImpliedValueDetail detail = impliedValueDetail(activity, athlete, field);
+				if (detail != null && !withinSanityBand(detail.value(), referenceValue, athlete.getThresholdSanityPct())
+						// Reaching here already proves referenceValue is a real, non-zero number -
+						// the sanity band above only ever fails when it is (see withinSanityBand's
+						// own null/0 passthrough).
+						&& isBetter(field, detail.value(), referenceValue)) {
+					candidates.add(new RejectedCandidate(
+							activity.getId(), dateOf(activity), detail.value(), detail.window(), detail.rawValue()));
+				}
+			}
+			entityManager.clear();
+		}
+		boolean lowerIsBetter = LOWER_IS_BETTER.contains(field);
+		candidates.sort(lowerIsBetter
+				? java.util.Comparator.comparingDouble(RejectedCandidate::impliedValue)
+				: java.util.Comparator.comparingDouble(RejectedCandidate::impliedValue).reversed());
+		return candidates;
+	}
+
+	/** How many days before a threshold's current source activity ages out of the window the
+	 * Threshold suggestions feature warns the athlete - User.getThresholdWarningDays(), scaled
+	 * down for an athlete with a shorter-than-typical window (otherwise a long lead on a short
+	 * window could warn before the value has even had a real chance to establish itself). */
+	public static int warningLeadDays(User athlete) {
+		if (athlete.getThresholdWindowDays() >= 84) {
+			return athlete.getThresholdWarningDays();
+		}
+		return athlete.getThresholdWindowDays() / 4;
+	}
+
+	/** Warns the athlete when the best effort behind the current threshold value is about to age
+	 * out of the trailing window, before the value silently drops - enough lead time to test or
+	 * race for a fresh one (see the Threshold suggestions feature). Returns null when there's
+	 * nothing to warn about (not yet/no longer in the lead window, warnings off, or a small-drop/
+	 * near-match suppression rule applies). */
+	public UpcomingDropResult upcomingDrop(User athlete, ThresholdField field, LocalDate today) {
+		LocalDate effectiveToday = today != null ? today : LocalDate.now();
+		int lead = warningLeadDays(athlete);
+		if (lead <= 0) {
+			return null;
+		}
+
+		ThresholdHistory latest = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
+		if (latest == null || ChronoUnit.DAYS.between(latest.getEffectiveFrom(), effectiveToday) > athlete.getThresholdWindowDays()) {
+			return null;
+		}
+
+		// isStale flips the day *after* threshold_window_days have elapsed since effectiveFrom
+		// (see ThresholdHistoryService.isStale's own ">" comparison), so the window's actual last
+		// covered day is one later than a naive +thresholdWindowDays would give.
+		LocalDate expiry = latest.getEffectiveFrom().plusDays(athlete.getThresholdWindowDays() + 1L);
+		int daysLeft = (int) ChronoUnit.DAYS.between(effectiveToday, expiry);
+		if (daysLeft <= 0 || daysLeft > lead) {
+			return null;
+		}
+
+		Candidate successor = currentWindowValue(athlete, field, expiry);
+		Double currentValue = athleteReferenceValue(athlete, field);
+
+		// Rule 1: small drop - close enough that a warning isn't worth the noise.
+		if (successor != null && currentValue != null && currentValue != 0) {
+			double delta = Math.abs(successor.impliedValue() - currentValue);
+			double deltaPct = delta / currentValue * 100;
+			double smallAbsolute = LOWER_IS_BETTER.contains(field) ? 3 : 5;
+			if (deltaPct <= 2 && delta < smallAbsolute) {
+				return null;
+			}
+		}
+
+		// Rule 2: near match - a recent activity (last 14 days) already implies a value close to
+		// current, so it's likely to naturally replace it before the drop happens anyway.
+		if (currentValue != null && currentValue != 0) {
+			Instant recentStart = effectiveToday.minusDays(14).atStartOfDay(ZoneOffset.UTC).toInstant();
+			Instant recentEnd = effectiveToday.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+			List<Activity> recentActivities =
+					activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), recentStart, recentEnd);
+			for (Activity activity : recentActivities) {
+				Double implied = impliedValue(activity, athlete, field);
+				entityManager.clear();
+				if (implied != null && Math.abs(implied - currentValue) / currentValue <= 0.02) {
+					return null;
+				}
+			}
+		}
+
+		// Rule 3: race booked - a race in the field's sport before expiry should naturally
+		// refresh the value; the caller turns this into a quiet note instead of a warning.
+		Race race = raceRepository
+				.findFirstByAthleteIdAndSportAndDateGreaterThanEqualAndDateLessThanOrderByDateAsc(
+						athlete.getId(), sportFor(field), effectiveToday, expiry)
+				.orElse(null);
+		if (race != null) {
+			return new UpcomingDropResult.RaceWillRefresh(race, expiry, daysLeft);
+		}
+
+		// Rule 4: no successor - emit anyway (successor=null); the caller formats this as "goes
+		// stale" rather than "drops to {value}".
+		return new UpcomingDropResult.UpcomingDrop(latest, successor, expiry, daysLeft);
 	}
 }

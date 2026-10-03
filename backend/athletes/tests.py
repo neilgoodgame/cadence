@@ -8,16 +8,26 @@ from accounts.models import User, UserRelationship
 from activities.models import Activity, BestEffort, Record
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
+from races.models import Race
 from uploads.processing import _trim_kind_window
 
-from .models import BestEffortRecomputeJob, ThresholdHistory, ZoneSet
+from . import threshold_suggestions
+from .models import (
+    AcceptedThresholdCandidate,
+    BestEffortRecomputeJob,
+    ThresholdHistory,
+    ZoneSet,
+)
 from .threshold_history import (
     current_window_value,
     is_stale,
     rebuild_history_stream,
     record_manual_value,
     refresh_field,
+    rejected_candidates,
     replay_full_history,
+    upcoming_drop,
+    warning_lead_days,
 )
 from .zones import DEFAULT_PACE_ZONES, DEFAULT_ZONES, reference_for
 
@@ -1281,3 +1291,357 @@ class BestEffortRecomputeJobViewTests(TestCase):
         job = BestEffortRecomputeJob.objects.create(athlete=self.athlete)
         poll = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts/recompute/{job.id}")
         self.assertEqual(poll.status_code, 403)
+
+
+class ThresholdSuggestionAlgorithmTests(TestCase):
+    """rejected_candidates/upcoming_drop (threshold_history.py) - the Threshold suggestions
+    feature's pure detection functions, tested independently of the API/caching layer (see
+    ThresholdSuggestionApiTests for that). Default threshold_window_days=112,
+    threshold_sanity_pct=30, threshold_warning_days=21 unless a test overrides them."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="threshold-suggestions@example.cc", password="x", name="Athlete", ftp=200
+        )
+
+    def _at_7am(self, d: date) -> datetime:
+        """A plain `date` + timedelta(seconds=...) silently drops the sub-day component (date
+        arithmetic only honours timedelta.days) - every record in a loop would collide on the
+        same midnight `ts`. Converts to a real datetime first, matching this class's other
+        activities' own 7am-UTC start time."""
+        return datetime(d.year, d.month, d.day, 7, 0, tzinfo=UTC)
+
+    def _make_power_activity(self, sport, start_date, power, duration_seconds=1200, name="Ride"):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport=sport, name=name, start_date=start_date, moving_time=duration_seconds
+        )
+        for t in range(duration_seconds):
+            Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+        return activity
+
+    def _make_pace_activity(self, start_date, pace_seconds_per_km, duration_seconds=3600, name="Run"):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport="run", name=name, start_date=start_date, moving_time=duration_seconds
+        )
+        for t in range(duration_seconds + 1):
+            Record.objects.create(
+                activity=activity, t=t, ts=start_date + timedelta(seconds=t), distance_km=t / pace_seconds_per_km
+            )
+        return activity
+
+    def _ledger_entry(self, field, value_numeric=None, value_pace="", effective_from=None, current_from=None):
+        effective_from = effective_from or date(2026, 1, 1)
+        return ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field=field,
+            value_numeric=value_numeric,
+            value_pace=value_pace,
+            effective_from=effective_from,
+            current_from=current_from or effective_from,
+        )
+
+    # --- rejected_candidates ---
+
+    def test_rejected_candidates_only_upward_outliers(self):
+        # ftp=200, sanity 30% -> band is 140-260. A 20-min power of 500W implies ~475 (way above
+        # band, an improvement) - rejected and surfaced. A 20-min power of 50W implies ~47 (way
+        # below band, a corrupt-low reading, not "maybe you're fitter") - rejected but NOT
+        # surfaced as a suggestion.
+        high = self._make_power_activity("bike", datetime(2026, 5, 1, 7, 0, tzinfo=UTC), power=500)
+        self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=50)
+
+        candidates = rejected_candidates(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertEqual([c.activity_id for c in candidates], [high.id])
+
+    def test_rejected_candidates_best_first(self):
+        weaker = self._make_power_activity("bike", datetime(2026, 5, 1, 7, 0, tzinfo=UTC), power=500)
+        stronger = self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=550)
+
+        candidates = rejected_candidates(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertEqual([c.activity_id for c in candidates], [stronger.id, weaker.id])
+
+    def test_rejected_candidates_excludes_an_accepted_one(self):
+        activity = self._make_power_activity("bike", datetime(2026, 5, 1, 7, 0, tzinfo=UTC), power=500)
+        AcceptedThresholdCandidate.objects.create(athlete=self.athlete, field="ftp", activity=activity)
+
+        candidates = rejected_candidates(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertEqual(candidates, [])
+
+    def test_accepted_candidate_survives_rebuild_history_stream(self):
+        activity = self._make_power_activity("bike", datetime(2026, 5, 1, 7, 0, tzinfo=UTC), power=500)
+        AcceptedThresholdCandidate.objects.create(athlete=self.athlete, field="ftp", activity=activity)
+
+        list(rebuild_history_stream(self.athlete, "ftp"))
+
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertEqual(entry.source_activity_id, activity.id)
+        self.assertEqual(entry.value_numeric, round(0.95 * 500))
+
+    def test_rejected_candidates_pace_lower_is_better(self):
+        self.athlete.threshold_pace = "5:00"
+        self.athlete.save(update_fields=["threshold_pace"])
+        # 30% sanity band around 300s/km is ~210-390s/km. 150s/km (2:30/km) is a huge PR -
+        # rejected but an upward (faster) outlier, so it's surfaced. 500s/km (8:20/km) is
+        # corrupt-slow - rejected, and correctly NOT surfaced.
+        faster = self._make_pace_activity(datetime(2026, 5, 1, 7, 0, tzinfo=UTC), pace_seconds_per_km=150)
+        self._make_pace_activity(datetime(2026, 5, 15, 7, 0, tzinfo=UTC), pace_seconds_per_km=500)
+
+        candidates = rejected_candidates(self.athlete, "threshold_pace", as_of=date(2026, 6, 1))
+
+        self.assertEqual([c.activity_id for c in candidates], [faster.id])
+
+    # --- upcoming_drop ---
+
+    def test_upcoming_drop_shown_exactly_at_the_lead_boundary(self):
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)  # 21, default window=112 >= 84
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self._ledger_entry("ftp", value_numeric=250, effective_from=effective_from)
+
+        result = upcoming_drop(self.athlete, "ftp", today=today)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["days_left"], lead)
+
+    def test_upcoming_drop_hidden_one_day_past_the_lead_boundary(self):
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - (lead + 1))
+        self._ledger_entry("ftp", value_numeric=250, effective_from=effective_from)
+
+        result = upcoming_drop(self.athlete, "ftp", today=today)
+
+        self.assertIsNone(result)
+
+    def test_warning_lead_days_scales_down_for_a_short_window(self):
+        self.athlete.threshold_window_days = 56  # < 84
+        self.athlete.threshold_warning_days = 21
+        self.athlete.save(update_fields=["threshold_window_days", "threshold_warning_days"])
+
+        self.assertEqual(warning_lead_days(self.athlete), 14)  # 56 // 4, not the raw 21 setting
+
+    def test_upcoming_drop_off_setting_suppresses_everything(self):
+        self.athlete.threshold_warning_days = 0
+        self.athlete.save(update_fields=["threshold_warning_days"])
+        today = date(2026, 6, 1)
+        self._ledger_entry("ftp", value_numeric=250, effective_from=today - timedelta(days=1))
+
+        self.assertIsNone(upcoming_drop(self.athlete, "ftp", today=today))
+
+    def test_upcoming_drop_suppressed_for_a_small_drop(self):
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self.athlete.ftp = 250
+        self.athlete.save(update_fields=["ftp"])
+        self._ledger_entry("ftp", value_numeric=250, effective_from=effective_from)
+        # Successor implies ~247 (within the sanity band of 250) - a ~1.2%/3W drop, under both
+        # the 2% and 5W small-drop thresholds.
+        self._make_power_activity("bike", self._at_7am(effective_from + timedelta(days=5)), power=round(247 / 0.95))
+
+        result = upcoming_drop(self.athlete, "ftp", today=today)
+
+        self.assertIsNone(result)
+
+    def test_upcoming_drop_suppressed_for_a_near_match_in_the_last_14_days(self):
+        # current=1000 (an unrealistic magnitude, chosen to cleanly separate rule 1's percent-
+        # AND-absolute small-drop threshold from rule 2's percent-only near-match threshold): a
+        # 15W/1.5% gap fails rule 1 (15W is not < the 5W absolute floor) but passes rule 2
+        # (near-match only checks <=2%), isolating which rule actually suppresses it.
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self.athlete.ftp = 1000
+        self.athlete.save(update_fields=["ftp"])
+        self._ledger_entry("ftp", value_numeric=1000, effective_from=effective_from)
+        self._make_power_activity("bike", self._at_7am(today - timedelta(days=2)), power=round(985 / 0.95))
+
+        result = upcoming_drop(self.athlete, "ftp", today=today)
+
+        self.assertIsNone(result)
+
+    def test_upcoming_drop_pace_small_drop_uses_the_pace_specific_threshold(self):
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self.athlete.threshold_pace = "5:00"  # 300s/km
+        self.athlete.save(update_fields=["threshold_pace"])
+        self._ledger_entry("threshold_pace", value_pace="5:00", effective_from=effective_from)
+        # A 2-second/km slip (0.67%) - under both the 2% and 3s pace-specific small-drop
+        # thresholds (pace uses 3s, not power fields' 5W).
+        self._make_pace_activity(self._at_7am(effective_from + timedelta(days=5)), pace_seconds_per_km=302)
+
+        result = upcoming_drop(self.athlete, "threshold_pace", today=today)
+
+        self.assertIsNone(result)
+
+    def test_upcoming_drop_shows_race_will_refresh_when_a_race_is_booked(self):
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self._ledger_entry("critical_run_power", value_numeric=250, effective_from=effective_from)
+        race = Race.objects.create(athlete=self.athlete, name="Local 10K", date=today + timedelta(days=5), sport="run")
+
+        result = upcoming_drop(self.athlete, "critical_run_power", today=today)
+
+        self.assertEqual(result["kind"], "race_will_refresh")
+        self.assertEqual(result["race"].id, race.id)
+
+    def test_upcoming_drop_has_null_proposed_when_there_is_no_successor(self):
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self._ledger_entry("ftp", value_numeric=250, effective_from=effective_from)
+
+        result = upcoming_drop(self.athlete, "ftp", today=today)
+
+        self.assertEqual(result["kind"], "upcoming_drop")
+        self.assertIsNone(result["successor"])
+
+
+class ThresholdSuggestionApiTests(TestCase):
+    """GET/accept/dismiss .../threshold-suggestions - the caching/formatting/dismissal-keying
+    layer (threshold_suggestions.py) on top of ThresholdSuggestionAlgorithmTests' pure detection
+    functions."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="threshold-suggestions-api@example.cc", password="x", name="Athlete", ftp=200
+        )
+        self.outsider = User.objects.create_user(
+            email="threshold-suggestions-outsider@example.cc", password="x", name="Outsider"
+        )
+
+    def _make_power_activity(self, sport, start_date, power, duration_seconds=1200, name="Ride"):
+        activity = Activity.objects.create(
+            athlete=self.athlete, sport=sport, name=name, start_date=start_date, moving_time=duration_seconds
+        )
+        for t in range(duration_seconds):
+            Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+        return activity
+
+    def test_outsider_forbidden(self):
+        response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+        self.assertEqual(response.status_code, 403)
+
+    def test_accept_records_a_real_ledger_entry_and_updates_the_profile(self):
+        activity = self._make_power_activity("bike", timezone.now() - timedelta(days=5), power=500)
+        suggestion_id = f"ftp:rejected:{activity.id}"
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/athletes/{self.athlete.id}/threshold-suggestions/{suggestion_id}/accept"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["value"], round(0.95 * 500))
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, round(0.95 * 500))
+        self.assertTrue(
+            AcceptedThresholdCandidate.objects.filter(athlete=self.athlete, field="ftp", activity=activity).exists()
+        )
+
+    def test_accepted_no_longer_appears_as_a_suggestion(self):
+        activity = self._make_power_activity("bike", timezone.now() - timedelta(days=5), power=500)
+        suggestion_id = f"ftp:rejected:{activity.id}"
+        client = _bearer_client(self.athlete)
+        client.post(f"/v1/athletes/{self.athlete.id}/threshold-suggestions/{suggestion_id}/accept")
+
+        response = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+
+        self.assertEqual(response.json()["data"], [])
+
+    def test_undo_accept_reverts_the_override(self):
+        # A realistic prior entry, not just a bare profile value with no backing ledger row - so
+        # undo has something genuine to fall back to (an athlete with no ledger history at all
+        # has no reference to sanity-check against either way, matching current_window_value's
+        # own "first-ever value" convention - this test is about the *normal* case).
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=200,
+            effective_from=date.today() - timedelta(days=60),
+            current_from=date.today() - timedelta(days=60),
+        )
+        activity = self._make_power_activity("bike", timezone.now() - timedelta(days=5), power=500)
+        suggestion_id = f"ftp:rejected:{activity.id}"
+        client = _bearer_client(self.athlete)
+        client.post(f"/v1/athletes/{self.athlete.id}/threshold-suggestions/{suggestion_id}/accept")
+
+        response = client.delete(f"/v1/athletes/{self.athlete.id}/threshold-suggestions/{suggestion_id}/accept")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(
+            AcceptedThresholdCandidate.objects.filter(athlete=self.athlete, field="ftp", activity=activity).exists()
+        )
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 200)  # back to the prior ledger value, not left at the undone 475
+
+    def test_dismiss_removes_it_from_the_list(self):
+        activity = self._make_power_activity("bike", timezone.now() - timedelta(days=5), power=500)
+        suggestion_id = f"ftp:rejected:{activity.id}"
+        client = _bearer_client(self.athlete)
+
+        response = client.post(f"/v1/athletes/{self.athlete.id}/threshold-suggestions/{suggestion_id}/dismiss")
+        self.assertEqual(response.status_code, 204)
+
+        listed = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+        self.assertEqual(listed.json()["data"], [])
+
+    def test_undo_dismiss_brings_it_back(self):
+        activity = self._make_power_activity("bike", timezone.now() - timedelta(days=5), power=500)
+        suggestion_id = f"ftp:rejected:{activity.id}"
+        client = _bearer_client(self.athlete)
+        client.post(f"/v1/athletes/{self.athlete.id}/threshold-suggestions/{suggestion_id}/dismiss")
+
+        response = client.delete(f"/v1/athletes/{self.athlete.id}/threshold-suggestions/{suggestion_id}/dismiss")
+
+        self.assertEqual(response.status_code, 204)
+        listed = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+        self.assertEqual(len(listed.json()["data"]), 1)
+
+    def test_list_is_cached_until_explicitly_invalidated(self):
+        client = _bearer_client(self.athlete)
+        first = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+        self.assertEqual(first.json()["data"], [])
+
+        self._make_power_activity("bike", timezone.now() - timedelta(days=5), power=500)
+        still_cached = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+        self.assertEqual(still_cached.json()["data"], [])  # the new activity alone doesn't bust the cache
+
+        threshold_suggestions.invalidate(self.athlete.id)
+        after_invalidate = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+        self.assertEqual(len(after_invalidate.json()["data"]), 1)
+
+    def test_dismiss_keying_lets_a_new_occurrence_through(self):
+        lead = warning_lead_days(self.athlete)
+        # lead - 5, not lead exactly, so shifting the source by 1 day below still lands within
+        # the lead window rather than crossing the boundary tested separately above.
+        effective_from = (timezone.now() - timedelta(days=self.athlete.threshold_window_days + 1 - (lead - 5))).date()
+        entry = ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=250,
+            effective_from=effective_from,
+            current_from=effective_from,
+        )
+        client = _bearer_client(self.athlete)
+        first = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+        first_ftp = next(s for s in first.json()["data"] if s["field"] == "ftp")
+        client.post(f"/v1/athletes/{self.athlete.id}/threshold-suggestions/{first_ftp['id']}/dismiss")
+
+        after_dismiss = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+        self.assertEqual([s for s in after_dismiss.json()["data"] if s["field"] == "ftp"], [])
+
+        # The source changes (e.g. a later ingest revealed a different current entry) - a
+        # genuinely new expiry date means a new dismissal key, which the old dismissal doesn't
+        # cover.
+        entry.effective_from = effective_from + timedelta(days=1)
+        entry.current_from = entry.effective_from
+        entry.save(update_fields=["effective_from", "current_from"])
+        threshold_suggestions.invalidate(self.athlete.id)
+
+        after_change = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+        self.assertEqual(len([s for s in after_change.json()["data"] if s["field"] == "ftp"]), 1)

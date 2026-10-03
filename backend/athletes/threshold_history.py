@@ -15,8 +15,9 @@ from datetime import date, timedelta
 
 from accounts.models import User
 from activities.models import Activity
+from races.models import Race
 
-from .models import ThresholdHistory
+from .models import AcceptedThresholdCandidate, ThresholdHistory
 
 FIELD_SPORT = {
     "ftp": "bike",
@@ -103,10 +104,19 @@ def _seconds_to_mmss(seconds: float) -> str:
     return f"{total // 60}:{total % 60:02d}"
 
 
-def _implied_value(activity: Activity, field: str) -> float | None:
-    """The value this one activity's own best effort implies for `field` - raw units (watts for
-    ftp/critical_run_power, seconds/km for threshold_pace), or None if the activity has no
-    qualifying effort (e.g. too short for the field's window)."""
+@dataclass(frozen=True)
+class ImpliedValueDetail:
+    window: str
+    raw_value: float
+    value: float
+
+
+def _implied_value_detail(activity: Activity, field: str) -> ImpliedValueDetail | None:
+    """Like _implied_value, but also returns the window label and the raw pre-transform value
+    (e.g. the raw 20-min power before FTP's x0.95 multiplier) - None for the no-qualifying-
+    effort case. Used directly by the Threshold suggestions feature's "implies" copy for a
+    rejected candidate (threshold_suggestions.py); _implied_value below is a thin wrapper over
+    this for every other, much more numerous caller that only ever wanted the final value."""
     records = list(activity.records.order_by("t").values_list("t", "power", "distance_km"))
     if not records:
         return None
@@ -117,9 +127,11 @@ def _implied_value(activity: Activity, field: str) -> float | None:
     if field == "ftp":
         if activity.athlete.ftp_calculation_method == "sixty_min_direct":
             best_60min = _sliding_window_best_avg(power_series, RUNNING_THRESHOLD_WINDOW_SECONDS)
-            return round(best_60min) if best_60min is not None else None
+            return ImpliedValueDetail("60min", best_60min, round(best_60min)) if best_60min is not None else None
         best_20min = _sliding_window_best_avg(power_series, FTP_TEST_WINDOW_SECONDS)
-        return round(FTP_TEST_MULTIPLIER * best_20min) if best_20min is not None else None
+        if best_20min is None:
+            return None
+        return ImpliedValueDetail("20min", best_20min, round(FTP_TEST_MULTIPLIER * best_20min))
     if field == "critical_run_power":
         # Excluded (source doesn't match the athlete's current preference), or every sample is
         # genuinely absent (e.g. "native" preferred but this file has no native power meter at
@@ -132,18 +144,28 @@ def _implied_value(activity: Activity, field: str) -> float | None:
         ):
             return None
         best_60min = _sliding_window_best_avg(power_series, RUNNING_THRESHOLD_WINDOW_SECONDS)
-        return round(best_60min) if best_60min is not None else None
+        return ImpliedValueDetail("60min", best_60min, round(best_60min)) if best_60min is not None else None
     if field == "threshold_pace":
         best_pace = _best_pace_seconds_per_km_over_duration(
             t_series, distance_km_series, RUNNING_THRESHOLD_WINDOW_SECONDS
         )
+        if best_pace is None:
+            return None
         # Rounded to whole seconds like ftp/critical_run_power above - value_pace is stored (and
         # re-parsed via _mmss_to_seconds for _recompute_and_record's dead-row comparison) as
         # whole-second "M:SS", so a raw sub-second float here could never compare equal to the
         # already-rounded stored value: every re-ingest inserted a spurious duplicate row for the
         # same still-current pace instead of recognizing it as unchanged.
-        return round(best_pace) if best_pace is not None else None
+        return ImpliedValueDetail("60min", best_pace, round(best_pace))
     raise ValueError(f"Unknown field: {field}")
+
+
+def _implied_value(activity: Activity, field: str) -> float | None:
+    """The value this one activity's own best effort implies for `field` - raw units (watts for
+    ftp/critical_run_power, seconds/km for threshold_pace), or None if the activity has no
+    qualifying effort (e.g. too short for the field's window)."""
+    detail = _implied_value_detail(activity, field)
+    return detail.value if detail is not None else None
 
 
 def _is_better(field: str, a: float, b: float) -> bool:
@@ -182,15 +204,27 @@ def _athlete_reference_value(athlete: User, field: str) -> float | None:
     return _mmss_to_seconds(raw) if field == "threshold_pace" else raw
 
 
+def _accepted_activity_ids(athlete: User, field: str) -> set[str]:
+    """Activity ids the athlete has explicitly accepted as real despite failing the sanity band -
+    see the Threshold suggestions feature's AcceptedThresholdCandidate. Bypasses the band in both
+    current_window_value and _replay_full_history_into below, so an accepted candidate survives
+    a full rebuild/replay instead of being rejected again against a moving reference."""
+    return set(
+        AcceptedThresholdCandidate.objects.filter(athlete=athlete, field=field).values_list("activity_id", flat=True)
+    )
+
+
 def current_window_value(athlete: User, field: str, as_of: date | None = None) -> Candidate | None:
     """The best qualifying candidate among the athlete's activities in the trailing window ending
     `as_of` (default today) for `field` - cheap, bounded to ~window_days worth of activities.
     Used by both the ingest hook and the manual-refresh endpoint. Sanity-filters each candidate
     against the athlete's current profile value (not a moving reference - this is a single
-    snapshot-in-time scan, not a chronological replay; see replay_full_history for that)."""
+    snapshot-in-time scan, not a chronological replay; see replay_full_history for that), except
+    for an explicitly accepted candidate (see _accepted_activity_ids), which always qualifies."""
     as_of = as_of or date.today()
     window_start = as_of - timedelta(days=athlete.threshold_window_days)
     reference_value = _athlete_reference_value(athlete, field)
+    accepted_ids = _accepted_activity_ids(athlete, field)
 
     activities = Activity.objects.filter(
         athlete=athlete,
@@ -204,7 +238,9 @@ def current_window_value(athlete: User, field: str, as_of: date | None = None) -
         implied = _implied_value(activity, field)
         if implied is None:
             continue
-        if not _within_sanity_band(field, implied, reference_value, athlete.threshold_sanity_pct):
+        if activity.id not in accepted_ids and not _within_sanity_band(
+            field, implied, reference_value, athlete.threshold_sanity_pct
+        ):
             continue
         if best is None or _is_better(field, implied, best.implied_value):
             best = Candidate(activity_id=activity.id, date=activity.start_date.date(), implied_value=implied)
@@ -225,6 +261,7 @@ def _replay_full_history_into(
     to drop the moment a stronger, more recent one arrives)."""
     activities = list(Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field]).order_by("start_date"))
     total = len(activities)
+    accepted_ids = _accepted_activity_ids(athlete, field)
 
     window: list[Candidate] = []
     current_value: float | None = None
@@ -235,7 +272,11 @@ def _replay_full_history_into(
         window = [c for c in window if c.date > cutoff]
 
         implied = _implied_value(activity, field)
-        if implied is not None and _within_sanity_band(field, implied, current_value, athlete.threshold_sanity_pct):
+        qualifies = implied is not None and (
+            activity.id in accepted_ids
+            or _within_sanity_band(field, implied, current_value, athlete.threshold_sanity_pct)
+        )
+        if qualifies:
             candidate = Candidate(activity_id=activity.id, date=activity_date, implied_value=implied)
             window = [c for c in window if not _is_better(field, implied, c.implied_value)]
             window.append(candidate)
@@ -420,3 +461,149 @@ def rebuild_history_stream(athlete: User, field: str) -> Iterator[tuple[int, int
     else:
         setattr(athlete, field, round(current) if current is not None else None)
     athlete.save(update_fields=[field])
+
+
+# --- Threshold suggestions: detection only (pure/read-only, like the rest of this module) -----
+# Response formatting, dismissal filtering, and caching live in threshold_suggestions.py, which
+# is also where the AcceptedThresholdCandidate/ThresholdSuggestionDismissal models get consumed
+# for anything beyond the sanity-band bypass above.
+
+
+@dataclass(frozen=True)
+class RejectedCandidate:
+    activity_id: str
+    date: date
+    implied_value: float
+    window: str
+    raw_value: float
+
+
+def rejected_candidates(athlete: User, field: str, as_of: date | None = None) -> list[RejectedCandidate]:
+    """Qualifying efforts that *beat* the athlete's current value but were excluded by the
+    sanity band (threshold_sanity_pct) - a real breakthrough, or a recalibrated/corrupt sensor;
+    the athlete decides (see the Threshold suggestions feature). Same trailing-window scan as
+    current_window_value, but keeps exactly what that one excludes: upward outliers only (a
+    corrupt-LOW reading is simply wrong, not an actionable "maybe you're fitter now" suggestion -
+    _within_sanity_band already treats it identically to a corrupt-high one, so the direction
+    check here is what narrows to just the interesting case). Already-accepted candidates (see
+    AcceptedThresholdCandidate) are excluded - they're part of the real ledger now, not a pending
+    suggestion. Returns every qualifying candidate, best first."""
+    as_of = as_of or date.today()
+    window_start = as_of - timedelta(days=athlete.threshold_window_days)
+    reference_value = _athlete_reference_value(athlete, field)
+    accepted_ids = _accepted_activity_ids(athlete, field)
+
+    activities = Activity.objects.filter(
+        athlete=athlete,
+        sport=FIELD_SPORT[field],
+        start_date__date__gte=window_start,
+        start_date__date__lte=as_of,
+    ).order_by("start_date")
+
+    candidates: list[RejectedCandidate] = []
+    for activity in activities:
+        if activity.id in accepted_ids:
+            continue
+        detail = _implied_value_detail(activity, field)
+        if detail is None:
+            continue
+        if _within_sanity_band(field, detail.value, reference_value, athlete.threshold_sanity_pct):
+            continue
+        # Reaching here already proves reference_value is a real, non-zero number - the sanity
+        # band above only ever fails when it is (see _within_sanity_band's own None/0 passthrough).
+        if not _is_better(field, detail.value, reference_value):
+            continue
+        candidates.append(
+            RejectedCandidate(
+                activity_id=activity.id,
+                date=activity.start_date.date(),
+                implied_value=detail.value,
+                window=detail.window,
+                raw_value=detail.raw_value,
+            )
+        )
+
+    candidates.sort(key=lambda c: c.implied_value, reverse=field not in LOWER_IS_BETTER)
+    return candidates
+
+
+def warning_lead_days(athlete: User) -> int:
+    """How many days before a threshold's current source activity ages out of the window the
+    Threshold suggestions feature warns the athlete - User.threshold_warning_days, scaled down
+    for an athlete with a shorter-than-typical window (otherwise a long lead on a short window
+    could warn before the value has even had a real chance to establish itself)."""
+    if athlete.threshold_window_days >= 84:
+        return athlete.threshold_warning_days
+    return athlete.threshold_window_days // 4
+
+
+def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict | None:
+    """Warns the athlete when the best effort behind the current threshold value is about to age
+    out of the trailing window, before the value silently drops - enough lead time to test or
+    race for a fresh one (see the Threshold suggestions feature). Returns None when there's
+    nothing to warn about (not yet/no longer in the lead window, warnings off, or a small-drop/
+    near-match suppression rule applies); otherwise a dict of raw internal values - not API-
+    shaped primitives, see threshold_suggestions.py for that layer:
+      {"kind": "upcoming_drop", "current_entry": ThresholdHistory, "successor": Candidate | None,
+       "expiry": date, "days_left": int}
+      {"kind": "race_will_refresh", "race": Race, "expiry": date, "days_left": int}
+    """
+    today = today or date.today()
+    lead = warning_lead_days(athlete)
+    if lead <= 0:
+        return None
+
+    latest = _latest_entry(athlete, field)
+    if latest is None or is_stale(athlete, field, today):
+        return None
+
+    # is_stale() flips the day *after* threshold_window_days have elapsed since effective_from
+    # (see its own ".days > ..." comparison), so the window's actual last covered day is one
+    # later than a naive +threshold_window_days would give.
+    expiry = latest.effective_from + timedelta(days=athlete.threshold_window_days + 1)
+    days_left = (expiry - today).days
+    if days_left <= 0 or days_left > lead:
+        return None
+
+    successor = current_window_value(athlete, field, as_of=expiry)
+    current_value = _athlete_reference_value(athlete, field)
+
+    # Rule 1: small drop - close enough that a warning isn't worth the noise.
+    if successor is not None and current_value is not None and current_value != 0:
+        delta = abs(successor.implied_value - current_value)
+        delta_pct = delta / current_value * 100
+        small_absolute = 3 if field in LOWER_IS_BETTER else 5
+        if delta_pct <= 2 and delta < small_absolute:
+            return None
+
+    # Rule 2: near match - a recent activity (last 14 days) already implies a value close to
+    # current, so it's likely to naturally replace it before the drop happens anyway.
+    if current_value is not None and current_value != 0:
+        recent_start = today - timedelta(days=14)
+        recent_activities = Activity.objects.filter(
+            athlete=athlete, sport=FIELD_SPORT[field], start_date__date__gte=recent_start, start_date__date__lte=today
+        )
+        for activity in recent_activities:
+            implied = _implied_value(activity, field)
+            if implied is not None and abs(implied - current_value) / current_value <= 0.02:
+                return None
+
+    # Rule 3: race booked - a race in the field's sport before expiry should naturally refresh
+    # the value; the caller turns this into a quiet note instead of a warning.
+    race = (
+        Race.objects.filter(athlete=athlete, sport=FIELD_SPORT[field], date__gte=today, date__lt=expiry)
+        .order_by("date")
+        .first()
+    )
+    if race is not None:
+        return {"kind": "race_will_refresh", "race": race, "expiry": expiry, "days_left": days_left}
+
+    # Rule 4: no successor - emit anyway (successor=None); the caller formats this as "goes
+    # stale" rather than "drops to {value}".
+    return {
+        "kind": "upcoming_drop",
+        "current_entry": latest,
+        "successor": successor,
+        "expiry": expiry,
+        "days_left": days_left,
+    }

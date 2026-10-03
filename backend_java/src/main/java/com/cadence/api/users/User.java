@@ -73,6 +73,12 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "threshold_sanity_pct", nullable = false)
 	private int thresholdSanityPct = 30;
 
+	/** How many days before a threshold's current source activity ages out of thresholdWindowDays
+	 * the Threshold suggestions feature warns the athlete (see
+	 * ThresholdHistoryCalculator.warningLeadDays) - 0 = off. */
+	@Column(name = "threshold_warning_days", nullable = false)
+	private int thresholdWarningDays = 21;
+
 	/** A running-power sample above this is treated as corrupt sensor data - not a real effort,
 	 * a glitch - and dropped before it reaches best efforts, duration curves, normalized power, or
 	 * threshold history. See RunningPowerSanitizer's Javadoc for the failure mode this guards
@@ -271,6 +277,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setThresholdSanityPct(int thresholdSanityPct) {
 		this.thresholdSanityPct = thresholdSanityPct;
+	}
+
+	public int getThresholdWarningDays() {
+		return thresholdWarningDays;
+	}
+
+	public void setThresholdWarningDays(int thresholdWarningDays) {
+		this.thresholdWarningDays = thresholdWarningDays;
 	}
 
 	public int getMaxRunningPowerWatts() {
