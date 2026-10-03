@@ -11,7 +11,9 @@ import type {
   FitnessPoint,
   RecentTopEffort,
   ThresholdFieldName,
+  ThresholdHistoryPoint,
   ThresholdHistoryResponse,
+  ThresholdSuggestion,
   ThresholdsSummary,
   Zone,
   ZoneSet,
@@ -272,4 +274,33 @@ export function replaceZoneSet(
     method: "PUT",
     body: { zones },
   });
+}
+
+/** Cached (24h server-side) list of actionable Threshold suggestions - backs the Dashboard
+ * banner and the Thresholds & zones "Suggestions" card. Additive UI: callers should render
+ * nothing on loading/error, not a spinner or error state. */
+export function listThresholdSuggestions(athleteId: string): Promise<DataList<ThresholdSuggestion>> {
+  return apiFetch<DataList<ThresholdSuggestion>>(`/v1/athletes/${athleteId}/threshold-suggestions`);
+}
+
+/** Accepts a "rejected" candidate - records it as a real ledger entry (bypassing the sanity
+ * band for this activity from now on) and updates the live profile value. Returns the new
+ * ledger entry. */
+export function acceptThresholdSuggestion(athleteId: string, suggestionId: string): Promise<ThresholdHistoryPoint> {
+  return apiFetch<ThresholdHistoryPoint>(`/v1/athletes/${athleteId}/threshold-suggestions/${suggestionId}/accept`, {
+    method: "POST",
+  });
+}
+
+/** Undoes accept(): removes the override and reverts to the normal windowed recompute. */
+export function undoAcceptThresholdSuggestion(athleteId: string, suggestionId: string): Promise<void> {
+  return apiFetch(`/v1/athletes/${athleteId}/threshold-suggestions/${suggestionId}/accept`, { method: "DELETE" });
+}
+
+export function dismissThresholdSuggestion(athleteId: string, suggestionId: string): Promise<void> {
+  return apiFetch(`/v1/athletes/${athleteId}/threshold-suggestions/${suggestionId}/dismiss`, { method: "POST" });
+}
+
+export function undoDismissThresholdSuggestion(athleteId: string, suggestionId: string): Promise<void> {
+  return apiFetch(`/v1/athletes/${athleteId}/threshold-suggestions/${suggestionId}/dismiss`, { method: "DELETE" });
 }

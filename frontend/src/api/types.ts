@@ -36,6 +36,10 @@ export interface Athlete {
   /** Per-candidate outlier filter: an effort implying more than this % deviation from the
    * then-current value is excluded (e.g. corrupt power-meter data) - default 30. */
   threshold_sanity_pct: number;
+  /** Days before a threshold's current source activity ages out of the window that the
+   * Threshold suggestions feature warns about it - 14/21/28, or 0 = off. See
+   * ThresholdSuggestion's "upcoming_drop" kind. */
+  threshold_warning_days: number;
   lthr: number | null;
   max_hr: number | null;
   /** Optional - only used for the Karvonen heart-rate-reserve % stat on Activity Analysis. */
@@ -194,6 +198,30 @@ export interface ThresholdHistoryResponse {
   data: ThresholdHistoryPoint[];
 }
 
+export type ThresholdSuggestionKind = "rejected" | "upcoming_drop" | "race_will_refresh";
+
+/** One actionable Threshold suggestion - GET /v1/athletes/{id}/threshold-suggestions. Shape
+ * varies by `kind`: the backend returns a plain dict per suggestion, not a fixed serializer, so
+ * fields that don't apply to a given kind are entirely absent rather than null - `id` ("field:
+ * kind:key") and `field`/`kind` are the only ones always present. `current`/`proposed` are
+ * watts for ftp/critical_run_power, "M:SS" for threshold_pace - same dual-typed convention as
+ * ThresholdHistoryPoint.value. `implied_from` is rejected-only; `expiry_date`/`days_left`/
+ * `race` are upcoming_drop/race_will_refresh-only. */
+export interface ThresholdSuggestion {
+  id: string;
+  field: ThresholdFieldName;
+  kind: ThresholdSuggestionKind;
+  current?: number | string;
+  proposed?: number | string | null;
+  delta_pct?: number | null;
+  activity_id?: string | null;
+  activity_date?: string;
+  implied_from?: { window: string; value: number };
+  expiry_date?: string;
+  days_left?: number;
+  race?: { id: string; name: string; date: string };
+}
+
 export interface Activity {
   id: string;
   athlete_id: string;
@@ -275,6 +303,7 @@ export interface AthleteUpdate {
   threshold_pace?: string;
   threshold_window_days?: number;
   threshold_sanity_pct?: number;
+  threshold_warning_days?: number;
   lthr?: number;
   max_hr?: number;
   resting_hr?: number;
