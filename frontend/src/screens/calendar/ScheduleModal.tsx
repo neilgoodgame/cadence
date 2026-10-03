@@ -12,7 +12,19 @@ const TIME_OPTIONS: { value: TimeOfDay; label: string }[] = [
   { value: "PM", label: "Evening" },
 ];
 
-export function ScheduleModal({ date, onClose }: { date: string; onClose: () => void }) {
+export function ScheduleModal({
+  date,
+  // Exclusive - the scheduled date must fall strictly before this (e.g. a Threshold
+  // suggestion's expiry_date: testing on the expiry day itself is too late to keep the value
+  // from dropping). Passed straight through as the backing <input type="date">'s `max`, one
+  // day earlier, since that attribute is inclusive.
+  maxDate,
+  onClose,
+}: {
+  date: string;
+  maxDate?: string;
+  onClose: () => void;
+}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["workouts"], queryFn: () => listWorkouts() });
@@ -37,6 +49,9 @@ export function ScheduleModal({ date, onClose }: { date: string; onClose: () => 
   });
 
   const workouts = data?.data ?? [];
+  const inclusiveMax = maxDate ? new Date(`${maxDate}T00:00:00`) : null;
+  if (inclusiveMax) inclusiveMax.setDate(inclusiveMax.getDate() - 1);
+  const pastMax = inclusiveMax != null && scheduleDate > inclusiveMax.toISOString().slice(0, 10);
 
   return (
     <div
@@ -70,6 +85,7 @@ export function ScheduleModal({ date, onClose }: { date: string; onClose: () => 
           <input
             type="date"
             value={scheduleDate}
+            max={inclusiveMax?.toISOString().slice(0, 10)}
             onChange={(e) => setScheduleDate(e.target.value)}
             style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)" }}
           />
@@ -117,7 +133,7 @@ export function ScheduleModal({ date, onClose }: { date: string; onClose: () => 
           </button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={!workoutId || !scheduleDate || mutation.isPending}
+            disabled={!workoutId || !scheduleDate || pastMax || mutation.isPending}
             style={{ border: "none", borderRadius: 8, background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px" }}
           >
             Add to calendar

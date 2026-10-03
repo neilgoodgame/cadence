@@ -25,11 +25,24 @@ const fieldStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-export function AddRaceModal({ date, onClose }: { date: string; onClose: () => void }) {
+export function AddRaceModal({
+  date,
+  initialSport = "",
+  // Inclusive - matches the native <input type="date"> max attribute directly (unlike
+  // ScheduleModal's exclusive maxDate, a race on the expiry day itself still refreshes the
+  // threshold in time).
+  maxDate,
+  onClose,
+}: {
+  date: string;
+  initialSport?: string;
+  maxDate?: string;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [raceDate, setRaceDate] = useState(date);
-  const [sport, setSport] = useState("");
+  const [sport, setSport] = useState(initialSport);
   const [distanceKm, setDistanceKm] = useState("");
   const [goalTime, setGoalTime] = useState("");
   const [url, setUrl] = useState("");
@@ -70,7 +83,7 @@ export function AddRaceModal({ date, onClose }: { date: string; onClose: () => v
 
         <label>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Date</div>
-          <input type="date" value={raceDate} onChange={(e) => setRaceDate(e.target.value)} style={fieldStyle} />
+          <input type="date" value={raceDate} max={maxDate} onChange={(e) => setRaceDate(e.target.value)} style={fieldStyle} />
         </label>
 
         <label>
@@ -130,7 +143,7 @@ export function AddRaceModal({ date, onClose }: { date: string; onClose: () => v
           </button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={!name || !raceDate || mutation.isPending}
+            disabled={!name || !raceDate || (!!maxDate && raceDate > maxDate) || mutation.isPending}
             style={{ border: "none", borderRadius: 8, background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px", cursor: "pointer" }}
           >
             {mutation.isPending ? "Adding…" : "Add race"}
