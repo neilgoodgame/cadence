@@ -1,5 +1,6 @@
 package com.cadence.api.races;
 
+import com.cadence.api.athletes.ThresholdSuggestionService;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.races.dto.RaceCreateRequest;
 import com.cadence.api.races.dto.RaceResponse;
@@ -24,11 +25,14 @@ public class RaceController {
 	private final RaceService raceService;
 	private final UserService userService;
 	private final AccessGuard accessGuard;
+	private final ThresholdSuggestionService thresholdSuggestionService;
 
-	public RaceController(RaceService raceService, UserService userService, AccessGuard accessGuard) {
+	public RaceController(RaceService raceService, UserService userService, AccessGuard accessGuard,
+			ThresholdSuggestionService thresholdSuggestionService) {
 		this.raceService = raceService;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
+		this.thresholdSuggestionService = thresholdSuggestionService;
 	}
 
 	@GetMapping("/v1/races")
@@ -44,14 +48,18 @@ public class RaceController {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		User athlete = userService.getById(athleteId);
-		return raceService.toResponse(raceService.createRace(athlete, request));
+		RaceResponse response = raceService.toResponse(raceService.createRace(athlete, request));
+		thresholdSuggestionService.invalidate(athleteId);
+		return response;
 	}
 
 	@PatchMapping("/v1/races/{id}")
 	public RaceResponse updateRace(@PathVariable String id, @RequestBody RaceUpdateRequest request) {
 		Race race = raceService.getRace(id);
 		accessGuard.requireWrite(race.getAthlete().getId());
-		return raceService.toResponse(raceService.updateRace(race, request));
+		RaceResponse response = raceService.toResponse(raceService.updateRace(race, request));
+		thresholdSuggestionService.invalidate(race.getAthlete().getId());
+		return response;
 	}
 
 	@DeleteMapping("/v1/races/{id}")
@@ -59,6 +67,8 @@ public class RaceController {
 	public void deleteRace(@PathVariable String id) {
 		Race race = raceService.getRace(id);
 		accessGuard.requireWrite(race.getAthlete().getId());
+		String athleteId = race.getAthlete().getId();
 		raceService.deleteRace(id);
+		thresholdSuggestionService.invalidate(athleteId);
 	}
 }

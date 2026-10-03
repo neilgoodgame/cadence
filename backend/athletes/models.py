@@ -99,6 +99,62 @@ class ThresholdHistory(models.Model):
         return f"{self.athlete_id} {self.field}={value} as of {self.effective_from}"
 
 
+SUGGESTION_KIND_CHOICES = [
+    ("rejected", "Rejected"),
+    ("upcoming_drop", "Upcoming drop"),
+]
+
+
+class ThresholdSuggestionDismissal(models.Model):
+    """An athlete dismissed one specific Threshold suggestion occurrence - see the Threshold
+    suggestions feature (athletes/threshold_suggestions.py). `key` identifies the *specific*
+    occurrence (a candidate activity id for "rejected"; a f"{source_activity_id}:{expiry_date}"
+    pair for "upcoming_drop"), not just the field+kind, so dismissing one doesn't silence a
+    genuinely different future occurrence of the same kind for the same field."""
+
+    athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="threshold_suggestion_dismissals")
+    field = models.CharField(max_length=20, choices=THRESHOLD_FIELD_CHOICES)
+    kind = models.CharField(max_length=20, choices=SUGGESTION_KIND_CHOICES)
+    key = models.CharField(max_length=80)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["athlete", "field", "kind", "key"], name="unique_threshold_suggestion_dismissal"
+            ),
+        ]
+        verbose_name_plural = "threshold suggestion dismissals"
+
+    def __str__(self) -> str:
+        return f"{self.athlete_id} {self.field} {self.kind} {self.key}"
+
+
+class AcceptedThresholdCandidate(models.Model):
+    """An athlete accepted a "rejected" Threshold suggestion - the candidate activity's implied
+    value beat the sanity band, and the athlete confirmed it's real, not a sensor glitch. Must
+    survive rebuild_history_stream/replay_full_history (both re-apply the sanity band against a
+    *moving* reference and would reject the same candidate again without this override) - see
+    threshold_history.py's _within_sanity_band callers, which bypass the band for an accepted
+    (field, activity_id)."""
+
+    athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="accepted_threshold_candidates")
+    field = models.CharField(max_length=20, choices=THRESHOLD_FIELD_CHOICES)
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="accepted_threshold_candidates")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["athlete", "field", "activity"], name="unique_accepted_threshold_candidate"
+            ),
+        ]
+        verbose_name_plural = "accepted threshold candidates"
+
+    def __str__(self) -> str:
+        return f"{self.athlete_id} {self.field} {self.activity_id}"
+
+
 class BestEffortRecomputeJob(PrefixedIDModel):
     """Tracks an in-progress "recompute best efforts" run - see athletes/tasks.py's
     run_best_effort_recompute. Runs via Celery rather than synchronously (the original

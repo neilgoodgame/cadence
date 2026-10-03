@@ -28,6 +28,7 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "append_match_date_to_name",
             "copy_matched_workout_tags",
             "lap_source",
+            "threshold_warning_days",
         ]
         extra_kwargs = {
             field: {"required": False}
@@ -47,6 +48,7 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
                 "append_match_date_to_name",
                 "copy_matched_workout_tags",
                 "lap_source",
+                "threshold_warning_days",
             ]
         }
 

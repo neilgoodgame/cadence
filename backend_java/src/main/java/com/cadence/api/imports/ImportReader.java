@@ -112,6 +112,7 @@ public class ImportReader {
 	private final JsonMapper jsonMapper;
 	private final UserRepository userRepository;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
+	private final com.cadence.api.athletes.ThresholdSuggestionService thresholdSuggestionService;
 	private final TransactionTemplate transactionTemplate;
 
 	public ImportReader(GearService gearService, ShoeService shoeService, ShoeModelRepository shoeModelRepository,
@@ -119,6 +120,7 @@ public class ImportReader {
 			SchedulingService schedulingService, TagService tagService, ActivityRepository activityRepository,
 			LapRepository lapRepository, JdbcBatchItemWriter<RecordRow> recordItemWriter, JsonMapper jsonMapper,
 			UserRepository userRepository, ThresholdHistoryRepository thresholdHistoryRepository,
+			com.cadence.api.athletes.ThresholdSuggestionService thresholdSuggestionService,
 			PlatformTransactionManager transactionManager) {
 		this.gearService = gearService;
 		this.shoeService = shoeService;
@@ -134,6 +136,7 @@ public class ImportReader {
 		this.jsonMapper = jsonMapper;
 		this.userRepository = userRepository;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
+		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 	}
 
@@ -285,6 +288,7 @@ public class ImportReader {
 								fileCounts == null ? null : (int) fileCounts.thresholdHistory());
 						importThresholdHistory(parser, athlete, activityIdMap, counts, progress);
 						progress.flush();
+						thresholdSuggestionService.invalidate(athlete.getId());
 					}
 					default -> parser.skipChildren(); // generated_at, athlete_id - scalars, nothing to walk
 				}

@@ -10,6 +10,7 @@ from django.utils import timezone
 from accounts.models import User
 from activities.match_preferences import apply_match_rename, apply_match_side_effects
 from activities.models import Activity, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
+from athletes import threshold_suggestions
 from athletes.threshold_history import recompute_for_activity
 from athletes.zones import get_or_create_zone_set, reference_for
 from scheduling.models import ScheduledWorkout
@@ -1048,6 +1049,12 @@ def _ingest_activity(
         # effort raises the athlete's current threshold, this same activity is rated against the
         # new value too - not just future ones (see athletes/threshold_history.py).
         recompute_for_activity(activity)
+        # A new bike/run activity can change the Threshold suggestions list even when it didn't
+        # change the current threshold itself - e.g. it's now the "near match" that suppresses an
+        # upcoming_drop warning. Invalidated unconditionally for bike/run, not just on an actual
+        # threshold change.
+        if activity.sport in ("bike", "run"):
+            threshold_suggestions.invalidate(athlete.id)
 
         # Same live-profile fallback as compute_tss below, for the same reason: before any
         # qualifying effort has established a ledger entry, intensity should still reflect the

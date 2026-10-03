@@ -68,4 +68,13 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	@Modifying
 	@Query("delete from ThresholdHistory t where t.athlete.id = :athleteId and t.field = :field")
 	void deleteByAthleteIdAndField(@Param("athleteId") String athleteId, @Param("field") ThresholdField field);
+
+	// Threshold suggestions' undo-accept: removes the ledger row accept() created for this
+	// candidate, so a fresh recompute isn't comparing the sanity band against itself. See
+	// ThresholdSuggestionService.undoAccept.
+	@Modifying
+	@Query("delete from ThresholdHistory t where t.athlete.id = :athleteId and t.field = :field "
+			+ "and t.sourceActivity.id = :activityId")
+	void deleteByAthleteIdAndFieldAndSourceActivityId(
+			@Param("athleteId") String athleteId, @Param("field") ThresholdField field, @Param("activityId") String activityId);
 }

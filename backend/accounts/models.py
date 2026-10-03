@@ -69,6 +69,13 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # more than this percentage is treated as an outlier (e.g. corrupt power-meter data) and
     # excluded from consideration - see threshold_history.py's _within_sanity_band.
     threshold_sanity_pct = models.PositiveSmallIntegerField(default=30)
+    # How many days before a threshold's current source activity ages out of the window the
+    # Threshold suggestions feature warns the athlete (see athletes/threshold_history.py's
+    # upcoming_drop) - 0 = off. See upcoming_drop's own docstring for the <84-day window scaling
+    # this doesn't itself encode (that's a function of threshold_window_days, computed at read
+    # time, not stored).
+    THRESHOLD_WARNING_DAYS_CHOICES = [(14, "14 days"), (21, "21 days"), (28, "28 days"), (0, "Off")]
+    threshold_warning_days = models.PositiveSmallIntegerField(choices=THRESHOLD_WARNING_DAYS_CHOICES, default=21)
     ftp_calculation_method = models.CharField(
         max_length=20, choices=FTP_CALCULATION_METHOD_CHOICES, default="twenty_min_test"
     )

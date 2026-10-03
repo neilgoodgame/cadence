@@ -43,6 +43,7 @@ from django.utils.dateparse import parse_date, parse_datetime, parse_duration
 
 from accounts.models import User
 from activities.models import Activity, ActivityTag, Lap, Record, Tag
+from athletes import threshold_suggestions
 from athletes.models import ThresholdHistory
 from athletes.zones import reference_for
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
@@ -641,5 +642,6 @@ def read_import(
     progress = start_section("threshold_history", "threshold_history")
     _import_threshold_history(athlete_id, stored_path, activity_id_map, counts, progress)
     progress.flush()
+    threshold_suggestions.invalidate(athlete_id)
 
     return counts

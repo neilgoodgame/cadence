@@ -1481,6 +1481,7 @@ paths:
                 threshold_pace: { type: string, description: "mm:ss per km. Same threshold_history semantics as ftp." }
                 threshold_window_days: { type: integer, description: See the User schema. }
                 threshold_sanity_pct: { type: integer, description: See the User schema. }
+                threshold_warning_days: { type: integer, enum: [14, 21, 28, 0], description: See the User schema. }
                 lthr: { type: integer, description: Lactate threshold HR (bpm). }
                 max_hr: { type: integer }
                 resting_hr:
@@ -1552,6 +1553,104 @@ paths:
                   data:
                     type: array
                     items: { $ref: "#/components/schemas/ThresholdHistoryEntry" }
+
+  /v1/athletes/{id}/threshold-suggestions:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Athletes & zones]
+      summary: Threshold suggestions
+      operationId: listThresholdSuggestions
+      description: >
+        Actionable suggestions where the auto-derivation in GET
+        /v1/athletes/{id}/thresholds falls short: a qualifying effort the sanity
+        band rejected ("rejected" - a real breakthrough, or a recalibrated/corrupt
+        sensor; the athlete decides), or a current value about to age out of
+        threshold_window_days with nothing dismissing it ("upcoming_drop", or
+        "race_will_refresh" when a booked race should refresh it naturally first).
+        LTHR is deliberately excluded - it's a stable, manually-set value, and HR
+        bests are too noisy (heat, drift, sensor spikes) for either suggestion
+        type. Cached per athlete for 24 hours, invalidated on anything that could
+        change the list (activity ingest/import, a threshold write, a setting
+        change, a race change, or an accept/dismiss).
+      responses:
+        "200":
+          description: Pending suggestions, rejected first, then upcoming_drop/race_will_refresh by days_left ascending.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ThresholdSuggestion" }
+
+  /v1/athletes/{id}/threshold-suggestions/{suggestion_id}/accept:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+      - name: suggestion_id
+        in: path
+        required: true
+        schema: { type: string }
+        description: "A suggestion's own id, e.g. ftp:rejected:act_123 - stable for its lifetime."
+    post:
+      tags: [Athletes & zones]
+      summary: Accept a rejected candidate
+      operationId: acceptThresholdSuggestion
+      description: >
+        Accepts a "rejected" suggestion as real: records it as a genuine
+        threshold_history entry and updates the athlete's cached profile value.
+        The candidate activity bypasses the sanity band for this field from now
+        on (even across a full history rebuild), so it won't be rejected again.
+        404 if the suggestion no longer exists.
+      responses:
+        "200":
+          description: The new current threshold_history entry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThresholdHistoryEntry" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Athletes & zones]
+      summary: Undo an accept
+      operationId: undoAcceptThresholdSuggestion
+      description: >
+        Removes the accept override and re-runs the normal windowed recompute -
+        the candidate goes back to being sanity-filtered like any other activity.
+      responses:
+        "204":
+          description: Reverted.
+
+  /v1/athletes/{id}/threshold-suggestions/{suggestion_id}/dismiss:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+      - name: suggestion_id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Athletes & zones]
+      summary: Dismiss a suggestion
+      operationId: dismissThresholdSuggestion
+      description: >
+        Silences this one specific occurrence - a candidate activity id for
+        "rejected", or a source-activity+expiry-date pair for "upcoming_drop" - so
+        a genuinely different future occurrence of the same kind for the same
+        field is never silenced by an old dismissal. Not valid for
+        "race_will_refresh" (it's a quiet note, not a dismissable card) - 404.
+      responses:
+        "204":
+          description: Dismissed.
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Athletes & zones]
+      summary: Undo a dismiss
+      operationId: undoDismissThresholdSuggestion
+      responses:
+        "204":
+          description: Reverted.
 
   /v1/athletes/{id}/zones:
     parameters:
@@ -2473,6 +2572,17 @@ components:
             deviation from the then-current value is excluded (e.g. corrupt
             power-meter data).
           example: 30
+        threshold_warning_days:
+          type: integer
+          enum: [14, 21, 28, 0]
+          default: 21
+          description: >
+            How many days before a threshold's current source activity ages out of
+            threshold_window_days the Threshold suggestions feature (GET
+            /v1/athletes/{id}/threshold-suggestions) warns the athlete. 0 = off.
+            Scaled down for threshold_window_days < 84 (a quarter of the window is
+            used instead of this raw setting).
+          example: 21
         lthr: { type: integer, example: 155 }
         max_hr: { type: integer, example: 186 }
         resting_hr:
@@ -3152,6 +3262,71 @@ components:
             The date this row actually became the recorded current value - can differ from
             effective_from when this row only won later, via an earlier better row aging out of
             its trailing window.
+
+    ThresholdSuggestion:
+      type: object
+      description: >
+        One pending Threshold suggestion - shape varies by `kind`. See GET
+        /v1/athletes/{id}/threshold-suggestions.
+      required: [id, field, kind]
+      properties:
+        id:
+          type: string
+          description: "field:kind:key - stable for this occurrence's lifetime."
+          example: "ftp:rejected:act_123"
+        field: { type: string, enum: [ftp, critical_run_power, threshold_pace] }
+        kind: { type: string, enum: [rejected, upcoming_drop, race_will_refresh] }
+        current:
+          oneOf: [{ type: number }, { type: string }]
+          description: The athlete's current value (absent for race_will_refresh). Watts, or "M:SS" for threshold_pace.
+          example: 265
+        proposed:
+          oneOf: [{ type: number }, { type: string }, { type: "null" }]
+          description: >
+            rejected: the candidate's implied value. upcoming_drop: the successor
+            that takes over, or null if the value would simply go stale with
+            nothing behind it. Absent for race_will_refresh.
+          example: 297
+        delta_pct:
+          type: [number, "null"]
+          description: Unsigned percent change between current and proposed. Absent for race_will_refresh.
+          example: 12.1
+        activity_id:
+          type: [string, "null"]
+          description: >
+            rejected: the candidate activity. upcoming_drop: the expiring
+            entry's own source activity (null if it was a manual entry). Absent
+            for race_will_refresh.
+          example: act_123
+        activity_date:
+          type: string
+          format: date
+          description: rejected/upcoming_drop only - the above activity's own date.
+        implied_from:
+          type: object
+          description: >
+            rejected only - the raw effort behind `proposed`, before any
+            multiplier (e.g. FTP's 20-min-test x0.95). Equal to `proposed` for a
+            field/method with no multiplier step (critical_run_power,
+            threshold_pace, and ftp under ftp_calculation_method=sixty_min_direct).
+          properties:
+            window: { type: string, example: 20min }
+            value: { type: number, example: 313 }
+        expiry_date:
+          type: string
+          format: date
+          description: upcoming_drop/race_will_refresh only - when the current value ages out.
+        days_left:
+          type: integer
+          description: upcoming_drop/race_will_refresh only - recomputed daily from the cached expiry_date, not itself cached stale.
+          example: 12
+        race:
+          type: object
+          description: race_will_refresh only.
+          properties:
+            id: { type: string }
+            name: { type: string }
+            date: { type: string, format: date }
 
     ShareRole:
       type: string

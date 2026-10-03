@@ -20,6 +20,7 @@ public record UserResponse(
 		int bestEffortTopN,
 		int thresholdWindowDays,
 		int thresholdSanityPct,
+		int thresholdWarningDays,
 		int maxRunningPowerWatts,
 		FtpCalculationMethod ftpCalculationMethod,
 		RunningPowerSource runningPowerSource,

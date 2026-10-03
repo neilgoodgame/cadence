@@ -168,7 +168,10 @@ public class ThresholdHistoryService {
 		return true;
 	}
 
-	private void recordCandidate(User athlete, ThresholdField field, Candidate candidate, LocalDate currentFrom) {
+	// Package-visible, not private - ThresholdSuggestionService.accept() reuses this exact
+	// persist-and-cache-the-profile-value path for an accepted suggestion, same as any other
+	// candidate.
+	void recordCandidate(User athlete, ThresholdField field, Candidate candidate, LocalDate currentFrom) {
 		ThresholdHistory entry = new ThresholdHistory();
 		entry.setAthlete(athlete);
 		entry.setField(field);

@@ -16,6 +16,9 @@ from .views import (
     RecomputeThresholdHistoryView,
     RefreshThresholdView,
     ThresholdHistoryListView,
+    ThresholdSuggestionAcceptView,
+    ThresholdSuggestionDismissView,
+    ThresholdSuggestionListView,
     ZoneSetDetailView,
     ZoneSetListView,
 )
@@ -69,5 +72,20 @@ urlpatterns = [
         "v1/athletes/<str:id>/recompute-threshold-history",
         RecomputeThresholdHistoryView.as_view(),
         name="athlete-recompute-threshold-history",
+    ),
+    path(
+        "v1/athletes/<str:id>/threshold-suggestions",
+        ThresholdSuggestionListView.as_view(),
+        name="athlete-threshold-suggestions",
+    ),
+    path(
+        "v1/athletes/<str:id>/threshold-suggestions/<str:suggestion_id>/accept",
+        ThresholdSuggestionAcceptView.as_view(),
+        name="athlete-threshold-suggestion-accept",
+    ),
+    path(
+        "v1/athletes/<str:id>/threshold-suggestions/<str:suggestion_id>/dismiss",
+        ThresholdSuggestionDismissView.as_view(),
+        name="athlete-threshold-suggestion-dismiss",
     ),
 ]

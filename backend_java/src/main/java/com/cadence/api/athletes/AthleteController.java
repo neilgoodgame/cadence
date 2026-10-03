@@ -6,7 +6,9 @@ import com.cadence.api.activities.DerivedStatsRecomputeService;
 import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.athletes.dto.AthleteUpdateResponse;
+import com.cadence.api.athletes.dto.ThresholdHistoryEntryResponse;
 import com.cadence.api.athletes.dto.ThresholdHistoryListResponse;
+import com.cadence.api.athletes.dto.ThresholdSuggestionResponse;
 import com.cadence.api.athletes.dto.ThresholdSummaryEntry;
 import com.cadence.api.athletes.dto.ZoneSetReplaceRequest;
 import com.cadence.api.athletes.dto.ZoneSetReplaceResponse;
@@ -29,6 +31,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,6 +39,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -52,6 +56,7 @@ public class AthleteController {
 	private final TssRecomputeService tssRecomputeService;
 	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
 	private final ThresholdHistoryService thresholdHistoryService;
+	private final ThresholdSuggestionService thresholdSuggestionService;
 	private final ActivityRepository activityRepository;
 	private final AccessGuard accessGuard;
 	private final RecomputeLockRegistry lockRegistry;
@@ -60,7 +65,8 @@ public class AthleteController {
 	public AthleteController(UserService userService, UserMapper userMapper, AthleteService athleteService,
 			ZoneService zoneService, FitnessService fitnessService, TssRecomputeService tssRecomputeService,
 			DerivedStatsRecomputeService derivedStatsRecomputeService, ThresholdHistoryService thresholdHistoryService,
-			ActivityRepository activityRepository, AccessGuard accessGuard, RecomputeLockRegistry lockRegistry) {
+			ThresholdSuggestionService thresholdSuggestionService, ActivityRepository activityRepository,
+			AccessGuard accessGuard, RecomputeLockRegistry lockRegistry) {
 		this.userService = userService;
 		this.userMapper = userMapper;
 		this.athleteService = athleteService;
@@ -69,6 +75,7 @@ public class AthleteController {
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
 		this.thresholdHistoryService = thresholdHistoryService;
+		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.activityRepository = activityRepository;
 		this.accessGuard = accessGuard;
 		this.lockRegistry = lockRegistry;
@@ -194,6 +201,7 @@ public class AthleteController {
 		accessGuard.requireWrite(id);
 		User athlete = userService.getById(id);
 		thresholdHistoryService.refreshField(athlete, field);
+		thresholdSuggestionService.invalidate(id);
 		return getThresholds(id);
 	}
 
@@ -219,6 +227,7 @@ public class AthleteController {
 			try {
 				int total = thresholdHistoryService.rebuildHistory(
 						athlete, field, (current, totalCount) -> sendProgress(emitter, current, totalCount));
+				thresholdSuggestionService.invalidate(id);
 				emitter.send(SseEmitter.event().name("done").data("{\"total\":" + total + "}"));
 				emitter.complete();
 			} catch (Exception e) {
@@ -239,5 +248,73 @@ public class AthleteController {
 		LocalDate effectiveTo = to != null ? to : LocalDate.now();
 		LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(84);
 		return new DataListResponse<>(fitnessService.computeFitnessSeries(id, effectiveFrom, effectiveTo));
+	}
+
+	/** Actionable suggestions where the auto-derivation in getThresholds falls short - see
+	 * ThresholdSuggestionService's own Javadoc. */
+	@GetMapping("/v1/athletes/{id}/threshold-suggestions")
+	public DataListResponse<ThresholdSuggestionResponse> listThresholdSuggestions(@PathVariable String id) {
+		accessGuard.requireRead(id);
+		User athlete = userService.getById(id);
+		return new DataListResponse<>(thresholdSuggestionService.listSuggestions(athlete));
+	}
+
+	@PostMapping("/v1/athletes/{id}/threshold-suggestions/{suggestionId}/accept")
+	public ThresholdHistoryEntryResponse acceptThresholdSuggestion(@PathVariable String id, @PathVariable String suggestionId) {
+		accessGuard.requireWrite(id);
+		User athlete = userService.getById(id);
+		ThresholdHistory entry = thresholdSuggestionService.accept(athlete, suggestionId);
+		if (entry == null) {
+			throw new NotFoundException("No such suggestion.");
+		}
+		Object value = entry.getField() == ThresholdField.THRESHOLD_PACE ? entry.getValuePace() : entry.getValueNumeric();
+		String sourceActivityId = entry.getSourceActivity() != null ? entry.getSourceActivity().getId() : null;
+		return new ThresholdHistoryEntryResponse(value, sourceActivityId, entry.getEffectiveFrom(), entry.getCurrentFrom());
+	}
+
+	@DeleteMapping("/v1/athletes/{id}/threshold-suggestions/{suggestionId}/accept")
+	@ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+	public void undoAcceptThresholdSuggestion(@PathVariable String id, @PathVariable String suggestionId) {
+		accessGuard.requireWrite(id);
+		User athlete = userService.getById(id);
+		String[] parts = parseSuggestionId(suggestionId, "rejected");
+		thresholdSuggestionService.undoAccept(athlete, ThresholdField.fromWireValue(parts[0]), parts[1]);
+	}
+
+	@PostMapping("/v1/athletes/{id}/threshold-suggestions/{suggestionId}/dismiss")
+	@ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+	public void dismissThresholdSuggestion(@PathVariable String id, @PathVariable String suggestionId) {
+		accessGuard.requireWrite(id);
+		User athlete = userService.getById(id);
+		if (!thresholdSuggestionService.dismiss(athlete, suggestionId)) {
+			throw new NotFoundException("No such suggestion.");
+		}
+	}
+
+	@DeleteMapping("/v1/athletes/{id}/threshold-suggestions/{suggestionId}/dismiss")
+	@ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+	public void undoDismissThresholdSuggestion(@PathVariable String id, @PathVariable String suggestionId) {
+		accessGuard.requireWrite(id);
+		User athlete = userService.getById(id);
+		String[] parts = suggestionId.split(":", 3);
+		if (parts.length != 3) {
+			throw new NotFoundException("No such suggestion.");
+		}
+		ThresholdSuggestionDismissal.Kind kind = "rejected".equals(parts[1]) ? ThresholdSuggestionDismissal.Kind.REJECTED
+				: "upcoming_drop".equals(parts[1]) ? ThresholdSuggestionDismissal.Kind.UPCOMING_DROP : null;
+		if (kind == null) {
+			throw new NotFoundException("No such suggestion.");
+		}
+		thresholdSuggestionService.undoDismiss(athlete, ThresholdField.fromWireValue(parts[0]), kind, parts[2]);
+	}
+
+	/** field:kind:key -> [field, key], 404 (not a body-validation failure - this is a resource
+	 * lookup) for a malformed id or the wrong kind for this action. */
+	private static String[] parseSuggestionId(String suggestionId, String expectedKind) {
+		String[] parts = suggestionId.split(":", 3);
+		if (parts.length != 3 || !parts[1].equals(expectedKind)) {
+			throw new NotFoundException("No such suggestion.");
+		}
+		return new String[] { parts[0], parts[2] };
 	}
 }

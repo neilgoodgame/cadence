@@ -7,7 +7,7 @@ from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,6 +20,7 @@ from core.auth_context import get_effective_athlete_id
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 from core.permissions import user_may_read, user_may_write
 
+from . import threshold_suggestions
 from .models import BestEffortRecomputeJob, ThresholdHistory, ZoneSet
 from .serializers import (
     AthleteUpdateSerializer,
@@ -31,6 +32,18 @@ from .serializers import (
 from .tasks import run_best_effort_recompute
 from .threshold_history import FIELD_SPORT, is_stale, rebuild_history_stream, record_manual_value, refresh_field
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for, zone_types_affected_by
+
+# Settings whose change can affect which Threshold suggestions are current (window/sanity/warning
+# lead time all feed detection directly; ftp_calculation_method changes which window ftp's own
+# candidates are drawn from) - checked against AthleteDetailView.patch's validated_data to decide
+# whether a cache invalidation is needed on top of the one record_manual_value's own ftp/
+# critical_run_power/threshold_pace writes already trigger.
+_SUGGESTION_AFFECTING_SETTINGS = {
+    "threshold_window_days",
+    "threshold_sanity_pct",
+    "threshold_warning_days",
+    "ftp_calculation_method",
+}
 
 # 4w/16w match BEST_EFFORT_TRIM_PERIOD_DAYS in uploads/processing.py exactly - the Best Efforts
 # screen used to fetch the wider 3m/1y bucket and narrow it client-side to 28/112 days, but
@@ -98,6 +111,11 @@ class AthleteDetailView(APIView):
             for field in FIELD_SPORT:
                 if field in serializer.validated_data:
                     record_manual_value(athlete, field, serializer.validated_data[field])
+            # A manual threshold edit above already changes what's current (so suggestions could
+            # change too); a change to one of the detection-affecting settings can change the
+            # suggestion list even when no threshold value itself was touched this request.
+            if set(serializer.validated_data) & (set(FIELD_SPORT) | _SUGGESTION_AFFECTING_SETTINGS):
+                threshold_suggestions.invalidate(athlete.id)
 
         recomputed = zone_types_affected_by(serializer.validated_data.keys())
         existing = set(ZoneSet.objects.filter(athlete=athlete, type__in=recomputed).values_list("type", flat=True))
@@ -495,6 +513,7 @@ class RefreshThresholdView(APIView):
 
         refresh_field(athlete, field)
         athlete.refresh_from_db()
+        threshold_suggestions.invalidate(athlete.id)
         return Response({f: threshold_summary_for_field(athlete, f) for f in _THRESHOLD_FIELDS})
 
 
@@ -507,6 +526,7 @@ def _recompute_threshold_history_stream(athlete: User, field: str) -> Iterator[s
     total = 0
     for current, total in rebuild_history_stream(athlete, field):
         yield f"data: {json.dumps({'current': current, 'total': total})}\n\n"
+    threshold_suggestions.invalidate(athlete.id)
     yield f"event: done\ndata: {json.dumps({'total': total})}\n\n"
 
 
@@ -587,3 +607,80 @@ class BestEffortTrimView(APIView):
 
         trim_best_efforts(athlete)
         return Response(status=204)
+
+
+class ThresholdSuggestionListView(APIView):
+    """GET /v1/athletes/<id>/threshold-suggestions - a cached (24h, explicitly invalidated on
+    anything that could change it - see threshold_suggestions.invalidate) list of actionable
+    threshold suggestions: a qualifying effort the sanity band rejected ("rejected"), or a
+    current value about to age out of the window with nothing dismissing it ("upcoming_drop"/
+    "race_will_refresh"). See threshold_suggestions.py for the assembly logic."""
+
+    def get(self, request: Request, id: str) -> Response:
+        _require_read(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        return Response({"data": threshold_suggestions.list_suggestions(athlete)})
+
+
+class ThresholdSuggestionAcceptView(APIView):
+    """POST .../threshold-suggestions/<suggestion_id>/accept - accepts a "rejected" candidate as
+    real, recording it as a genuine ledger entry (bypassing the sanity band for this activity
+    from now on). DELETE undoes it, reverting to the normal windowed recompute."""
+
+    def post(self, request: Request, id: str, suggestion_id: str) -> Response:
+        _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        entry = threshold_suggestions.accept(athlete, suggestion_id)
+        if entry is None:
+            raise NotFound("No such suggestion.")
+        return Response(
+            {
+                "value": entry.value_pace if entry.field == "threshold_pace" else entry.value_numeric,
+                "source_activity_id": entry.source_activity_id,
+                "effective_from": entry.effective_from,
+                "current_from": entry.current_from,
+            }
+        )
+
+    def delete(self, request: Request, id: str, suggestion_id: str) -> Response:
+        _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        field, activity_id = _parse_suggestion_id(suggestion_id, expected_kind="rejected")
+        threshold_suggestions.undo_accept(athlete, field, activity_id)
+        return Response(status=204)
+
+
+class ThresholdSuggestionDismissView(APIView):
+    """POST .../threshold-suggestions/<suggestion_id>/dismiss - silences one specific suggestion
+    occurrence (see ThresholdSuggestionDismissal.key's docstring for what makes an occurrence
+    "specific" - a dismissal never silences a genuinely different future one). DELETE undoes it."""
+
+    def post(self, request: Request, id: str, suggestion_id: str) -> Response:
+        _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        if not threshold_suggestions.dismiss(athlete, suggestion_id):
+            raise NotFound("No such suggestion.")
+        return Response(status=204)
+
+    def delete(self, request: Request, id: str, suggestion_id: str) -> Response:
+        _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        field, kind, key = _parse_dismiss_suggestion_id(suggestion_id)
+        threshold_suggestions.undo_dismiss(athlete, field, kind, key)
+        return Response(status=204)
+
+
+def _parse_suggestion_id(suggestion_id: str, expected_kind: str) -> tuple[str, str]:
+    """field:kind:key -> (field, key), raising 404 (not 400 - this is a resource lookup, not a
+    body-validation failure) for a malformed id or the wrong kind for this action."""
+    parts = suggestion_id.split(":", 2)
+    if len(parts) != 3 or parts[0] not in _THRESHOLD_FIELDS or parts[1] != expected_kind:
+        raise NotFound("No such suggestion.")
+    return parts[0], parts[2]
+
+
+def _parse_dismiss_suggestion_id(suggestion_id: str) -> tuple[str, str, str]:
+    parts = suggestion_id.split(":", 2)
+    if len(parts) != 3 or parts[0] not in _THRESHOLD_FIELDS or parts[1] not in ("rejected", "upcoming_drop"):
+        raise NotFound("No such suggestion.")
+    return parts[0], parts[1], parts[2]
