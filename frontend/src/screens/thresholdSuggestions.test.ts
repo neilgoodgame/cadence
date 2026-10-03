@@ -13,6 +13,14 @@ import {
 } from "./thresholdSuggestions";
 import type { ThresholdSuggestion } from "../api/types";
 
+// Mirrors thresholdSuggestions.ts's own private fmtDMon exactly - day/month order is locale-
+// dependent (CI's runner locale orders them differently than a typical dev machine's), so
+// assertions below build the expected label through the same call rather than hardcoding one
+// order.
+function dMon(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
 function rejected(overrides: Partial<ThresholdSuggestion> = {}): ThresholdSuggestion {
   return {
     id: "ftp:rejected:act_1",
@@ -130,16 +138,16 @@ describe("suggestionTitle", () => {
 
   it("builds the upcoming_drop title for a power field (drops to)", () => {
     expect(suggestionTitle(upcomingDrop({ field: "ftp", proposed: 258, expiry_date: "2026-08-10" }))).toBe(
-      "FTP drops to 258W on 10 Aug",
+      `FTP drops to 258W on ${dMon("2026-08-10")}`,
     );
   });
 
   it("builds the upcoming_drop title for pace (slips to)", () => {
-    expect(suggestionTitle(upcomingDrop())).toBe("Threshold pace slips to 4:07/km on 10 Aug");
+    expect(suggestionTitle(upcomingDrop())).toBe(`Threshold pace slips to 4:07/km on ${dMon("2026-08-10")}`);
   });
 
   it("falls back to 'goes stale' when there is no successor", () => {
-    expect(suggestionTitle(upcomingDrop({ proposed: null }))).toBe("Threshold pace goes stale on 10 Aug");
+    expect(suggestionTitle(upcomingDrop({ proposed: null }))).toBe(`Threshold pace goes stale on ${dMon("2026-08-10")}`);
   });
 });
 
@@ -189,14 +197,14 @@ describe("suggestionMeta", () => {
 describe("raceWillRefreshNote", () => {
   it("builds the quiet Current-zones note", () => {
     expect(raceWillRefreshNote(raceWillRefresh())).toBe(
-      "Your City 10K on 2 Aug should refresh this before it expires on 10 Aug.",
+      `Your City 10K on ${dMon("2026-08-02")} should refresh this before it expires on ${dMon("2026-08-10")}.`,
     );
   });
 });
 
 describe("acceptedDoneText", () => {
   it("builds the post-accept confirmation", () => {
-    expect(acceptedDoneText("ftp", 297, "2026-07-21")).toBe("FTP set to 297W — recorded from 21 Jul.");
+    expect(acceptedDoneText("ftp", 297, "2026-07-21")).toBe(`FTP set to 297W — recorded from ${dMon("2026-07-21")}.`);
   });
 });
 
