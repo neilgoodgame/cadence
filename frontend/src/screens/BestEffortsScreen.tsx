@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { listBestEfforts, excludeActivityFromBestEfforts } from "../api/athletes";
+import { DurabilityView } from "./bestEfforts/DurabilityView";
 import { listActivities, getActivity } from "../api/activities";
 import { ActivityNameLink } from "../components/ActivityNameLink";
 import { useAuth } from "../auth/AuthContext";
@@ -966,6 +967,16 @@ export function BestEffortsScreen() {
   const rCP = user?.critical_run_power ?? null;
   const [displayPeriod, setDisplayPeriod] = useState<DisplayPeriod>("16w");
   const { apiPeriod, label: periodLabel } = PERIOD_CONFIG[displayPeriod];
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = searchParams.get("view") === "durability" ? "durability" : "records";
+  const setView = (v: "records" | "durability") => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v === "records") next.delete("view");
+      else next.set("view", v);
+      return next;
+    });
+  };
   const { mutate: excludeActivity, isPending: excludePending } = useExclude(athleteId);
   const makeExclude = (kind: BestEffortKind) => (activityId: string) => excludeActivity({ activityId, kind });
 
@@ -1044,31 +1055,52 @@ export function BestEffortsScreen() {
             Best efforts
           </h1>
           <div style={{ fontSize: 13, color: "var(--ink3)", marginTop: 2 }}>
-            Personal bests across running and cycling · {periodLabel.toLowerCase()}
+            {view === "durability"
+              ? `Aerobic decoupling, efficiency and best power once tired · ${periodLabel.toLowerCase()}`
+              : `Personal bests across running and cycling · ${periodLabel.toLowerCase()}`}
           </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 2,
-            background: "var(--canvas)",
-            border: "1px solid var(--line)",
-            borderRadius: 9,
-            padding: 3,
-          }}
-        >
-          {DISPLAY_PERIODS.map((p) => (
-            <div key={p} onClick={() => setDisplayPeriod(p)} style={segStyle(p === displayPeriod)}>
-              {PERIOD_CONFIG[p].label}
-            </div>
-          ))}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 2,
+              background: "var(--canvas)",
+              border: "1px solid var(--line)",
+              borderRadius: 9,
+              padding: 3,
+            }}
+          >
+            <div onClick={() => setView("records")} style={segStyle(view === "records")}>Records</div>
+            <div onClick={() => setView("durability")} style={segStyle(view === "durability")}>Durability</div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 2,
+              background: "var(--canvas)",
+              border: "1px solid var(--line)",
+              borderRadius: 9,
+              padding: 3,
+            }}
+          >
+            {DISPLAY_PERIODS.map((p) => (
+              <div key={p} onClick={() => setDisplayPeriod(p)} style={segStyle(p === displayPeriod)}>
+                {PERIOD_CONFIG[p].label}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Content */}
       <div style={{ paddingTop: 20, paddingBottom: 64, display: "flex", flexDirection: "column", gap: 28 }}>
+        {view === "durability" && <DurabilityView athleteId={athleteId} period={displayPeriod} />}
+
         {/* Running section */}
+        {view === "records" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <SectionHeader
             label="Running"
@@ -1086,8 +1118,10 @@ export function BestEffortsScreen() {
             <RunPowerCard efforts={runPowerEfforts} allTimeEfforts={runPowerAllEfforts} rCP={rCP} onExclude={makeExclude("running_power")} excludePending={excludePending} />
           )}
         </div>
+        )}
 
         {/* Cycling section */}
+        {view === "records" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <SectionHeader
             label="Cycling"
@@ -1111,6 +1145,7 @@ export function BestEffortsScreen() {
 
           <BiggestClimbsCard />
         </div>
+        )}
       </div>
     </div>
   );
