@@ -5,6 +5,7 @@ import {
   decouplingChecks,
   decouplingSummaryText,
   durabilityTiles,
+  isNeverComputed,
   notScoredReasonText,
 } from "./decoupling";
 import type { Activity } from "../../api/types";
@@ -100,6 +101,33 @@ describe("decouplingChecks", () => {
     expect(decouplingChecks(baseActivity({ decoupling_reasons: ["hr_coverage"] }))[3].pass).toBe(false);
     expect(decouplingChecks(baseActivity({ decoupling_reasons: ["power_coverage"] }))[3].pass).toBe(false);
   });
+
+  it("shows every check as null (never evaluated), not a false green pass, for an activity that was never computed", () => {
+    const neverComputed = baseActivity({
+      decoupling_qualified: false,
+      decoupling_reasons: [],
+      decoupling_vi: null,
+      decoupling_if: null,
+      steady_seconds: null,
+      decoupling_hr_coverage_pct: null,
+      decoupling_power_coverage_pct: null,
+    });
+    expect(decouplingChecks(neverComputed).every((c) => c.pass === null)).toBe(true);
+  });
+});
+
+describe("isNeverComputed", () => {
+  it("is true for the Activity model's uncomputed default state", () => {
+    expect(isNeverComputed(baseActivity({ decoupling_qualified: false, decoupling_reasons: [] }))).toBe(true);
+  });
+
+  it("is false once a real reason has been recorded, even though qualified is also false", () => {
+    expect(isNeverComputed(baseActivity({ decoupling_qualified: false, decoupling_reasons: ["short"] }))).toBe(false);
+  });
+
+  it("is false for a qualified session", () => {
+    expect(isNeverComputed(baseActivity({ decoupling_qualified: true, decoupling_reasons: [] }))).toBe(false);
+  });
 });
 
 describe("notScoredReasonText", () => {
@@ -121,6 +149,11 @@ describe("notScoredReasonText", () => {
   it("formats an HR coverage reason", () => {
     const text = notScoredReasonText(baseActivity({ decoupling_reasons: ["hr_coverage"], decoupling_hr_coverage_pct: 72 }));
     expect(text).toBe("HR coverage 72% (needs 90%)");
+  });
+
+  it("says 'not yet computed' for an activity that predates this feature, not a false specific reason", () => {
+    const text = notScoredReasonText(baseActivity({ decoupling_qualified: false, decoupling_reasons: [] }));
+    expect(text).toBe("not yet computed");
   });
 });
 

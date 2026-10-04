@@ -10,10 +10,13 @@ import {
   decouplingSummaryText,
   durabilityTiles,
   fmtHalfTimeRange,
+  isNeverComputed,
   notScoredReasonText,
 } from "./decoupling";
 
-const chipStyle = (pass: boolean): React.CSSProperties => ({
+// pass: null means the check was never evaluated at all (an activity that predates this
+// feature and hasn't been recomputed) - shown neutral, not a false green checkmark.
+const chipStyle = (pass: boolean | null): React.CSSProperties => ({
   display: "inline-flex",
   alignItems: "center",
   gap: 5,
@@ -22,11 +25,17 @@ const chipStyle = (pass: boolean): React.CSSProperties => ({
   fontWeight: 600,
   padding: "3px 9px",
   borderRadius: 6,
-  color: pass ? "var(--ink2)" : "var(--ink)",
-  background: pass ? "transparent" : "rgba(224,68,46,0.14)",
-  border: `1px solid ${pass ? "var(--line)" : "#e0442e"}`,
+  color: pass === false ? "var(--ink)" : "var(--ink2)",
+  background: pass === false ? "rgba(224,68,46,0.14)" : "transparent",
+  border: `1px solid ${pass === false ? "#e0442e" : "var(--line)"}`,
+  opacity: pass === null ? 0.6 : 1,
   whiteSpace: "nowrap",
 });
+
+function chipIcon(pass: boolean | null): string {
+  if (pass === null) return "–"; // en dash - "not evaluated"
+  return pass ? "✓" : "✗";
+}
 
 /** Activity Analysis → Stats tab "Aerobic decoupling · Pw:HR" card - only rendered for bike/run
  * activities with a power stream (callers are responsible for that gate, matching the design
@@ -144,8 +153,9 @@ export function DecouplingCard({ activity }: { activity: Activity }) {
             Not scored &mdash; {notScoredReasonText(activity)}
           </div>
           <div style={{ fontSize: 12.5, color: "var(--ink2)", marginTop: 6, lineHeight: 1.45, maxWidth: 640 }}>
-            Decoupling only means something on a steady, aerobic session &mdash; intervals and surges raise heart
-            rate for reasons other than fatigue.
+            {isNeverComputed(activity)
+              ? "This activity hasn't been scored yet - use ↺ Recompute stats above to calculate it."
+              : "Decoupling only means something on a steady, aerobic session — intervals and surges raise heart rate for reasons other than fatigue."}
           </div>
         </div>
       )}
@@ -153,7 +163,7 @@ export function DecouplingCard({ activity }: { activity: Activity }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 16 }}>
         {checks.map((c) => (
           <span key={c.label} title={c.tooltip} style={chipStyle(c.pass)}>
-            {c.pass ? "✓" : "✗"} {c.label}
+            {chipIcon(c.pass)} {c.label}
           </span>
         ))}
       </div>

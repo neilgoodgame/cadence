@@ -27,36 +27,49 @@ function viLimit(sport: Activity["sport"]): number {
   return sport === "run" ? 1.04 : 1.06;
 }
 
+/** True only for an activity that has never been through the decoupling computation at all
+ * (predates this feature's deploy, or was imported from an export that predates it) - every
+ * real computed outcome either qualifies (decoupling_qualified true) or records at least one
+ * reason, so "qualified: false, reasons: []" is otherwise unreachable and is really just the
+ * Activity model's own uncomputed default state. Distinguishing this from a genuine "too
+ * short"/etc. failure matters because the checks below were never actually evaluated here -
+ * showing them as passing (green checkmarks) would be actively misleading, not just unhelpful. */
+export function isNeverComputed(activity: Activity): boolean {
+  return !activity.decoupling_qualified && activity.decoupling_reasons.length === 0;
+}
+
 /** One qualification-check chip, always shown (checks row never hides even on a not-scored
- * session) - see the design spec's Checks row table. */
+ * session) - see the design spec's Checks row table. `pass` is null when the check was never
+ * evaluated at all (see isNeverComputed) - distinct from a real pass/fail. */
 export interface DecouplingCheck {
   label: string;
-  pass: boolean;
+  pass: boolean | null;
   tooltip: string;
 }
 
 export function decouplingChecks(activity: Activity): DecouplingCheck[] {
   const reasons = activity.decoupling_reasons;
   const limit = viLimit(activity.sport);
+  const neverComputed = isNeverComputed(activity);
   return [
     {
       label: `VI ${activity.decoupling_vi != null ? activity.decoupling_vi.toFixed(2) : "—"} ≤ ${limit}`,
-      pass: !reasons.includes("variable"),
+      pass: neverComputed ? null : !reasons.includes("variable"),
       tooltip: `Variability index (NP ÷ avg power). Bike limit 1.06, run 1.04.`,
     },
     {
       label: `IF ${activity.decoupling_if != null ? activity.decoupling_if.toFixed(2) : "—"} ≤ 0.85`,
-      pass: !reasons.includes("intensity") && !reasons.includes("no_threshold"),
+      pass: neverComputed ? null : !reasons.includes("intensity") && !reasons.includes("no_threshold"),
       tooltip: `Intensity factor (NP ÷ FTP). Above 0.85 drift is expected.`,
     },
     {
       label: `${activity.steady_seconds != null ? Math.round(activity.steady_seconds / 60) : "—"} min steady ≥ 60`,
-      pass: !reasons.includes("short"),
+      pass: neverComputed ? null : !reasons.includes("short"),
       tooltip: `Moving time after the 10-min warm-up; stops ≥ 5 min removed.`,
     },
     {
       label: `HR ${activity.decoupling_hr_coverage_pct ?? "—"}% · power ${activity.decoupling_power_coverage_pct ?? "—"}%`,
-      pass: !reasons.includes("hr_coverage") && !reasons.includes("power_coverage"),
+      pass: neverComputed ? null : !reasons.includes("hr_coverage") && !reasons.includes("power_coverage"),
       tooltip: `Coverage: HR ≥ 90%, power ≥ 95%.`,
     },
   ];
@@ -83,10 +96,12 @@ function reasonText(reason: DecouplingReason, activity: Activity): string {
 
 /** "too variable (VI 1.12, limit 1.06)" - the first (highest-priority) failing reason, matching
  * the order the backend appends them (variable, then intensity/no_threshold, short, HR
- * coverage, power coverage). */
+ * coverage, power coverage). Falls back to a "never computed" message (see isNeverComputed) for
+ * an activity predating this feature that hasn't been recomputed yet. */
 export function notScoredReasonText(activity: Activity): string {
   const first = activity.decoupling_reasons[0];
-  return first ? reasonText(first, activity) : "not enough data";
+  if (first) return reasonText(first, activity);
+  return isNeverComputed(activity) ? "not yet computed" : "not enough data";
 }
 
 function fmtPower(w: number): string {
