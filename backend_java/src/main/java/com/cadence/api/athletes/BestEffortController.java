@@ -50,16 +50,30 @@ public class BestEffortController {
 	private final UserService userService;
 	private final AccessGuard accessGuard;
 	private final RecomputeLockRegistry lockRegistry;
+	private final com.cadence.api.activities.DurabilityQueryService durabilityQueryService;
 	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
 	public BestEffortController(BestEffortRepository bestEffortRepository,
 			BestEffortRecomputeService recomputeService, UserService userService,
-			AccessGuard accessGuard, RecomputeLockRegistry lockRegistry) {
+			AccessGuard accessGuard, RecomputeLockRegistry lockRegistry,
+			com.cadence.api.activities.DurabilityQueryService durabilityQueryService) {
 		this.bestEffortRepository = bestEffortRepository;
 		this.recomputeService = recomputeService;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
 		this.lockRegistry = lockRegistry;
+		this.durabilityQueryService = durabilityQueryService;
+	}
+
+	/** Aerobic decoupling sessions and durability (best power once tired) - backs the Best
+	 * Efforts screen's Durability view and the Activity Analysis "Aerobic decoupling" card's
+	 * durability strip. Same permission model as best efforts (self + coach with a grant). */
+	@GetMapping("/v1/athletes/{id}/durability")
+	public com.cadence.api.athletes.dto.DurabilityResponse getDurability(@PathVariable String id,
+			@RequestParam(defaultValue = "all") String sport,
+			@RequestParam(defaultValue = "16w") String period) {
+		accessGuard.requireRead(id);
+		return durabilityQueryService.get(userService.getById(id), sport, period);
 	}
 
 	@GetMapping("/v1/athletes/{id}/best-efforts")

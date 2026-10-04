@@ -40,6 +40,20 @@ export interface Athlete {
    * Threshold suggestions feature warns about it - 14/21/28, or 0 = off. See
    * ThresholdSuggestion's "upcoming_drop" kind. */
   threshold_warning_days: number;
+  /** Aerobic decoupling qualification thresholds - read at compute time (ingest/recompute),
+   * not retroactive: changing these doesn't repaint already-scored activities on its own. */
+  decoupling_vi_limit_bike: number;
+  decoupling_vi_limit_run: number;
+  decoupling_if_limit: number;
+  decoupling_min_steady_minutes: number;
+  /** Heat-confound flags for the same decoupling card - two independent severity tiers, both
+   * read from air/skin temp only (not core, which drifts up from sustained effort alone on any
+   * long session regardless of weather). Warm is an OR (either signal elevated is enough);
+   * hot is an AND (both have to be elevated - a stricter bar). */
+  decoupling_warm_air_temp: number;
+  decoupling_warm_skin_temp: number;
+  decoupling_hot_air_temp: number;
+  decoupling_hot_skin_temp: number;
   lthr: number | null;
   max_hr: number | null;
   /** Optional - only used for the Karvonen heart-rate-reserve % stat on Activity Analysis. */
@@ -222,6 +236,94 @@ export interface ThresholdSuggestion {
   race?: { id: string; name: string; date: string };
 }
 
+export type DecouplingReason =
+  | "sport"
+  | "no_power"
+  | "variable"
+  | "intensity"
+  | "short"
+  | "hr_coverage"
+  | "power_coverage"
+  | "no_threshold";
+
+export interface DecouplingHalf {
+  start_s: number | null;
+  end_s: number | null;
+  power: number | null;
+  hr: number | null;
+  /** W/bpm. */
+  ef: number | null;
+}
+
+/** One (threshold, window_s) cell of an activity's own durability - best mean-max power that
+ * starts after `threshold` of accumulated fatigue (kJ for bike, minutes for run) is reached. */
+export interface ActivityDurabilityRow {
+  threshold: number;
+  window_s: number;
+  power: number;
+  start_offset_s: number;
+}
+
+/** GET /v1/athletes/{id}/durability - see screens/bestEfforts/durability.ts for the frontend
+ * assembly/formatting layer built on top of this. */
+export interface DurabilitySession {
+  activity_id: string;
+  name: string;
+  date: string;
+  sport: "ride" | "run";
+  decoupling_pct: number;
+  /** Whole-window EF (avg power / avg HR). */
+  ef: number | null;
+  ef_first: number;
+  ef_second: number;
+  steady_seconds: number;
+  hot: boolean;
+  avg_temp: number | null;
+  avg_core: number | null;
+}
+
+export interface DurabilityRollingPoint {
+  date: string;
+  decoupling_pct: number;
+  ef: number | null;
+}
+
+export interface DurabilitySummary {
+  count: number;
+  last28_avg: number | null;
+  prev28_avg: number | null;
+  /** last28_avg excluding hot sessions. */
+  last28_cool_avg: number | null;
+  last28_ef: number | null;
+  prev28_ef: number | null;
+}
+
+export interface DurabilityCell {
+  window_s: number;
+  threshold: number;
+  power: number;
+  /** null for the Fresh (threshold=0) column's own cell is never produced - that one is always
+   * 100 - this is null only when there's no threshold=0 row to compare against at all. */
+  pct_of_fresh: number | null;
+  activity_id: string;
+  activity_name: string;
+  date: string;
+}
+
+export interface DurabilitySportSection {
+  basis: "kj" | "minutes";
+  thresholds: number[];
+  windows: number[];
+  cells: DurabilityCell[];
+}
+
+export interface DurabilityResponse {
+  sessions: DurabilitySession[];
+  rolling: { ride?: DurabilityRollingPoint[]; run?: DurabilityRollingPoint[] };
+  summary: DurabilitySummary;
+  durability: { ride?: DurabilitySportSection; run?: DurabilitySportSection };
+}
+
 export interface Activity {
   id: string;
   athlete_id: string;
@@ -280,6 +382,41 @@ export interface Activity {
   anaerobic_training_effect: number | null;
   /** Benefit label derived from aerobic_training_effect; empty string when that is null. */
   training_effect_label: string;
+  /** Aerobic decoupling (Pw:HR) - bike/run with a power stream only. decoupling_pct/ef_first/
+   * ef_second/decoupling_halves are null/empty whenever decoupling_qualified is false (not
+   * computed, not just hidden) - decoupling_vi/decoupling_if/steady_seconds/decoupling_hot/
+   * decoupling_avg_temp/decoupling_avg_core are still populated where computable, since the
+   * Aerobic decoupling card's checks row shows them even on a not-scored session. */
+  decoupling_pct: number | null;
+  /** W/bpm. Null when not qualified. */
+  ef_first: number | null;
+  ef_second: number | null;
+  /** Moving time in the scored window (after the 10-min warm-up). */
+  steady_seconds: number | null;
+  decoupling_qualified: boolean;
+  decoupling_reasons: DecouplingReason[];
+  /** Variability index: NP / avg power, steady window. */
+  decoupling_vi: number | null;
+  /** Intensity factor: NP / FTP or CP at the activity's date. */
+  decoupling_if: number | null;
+  /** Mean air °C over the steady window. */
+  decoupling_avg_temp: number | null;
+  /** Mean core °C over the steady window (CORE sensor, where present) - informational only,
+   * doesn't gate decoupling_warm/decoupling_hot (see those fields). */
+  decoupling_avg_core: number | null;
+  /** Mean skin °C over the steady window (CORE sensor, where present). */
+  decoupling_avg_skin: number | null;
+  /** avg air >= athlete's decoupling_warm_air_temp OR avg skin >= decoupling_warm_skin_temp. */
+  decoupling_warm: boolean;
+  /** avg air >= athlete's decoupling_hot_air_temp AND avg skin >= decoupling_hot_skin_temp -
+   * stricter than decoupling_warm (an AND, not an OR). */
+  decoupling_hot: boolean;
+  /** % of steady-window samples with a non-null HR/power reading, 0-100. */
+  decoupling_hr_coverage_pct: number | null;
+  decoupling_power_coverage_pct: number | null;
+  decoupling_halves: DecouplingHalf[];
+  /** This activity's own ActivityDurability rows, for the Stats card's durability strip. */
+  durability: ActivityDurabilityRow[];
   tags: string[];
   workout_id: string | null;
   bike_id: string | null;
@@ -304,6 +441,14 @@ export interface AthleteUpdate {
   threshold_window_days?: number;
   threshold_sanity_pct?: number;
   threshold_warning_days?: number;
+  decoupling_vi_limit_bike?: number;
+  decoupling_vi_limit_run?: number;
+  decoupling_if_limit?: number;
+  decoupling_min_steady_minutes?: number;
+  decoupling_warm_air_temp?: number;
+  decoupling_warm_skin_temp?: number;
+  decoupling_hot_air_temp?: number;
+  decoupling_hot_skin_temp?: number;
   lthr?: number;
   max_hr?: number;
   resting_hr?: number;

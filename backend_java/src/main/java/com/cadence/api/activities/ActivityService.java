@@ -37,11 +37,13 @@ public class ActivityService {
 	private final WorkoutService workoutService;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final WorkoutMatchPreferenceService matchPreferenceService;
+	private final ActivityDurabilityRepository durabilityRepository;
 	private final ActivityFieldMap fieldMap = new ActivityFieldMap();
 
 	public ActivityService(ActivityRepository activityRepository, ActivityTagRepository activityTagRepository,
 			RecordRepository recordRepository, ActivityCursorPagination pagination, WorkoutService workoutService,
-			ThresholdHistoryRepository thresholdHistoryRepository, WorkoutMatchPreferenceService matchPreferenceService) {
+			ThresholdHistoryRepository thresholdHistoryRepository, WorkoutMatchPreferenceService matchPreferenceService,
+			ActivityDurabilityRepository durabilityRepository) {
 		this.activityRepository = activityRepository;
 		this.activityTagRepository = activityTagRepository;
 		this.recordRepository = recordRepository;
@@ -49,6 +51,7 @@ public class ActivityService {
 		this.workoutService = workoutService;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.matchPreferenceService = matchPreferenceService;
+		this.durabilityRepository = durabilityRepository;
 	}
 
 	public Activity getActivity(String id) {
@@ -81,6 +84,12 @@ public class ActivityService {
 				activity.getAvgHeatStrain(), activity.getMaxHeatStrain(), activity.getAvgCoreTemp(),
 				activity.getMaxCoreTemp(), activity.getAvgSkinTemp(), activity.getMaxSkinTemp(),
 				activity.getAerobicTrainingEffect(), activity.getAnaerobicTrainingEffect(), activity.getTrainingEffectLabel(),
+				activity.getDecouplingPct(), activity.getEfFirst(), activity.getEfSecond(), activity.getSteadySeconds(),
+				activity.isDecouplingQualified(), activity.getDecouplingReasons(), activity.getDecouplingVi(),
+				activity.getDecouplingIf(), activity.getDecouplingAvgTemp(), activity.getDecouplingAvgCore(),
+				activity.getDecouplingAvgSkin(), activity.isDecouplingWarm(), activity.isDecouplingHot(),
+				activity.getDecouplingHrCoveragePct(), activity.getDecouplingPowerCoveragePct(),
+				activity.getDecouplingHalves(), durabilityFor(activity),
 				tags,
 				activity.getWorkout() != null ? activity.getWorkout().getId() : null,
 				activity.getBike() != null ? activity.getBike().getId() : null,
@@ -106,6 +115,13 @@ public class ActivityService {
 	 * for the first case, a different activity's id for the second. isCurrent is true when a row
 	 * is still the latest entry for its field (not yet superseded by a later, more recent
 	 * effort). */
+	private List<com.cadence.api.activities.dto.ActivityDurabilityResponse> durabilityFor(Activity activity) {
+		return durabilityRepository.findByActivityIdOrderByThresholdAscWindowSAsc(activity.getId()).stream()
+				.map(d -> new com.cadence.api.activities.dto.ActivityDurabilityResponse(
+						d.getThreshold(), d.getWindowS(), d.getPower(), d.getStartOffsetS()))
+				.toList();
+	}
+
 	private List<ActivityThresholdHistoryEntry> thresholdHistoryFor(Activity activity) {
 		List<ThresholdHistory> ownEffort = thresholdHistoryRepository.findBySourceActivityId(activity.getId());
 		LocalDate activityDate = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();

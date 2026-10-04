@@ -13,7 +13,13 @@ from core.cql import compile_ast_to_q, parse, resolve_order_by
 from core.exceptions import ConflictError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
-from uploads.processing import backfill_extended_stats, compute_normalized_power, compute_tss, training_effect_label
+from uploads.processing import (
+    backfill_extended_stats,
+    compute_decoupling_and_durability_for_activity,
+    compute_normalized_power,
+    compute_tss,
+    training_effect_label,
+)
 from uploads.serializers import UploadSerializer
 from uploads.services import create_activity_upload
 from workouts.inference import infer_workout
@@ -395,6 +401,8 @@ class RecomputeActivityStatsView(APIView):
         update_fields = backfill_extended_stats(activity, activity.athlete)
         if update_fields:
             activity.save(update_fields=update_fields)
+        if activity.sport in ("bike", "run"):
+            compute_decoupling_and_durability_for_activity(activity, activity.athlete)
         return Response(ActivitySerializer(activity).data)
 
 

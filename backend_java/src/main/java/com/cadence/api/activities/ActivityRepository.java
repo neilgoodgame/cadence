@@ -60,6 +60,23 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	@Query("select a from Activity a where a.athlete.id = :athleteId and a.parentActivity is null and a.primaryActivity is null")
 	List<Activity> findRecomputeCandidates(@Param("athleteId") String athleteId);
 
+	// RecomputeDurabilityRunner's backfill candidate set - optionally scoped to one athlete
+	// and/or a start-date cutoff, same (:param is null or ...) optional-filter shape used
+	// elsewhere in this repository.
+	@Query("select a from Activity a where a.sport in :sports and a.parentActivity is null "
+			+ "and (:athleteId is null or a.athlete.id = :athleteId) "
+			+ "and (:since is null or a.startDate >= :since) order by a.startDate")
+	List<Activity> findDecouplingBackfillCandidates(
+			@Param("sports") List<com.cadence.api.common.domain.Sport> sports,
+			@Param("athleteId") String athleteId,
+			@Param("since") Instant since);
+
+	// DurabilityQueryService's qualified-session pool for one sport, optionally period-cut by
+	// `since` (pass Instant.EPOCH for "all time" - simpler than a second derived method for the
+	// no-cutoff case, and no real activity predates 1970 either way).
+	List<Activity> findByAthleteIdAndSportAndParentActivityIsNullAndDecouplingQualifiedTrueAndStartDateGreaterThanEqualOrderByStartDateAsc(
+			String athleteId, com.cadence.api.common.domain.Sport sport, Instant since);
+
 	// Rolling-window threshold determination's cheap day-to-day scan (ThresholdHistoryCalculator.
 	// currentWindowValue) - bounded to the trailing window rather than the athlete's full history.
 	@Query("select a from Activity a where a.athlete.id = :athleteId and a.sport = :sport "

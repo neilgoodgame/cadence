@@ -105,6 +105,38 @@ public class AthleteService {
 			athlete.setThresholdWarningDays(request.thresholdWarningDays());
 			suggestionsAffected = true;
 		}
+		if (request.decouplingViLimitBike() != null) {
+			athlete.setDecouplingViLimitBike(request.decouplingViLimitBike());
+			changed.add("decouplingViLimitBike");
+		}
+		if (request.decouplingViLimitRun() != null) {
+			athlete.setDecouplingViLimitRun(request.decouplingViLimitRun());
+			changed.add("decouplingViLimitRun");
+		}
+		if (request.decouplingIfLimit() != null) {
+			athlete.setDecouplingIfLimit(request.decouplingIfLimit());
+			changed.add("decouplingIfLimit");
+		}
+		if (request.decouplingMinSteadyMinutes() != null) {
+			athlete.setDecouplingMinSteadyMinutes(request.decouplingMinSteadyMinutes());
+			changed.add("decouplingMinSteadyMinutes");
+		}
+		if (request.decouplingWarmAirTemp() != null) {
+			athlete.setDecouplingWarmAirTemp(request.decouplingWarmAirTemp());
+			changed.add("decouplingWarmAirTemp");
+		}
+		if (request.decouplingWarmSkinTemp() != null) {
+			athlete.setDecouplingWarmSkinTemp(request.decouplingWarmSkinTemp());
+			changed.add("decouplingWarmSkinTemp");
+		}
+		if (request.decouplingHotAirTemp() != null) {
+			athlete.setDecouplingHotAirTemp(request.decouplingHotAirTemp());
+			changed.add("decouplingHotAirTemp");
+		}
+		if (request.decouplingHotSkinTemp() != null) {
+			athlete.setDecouplingHotSkinTemp(request.decouplingHotSkinTemp());
+			changed.add("decouplingHotSkinTemp");
+		}
 		if (request.runningPowerSource() != null) {
 			// Doesn't retroactively touch already-imported activities' stored Record.power
 			// (see Activity.getPowerSource()'s Javadoc) - but every consumer of running power

@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from accounts.models import User
 from activities.match_preferences import apply_match_rename, apply_match_side_effects
-from activities.models import Activity, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
+from activities.models import Activity, ActivityDurability, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
 from athletes import threshold_suggestions
 from athletes.threshold_history import recompute_for_activity
 from athletes.zones import get_or_create_zone_set, reference_for
@@ -45,6 +45,47 @@ POWER_BEST_EFFORT_WINDOWS = [
     ("20min", 1200),
     ("60min", 3600),
 ]
+# Aerobic decoupling / durability (see compute_decoupling / compute_durability_rows below).
+# "ride" in the design spec maps to this codebase's "bike" sport value throughout.
+DECOUPLING_SPORTS = ("bike", "run")
+DECOUPLING_WARMUP_SECONDS = 600
+# VI/IF limit and minimum steady minutes are athlete-configurable (User.decoupling_vi_limit_bike/
+# _run/decoupling_if_limit/decoupling_min_steady_minutes) - these are just the defaults new
+# athletes get, matching the design spec's own fixed numbers. Not read directly by
+# check_decoupling_qualification below; compute_decoupling resolves the athlete's actual values
+# and passes them in explicitly.
+DECOUPLING_MIN_STEADY_SECONDS = 3600
+DECOUPLING_VI_LIMIT = {"bike": 1.06, "run": 1.04}
+DECOUPLING_IF_LIMIT = 0.85
+DECOUPLING_HR_COVERAGE_MIN = 0.90
+DECOUPLING_POWER_COVERAGE_MIN = 0.95
+# Heat-confound flags - defaults only, matching User.decoupling_warm_air_temp/_skin_temp/
+# decoupling_hot_air_temp/_skin_temp (now athlete-configurable, same "module constant mirrors
+# the model default, for docs" convention as DECOUPLING_VI_LIMIT etc. above). Deliberately air +
+# skin only, not core temp: a long steady session drives core temp up from sustained effort
+# alone, even on a cool day (a 3-hour run can cross 38 C core on a 16 C day with no heat stress
+# involved), so core is informational only (Activity.decoupling_avg_core) and doesn't gate
+# either flag. Warm is an OR of its two thresholds; hot is an AND - a stricter bar.
+DECOUPLING_WARM_AIR_TEMP_C = 25.0
+DECOUPLING_WARM_SKIN_TEMP_C = 33.0
+DECOUPLING_HOT_AIR_TEMP_C = 30.0
+DECOUPLING_HOT_SKIN_TEMP_C = 34.0
+DECOUPLING_REASON_CHOICES = [
+    ("sport", "Sport"),
+    ("no_power", "No power stream"),
+    ("variable", "Too variable"),
+    ("intensity", "Too intense"),
+    ("short", "Too short"),
+    ("hr_coverage", "Insufficient HR coverage"),
+    ("power_coverage", "Insufficient power coverage"),
+    ("no_threshold", "No threshold on record"),
+]
+
+DURABILITY_WINDOWS_S = [300, 1200, 3600]
+DURABILITY_THRESHOLDS = {"bike": [0, 1000, 2000, 3000], "run": [0, 60, 90]}
+DURABILITY_BASIS = {"bike": "kj", "run": "minutes"}
+DURABILITY_POWER_COVERAGE_MIN = 0.95
+
 PACE_BEST_EFFORT_DISTANCES_KM = [
     ("1km", 1.0),
     ("5km", 5.0),
@@ -316,6 +357,340 @@ def compute_duration_curve(series: Sequence[float | None], durations: Sequence[i
         if whole_activity_avg is not None:
             points[str(n)] = round(whole_activity_avg, 1)
     return points
+
+
+def _sliding_window_best_avg_with_offset(values: Sequence[float], window: int) -> tuple[float, int] | None:
+    """Like _sliding_window_best_avg, but also returns the winning window's own start index -
+    durability's start_offset_s needs to know *where* the best window was, not just its value.
+    """
+    n = len(values)
+    if window > n or window <= 0:
+        return None
+    window_sum = sum(values[:window])
+    best = window_sum / window
+    best_start = 0
+    for i in range(window, n):
+        window_sum += values[i] - values[i - window]
+        avg = window_sum / window
+        if avg > best:
+            best = avg
+            best_start = i - window + 1
+    return best, best_start
+
+
+def _steady_window_start_index(t_series: Sequence[int]) -> int | None:
+    """First record index where "active" elapsed time (see activities/lap_derivation.py's own
+    active_t convention, duplicated here as a 3-line local calc rather than imported - a
+    recording gap of any length contributes at most 1s, so a pause never inflates the warm-up
+    cutoff, and a stop of any length already removes itself from "steady window moving time"
+    simply by having no Record rows - no separate "stops >= 5 min" filter is needed on top of
+    this) has advanced >= DECOUPLING_WARMUP_SECONDS past the activity's start. None if the
+    recording never reaches that - too short to ever qualify."""
+    if not t_series:
+        return None
+    active = t_series[0]
+    for i in range(1, len(t_series)):
+        active += min(t_series[i] - t_series[i - 1], 1)
+        if active - t_series[0] >= DECOUPLING_WARMUP_SECONDS:
+            return i
+    return None
+
+
+def check_decoupling_qualification(
+    sport: str,
+    power_series: Sequence[float | None],
+    hr_series: Sequence[float | None],
+    threshold: int | None,
+    vi_limit: float,
+    if_limit: float,
+    min_steady_seconds: int,
+) -> dict:
+    """The steady-session qualification table from the Aerobic decoupling & durability spec,
+    applied to an already-trimmed "steady window" (post-warm-up, post-stop - see
+    _steady_window_start_index). Returns every failing reason (not just the first), plus the
+    raw VI/IF/steady-seconds numbers themselves - the UI's checks row shows all four with real
+    values even on a not-scored session (see Activity.decoupling_vi's own docstring).
+
+    vi_limit/if_limit/min_steady_seconds are the athlete's own configured thresholds (User.
+    decoupling_vi_limit_bike/_run/decoupling_if_limit/decoupling_min_steady_minutes) - the
+    caller (compute_decoupling) resolves which one applies; this function doesn't read athlete
+    state directly, keeping it a pure function of its arguments like the rest of this module."""
+    reasons: list[str] = []
+    steady_seconds = len(power_series)
+
+    avg_power = _mean(power_series)
+    norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
+    vi = round(norm_power / avg_power, 2) if norm_power is not None and avg_power else None
+    if vi is None or vi > vi_limit:
+        reasons.append("variable")
+
+    if_ = round(norm_power / threshold, 2) if norm_power is not None and threshold else None
+    if threshold is None:
+        reasons.append("no_threshold")
+    if if_ is None or if_ > if_limit:
+        if threshold is not None:
+            reasons.append("intensity")
+
+    if steady_seconds < min_steady_seconds:
+        reasons.append("short")
+
+    hr_coverage = sum(1 for h in hr_series if h is not None) / steady_seconds if steady_seconds else 0.0
+    if hr_coverage < DECOUPLING_HR_COVERAGE_MIN:
+        reasons.append("hr_coverage")
+
+    power_coverage = sum(1 for p in power_series if p is not None) / steady_seconds if steady_seconds else 0.0
+    if power_coverage < DECOUPLING_POWER_COVERAGE_MIN:
+        reasons.append("power_coverage")
+
+    return {
+        "qualified": not reasons,
+        "reasons": reasons,
+        "vi": vi,
+        "if": if_,
+        "steady_seconds": steady_seconds,
+        "hr_coverage": hr_coverage,
+        "power_coverage": power_coverage,
+    }
+
+
+def compute_decoupling(
+    activity: Activity,
+    athlete: User,
+    power_series: Sequence[float | None],
+    hr_series: Sequence[float | None],
+    t_series: Sequence[int],
+    air_temp_series: Sequence[float | None],
+    core_temp_series: Sequence[float | None],
+    skin_temp_series: Sequence[float | None],
+) -> dict:
+    """Aerobic decoupling (Pw:HR) for one bike/run activity with a power stream - the full
+    computation from the design spec: trims warm-up, splits the remainder into two equal
+    halves by sample count (this codebase treats every series as ~1Hz throughout - duration
+    curves, TSS, NP all do the same), and compares each half's efficiency factor (avg power /
+    avg HR). decoupling_pct/ef_first/ef_second/halves are only populated when qualified - see
+    Activity.decoupling_pct's own docstring. VI/IF/steady_seconds/hot/temps are populated
+    whenever there's a steady window to measure, qualified or not.
+
+    Returns a dict matching Activity's decoupling_* field names (minus the "decoupling_"
+    prefix for the ones that share it) - callers assign and save.
+    """
+    empty = {
+        "decoupling_pct": None,
+        "ef_first": None,
+        "ef_second": None,
+        "steady_seconds": None,
+        "decoupling_qualified": False,
+        "decoupling_reasons": ["sport"],
+        "decoupling_vi": None,
+        "decoupling_if": None,
+        "decoupling_avg_temp": None,
+        "decoupling_avg_core": None,
+        "decoupling_avg_skin": None,
+        "decoupling_warm": False,
+        "decoupling_hot": False,
+        "decoupling_hr_coverage_pct": None,
+        "decoupling_power_coverage_pct": None,
+        "decoupling_halves": [],
+    }
+    if activity.sport not in DECOUPLING_SPORTS:
+        return empty
+    if not any(p is not None for p in power_series):
+        return {**empty, "decoupling_reasons": ["no_power"]}
+
+    start = _steady_window_start_index(t_series)
+    if start is None:
+        return {**empty, "decoupling_reasons": ["short"], "steady_seconds": 0}
+
+    window_power = power_series[start:]
+    window_hr = hr_series[start:]
+    window_t = t_series[start:]
+    window_air = air_temp_series[start:]
+    window_core = core_temp_series[start:]
+    window_skin = skin_temp_series[start:]
+
+    zone_type = "bike_power" if activity.sport == "bike" else "run_power"
+    threshold = reference_for(athlete, zone_type, activity)
+    vi_limit = athlete.decoupling_vi_limit_bike if activity.sport == "bike" else athlete.decoupling_vi_limit_run
+    check = check_decoupling_qualification(
+        activity.sport,
+        window_power,
+        window_hr,
+        threshold,
+        vi_limit,
+        athlete.decoupling_if_limit,
+        athlete.decoupling_min_steady_minutes * 60,
+    )
+
+    avg_temp = _mean(window_air)
+    avg_core = _mean(window_core)
+    avg_skin = _mean(window_skin)
+    warm = (avg_temp is not None and avg_temp >= athlete.decoupling_warm_air_temp) or (
+        avg_skin is not None and avg_skin >= athlete.decoupling_warm_skin_temp
+    )
+    hot = (
+        avg_temp is not None
+        and avg_temp >= athlete.decoupling_hot_air_temp
+        and avg_skin is not None
+        and avg_skin >= athlete.decoupling_hot_skin_temp
+    )
+
+    result = {
+        **empty,
+        "steady_seconds": check["steady_seconds"],
+        "decoupling_qualified": check["qualified"],
+        "decoupling_reasons": check["reasons"],
+        "decoupling_vi": check["vi"],
+        "decoupling_if": check["if"],
+        "decoupling_avg_temp": round(avg_temp, 1) if avg_temp is not None else None,
+        "decoupling_avg_core": round(avg_core, 1) if avg_core is not None else None,
+        "decoupling_avg_skin": round(avg_skin, 1) if avg_skin is not None else None,
+        "decoupling_warm": warm,
+        "decoupling_hot": hot,
+        "decoupling_hr_coverage_pct": round(check["hr_coverage"] * 100),
+        "decoupling_power_coverage_pct": round(check["power_coverage"] * 100),
+    }
+    if not check["qualified"]:
+        return result
+
+    mid = len(window_power) // 2
+    halves = []
+    efs = []
+    for half_power, half_hr, half_t in (
+        (window_power[:mid], window_hr[:mid], window_t[:mid]),
+        (window_power[mid:], window_hr[mid:], window_t[mid:]),
+    ):
+        half_avg_power = _mean(half_power)
+        half_avg_hr = _mean(half_hr)
+        ef = round(half_avg_power / half_avg_hr, 3) if half_avg_power and half_avg_hr else None
+        efs.append(ef)
+        halves.append(
+            {
+                "start_s": half_t[0] - window_t[0] if half_t else None,
+                "end_s": half_t[-1] - window_t[0] if half_t else None,
+                "power": round(half_avg_power) if half_avg_power is not None else None,
+                "hr": round(half_avg_hr) if half_avg_hr is not None else None,
+                "ef": ef,
+            }
+        )
+
+    ef_first, ef_second = efs
+    if ef_first is None or ef_second is None or ef_first == 0:
+        # Coverage gates above make this vanishingly unlikely in practice, but a half with no
+        # valid power/HR pairing at all can't produce a real decoupling number.
+        result["decoupling_qualified"] = False
+        result["decoupling_reasons"] = ["hr_coverage" if ef_first is None or ef_second is None else "variable"]
+        return result
+
+    decoupling_pct = round((ef_first - ef_second) / ef_first * 100, 1)
+    result.update(
+        {
+            "decoupling_pct": decoupling_pct,
+            "ef_first": ef_first,
+            "ef_second": ef_second,
+            "decoupling_halves": halves,
+        }
+    )
+    return result
+
+
+def compute_durability_rows(
+    activity: Activity,
+    athlete: User,
+    power_series: Sequence[float | None],
+    t_series: Sequence[int],
+) -> list[dict]:
+    """Best mean-max power once tired - see ActivityDurability's own docstring. Unlike
+    decoupling, this doesn't need the steady-session rule (it's about fatigued bests, not
+    aerobic drift), but does gate on overall power coverage. Returns plain dicts (not saved
+    model instances) matching ActivityDurability's fields minus activity/athlete/activity_date
+    - compute_decoupling_and_durability_for_activity below does the actual bulk_create.
+    """
+    if activity.sport not in DECOUPLING_SPORTS or not any(p is not None for p in power_series):
+        return []
+
+    n = len(power_series)
+    power_coverage = sum(1 for p in power_series if p is not None) / n if n else 0.0
+    if power_coverage < DURABILITY_POWER_COVERAGE_MIN:
+        return []
+
+    values = [p if p is not None else 0 for p in power_series]
+    basis = DURABILITY_BASIS[activity.sport]
+    if basis == "kj":
+        # Each ~1Hz sample contributes power(W) * 1s = power joules; kJ is that / 1000.
+        cumulative = []
+        total = 0.0
+        for p in values:
+            total += p / 1000
+            cumulative.append(total)
+    else:
+        # Elapsed moving time, in minutes - a recording gap contributes no rows, so sample
+        # index already *is* moving time (see _steady_window_start_index's own note on this).
+        cumulative = [(i + 1) / 60 for i in range(n)]
+
+    rows: list[dict] = []
+    for threshold in DURABILITY_THRESHOLDS[activity.sport]:
+        reach_idx = 0
+        if threshold > 0:
+            reach_idx = next((i for i, c in enumerate(cumulative) if c >= threshold), None)
+            if reach_idx is None:
+                continue
+        remaining = values[reach_idx:]
+        for window_s in DURABILITY_WINDOWS_S:
+            if window_s > len(remaining):
+                continue
+            best = _sliding_window_best_avg_with_offset(remaining, window_s)
+            if best is None:
+                continue
+            best_power, best_start = best
+            absolute_start = reach_idx + best_start
+            rows.append(
+                {
+                    "sport": activity.sport,
+                    "basis": basis,
+                    "threshold": threshold,
+                    "window_s": window_s,
+                    "power": round(best_power),
+                    "start_offset_s": t_series[absolute_start] - t_series[0],
+                }
+            )
+    return rows
+
+
+def compute_decoupling_and_durability_for_activity(activity: Activity, athlete: User) -> None:
+    """Shared by ingest and both recompute paths (single-activity and bulk) - re-reads the
+    activity's own stored Record rows rather than taking series as arguments, since every
+    caller except _ingest_activity only has the activity object, not in-memory samples.
+    Idempotent: deletes and reinserts ActivityDurability rows every time, same convention as
+    _write_duration_curves' update_or_create for the Activity-level decoupling fields.
+    """
+    records = list(
+        activity.records.order_by("t").values("t", "power", "heartrate", "air_temp", "core_temp", "skin_temp")
+    )
+    power_series = [r["power"] for r in records]
+    if activity.sport == "run" and not activity.matches_running_power_preference(athlete):
+        power_series = [None] * len(power_series)
+    hr_series = [r["heartrate"] for r in records]
+    t_series = [r["t"] for r in records]
+    air_temp_series = [r["air_temp"] for r in records]
+    core_temp_series = [r["core_temp"] for r in records]
+    skin_temp_series = [r["skin_temp"] for r in records]
+
+    decoupling = compute_decoupling(
+        activity, athlete, power_series, hr_series, t_series, air_temp_series, core_temp_series, skin_temp_series
+    )
+    for field, value in decoupling.items():
+        setattr(activity, field, value)
+    activity.save(update_fields=list(decoupling.keys()))
+
+    durability_rows = compute_durability_rows(activity, athlete, power_series, t_series)
+    ActivityDurability.objects.filter(activity=activity).delete()
+    if durability_rows:
+        ActivityDurability.objects.bulk_create(
+            [
+                ActivityDurability(activity=activity, athlete=athlete, activity_date=activity.start_date.date(), **row)
+                for row in durability_rows
+            ]
+        )
 
 
 def compute_time_in_zone_seconds(athlete: User, heartrate_series: Sequence[float | None]) -> dict[str, int] | None:
@@ -1055,6 +1430,29 @@ def _ingest_activity(
         # threshold change.
         if activity.sport in ("bike", "run"):
             threshold_suggestions.invalidate(athlete.id)
+
+        # Also after recompute_for_activity, for the same reason - IF needs the threshold *at
+        # this activity's own date*, which this same activity's effort may have just set.
+        air_temp_series = [s.get("air_temp") for s in samples]
+        core_temp_series = [s.get("core_temp") for s in samples]
+        skin_temp_series = [s.get("skin_temp") for s in samples]
+        decoupling = compute_decoupling(
+            activity, athlete, power_series, hr_series, t_series, air_temp_series, core_temp_series, skin_temp_series
+        )
+        for field, value in decoupling.items():
+            setattr(activity, field, value)
+        update_fields.extend(decoupling.keys())
+
+        durability_rows = compute_durability_rows(activity, athlete, power_series, t_series)
+        if durability_rows:
+            ActivityDurability.objects.bulk_create(
+                [
+                    ActivityDurability(
+                        activity=activity, athlete=athlete, activity_date=activity.start_date.date(), **row
+                    )
+                    for row in durability_rows
+                ]
+            )
 
         # Same live-profile fallback as compute_tss below, for the same reason: before any
         # qualifying effort has established a ledger entry, intensity should still reflect the

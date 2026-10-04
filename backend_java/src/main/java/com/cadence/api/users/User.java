@@ -79,6 +79,38 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "threshold_warning_days", nullable = false)
 	private int thresholdWarningDays = 21;
 
+	// Aerobic decoupling qualification thresholds (see DecouplingQualificationCalculator) - the
+	// defaults match the design spec's own fixed limits. Read at compute time (ingest/
+	// recompute), same "not retroactive until recomputed" convention as thresholdWindowDays/
+	// thresholdSanityPct above - changing these doesn't repaint already-scored activities.
+	@Column(name = "decoupling_vi_limit_bike", nullable = false)
+	private double decouplingViLimitBike = 1.06;
+
+	@Column(name = "decoupling_vi_limit_run", nullable = false)
+	private double decouplingViLimitRun = 1.04;
+
+	@Column(name = "decoupling_if_limit", nullable = false)
+	private double decouplingIfLimit = 0.85;
+
+	@Column(name = "decoupling_min_steady_minutes", nullable = false)
+	private int decouplingMinSteadyMinutes = 60;
+
+	// Heat-confound flags for the same decoupling card - two independent severity tiers, both
+	// read from air/skin temp only (not core, which drifts up from sustained effort alone on
+	// any long session regardless of weather). Warm is an OR (either signal elevated is enough
+	// to caveat the reading); hot is an AND (both have to be elevated - a stricter bar).
+	@Column(name = "decoupling_warm_air_temp", nullable = false)
+	private double decouplingWarmAirTemp = 25.0;
+
+	@Column(name = "decoupling_warm_skin_temp", nullable = false)
+	private double decouplingWarmSkinTemp = 33.0;
+
+	@Column(name = "decoupling_hot_air_temp", nullable = false)
+	private double decouplingHotAirTemp = 30.0;
+
+	@Column(name = "decoupling_hot_skin_temp", nullable = false)
+	private double decouplingHotSkinTemp = 34.0;
+
 	/** A running-power sample above this is treated as corrupt sensor data - not a real effort,
 	 * a glitch - and dropped before it reaches best efforts, duration curves, normalized power, or
 	 * threshold history. See RunningPowerSanitizer's Javadoc for the failure mode this guards
@@ -285,6 +317,70 @@ public class User extends PrefixedIdEntity {
 
 	public void setThresholdWarningDays(int thresholdWarningDays) {
 		this.thresholdWarningDays = thresholdWarningDays;
+	}
+
+	public double getDecouplingViLimitBike() {
+		return decouplingViLimitBike;
+	}
+
+	public void setDecouplingViLimitBike(double decouplingViLimitBike) {
+		this.decouplingViLimitBike = decouplingViLimitBike;
+	}
+
+	public double getDecouplingViLimitRun() {
+		return decouplingViLimitRun;
+	}
+
+	public void setDecouplingViLimitRun(double decouplingViLimitRun) {
+		this.decouplingViLimitRun = decouplingViLimitRun;
+	}
+
+	public double getDecouplingIfLimit() {
+		return decouplingIfLimit;
+	}
+
+	public void setDecouplingIfLimit(double decouplingIfLimit) {
+		this.decouplingIfLimit = decouplingIfLimit;
+	}
+
+	public int getDecouplingMinSteadyMinutes() {
+		return decouplingMinSteadyMinutes;
+	}
+
+	public void setDecouplingMinSteadyMinutes(int decouplingMinSteadyMinutes) {
+		this.decouplingMinSteadyMinutes = decouplingMinSteadyMinutes;
+	}
+
+	public double getDecouplingWarmAirTemp() {
+		return decouplingWarmAirTemp;
+	}
+
+	public void setDecouplingWarmAirTemp(double decouplingWarmAirTemp) {
+		this.decouplingWarmAirTemp = decouplingWarmAirTemp;
+	}
+
+	public double getDecouplingWarmSkinTemp() {
+		return decouplingWarmSkinTemp;
+	}
+
+	public void setDecouplingWarmSkinTemp(double decouplingWarmSkinTemp) {
+		this.decouplingWarmSkinTemp = decouplingWarmSkinTemp;
+	}
+
+	public double getDecouplingHotAirTemp() {
+		return decouplingHotAirTemp;
+	}
+
+	public void setDecouplingHotAirTemp(double decouplingHotAirTemp) {
+		this.decouplingHotAirTemp = decouplingHotAirTemp;
+	}
+
+	public double getDecouplingHotSkinTemp() {
+		return decouplingHotSkinTemp;
+	}
+
+	public void setDecouplingHotSkinTemp(double decouplingHotSkinTemp) {
+		this.decouplingHotSkinTemp = decouplingHotSkinTemp;
 	}
 
 	public int getMaxRunningPowerWatts() {

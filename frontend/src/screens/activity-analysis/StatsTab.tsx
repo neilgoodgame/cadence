@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getCurves, recomputeActivityStats } from "../../api/activities";
 import type { Activity, Athlete } from "../../api/types";
+import { DecouplingCard } from "./DecouplingCard";
 import { EnvironmentCard } from "./EnvironmentCard";
 import { formatDuration, formatPace } from "../../lib/format";
 
@@ -109,8 +110,9 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
     activity.max_cadence != null;
   const hasElevationCard =
     activity.ascent != null || activity.total_descent != null || activity.elevation_min != null || activity.calories != null;
+  const hasDecouplingCard = (activity.sport === "bike" || activity.sport === "run") && activity.avg_power != null;
 
-  if (!hasPowerCard && !hasHrCard && !hasSpeedCadenceCard && !hasElevationCard) {
+  if (!hasPowerCard && !hasHrCard && !hasSpeedCadenceCard && !hasElevationCard && !hasDecouplingCard) {
     return (
       <div>
         <div style={{ color: "var(--ink3)", fontSize: 13, marginBottom: 14 }}>
@@ -177,6 +179,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
           </Card>
         )}
         <EnvironmentCard activity={activity} />
+        {hasDecouplingCard && <DecouplingCard activity={activity} athlete={athlete} />}
       </div>
     </div>
   );

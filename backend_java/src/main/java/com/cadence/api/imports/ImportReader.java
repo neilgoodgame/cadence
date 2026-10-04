@@ -108,6 +108,7 @@ public class ImportReader {
 	private final TagService tagService;
 	private final ActivityRepository activityRepository;
 	private final LapRepository lapRepository;
+	private final com.cadence.api.activities.ActivityDurabilityRepository activityDurabilityRepository;
 	private final JdbcBatchItemWriter<RecordRow> recordItemWriter;
 	private final JsonMapper jsonMapper;
 	private final UserRepository userRepository;
@@ -118,7 +119,8 @@ public class ImportReader {
 	public ImportReader(GearService gearService, ShoeService shoeService, ShoeModelRepository shoeModelRepository,
 			ShoeModelVersionRepository shoeModelVersionRepository, WorkoutService workoutService, RaceService raceService,
 			SchedulingService schedulingService, TagService tagService, ActivityRepository activityRepository,
-			LapRepository lapRepository, JdbcBatchItemWriter<RecordRow> recordItemWriter, JsonMapper jsonMapper,
+			LapRepository lapRepository, com.cadence.api.activities.ActivityDurabilityRepository activityDurabilityRepository,
+			JdbcBatchItemWriter<RecordRow> recordItemWriter, JsonMapper jsonMapper,
 			UserRepository userRepository, ThresholdHistoryRepository thresholdHistoryRepository,
 			com.cadence.api.athletes.ThresholdSuggestionService thresholdSuggestionService,
 			PlatformTransactionManager transactionManager) {
@@ -132,6 +134,7 @@ public class ImportReader {
 		this.tagService = tagService;
 		this.activityRepository = activityRepository;
 		this.lapRepository = lapRepository;
+		this.activityDurabilityRepository = activityDurabilityRepository;
 		this.recordItemWriter = recordItemWriter;
 		this.jsonMapper = jsonMapper;
 		this.userRepository = userRepository;
@@ -468,6 +471,22 @@ public class ImportReader {
 						lapRepository.save(l);
 					}
 
+					// "durability" is embedded in the activity payload itself (ActivityResponse's
+					// own durability field), not a sibling entry key like laps/streams.
+					for (var row : entry.activity().durability()) {
+						com.cadence.api.activities.ActivityDurability d = new com.cadence.api.activities.ActivityDurability();
+						d.setActivity(activity);
+						d.setAthlete(athlete);
+						d.setSport(activity.getSport());
+						d.setBasis(activity.getSport() == Sport.BIKE ? "kj" : "minutes");
+						d.setThreshold(row.threshold());
+						d.setWindowS(row.windowS());
+						d.setPower(row.power());
+						d.setStartOffsetS(row.startOffsetS());
+						d.setActivityDate(activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
+						activityDurabilityRepository.save(d);
+					}
+
 					List<RecordRow> rows = buildRecordRows(activity, entry.streams());
 					if (!rows.isEmpty()) {
 						try {
@@ -548,6 +567,22 @@ public class ImportReader {
 		activity.setAerobicTrainingEffect(ar.aerobicTrainingEffect());
 		activity.setAnaerobicTrainingEffect(ar.anaerobicTrainingEffect());
 		activity.setTrainingEffectLabel(ar.trainingEffectLabel());
+		activity.setDecouplingPct(ar.decouplingPct());
+		activity.setEfFirst(ar.efFirst());
+		activity.setEfSecond(ar.efSecond());
+		activity.setSteadySeconds(ar.steadySeconds());
+		activity.setDecouplingQualified(ar.decouplingQualified());
+		activity.setDecouplingReasons(ar.decouplingReasons() != null ? ar.decouplingReasons() : java.util.List.of());
+		activity.setDecouplingVi(ar.decouplingVi());
+		activity.setDecouplingIf(ar.decouplingIf());
+		activity.setDecouplingAvgTemp(ar.decouplingAvgTemp());
+		activity.setDecouplingAvgCore(ar.decouplingAvgCore());
+		activity.setDecouplingAvgSkin(ar.decouplingAvgSkin());
+		activity.setDecouplingWarm(ar.decouplingWarm());
+		activity.setDecouplingHot(ar.decouplingHot());
+		activity.setDecouplingHrCoveragePct(ar.decouplingHrCoveragePct());
+		activity.setDecouplingPowerCoveragePct(ar.decouplingPowerCoveragePct());
+		activity.setDecouplingHalves(ar.decouplingHalves() != null ? ar.decouplingHalves() : java.util.List.of());
 		if (ar.workoutId() != null) {
 			activity.setWorkout(workoutsByOldId.get(ar.workoutId()));
 		}

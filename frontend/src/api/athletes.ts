@@ -8,6 +8,7 @@ import type {
   BestEffortKind,
   BestEffortPeriod,
   DataList,
+  DurabilityResponse,
   FitnessPoint,
   RecentTopEffort,
   ThresholdFieldName,
@@ -240,6 +241,17 @@ export function listBestEfforts(
   period: BestEffortPeriod = "all",
 ): Promise<{ kind: string; period: string; data: BestEffort[] }> {
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts?kind=${kind}&period=${period}`);
+}
+
+/** Aerobic decoupling sessions (trend + rolling average) and durability (best power once
+ * tired) - backs the Best Efforts screen's Durability view and the Activity Analysis "Aerobic
+ * decoupling" card's durability strip link. */
+export function getDurability(
+  athleteId: string,
+  sport: "all" | "ride" | "run" = "all",
+  period: "4w" | "16w" | "1y" | "all" = "16w",
+): Promise<DurabilityResponse> {
+  return apiFetch(`/v1/athletes/${athleteId}/durability?sport=${sport}&period=${period}`);
 }
 
 /** Backs the Dashboard's "Top efforts this week" card - which of the given activities ranked

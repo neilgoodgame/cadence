@@ -6,7 +6,7 @@ from django.test import TestCase
 from accounts.models import User
 from athletes.models import ThresholdHistory
 
-from ..models import DurationCurve, Record
+from ..models import ActivityDurability, DurationCurve, Record
 from .helpers import _bearer_client, _delegated_client, _make_activity
 
 
@@ -135,6 +135,42 @@ class RecomputeActivityStatsViewTests(TestCase):
         self.assertAlmostEqual(body["max_core_temp"], 37.3, delta=0.05)
         self.assertAlmostEqual(body["avg_skin_temp"], 33.2, delta=0.1)
         self.assertAlmostEqual(body["max_skin_temp"], 33.4, delta=0.05)
+
+    def test_recompute_also_computes_decoupling_and_durability(self):
+        # End-to-end wiring check (the computation itself - qualification, halves, durability
+        # cells - is covered by uploads.tests.test_decoupling_durability): recompute-stats on a
+        # real bike activity with 4200s of steady, qualifying Records should populate the
+        # Activity's decoupling_* fields and write ActivityDurability rows.
+        activity = _make_activity(self.athlete, sport="bike", moving_time=4200)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=250,
+            source_activity=activity,
+            effective_from=date(2025, 1, 1),
+            current_from=date(2025, 1, 1),
+        )
+        for t in range(4200):
+            Record.objects.create(
+                activity=activity,
+                t=t,
+                ts=activity.start_date + timedelta(seconds=t),
+                power=200,
+                heartrate=140,
+            )
+
+        response = _bearer_client(self.athlete).post(f"/v1/activities/{activity.id}/recompute-stats")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["decoupling_qualified"])
+        self.assertEqual(body["steady_seconds"], 3600)
+        self.assertIsNotNone(body["decoupling_pct"])
+
+        activity.refresh_from_db()
+        self.assertTrue(activity.decoupling_qualified)
+        self.assertGreater(ActivityDurability.objects.filter(activity=activity).count(), 0)
+        fresh_row = ActivityDurability.objects.get(activity=activity, threshold=0, window_s=1200)
+        self.assertEqual(fresh_row.power, 200)
 
 
 class RecomputeActivityTssViewTests(TestCase):

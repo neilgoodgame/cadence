@@ -957,6 +957,86 @@ paths:
                     items:
                       $ref: "#/components/schemas/BestEffort"
 
+  /v1/athletes/{id}/durability:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Best efforts]
+      summary: Aerobic decoupling sessions and durability (best power once tired)
+      operationId: getDurability
+      description: >
+        Backs the Best Efforts screen's Durability view and the Activity Analysis "Aerobic
+        decoupling" card's durability strip. `sessions` are qualified (steady-session)
+        activities only, ascending by date. `rolling` is a trailing 28-day average per
+        sport, one point per session date. `durability.cells` is the best power per
+        (threshold, window_s) in the period; `pct_of_fresh` is that divided by the best
+        threshold=0 power for the same window in the same period.
+      parameters:
+        - name: sport
+          in: query
+          schema: { type: string, enum: [all, ride, run], default: all }
+        - name: period
+          in: query
+          schema: { type: string, enum: [4w, 16w, 1y, all], default: 16w }
+      responses:
+        "200":
+          description: Decoupling sessions, rolling trend, summary and durability tables.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        activity_id: { type: string }
+                        name: { type: string }
+                        date: { type: string, format: date }
+                        sport: { type: string, enum: [ride, run] }
+                        decoupling_pct: { type: number }
+                        ef: { type: [number, "null"], description: Whole-window EF (avg power / avg HR). }
+                        ef_first: { type: number }
+                        ef_second: { type: number }
+                        steady_seconds: { type: integer }
+                        hot: { type: boolean }
+                        avg_temp: { type: [number, "null"] }
+                        avg_core: { type: [number, "null"] }
+                  rolling:
+                    type: object
+                    properties:
+                      ride:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date: { type: string, format: date }
+                            decoupling_pct: { type: number }
+                            ef: { type: [number, "null"] }
+                      run:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date: { type: string, format: date }
+                            decoupling_pct: { type: number }
+                            ef: { type: [number, "null"] }
+                  summary:
+                    type: object
+                    properties:
+                      count: { type: integer }
+                      last28_avg: { type: [number, "null"] }
+                      prev28_avg: { type: [number, "null"] }
+                      last28_cool_avg: { type: [number, "null"], description: last28_avg excluding hot sessions. }
+                      last28_ef: { type: [number, "null"] }
+                      prev28_ef: { type: [number, "null"] }
+                  durability:
+                    type: object
+                    properties:
+                      ride: { $ref: "#/components/schemas/DurabilitySportSection" }
+                      run: { $ref: "#/components/schemas/DurabilitySportSection" }
+
   /v1/athletes/{id}/best-efforts/ranks:
     parameters:
       - $ref: "#/components/parameters/AthleteId"
@@ -1482,6 +1562,14 @@ paths:
                 threshold_window_days: { type: integer, description: See the User schema. }
                 threshold_sanity_pct: { type: integer, description: See the User schema. }
                 threshold_warning_days: { type: integer, enum: [14, 21, 28, 0], description: See the User schema. }
+                decoupling_vi_limit_bike: { type: number, description: See the User schema. }
+                decoupling_vi_limit_run: { type: number, description: See the User schema. }
+                decoupling_if_limit: { type: number, description: See the User schema. }
+                decoupling_min_steady_minutes: { type: integer, description: See the User schema. }
+                decoupling_warm_air_temp: { type: number, description: See the User schema. }
+                decoupling_warm_skin_temp: { type: number, description: See the User schema. }
+                decoupling_hot_air_temp: { type: number, description: See the User schema. }
+                decoupling_hot_skin_temp: { type: number, description: See the User schema. }
                 lthr: { type: integer, description: Lactate threshold HR (bpm). }
                 max_hr: { type: integer }
                 resting_hr:
@@ -2583,6 +2671,46 @@ components:
             Scaled down for threshold_window_days < 84 (a quarter of the window is
             used instead of this raw setting).
           example: 21
+        decoupling_vi_limit_bike:
+          type: number
+          default: 1.06
+          description: Aerobic decoupling qualification - max variability index (NP ÷ avg power) for a bike session's steady window. Read at compute time (ingest/recompute); not retroactive.
+          example: 1.06
+        decoupling_vi_limit_run:
+          type: number
+          default: 1.04
+          description: Same as decoupling_vi_limit_bike, for run sessions.
+          example: 1.04
+        decoupling_if_limit:
+          type: number
+          default: 0.85
+          description: Aerobic decoupling qualification - max intensity factor (NP ÷ FTP/CP) for a session's steady window. Read at compute time; not retroactive.
+          example: 0.85
+        decoupling_min_steady_minutes:
+          type: integer
+          default: 60
+          description: Aerobic decoupling qualification - minimum moving time (minutes) in the steady window, after the fixed 10-minute warm-up. Read at compute time; not retroactive.
+          example: 60
+        decoupling_warm_air_temp:
+          type: number
+          default: 25.0
+          description: Aerobic decoupling heat-confound "warm" flag - triggers if avg air °C over the steady window is at or above this, OR decoupling_warm_skin_temp is met. Read at compute time; not retroactive.
+          example: 25.0
+        decoupling_warm_skin_temp:
+          type: number
+          default: 33.0
+          description: Aerobic decoupling heat-confound "warm" flag - triggers if avg skin °C over the steady window is at or above this, OR decoupling_warm_air_temp is met.
+          example: 33.0
+        decoupling_hot_air_temp:
+          type: number
+          default: 30.0
+          description: Aerobic decoupling heat-confound "hot" flag - triggers only if avg air °C over the steady window is at or above this AND decoupling_hot_skin_temp is also met (stricter than "warm", which is an OR).
+          example: 30.0
+        decoupling_hot_skin_temp:
+          type: number
+          default: 34.0
+          description: Aerobic decoupling heat-confound "hot" flag - triggers only if avg skin °C over the steady window is at or above this AND decoupling_hot_air_temp is also met.
+          example: 34.0
         lthr: { type: integer, example: 155 }
         max_hr: { type: integer, example: 186 }
         resting_hr:
@@ -2762,6 +2890,67 @@ components:
             Benefit label derived from aerobic_training_effect (e.g. "Improving",
             "Overreaching"). Empty string when aerobic_training_effect is null.
           example: Highly Improving
+        decoupling_pct:
+          type: [number, "null"]
+          description: >
+            Aerobic decoupling (Pw:HR) - the drop in efficiency (power/HR) from the first
+            to the second half of the steady window. Null when decoupling_qualified is
+            false - not computed, not just hidden.
+          example: 5.4
+        ef_first: { type: [number, "null"], description: "W/bpm, first half. Null when not qualified." }
+        ef_second: { type: [number, "null"], description: "W/bpm, second half. Null when not qualified." }
+        steady_seconds:
+          type: [integer, "null"]
+          description: Moving time in the scored window (after the 10-min warm-up). Populated whenever there's a steady window to measure, qualified or not.
+          example: 4860
+        decoupling_qualified: { type: boolean, default: false }
+        decoupling_reasons:
+          type: array
+          items: { type: string, enum: [sport, no_power, variable, intensity, short, hr_coverage, power_coverage, no_threshold] }
+          description: Every failing qualification check, not just the first. Empty when qualified.
+          example: []
+        decoupling_vi:
+          type: [number, "null"]
+          description: Variability index (NP / avg power, steady window). Shown in the checks row even when not qualified.
+          example: 1.04
+        decoupling_if:
+          type: [number, "null"]
+          description: Intensity factor (NP / FTP or CP at the activity's date).
+          example: 0.74
+        decoupling_avg_temp: { type: [number, "null"], description: "Mean air °C over the steady window." }
+        decoupling_avg_core: { type: [number, "null"], description: "Mean core °C over the steady window (CORE sensor, where present) - informational only, doesn't gate decoupling_warm/decoupling_hot (see those fields)." }
+        decoupling_avg_skin: { type: [number, "null"], description: "Mean skin °C over the steady window (CORE sensor, where present)." }
+        decoupling_warm:
+          type: boolean
+          default: false
+          description: avg air temp >= athlete's decoupling_warm_air_temp OR avg skin temp >= decoupling_warm_skin_temp. Marked, not excluded from scoring.
+        decoupling_hot:
+          type: boolean
+          default: false
+          description: avg air temp >= athlete's decoupling_hot_air_temp AND avg skin temp >= decoupling_hot_skin_temp (stricter than decoupling_warm, which is an OR). Marked, not excluded from scoring.
+        decoupling_hr_coverage_pct:
+          type: [number, "null"]
+          description: "% of steady-window samples with a non-null HR reading, 0-100. Populated whenever there's a steady window, qualified or not."
+          example: 100
+        decoupling_power_coverage_pct:
+          type: [number, "null"]
+          description: "% of steady-window samples with a non-null power reading, 0-100."
+          example: 100
+        decoupling_halves:
+          type: array
+          description: One entry per half (empty when not qualified).
+          items:
+            type: object
+            properties:
+              start_s: { type: integer }
+              end_s: { type: integer }
+              power: { type: [integer, "null"] }
+              hr: { type: [integer, "null"] }
+              ef: { type: [number, "null"], description: W/bpm }
+        durability:
+          type: array
+          description: This activity's own ActivityDurability rows, for the Stats card's durability strip.
+          items: { $ref: "#/components/schemas/ActivityDurabilityRow" }
         tags:
           type: array
           items: { type: string }
@@ -2945,6 +3134,43 @@ components:
         unit: { type: string, example: watts }
         date: { type: string, format: date }
         activity_id: { type: string }
+
+    ActivityDurabilityRow:
+      type: object
+      description: Best mean-max power for window_s that starts after threshold of accumulated fatigue has been reached.
+      properties:
+        threshold:
+          type: integer
+          description: kJ of work (ride) or minutes of moving time (run). 0 = fresh (no fatigue gate).
+          example: 2000
+        window_s: { type: integer, enum: [300, 1200, 3600] }
+        power: { type: integer, description: W }
+        start_offset_s: { type: integer, description: Elapsed seconds from activity start to this window's own start. }
+
+    DurabilitySportSection:
+      type: object
+      properties:
+        basis: { type: string, enum: [kj, minutes] }
+        thresholds:
+          type: array
+          items: { type: integer }
+          example: [0, 1000, 2000, 3000]
+        windows:
+          type: array
+          items: { type: integer }
+          example: [300, 1200, 3600]
+        cells:
+          type: array
+          items:
+            type: object
+            properties:
+              window_s: { type: integer }
+              threshold: { type: integer }
+              power: { type: integer }
+              pct_of_fresh: { type: [integer, "null"] }
+              activity_id: { type: string }
+              activity_name: { type: string }
+              date: { type: string, format: date }
 
     RecentTopEffort:
       type: object

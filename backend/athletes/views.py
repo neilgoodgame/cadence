@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.serializers import UserSerializer
-from activities.models import Activity, BestEffort
+from activities.models import Activity, ActivityDurability, BestEffort
 from activities.serializers import BestEffortSerializer
 from core.auth_context import get_effective_athlete_id
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
@@ -185,6 +185,195 @@ class BestEffortListView(APIView):
         return Response({"kind": kind, "period": period, "data": BestEffortSerializer(capped, many=True).data})
 
 
+# The design spec's wire vocabulary calls cycling "ride" throughout (query param, JSON sport
+# field, the durability section's own top-level key) - this codebase's Activity.sport has
+# always called it "bike". Translated at this endpoint's edge only, not renamed everywhere.
+_DURABILITY_WIRE_SPORT = {"bike": "ride", "run": "run"}
+_DURABILITY_INTERNAL_SPORT = {"ride": "bike", "run": "run"}
+
+
+def _durability_whole_window_ef(activity: Activity) -> float | None:
+    """Whole-steady-window EF (avg power / avg HR), derived from the two stored halves rather
+    than a separately-stored field - a sample-count-weighted combination of two partitions'
+    own averages is exactly the whole-window average, not an approximation."""
+    halves = activity.decoupling_halves or []
+    if len(halves) != 2:
+        return None
+    weighted_power = weighted_hr = total_weight = 0.0
+    for half in halves:
+        if (
+            half.get("power") is None
+            or half.get("hr") is None
+            or half.get("start_s") is None
+            or half.get("end_s") is None
+        ):
+            return None
+        weight = half["end_s"] - half["start_s"] + 1
+        weighted_power += half["power"] * weight
+        weighted_hr += half["hr"] * weight
+        total_weight += weight
+    if total_weight <= 0 or weighted_hr <= 0:
+        return None
+    return round((weighted_power / total_weight) / (weighted_hr / total_weight), 3)
+
+
+def _durability_rolling_series(points: list[dict]) -> list[dict]:
+    """One point per session date - value = mean of that sport's sessions in (date - 28d,
+    date]. O(n^2) in the number of qualified sessions, which is at most a few hundred even at
+    `period=all` for a very active athlete - fine for a per-request computation."""
+    rolling = []
+    for point in points:
+        window_start = point["date"] - timedelta(days=28)
+        window = [p for p in points if window_start < p["date"] <= point["date"]]
+        rolling.append(
+            {
+                "date": point["date"].isoformat(),
+                "decoupling_pct": round(sum(p["decoupling_pct"] for p in window) / len(window), 1),
+                "ef": round(
+                    sum(p["ef"] for p in window if p["ef"] is not None)
+                    / max(1, sum(1 for p in window if p["ef"] is not None)),
+                    3,
+                )
+                if any(p["ef"] is not None for p in window)
+                else None,
+            }
+        )
+    return rolling
+
+
+def _durability_section(athlete: User, internal_sport: str, cutoff) -> dict:
+    basis = "kj" if internal_sport == "bike" else "minutes"
+    thresholds = [0, 1000, 2000, 3000] if internal_sport == "bike" else [0, 60, 90]
+    windows = [300, 1200, 3600]
+
+    qs = ActivityDurability.objects.filter(athlete=athlete, sport=internal_sport).select_related("activity")
+    if cutoff:
+        qs = qs.filter(activity_date__gte=cutoff)
+
+    best_by_cell: dict[tuple[int, int], ActivityDurability] = {}
+    for row in qs:
+        key = (row.threshold, row.window_s)
+        if key not in best_by_cell or row.power > best_by_cell[key].power:
+            best_by_cell[key] = row
+
+    cells = []
+    for threshold in thresholds:
+        for window_s in windows:
+            best = best_by_cell.get((threshold, window_s))
+            if best is None:
+                continue
+            fresh = best_by_cell.get((0, window_s))
+            pct = 100 if threshold == 0 else (round(best.power / fresh.power * 100) if fresh and fresh.power else None)
+            cells.append(
+                {
+                    "window_s": window_s,
+                    "threshold": threshold,
+                    "power": best.power,
+                    "pct_of_fresh": pct,
+                    "activity_id": best.activity_id,
+                    "activity_name": best.activity.name,
+                    "date": best.activity_date.isoformat(),
+                }
+            )
+    return {"basis": basis, "thresholds": thresholds, "windows": windows, "cells": cells}
+
+
+class AthleteDurabilityView(APIView):
+    """GET /v1/athletes/{id}/durability?sport=all|ride|run&period=4w|16w|1y|all - aerobic
+    decoupling sessions (trend + rolling average) and durability (best power once tired) for
+    the Best Efforts screen's Durability view. Same permission model as best efforts (self +
+    coach with a grant)."""
+
+    def get(self, request: Request, id: str) -> Response:
+        _require_read(request, id)
+        athlete = get_object_or_404(User, pk=id)
+
+        sport_param = request.query_params.get("sport", "all")
+        if sport_param not in ("all", "ride", "run"):
+            raise ValidationError({"sport": "Must be one of all, ride, run."})
+        period = request.query_params.get("period", "16w")
+        if period not in ("4w", "16w", "1y", "all"):
+            raise ValidationError({"period": "Must be one of 4w, 16w, 1y, all."})
+
+        internal_sports = [_DURABILITY_INTERNAL_SPORT[sport_param]] if sport_param != "all" else ["bike", "run"]
+        cutoff = (
+            timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
+            if period in BEST_EFFORT_PERIOD_DAYS
+            else None
+        )
+
+        activities_qs = Activity.objects.filter(
+            athlete=athlete, sport__in=internal_sports, parent_activity__isnull=True, decoupling_qualified=True
+        )
+        if cutoff:
+            activities_qs = activities_qs.filter(start_date__date__gte=cutoff)
+
+        qualified = list(activities_qs.order_by("start_date"))
+
+        points = [
+            {
+                "activity_id": a.id,
+                "name": a.name,
+                "date": a.start_date.date(),
+                "sport": _DURABILITY_WIRE_SPORT[a.sport],
+                "internal_sport": a.sport,
+                "decoupling_pct": a.decoupling_pct,
+                "ef": _durability_whole_window_ef(a),
+                "ef_first": a.ef_first,
+                "ef_second": a.ef_second,
+                "steady_seconds": a.steady_seconds,
+                "hot": a.decoupling_hot,
+                "avg_temp": a.decoupling_avg_temp,
+                "avg_core": a.decoupling_avg_core,
+            }
+            for a in qualified
+        ]
+
+        rolling = {
+            _DURABILITY_WIRE_SPORT[sport]: _durability_rolling_series(
+                [p for p in points if p["internal_sport"] == sport]
+            )
+            for sport in internal_sports
+        }
+
+        today = timezone.now().date()
+        last28 = [p for p in points if (today - p["date"]).days <= 28]
+        prev28 = [p for p in points if 28 < (today - p["date"]).days <= 56]
+        last28_cool = [p for p in last28 if not p["hot"]]
+
+        def _avg(values: list[float]) -> float | None:
+            return round(sum(values) / len(values), 1) if values else None
+
+        def _avg3(values: list[float]) -> float | None:
+            return round(sum(values) / len(values), 3) if values else None
+
+        summary = {
+            "count": len(points),
+            "last28_avg": _avg([p["decoupling_pct"] for p in last28]),
+            "prev28_avg": _avg([p["decoupling_pct"] for p in prev28]),
+            "last28_cool_avg": _avg([p["decoupling_pct"] for p in last28_cool]),
+            "last28_ef": _avg3([p["ef"] for p in last28 if p["ef"] is not None]),
+            "prev28_ef": _avg3([p["ef"] for p in prev28 if p["ef"] is not None]),
+        }
+
+        sessions = [{k: v for k, v in p.items() if k != "internal_sport"} for p in points]
+        for s in sessions:
+            s["date"] = s["date"].isoformat()
+
+        durability = {
+            _DURABILITY_WIRE_SPORT[sport]: _durability_section(athlete, sport, cutoff) for sport in internal_sports
+        }
+
+        return Response(
+            {
+                "sessions": sessions,
+                "rolling": rolling,
+                "summary": summary,
+                "durability": durability,
+            }
+        )
+
+
 # The 4w/3m periods are deliberately excluded here (unlike BEST_EFFORT_PERIOD_DAYS above) - they
 # flag almost everything recent, which is exactly what the Dashboard "Top efforts this week" card
 # is trying to avoid drowning the athlete in. See ActivityBestEffortRanksView's docstring.
@@ -336,7 +525,7 @@ class RecomputeAthleteTssView(APIView):
 
 
 def _recompute_stats_stream(athlete: User) -> Iterator[str]:
-    from uploads.processing import backfill_extended_stats
+    from uploads.processing import backfill_extended_stats, compute_decoupling_and_durability_for_activity
 
     candidates = Activity.objects.filter(
         athlete=athlete,
@@ -352,6 +541,8 @@ def _recompute_stats_stream(athlete: User) -> Iterator[str]:
         if update_fields:
             activity.save(update_fields=update_fields)
             updated += 1
+        if activity.sport in ("bike", "run"):
+            compute_decoupling_and_durability_for_activity(activity, athlete)
         yield f"data: {json.dumps({'current': i + 1, 'total': total})}\n\n"
 
     yield f"event: done\ndata: {json.dumps({'updated': updated})}\n\n"

@@ -42,7 +42,7 @@ from django.core.files.storage import default_storage
 from django.utils.dateparse import parse_date, parse_datetime, parse_duration
 
 from accounts.models import User
-from activities.models import Activity, ActivityTag, Lap, Record, Tag
+from activities.models import Activity, ActivityDurability, ActivityTag, Lap, Record, Tag
 from athletes import threshold_suggestions
 from athletes.models import ThresholdHistory
 from athletes.zones import reference_for
@@ -402,6 +402,22 @@ def _import_activities(
                     aerobic_training_effect=ar.get("aerobic_training_effect"),
                     anaerobic_training_effect=ar.get("anaerobic_training_effect"),
                     training_effect_label=ar.get("training_effect_label") or "",
+                    decoupling_pct=ar.get("decoupling_pct"),
+                    ef_first=ar.get("ef_first"),
+                    ef_second=ar.get("ef_second"),
+                    steady_seconds=ar.get("steady_seconds"),
+                    decoupling_qualified=ar.get("decoupling_qualified") or False,
+                    decoupling_reasons=ar.get("decoupling_reasons") or [],
+                    decoupling_vi=ar.get("decoupling_vi"),
+                    decoupling_if=ar.get("decoupling_if"),
+                    decoupling_avg_temp=ar.get("decoupling_avg_temp"),
+                    decoupling_avg_core=ar.get("decoupling_avg_core"),
+                    decoupling_avg_skin=ar.get("decoupling_avg_skin"),
+                    decoupling_warm=ar.get("decoupling_warm") or False,
+                    decoupling_hot=ar.get("decoupling_hot") or False,
+                    decoupling_hr_coverage_pct=ar.get("decoupling_hr_coverage_pct"),
+                    decoupling_power_coverage_pct=ar.get("decoupling_power_coverage_pct"),
+                    decoupling_halves=ar.get("decoupling_halves") or [],
                     workout_id=workouts_by_old_id.get(ar.get("workout_id")),
                     bike_id=bikes_by_old_id.get(ar.get("bike_id")),
                     shoe_id=shoes_by_old_id.get(ar.get("shoe_id")),
@@ -418,6 +434,26 @@ def _import_activities(
                             avg_power=lap.get("avg_power"),
                         )
                         for lap in entry.get("laps") or []
+                    ]
+                )
+
+                # "durability" is embedded in the activity dict itself (ActivitySerializer's
+                # own SerializerMethodField), not a sibling entry key like "laps"/"streams" -
+                # see ActivitySerializer.get_durability.
+                ActivityDurability.objects.bulk_create(
+                    [
+                        ActivityDurability(
+                            activity=activity,
+                            athlete_id=athlete_id,
+                            sport=activity.sport,
+                            basis="kj" if activity.sport == "bike" else "minutes",
+                            threshold=row["threshold"],
+                            window_s=row["window_s"],
+                            power=row["power"],
+                            start_offset_s=row["start_offset_s"],
+                            activity_date=start_date.date(),
+                        )
+                        for row in ar.get("durability") or []
                     ]
                 )
 
