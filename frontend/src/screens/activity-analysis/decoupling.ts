@@ -3,7 +3,14 @@ import type { Activity, Athlete, DecouplingReason } from "../../api/types";
 /** The subset of Athlete this module needs - callers can pass the full Athlete. */
 export type DecouplingPrefs = Pick<
   Athlete,
-  "decoupling_vi_limit_bike" | "decoupling_vi_limit_run" | "decoupling_if_limit" | "decoupling_min_steady_minutes"
+  | "decoupling_vi_limit_bike"
+  | "decoupling_vi_limit_run"
+  | "decoupling_if_limit"
+  | "decoupling_min_steady_minutes"
+  | "decoupling_warm_air_temp"
+  | "decoupling_warm_skin_temp"
+  | "decoupling_hot_air_temp"
+  | "decoupling_hot_skin_temp"
 >;
 
 export type DecouplingBand = "good" | "moderate" | "high";
@@ -42,6 +49,17 @@ function viLimit(sport: Activity["sport"], athlete: DecouplingPrefs): number {
  * showing them as passing (green checkmarks) would be actively misleading, not just unhelpful. */
 export function isNeverComputed(activity: Activity): boolean {
   return !activity.decoupling_qualified && activity.decoupling_reasons.length === 0;
+}
+
+export type HeatLevel = "none" | "warm" | "hot";
+
+/** The more severe of the two independent heat-confound flags - whenever decoupling_hot is
+ * true, decoupling_warm is also true under any sane threshold configuration (hot's air floor
+ * is higher than warm's), so at most one badge is ever shown. */
+export function decouplingHeatLevel(activity: Activity): HeatLevel {
+  if (activity.decoupling_hot) return "hot";
+  if (activity.decoupling_warm) return "warm";
+  return "none";
 }
 
 /** One qualification-check chip, always shown (checks row never hides even on a not-scored

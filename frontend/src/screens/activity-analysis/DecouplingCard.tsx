@@ -7,6 +7,7 @@ import {
   bandMarkerPct,
   decouplingBand,
   decouplingChecks,
+  decouplingHeatLevel,
   decouplingSummaryText,
   type DecouplingPrefs,
   durabilityTiles,
@@ -14,6 +15,9 @@ import {
   isNeverComputed,
   notScoredReasonText,
 } from "./decoupling";
+
+const HEAT_COLOR: Record<"warm" | "hot", string> = { warm: "#f0a02e", hot: "#e0442e" };
+const HEAT_LABEL: Record<"warm" | "hot", string> = { warm: "Warm session", hot: "Hot session" };
 
 // pass: null means the check was never evaluated at all (an activity that predates this
 // feature and hasn't been recomputed) - shown neutral, not a false green checkmark.
@@ -43,6 +47,7 @@ function chipIcon(pass: boolean | null): string {
  * spec: "Only render it for ride/run activities with power. Otherwise hide it entirely."). */
 export function DecouplingCard({ activity, athlete }: { activity: Activity; athlete: DecouplingPrefs }) {
   const checks = decouplingChecks(activity, athlete);
+  const heatLevel = decouplingHeatLevel(activity);
 
   return (
     <div
@@ -61,16 +66,20 @@ export function DecouplingCard({ activity, athlete }: { activity: Activity; athl
           </span>
           <span style={{ fontSize: 11, color: "var(--ink2)", marginLeft: 4 }}>&middot; Pw:HR</span>
         </div>
-        {activity.decoupling_hot && (
+        {heatLevel !== "none" && (
           <span
-            title="Air ≥ 25 °C or avg core ≥ 38.0 °C"
+            title={
+              heatLevel === "hot"
+                ? `Air ≥ ${athlete.decoupling_hot_air_temp} °C and skin ≥ ${athlete.decoupling_hot_skin_temp} °C`
+                : `Air ≥ ${athlete.decoupling_warm_air_temp} °C or skin ≥ ${athlete.decoupling_warm_skin_temp} °C`
+            }
             style={{
-              display: "inline-flex", alignItems: "center", gap: 7, border: "1.5px solid #f0a02e", borderRadius: 20,
+              display: "inline-flex", alignItems: "center", gap: 7, border: `1.5px solid ${HEAT_COLOR[heatLevel]}`, borderRadius: 20,
               padding: "2px 10px", fontSize: 11.5, fontWeight: 600, color: "var(--ink)",
             }}
           >
-            <span style={{ width: 8, height: 8, borderRadius: "50%", border: "2px solid #f0a02e", boxSizing: "border-box" }} />
-            Hot session
+            <span style={{ width: 8, height: 8, borderRadius: "50%", border: `2px solid ${HEAT_COLOR[heatLevel]}`, boxSizing: "border-box" }} />
+            {HEAT_LABEL[heatLevel]}
           </span>
         )}
       </div>
@@ -138,11 +147,11 @@ export function DecouplingCard({ activity, athlete }: { activity: Activity; athl
                 </Fragment>
               ))}
             </div>
-            {activity.decoupling_hot && (
+            {heatLevel !== "none" && (
               <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 12, lineHeight: 1.45 }}>
-                Hot session &mdash; {activity.decoupling_avg_temp != null ? `${activity.decoupling_avg_temp} °C air` : ""}
-                {activity.decoupling_avg_temp != null && activity.decoupling_avg_core != null ? ", " : ""}
-                {activity.decoupling_avg_core != null ? `${activity.decoupling_avg_core} °C average core` : ""}. Heat raises
+                {HEAT_LABEL[heatLevel]} &mdash; {activity.decoupling_avg_temp != null ? `${activity.decoupling_avg_temp} °C air` : ""}
+                {activity.decoupling_avg_temp != null && activity.decoupling_avg_skin != null ? ", " : ""}
+                {activity.decoupling_avg_skin != null ? `${activity.decoupling_avg_skin} °C average skin` : ""}. Heat raises
                 drift on its own, so this point is marked on your trend rather than hidden.
               </div>
             )}

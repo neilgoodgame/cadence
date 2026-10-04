@@ -134,6 +134,17 @@ class Activity(PrefixedIDModel):
     decoupling_if = models.FloatField(null=True, blank=True, help_text="Intensity factor: NP / threshold at date")
     decoupling_avg_temp = models.FloatField(null=True, blank=True, help_text="Air °C over the steady window")
     decoupling_avg_core = models.FloatField(null=True, blank=True, help_text="Core °C over the steady window")
+    decoupling_avg_skin = models.FloatField(null=True, blank=True, help_text="Skin °C over the steady window")
+    # Two independent severity tiers, both athlete-configurable (User.decoupling_warm_air_temp/
+    # _skin_temp/decoupling_hot_air_temp/_skin_temp) and both read from air/skin temp only - NOT
+    # core temp, which climbs toward 38 C on any long steady session from sustained effort alone
+    # (even on a cool day), so it's informational only (decoupling_avg_core above) and no longer
+    # gates either flag. decoupling_warm is an OR of its two thresholds (either one elevated is
+    # enough to caveat the reading); decoupling_hot is an AND (both have to be elevated - a
+    # stricter bar for the reading to be outright unusable). Whenever decoupling_hot is true,
+    # decoupling_warm is also true under any sane threshold configuration (hot's air floor is
+    # higher than warm's), so the UI shows at most one badge, picking the more severe.
+    decoupling_warm = models.BooleanField(default=False)
     decoupling_hot = models.BooleanField(default=False)
     # % of steady-window samples with a non-null HR/power reading, 0-100 - the real numbers
     # behind the "HR 100% · power 100%" checks-row chip and the "HR coverage 72% (needs 90%)"

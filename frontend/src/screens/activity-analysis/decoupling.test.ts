@@ -3,6 +3,7 @@ import {
   bandMarkerPct,
   decouplingBand,
   decouplingChecks,
+  decouplingHeatLevel,
   decouplingSummaryText,
   durabilityTiles,
   isNeverComputed,
@@ -17,6 +18,10 @@ function baseAthlete(overrides: Partial<DecouplingPrefs> = {}): DecouplingPrefs 
     decoupling_vi_limit_run: 1.04,
     decoupling_if_limit: 0.85,
     decoupling_min_steady_minutes: 60,
+    decoupling_warm_air_temp: 25.0,
+    decoupling_warm_skin_temp: 33.0,
+    decoupling_hot_air_temp: 30.0,
+    decoupling_hot_skin_temp: 34.0,
     ...overrides,
   };
 }
@@ -36,6 +41,8 @@ function baseActivity(overrides: Partial<Activity> = {}): Activity {
     decoupling_if: 0.74,
     decoupling_avg_temp: 28,
     decoupling_avg_core: 38.4,
+    decoupling_avg_skin: 34.5,
+    decoupling_warm: true,
     decoupling_hot: true,
     decoupling_hr_coverage_pct: 100,
     decoupling_power_coverage_pct: 100,
@@ -153,6 +160,20 @@ describe("isNeverComputed", () => {
 
   it("is false for a qualified session", () => {
     expect(isNeverComputed(baseActivity({ decoupling_qualified: true, decoupling_reasons: [] }))).toBe(false);
+  });
+});
+
+describe("decouplingHeatLevel", () => {
+  it("is 'hot' when decoupling_hot is true, regardless of decoupling_warm", () => {
+    expect(decouplingHeatLevel(baseActivity({ decoupling_hot: true, decoupling_warm: true }))).toBe("hot");
+  });
+
+  it("is 'warm' when only decoupling_warm is true", () => {
+    expect(decouplingHeatLevel(baseActivity({ decoupling_hot: false, decoupling_warm: true }))).toBe("warm");
+  });
+
+  it("is 'none' when neither flag is set", () => {
+    expect(decouplingHeatLevel(baseActivity({ decoupling_hot: false, decoupling_warm: false }))).toBe("none");
   });
 });
 

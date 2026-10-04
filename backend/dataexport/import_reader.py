@@ -412,6 +412,8 @@ def _import_activities(
                     decoupling_if=ar.get("decoupling_if"),
                     decoupling_avg_temp=ar.get("decoupling_avg_temp"),
                     decoupling_avg_core=ar.get("decoupling_avg_core"),
+                    decoupling_avg_skin=ar.get("decoupling_avg_skin"),
+                    decoupling_warm=ar.get("decoupling_warm") or False,
                     decoupling_hot=ar.get("decoupling_hot") or False,
                     decoupling_hr_coverage_pct=ar.get("decoupling_hr_coverage_pct"),
                     decoupling_power_coverage_pct=ar.get("decoupling_power_coverage_pct"),

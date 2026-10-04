@@ -204,7 +204,9 @@ class ComputeDecouplingTests(TestCase):
         self.assertTrue(result["decoupling_qualified"])
         self.assertLess(result["decoupling_pct"], 0)
 
-    def test_hot_session_air_only(self):
+    def test_warm_from_air_alone(self):
+        # Warm is an OR - either signal elevated is enough, and it doesn't require skin data
+        # to be present at all.
         athlete = self._athlete()
         activity = self._activity(athlete, sport="run")
         self._set_threshold(athlete, activity, field="critical_run_power")
@@ -213,67 +215,85 @@ class ComputeDecouplingTests(TestCase):
         hr = [140] * 4000
         air = [26.0] * 4000
         result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, [None] * 4000)
-        self.assertTrue(result["decoupling_hot"])
+        self.assertTrue(result["decoupling_warm"])
+        self.assertFalse(result["decoupling_hot"])
         self.assertAlmostEqual(result["decoupling_avg_temp"], 26.0, places=1)
         self.assertIsNone(result["decoupling_avg_core"])
 
-    def test_hot_session_core_and_skin(self):
+    def test_warm_from_skin_alone(self):
         athlete = self._athlete()
         activity = self._activity(athlete)
         self._set_threshold(athlete, activity)
         t = list(range(4000))
         power = [200] * 4000
         hr = [140] * 4000
-        core = [38.4] * 4000
         skin = [34.0] * 4000
-        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, core, skin)
-        self.assertTrue(result["decoupling_hot"])
-        self.assertAlmostEqual(result["decoupling_avg_core"], 38.4, places=1)
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, [None] * 4000, skin)
+        self.assertTrue(result["decoupling_warm"])
+        self.assertFalse(result["decoupling_hot"])
+        self.assertAlmostEqual(result["decoupling_avg_skin"], 34.0, places=1)
 
-    def test_high_core_without_elevated_skin_is_not_hot(self):
-        # A long steady effort drives core temp up from sustained exertion alone, even on a
-        # mild day - matching a real-world false positive (a 3h run, ~16 C air, core drifting
-        # to ~38.1 C, skin staying ~31.6 C since the body was shedding heat into cool air just
-        # fine). Core alone is no longer sufficient - skin has to confirm the body couldn't
-        # dissipate heat before this counts as a heat-stress-confounded session.
+    def test_hot_requires_both_air_and_skin_elevated(self):
+        athlete = self._athlete()
+        activity = self._activity(athlete)
+        self._set_threshold(athlete, activity)
+        t = list(range(4000))
+        power = [200] * 4000
+        hr = [140] * 4000
+        air = [31.0] * 4000
+        skin = [35.0] * 4000
+        result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, skin)
+        self.assertTrue(result["decoupling_warm"])
+        self.assertTrue(result["decoupling_hot"])
+
+    def test_high_air_alone_is_warm_but_not_hot(self):
+        athlete = self._athlete()
+        activity = self._activity(athlete)
+        self._set_threshold(athlete, activity)
+        t = list(range(4000))
+        power = [200] * 4000
+        hr = [140] * 4000
+        air = [31.0] * 4000
+        skin = [30.0] * 4000  # below both the warm (33) and hot (34) skin floors
+        result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, skin)
+        self.assertTrue(result["decoupling_warm"])
+        self.assertFalse(result["decoupling_hot"])
+
+    def test_high_skin_alone_is_warm_but_not_hot(self):
+        athlete = self._athlete()
+        activity = self._activity(athlete)
+        self._set_threshold(athlete, activity)
+        t = list(range(4000))
+        power = [200] * 4000
+        hr = [140] * 4000
+        air = [20.0] * 4000  # below both the warm (25) and hot (30) air floors
+        skin = [35.0] * 4000
+        result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, skin)
+        self.assertTrue(result["decoupling_warm"])
+        self.assertFalse(result["decoupling_hot"])
+
+    def test_high_core_alone_is_neither_warm_nor_hot(self):
+        # Core temp no longer gates either flag - a long steady effort drives it up from
+        # sustained exertion alone, even on a cool day, so it's informational only
+        # (decoupling_avg_core). This is the exact real-world false positive that prompted the
+        # switch to air/skin: a 3h run, ~16 C air, core drifting to ~38.1 C, skin staying
+        # ~31.6 C (below even the 33 C warm-skin floor) since the body was shedding heat into
+        # cool air just fine.
         athlete = self._athlete()
         activity = self._activity(athlete, sport="run")
         self._set_threshold(athlete, activity, field="critical_run_power")
         t = list(range(4000))
         power = [200] * 4000
         hr = [140] * 4000
-        core = [38.2] * 4000
+        air = [16.2] * 4000
+        core = [38.1] * 4000
         skin = [31.6] * 4000
-        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, core, skin)
-        self.assertFalse(result["decoupling_hot"])
-        self.assertAlmostEqual(result["decoupling_avg_core"], 38.2, places=1)
-
-    def test_elevated_skin_without_high_core_is_not_hot(self):
-        athlete = self._athlete()
-        activity = self._activity(athlete)
-        self._set_threshold(athlete, activity)
-        t = list(range(4000))
-        power = [200] * 4000
-        hr = [140] * 4000
-        core = [37.5] * 4000
-        skin = [34.0] * 4000
-        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, core, skin)
-        self.assertFalse(result["decoupling_hot"])
-
-    def test_hot_session_both_air_and_core_plus_skin(self):
-        athlete = self._athlete()
-        activity = self._activity(athlete)
-        self._set_threshold(athlete, activity)
-        t = list(range(4000))
-        power = [200] * 4000
-        hr = [140] * 4000
-        air = [28.0] * 4000
-        core = [38.2] * 4000
-        skin = [34.0] * 4000
         result = compute_decoupling(activity, athlete, power, hr, t, air, core, skin)
-        self.assertTrue(result["decoupling_hot"])
+        self.assertFalse(result["decoupling_warm"])
+        self.assertFalse(result["decoupling_hot"])
+        self.assertAlmostEqual(result["decoupling_avg_core"], 38.1, places=1)
 
-    def test_not_hot_below_all_thresholds(self):
+    def test_not_warm_below_all_thresholds(self):
         athlete = self._athlete()
         activity = self._activity(athlete)
         self._set_threshold(athlete, activity)
@@ -281,14 +301,32 @@ class ComputeDecouplingTests(TestCase):
         power = [200] * 4000
         hr = [140] * 4000
         air = [18.0] * 4000
-        core = [37.0] * 4000
-        skin = [30.0] * 4000
-        result = compute_decoupling(activity, athlete, power, hr, t, air, core, skin)
+        skin = [28.0] * 4000
+        result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, skin)
+        self.assertFalse(result["decoupling_warm"])
         self.assertFalse(result["decoupling_hot"])
 
-    def test_hot_and_vi_if_still_populated_when_not_qualified(self):
-        # Not-qualified (too intense) sessions still show real VI/IF/steady_seconds/hot numbers
-        # in the checks row - only the ef/pct fields are withheld.
+    def test_athletes_own_configured_heat_thresholds_are_used_not_the_defaults(self):
+        # A session that's cool under the design-spec defaults (air 27 C < 30 C hot floor)
+        # trips "hot" once the athlete loosens their own hot-air floor to 26 C - confirms
+        # compute_decoupling actually reads User.decoupling_hot_air_temp/_skin_temp rather than
+        # the module-level defaults.
+        athlete = self._athlete()
+        athlete.decoupling_hot_air_temp = 26.0
+        athlete.save(update_fields=["decoupling_hot_air_temp"])
+        activity = self._activity(athlete)
+        self._set_threshold(athlete, activity)
+        t = list(range(4000))
+        power = [200] * 4000
+        hr = [140] * 4000
+        air = [27.0] * 4000
+        skin = [35.0] * 4000
+        result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, skin)
+        self.assertTrue(result["decoupling_hot"])
+
+    def test_warm_and_vi_if_still_populated_when_not_qualified(self):
+        # Not-qualified (too intense) sessions still show real VI/IF/steady_seconds/warm/hot
+        # numbers in the checks row - only the ef/pct fields are withheld.
         athlete = self._athlete()
         activity = self._activity(athlete)
         self._set_threshold(athlete, activity, value=100)  # IF = 200/100 = 2.0, fails
@@ -302,7 +340,8 @@ class ComputeDecouplingTests(TestCase):
         self.assertIsNotNone(result["decoupling_vi"])
         self.assertIsNotNone(result["decoupling_if"])
         self.assertEqual(result["steady_seconds"], 3400)
-        self.assertTrue(result["decoupling_hot"])
+        self.assertTrue(result["decoupling_warm"])
+        self.assertFalse(result["decoupling_hot"])
         self.assertIsNone(result["decoupling_pct"])
         self.assertEqual(result["decoupling_halves"], [])
 

@@ -103,6 +103,10 @@ export function ProfileTab() {
     decoupling_vi_limit_run: user?.decoupling_vi_limit_run ?? 1.04,
     decoupling_if_limit: user?.decoupling_if_limit ?? 0.85,
     decoupling_min_steady_minutes: user?.decoupling_min_steady_minutes ?? 60,
+    decoupling_warm_air_temp: user?.decoupling_warm_air_temp ?? 25.0,
+    decoupling_warm_skin_temp: user?.decoupling_warm_skin_temp ?? 33.0,
+    decoupling_hot_air_temp: user?.decoupling_hot_air_temp ?? 30.0,
+    decoupling_hot_skin_temp: user?.decoupling_hot_skin_temp ?? 34.0,
   });
 
   const mutation = useMutation({
@@ -301,6 +305,58 @@ export function ProfileTab() {
             intense, or too short a steady effort and it's skipped instead of scored. Read at
             compute time, not retroactive: changing these doesn't repaint already-scored
             activities on its own.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>Heat-confound flags</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Field label="Warm - air temp" unit="°C">
+            <input
+              type="number"
+              step="0.5"
+              className="mono"
+              style={inputStyle}
+              value={form.decoupling_warm_air_temp ?? ""}
+              onChange={(e) => setForm({ ...form, decoupling_warm_air_temp: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Warm - skin temp" unit="°C">
+            <input
+              type="number"
+              step="0.5"
+              className="mono"
+              style={inputStyle}
+              value={form.decoupling_warm_skin_temp ?? ""}
+              onChange={(e) => setForm({ ...form, decoupling_warm_skin_temp: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Hot - air temp" unit="°C">
+            <input
+              type="number"
+              step="0.5"
+              className="mono"
+              style={inputStyle}
+              value={form.decoupling_hot_air_temp ?? ""}
+              onChange={(e) => setForm({ ...form, decoupling_hot_air_temp: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Hot - skin temp" unit="°C">
+            <input
+              type="number"
+              step="0.5"
+              className="mono"
+              style={inputStyle}
+              value={form.decoupling_hot_skin_temp ?? ""}
+              onChange={(e) => setForm({ ...form, decoupling_hot_skin_temp: Number(e.target.value) })}
+            />
+          </Field>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: "-6px 0 0", lineHeight: 1.5 }}>
+            Flags a decoupling reading as heat-confounded, not excluded from scoring. Warm
+            triggers from air OR skin temp alone; hot needs both air AND skin elevated together
+            - a stricter bar. Core temp isn't used here: a long steady session drives it up from
+            sustained effort alone, even on a cool day.
           </p>
         </div>
       </div>

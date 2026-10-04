@@ -577,6 +577,8 @@ public class ImportReader {
 		activity.setDecouplingIf(ar.decouplingIf());
 		activity.setDecouplingAvgTemp(ar.decouplingAvgTemp());
 		activity.setDecouplingAvgCore(ar.decouplingAvgCore());
+		activity.setDecouplingAvgSkin(ar.decouplingAvgSkin());
+		activity.setDecouplingWarm(ar.decouplingWarm());
 		activity.setDecouplingHot(ar.decouplingHot());
 		activity.setDecouplingHrCoveragePct(ar.decouplingHrCoveragePct());
 		activity.setDecouplingPowerCoveragePct(ar.decouplingPowerCoveragePct());

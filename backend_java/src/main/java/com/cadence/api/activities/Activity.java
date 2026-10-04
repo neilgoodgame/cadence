@@ -216,6 +216,18 @@ public class Activity extends PrefixedIdEntity {
 	@Column(name = "decoupling_avg_core")
 	private Double decouplingAvgCore;
 
+	@Column(name = "decoupling_avg_skin")
+	private Double decouplingAvgSkin;
+
+	// Two independent severity tiers, both athlete-configurable (User.decouplingWarmAirTemp/
+	// SkinTemp/decouplingHotAirTemp/SkinTemp) and both read from air/skin temp only - NOT core
+	// temp, which climbs toward 38 C on any long steady session from sustained effort alone
+	// (even on a cool day), so it's informational only (decouplingAvgCore above) and no longer
+	// gates either flag. decouplingWarm is an OR of its two thresholds; decouplingHot is an AND
+	// - a stricter bar.
+	@Column(name = "decoupling_warm", nullable = false)
+	private boolean decouplingWarm;
+
 	@Column(name = "decoupling_hot", nullable = false)
 	private boolean decouplingHot;
 
@@ -697,6 +709,22 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setDecouplingAvgCore(Double decouplingAvgCore) {
 		this.decouplingAvgCore = decouplingAvgCore;
+	}
+
+	public Double getDecouplingAvgSkin() {
+		return decouplingAvgSkin;
+	}
+
+	public void setDecouplingAvgSkin(Double decouplingAvgSkin) {
+		this.decouplingAvgSkin = decouplingAvgSkin;
+	}
+
+	public boolean isDecouplingWarm() {
+		return decouplingWarm;
+	}
+
+	public void setDecouplingWarm(boolean decouplingWarm) {
+		this.decouplingWarm = decouplingWarm;
 	}
 
 	public boolean isDecouplingHot() {

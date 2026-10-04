@@ -29,13 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class ActivityDecouplingService {
 
 	private static final Set<Sport> DECOUPLING_SPORTS = Set.of(Sport.BIKE, Sport.RUN);
-	private static final double HOT_AIR_TEMP_C = 25.0;
-	private static final double HOT_CORE_TEMP_C = 38.0;
-	// A long steady session drives core temp up from sustained effort alone, even on a cool day
-	// - e.g. a 3-hour run can cross 38.0 C on a 16 C day with no heat stress involved. Skin temp
-	// only rises when the body can't dissipate heat into the air (hot/humid conditions), so
-	// requiring both together is what actually distinguishes "hot session" from "just a long one."
-	private static final double HOT_SKIN_TEMP_C = 33.0;
 
 	private final RecordRepository recordRepository;
 	private final ActivityDurabilityRepository durabilityRepository;
@@ -130,8 +123,10 @@ public class ActivityDecouplingService {
 		Double avgTemp = meanDouble(windowAir);
 		Double avgCore = meanDouble(windowCore);
 		Double avgSkin = meanDouble(windowSkin);
-		boolean hot = (avgTemp != null && avgTemp >= HOT_AIR_TEMP_C)
-				|| (avgCore != null && avgCore >= HOT_CORE_TEMP_C && avgSkin != null && avgSkin >= HOT_SKIN_TEMP_C);
+		boolean warm = (avgTemp != null && avgTemp >= athlete.getDecouplingWarmAirTemp())
+				|| (avgSkin != null && avgSkin >= athlete.getDecouplingWarmSkinTemp());
+		boolean hot = avgTemp != null && avgTemp >= athlete.getDecouplingHotAirTemp()
+				&& avgSkin != null && avgSkin >= athlete.getDecouplingHotSkinTemp();
 
 		activity.setSteadySeconds(check.steadySeconds());
 		activity.setDecouplingQualified(check.qualified());
@@ -140,6 +135,8 @@ public class ActivityDecouplingService {
 		activity.setDecouplingIf(check.ifValue());
 		activity.setDecouplingAvgTemp(avgTemp != null ? round1(avgTemp) : null);
 		activity.setDecouplingAvgCore(avgCore != null ? round1(avgCore) : null);
+		activity.setDecouplingAvgSkin(avgSkin != null ? round1(avgSkin) : null);
+		activity.setDecouplingWarm(warm);
 		activity.setDecouplingHot(hot);
 		activity.setDecouplingHrCoveragePct((double) Math.round(check.hrCoverage() * 100));
 		activity.setDecouplingPowerCoveragePct((double) Math.round(check.powerCoverage() * 100));
@@ -204,6 +201,8 @@ public class ActivityDecouplingService {
 		activity.setDecouplingIf(null);
 		activity.setDecouplingAvgTemp(null);
 		activity.setDecouplingAvgCore(null);
+		activity.setDecouplingAvgSkin(null);
+		activity.setDecouplingWarm(false);
 		activity.setDecouplingHot(false);
 		activity.setDecouplingHrCoveragePct(null);
 		activity.setDecouplingPowerCoveragePct(null);

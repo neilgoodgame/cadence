@@ -59,13 +59,17 @@ DECOUPLING_VI_LIMIT = {"bike": 1.06, "run": 1.04}
 DECOUPLING_IF_LIMIT = 0.85
 DECOUPLING_HR_COVERAGE_MIN = 0.90
 DECOUPLING_POWER_COVERAGE_MIN = 0.95
-DECOUPLING_HOT_AIR_TEMP_C = 25.0
-DECOUPLING_HOT_CORE_TEMP_C = 38.0
-# A long steady session drives core temp up from sustained effort alone, even on a cool day -
-# e.g. a 3-hour run can cross 38.0 C on a 16 C day with no heat stress involved. Skin temp only
-# rises when the body can't dissipate heat into the air (hot/humid conditions), so requiring
-# both together is what actually distinguishes "hot session" from "just a long one."
-DECOUPLING_HOT_SKIN_TEMP_C = 33.0
+# Heat-confound flags - defaults only, matching User.decoupling_warm_air_temp/_skin_temp/
+# decoupling_hot_air_temp/_skin_temp (now athlete-configurable, same "module constant mirrors
+# the model default, for docs" convention as DECOUPLING_VI_LIMIT etc. above). Deliberately air +
+# skin only, not core temp: a long steady session drives core temp up from sustained effort
+# alone, even on a cool day (a 3-hour run can cross 38 C core on a 16 C day with no heat stress
+# involved), so core is informational only (Activity.decoupling_avg_core) and doesn't gate
+# either flag. Warm is an OR of its two thresholds; hot is an AND - a stricter bar.
+DECOUPLING_WARM_AIR_TEMP_C = 25.0
+DECOUPLING_WARM_SKIN_TEMP_C = 33.0
+DECOUPLING_HOT_AIR_TEMP_C = 30.0
+DECOUPLING_HOT_SKIN_TEMP_C = 34.0
 DECOUPLING_REASON_CHOICES = [
     ("sport", "Sport"),
     ("no_power", "No power stream"),
@@ -481,6 +485,8 @@ def compute_decoupling(
         "decoupling_if": None,
         "decoupling_avg_temp": None,
         "decoupling_avg_core": None,
+        "decoupling_avg_skin": None,
+        "decoupling_warm": False,
         "decoupling_hot": False,
         "decoupling_hr_coverage_pct": None,
         "decoupling_power_coverage_pct": None,
@@ -518,11 +524,14 @@ def compute_decoupling(
     avg_temp = _mean(window_air)
     avg_core = _mean(window_core)
     avg_skin = _mean(window_skin)
-    hot = (avg_temp is not None and avg_temp >= DECOUPLING_HOT_AIR_TEMP_C) or (
-        avg_core is not None
-        and avg_core >= DECOUPLING_HOT_CORE_TEMP_C
+    warm = (avg_temp is not None and avg_temp >= athlete.decoupling_warm_air_temp) or (
+        avg_skin is not None and avg_skin >= athlete.decoupling_warm_skin_temp
+    )
+    hot = (
+        avg_temp is not None
+        and avg_temp >= athlete.decoupling_hot_air_temp
         and avg_skin is not None
-        and avg_skin >= DECOUPLING_HOT_SKIN_TEMP_C
+        and avg_skin >= athlete.decoupling_hot_skin_temp
     )
 
     result = {
@@ -534,6 +543,8 @@ def compute_decoupling(
         "decoupling_if": check["if"],
         "decoupling_avg_temp": round(avg_temp, 1) if avg_temp is not None else None,
         "decoupling_avg_core": round(avg_core, 1) if avg_core is not None else None,
+        "decoupling_avg_skin": round(avg_skin, 1) if avg_skin is not None else None,
+        "decoupling_warm": warm,
         "decoupling_hot": hot,
         "decoupling_hr_coverage_pct": round(check["hr_coverage"] * 100),
         "decoupling_power_coverage_pct": round(check["power_coverage"] * 100),

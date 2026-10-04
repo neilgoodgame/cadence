@@ -26,5 +26,9 @@ public record AthleteUpdateRequest(
 		Double decouplingViLimitBike,
 		Double decouplingViLimitRun,
 		Double decouplingIfLimit,
-		Integer decouplingMinSteadyMinutes) {
+		Integer decouplingMinSteadyMinutes,
+		Double decouplingWarmAirTemp,
+		Double decouplingWarmSkinTemp,
+		Double decouplingHotAirTemp,
+		Double decouplingHotSkinTemp) {
 }

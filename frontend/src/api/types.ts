@@ -46,6 +46,14 @@ export interface Athlete {
   decoupling_vi_limit_run: number;
   decoupling_if_limit: number;
   decoupling_min_steady_minutes: number;
+  /** Heat-confound flags for the same decoupling card - two independent severity tiers, both
+   * read from air/skin temp only (not core, which drifts up from sustained effort alone on any
+   * long session regardless of weather). Warm is an OR (either signal elevated is enough);
+   * hot is an AND (both have to be elevated - a stricter bar). */
+  decoupling_warm_air_temp: number;
+  decoupling_warm_skin_temp: number;
+  decoupling_hot_air_temp: number;
+  decoupling_hot_skin_temp: number;
   lthr: number | null;
   max_hr: number | null;
   /** Optional - only used for the Karvonen heart-rate-reserve % stat on Activity Analysis. */
@@ -393,8 +401,15 @@ export interface Activity {
   decoupling_if: number | null;
   /** Mean air °C over the steady window. */
   decoupling_avg_temp: number | null;
-  /** Mean core °C over the steady window (CORE sensor, where present). */
+  /** Mean core °C over the steady window (CORE sensor, where present) - informational only,
+   * doesn't gate decoupling_warm/decoupling_hot (see those fields). */
   decoupling_avg_core: number | null;
+  /** Mean skin °C over the steady window (CORE sensor, where present). */
+  decoupling_avg_skin: number | null;
+  /** avg air >= athlete's decoupling_warm_air_temp OR avg skin >= decoupling_warm_skin_temp. */
+  decoupling_warm: boolean;
+  /** avg air >= athlete's decoupling_hot_air_temp AND avg skin >= decoupling_hot_skin_temp -
+   * stricter than decoupling_warm (an AND, not an OR). */
   decoupling_hot: boolean;
   /** % of steady-window samples with a non-null HR/power reading, 0-100. */
   decoupling_hr_coverage_pct: number | null;
@@ -430,6 +445,10 @@ export interface AthleteUpdate {
   decoupling_vi_limit_run?: number;
   decoupling_if_limit?: number;
   decoupling_min_steady_minutes?: number;
+  decoupling_warm_air_temp?: number;
+  decoupling_warm_skin_temp?: number;
+  decoupling_hot_air_temp?: number;
+  decoupling_hot_skin_temp?: number;
   lthr?: number;
   max_hr?: number;
   resting_hr?: number;

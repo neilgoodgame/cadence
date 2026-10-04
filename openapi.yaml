@@ -1566,6 +1566,10 @@ paths:
                 decoupling_vi_limit_run: { type: number, description: See the User schema. }
                 decoupling_if_limit: { type: number, description: See the User schema. }
                 decoupling_min_steady_minutes: { type: integer, description: See the User schema. }
+                decoupling_warm_air_temp: { type: number, description: See the User schema. }
+                decoupling_warm_skin_temp: { type: number, description: See the User schema. }
+                decoupling_hot_air_temp: { type: number, description: See the User schema. }
+                decoupling_hot_skin_temp: { type: number, description: See the User schema. }
                 lthr: { type: integer, description: Lactate threshold HR (bpm). }
                 max_hr: { type: integer }
                 resting_hr:
@@ -2687,6 +2691,26 @@ components:
           default: 60
           description: Aerobic decoupling qualification - minimum moving time (minutes) in the steady window, after the fixed 10-minute warm-up. Read at compute time; not retroactive.
           example: 60
+        decoupling_warm_air_temp:
+          type: number
+          default: 25.0
+          description: Aerobic decoupling heat-confound "warm" flag - triggers if avg air °C over the steady window is at or above this, OR decoupling_warm_skin_temp is met. Read at compute time; not retroactive.
+          example: 25.0
+        decoupling_warm_skin_temp:
+          type: number
+          default: 33.0
+          description: Aerobic decoupling heat-confound "warm" flag - triggers if avg skin °C over the steady window is at or above this, OR decoupling_warm_air_temp is met.
+          example: 33.0
+        decoupling_hot_air_temp:
+          type: number
+          default: 30.0
+          description: Aerobic decoupling heat-confound "hot" flag - triggers only if avg air °C over the steady window is at or above this AND decoupling_hot_skin_temp is also met (stricter than "warm", which is an OR).
+          example: 30.0
+        decoupling_hot_skin_temp:
+          type: number
+          default: 34.0
+          description: Aerobic decoupling heat-confound "hot" flag - triggers only if avg skin °C over the steady window is at or above this AND decoupling_hot_air_temp is also met.
+          example: 34.0
         lthr: { type: integer, example: 155 }
         max_hr: { type: integer, example: 186 }
         resting_hr:
@@ -2894,11 +2918,16 @@ components:
           description: Intensity factor (NP / FTP or CP at the activity's date).
           example: 0.74
         decoupling_avg_temp: { type: [number, "null"], description: "Mean air °C over the steady window." }
-        decoupling_avg_core: { type: [number, "null"], description: "Mean core °C over the steady window (CORE sensor, where present)." }
+        decoupling_avg_core: { type: [number, "null"], description: "Mean core °C over the steady window (CORE sensor, where present) - informational only, doesn't gate decoupling_warm/decoupling_hot (see those fields)." }
+        decoupling_avg_skin: { type: [number, "null"], description: "Mean skin °C over the steady window (CORE sensor, where present)." }
+        decoupling_warm:
+          type: boolean
+          default: false
+          description: avg air temp >= athlete's decoupling_warm_air_temp OR avg skin temp >= decoupling_warm_skin_temp. Marked, not excluded from scoring.
         decoupling_hot:
           type: boolean
           default: false
-          description: avg air temp >= 25°C or avg core temp >= 38.0°C. Marked, not excluded from scoring.
+          description: avg air temp >= athlete's decoupling_hot_air_temp AND avg skin temp >= decoupling_hot_skin_temp (stricter than decoupling_warm, which is an OR). Marked, not excluded from scoring.
         decoupling_hr_coverage_pct:
           type: [number, "null"]
           description: "% of steady-window samples with a non-null HR reading, 0-100. Populated whenever there's a steady window, qualified or not."

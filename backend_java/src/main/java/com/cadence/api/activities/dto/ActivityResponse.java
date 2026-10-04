@@ -26,7 +26,8 @@ public record ActivityResponse(
 		Double aerobicTrainingEffect, Double anaerobicTrainingEffect, String trainingEffectLabel,
 		Double decouplingPct, Double efFirst, Double efSecond, Integer steadySeconds, boolean decouplingQualified,
 		List<String> decouplingReasons, Double decouplingVi, Double decouplingIf, Double decouplingAvgTemp,
-		Double decouplingAvgCore, boolean decouplingHot, Double decouplingHrCoveragePct, Double decouplingPowerCoveragePct,
+		Double decouplingAvgCore, Double decouplingAvgSkin, boolean decouplingWarm, boolean decouplingHot,
+		Double decouplingHrCoveragePct, Double decouplingPowerCoveragePct,
 		List<java.util.Map<String, Object>> decouplingHalves,
 		List<ActivityDurabilityResponse> durability,
 		List<String> tags, String workoutId, String bikeId, String shoeId,
@@ -47,8 +48,8 @@ public record ActivityResponse(
 				avgHeatStrain, maxHeatStrain, avgCoreTemp, maxCoreTemp, avgSkinTemp, maxSkinTemp, aerobicTrainingEffect,
 				anaerobicTrainingEffect, trainingEffectLabel,
 				decouplingPct, efFirst, efSecond, steadySeconds, decouplingQualified, decouplingReasons, decouplingVi,
-				decouplingIf, decouplingAvgTemp, decouplingAvgCore, decouplingHot, decouplingHrCoveragePct,
-				decouplingPowerCoveragePct, decouplingHalves, durability,
+				decouplingIf, decouplingAvgTemp, decouplingAvgCore, decouplingAvgSkin, decouplingWarm, decouplingHot,
+				decouplingHrCoveragePct, decouplingPowerCoveragePct, decouplingHalves, durability,
 				tags, workoutId, bikeId, shoeId, parentActivityId,
 				childActivityIds, primaryActivityId, duplicateActivityIds);
 	}

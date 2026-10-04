@@ -85,6 +85,15 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     decoupling_vi_limit_run = models.FloatField(default=1.04)
     decoupling_if_limit = models.FloatField(default=0.85)
     decoupling_min_steady_minutes = models.PositiveSmallIntegerField(default=60)
+    # Heat-confound flags for the same decoupling card (see uploads/processing.py's
+    # compute_decoupling) - two independent severity tiers, both read from air/skin temp only
+    # (not core, which drifts up from sustained effort alone on any long session regardless of
+    # weather). Warm is an OR (either signal elevated is enough to caveat the reading); hot is
+    # an AND (both have to be elevated - a stricter bar).
+    decoupling_warm_air_temp = models.FloatField(default=25.0)
+    decoupling_warm_skin_temp = models.FloatField(default=33.0)
+    decoupling_hot_air_temp = models.FloatField(default=30.0)
+    decoupling_hot_skin_temp = models.FloatField(default=34.0)
     ftp_calculation_method = models.CharField(
         max_length=20, choices=FTP_CALCULATION_METHOD_CHOICES, default="twenty_min_test"
     )

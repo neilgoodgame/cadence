@@ -76,6 +76,8 @@ class ActivitySerializer(serializers.ModelSerializer):
             "decoupling_if",
             "decoupling_avg_temp",
             "decoupling_avg_core",
+            "decoupling_avg_skin",
+            "decoupling_warm",
             "decoupling_hot",
             "decoupling_hr_coverage_pct",
             "decoupling_power_coverage_pct",

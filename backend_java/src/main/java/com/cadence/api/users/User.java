@@ -95,6 +95,22 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "decoupling_min_steady_minutes", nullable = false)
 	private int decouplingMinSteadyMinutes = 60;
 
+	// Heat-confound flags for the same decoupling card - two independent severity tiers, both
+	// read from air/skin temp only (not core, which drifts up from sustained effort alone on
+	// any long session regardless of weather). Warm is an OR (either signal elevated is enough
+	// to caveat the reading); hot is an AND (both have to be elevated - a stricter bar).
+	@Column(name = "decoupling_warm_air_temp", nullable = false)
+	private double decouplingWarmAirTemp = 25.0;
+
+	@Column(name = "decoupling_warm_skin_temp", nullable = false)
+	private double decouplingWarmSkinTemp = 33.0;
+
+	@Column(name = "decoupling_hot_air_temp", nullable = false)
+	private double decouplingHotAirTemp = 30.0;
+
+	@Column(name = "decoupling_hot_skin_temp", nullable = false)
+	private double decouplingHotSkinTemp = 34.0;
+
 	/** A running-power sample above this is treated as corrupt sensor data - not a real effort,
 	 * a glitch - and dropped before it reaches best efforts, duration curves, normalized power, or
 	 * threshold history. See RunningPowerSanitizer's Javadoc for the failure mode this guards
@@ -333,6 +349,38 @@ public class User extends PrefixedIdEntity {
 
 	public void setDecouplingMinSteadyMinutes(int decouplingMinSteadyMinutes) {
 		this.decouplingMinSteadyMinutes = decouplingMinSteadyMinutes;
+	}
+
+	public double getDecouplingWarmAirTemp() {
+		return decouplingWarmAirTemp;
+	}
+
+	public void setDecouplingWarmAirTemp(double decouplingWarmAirTemp) {
+		this.decouplingWarmAirTemp = decouplingWarmAirTemp;
+	}
+
+	public double getDecouplingWarmSkinTemp() {
+		return decouplingWarmSkinTemp;
+	}
+
+	public void setDecouplingWarmSkinTemp(double decouplingWarmSkinTemp) {
+		this.decouplingWarmSkinTemp = decouplingWarmSkinTemp;
+	}
+
+	public double getDecouplingHotAirTemp() {
+		return decouplingHotAirTemp;
+	}
+
+	public void setDecouplingHotAirTemp(double decouplingHotAirTemp) {
+		this.decouplingHotAirTemp = decouplingHotAirTemp;
+	}
+
+	public double getDecouplingHotSkinTemp() {
+		return decouplingHotSkinTemp;
+	}
+
+	public void setDecouplingHotSkinTemp(double decouplingHotSkinTemp) {
+		this.decouplingHotSkinTemp = decouplingHotSkinTemp;
 	}
 
 	public int getMaxRunningPowerWatts() {
