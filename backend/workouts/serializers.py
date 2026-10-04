@@ -226,6 +226,7 @@ class WorkoutMatchScanCandidateSerializer(serializers.Serializer):
     date = serializers.DateField()
     correlation = serializers.FloatField()
     duration_diff_seconds = serializers.IntegerField()
+    distance_diff_km = serializers.FloatField(allow_null=True)
     coverage = serializers.FloatField()
     implied_ftp = serializers.IntegerField(allow_null=True)
     moving_time = serializers.IntegerField()
@@ -235,11 +236,16 @@ class WorkoutMatchScanCandidateSerializer(serializers.Serializer):
 class WorkoutMatchScanCreateSerializer(serializers.Serializer):
     """Optional request body for POST .../match-scans - the leaf step kinds to leave OUT of the
     correlation for this one scan (not an athlete-wide preference). Omit the field entirely
-    (not just an empty list) to get the default of `["warmup", "cool"]`."""
+    (not just an empty list) to get the default of `["warmup", "cool"]`.
+
+    `duration_basis` ("time", the default, or "distance") picks which of the workout's planned
+    totals the candidate pre-filter compares each activity against - see
+    WorkoutMatchScan.duration_basis's own docstring for why "distance" exists at all."""
 
     excluded_step_kinds = serializers.ListField(
         child=serializers.ChoiceField(choices=sorted(LEAF_KINDS)), required=False
     )
+    duration_basis = serializers.ChoiceField(choices=["time", "distance"], required=False)
 
 
 class WorkoutMatchScanSerializer(serializers.ModelSerializer):
@@ -254,6 +260,7 @@ class WorkoutMatchScanSerializer(serializers.ModelSerializer):
             "workout_id",
             "status",
             "excluded_step_kinds",
+            "duration_basis",
             "total_candidates",
             "processed_candidates",
             "error_message",
@@ -282,6 +289,7 @@ class WorkoutMatchScanSerializer(serializers.ModelSerializer):
                     "date": c.activity.start_date.date(),
                     "correlation": c.correlation,
                     "duration_diff_seconds": c.duration_diff_seconds,
+                    "distance_diff_km": c.distance_diff_km,
                     "coverage": c.coverage,
                     "implied_ftp": c.implied_ftp,
                     "moving_time": c.activity.moving_time,

@@ -72,6 +72,8 @@ class WorkoutMatchScan(PrefixedIDModel):
 
     id_prefix = "wms"
 
+    DURATION_BASIS_CHOICES = [("time", "Time"), ("distance", "Distance")]
+
     workout = models.ForeignKey(Workout, on_delete=models.CASCADE, related_name="match_scans")
     status = models.CharField(max_length=12, choices=MATCH_SCAN_STATUS_CHOICES, default="queued")
     # Null until the duration pre-filter has run (see match_scan.run_match_scan) - mirrors
@@ -82,6 +84,16 @@ class WorkoutMatchScan(PrefixedIDModel):
     # creation, by whoever triggered it (see WorkoutMatchScanCreateView), not an athlete-wide
     # preference. Same JSON-list shape as Workout.tags below.
     excluded_step_kinds = models.JSONField(default=list)
+    # Whether the candidate pre-filter compares each activity's actual moving_time or distance_km
+    # against the workout's planned total - chosen once, at creation, same as excluded_step_kinds
+    # above. "time" (the default) is exact for a time-ended plan; "distance" exists because a
+    # distance-ended plan's `duration` column is itself just a pace estimate (see
+    # match_scan.total_planned_distance_meters), so for e.g. a trail long run whose real pacing
+    # varies with terrain, comparing distance (the one quantity the plan actually fixes) instead
+    # of duration avoids rejecting a genuine match purely on normal pacing variance. The athlete
+    # picks whichever matches how the workout's steps are actually structured - a mixed workout
+    # (some time-ended, some distance-ended steps) is valid either way, just less precise.
+    duration_basis = models.CharField(max_length=10, choices=DURATION_BASIS_CHOICES, default="time")
     error_message = models.CharField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -106,6 +118,11 @@ class WorkoutMatchScanCandidate(models.Model):
     activity = models.ForeignKey("activities.Activity", on_delete=models.CASCADE, related_name="+")
     correlation = models.FloatField()
     duration_diff_seconds = models.IntegerField()
+    # Null whenever the workout's total planned distance couldn't be determined (e.g. a
+    # time-ended-only bike workout, which has no run-pace-style distance inference) -
+    # informational either way, like duration_diff_seconds, regardless of which basis this
+    # scan actually filtered by.
+    distance_diff_km = models.FloatField(null=True, blank=True)
     coverage = models.FloatField()
     # Informational only (regression-slope-derived), never used for ranking - see
     # match_scan.correlate_activity.

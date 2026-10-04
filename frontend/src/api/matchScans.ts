@@ -1,13 +1,14 @@
 import { apiFetchWithHeaders } from "./client";
-import type { StepKind, WorkoutMatchScan } from "./types";
+import type { MatchScanDurationBasis, StepKind, WorkoutMatchScan } from "./types";
 
 export function createWorkoutMatchScan(
   workoutId: string,
   excludedStepKinds: StepKind[],
+  durationBasis: MatchScanDurationBasis = "time",
 ): Promise<{ data: WorkoutMatchScan; retryAfterSeconds: number | null }> {
   return apiFetchWithHeaders<WorkoutMatchScan>(`/v1/workouts/${workoutId}/match-scans`, {
     method: "POST",
-    body: { excluded_step_kinds: excludedStepKinds },
+    body: { excluded_step_kinds: excludedStepKinds, duration_basis: durationBasis },
   });
 }
 

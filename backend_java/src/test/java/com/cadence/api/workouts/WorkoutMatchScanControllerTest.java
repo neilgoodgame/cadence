@@ -122,7 +122,7 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 		Workout workout = newPowerWorkout(athlete);
 		authAs(athlete.getId(), "workouts:write");
 
-		var response = controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("warmup")));
+		var response = controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("warmup"), null));
 
 		assertThat(response.getBody()).isNotNull();
 		assertThat(response.getBody().excludedStepKinds()).containsExactly("warmup");
@@ -134,8 +134,43 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 		Workout workout = newPowerWorkout(athlete);
 		authAs(athlete.getId(), "workouts:write");
 
-		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("nonsense"))))
+		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("nonsense"), null)))
 				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void defaultsToTimeDurationBasisWhenTheBodyIsOmitted() {
+		User athlete = newUser("scan-controller-basis-default@example.cc");
+		Workout workout = newPowerWorkout(athlete);
+		authAs(athlete.getId(), "workouts:write");
+
+		var response = controller.createMatchScan(workout.getId(), null);
+
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().durationBasis()).isEqualTo(MatchScanDurationBasis.TIME);
+	}
+
+	@Test
+	void rejectsAnInvalidDurationBasis() {
+		User athlete = newUser("scan-controller-invalid-basis@example.cc");
+		Workout workout = newPowerWorkout(athlete);
+		authAs(athlete.getId(), "workouts:write");
+
+		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(),
+				new WorkoutMatchScanCreateRequest(null, "nonsense"))).isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void rejectsDistanceBasisWhenTheWorkoutHasNoDeterminableDistance() {
+		// newPowerWorkout is an entirely time-ended bike step - total planned distance resolves
+		// to 0 (no pace-based inference path for bike), so DISTANCE basis has nothing to filter
+		// candidates by.
+		User athlete = newUser("scan-controller-no-distance@example.cc");
+		Workout workout = newPowerWorkout(athlete);
+		authAs(athlete.getId(), "workouts:write");
+
+		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(),
+				new WorkoutMatchScanCreateRequest(null, "distance"))).isInstanceOf(ValidationException.class);
 	}
 
 	@Test

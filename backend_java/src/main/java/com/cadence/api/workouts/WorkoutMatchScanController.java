@@ -66,15 +66,28 @@ public class WorkoutMatchScanController {
 			throw new ValidationException(error, "workout");
 		}
 
+		String durationBasisRaw = request != null && request.durationBasis() != null ? request.durationBasis() : "time";
+		MatchScanDurationBasis durationBasis;
+		try {
+			durationBasis = MatchScanDurationBasis.fromWireValue(durationBasisRaw);
+		} catch (IllegalArgumentException e) {
+			throw new ValidationException("durationBasis must be one of time, distance.", "durationBasis");
+		}
+		if (durationBasis == MatchScanDurationBasis.DISTANCE
+				&& workoutMatchScanService.totalPlannedDistanceMeters(id) <= 0) {
+			throw new ValidationException("This workout has no determinable planned distance to scan by.", "durationBasis");
+		}
+
 		// At most one active scan per workout - a re-POST while one is queued/processing just
 		// hands back that scan's id rather than starting a duplicate, loosely mirroring
-		// ExportJob's one-active-job-per-athlete constraint. Its kind selection is whatever the
-		// FIRST of the concurrent requests set - a second request's selection is ignored in that
-		// case, same as any other field would be.
+		// ExportJob's one-active-job-per-athlete constraint. Its kind/basis selection is
+		// whatever the FIRST of the concurrent requests set - a second request's selection is
+		// ignored in that case, same as any other field would be.
 		WorkoutMatchScan scan = scanRepository.findFirstByWorkoutIdAndStatusIn(id, ACTIVE_STATUSES).orElseGet(() -> {
 			WorkoutMatchScan created = new WorkoutMatchScan();
 			created.setWorkout(workout);
 			created.setExcludedStepKinds(excludedStepKinds);
+			created.setDurationBasis(durationBasis);
 			WorkoutMatchScan saved = scanRepository.save(created);
 			workoutMatchScanService.runScan(saved.getId());
 			return saved;
@@ -110,15 +123,16 @@ public class WorkoutMatchScanController {
 						.toList()
 				: List.of();
 		return new WorkoutMatchScanResponse(scan.getId(), scan.getWorkout().getId(), scan.getStatus(),
-				scan.getExcludedStepKinds(), scan.getTotalCandidates(), scan.getProcessedCandidates(),
-				scan.getErrorMessage(), scan.getCreatedAt(), scan.getCompletedAt(), candidates);
+				scan.getExcludedStepKinds(), scan.getDurationBasis(), scan.getTotalCandidates(),
+				scan.getProcessedCandidates(), scan.getErrorMessage(), scan.getCreatedAt(), scan.getCompletedAt(),
+				candidates);
 	}
 
 	private static WorkoutMatchScanCandidateResponse toCandidateResponse(WorkoutMatchScanCandidate candidate) {
 		var activity = candidate.getActivity();
 		return new WorkoutMatchScanCandidateResponse(activity.getId(), activity.getName(),
 				activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), candidate.getCorrelation(),
-				candidate.getDurationDiffSeconds(), candidate.getCoverage(), candidate.getImpliedFtp(),
-				activity.getMovingTime(), activity.getAvgPower());
+				candidate.getDurationDiffSeconds(), candidate.getDistanceDiffKm(), candidate.getCoverage(),
+				candidate.getImpliedFtp(), activity.getMovingTime(), activity.getAvgPower());
 	}
 }

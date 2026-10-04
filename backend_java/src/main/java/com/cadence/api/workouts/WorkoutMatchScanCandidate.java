@@ -37,6 +37,13 @@ public class WorkoutMatchScanCandidate {
 	@Column(name = "duration_diff_seconds", nullable = false)
 	private int durationDiffSeconds;
 
+	// Null whenever the workout's total planned distance couldn't be determined (e.g. a
+	// time-ended-only bike workout, which has no run-pace-style distance inference) -
+	// informational either way, like durationDiffSeconds, regardless of which basis this scan
+	// actually filtered by.
+	@Column(name = "distance_diff_km")
+	private Double distanceDiffKm;
+
 	@Column(nullable = false)
 	private double coverage;
 
@@ -79,6 +86,14 @@ public class WorkoutMatchScanCandidate {
 
 	public void setDurationDiffSeconds(int durationDiffSeconds) {
 		this.durationDiffSeconds = durationDiffSeconds;
+	}
+
+	public Double getDistanceDiffKm() {
+		return distanceDiffKm;
+	}
+
+	public void setDistanceDiffKm(Double distanceDiffKm) {
+		this.distanceDiffKm = distanceDiffKm;
 	}
 
 	public double getCoverage() {

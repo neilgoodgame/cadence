@@ -77,6 +77,16 @@ public class WorkoutMatchScanService {
 	// correlation, not by inclusion, so a generous width costs nothing but a few extra rows.
 	private static final int DURATION_TOLERANCE_SECONDS = 60;
 
+	// A distance-ended plan's duration column is itself just a pace estimate (see
+	// totalPlannedDistanceMeters below), so comparing it against a real candidate's moving time
+	// at DURATION_TOLERANCE_SECONDS's tight 60s window can reject a genuine match purely on
+	// normal pacing/terrain variance over a long session - the real bug the DISTANCE basis
+	// option fixes. 500m is deliberately tight relative to that: a real distance-ended match's
+	// recorded distance tracks its plan almost exactly (GPS/footpod distance is far more
+	// reliable than a pace-derived time estimate), so this doesn't need the same generosity
+	// duration does.
+	private static final int DISTANCE_TOLERANCE_METERS = 500;
+
 	// Mirrors WorkoutCalculations.DEFAULT_POWER_REFERENCE - kept as its own copy since that
 	// one is private to its own class.
 	private static final double DEFAULT_POWER_REFERENCE = 265;
@@ -244,6 +254,54 @@ public class WorkoutMatchScanService {
 		ZoneType zoneType = workout.getSport() == Sport.BIKE ? ZoneType.BIKE_POWER : ZoneType.RUN_POWER;
 		Double reference = zoneService.referenceFor(athlete, zoneType);
 		return reference != null ? reference : DEFAULT_POWER_REFERENCE;
+	}
+
+	/** Mirrors {@link WorkoutCalculations}'s run-only, time&lt;-&gt;distance inference, but
+	 * against a persisted {@link WorkoutStep} row (not the ephemeral DTO tree) and in the
+	 * opposite direction: a {@code DISTANCE}-ended step's stored distance is exact; a {@code
+	 * TIME}-ended running step targeting power/pace infers one from the athlete's threshold
+	 * pace. Used by {@link #totalPlannedDistanceMeters} for the match-scan's {@code DISTANCE}
+	 * duration-basis option, where the workout's planned *duration* is itself just a pace
+	 * estimate for a distance-ended plan, but its planned *distance* is the one quantity the
+	 * plan actually fixes. */
+	private static int leafDistanceMeters(WorkoutStep step, Sport sport, Double thresholdPaceSecPerKm) {
+		if (step.getEndType() == StepEndType.DISTANCE) {
+			return step.getDistance() != null ? step.getDistance() : 0;
+		}
+		if (sport == Sport.RUN && step.getEndType() == StepEndType.TIME
+				&& (step.getTargetType() == TargetType.PACE || step.getTargetType() == TargetType.POWER)
+				&& step.getDuration() != null && thresholdPaceSecPerKm != null) {
+			double low = step.getTargetLow() != null ? step.getTargetLow() : 0.0;
+			double high = step.getTargetHigh() != null ? step.getTargetHigh() : low;
+			double avgPct = (low + high) / 2;
+			if (avgPct <= 0) {
+				return 0;
+			}
+			double paceSecPerKm = thresholdPaceSecPerKm * 100.0 / avgPct;
+			return (int) Math.round((step.getDuration() / paceSecPerKm) * 1000);
+		}
+		return 0;
+	}
+
+	private int totalPlannedDistanceMeters(Workout workout, List<Flattened> flattened) {
+		Double thresholdPaceSecPerKm = workout.getSport() == Sport.RUN
+				? zoneService.referenceFor(userService.getById(workout.getCreatedBy().getId()), ZoneType.PACE)
+				: null;
+		int total = 0;
+		for (Flattened f : flattened) {
+			total += leafDistanceMeters(f.step(), workout.getSport(), thresholdPaceSecPerKm);
+		}
+		return total;
+	}
+
+	/** The workout's total planned distance, in meters, for the match-scan's {@code DISTANCE}
+	 * duration-basis pre-filter (see {@link #runScanSync}) - 0 when no step's distance can be
+	 * determined at all (e.g. a time-ended-only bike workout), meaning that basis has nothing
+	 * to filter by for this workout. Public so {@link WorkoutMatchScanController} can validate
+	 * a {@code DISTANCE}-basis create request before a scan is even persisted. */
+	public int totalPlannedDistanceMeters(String workoutId) {
+		Workout workout = fetchWithSteps(workoutId);
+		return totalPlannedDistanceMeters(workout, WorkoutStepFlattener.flatten(workout));
 	}
 
 	// Fetch-joins steps - open-in-view is off, and WorkoutStepFlattener.flatten walks
@@ -631,12 +689,20 @@ public class WorkoutMatchScanService {
 			// duration pre-filter below needs the true total, which the persisted column always
 			// has regardless of exclusions.
 			int totalPlannedDuration = workout.getDuration();
+			// 0 (not null) whenever no step's distance is determinable at all - DISTANCE basis
+			// is rejected before a scan is even created (see WorkoutMatchScanController) unless
+			// this is > 0, but computed unconditionally here since durationDiffSeconds/
+			// distanceDiffKm are both informational on every candidate row regardless of which
+			// basis actually filtered it.
+			int totalPlannedDistanceM = totalPlannedDistanceMeters(workout, flattened);
 			String athleteId = workout.getCreatedBy().getId();
 			Sport sport = workout.getSport();
 
 			List<Activity> allCandidates = activityRepository.findByAthleteIdAndSportAndWorkoutIsNull(athleteId, sport);
 			List<Activity> candidates = allCandidates.stream()
-					.filter(a -> Math.abs(a.getMovingTime() - totalPlannedDuration) <= DURATION_TOLERANCE_SECONDS)
+					.filter(a -> scan.getDurationBasis() == MatchScanDurationBasis.DISTANCE
+							? Math.abs(a.getDistanceKm() * 1000 - totalPlannedDistanceM) <= DISTANCE_TOLERANCE_METERS
+							: Math.abs(a.getMovingTime() - totalPlannedDuration) <= DURATION_TOLERANCE_SECONDS)
 					.toList();
 			progressUpdater.updateTotalCandidates(scanId, candidates.size());
 
@@ -657,6 +723,9 @@ public class WorkoutMatchScanService {
 					row.setActivity(activity);
 					row.setCorrelation(result.correlation());
 					row.setDurationDiffSeconds(Math.abs(activity.getMovingTime() - totalPlannedDuration));
+					row.setDistanceDiffKm(totalPlannedDistanceM > 0
+							? round4(Math.abs(activity.getDistanceKm() - totalPlannedDistanceM / 1000.0))
+							: null);
 					row.setCoverage(result.coverage());
 					row.setImpliedFtp(result.impliedFtp());
 					rows.add(row);

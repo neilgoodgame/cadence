@@ -137,6 +137,55 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		return workoutRepository.saveAndFlush(workout);
 	}
 
+	/** Two pure-distance-ended blocks (2000m @ 80%, then 1000m @ 100%) - two different
+	 * intensities so the expected curve actually varies (a single flat-intensity step has zero
+	 * variance, which pearson() correctly treats as undefined, not a real correlation). Total
+	 * 3000m. {@code duration=3000} is a deliberately bad pace-based estimate of what a real
+	 * candidate actually takes - matching the real Trail Long Run bug (a distance-ended plan's
+	 * duration column is only a pace guess; its distance is the one thing it actually fixes) -
+	 * for exercising the {@code DISTANCE} duration-basis option, which should admit a candidate
+	 * far outside {@code DURATION_TOLERANCE_SECONDS} as long as its distance is close. */
+	private Workout newDistanceOnlyWorkout(User athlete) {
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Distance-only");
+		workout.setSport(Sport.RUN);
+		workout.setDuration(3000);
+		WorkoutStep block1 = leaf(workout, null, 0, StepKind.BLOCK, 0, 80.0, 80.0);
+		block1.setEndType(StepEndType.DISTANCE);
+		block1.setDuration(null);
+		block1.setDistance(2000);
+		WorkoutStep block2 = leaf(workout, null, 1, StepKind.BLOCK, 0, 100.0, 100.0);
+		block2.setEndType(StepEndType.DISTANCE);
+		block2.setDuration(null);
+		block2.setDistance(1000);
+		workout.getSteps().add(block1);
+		workout.getSteps().add(block2);
+		return workoutRepository.saveAndFlush(workout);
+	}
+
+	/** Matches {@link #newDistanceOnlyWorkout}'s 2000m@80%/1000m@100% split - at constant
+	 * speed, the 2:1 distance split is also a 2:1 time split. */
+	private void seedDistanceOnlyRecords(Activity activity, Instant start, int totalSeconds, double ftp,
+			double totalDistanceKm) {
+		double speedMps = (totalDistanceKm * 1000) / totalSeconds;
+		int splitT = (int) Math.round(totalSeconds * 2.0 / 3.0);
+		for (int t = 0; t < totalSeconds; t++) {
+			double basePct = t < splitT ? 0.80 : 1.00;
+			// A little deterministic wobble around the target - a dead-flat power reading has
+			// zero variance, which pearson() correctly treats as undefined, not a real
+			// correlation of 1.0.
+			int power = (int) Math.round(basePct * ftp) + (t % 7) - 3;
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(power);
+			record.setDistanceKm(t * speedMps / 1000);
+			recordRepository.save(record);
+		}
+	}
+
 	private static int phasePowerDistance(int t, double ftp) {
 		if (t < 300) {
 			return (int) Math.round(0.60 * ftp);
@@ -671,6 +720,95 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		assertThat(candidates).hasSize(1);
 		assertThat(candidates.get(0).getActivity().getId()).isEqualTo(match.getId());
 		assertThat(candidates.get(0).getCorrelation()).isGreaterThan(0.98);
+	}
+
+	@Test
+	void totalPlannedDistanceMetersSumsDistanceEndedSteps() {
+		User athlete = newAthlete("distance-meters@example.cc");
+		Workout workout = newDistanceOnlyWorkout(athlete);
+
+		assertThat(workoutMatchScanService.totalPlannedDistanceMeters(workout.getId())).isEqualTo(3000);
+	}
+
+	@Test
+	void totalPlannedDistanceMetersInfersFromThresholdPaceForATimeEndedRunStep() {
+		User athlete = newAthlete("distance-meters-pace@example.cc");
+		athlete.setThresholdPace("4:35"); // 275 s/km
+		athlete = userRepository.save(athlete);
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Time-based run");
+		workout.setSport(Sport.RUN);
+		workout.setDuration(1333);
+		WorkoutStep step = leaf(workout, null, 0, StepKind.BLOCK, 1333, 80.0, 85.0);
+		workout.getSteps().add(step);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		// pace = 275 * 100/82.5 = 333.33 s/km -> 1333s / 333.33 s/km ~= 3.999 km (1333 itself
+		// was already rounded down from the exact 1333.33 in the duration direction, so the
+		// round trip lands 1m short rather than at an exact 4000).
+		assertThat(workoutMatchScanService.totalPlannedDistanceMeters(workout.getId())).isEqualTo(3999);
+	}
+
+	@Test
+	void totalPlannedDistanceMetersIsZeroForABikeTimeEndedWorkout() {
+		User athlete = newAthlete("distance-meters-bike@example.cc");
+		Workout workout = newGorbyWorkout(athlete);
+
+		assertThat(workoutMatchScanService.totalPlannedDistanceMeters(workout.getId())).isEqualTo(0);
+	}
+
+	@Test
+	void runScanWithDistanceBasisAdmitsACandidateFarOutsideTheDurationTolerance() {
+		// The real Trail Long Run bug: a distance-ended workout's duration is only a pace
+		// estimate, so a genuine match's real moving time can legitimately differ from it by
+		// far more than DURATION_TOLERANCE_SECONDS, while its distance tracks the plan closely.
+		User athlete = newAthlete("scan-distance-basis@example.cc");
+		Workout workout = newDistanceOnlyWorkout(athlete); // duration=3000 (a pace guess), distance=3000m
+		Instant start = Instant.parse("2026-01-11T06:00:00Z");
+		// movingTime 500s off workout.getDuration() (a pace guess), but distanceKm matches closely
+		Activity match = newActivity(athlete, start, Sport.RUN, 2500, null);
+		match.setDistanceKm(3.0);
+		match = activityRepository.save(match);
+		seedDistanceOnlyRecords(match, start, 2500, 250, 3.0);
+
+		WorkoutMatchScan scan = new WorkoutMatchScan();
+		scan.setWorkout(workout);
+		scan.setDurationBasis(MatchScanDurationBasis.DISTANCE);
+		scan = scanRepository.save(scan);
+
+		workoutMatchScanService.runScanSync(scan.getId());
+
+		WorkoutMatchScan finished = scanRepository.findById(scan.getId()).orElseThrow();
+		assertThat(finished.getStatus()).isEqualTo(WorkoutMatchScanStatus.READY);
+		List<WorkoutMatchScanCandidate> candidates =
+				candidateRepository.findByScanIdOrderByCorrelationDescFetchActivity(scan.getId());
+		assertThat(candidates).hasSize(1);
+		assertThat(candidates.get(0).getActivity().getId()).isEqualTo(match.getId());
+		assertThat(candidates.get(0).getDistanceDiffKm()).isLessThan(0.1);
+	}
+
+	@Test
+	void runScanWithTimeBasisStillRejectsTheSameCandidateOutsideTheDurationTolerance() {
+		// Same workout/candidate as the test above, but the default TIME basis - proving the
+		// distance-basis candidate above was only found because of the explicit basis choice,
+		// not because the duration pre-filter had somehow stopped mattering.
+		User athlete = newAthlete("scan-time-basis-reject@example.cc");
+		Workout workout = newDistanceOnlyWorkout(athlete);
+		Instant start = Instant.parse("2026-01-12T06:00:00Z");
+		Activity match = newActivity(athlete, start, Sport.RUN, 2500, null);
+		match.setDistanceKm(3.0);
+		match = activityRepository.save(match);
+		seedDistanceOnlyRecords(match, start, 2500, 250, 3.0);
+
+		WorkoutMatchScan scan = new WorkoutMatchScan();
+		scan.setWorkout(workout); // default TIME basis
+		scan = scanRepository.save(scan);
+
+		workoutMatchScanService.runScanSync(scan.getId());
+
+		WorkoutMatchScan finished = scanRepository.findById(scan.getId()).orElseThrow();
+		assertThat(finished.getProcessedCandidates()).isEqualTo(0);
 	}
 
 	@Test

@@ -56,6 +56,15 @@ if TYPE_CHECKING:
 # by inclusion, so a generous width costs nothing but a few extra rows to evaluate.
 DURATION_TOLERANCE_SECONDS = 60
 
+# A distance-ended plan's `duration` column is itself just a pace estimate (see
+# total_planned_distance_meters below), so comparing it against a real candidate's moving_time
+# at DURATION_TOLERANCE_SECONDS's tight 60s window can reject a genuine match purely on normal
+# pacing/terrain variance over a long session - the real bug this "distance" basis option
+# fixes. 500m is deliberately tight relative to that: a real distance-ended match's recorded
+# distance tracks its plan almost exactly (GPS/footpod distance is far more reliable than a
+# pace-derived time estimate), so this doesn't need the same generosity duration does.
+DISTANCE_TOLERANCE_METERS = 500
+
 
 def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = frozenset()) -> str | None:
     """`None` if `workout` can be scanned for matches; otherwise the reason it can't, suitable
@@ -104,6 +113,55 @@ def _needs_step_boundary_walk(flattened: list[tuple["WorkoutStep", int | None]])
 def _power_reference(workout: "Workout") -> float:
     zone_type = "bike_power" if workout.sport == "bike" else "run_power"
     return reference_for(workout.created_by, zone_type) or _DEFAULT_POWER_REFERENCE
+
+
+def _leaf_distance_meters(step: "WorkoutStep", sport: str, pace_reference: float | None) -> int:
+    """Mirrors `workouts.calculations._leaf_duration` in reverse, against a persisted
+    `WorkoutStep` row instead of the ephemeral dict tree that function works on (same
+    match_scan.py/calculations.py split as every other persisted-step helper in this module): a
+    `distance`-ended step's own stored `distance` is exact; a `time`-ended running step
+    targeting power/pace infers one from the athlete's threshold pace (duration * an implied
+    speed from the target's %) - same run-only, same-%-scale reasoning as `_leaf_duration` (a
+    bike's speed for a given %FTP is too terrain/aero-dependent to assume). Every other
+    combination stays at 0 - intentional, not a bug, same as `_leaf_duration`'s own fallback.
+
+    Used by `total_planned_distance_meters` for the match-scan's "distance" duration-basis
+    option: a distance-ended plan's own `duration` column is itself only a pace *estimate* (see
+    that function's own docstring), so comparing a candidate's real moving_time against it is
+    the wrong fixed point to filter candidates by - the plan's actual *distance* is exact.
+    """
+    if step.end_type == "distance":
+        return step.distance or 0
+    if (
+        sport == "run"
+        and step.end_type == "time"
+        and step.target_type in ("power", "pace")
+        and step.duration
+        and pace_reference
+    ):
+        low = step.target_low if step.target_low is not None else 0.0
+        high = step.target_high if step.target_high is not None else low
+        avg_pct = (low + high) / 2
+        if avg_pct <= 0:
+            return 0
+        pace_seconds_per_km = pace_reference * 100 / avg_pct
+        return round((step.duration / pace_seconds_per_km) * 1000)
+    return 0
+
+
+def total_planned_distance_meters(workout: "Workout") -> int:
+    """The workout's total planned distance, in meters, for the match-scan's "distance"
+    duration-basis pre-filter (see `run_match_scan`) - 0 when no step's distance can be
+    determined at all (e.g. a time-ended-only bike workout, which has no pace-based inference
+    path), meaning that basis has nothing to filter by for this workout. See
+    `_leaf_distance_meters` for the per-step rule; repeats are already unrolled by
+    `flatten_persisted_steps`, so summing over it naturally accounts for repeat counts without
+    any extra multiplication here.
+    """
+    pace_reference = reference_for(workout.created_by, "pace") if workout.sport == "run" else None
+    return sum(
+        _leaf_distance_meters(step, workout.sport, pace_reference) for step, _ in flatten_persisted_steps(workout)
+    )
 
 
 def _step_intensity_pct(step: "WorkoutStep", reference: float) -> float:
@@ -449,13 +507,25 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
     # activity recording still covers that phase in real time, so the duration pre-filter below
     # needs the true total, which the persisted column always has regardless of exclusions.
     total_planned_duration = workout.duration
+    # 0 (not None) whenever no step's distance is determinable at all - scan.duration_basis
+    # "distance" is rejected before this point (see WorkoutMatchScanCreateView) unless this is
+    # > 0, but computed unconditionally here since duration_diff_seconds/distance_diff_km are
+    # both informational on every candidate row regardless of which basis actually filtered it.
+    total_planned_distance_m = total_planned_distance_meters(workout)
 
     all_candidates = Activity.objects.filter(
         athlete_id=workout.created_by_id, sport=workout.sport, workout__isnull=True
     )
-    candidates = [
-        a for a in all_candidates if abs(a.moving_time - total_planned_duration) <= DURATION_TOLERANCE_SECONDS
-    ]
+    if scan.duration_basis == "distance":
+        candidates = [
+            a
+            for a in all_candidates
+            if abs(a.distance_km * 1000 - total_planned_distance_m) <= DISTANCE_TOLERANCE_METERS
+        ]
+    else:
+        candidates = [
+            a for a in all_candidates if abs(a.moving_time - total_planned_duration) <= DURATION_TOLERANCE_SECONDS
+        ]
     scan.total_candidates = len(candidates)
     scan.save(update_fields=["total_candidates"])
 
@@ -474,6 +544,11 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
                     activity=activity,
                     correlation=r,
                     duration_diff_seconds=abs(activity.moving_time - total_planned_duration),
+                    distance_diff_km=(
+                        round(abs(activity.distance_km - total_planned_distance_m / 1000), 3)
+                        if total_planned_distance_m
+                        else None
+                    ),
                     coverage=coverage,
                     implied_ftp=implied_ftp,
                 )

@@ -863,6 +863,12 @@ export interface WorkoutMatchComparisonEntry {
 // already-linked-activities list (getWorkoutMatches). This is the on-demand Pearson-correlation
 // scan (POST/GET .../match-scans) that suggests likely-but-unlinked candidates.
 export type WorkoutMatchScanStatus = "queued" | "processing" | "ready" | "failed";
+/** Which of the workout's planned totals the candidate pre-filter compares each activity
+ * against. "time" (the default) is exact for a time-ended plan; "distance" exists because a
+ * distance-ended plan's duration is itself just a pace estimate, so for e.g. a trail long run
+ * whose real pacing varies with terrain, comparing distance (the one quantity the plan actually
+ * fixes) instead of duration avoids rejecting a genuine match purely on normal pacing variance. */
+export type MatchScanDurationBasis = "time" | "distance";
 
 export interface WorkoutMatchScanCandidate {
   activity_id: string;
@@ -870,6 +876,10 @@ export interface WorkoutMatchScanCandidate {
   date: string;
   correlation: number;
   duration_diff_seconds: number;
+  /** Null whenever the workout's total planned distance couldn't be determined (e.g. a
+   * time-ended-only bike workout) - informational either way, regardless of which basis this
+   * scan actually filtered by. */
+  distance_diff_km: number | null;
   coverage: number;
   implied_ftp: number | null;
   moving_time: number;
@@ -881,6 +891,7 @@ export interface WorkoutMatchScan {
   workout_id: string;
   status: WorkoutMatchScanStatus;
   excluded_step_kinds: StepKind[];
+  duration_basis: MatchScanDurationBasis;
   total_candidates: number | null;
   processed_candidates: number;
   error_message: string | null;

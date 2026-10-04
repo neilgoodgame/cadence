@@ -23,6 +23,7 @@ from .match_scan import (
     pearson,
     rank_workouts_for_activity,
     scannability_error,
+    total_planned_distance_meters,
 )
 from .models import Workout, WorkoutMatchScan, WorkoutStep
 
@@ -1382,6 +1383,158 @@ def _seed_matching_records_with_distance(
         )
 
 
+def _make_distance_only_workout(athlete: User) -> Workout:
+    """Two pure-distance-ended blocks (2000m @ 80%, then 1000m @ 100%) - two different
+    intensities so the expected curve actually varies (a single flat-intensity step has zero
+    variance, which pearson() correctly treats as undefined, not a real correlation). Total
+    3000m. `duration=3000` is a deliberately bad pace-based estimate of what a real candidate
+    actually takes - matching the real Trail Long Run bug (a distance-ended plan's `duration`
+    column is only a pace guess; its *distance* is the one thing it actually fixes) - for
+    exercising the "distance" duration_basis option, which should admit a candidate far outside
+    DURATION_TOLERANCE_SECONDS as long as its distance is close."""
+    workout = Workout.objects.create(created_by=athlete, name="Distance-only", sport="run", duration=3000)
+    WorkoutStep.objects.create(
+        workout=workout,
+        order=0,
+        kind="block",
+        end_type="distance",
+        distance=2000,
+        target_type="power",
+        target_low=80,
+        target_high=80,
+    )
+    WorkoutStep.objects.create(
+        workout=workout,
+        order=1,
+        kind="block",
+        end_type="distance",
+        distance=1000,
+        target_type="power",
+        target_low=100,
+        target_high=100,
+    )
+    return workout
+
+
+def _seed_distance_only_records(activity: Activity, total_seconds: int, ftp: float, total_distance_km: float) -> None:
+    """Matches `_make_distance_only_workout`'s 2000m@80%/1000m@100% split - at constant speed,
+    the 2:1 distance split is also a 2:1 time split."""
+    speed_mps = (total_distance_km * 1000) / total_seconds
+    split_t = round(total_seconds * 2 / 3)
+    for t in range(total_seconds):
+        base_pct = 0.80 if t < split_t else 1.00
+        # A little deterministic wobble around the target - a dead-flat power reading has zero
+        # variance, which pearson() correctly treats as undefined (see its own docstring), not
+        # a real correlation of 1.0.
+        power = round(base_pct * ftp) + (t % 7) - 3
+        Record.objects.create(
+            activity=activity,
+            t=t,
+            ts=activity.start_date + timedelta(seconds=t),
+            power=power,
+            distance_km=t * speed_mps / 1000,
+        )
+
+
+class TotalPlannedDistanceMetersTests(TestCase):
+    """Mirrors EstimateDistanceDurationTests, but for the opposite inference direction
+    (duration -> distance) that total_planned_distance_meters needs for the match-scan's
+    "distance" duration_basis option."""
+
+    def _athlete(self, **overrides):
+        return User.objects.create_user(
+            email=f"distance-meters-{id(self)}@example.cc", password="x", name="A", **overrides
+        )
+
+    def test_distance_ended_step_contributes_its_own_exact_distance(self):
+        athlete = self._athlete()
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="run", duration=1000)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="distance",
+            distance=4000,
+            target_type="power",
+            target_low=85,
+            target_high=85,
+        )
+        self.assertEqual(total_planned_distance_meters(workout), 4000)
+
+    def test_time_ended_run_power_step_infers_distance_from_threshold_pace(self):
+        athlete = self._athlete(threshold_pace="4:35")  # 275 s/km
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="run", duration=1333)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=1333,
+            target_type="power",
+            target_low=80,
+            target_high=85,
+        )
+        # pace = 275 * 100/82.5 = 333.33 s/km -> 1333s / 333.33 s/km ~= 3.999 km (1333 itself
+        # was already rounded down from the exact 1333.33 in the duration direction, so the
+        # round trip lands 1m short rather than at an exact 4000).
+        self.assertEqual(total_planned_distance_meters(workout), 3999)
+
+    def test_bike_time_ended_step_still_contributes_zero(self):
+        athlete = self._athlete(threshold_pace="4:35")
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="bike", duration=1333)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=1333,
+            target_type="power",
+            target_low=85,
+            target_high=85,
+        )
+        self.assertEqual(total_planned_distance_meters(workout), 0)
+
+    def test_no_pace_set_still_contributes_zero(self):
+        athlete = self._athlete()
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="run", duration=1333)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=1333,
+            target_type="power",
+            target_low=80,
+            target_high=85,
+        )
+        self.assertEqual(total_planned_distance_meters(workout), 0)
+
+    def test_sums_across_a_mixed_distance_and_time_workout(self):
+        athlete = self._athlete(threshold_pace="4:35")
+        workout = Workout.objects.create(created_by=athlete, name="W", sport="run", duration=2333)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="distance",
+            distance=4000,
+            target_type="power",
+            target_low=85,
+            target_high=85,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="block",
+            end_type="time",
+            duration=1333,
+            target_type="power",
+            target_low=80,
+            target_high=85,
+        )
+        self.assertEqual(total_planned_distance_meters(workout), 7999)  # 4000 exact + 3999 inferred (see above)
+
+
 class PearsonTests(TestCase):
     def test_perfect_positive_correlation(self):
         self.assertAlmostEqual(pearson([1, 2, 3, 4], [10, 20, 30, 40]), 1.0)
@@ -1990,6 +2143,69 @@ class WorkoutMatchScanEndpointTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+    def test_defaults_to_time_duration_basis_when_the_body_is_omitted(self):
+        response = _bearer_client(self.athlete).post(f"/v1/workouts/{self.workout.id}/match-scans")
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["duration_basis"], "time")
+
+    def test_rejects_an_invalid_duration_basis(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/workouts/{self.workout.id}/match-scans", {"duration_basis": "nonsense"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_rejects_distance_basis_when_the_workout_has_no_determinable_distance(self):
+        # self.workout (_make_gorby_workout) is entirely time-ended bike steps - total planned
+        # distance resolves to 0 (no pace-based inference path for bike), so "distance" basis
+        # has nothing to filter candidates by.
+        response = _bearer_client(self.athlete).post(
+            f"/v1/workouts/{self.workout.id}/match-scans", {"duration_basis": "distance"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_distance_basis_admits_a_candidate_far_outside_the_duration_tolerance(self):
+        # The real Trail Long Run bug: a distance-ended workout's `duration` is only a pace
+        # estimate, so a genuine match's real moving_time can legitimately differ from it by far
+        # more than DURATION_TOLERANCE_SECONDS, while its *distance* tracks the plan closely.
+        workout = _make_distance_only_workout(self.athlete)  # duration=3000 (a pace guess), distance=3000m
+        # moving_time 500s off workout.duration (a pace guess), but distance_km matches closely
+        match = self._make_activity(sport="run", name="Real trail match", moving_time=2500, distance_km=3.0)
+        _seed_distance_only_records(match, 2500, ftp=250, total_distance_km=3.0)
+
+        client = _bearer_client(self.athlete)
+        create_response = client.post(
+            f"/v1/workouts/{workout.id}/match-scans", {"duration_basis": "distance"}, format="json"
+        )
+        self.assertEqual(create_response.status_code, 202)
+        self.assertEqual(create_response.json()["duration_basis"], "distance")
+        scan_id = create_response.json()["id"]
+
+        detail_response = client.get(f"/v1/workouts/{workout.id}/match-scans/{scan_id}")
+        data = detail_response.json()
+        self.assertEqual(data["status"], "ready")
+        self.assertEqual([c["activity_id"] for c in data["candidates"]], [match.id])
+        self.assertLess(data["candidates"][0]["distance_diff_km"], 0.1)
+
+    def test_time_basis_still_rejects_the_same_candidate_outside_the_duration_tolerance(self):
+        # Same workout/candidate as the test above, but the default "time" basis - proving the
+        # distance-diff candidate above was only found because of the explicit basis choice, not
+        # because the duration pre-filter had somehow stopped mattering.
+        workout = _make_distance_only_workout(self.athlete)
+        match = self._make_activity(sport="run", name="Real trail match", moving_time=2500, distance_km=3.0)
+        _seed_distance_only_records(match, 2500, ftp=250, total_distance_km=3.0)
+
+        client = _bearer_client(self.athlete)
+        create_response = client.post(f"/v1/workouts/{workout.id}/match-scans")
+        scan_id = create_response.json()["id"]
+
+        detail_response = client.get(f"/v1/workouts/{workout.id}/match-scans/{scan_id}")
+        data = detail_response.json()
+        self.assertEqual(data["processed_candidates"], 0)
+        self.assertEqual(data["candidates"], [])
 
     def test_finds_the_matching_activity_and_excludes_unrelated_candidates(self):
         match = self._make_activity(name="Real match")
