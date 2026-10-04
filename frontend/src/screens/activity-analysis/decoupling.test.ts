@@ -9,6 +9,17 @@ import {
   notScoredReasonText,
 } from "./decoupling";
 import type { Activity } from "../../api/types";
+import type { DecouplingPrefs } from "./decoupling";
+
+function baseAthlete(overrides: Partial<DecouplingPrefs> = {}): DecouplingPrefs {
+  return {
+    decoupling_vi_limit_bike: 1.06,
+    decoupling_vi_limit_run: 1.04,
+    decoupling_if_limit: 0.85,
+    decoupling_min_steady_minutes: 60,
+    ...overrides,
+  };
+}
 
 function baseActivity(overrides: Partial<Activity> = {}): Activity {
   return {
@@ -68,7 +79,7 @@ describe("bandMarkerPct", () => {
 
 describe("decouplingChecks", () => {
   it("all four checks pass on a clean qualified session", () => {
-    const checks = decouplingChecks(baseActivity());
+    const checks = decouplingChecks(baseActivity(), baseAthlete());
     expect(checks.every((c) => c.pass)).toBe(true);
     expect(checks.map((c) => c.label)).toEqual([
       "VI 1.04 ≤ 1.06",
@@ -79,27 +90,27 @@ describe("decouplingChecks", () => {
   });
 
   it("uses the run VI limit for a run activity", () => {
-    const checks = decouplingChecks(baseActivity({ sport: "run" }));
+    const checks = decouplingChecks(baseActivity({ sport: "run" }), baseAthlete());
     expect(checks[0].label).toContain("≤ 1.04");
   });
 
   it("fails the VI check when 'variable' is a reason", () => {
-    const checks = decouplingChecks(baseActivity({ decoupling_reasons: ["variable"] }));
+    const checks = decouplingChecks(baseActivity({ decoupling_reasons: ["variable"] }), baseAthlete());
     expect(checks[0].pass).toBe(false);
   });
 
   it("fails the IF check for either 'intensity' or 'no_threshold'", () => {
-    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["intensity"] }))[1].pass).toBe(false);
-    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["no_threshold"] }))[1].pass).toBe(false);
+    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["intensity"] }), baseAthlete())[1].pass).toBe(false);
+    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["no_threshold"] }), baseAthlete())[1].pass).toBe(false);
   });
 
   it("fails the steady check when 'short' is a reason", () => {
-    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["short"] }))[2].pass).toBe(false);
+    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["short"] }), baseAthlete())[2].pass).toBe(false);
   });
 
   it("fails the coverage check for either hr_coverage or power_coverage", () => {
-    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["hr_coverage"] }))[3].pass).toBe(false);
-    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["power_coverage"] }))[3].pass).toBe(false);
+    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["hr_coverage"] }), baseAthlete())[3].pass).toBe(false);
+    expect(decouplingChecks(baseActivity({ decoupling_reasons: ["power_coverage"] }), baseAthlete())[3].pass).toBe(false);
   });
 
   it("shows every check as null (never evaluated), not a false green pass, for an activity that was never computed", () => {
@@ -112,7 +123,22 @@ describe("decouplingChecks", () => {
       decoupling_hr_coverage_pct: null,
       decoupling_power_coverage_pct: null,
     });
-    expect(decouplingChecks(neverComputed).every((c) => c.pass === null)).toBe(true);
+    expect(decouplingChecks(neverComputed, baseAthlete()).every((c) => c.pass === null)).toBe(true);
+  });
+
+  it("uses the athlete's own configured thresholds, not the defaults, in every chip label", () => {
+    const athlete = baseAthlete({
+      decoupling_vi_limit_bike: 1.1,
+      decoupling_if_limit: 0.9,
+      decoupling_min_steady_minutes: 45,
+    });
+    const checks = decouplingChecks(baseActivity(), athlete);
+    expect(checks.map((c) => c.label)).toEqual([
+      "VI 1.04 ≤ 1.1",
+      "IF 0.74 ≤ 0.9",
+      "60 min steady ≥ 45",
+      "HR 100% · power 100%",
+    ]);
   });
 });
 
@@ -132,28 +158,39 @@ describe("isNeverComputed", () => {
 
 describe("notScoredReasonText", () => {
   it("formats a too-variable reason with the sport's own VI limit", () => {
-    const text = notScoredReasonText(baseActivity({ decoupling_reasons: ["variable"], decoupling_vi: 1.12 }));
+    const text = notScoredReasonText(baseActivity({ decoupling_reasons: ["variable"], decoupling_vi: 1.12 }), baseAthlete());
     expect(text).toBe("too variable (VI 1.12, limit 1.06)");
   });
 
   it("formats a too-intense reason", () => {
-    const text = notScoredReasonText(baseActivity({ decoupling_reasons: ["intensity"], decoupling_if: 0.91 }));
+    const text = notScoredReasonText(baseActivity({ decoupling_reasons: ["intensity"], decoupling_if: 0.91 }), baseAthlete());
     expect(text).toBe("too intense (IF 0.91, limit 0.85)");
   });
 
   it("formats a too-short reason in whole minutes", () => {
-    const text = notScoredReasonText(baseActivity({ decoupling_reasons: ["short"], steady_seconds: 2880 }));
+    const text = notScoredReasonText(baseActivity({ decoupling_reasons: ["short"], steady_seconds: 2880 }), baseAthlete());
     expect(text).toBe("too short (48 min steady, needs 60)");
   });
 
   it("formats an HR coverage reason", () => {
-    const text = notScoredReasonText(baseActivity({ decoupling_reasons: ["hr_coverage"], decoupling_hr_coverage_pct: 72 }));
+    const text = notScoredReasonText(
+      baseActivity({ decoupling_reasons: ["hr_coverage"], decoupling_hr_coverage_pct: 72 }),
+      baseAthlete(),
+    );
     expect(text).toBe("HR coverage 72% (needs 90%)");
   });
 
   it("says 'not yet computed' for an activity that predates this feature, not a false specific reason", () => {
-    const text = notScoredReasonText(baseActivity({ decoupling_qualified: false, decoupling_reasons: [] }));
+    const text = notScoredReasonText(baseActivity({ decoupling_qualified: false, decoupling_reasons: [] }), baseAthlete());
     expect(text).toBe("not yet computed");
+  });
+
+  it("uses the athlete's own configured limit, not the default, in the reason text", () => {
+    const text = notScoredReasonText(
+      baseActivity({ decoupling_reasons: ["intensity"], decoupling_if: 0.91 }),
+      baseAthlete({ decoupling_if_limit: 0.8 }),
+    );
+    expect(text).toBe("too intense (IF 0.91, limit 0.8)");
   });
 });
 

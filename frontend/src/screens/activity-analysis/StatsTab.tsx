@@ -179,7 +179,7 @@ export function StatsTab({ activity, athlete }: { activity: Activity; athlete: A
           </Card>
         )}
         <EnvironmentCard activity={activity} />
-        {hasDecouplingCard && <DecouplingCard activity={activity} />}
+        {hasDecouplingCard && <DecouplingCard activity={activity} athlete={athlete} />}
       </div>
     </div>
   );

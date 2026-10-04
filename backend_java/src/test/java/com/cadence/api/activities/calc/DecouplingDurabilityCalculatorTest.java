@@ -42,11 +42,24 @@ class DecouplingDurabilityCalculatorTest {
 
 	// ---- checkQualification ----
 
+	// Wraps checkQualification with the design spec's own default thresholds (now
+	// athlete-configurable - see User.decouplingViLimitBike/Run/decouplingIfLimit/
+	// decouplingMinSteadyMinutes), so these pure-math tests don't need to repeat them at every
+	// call site. A test that cares about a non-default threshold overrides it explicitly.
+	private static DecouplingQualificationCalculator.Result check(Sport sport, List<Integer> power, List<Integer> hr, Double threshold) {
+		return check(sport, power, hr, threshold, DecouplingQualificationCalculator.VI_LIMIT.get(sport), 0.85, 3600);
+	}
+
+	private static DecouplingQualificationCalculator.Result check(Sport sport, List<Integer> power, List<Integer> hr,
+			Double threshold, double viLimit, double ifLimit, int minSteadySeconds) {
+		return DecouplingQualificationCalculator.checkQualification(sport, power, hr, threshold, viLimit, ifLimit, minSteadySeconds);
+	}
+
 	@Test
 	void qualifiesACleanSteadySession() {
 		List<Integer> power = Collections.nCopies(4000, 200);
 		List<Integer> hr = Collections.nCopies(4000, 140);
-		var result = DecouplingQualificationCalculator.checkQualification(Sport.BIKE, power, hr, 250.0);
+		var result = check(Sport.BIKE, power, hr, 250.0);
 		assertThat(result.qualified()).isTrue();
 		assertThat(result.reasons()).isEmpty();
 		assertThat(result.vi()).isCloseTo(1.0, org.assertj.core.api.Assertions.within(0.01));
@@ -57,7 +70,7 @@ class DecouplingDurabilityCalculatorTest {
 	void tooVariableFailsVi() {
 		List<Integer> power = blocks(400, 100, 120, 3600);
 		List<Integer> hr = Collections.nCopies(3600, 140);
-		var result = DecouplingQualificationCalculator.checkQualification(Sport.BIKE, power, hr, 500.0);
+		var result = check(Sport.BIKE, power, hr, 500.0);
 		assertThat(result.reasons()).contains("variable");
 	}
 
@@ -65,25 +78,44 @@ class DecouplingDurabilityCalculatorTest {
 	void runHasATighterViLimitThanBike() {
 		List<Integer> power = blocks(270, 155, 40, 3600);
 		List<Integer> hr = Collections.nCopies(3600, 140);
-		var bike = DecouplingQualificationCalculator.checkQualification(Sport.BIKE, power, hr, 500.0);
-		var run = DecouplingQualificationCalculator.checkQualification(Sport.RUN, power, hr, 500.0);
+		var bike = check(Sport.BIKE, power, hr, 500.0);
+		var run = check(Sport.RUN, power, hr, 500.0);
 		assertThat(bike.reasons()).doesNotContain("variable");
 		assertThat(run.reasons()).contains("variable");
+	}
+
+	@Test
+	void configuredViLimitOverridesTheDefault() {
+		// The same 1.05-VI surge pattern as above - a bike athlete who's tightened their own
+		// limit to 1.0 fails on it even though the design-spec default (1.06) would pass.
+		List<Integer> power = blocks(270, 155, 40, 3600);
+		List<Integer> hr = Collections.nCopies(3600, 140);
+		var result = check(Sport.BIKE, power, hr, 500.0, 1.0, 0.85, 3600);
+		assertThat(result.reasons()).contains("variable");
 	}
 
 	@Test
 	void tooIntenseFailsIf() {
 		List<Integer> power = Collections.nCopies(4000, 300);
 		List<Integer> hr = Collections.nCopies(4000, 140);
-		var result = DecouplingQualificationCalculator.checkQualification(Sport.BIKE, power, hr, 250.0);
+		var result = check(Sport.BIKE, power, hr, 250.0);
 		assertThat(result.reasons()).contains("intensity");
+	}
+
+	@Test
+	void configuredIfLimitOverridesTheDefault() {
+		// IF = 300/250 = 1.2, which passes a loosened 1.5 limit even though it fails the default.
+		List<Integer> power = Collections.nCopies(4000, 300);
+		List<Integer> hr = Collections.nCopies(4000, 140);
+		var result = check(Sport.BIKE, power, hr, 250.0, DecouplingQualificationCalculator.VI_LIMIT.get(Sport.BIKE), 1.5, 3600);
+		assertThat(result.reasons()).doesNotContain("intensity");
 	}
 
 	@Test
 	void noThresholdFailsWithItsOwnReasonNotAlsoIntensity() {
 		List<Integer> power = Collections.nCopies(4000, 200);
 		List<Integer> hr = Collections.nCopies(4000, 140);
-		var result = DecouplingQualificationCalculator.checkQualification(Sport.BIKE, power, hr, null);
+		var result = check(Sport.BIKE, power, hr, null);
 		assertThat(result.reasons()).contains("no_threshold").doesNotContain("intensity");
 	}
 
@@ -91,8 +123,17 @@ class DecouplingDurabilityCalculatorTest {
 	void tooShortFailsBelow60Minutes() {
 		List<Integer> power = Collections.nCopies(DecouplingQualificationCalculator.MIN_STEADY_SECONDS - 1, 200);
 		List<Integer> hr = Collections.nCopies(power.size(), 140);
-		var result = DecouplingQualificationCalculator.checkQualification(Sport.BIKE, power, hr, 250.0);
+		var result = check(Sport.BIKE, power, hr, 250.0);
 		assertThat(result.reasons()).contains("short");
+	}
+
+	@Test
+	void configuredMinSteadyMinutesOverridesTheDefault() {
+		// 45 minutes fails the default 60-min floor but passes a loosened 30-min one.
+		List<Integer> power = Collections.nCopies(45 * 60, 200);
+		List<Integer> hr = Collections.nCopies(power.size(), 140);
+		var result = check(Sport.BIKE, power, hr, 250.0, DecouplingQualificationCalculator.VI_LIMIT.get(Sport.BIKE), 0.85, 30 * 60);
+		assertThat(result.reasons()).doesNotContain("short");
 	}
 
 	@Test
@@ -100,7 +141,7 @@ class DecouplingDurabilityCalculatorTest {
 		List<Integer> power = Collections.nCopies(4000, 200);
 		List<Integer> hr = new ArrayList<>(Collections.nCopies(3800, null));
 		hr.addAll(Collections.nCopies(200, 140));
-		var result = DecouplingQualificationCalculator.checkQualification(Sport.BIKE, power, hr, 250.0);
+		var result = check(Sport.BIKE, power, hr, 250.0);
 		assertThat(result.reasons()).contains("hr_coverage");
 	}
 
@@ -109,7 +150,7 @@ class DecouplingDurabilityCalculatorTest {
 		List<Integer> power = new ArrayList<>(Collections.nCopies(3800, null));
 		power.addAll(Collections.nCopies(200, 200));
 		List<Integer> hr = Collections.nCopies(4000, 140);
-		var result = DecouplingQualificationCalculator.checkQualification(Sport.BIKE, power, hr, 250.0);
+		var result = check(Sport.BIKE, power, hr, 250.0);
 		assertThat(result.reasons()).contains("power_coverage");
 	}
 

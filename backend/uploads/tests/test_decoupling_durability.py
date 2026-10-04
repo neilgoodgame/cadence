@@ -43,10 +43,20 @@ def _steady_series(seconds=4000, power=200, hr=140):
     return [power] * seconds, [hr] * seconds
 
 
+# Wraps check_decoupling_qualification with the design spec's own default thresholds (now
+# athlete-configurable - see User.decoupling_vi_limit_bike/_run/decoupling_if_limit/
+# decoupling_min_steady_minutes), so these pure-math tests don't need to repeat them at every
+# call site. A test that cares about a non-default threshold overrides it explicitly.
+def _check(sport, power, hr, threshold, vi_limit=None, if_limit=0.85, min_steady_seconds=3600):
+    if vi_limit is None:
+        vi_limit = 1.06 if sport == "bike" else 1.04
+    return check_decoupling_qualification(sport, power, hr, threshold, vi_limit, if_limit, min_steady_seconds)
+
+
 class CheckDecouplingQualificationTests(SimpleTestCase):
     def test_qualifies_a_clean_steady_session(self):
         power, hr = _steady_series()
-        result = check_decoupling_qualification("bike", power, hr, threshold=250)
+        result = _check("bike", power, hr, threshold=250)
         self.assertTrue(result["qualified"])
         self.assertEqual(result["reasons"], [])
         self.assertAlmostEqual(result["vi"], 1.0, places=2)
@@ -57,7 +67,7 @@ class CheckDecouplingQualificationTests(SimpleTestCase):
         # average) 120s-on/120s-off surges push NP well above the plain average: VI ~1.31.
         power = (([400] * 120 + [100] * 120) * 15)[:3600]
         hr = [140] * 3600
-        result = check_decoupling_qualification("bike", power, hr, threshold=500)
+        result = _check("bike", power, hr, threshold=500)
         self.assertIn("variable", result["reasons"])
 
     def test_run_has_a_tighter_vi_limit_than_bike(self):
@@ -65,37 +75,57 @@ class CheckDecouplingQualificationTests(SimpleTestCase):
         # just under bike's 1.06 one.
         power = (([270] * 40 + [155] * 40) * 45)[:3600]
         hr = [140] * 3600
-        bike_result = check_decoupling_qualification("bike", power, hr, threshold=500)
-        run_result = check_decoupling_qualification("run", power, hr, threshold=500)
+        bike_result = _check("bike", power, hr, threshold=500)
+        run_result = _check("run", power, hr, threshold=500)
         self.assertNotIn("variable", bike_result["reasons"])
         self.assertIn("variable", run_result["reasons"])
 
+    def test_configured_vi_limit_overrides_the_default(self):
+        # The same 1.05-VI surge pattern as above - a bike athlete who's tightened their own
+        # limit to 1.0 fails on it even though the design-spec default (1.06) would pass.
+        power = (([270] * 40 + [155] * 40) * 45)[:3600]
+        hr = [140] * 3600
+        result = _check("bike", power, hr, threshold=500, vi_limit=1.0)
+        self.assertIn("variable", result["reasons"])
+
     def test_too_intense_fails_if(self):
         power, hr = _steady_series(power=300)
-        result = check_decoupling_qualification("bike", power, hr, threshold=250)
+        result = _check("bike", power, hr, threshold=250)
         self.assertIn("intensity", result["reasons"])
+
+    def test_configured_if_limit_overrides_the_default(self):
+        # IF = 300/250 = 1.2, which passes a loosened 1.5 limit even though it fails the default.
+        power, hr = _steady_series(power=300)
+        result = _check("bike", power, hr, threshold=250, if_limit=1.5)
+        self.assertNotIn("intensity", result["reasons"])
 
     def test_no_threshold_fails_with_its_own_reason_not_also_intensity(self):
         power, hr = _steady_series()
-        result = check_decoupling_qualification("bike", power, hr, threshold=None)
+        result = _check("bike", power, hr, threshold=None)
         self.assertIn("no_threshold", result["reasons"])
         self.assertNotIn("intensity", result["reasons"])
 
     def test_too_short_fails_below_60_minutes(self):
         power, hr = _steady_series(seconds=DECOUPLING_MIN_STEADY_SECONDS - 1)
-        result = check_decoupling_qualification("bike", power, hr, threshold=250)
+        result = _check("bike", power, hr, threshold=250)
         self.assertIn("short", result["reasons"])
+
+    def test_configured_min_steady_minutes_overrides_the_default(self):
+        # 45 minutes fails the default 60-min floor but passes a loosened 30-min one.
+        power, hr = _steady_series(seconds=45 * 60)
+        result = _check("bike", power, hr, threshold=250, min_steady_seconds=30 * 60)
+        self.assertNotIn("short", result["reasons"])
 
     def test_insufficient_hr_coverage(self):
         power, hr = _steady_series()
         hr = [None] * 3800 + hr[3800:]  # 200/4000 = 5% coverage
-        result = check_decoupling_qualification("bike", power, hr, threshold=250)
+        result = _check("bike", power, hr, threshold=250)
         self.assertIn("hr_coverage", result["reasons"])
 
     def test_insufficient_power_coverage(self):
         power, hr = _steady_series()
         power = [None] * 3800 + power[3800:]
-        result = check_decoupling_qualification("bike", power, hr, threshold=250)
+        result = _check("bike", power, hr, threshold=250)
         self.assertIn("power_coverage", result["reasons"])
 
 
@@ -242,6 +272,22 @@ class ComputeDecouplingTests(TestCase):
         self.assertTrue(result["decoupling_hot"])
         self.assertIsNone(result["decoupling_pct"])
         self.assertEqual(result["decoupling_halves"], [])
+
+    def test_athletes_own_configured_thresholds_are_used_not_the_defaults(self):
+        # A session that's a clean pass under the design-spec defaults (IF 0.8 <= 0.85) fails
+        # once the athlete tightens their own IF limit to 0.7 - confirms compute_decoupling
+        # actually reads User.decoupling_if_limit rather than the module-level default.
+        athlete = self._athlete()
+        athlete.decoupling_if_limit = 0.7
+        athlete.save(update_fields=["decoupling_if_limit"])
+        activity = self._activity(athlete, moving_time=4200)
+        self._set_threshold(athlete, activity, value=250)
+        t = list(range(4200))
+        power = [200] * 4200
+        hr = [140] * 4200
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4200, [None] * 4200)
+        self.assertFalse(result["decoupling_qualified"])
+        self.assertIn("intensity", result["decoupling_reasons"])
 
 
 class ComputeDurabilityRowsTests(SimpleTestCase):

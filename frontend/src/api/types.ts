@@ -40,6 +40,12 @@ export interface Athlete {
    * Threshold suggestions feature warns about it - 14/21/28, or 0 = off. See
    * ThresholdSuggestion's "upcoming_drop" kind. */
   threshold_warning_days: number;
+  /** Aerobic decoupling qualification thresholds - read at compute time (ingest/recompute),
+   * not retroactive: changing these doesn't repaint already-scored activities on its own. */
+  decoupling_vi_limit_bike: number;
+  decoupling_vi_limit_run: number;
+  decoupling_if_limit: number;
+  decoupling_min_steady_minutes: number;
   lthr: number | null;
   max_hr: number | null;
   /** Optional - only used for the Karvonen heart-rate-reserve % stat on Activity Analysis. */
@@ -420,6 +426,10 @@ export interface AthleteUpdate {
   threshold_window_days?: number;
   threshold_sanity_pct?: number;
   threshold_warning_days?: number;
+  decoupling_vi_limit_bike?: number;
+  decoupling_vi_limit_run?: number;
+  decoupling_if_limit?: number;
+  decoupling_min_steady_minutes?: number;
   lthr?: number;
   max_hr?: number;
   resting_hr?: number;

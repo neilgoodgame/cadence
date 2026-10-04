@@ -207,6 +207,24 @@ class ActivityDecouplingServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void athletesOwnConfiguredThresholdsAreUsedNotTheDefaults() {
+		// A session that's a clean pass under the design-spec defaults (IF 0.8 <= 0.85) fails
+		// once the athlete tightens their own IF limit to 0.7 - confirms computeAndPersist
+		// actually reads User.decouplingIfLimit rather than the calculator's own default.
+		User athlete = newAthlete("decoupling-configured@example.cc");
+		athlete.setDecouplingIfLimit(0.7);
+		athlete = userRepository.save(athlete);
+		Activity activity = newActivity(athlete, Sport.BIKE, 4200);
+		setThreshold(athlete, activity, ThresholdField.FTP, 250);
+		addRecords(activity, 4200, 200, 140);
+
+		decouplingService.computeAndPersist(activity, athlete);
+
+		assertThat(activity.isDecouplingQualified()).isFalse();
+		assertThat(activity.getDecouplingReasons()).contains("intensity");
+	}
+
+	@Test
 	void computeAndPersistWritesDurabilityRowsIdempotently() {
 		User athlete = newAthlete("decoupling-durability@example.cc");
 		Activity activity = newActivity(athlete, Sport.BIKE, 4000);

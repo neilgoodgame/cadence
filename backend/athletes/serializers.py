@@ -29,6 +29,10 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "copy_matched_workout_tags",
             "lap_source",
             "threshold_warning_days",
+            "decoupling_vi_limit_bike",
+            "decoupling_vi_limit_run",
+            "decoupling_if_limit",
+            "decoupling_min_steady_minutes",
         ]
         extra_kwargs = {
             field: {"required": False}
@@ -49,6 +53,10 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
                 "copy_matched_workout_tags",
                 "lap_source",
                 "threshold_warning_days",
+                "decoupling_vi_limit_bike",
+                "decoupling_vi_limit_run",
+                "decoupling_if_limit",
+                "decoupling_min_steady_minutes",
             ]
         }
 

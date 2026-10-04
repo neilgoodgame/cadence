@@ -79,6 +79,22 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "threshold_warning_days", nullable = false)
 	private int thresholdWarningDays = 21;
 
+	// Aerobic decoupling qualification thresholds (see DecouplingQualificationCalculator) - the
+	// defaults match the design spec's own fixed limits. Read at compute time (ingest/
+	// recompute), same "not retroactive until recomputed" convention as thresholdWindowDays/
+	// thresholdSanityPct above - changing these doesn't repaint already-scored activities.
+	@Column(name = "decoupling_vi_limit_bike", nullable = false)
+	private double decouplingViLimitBike = 1.06;
+
+	@Column(name = "decoupling_vi_limit_run", nullable = false)
+	private double decouplingViLimitRun = 1.04;
+
+	@Column(name = "decoupling_if_limit", nullable = false)
+	private double decouplingIfLimit = 0.85;
+
+	@Column(name = "decoupling_min_steady_minutes", nullable = false)
+	private int decouplingMinSteadyMinutes = 60;
+
 	/** A running-power sample above this is treated as corrupt sensor data - not a real effort,
 	 * a glitch - and dropped before it reaches best efforts, duration curves, normalized power, or
 	 * threshold history. See RunningPowerSanitizer's Javadoc for the failure mode this guards
@@ -285,6 +301,38 @@ public class User extends PrefixedIdEntity {
 
 	public void setThresholdWarningDays(int thresholdWarningDays) {
 		this.thresholdWarningDays = thresholdWarningDays;
+	}
+
+	public double getDecouplingViLimitBike() {
+		return decouplingViLimitBike;
+	}
+
+	public void setDecouplingViLimitBike(double decouplingViLimitBike) {
+		this.decouplingViLimitBike = decouplingViLimitBike;
+	}
+
+	public double getDecouplingViLimitRun() {
+		return decouplingViLimitRun;
+	}
+
+	public void setDecouplingViLimitRun(double decouplingViLimitRun) {
+		this.decouplingViLimitRun = decouplingViLimitRun;
+	}
+
+	public double getDecouplingIfLimit() {
+		return decouplingIfLimit;
+	}
+
+	public void setDecouplingIfLimit(double decouplingIfLimit) {
+		this.decouplingIfLimit = decouplingIfLimit;
+	}
+
+	public int getDecouplingMinSteadyMinutes() {
+		return decouplingMinSteadyMinutes;
+	}
+
+	public void setDecouplingMinSteadyMinutes(int decouplingMinSteadyMinutes) {
+		this.decouplingMinSteadyMinutes = decouplingMinSteadyMinutes;
 	}
 
 	public int getMaxRunningPowerWatts() {

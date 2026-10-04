@@ -22,5 +22,9 @@ public record AthleteUpdateRequest(
 		Boolean appendMatchDateToName,
 		Boolean copyMatchedWorkoutTags,
 		LapSource lapSource,
-		Integer thresholdWarningDays) {
+		Integer thresholdWarningDays,
+		Double decouplingViLimitBike,
+		Double decouplingViLimitRun,
+		Double decouplingIfLimit,
+		Integer decouplingMinSteadyMinutes) {
 }

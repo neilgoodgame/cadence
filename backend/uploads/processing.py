@@ -49,6 +49,11 @@ POWER_BEST_EFFORT_WINDOWS = [
 # "ride" in the design spec maps to this codebase's "bike" sport value throughout.
 DECOUPLING_SPORTS = ("bike", "run")
 DECOUPLING_WARMUP_SECONDS = 600
+# VI/IF limit and minimum steady minutes are athlete-configurable (User.decoupling_vi_limit_bike/
+# _run/decoupling_if_limit/decoupling_min_steady_minutes) - these are just the defaults new
+# athletes get, matching the design spec's own fixed numbers. Not read directly by
+# check_decoupling_qualification below; compute_decoupling resolves the athlete's actual values
+# and passes them in explicitly.
 DECOUPLING_MIN_STEADY_SECONDS = 3600
 DECOUPLING_VI_LIMIT = {"bike": 1.06, "run": 1.04}
 DECOUPLING_IF_LIMIT = 0.85
@@ -387,29 +392,37 @@ def check_decoupling_qualification(
     power_series: Sequence[float | None],
     hr_series: Sequence[float | None],
     threshold: int | None,
+    vi_limit: float,
+    if_limit: float,
+    min_steady_seconds: int,
 ) -> dict:
     """The steady-session qualification table from the Aerobic decoupling & durability spec,
     applied to an already-trimmed "steady window" (post-warm-up, post-stop - see
     _steady_window_start_index). Returns every failing reason (not just the first), plus the
     raw VI/IF/steady-seconds numbers themselves - the UI's checks row shows all four with real
-    values even on a not-scored session (see Activity.decoupling_vi's own docstring)."""
+    values even on a not-scored session (see Activity.decoupling_vi's own docstring).
+
+    vi_limit/if_limit/min_steady_seconds are the athlete's own configured thresholds (User.
+    decoupling_vi_limit_bike/_run/decoupling_if_limit/decoupling_min_steady_minutes) - the
+    caller (compute_decoupling) resolves which one applies; this function doesn't read athlete
+    state directly, keeping it a pure function of its arguments like the rest of this module."""
     reasons: list[str] = []
     steady_seconds = len(power_series)
 
     avg_power = _mean(power_series)
     norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
     vi = round(norm_power / avg_power, 2) if norm_power is not None and avg_power else None
-    if vi is None or vi > DECOUPLING_VI_LIMIT[sport]:
+    if vi is None or vi > vi_limit:
         reasons.append("variable")
 
     if_ = round(norm_power / threshold, 2) if norm_power is not None and threshold else None
     if threshold is None:
         reasons.append("no_threshold")
-    if if_ is None or if_ > DECOUPLING_IF_LIMIT:
+    if if_ is None or if_ > if_limit:
         if threshold is not None:
             reasons.append("intensity")
 
-    if steady_seconds < DECOUPLING_MIN_STEADY_SECONDS:
+    if steady_seconds < min_steady_seconds:
         reasons.append("short")
 
     hr_coverage = sum(1 for h in hr_series if h is not None) / steady_seconds if steady_seconds else 0.0
@@ -484,7 +497,16 @@ def compute_decoupling(
 
     zone_type = "bike_power" if activity.sport == "bike" else "run_power"
     threshold = reference_for(athlete, zone_type, activity)
-    check = check_decoupling_qualification(activity.sport, window_power, window_hr, threshold)
+    vi_limit = athlete.decoupling_vi_limit_bike if activity.sport == "bike" else athlete.decoupling_vi_limit_run
+    check = check_decoupling_qualification(
+        activity.sport,
+        window_power,
+        window_hr,
+        threshold,
+        vi_limit,
+        athlete.decoupling_if_limit,
+        athlete.decoupling_min_steady_minutes * 60,
+    )
 
     avg_temp = _mean(window_air)
     avg_core = _mean(window_core)

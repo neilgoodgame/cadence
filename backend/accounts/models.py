@@ -76,6 +76,15 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # time, not stored).
     THRESHOLD_WARNING_DAYS_CHOICES = [(14, "14 days"), (21, "21 days"), (28, "28 days"), (0, "Off")]
     threshold_warning_days = models.PositiveSmallIntegerField(choices=THRESHOLD_WARNING_DAYS_CHOICES, default=21)
+    # Aerobic decoupling qualification thresholds (see uploads/processing.py's
+    # check_decoupling_qualification) - the defaults match the design spec's own fixed limits.
+    # Read at compute time (ingest/recompute), same "not retroactive until recomputed"
+    # convention as threshold_window_days/threshold_sanity_pct above - changing these doesn't
+    # repaint already-scored activities on its own.
+    decoupling_vi_limit_bike = models.FloatField(default=1.06)
+    decoupling_vi_limit_run = models.FloatField(default=1.04)
+    decoupling_if_limit = models.FloatField(default=0.85)
+    decoupling_min_steady_minutes = models.PositiveSmallIntegerField(default=60)
     ftp_calculation_method = models.CharField(
         max_length=20, choices=FTP_CALCULATION_METHOD_CHOICES, default="twenty_min_test"
     )

@@ -8,6 +8,7 @@ import {
   decouplingBand,
   decouplingChecks,
   decouplingSummaryText,
+  type DecouplingPrefs,
   durabilityTiles,
   fmtHalfTimeRange,
   isNeverComputed,
@@ -40,8 +41,8 @@ function chipIcon(pass: boolean | null): string {
 /** Activity Analysis → Stats tab "Aerobic decoupling · Pw:HR" card - only rendered for bike/run
  * activities with a power stream (callers are responsible for that gate, matching the design
  * spec: "Only render it for ride/run activities with power. Otherwise hide it entirely."). */
-export function DecouplingCard({ activity }: { activity: Activity }) {
-  const checks = decouplingChecks(activity);
+export function DecouplingCard({ activity, athlete }: { activity: Activity; athlete: DecouplingPrefs }) {
+  const checks = decouplingChecks(activity, athlete);
 
   return (
     <div
@@ -150,7 +151,7 @@ export function DecouplingCard({ activity }: { activity: Activity }) {
       ) : (
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
-            Not scored &mdash; {notScoredReasonText(activity)}
+            Not scored &mdash; {notScoredReasonText(activity, athlete)}
           </div>
           <div style={{ fontSize: 12.5, color: "var(--ink2)", marginTop: 6, lineHeight: 1.45, maxWidth: 640 }}>
             {isNeverComputed(activity)

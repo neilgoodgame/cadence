@@ -1562,6 +1562,10 @@ paths:
                 threshold_window_days: { type: integer, description: See the User schema. }
                 threshold_sanity_pct: { type: integer, description: See the User schema. }
                 threshold_warning_days: { type: integer, enum: [14, 21, 28, 0], description: See the User schema. }
+                decoupling_vi_limit_bike: { type: number, description: See the User schema. }
+                decoupling_vi_limit_run: { type: number, description: See the User schema. }
+                decoupling_if_limit: { type: number, description: See the User schema. }
+                decoupling_min_steady_minutes: { type: integer, description: See the User schema. }
                 lthr: { type: integer, description: Lactate threshold HR (bpm). }
                 max_hr: { type: integer }
                 resting_hr:
@@ -2663,6 +2667,26 @@ components:
             Scaled down for threshold_window_days < 84 (a quarter of the window is
             used instead of this raw setting).
           example: 21
+        decoupling_vi_limit_bike:
+          type: number
+          default: 1.06
+          description: Aerobic decoupling qualification - max variability index (NP ÷ avg power) for a bike session's steady window. Read at compute time (ingest/recompute); not retroactive.
+          example: 1.06
+        decoupling_vi_limit_run:
+          type: number
+          default: 1.04
+          description: Same as decoupling_vi_limit_bike, for run sessions.
+          example: 1.04
+        decoupling_if_limit:
+          type: number
+          default: 0.85
+          description: Aerobic decoupling qualification - max intensity factor (NP ÷ FTP/CP) for a session's steady window. Read at compute time; not retroactive.
+          example: 0.85
+        decoupling_min_steady_minutes:
+          type: integer
+          default: 60
+          description: Aerobic decoupling qualification - minimum moving time (minutes) in the steady window, after the fixed 10-minute warm-up. Read at compute time; not retroactive.
+          example: 60
         lthr: { type: integer, example: 155 }
         max_hr: { type: integer, example: 186 }
         resting_hr:

@@ -1,4 +1,10 @@
-import type { Activity, DecouplingReason } from "../../api/types";
+import type { Activity, Athlete, DecouplingReason } from "../../api/types";
+
+/** The subset of Athlete this module needs - callers can pass the full Athlete. */
+export type DecouplingPrefs = Pick<
+  Athlete,
+  "decoupling_vi_limit_bike" | "decoupling_vi_limit_run" | "decoupling_if_limit" | "decoupling_min_steady_minutes"
+>;
 
 export type DecouplingBand = "good" | "moderate" | "high";
 
@@ -23,8 +29,8 @@ export function bandMarkerPct(pct: number): number {
   return Math.min(100, (pct / 15) * 100);
 }
 
-function viLimit(sport: Activity["sport"]): number {
-  return sport === "run" ? 1.04 : 1.06;
+function viLimit(sport: Activity["sport"], athlete: DecouplingPrefs): number {
+  return sport === "run" ? athlete.decoupling_vi_limit_run : athlete.decoupling_vi_limit_bike;
 }
 
 /** True only for an activity that has never been through the decoupling computation at all
@@ -47,23 +53,25 @@ export interface DecouplingCheck {
   tooltip: string;
 }
 
-export function decouplingChecks(activity: Activity): DecouplingCheck[] {
+export function decouplingChecks(activity: Activity, athlete: DecouplingPrefs): DecouplingCheck[] {
   const reasons = activity.decoupling_reasons;
-  const limit = viLimit(activity.sport);
+  const limit = viLimit(activity.sport, athlete);
+  const ifLimit = athlete.decoupling_if_limit;
+  const minSteady = athlete.decoupling_min_steady_minutes;
   const neverComputed = isNeverComputed(activity);
   return [
     {
       label: `VI ${activity.decoupling_vi != null ? activity.decoupling_vi.toFixed(2) : "—"} ≤ ${limit}`,
       pass: neverComputed ? null : !reasons.includes("variable"),
-      tooltip: `Variability index (NP ÷ avg power). Bike limit 1.06, run 1.04.`,
+      tooltip: `Variability index (NP ÷ avg power). Bike limit ${athlete.decoupling_vi_limit_bike}, run ${athlete.decoupling_vi_limit_run}.`,
     },
     {
-      label: `IF ${activity.decoupling_if != null ? activity.decoupling_if.toFixed(2) : "—"} ≤ 0.85`,
+      label: `IF ${activity.decoupling_if != null ? activity.decoupling_if.toFixed(2) : "—"} ≤ ${ifLimit}`,
       pass: neverComputed ? null : !reasons.includes("intensity") && !reasons.includes("no_threshold"),
-      tooltip: `Intensity factor (NP ÷ FTP). Above 0.85 drift is expected.`,
+      tooltip: `Intensity factor (NP ÷ FTP). Above ${ifLimit} drift is expected.`,
     },
     {
-      label: `${activity.steady_seconds != null ? Math.round(activity.steady_seconds / 60) : "—"} min steady ≥ 60`,
+      label: `${activity.steady_seconds != null ? Math.round(activity.steady_seconds / 60) : "—"} min steady ≥ ${minSteady}`,
       pass: neverComputed ? null : !reasons.includes("short"),
       tooltip: `Moving time after the 10-min warm-up; stops ≥ 5 min removed.`,
     },
@@ -75,14 +83,14 @@ export function decouplingChecks(activity: Activity): DecouplingCheck[] {
   ];
 }
 
-function reasonText(reason: DecouplingReason, activity: Activity): string {
+function reasonText(reason: DecouplingReason, activity: Activity, athlete: DecouplingPrefs): string {
   switch (reason) {
     case "variable":
-      return `too variable (VI ${activity.decoupling_vi?.toFixed(2) ?? "—"}, limit ${viLimit(activity.sport)})`;
+      return `too variable (VI ${activity.decoupling_vi?.toFixed(2) ?? "—"}, limit ${viLimit(activity.sport, athlete)})`;
     case "intensity":
-      return `too intense (IF ${activity.decoupling_if?.toFixed(2) ?? "—"}, limit 0.85)`;
+      return `too intense (IF ${activity.decoupling_if?.toFixed(2) ?? "—"}, limit ${athlete.decoupling_if_limit})`;
     case "short":
-      return `too short (${activity.steady_seconds != null ? Math.round(activity.steady_seconds / 60) : 0} min steady, needs 60)`;
+      return `too short (${activity.steady_seconds != null ? Math.round(activity.steady_seconds / 60) : 0} min steady, needs ${athlete.decoupling_min_steady_minutes})`;
     case "hr_coverage":
       return `HR coverage ${activity.decoupling_hr_coverage_pct ?? 0}% (needs 90%)`;
     case "power_coverage":
@@ -98,9 +106,9 @@ function reasonText(reason: DecouplingReason, activity: Activity): string {
  * the order the backend appends them (variable, then intensity/no_threshold, short, HR
  * coverage, power coverage). Falls back to a "never computed" message (see isNeverComputed) for
  * an activity predating this feature that hasn't been recomputed yet. */
-export function notScoredReasonText(activity: Activity): string {
+export function notScoredReasonText(activity: Activity, athlete: DecouplingPrefs): string {
   const first = activity.decoupling_reasons[0];
-  if (first) return reasonText(first, activity);
+  if (first) return reasonText(first, activity, athlete);
   return isNeverComputed(activity) ? "not yet computed" : "not enough data";
 }
 

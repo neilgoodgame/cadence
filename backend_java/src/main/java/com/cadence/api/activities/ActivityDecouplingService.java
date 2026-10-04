@@ -115,8 +115,10 @@ public class ActivityDecouplingService {
 
 		ZoneType zoneType = activity.getSport() == Sport.BIKE ? ZoneType.BIKE_POWER : ZoneType.RUN_POWER;
 		Double threshold = zoneService.referenceFor(athlete, zoneType, activity);
-		DecouplingQualificationCalculator.Result check =
-				DecouplingQualificationCalculator.checkQualification(activity.getSport(), windowPower, windowHr, threshold);
+		double viLimit = activity.getSport() == Sport.BIKE ? athlete.getDecouplingViLimitBike() : athlete.getDecouplingViLimitRun();
+		DecouplingQualificationCalculator.Result check = DecouplingQualificationCalculator.checkQualification(
+				activity.getSport(), windowPower, windowHr, threshold, viLimit, athlete.getDecouplingIfLimit(),
+				athlete.getDecouplingMinSteadyMinutes() * 60);
 
 		Double avgTemp = meanDouble(windowAir);
 		Double avgCore = meanDouble(windowCore);

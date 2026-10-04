@@ -14,12 +14,16 @@ import java.util.OptionalDouble;
 public final class DecouplingQualificationCalculator {
 
 	public static final int WARMUP_SECONDS = 600;
+	// VI/IF limit and minimum steady minutes are athlete-configurable (User.
+	// decoupleViLimitBike/Run/decouplingIfLimit/decouplingMinSteadyMinutes) - these are just
+	// the defaults new athletes get, matching the design spec's own fixed numbers. Not read
+	// directly by checkQualification below; ActivityDecouplingService resolves the athlete's
+	// actual values and passes them in explicitly.
 	public static final int MIN_STEADY_SECONDS = 3600;
 	public static final double IF_LIMIT = 0.85;
 	public static final double HR_COVERAGE_MIN = 0.90;
 	public static final double POWER_COVERAGE_MIN = 0.95;
-
-	private static final Map<Sport, Double> VI_LIMIT = Map.of(Sport.BIKE, 1.06, Sport.RUN, 1.04);
+	public static final Map<Sport, Double> VI_LIMIT = Map.of(Sport.BIKE, 1.06, Sport.RUN, 1.04);
 
 	public record Result(
 			boolean qualified, List<String> reasons, Double vi, Double ifValue, int steadySeconds,
@@ -46,14 +50,19 @@ public final class DecouplingQualificationCalculator {
 		return null;
 	}
 
-	public static Result checkQualification(Sport sport, List<Integer> powerSeries, List<Integer> hrSeries, Double threshold) {
+	/** viLimit/ifLimit/minSteadySeconds are the athlete's own configured thresholds (User.
+	 * decouplingViLimitBike/Run/decouplingIfLimit/decouplingMinSteadyMinutes) - the caller
+	 * (ActivityDecouplingService) resolves which one applies; this method doesn't read athlete
+	 * state directly, keeping it a pure function of its arguments like the rest of this class. */
+	public static Result checkQualification(Sport sport, List<Integer> powerSeries, List<Integer> hrSeries, Double threshold,
+			double viLimit, double ifLimit, int minSteadySeconds) {
 		List<String> reasons = new ArrayList<>();
 		int steadySeconds = powerSeries.size();
 
 		Double avgPower = mean(powerSeries);
 		Double normPower = powerSeries.stream().anyMatch(Objects::nonNull) ? NormalizedPowerCalculator.compute(powerSeries) : null;
 		Double vi = (normPower != null && avgPower != null && avgPower != 0) ? round2(normPower / avgPower) : null;
-		if (vi == null || vi > VI_LIMIT.get(sport)) {
+		if (vi == null || vi > viLimit) {
 			reasons.add("variable");
 		}
 
@@ -61,13 +70,13 @@ public final class DecouplingQualificationCalculator {
 		if (threshold == null) {
 			reasons.add("no_threshold");
 		}
-		if (ifValue == null || ifValue > IF_LIMIT) {
+		if (ifValue == null || ifValue > ifLimit) {
 			if (threshold != null) {
 				reasons.add("intensity");
 			}
 		}
 
-		if (steadySeconds < MIN_STEADY_SECONDS) {
+		if (steadySeconds < minSteadySeconds) {
 			reasons.add("short");
 		}
 
