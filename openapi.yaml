@@ -957,6 +957,86 @@ paths:
                     items:
                       $ref: "#/components/schemas/BestEffort"
 
+  /v1/athletes/{id}/durability:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Best efforts]
+      summary: Aerobic decoupling sessions and durability (best power once tired)
+      operationId: getDurability
+      description: >
+        Backs the Best Efforts screen's Durability view and the Activity Analysis "Aerobic
+        decoupling" card's durability strip. `sessions` are qualified (steady-session)
+        activities only, ascending by date. `rolling` is a trailing 28-day average per
+        sport, one point per session date. `durability.cells` is the best power per
+        (threshold, window_s) in the period; `pct_of_fresh` is that divided by the best
+        threshold=0 power for the same window in the same period.
+      parameters:
+        - name: sport
+          in: query
+          schema: { type: string, enum: [all, ride, run], default: all }
+        - name: period
+          in: query
+          schema: { type: string, enum: [4w, 16w, 1y, all], default: 16w }
+      responses:
+        "200":
+          description: Decoupling sessions, rolling trend, summary and durability tables.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        activity_id: { type: string }
+                        name: { type: string }
+                        date: { type: string, format: date }
+                        sport: { type: string, enum: [ride, run] }
+                        decoupling_pct: { type: number }
+                        ef: { type: [number, "null"], description: Whole-window EF (avg power / avg HR). }
+                        ef_first: { type: number }
+                        ef_second: { type: number }
+                        steady_seconds: { type: integer }
+                        hot: { type: boolean }
+                        avg_temp: { type: [number, "null"] }
+                        avg_core: { type: [number, "null"] }
+                  rolling:
+                    type: object
+                    properties:
+                      ride:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date: { type: string, format: date }
+                            decoupling_pct: { type: number }
+                            ef: { type: [number, "null"] }
+                      run:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date: { type: string, format: date }
+                            decoupling_pct: { type: number }
+                            ef: { type: [number, "null"] }
+                  summary:
+                    type: object
+                    properties:
+                      count: { type: integer }
+                      last28_avg: { type: [number, "null"] }
+                      prev28_avg: { type: [number, "null"] }
+                      last28_cool_avg: { type: [number, "null"], description: last28_avg excluding hot sessions. }
+                      last28_ef: { type: [number, "null"] }
+                      prev28_ef: { type: [number, "null"] }
+                  durability:
+                    type: object
+                    properties:
+                      ride: { $ref: "#/components/schemas/DurabilitySportSection" }
+                      run: { $ref: "#/components/schemas/DurabilitySportSection" }
+
   /v1/athletes/{id}/best-efforts/ranks:
     parameters:
       - $ref: "#/components/parameters/AthleteId"
@@ -2762,6 +2842,62 @@ components:
             Benefit label derived from aerobic_training_effect (e.g. "Improving",
             "Overreaching"). Empty string when aerobic_training_effect is null.
           example: Highly Improving
+        decoupling_pct:
+          type: [number, "null"]
+          description: >
+            Aerobic decoupling (Pw:HR) - the drop in efficiency (power/HR) from the first
+            to the second half of the steady window. Null when decoupling_qualified is
+            false - not computed, not just hidden.
+          example: 5.4
+        ef_first: { type: [number, "null"], description: "W/bpm, first half. Null when not qualified." }
+        ef_second: { type: [number, "null"], description: "W/bpm, second half. Null when not qualified." }
+        steady_seconds:
+          type: [integer, "null"]
+          description: Moving time in the scored window (after the 10-min warm-up). Populated whenever there's a steady window to measure, qualified or not.
+          example: 4860
+        decoupling_qualified: { type: boolean, default: false }
+        decoupling_reasons:
+          type: array
+          items: { type: string, enum: [sport, no_power, variable, intensity, short, hr_coverage, power_coverage, no_threshold] }
+          description: Every failing qualification check, not just the first. Empty when qualified.
+          example: []
+        decoupling_vi:
+          type: [number, "null"]
+          description: Variability index (NP / avg power, steady window). Shown in the checks row even when not qualified.
+          example: 1.04
+        decoupling_if:
+          type: [number, "null"]
+          description: Intensity factor (NP / FTP or CP at the activity's date).
+          example: 0.74
+        decoupling_avg_temp: { type: [number, "null"], description: "Mean air °C over the steady window." }
+        decoupling_avg_core: { type: [number, "null"], description: "Mean core °C over the steady window (CORE sensor, where present)." }
+        decoupling_hot:
+          type: boolean
+          default: false
+          description: avg air temp >= 25°C or avg core temp >= 38.0°C. Marked, not excluded from scoring.
+        decoupling_hr_coverage_pct:
+          type: [number, "null"]
+          description: "% of steady-window samples with a non-null HR reading, 0-100. Populated whenever there's a steady window, qualified or not."
+          example: 100
+        decoupling_power_coverage_pct:
+          type: [number, "null"]
+          description: "% of steady-window samples with a non-null power reading, 0-100."
+          example: 100
+        decoupling_halves:
+          type: array
+          description: One entry per half (empty when not qualified).
+          items:
+            type: object
+            properties:
+              start_s: { type: integer }
+              end_s: { type: integer }
+              power: { type: [integer, "null"] }
+              hr: { type: [integer, "null"] }
+              ef: { type: [number, "null"], description: W/bpm }
+        durability:
+          type: array
+          description: This activity's own ActivityDurability rows, for the Stats card's durability strip.
+          items: { $ref: "#/components/schemas/ActivityDurabilityRow" }
         tags:
           type: array
           items: { type: string }
@@ -2945,6 +3081,43 @@ components:
         unit: { type: string, example: watts }
         date: { type: string, format: date }
         activity_id: { type: string }
+
+    ActivityDurabilityRow:
+      type: object
+      description: Best mean-max power for window_s that starts after threshold of accumulated fatigue has been reached.
+      properties:
+        threshold:
+          type: integer
+          description: kJ of work (ride) or minutes of moving time (run). 0 = fresh (no fatigue gate).
+          example: 2000
+        window_s: { type: integer, enum: [300, 1200, 3600] }
+        power: { type: integer, description: W }
+        start_offset_s: { type: integer, description: Elapsed seconds from activity start to this window's own start. }
+
+    DurabilitySportSection:
+      type: object
+      properties:
+        basis: { type: string, enum: [kj, minutes] }
+        thresholds:
+          type: array
+          items: { type: integer }
+          example: [0, 1000, 2000, 3000]
+        windows:
+          type: array
+          items: { type: integer }
+          example: [300, 1200, 3600]
+        cells:
+          type: array
+          items:
+            type: object
+            properties:
+              window_s: { type: integer }
+              threshold: { type: integer }
+              power: { type: integer }
+              pct_of_fresh: { type: [integer, "null"] }
+              activity_id: { type: string }
+              activity_name: { type: string }
+              date: { type: string, format: date }
 
     RecentTopEffort:
       type: object

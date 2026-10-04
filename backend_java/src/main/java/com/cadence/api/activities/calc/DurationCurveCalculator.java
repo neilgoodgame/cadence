@@ -28,6 +28,32 @@ public final class DurationCurveCalculator {
 		return best;
 	}
 
+	/** bestAverage's own value, plus the winning window's start index - durability's startOffsetS needs to
+	 * know *where* the best window was, not just its value. */
+	public record BestWindow(double average, int startIndex) {}
+
+	public static BestWindow bestAverageWithOffset(List<Integer> series, int window) {
+		int n = series.size();
+		if (window > n || window <= 0) {
+			return null;
+		}
+		long windowSum = 0;
+		for (int i = 0; i < window; i++) {
+			windowSum += orZero(series.get(i));
+		}
+		double best = windowSum / (double) window;
+		int bestStart = 0;
+		for (int i = window; i < n; i++) {
+			windowSum += orZero(series.get(i)) - orZero(series.get(i - window));
+			double avg = windowSum / (double) window;
+			if (avg > best) {
+				best = avg;
+				bestStart = i - window + 1;
+			}
+		}
+		return new BestWindow(best, bestStart);
+	}
+
 	/** A point per duration that the series is at least as long as, e.g. {@code {5: 712.0, 300: 351.0}}. */
 	public static Map<Integer, Double> compute(List<Integer> series, List<Integer> durations) {
 		Map<Integer, Double> points = new LinkedHashMap<>();

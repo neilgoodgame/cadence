@@ -113,6 +113,38 @@ class Activity(PrefixedIDModel):
     # (dual-sided/balance-capable power meters only - null for everything else, which is
     # most activities). Right % = 100 - this.
     avg_left_balance_pct = models.FloatField(null=True, blank=True)
+    # Aerobic decoupling (Pw:HR) - see uploads/processing.py's compute_decoupling. Bike/run
+    # with a power stream only; null/false everywhere else. The "steady window" is the
+    # activity's own Record stream after the first 10 min (warm-up) - a recording pause of any
+    # length already contributes no rows, so it never needs separate handling from a "real"
+    # stop. decoupling_pct/ef_first/ef_second/decoupling_halves are null/empty whenever
+    # decoupling_qualified is false (not computed, not just hidden) - decoupling_vi/
+    # decoupling_if/steady_seconds/decoupling_hot/decoupling_avg_temp/decoupling_avg_core are
+    # still populated where computable, since the UI shows them in the qualification checks
+    # row even on a not-scored session.
+    decoupling_pct = models.FloatField(null=True, blank=True)
+    ef_first = models.FloatField(null=True, blank=True, help_text="W/bpm")
+    ef_second = models.FloatField(null=True, blank=True, help_text="W/bpm")
+    steady_seconds = models.IntegerField(null=True, blank=True)
+    decoupling_qualified = models.BooleanField(default=False)
+    # List of DECOUPLING_REASON_CHOICES codes - every failing check, not just the first (the
+    # UI's checks row shows all four with their own pass/fail).
+    decoupling_reasons = models.JSONField(default=list, blank=True)
+    decoupling_vi = models.FloatField(null=True, blank=True, help_text="Variability index: NP / avg power")
+    decoupling_if = models.FloatField(null=True, blank=True, help_text="Intensity factor: NP / threshold at date")
+    decoupling_avg_temp = models.FloatField(null=True, blank=True, help_text="Air °C over the steady window")
+    decoupling_avg_core = models.FloatField(null=True, blank=True, help_text="Core °C over the steady window")
+    decoupling_hot = models.BooleanField(default=False)
+    # % of steady-window samples with a non-null HR/power reading, 0-100 - the real numbers
+    # behind the "HR 100% · power 100%" checks-row chip and the "HR coverage 72% (needs 90%)"
+    # not-scored reason text. Always populated whenever there's a steady window to measure
+    # (same "qualified or not" availability as decoupling_vi above).
+    decoupling_hr_coverage_pct = models.FloatField(null=True, blank=True)
+    decoupling_power_coverage_pct = models.FloatField(null=True, blank=True)
+    # [{start_s, end_s, power, hr, ef}, ...] - one entry per half, for the Stats card's halves
+    # table. Stored rather than recomputed on read, same "compute once at ingest" convention as
+    # avg_power/duration curves above.
+    decoupling_halves = models.JSONField(default=list, blank=True)
     workout = models.ForeignKey(Workout, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     bike = models.ForeignKey(Bike, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
     shoe = models.ForeignKey(Shoe, null=True, blank=True, on_delete=models.SET_NULL, related_name="activities")
@@ -311,6 +343,51 @@ class BestEffort(models.Model):
 
     def __str__(self) -> str:
         return f"{self.athlete_id} {self.kind} {self.window}"
+
+
+class ActivityDurability(models.Model):
+    """One row per (activity, threshold, window_s) where a qualifying effort exists - best
+    mean-max power for `window_s` that *starts* after `threshold` of accumulated fatigue
+    (cycling: kJ of work; running: minutes of moving time) has been reached. See
+    uploads/processing.py's compute_durability_rows. The `threshold = 0` row is just the
+    activity's normal mean-max best (no fatigue gate), which keeps a "fresh" baseline in the
+    same query as every fatigued one. Not fetched by its own id, so it uses a plain
+    BigAutoField per the core.models.PrefixedIDModel convention (same as BestEffort above).
+
+    Written idempotently (delete + reinsert per activity) by whatever computed it, not
+    incrementally updated - see compute_durability_rows's own docstring.
+    """
+
+    BASIS_CHOICES = [
+        ("kj", "Kilojoules"),
+        ("minutes", "Minutes"),
+    ]
+
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="durability_rows")
+    # Denormalised from activity.athlete/activity.start_date - this table is queried directly
+    # by (athlete, sport, date range) for the Best Efforts Durability view, which would
+    # otherwise need a join through Activity for every row.
+    athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="durability_rows")
+    sport = models.CharField(max_length=10, choices=[c for c in Activity.SPORT_CHOICES if c[0] in ("bike", "run")])
+    basis = models.CharField(max_length=10, choices=BASIS_CHOICES)
+    # 0 (fresh), 1000/2000/3000 (kJ, basis="kj") or 0/60/90 (minutes, basis="minutes").
+    threshold = models.IntegerField()
+    window_s = models.IntegerField()
+    power = models.IntegerField(help_text="W")
+    start_offset_s = models.IntegerField()
+    activity_date = models.DateField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["activity", "threshold", "window_s"], name="unique_activity_durability"),
+        ]
+        indexes = [
+            models.Index(fields=["athlete", "sport", "activity_date"]),
+        ]
+        verbose_name_plural = "activity durability rows"
+
+    def __str__(self) -> str:
+        return f"{self.activity_id} after {self.threshold}{self.basis} {self.window_s}s={self.power}W"
 
 
 class ActivityComment(PrefixedIDModel):

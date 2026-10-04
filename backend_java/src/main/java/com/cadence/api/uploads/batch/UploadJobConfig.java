@@ -38,6 +38,11 @@ public class UploadJobConfig {
 	}
 
 	@Bean
+	public Step decouplingDurabilityStep(JobRepository jobRepository, PlatformTransactionManager tm, ActivityDecouplingTasklet tasklet) {
+		return new StepBuilder("decouplingDurabilityStep", jobRepository).tasklet(tasklet, tm).build();
+	}
+
+	@Bean
 	public Step computeDerivedStatsStep(JobRepository jobRepository, PlatformTransactionManager tm, ComputeDerivedStatsTasklet tasklet) {
 		return new StepBuilder("computeDerivedStatsStep", jobRepository).tasklet(tasklet, tm).build();
 	}

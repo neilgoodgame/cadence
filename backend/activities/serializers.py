@@ -2,7 +2,13 @@ from typing import Any
 
 from rest_framework import serializers
 
-from .models import Activity, ActivityComment, BestEffort, DurationCurve, Lap, Tag
+from .models import Activity, ActivityComment, ActivityDurability, BestEffort, DurationCurve, Lap, Tag
+
+
+class ActivityDurabilitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ActivityDurability
+        fields = ["threshold", "window_s", "power", "start_offset_s"]
 
 
 class ActivitySerializer(serializers.ModelSerializer):
@@ -10,6 +16,7 @@ class ActivitySerializer(serializers.ModelSerializer):
     child_activity_ids = serializers.SerializerMethodField()
     duplicate_activity_ids = serializers.SerializerMethodField()
     threshold_history = serializers.SerializerMethodField()
+    durability = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
@@ -59,6 +66,21 @@ class ActivitySerializer(serializers.ModelSerializer):
             "aerobic_training_effect",
             "anaerobic_training_effect",
             "training_effect_label",
+            "decoupling_pct",
+            "ef_first",
+            "ef_second",
+            "steady_seconds",
+            "decoupling_qualified",
+            "decoupling_reasons",
+            "decoupling_vi",
+            "decoupling_if",
+            "decoupling_avg_temp",
+            "decoupling_avg_core",
+            "decoupling_hot",
+            "decoupling_hr_coverage_pct",
+            "decoupling_power_coverage_pct",
+            "decoupling_halves",
+            "durability",
             "tags",
             "workout_id",
             "bike_id",
@@ -83,6 +105,9 @@ class ActivitySerializer(serializers.ModelSerializer):
         if obj.primary_activity_id:
             return []
         return list(obj.duplicate_activities.order_by("start_date").values_list("id", flat=True))
+
+    def get_durability(self, obj: Activity) -> list[dict]:
+        return ActivityDurabilitySerializer(obj.durability_rows.order_by("threshold", "window_s"), many=True).data
 
     def get_threshold_history(self, obj: Activity) -> list[dict]:
         # Two distinct signals, both keyed off this activity - empty for the vast majority of

@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User, UserRelationship
-from activities.models import Activity, BestEffort, Record
+from activities.models import Activity, ActivityDurability, BestEffort, Record
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 from races.models import Race
@@ -1645,3 +1645,174 @@ class ThresholdSuggestionApiTests(TestCase):
 
         after_change = client.get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
         self.assertEqual(len([s for s in after_change.json()["data"] if s["field"] == "ftp"]), 1)
+
+
+class AthleteDurabilityViewTests(TestCase):
+    """GET /v1/athletes/{id}/durability - period/sport filtering, the rolling-average window,
+    pct_of_fresh, and permissions. Activities/ActivityDurability rows are created directly with
+    their decoupling_* fields already set (the computation itself is covered by
+    uploads.tests.test_decoupling_durability) - this class is only about the endpoint's own
+    filtering/aggregation."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="durability-athlete@example.cc", password="x", name="Athlete")
+        self.outsider = User.objects.create_user(email="durability-outsider@example.cc", password="x", name="Outsider")
+
+    def _qualified_activity(
+        self, sport, days_ago, decoupling_pct, hot=False, ef_first=1.5, ef_second=1.4, name="Session"
+    ):
+        start = timezone.now() - timedelta(days=days_ago)
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport=sport,
+            name=name,
+            start_date=start,
+            moving_time=4200,
+            decoupling_pct=decoupling_pct,
+            ef_first=ef_first,
+            ef_second=ef_second,
+            steady_seconds=3600,
+            decoupling_qualified=True,
+            decoupling_hot=hot,
+            decoupling_avg_temp=28.0 if hot else 18.0,
+            decoupling_halves=[
+                {"start_s": 0, "end_s": 1799, "power": 200, "hr": 128, "ef": ef_first},
+                {"start_s": 1800, "end_s": 3599, "power": 200, "hr": 131, "ef": ef_second},
+            ],
+        )
+        return activity
+
+    def test_outsider_forbidden(self):
+        response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/durability")
+        self.assertEqual(response.status_code, 403)
+
+    def test_sport_filter_translates_bike_to_ride_and_excludes_run(self):
+        self._qualified_activity("bike", 5, 4.0)
+        self._qualified_activity("run", 5, 6.0)
+
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/durability?sport=ride")
+        body = response.json()
+        self.assertEqual(len(body["sessions"]), 1)
+        self.assertEqual(body["sessions"][0]["sport"], "ride")
+        self.assertIn("ride", body["rolling"])
+        self.assertNotIn("run", body["rolling"])
+
+    def test_sport_all_combines_both(self):
+        self._qualified_activity("bike", 5, 4.0)
+        self._qualified_activity("run", 5, 6.0)
+
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/durability?sport=all")
+        body = response.json()
+        self.assertEqual(len(body["sessions"]), 2)
+        self.assertEqual(set(body["rolling"].keys()), {"ride", "run"})
+
+    def test_period_filter_excludes_older_sessions(self):
+        self._qualified_activity("bike", 10, 4.0, name="Recent")
+        self._qualified_activity("bike", 200, 5.0, name="Old")
+
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/durability?period=4w")
+        names = [s["name"] for s in response.json()["sessions"]]
+        self.assertEqual(names, ["Recent"])
+
+        response_all = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/durability?period=all")
+        names_all = [s["name"] for s in response_all.json()["sessions"]]
+        self.assertEqual(set(names_all), {"Recent", "Old"})
+
+    def test_rolling_average_is_a_trailing_28_day_mean(self):
+        # Two sessions 10 days apart (both within each other's 28-day trailing window), then a
+        # third 40 days after the second (outside its window) - its rolling point is itself
+        # alone.
+        self._qualified_activity("bike", 50, 10.0, name="A")
+        self._qualified_activity("bike", 40, 6.0, name="B")
+        self._qualified_activity("bike", 2, 2.0, name="C")
+
+        body = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/durability?period=all").json()
+        ride_rolling = body["rolling"]["ride"]
+        self.assertEqual(len(ride_rolling), 3)
+        self.assertEqual(ride_rolling[0]["decoupling_pct"], 10.0)
+        # B's trailing window (B.date-28d, B.date] includes A (10 days earlier) too.
+        self.assertEqual(ride_rolling[1]["decoupling_pct"], 8.0)
+        # C is 38 days after B - outside B's/A's reach, and alone in its own window.
+        self.assertEqual(ride_rolling[2]["decoupling_pct"], 2.0)
+
+    def test_summary_last28_and_prev28(self):
+        self._qualified_activity("bike", 10, 4.0)  # last28
+        self._qualified_activity("bike", 40, 8.0)  # prev28
+
+        body = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/durability?period=all").json()
+        self.assertEqual(body["summary"]["count"], 2)
+        self.assertEqual(body["summary"]["last28_avg"], 4.0)
+        self.assertEqual(body["summary"]["prev28_avg"], 8.0)
+
+    def test_summary_cool_avg_excludes_hot_sessions(self):
+        self._qualified_activity("bike", 5, 4.0, hot=False)
+        self._qualified_activity("bike", 6, 10.0, hot=True)
+
+        body = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/durability?period=all").json()
+        self.assertEqual(body["summary"]["last28_avg"], 7.0)
+        self.assertEqual(body["summary"]["last28_cool_avg"], 4.0)
+
+    def test_pct_of_fresh(self):
+        activity = self._qualified_activity("bike", 5, 4.0)
+        ActivityDurability.objects.create(
+            activity=activity,
+            athlete=self.athlete,
+            sport="bike",
+            basis="kj",
+            threshold=0,
+            window_s=1200,
+            power=250,
+            start_offset_s=0,
+            activity_date=activity.start_date.date(),
+        )
+        ActivityDurability.objects.create(
+            activity=activity,
+            athlete=self.athlete,
+            sport="bike",
+            basis="kj",
+            threshold=2000,
+            window_s=1200,
+            power=220,
+            start_offset_s=1500,
+            activity_date=activity.start_date.date(),
+        )
+
+        body = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/durability?period=all").json()
+        cells = body["durability"]["ride"]["cells"]
+        fresh_cell = next(c for c in cells if c["threshold"] == 0 and c["window_s"] == 1200)
+        tired_cell = next(c for c in cells if c["threshold"] == 2000 and c["window_s"] == 1200)
+        self.assertEqual(fresh_cell["power"], 250)
+        self.assertEqual(fresh_cell["pct_of_fresh"], 100)
+        self.assertEqual(tired_cell["power"], 220)
+        self.assertEqual(tired_cell["pct_of_fresh"], round(220 / 250 * 100))
+
+    def test_durability_cell_picks_the_best_across_multiple_activities(self):
+        a1 = self._qualified_activity("bike", 10, 4.0, name="Lower")
+        a2 = self._qualified_activity("bike", 5, 4.0, name="Higher")
+        ActivityDurability.objects.create(
+            activity=a1,
+            athlete=self.athlete,
+            sport="bike",
+            basis="kj",
+            threshold=1000,
+            window_s=300,
+            power=200,
+            start_offset_s=0,
+            activity_date=a1.start_date.date(),
+        )
+        ActivityDurability.objects.create(
+            activity=a2,
+            athlete=self.athlete,
+            sport="bike",
+            basis="kj",
+            threshold=1000,
+            window_s=300,
+            power=240,
+            start_offset_s=0,
+            activity_date=a2.start_date.date(),
+        )
+
+        body = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/durability?period=all").json()
+        cell = next(c for c in body["durability"]["ride"]["cells"] if c["threshold"] == 1000 and c["window_s"] == 300)
+        self.assertEqual(cell["power"], 240)
+        self.assertEqual(cell["activity_name"], "Higher")

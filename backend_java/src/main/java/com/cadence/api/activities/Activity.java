@@ -14,6 +14,10 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "activity")
@@ -173,6 +177,61 @@ public class Activity extends PrefixedIdEntity {
 
 	@Column(name = "training_effect_label", nullable = false)
 	private String trainingEffectLabel = "";
+
+	// Aerobic decoupling (Pw:HR) - see ActivityDecouplingCalculator. Bike/run with a power
+	// stream only; null/false everywhere else. decoupling_pct/ef_first/ef_second/
+	// decoupling_halves are null/empty whenever decouplingQualified is false (not computed,
+	// not just hidden) - decoupling_vi/decoupling_if/steady_seconds/decouplingHot/
+	// decoupling_avg_temp/decoupling_avg_core are still populated where computable, since the
+	// UI shows them in the qualification checks row even on a not-scored session.
+	@Column(name = "decoupling_pct")
+	private Double decouplingPct;
+
+	@Column(name = "ef_first")
+	private Double efFirst;
+
+	@Column(name = "ef_second")
+	private Double efSecond;
+
+	@Column(name = "steady_seconds")
+	private Integer steadySeconds;
+
+	@Column(name = "decoupling_qualified", nullable = false)
+	private boolean decouplingQualified;
+
+	/** Every failing qualification-check reason code, not just the first. Empty when qualified. */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "decoupling_reasons", nullable = false)
+	private List<String> decouplingReasons = List.of();
+
+	@Column(name = "decoupling_vi")
+	private Double decouplingVi;
+
+	@Column(name = "decoupling_if")
+	private Double decouplingIf;
+
+	@Column(name = "decoupling_avg_temp")
+	private Double decouplingAvgTemp;
+
+	@Column(name = "decoupling_avg_core")
+	private Double decouplingAvgCore;
+
+	@Column(name = "decoupling_hot", nullable = false)
+	private boolean decouplingHot;
+
+	// % of steady-window samples with a non-null HR/power reading, 0-100 - the real numbers
+	// behind the "HR 100% · power 100%" checks-row chip. Always populated whenever there's a
+	// steady window to measure (same "qualified or not" availability as decouplingVi above).
+	@Column(name = "decoupling_hr_coverage_pct")
+	private Double decouplingHrCoveragePct;
+
+	@Column(name = "decoupling_power_coverage_pct")
+	private Double decouplingPowerCoveragePct;
+
+	/** [{start_s, end_s, power, hr, ef}, ...] - one entry per half, for the Stats card's halves table. */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "decoupling_halves", nullable = false)
+	private List<Map<String, Object>> decouplingHalves = List.of();
 
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "workout_id")
@@ -558,6 +617,118 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setTrainingEffectLabel(String trainingEffectLabel) {
 		this.trainingEffectLabel = trainingEffectLabel;
+	}
+
+	public Double getDecouplingPct() {
+		return decouplingPct;
+	}
+
+	public void setDecouplingPct(Double decouplingPct) {
+		this.decouplingPct = decouplingPct;
+	}
+
+	public Double getEfFirst() {
+		return efFirst;
+	}
+
+	public void setEfFirst(Double efFirst) {
+		this.efFirst = efFirst;
+	}
+
+	public Double getEfSecond() {
+		return efSecond;
+	}
+
+	public void setEfSecond(Double efSecond) {
+		this.efSecond = efSecond;
+	}
+
+	public Integer getSteadySeconds() {
+		return steadySeconds;
+	}
+
+	public void setSteadySeconds(Integer steadySeconds) {
+		this.steadySeconds = steadySeconds;
+	}
+
+	public boolean isDecouplingQualified() {
+		return decouplingQualified;
+	}
+
+	public void setDecouplingQualified(boolean decouplingQualified) {
+		this.decouplingQualified = decouplingQualified;
+	}
+
+	public List<String> getDecouplingReasons() {
+		return decouplingReasons;
+	}
+
+	public void setDecouplingReasons(List<String> decouplingReasons) {
+		this.decouplingReasons = decouplingReasons;
+	}
+
+	public Double getDecouplingVi() {
+		return decouplingVi;
+	}
+
+	public void setDecouplingVi(Double decouplingVi) {
+		this.decouplingVi = decouplingVi;
+	}
+
+	public Double getDecouplingIf() {
+		return decouplingIf;
+	}
+
+	public void setDecouplingIf(Double decouplingIf) {
+		this.decouplingIf = decouplingIf;
+	}
+
+	public Double getDecouplingAvgTemp() {
+		return decouplingAvgTemp;
+	}
+
+	public void setDecouplingAvgTemp(Double decouplingAvgTemp) {
+		this.decouplingAvgTemp = decouplingAvgTemp;
+	}
+
+	public Double getDecouplingAvgCore() {
+		return decouplingAvgCore;
+	}
+
+	public void setDecouplingAvgCore(Double decouplingAvgCore) {
+		this.decouplingAvgCore = decouplingAvgCore;
+	}
+
+	public boolean isDecouplingHot() {
+		return decouplingHot;
+	}
+
+	public void setDecouplingHot(boolean decouplingHot) {
+		this.decouplingHot = decouplingHot;
+	}
+
+	public Double getDecouplingHrCoveragePct() {
+		return decouplingHrCoveragePct;
+	}
+
+	public void setDecouplingHrCoveragePct(Double decouplingHrCoveragePct) {
+		this.decouplingHrCoveragePct = decouplingHrCoveragePct;
+	}
+
+	public Double getDecouplingPowerCoveragePct() {
+		return decouplingPowerCoveragePct;
+	}
+
+	public void setDecouplingPowerCoveragePct(Double decouplingPowerCoveragePct) {
+		this.decouplingPowerCoveragePct = decouplingPowerCoveragePct;
+	}
+
+	public List<Map<String, Object>> getDecouplingHalves() {
+		return decouplingHalves;
+	}
+
+	public void setDecouplingHalves(List<Map<String, Object>> decouplingHalves) {
+		this.decouplingHalves = decouplingHalves;
 	}
 
 	public Workout getWorkout() {

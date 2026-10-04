@@ -24,6 +24,11 @@ public record ActivityResponse(
 		Double avgHeatStrain, Double maxHeatStrain, Double avgCoreTemp, Double maxCoreTemp,
 		Double avgSkinTemp, Double maxSkinTemp,
 		Double aerobicTrainingEffect, Double anaerobicTrainingEffect, String trainingEffectLabel,
+		Double decouplingPct, Double efFirst, Double efSecond, Integer steadySeconds, boolean decouplingQualified,
+		List<String> decouplingReasons, Double decouplingVi, Double decouplingIf, Double decouplingAvgTemp,
+		Double decouplingAvgCore, boolean decouplingHot, Double decouplingHrCoveragePct, Double decouplingPowerCoveragePct,
+		List<java.util.Map<String, Object>> decouplingHalves,
+		List<ActivityDurabilityResponse> durability,
 		List<String> tags, String workoutId, String bikeId, String shoeId,
 		// Multisport linkage: children carry parentActivityId, the parent lists childActivityIds
 		// in start-date order (empty for every non-multisport activity).
@@ -40,7 +45,11 @@ public record ActivityResponse(
 				maxCadence, maxSpeed, totalDescent, elevationMin, elevationMax, calories, trimp, avgLeftBalancePct,
 				List.of(), startWeightKg, endWeightKg, fluidsMl, avgAirTemp, avgHumidity,
 				avgHeatStrain, maxHeatStrain, avgCoreTemp, maxCoreTemp, avgSkinTemp, maxSkinTemp, aerobicTrainingEffect,
-				anaerobicTrainingEffect, trainingEffectLabel, tags, workoutId, bikeId, shoeId, parentActivityId,
+				anaerobicTrainingEffect, trainingEffectLabel,
+				decouplingPct, efFirst, efSecond, steadySeconds, decouplingQualified, decouplingReasons, decouplingVi,
+				decouplingIf, decouplingAvgTemp, decouplingAvgCore, decouplingHot, decouplingHrCoveragePct,
+				decouplingPowerCoveragePct, decouplingHalves, durability,
+				tags, workoutId, bikeId, shoeId, parentActivityId,
 				childActivityIds, primaryActivityId, duplicateActivityIds);
 	}
 }

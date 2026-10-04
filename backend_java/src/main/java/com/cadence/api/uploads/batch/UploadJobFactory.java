@@ -33,6 +33,7 @@ public class UploadJobFactory {
 	private final UploadJobExecutionListener listener;
 	private final Step parseFileStep;
 	private final Step thresholdHistoryStep;
+	private final Step decouplingDurabilityStep;
 	private final Step computeDerivedStatsStep;
 	private final Step durationCurveStep;
 	private final Step bestEffortStep;
@@ -43,8 +44,8 @@ public class UploadJobFactory {
 
 	public UploadJobFactory(JobRepository jobRepository, PlatformTransactionManager transactionManager,
 			UploadJobContextRegistry contextRegistry, UploadJobExecutionListener listener, Step parseFileStep,
-			Step thresholdHistoryStep, Step computeDerivedStatsStep, Step durationCurveStep, Step bestEffortStep,
-			Step workoutMatchStep, Step finalizeUploadStep,
+			Step thresholdHistoryStep, Step decouplingDurabilityStep, Step computeDerivedStatsStep,
+			Step durationCurveStep, Step bestEffortStep, Step workoutMatchStep, Step finalizeUploadStep,
 			ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor,
 			ItemWriter<RecordRow> recordItemWriter) {
 		this.jobRepository = jobRepository;
@@ -53,6 +54,7 @@ public class UploadJobFactory {
 		this.listener = listener;
 		this.parseFileStep = parseFileStep;
 		this.thresholdHistoryStep = thresholdHistoryStep;
+		this.decouplingDurabilityStep = decouplingDurabilityStep;
 		this.computeDerivedStatsStep = computeDerivedStatsStep;
 		this.durationCurveStep = durationCurveStep;
 		this.bestEffortStep = bestEffortStep;
@@ -83,6 +85,7 @@ public class UploadJobFactory {
 				.from(parseFileStep).on(ExitStatus.FAILED.getExitCode()).fail()
 				.from(parseFileStep).on("*").to(loadRecordsStep)
 				.next(thresholdHistoryStep)
+				.next(decouplingDurabilityStep)
 				.next(computeDerivedStatsStep)
 				.next(durationCurveStep)
 				.next(bestEffortStep)

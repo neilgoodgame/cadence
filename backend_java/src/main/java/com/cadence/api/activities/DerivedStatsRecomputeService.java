@@ -45,14 +45,17 @@ public class DerivedStatsRecomputeService {
 	private final RecordRepository recordRepository;
 	private final UserRepository userRepository;
 	private final ZoneService zoneService;
+	private final ActivityDecouplingService decouplingService;
 	private final TransactionTemplate tx;
 
 	public DerivedStatsRecomputeService(ActivityRepository activityRepository, RecordRepository recordRepository,
-			UserRepository userRepository, ZoneService zoneService, PlatformTransactionManager tm) {
+			UserRepository userRepository, ZoneService zoneService, ActivityDecouplingService decouplingService,
+			PlatformTransactionManager tm) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.userRepository = userRepository;
 		this.zoneService = zoneService;
+		this.decouplingService = decouplingService;
 		this.tx = new TransactionTemplate(tm);
 	}
 
@@ -61,7 +64,11 @@ public class DerivedStatsRecomputeService {
 		Activity activity = activityRepository.findById(activityId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
 		applyBackfill(activity, activity.getAthlete());
-		return activityRepository.save(activity);
+		Activity saved = activityRepository.save(activity);
+		if (saved.getSport() == Sport.BIKE || saved.getSport() == Sport.RUN) {
+			decouplingService.computeAndPersist(saved, saved.getAthlete());
+		}
+		return saved;
 	}
 
 	/** Bulk equivalent of {@link #recomputeForActivity} - backfills every one of the
@@ -105,6 +112,9 @@ public class DerivedStatsRecomputeService {
 			boolean changed = applyBackfill(activity, athlete);
 			if (changed) {
 				activityRepository.save(activity);
+			}
+			if (activity.getSport() == Sport.BIKE || activity.getSport() == Sport.RUN) {
+				decouplingService.computeAndPersist(activity, athlete);
 			}
 			return changed;
 		});
