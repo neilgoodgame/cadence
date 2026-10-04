@@ -31,6 +31,11 @@ public class ActivityDecouplingService {
 	private static final Set<Sport> DECOUPLING_SPORTS = Set.of(Sport.BIKE, Sport.RUN);
 	private static final double HOT_AIR_TEMP_C = 25.0;
 	private static final double HOT_CORE_TEMP_C = 38.0;
+	// A long steady session drives core temp up from sustained effort alone, even on a cool day
+	// - e.g. a 3-hour run can cross 38.0 C on a 16 C day with no heat stress involved. Skin temp
+	// only rises when the body can't dissipate heat into the air (hot/humid conditions), so
+	// requiring both together is what actually distinguishes "hot session" from "just a long one."
+	private static final double HOT_SKIN_TEMP_C = 33.0;
 
 	private final RecordRepository recordRepository;
 	private final ActivityDurabilityRepository durabilityRepository;
@@ -57,8 +62,9 @@ public class ActivityDecouplingService {
 		List<Integer> tSeries = records.stream().map(Record::getT).toList();
 		List<Double> airTempSeries = records.stream().map(Record::getAirTemp).toList();
 		List<Double> coreTempSeries = records.stream().map(Record::getCoreTemp).toList();
+		List<Double> skinTempSeries = records.stream().map(Record::getSkinTemp).toList();
 
-		applyDecoupling(activity, athlete, powerSeries, hrSeries, tSeries, airTempSeries, coreTempSeries);
+		applyDecoupling(activity, athlete, powerSeries, hrSeries, tSeries, airTempSeries, coreTempSeries, skinTempSeries);
 
 		List<DurabilityCalculator.Row> rows =
 				DurabilityCalculator.computeRows(activity.getSport(), powerSeries, tSeries);
@@ -90,7 +96,7 @@ public class ActivityDecouplingService {
 	 * computeAndPersist so the pure-series-in-memory ingest path (which already has
 	 * power/hr/t/airTemp/coreTemp series without a Record round trip) can call it directly. */
 	public void applyDecoupling(Activity activity, User athlete, List<Integer> powerSeries, List<Integer> hrSeries,
-			List<Integer> tSeries, List<Double> airTempSeries, List<Double> coreTempSeries) {
+			List<Integer> tSeries, List<Double> airTempSeries, List<Double> coreTempSeries, List<Double> skinTempSeries) {
 		if (!DECOUPLING_SPORTS.contains(activity.getSport())) {
 			resetDecoupling(activity, List.of("sport"));
 			return;
@@ -112,6 +118,7 @@ public class ActivityDecouplingService {
 		List<Integer> windowT = tSeries.subList(start, tSeries.size());
 		List<Double> windowAir = airTempSeries.subList(start, airTempSeries.size());
 		List<Double> windowCore = coreTempSeries.subList(start, coreTempSeries.size());
+		List<Double> windowSkin = skinTempSeries.subList(start, skinTempSeries.size());
 
 		ZoneType zoneType = activity.getSport() == Sport.BIKE ? ZoneType.BIKE_POWER : ZoneType.RUN_POWER;
 		Double threshold = zoneService.referenceFor(athlete, zoneType, activity);
@@ -122,7 +129,9 @@ public class ActivityDecouplingService {
 
 		Double avgTemp = meanDouble(windowAir);
 		Double avgCore = meanDouble(windowCore);
-		boolean hot = (avgTemp != null && avgTemp >= HOT_AIR_TEMP_C) || (avgCore != null && avgCore >= HOT_CORE_TEMP_C);
+		Double avgSkin = meanDouble(windowSkin);
+		boolean hot = (avgTemp != null && avgTemp >= HOT_AIR_TEMP_C)
+				|| (avgCore != null && avgCore >= HOT_CORE_TEMP_C && avgSkin != null && avgSkin >= HOT_SKIN_TEMP_C);
 
 		activity.setSteadySeconds(check.steadySeconds());
 		activity.setDecouplingQualified(check.qualified());

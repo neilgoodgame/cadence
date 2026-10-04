@@ -153,7 +153,7 @@ class ActivityDecouplingServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void hotSessionAirAndCore() {
+	void hotSessionAirOnly() {
 		User athlete = newAthlete("decoupling-hot@example.cc");
 		Activity activity = newActivity(athlete, Sport.RUN, 4000);
 		setThreshold(athlete, activity, ThresholdField.CRITICAL_RUN_POWER, 250);
@@ -177,7 +177,62 @@ class ActivityDecouplingServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void notHotBelowBothThresholds() {
+	void hotSessionCoreAndSkin() {
+		User athlete = newAthlete("decoupling-hot-core@example.cc");
+		Activity activity = newActivity(athlete, Sport.BIKE, 4000);
+		setThreshold(athlete, activity, ThresholdField.FTP, 250);
+
+		Instant start = activity.getStartDate();
+		for (int t = 0; t < 4000; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(200);
+			record.setHeartrate(140);
+			record.setCoreTemp(38.4);
+			record.setSkinTemp(34.0);
+			recordRepository.save(record);
+		}
+
+		decouplingService.computeAndPersist(activity, athlete);
+
+		assertThat(activity.isDecouplingHot()).isTrue();
+		assertThat(activity.getDecouplingAvgCore()).isCloseTo(38.4, org.assertj.core.api.Assertions.within(0.1));
+	}
+
+	@Test
+	void highCoreWithoutElevatedSkinIsNotHot() {
+		// A long steady effort drives core temp up from sustained exertion alone, even on a
+		// mild day - matching a real-world false positive (a 3h run, ~16 C air, core drifting
+		// to ~38.1 C, skin staying ~31.6 C since the body was shedding heat into cool air just
+		// fine). Core alone is no longer sufficient - skin has to confirm the body couldn't
+		// dissipate heat before this counts as a heat-stress-confounded session.
+		User athlete = newAthlete("decoupling-core-no-skin@example.cc");
+		Activity activity = newActivity(athlete, Sport.RUN, 4000);
+		setThreshold(athlete, activity, ThresholdField.CRITICAL_RUN_POWER, 250);
+
+		Instant start = activity.getStartDate();
+		for (int t = 0; t < 4000; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(200);
+			record.setHeartrate(140);
+			record.setCoreTemp(38.2);
+			record.setSkinTemp(31.6);
+			recordRepository.save(record);
+		}
+
+		decouplingService.computeAndPersist(activity, athlete);
+
+		assertThat(activity.isDecouplingHot()).isFalse();
+		assertThat(activity.getDecouplingAvgCore()).isCloseTo(38.2, org.assertj.core.api.Assertions.within(0.1));
+	}
+
+	@Test
+	void notHotBelowAllThresholds() {
 		User athlete = newAthlete("decoupling-cool@example.cc");
 		Activity activity = newActivity(athlete, Sport.BIKE, 4000);
 		setThreshold(athlete, activity, ThresholdField.FTP, 250);

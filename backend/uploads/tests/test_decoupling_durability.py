@@ -154,7 +154,7 @@ class ComputeDecouplingTests(TestCase):
         power = [200] * 4000
         hr = [140] * 4000
         t = list(range(4000))
-        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, [None] * 4000)
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, [None] * 4000, [None] * 4000)
         self.assertEqual(result["decoupling_reasons"], ["sport"])
         self.assertFalse(result["decoupling_qualified"])
         self.assertIsNone(result["decoupling_pct"])
@@ -165,7 +165,7 @@ class ComputeDecouplingTests(TestCase):
         power = [None] * 4000
         hr = [140] * 4000
         t = list(range(4000))
-        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, [None] * 4000)
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, [None] * 4000, [None] * 4000)
         self.assertEqual(result["decoupling_reasons"], ["no_power"])
 
     def test_qualified_session_splits_into_two_equal_halves_and_computes_pct(self):
@@ -181,7 +181,7 @@ class ComputeDecouplingTests(TestCase):
         steady = 3600
         mid = 600 + steady // 2
         hr = warmup + [128] * (mid - 600) + [131] * (4200 - mid)
-        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4200, [None] * 4200)
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4200, [None] * 4200, [None] * 4200)
         self.assertTrue(result["decoupling_qualified"])
         self.assertEqual(result["decoupling_reasons"], [])
         self.assertAlmostEqual(result["ef_first"], 200 / 128, places=2)
@@ -200,7 +200,7 @@ class ComputeDecouplingTests(TestCase):
         t = list(range(4200))
         power = [200] * 4200
         hr = [140] * 2500 + [130] * 1700
-        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4200, [None] * 4200)
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4200, [None] * 4200, [None] * 4200)
         self.assertTrue(result["decoupling_qualified"])
         self.assertLess(result["decoupling_pct"], 0)
 
@@ -212,12 +212,12 @@ class ComputeDecouplingTests(TestCase):
         power = [200] * 4000
         hr = [140] * 4000
         air = [26.0] * 4000
-        result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000)
+        result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, [None] * 4000)
         self.assertTrue(result["decoupling_hot"])
         self.assertAlmostEqual(result["decoupling_avg_temp"], 26.0, places=1)
         self.assertIsNone(result["decoupling_avg_core"])
 
-    def test_hot_session_core_only(self):
+    def test_hot_session_core_and_skin(self):
         athlete = self._athlete()
         activity = self._activity(athlete)
         self._set_threshold(athlete, activity)
@@ -225,11 +225,42 @@ class ComputeDecouplingTests(TestCase):
         power = [200] * 4000
         hr = [140] * 4000
         core = [38.4] * 4000
-        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, core)
+        skin = [34.0] * 4000
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, core, skin)
         self.assertTrue(result["decoupling_hot"])
         self.assertAlmostEqual(result["decoupling_avg_core"], 38.4, places=1)
 
-    def test_hot_session_both(self):
+    def test_high_core_without_elevated_skin_is_not_hot(self):
+        # A long steady effort drives core temp up from sustained exertion alone, even on a
+        # mild day - matching a real-world false positive (a 3h run, ~16 C air, core drifting
+        # to ~38.1 C, skin staying ~31.6 C since the body was shedding heat into cool air just
+        # fine). Core alone is no longer sufficient - skin has to confirm the body couldn't
+        # dissipate heat before this counts as a heat-stress-confounded session.
+        athlete = self._athlete()
+        activity = self._activity(athlete, sport="run")
+        self._set_threshold(athlete, activity, field="critical_run_power")
+        t = list(range(4000))
+        power = [200] * 4000
+        hr = [140] * 4000
+        core = [38.2] * 4000
+        skin = [31.6] * 4000
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, core, skin)
+        self.assertFalse(result["decoupling_hot"])
+        self.assertAlmostEqual(result["decoupling_avg_core"], 38.2, places=1)
+
+    def test_elevated_skin_without_high_core_is_not_hot(self):
+        athlete = self._athlete()
+        activity = self._activity(athlete)
+        self._set_threshold(athlete, activity)
+        t = list(range(4000))
+        power = [200] * 4000
+        hr = [140] * 4000
+        core = [37.5] * 4000
+        skin = [34.0] * 4000
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, core, skin)
+        self.assertFalse(result["decoupling_hot"])
+
+    def test_hot_session_both_air_and_core_plus_skin(self):
         athlete = self._athlete()
         activity = self._activity(athlete)
         self._set_threshold(athlete, activity)
@@ -238,10 +269,11 @@ class ComputeDecouplingTests(TestCase):
         hr = [140] * 4000
         air = [28.0] * 4000
         core = [38.2] * 4000
-        result = compute_decoupling(activity, athlete, power, hr, t, air, core)
+        skin = [34.0] * 4000
+        result = compute_decoupling(activity, athlete, power, hr, t, air, core, skin)
         self.assertTrue(result["decoupling_hot"])
 
-    def test_not_hot_below_both_thresholds(self):
+    def test_not_hot_below_all_thresholds(self):
         athlete = self._athlete()
         activity = self._activity(athlete)
         self._set_threshold(athlete, activity)
@@ -250,7 +282,8 @@ class ComputeDecouplingTests(TestCase):
         hr = [140] * 4000
         air = [18.0] * 4000
         core = [37.0] * 4000
-        result = compute_decoupling(activity, athlete, power, hr, t, air, core)
+        skin = [30.0] * 4000
+        result = compute_decoupling(activity, athlete, power, hr, t, air, core, skin)
         self.assertFalse(result["decoupling_hot"])
 
     def test_hot_and_vi_if_still_populated_when_not_qualified(self):
@@ -263,7 +296,7 @@ class ComputeDecouplingTests(TestCase):
         power = [200] * 4000
         hr = [140] * 4000
         air = [26.0] * 4000
-        result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000)
+        result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, [None] * 4000)
         self.assertFalse(result["decoupling_qualified"])
         self.assertIn("intensity", result["decoupling_reasons"])
         self.assertIsNotNone(result["decoupling_vi"])
@@ -285,7 +318,7 @@ class ComputeDecouplingTests(TestCase):
         t = list(range(4200))
         power = [200] * 4200
         hr = [140] * 4200
-        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4200, [None] * 4200)
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4200, [None] * 4200, [None] * 4200)
         self.assertFalse(result["decoupling_qualified"])
         self.assertIn("intensity", result["decoupling_reasons"])
 

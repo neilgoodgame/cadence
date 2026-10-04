@@ -61,6 +61,11 @@ DECOUPLING_HR_COVERAGE_MIN = 0.90
 DECOUPLING_POWER_COVERAGE_MIN = 0.95
 DECOUPLING_HOT_AIR_TEMP_C = 25.0
 DECOUPLING_HOT_CORE_TEMP_C = 38.0
+# A long steady session drives core temp up from sustained effort alone, even on a cool day -
+# e.g. a 3-hour run can cross 38.0 C on a 16 C day with no heat stress involved. Skin temp only
+# rises when the body can't dissipate heat into the air (hot/humid conditions), so requiring
+# both together is what actually distinguishes "hot session" from "just a long one."
+DECOUPLING_HOT_SKIN_TEMP_C = 33.0
 DECOUPLING_REASON_CHOICES = [
     ("sport", "Sport"),
     ("no_power", "No power stream"),
@@ -452,6 +457,7 @@ def compute_decoupling(
     t_series: Sequence[int],
     air_temp_series: Sequence[float | None],
     core_temp_series: Sequence[float | None],
+    skin_temp_series: Sequence[float | None],
 ) -> dict:
     """Aerobic decoupling (Pw:HR) for one bike/run activity with a power stream - the full
     computation from the design spec: trims warm-up, splits the remainder into two equal
@@ -494,6 +500,7 @@ def compute_decoupling(
     window_t = t_series[start:]
     window_air = air_temp_series[start:]
     window_core = core_temp_series[start:]
+    window_skin = skin_temp_series[start:]
 
     zone_type = "bike_power" if activity.sport == "bike" else "run_power"
     threshold = reference_for(athlete, zone_type, activity)
@@ -510,8 +517,12 @@ def compute_decoupling(
 
     avg_temp = _mean(window_air)
     avg_core = _mean(window_core)
+    avg_skin = _mean(window_skin)
     hot = (avg_temp is not None and avg_temp >= DECOUPLING_HOT_AIR_TEMP_C) or (
-        avg_core is not None and avg_core >= DECOUPLING_HOT_CORE_TEMP_C
+        avg_core is not None
+        and avg_core >= DECOUPLING_HOT_CORE_TEMP_C
+        and avg_skin is not None
+        and avg_skin >= DECOUPLING_HOT_SKIN_TEMP_C
     )
 
     result = {
@@ -641,7 +652,9 @@ def compute_decoupling_and_durability_for_activity(activity: Activity, athlete: 
     Idempotent: deletes and reinserts ActivityDurability rows every time, same convention as
     _write_duration_curves' update_or_create for the Activity-level decoupling fields.
     """
-    records = list(activity.records.order_by("t").values("t", "power", "heartrate", "air_temp", "core_temp"))
+    records = list(
+        activity.records.order_by("t").values("t", "power", "heartrate", "air_temp", "core_temp", "skin_temp")
+    )
     power_series = [r["power"] for r in records]
     if activity.sport == "run" and not activity.matches_running_power_preference(athlete):
         power_series = [None] * len(power_series)
@@ -649,9 +662,10 @@ def compute_decoupling_and_durability_for_activity(activity: Activity, athlete: 
     t_series = [r["t"] for r in records]
     air_temp_series = [r["air_temp"] for r in records]
     core_temp_series = [r["core_temp"] for r in records]
+    skin_temp_series = [r["skin_temp"] for r in records]
 
     decoupling = compute_decoupling(
-        activity, athlete, power_series, hr_series, t_series, air_temp_series, core_temp_series
+        activity, athlete, power_series, hr_series, t_series, air_temp_series, core_temp_series, skin_temp_series
     )
     for field, value in decoupling.items():
         setattr(activity, field, value)
@@ -1410,8 +1424,9 @@ def _ingest_activity(
         # this activity's own date*, which this same activity's effort may have just set.
         air_temp_series = [s.get("air_temp") for s in samples]
         core_temp_series = [s.get("core_temp") for s in samples]
+        skin_temp_series = [s.get("skin_temp") for s in samples]
         decoupling = compute_decoupling(
-            activity, athlete, power_series, hr_series, t_series, air_temp_series, core_temp_series
+            activity, athlete, power_series, hr_series, t_series, air_temp_series, core_temp_series, skin_temp_series
         )
         for field, value in decoupling.items():
             setattr(activity, field, value)
