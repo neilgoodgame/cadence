@@ -77,17 +77,19 @@ public class WorkoutMatchScanController {
 				&& workoutMatchScanService.totalPlannedDistanceMeters(id) <= 0) {
 			throw new ValidationException("This workout has no determinable planned distance to scan by.", "durationBasis");
 		}
+		boolean smoothPower = request != null && request.smoothPower() != null && request.smoothPower();
 
 		// At most one active scan per workout - a re-POST while one is queued/processing just
 		// hands back that scan's id rather than starting a duplicate, loosely mirroring
-		// ExportJob's one-active-job-per-athlete constraint. Its kind/basis selection is
-		// whatever the FIRST of the concurrent requests set - a second request's selection is
-		// ignored in that case, same as any other field would be.
+		// ExportJob's one-active-job-per-athlete constraint. Its kind/basis/smoothing selection
+		// is whatever the FIRST of the concurrent requests set - a second request's selection
+		// is ignored in that case, same as any other field would be.
 		WorkoutMatchScan scan = scanRepository.findFirstByWorkoutIdAndStatusIn(id, ACTIVE_STATUSES).orElseGet(() -> {
 			WorkoutMatchScan created = new WorkoutMatchScan();
 			created.setWorkout(workout);
 			created.setExcludedStepKinds(excludedStepKinds);
 			created.setDurationBasis(durationBasis);
+			created.setSmoothPower(smoothPower);
 			WorkoutMatchScan saved = scanRepository.save(created);
 			workoutMatchScanService.runScan(saved.getId());
 			return saved;
@@ -123,7 +125,7 @@ public class WorkoutMatchScanController {
 						.toList()
 				: List.of();
 		return new WorkoutMatchScanResponse(scan.getId(), scan.getWorkout().getId(), scan.getStatus(),
-				scan.getExcludedStepKinds(), scan.getDurationBasis(), scan.getTotalCandidates(),
+				scan.getExcludedStepKinds(), scan.getDurationBasis(), scan.isSmoothPower(), scan.getTotalCandidates(),
 				scan.getProcessedCandidates(), scan.getErrorMessage(), scan.getCreatedAt(), scan.getCompletedAt(),
 				candidates);
 	}

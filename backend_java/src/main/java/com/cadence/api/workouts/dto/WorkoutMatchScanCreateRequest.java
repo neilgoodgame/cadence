@@ -11,6 +11,9 @@ import java.util.List;
  * {@code WorkoutMatchScan.getDurationBasis()}'s own Javadoc for why "distance" exists at all.
  * Kept as a raw String (not the {@code MatchScanDurationBasis} enum directly) so an invalid
  * value fails with the same friendly, field-specific 400 {@code excludedStepKinds} gets, rather
- * than a generic body-deserialization error. */
-public record WorkoutMatchScanCreateRequest(List<String> excludedStepKinds, String durationBasis) {
+ * than a generic body-deserialization error.
+ *
+ * <p>{@code smoothPower} (default {@code false}) smooths the power stream before correlating -
+ * see {@code WorkoutMatchScan.isSmoothPower()}'s own Javadoc for why it's opt-in. */
+public record WorkoutMatchScanCreateRequest(List<String> excludedStepKinds, String durationBasis, Boolean smoothPower) {
 }

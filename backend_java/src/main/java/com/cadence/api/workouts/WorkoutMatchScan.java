@@ -61,6 +61,16 @@ public class WorkoutMatchScan extends PrefixedIdEntity {
 	@Column(name = "duration_basis", nullable = false)
 	private MatchScanDurationBasis durationBasis = MatchScanDurationBasis.TIME;
 
+	// Whether the power stream is smoothed (see WorkoutMatchScanService.SMOOTHING_WINDOW_SECONDS)
+	// before correlating against the workout's plan - chosen once, at creation, same as the
+	// fields above. Off by default: it changes the score itself (filtering real
+	// second-to-second noise so a session whose segment averages genuinely match the plan isn't
+	// penalized for terrain/stride variability within each segment), not just additional
+	// information, so an athlete opts in deliberately rather than every scan's numbers shifting
+	// silently.
+	@Column(name = "smooth_power", nullable = false)
+	private boolean smoothPower;
+
 	@Column(name = "error_message")
 	private String errorMessage;
 
@@ -128,6 +138,14 @@ public class WorkoutMatchScan extends PrefixedIdEntity {
 
 	public void setDurationBasis(MatchScanDurationBasis durationBasis) {
 		this.durationBasis = durationBasis;
+	}
+
+	public boolean isSmoothPower() {
+		return smoothPower;
+	}
+
+	public void setSmoothPower(boolean smoothPower) {
+		this.smoothPower = smoothPower;
 	}
 
 	public String getErrorMessage() {

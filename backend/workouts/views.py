@@ -392,6 +392,7 @@ class WorkoutMatchScanCreateView(APIView):
             "excluded_step_kinds", DEFAULT_MATCH_SCAN_EXCLUDED_STEP_KINDS
         )
         duration_basis = body_serializer.validated_data.get("duration_basis", "time")
+        smooth_power = body_serializer.validated_data.get("smooth_power", False)
 
         error = scannability_error(workout, excluded_kinds=frozenset(excluded_step_kinds))
         if error:
@@ -401,12 +402,15 @@ class WorkoutMatchScanCreateView(APIView):
 
         # At most one active scan per workout - a re-POST while one is queued/processing just
         # hands back that scan's id rather than starting a duplicate, loosely mirroring
-        # dataexport.ExportJob's one-active-job-per-athlete constraint. Its kind/basis selection
-        # is whatever the FIRST of the concurrent requests set - a second request's selection is
-        # ignored in that case, same as any other field would be.
+        # dataexport.ExportJob's one-active-job-per-athlete constraint. Its kind/basis/smoothing
+        # selection is whatever the FIRST of the concurrent requests set - a second request's
+        # selection is ignored in that case, same as any other field would be.
         existing = WorkoutMatchScan.objects.filter(workout_id=id, status__in=["queued", "processing"]).first()
         scan = existing or WorkoutMatchScan.objects.create(
-            workout=workout, excluded_step_kinds=excluded_step_kinds, duration_basis=duration_basis
+            workout=workout,
+            excluded_step_kinds=excluded_step_kinds,
+            duration_basis=duration_basis,
+            smooth_power=smooth_power,
         )
         if not existing:
             run_workout_match_scan_task.delay(scan.id)

@@ -183,13 +183,14 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
   }, [steps]);
   const [excludedKinds, setExcludedKinds] = useState<StepKind[]>(DEFAULT_EXCLUDED_KINDS);
   const [durationBasis, setDurationBasis] = useState<MatchScanDurationBasis>("time");
+  const [smoothPower, setSmoothPower] = useState(false);
 
   function toggleKind(kind: StepKind) {
     setExcludedKinds((prev) => (prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind]));
   }
 
   const triggerMutation = useMutation({
-    mutationFn: () => createWorkoutMatchScan(workoutId, excludedKinds, durationBasis),
+    mutationFn: () => createWorkoutMatchScan(workoutId, excludedKinds, durationBasis, smoothPower),
     onSuccess: (result) => {
       setScanResult(result);
       setConfiguring(false);
@@ -245,6 +246,15 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
                 {kindLabel(kind)}
               </label>
             ))}
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink)", cursor: "pointer", marginBottom: 6 }}>
+            <input type="checkbox" checked={smoothPower} onChange={() => setSmoothPower((prev) => !prev)} />
+            Smooth power
+          </label>
+          <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 14, lineHeight: 1.45 }}>
+            Filters second-to-second terrain/stride noise before scoring - raises the match
+            score for a genuinely matching session whose segments don't swing far apart in
+            intensity, at the cost of being less sensitive to real short efforts.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => triggerMutation.mutate()} disabled={triggerMutation.isPending} style={{ ...primaryBtn, cursor: triggerMutation.isPending ? "wait" : "pointer" }}>

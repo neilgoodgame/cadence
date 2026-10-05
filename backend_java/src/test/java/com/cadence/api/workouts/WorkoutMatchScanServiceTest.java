@@ -811,6 +811,84 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		assertThat(finished.getProcessedCandidates()).isEqualTo(0);
 	}
 
+	/** Two TIME-ended segments (70%, then 85%) with a deterministic +-25W zigzag standing in
+	 * for real terrain/stride noise - mirrors a real false negative found live: a trail run's
+	 * segment averages matched its plan almost exactly, but a modest between-segment gap next
+	 * to real noise capped the raw correlation well below where a genuine match should score. */
+	private Workout newZigzagNoiseWorkout(User athlete) {
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Zigzag noise");
+		workout.setSport(Sport.BIKE);
+		workout.setDuration(1800);
+		WorkoutStep seg1 = leaf(workout, null, 0, StepKind.BLOCK, 900, 70.0, 70.0);
+		WorkoutStep seg2 = leaf(workout, null, 1, StepKind.BLOCK, 900, 85.0, 85.0);
+		workout.getSteps().add(seg1);
+		workout.getSteps().add(seg2);
+		return workoutRepository.saveAndFlush(workout);
+	}
+
+	private void seedZigzagNoiseRecords(Activity activity, Instant start, int ftp) {
+		for (int t = 0; t <= 1800; t++) {
+			double basePct = t < 900 ? 0.70 : 0.85;
+			int noise = t % 2 == 0 ? 25 : -25;
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower((int) Math.round(basePct * ftp) + noise);
+			recordRepository.save(record);
+		}
+	}
+
+	@Test
+	void correlateRecordsSmoothingRaisesCorrelationForANoisyMatch() {
+		User athlete = newAthlete("smoothing-correlate@example.cc");
+		Workout workout = newZigzagNoiseWorkout(athlete);
+		List<Segment> curve = workoutMatchScanService.buildExpectedCurve(workout.getId());
+		Instant start = Instant.parse("2026-01-13T06:00:00Z");
+		Activity activity = newActivity(athlete, start, Sport.BIKE, 1800, null);
+		seedZigzagNoiseRecords(activity, start, 250);
+		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+
+		var raw = workoutMatchScanService.correlateRecords(curve, records, false);
+		var smoothed = workoutMatchScanService.correlateRecords(curve, records, true);
+
+		assertThat(raw).isNotNull();
+		assertThat(smoothed).isNotNull();
+		assertThat(raw.correlation()).isLessThan(0.7);
+		assertThat(smoothed.correlation()).isGreaterThan(0.95);
+		assertThat(smoothed.correlation()).isGreaterThan(raw.correlation());
+	}
+
+	@Test
+	void runScanWithSmoothPowerRaisesCorrelationForANoisyButStructurallyMatchingCandidate() {
+		User athlete = newAthlete("scan-smoothing@example.cc");
+		Workout workout = newZigzagNoiseWorkout(athlete);
+		Instant start = Instant.parse("2026-01-14T06:00:00Z");
+		Activity match = newActivity(athlete, start, Sport.BIKE, 1800, null);
+		seedZigzagNoiseRecords(match, start, 250);
+
+		WorkoutMatchScan rawScan = new WorkoutMatchScan();
+		rawScan.setWorkout(workout);
+		rawScan = scanRepository.save(rawScan);
+		workoutMatchScanService.runScanSync(rawScan.getId());
+		double rawCorrelation =
+				candidateRepository.findByScanIdOrderByCorrelationDescFetchActivity(rawScan.getId()).get(0).getCorrelation();
+
+		WorkoutMatchScan smoothedScan = new WorkoutMatchScan();
+		smoothedScan.setWorkout(workout);
+		smoothedScan.setSmoothPower(true);
+		smoothedScan = scanRepository.save(smoothedScan);
+		workoutMatchScanService.runScanSync(smoothedScan.getId());
+		double smoothedCorrelation = candidateRepository
+				.findByScanIdOrderByCorrelationDescFetchActivity(smoothedScan.getId()).get(0).getCorrelation();
+
+		assertThat(rawCorrelation).isLessThan(0.7);
+		assertThat(smoothedCorrelation).isGreaterThan(0.95);
+		assertThat(smoothedCorrelation).isGreaterThan(rawCorrelation);
+	}
+
 	@Test
 	void runScanFindsTheMatchingActivityAndExcludesUnrelatedCandidates() {
 		User athlete = newAthlete("scan-athlete@example.cc");

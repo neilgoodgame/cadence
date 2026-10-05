@@ -122,7 +122,7 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 		Workout workout = newPowerWorkout(athlete);
 		authAs(athlete.getId(), "workouts:write");
 
-		var response = controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("warmup"), null));
+		var response = controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("warmup"), null, null));
 
 		assertThat(response.getBody()).isNotNull();
 		assertThat(response.getBody().excludedStepKinds()).containsExactly("warmup");
@@ -134,7 +134,7 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 		Workout workout = newPowerWorkout(athlete);
 		authAs(athlete.getId(), "workouts:write");
 
-		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("nonsense"), null)))
+		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(), new WorkoutMatchScanCreateRequest(List.of("nonsense"), null, null)))
 				.isInstanceOf(ValidationException.class);
 	}
 
@@ -151,13 +151,25 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 	}
 
 	@Test
+	void defaultsToNoSmoothingWhenTheBodyIsOmitted() {
+		User athlete = newUser("scan-controller-smooth-default@example.cc");
+		Workout workout = newPowerWorkout(athlete);
+		authAs(athlete.getId(), "workouts:write");
+
+		var response = controller.createMatchScan(workout.getId(), null);
+
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().smoothPower()).isFalse();
+	}
+
+	@Test
 	void rejectsAnInvalidDurationBasis() {
 		User athlete = newUser("scan-controller-invalid-basis@example.cc");
 		Workout workout = newPowerWorkout(athlete);
 		authAs(athlete.getId(), "workouts:write");
 
 		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(),
-				new WorkoutMatchScanCreateRequest(null, "nonsense"))).isInstanceOf(ValidationException.class);
+				new WorkoutMatchScanCreateRequest(null, "nonsense", null))).isInstanceOf(ValidationException.class);
 	}
 
 	@Test
@@ -170,7 +182,7 @@ class WorkoutMatchScanControllerTest extends IntegrationTest {
 		authAs(athlete.getId(), "workouts:write");
 
 		assertThatThrownBy(() -> controller.createMatchScan(workout.getId(),
-				new WorkoutMatchScanCreateRequest(null, "distance"))).isInstanceOf(ValidationException.class);
+				new WorkoutMatchScanCreateRequest(null, "distance", null))).isInstanceOf(ValidationException.class);
 	}
 
 	@Test

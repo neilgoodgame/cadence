@@ -892,6 +892,10 @@ export interface WorkoutMatchScan {
   status: WorkoutMatchScanStatus;
   excluded_step_kinds: StepKind[];
   duration_basis: MatchScanDurationBasis;
+  /** Smooths the power stream before correlating, filtering real second-to-second
+   * terrain/stride noise that otherwise dilutes a correlation even on a textbook-correct
+   * match - off by default since it changes the score, not just adds information. */
+  smooth_power: boolean;
   total_candidates: number | null;
   processed_candidates: number;
   error_message: string | null;

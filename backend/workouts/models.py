@@ -94,6 +94,13 @@ class WorkoutMatchScan(PrefixedIDModel):
     # picks whichever matches how the workout's steps are actually structured - a mixed workout
     # (some time-ended, some distance-ended steps) is valid either way, just less precise.
     duration_basis = models.CharField(max_length=10, choices=DURATION_BASIS_CHOICES, default="time")
+    # Whether the power stream is smoothed (see match_scan.SMOOTHING_WINDOW_SECONDS) before
+    # correlating against the workout's plan - chosen once, at creation, same as the fields
+    # above. Off by default: it changes the score itself (filtering real second-to-second
+    # noise so a session whose segment averages genuinely match the plan isn't penalized for
+    # terrain/stride variability within each segment), not just additional information, so an
+    # athlete opts in deliberately rather than every scan's numbers shifting silently.
+    smooth_power = models.BooleanField(default=False)
     error_message = models.CharField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)

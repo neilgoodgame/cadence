@@ -5,10 +5,11 @@ export function createWorkoutMatchScan(
   workoutId: string,
   excludedStepKinds: StepKind[],
   durationBasis: MatchScanDurationBasis = "time",
+  smoothPower: boolean = false,
 ): Promise<{ data: WorkoutMatchScan; retryAfterSeconds: number | null }> {
   return apiFetchWithHeaders<WorkoutMatchScan>(`/v1/workouts/${workoutId}/match-scans`, {
     method: "POST",
-    body: { excluded_step_kinds: excludedStepKinds, duration_basis: durationBasis },
+    body: { excluded_step_kinds: excludedStepKinds, duration_basis: durationBasis, smooth_power: smoothPower },
   });
 }
 

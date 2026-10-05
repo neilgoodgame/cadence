@@ -240,12 +240,16 @@ class WorkoutMatchScanCreateSerializer(serializers.Serializer):
 
     `duration_basis` ("time", the default, or "distance") picks which of the workout's planned
     totals the candidate pre-filter compares each activity against - see
-    WorkoutMatchScan.duration_basis's own docstring for why "distance" exists at all."""
+    WorkoutMatchScan.duration_basis's own docstring for why "distance" exists at all.
+
+    `smooth_power` (default `false`) smooths the power stream before correlating - see
+    WorkoutMatchScan.smooth_power's own docstring for why it's opt-in."""
 
     excluded_step_kinds = serializers.ListField(
         child=serializers.ChoiceField(choices=sorted(LEAF_KINDS)), required=False
     )
     duration_basis = serializers.ChoiceField(choices=["time", "distance"], required=False)
+    smooth_power = serializers.BooleanField(required=False)
 
 
 class WorkoutMatchScanSerializer(serializers.ModelSerializer):
@@ -261,6 +265,7 @@ class WorkoutMatchScanSerializer(serializers.ModelSerializer):
             "status",
             "excluded_step_kinds",
             "duration_basis",
+            "smooth_power",
             "total_candidates",
             "processed_candidates",
             "error_message",

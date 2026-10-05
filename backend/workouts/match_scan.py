@@ -65,6 +65,18 @@ DURATION_TOLERANCE_SECONDS = 60
 # pace-derived time estimate), so this doesn't need the same generosity duration does.
 DISTANCE_TOLERANCE_METERS = 500
 
+# Matches compute_normalized_power's own rolling window elsewhere in this codebase - a
+# real property of running power (and, on technical terrain, even bike power): second-to-second
+# noise from stride/terrain/footing dilutes a correlation against a workout's flat per-step
+# target even on a textbook-correct match (confirmed live: a trail long run's segment averages
+# matched its plan almost exactly - 238W vs a 220-240W target, 263W vs 250-275W - yet still only
+# scored ~0.70 correlation, because the between-segment signal, ~25W, was small next to the
+# within-segment noise, 9-21W std dev). Smoothing the power stream before correlating (not
+# touching the boundary walk itself, which still uses real elapsed time/distance) filters that
+# noise while leaving the real step-to-step signal untouched - opt-in per scan
+# (WorkoutMatchScan.smooth_power), since it changes the score, not just adds information.
+SMOOTHING_WINDOW_SECONDS = 30
+
 
 def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = frozenset()) -> str | None:
     """`None` if `workout` can be scanned for matches; otherwise the reason it can't, suitable
@@ -221,6 +233,30 @@ def _sample_expected_at(curve: list[tuple[int, int, float]], t: int) -> float | 
     return None
 
 
+def _smooth_power_series(power_series: list[int | None], window_seconds: int) -> list[float | None]:
+    """A trailing rolling average over the last up to `window_seconds` *valid* samples
+    (treating the series as ~1Hz, same simplifying assumption `compute_normalized_power`
+    elsewhere relies on - this module doesn't do time-gap-aware windowing anywhere else
+    either). A missing/zero raw sample stays missing here too (`None`), rather than being
+    backfilled from its neighbors - `correlate_records`/`correlate_records_by_step_boundary`
+    already treat a literal 0 as a sensor dropout to exclude, not a real "no effort" reading
+    (see their own docstrings), and smoothing shouldn't quietly turn an excluded sample into an
+    included one.
+    """
+    smoothed: list[float | None] = [None] * len(power_series)
+    window: list[int] = []
+    window_sum = 0
+    for i, p in enumerate(power_series):
+        if not p:
+            continue
+        window.append(p)
+        window_sum += p
+        if len(window) > window_seconds:
+            window_sum -= window.pop(0)
+        smoothed[i] = window_sum / len(window)
+    return smoothed
+
+
 def pearson(xs: list[float], ys: list[float]) -> float | None:
     """`None` when there are too few paired samples, or either series is constant (a flat
     target or a dead-flat power reading can't be correlated - not an error, just undefined)."""
@@ -265,7 +301,7 @@ def _correlate_pairs(pairs: list[tuple[float, int]], total_records: int) -> tupl
 
 
 def correlate_records(
-    curve: list[tuple[int, int, float]], records: list[tuple[int, int | None]]
+    curve: list[tuple[int, int, float]], records: list[tuple[int, int | None]], smooth: bool = False
 ) -> tuple[float, float, int | None] | None:
     """Returns `(correlation, coverage, implied_ftp)` for `records` (`(t, power)` pairs, already
     ordered by `t`) against `curve`, or `None` if there's no usable overlap (no records, no
@@ -281,12 +317,19 @@ def correlate_records(
     (every target is a positive %FTP/watts value), so this can't mask an intentionally flat
     zero-effort block; it only drops noise that would otherwise count as a correlation outlier
     against whatever the plan expects at that moment.
+
+    `smooth=True` runs the power column through `_smooth_power_series` first (see
+    `SMOOTHING_WINDOW_SECONDS`'s own comment for why) - the expected-curve lookup still uses
+    each record's real, unsmoothed `t`.
     """
     if not records:
         return None
     start_t = records[0][0]
+    power_series = [power for _, power in records]
+    if smooth:
+        power_series = _smooth_power_series(power_series, SMOOTHING_WINDOW_SECONDS)
     pairs = []
-    for t, power in records:
+    for (t, _), power in zip(records, power_series, strict=True):
         if not power:
             continue
         expected = _sample_expected_at(curve, t - start_t)
@@ -320,6 +363,7 @@ def correlate_records_by_step_boundary(
     records: list[tuple[int, float | None, int | None]],
     reference: float,
     excluded_kinds: frozenset[str] = frozenset(),
+    smooth: bool = False,
 ) -> tuple[float, float, int | None] | None:
     """The distance-ended/manual-ended-step counterpart to `correlate_records`/
     `build_expected_curve` - see the module docstring for why those two step shapes can't be
@@ -366,10 +410,17 @@ def correlate_records_by_step_boundary(
     over a full activity's worth of samples tolerates a handful of samples landing in the wrong
     step's bucket near a pause without materially moving the result, which a single lap's
     average power cannot.
+
+    `smooth=True` runs the power column through `_smooth_power_series` first (see
+    `SMOOTHING_WINDOW_SECONDS`'s own comment for why) - the boundary walk itself still uses each
+    record's real, unsmoothed `t`/`distance_km`.
     """
     if not records:
         return None
     n = len(records)
+    power_series = [power for _, _, power in records]
+    if smooth:
+        power_series = _smooth_power_series(power_series, SMOOTHING_WINDOW_SECONDS)
     record_idx = 0
     offset_t = records[0][0]
     offset_distance = records[0][1] or 0.0
@@ -409,7 +460,7 @@ def correlate_records_by_step_boundary(
         # correlate against - regardless of excluded_kinds.
         if step.kind not in excluded_kinds and step.end_type != "manual":
             pct = _step_intensity_pct(step, reference)
-            for _, _, power in records[record_idx : end_idx + 1]:
+            for power in power_series[record_idx : end_idx + 1]:
                 if power:
                     pairs.append((pct, power))
 
@@ -422,13 +473,13 @@ def correlate_records_by_step_boundary(
 
 
 def correlate_activity(
-    curve: list[tuple[int, int, float]], activity: Activity
+    curve: list[tuple[int, int, float]], activity: Activity, smooth: bool = False
 ) -> tuple[float, float, int | None] | None:
     """Returns `(correlation, coverage, implied_ftp)` for `activity` against `curve`, or `None`
     if there's no usable overlap. Thin wrapper around `correlate_records` for a caller that
     only has one workout to check and hasn't already fetched the activity's records."""
     records = list(activity.records.order_by("t").values_list("t", "power"))
-    return correlate_records(curve, records)
+    return correlate_records(curve, records, smooth=smooth)
 
 
 def rank_workouts_for_activity(
@@ -533,9 +584,11 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
     for i, activity in enumerate(candidates, start=1):
         if needs_boundary_walk:
             records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
-            result = correlate_records_by_step_boundary(workout, activity, records, reference, excluded_kinds)
+            result = correlate_records_by_step_boundary(
+                workout, activity, records, reference, excluded_kinds, smooth=scan.smooth_power
+            )
         else:
-            result = correlate_activity(curve, activity)
+            result = correlate_activity(curve, activity, smooth=scan.smooth_power)
         if result is not None:
             r, coverage, implied_ftp = result
             rows.append(

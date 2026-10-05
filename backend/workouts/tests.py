@@ -17,6 +17,8 @@ from .calculations import (
 )
 from .inference import Group, LeafCandidate, _compress_pass, infer_workout
 from .match_scan import (
+    SMOOTHING_WINDOW_SECONDS,
+    _smooth_power_series,
     build_expected_curve,
     correlate_activity,
     correlate_records_by_step_boundary,
@@ -1535,6 +1537,35 @@ class TotalPlannedDistanceMetersTests(TestCase):
         self.assertEqual(total_planned_distance_meters(workout), 7999)  # 4000 exact + 3999 inferred (see above)
 
 
+class SmoothPowerSeriesTests(TestCase):
+    def test_smooths_a_symmetric_oscillation_toward_its_mean(self):
+        # A period-2 +-25 zigzag fully cancels once the trailing window holds an even count of
+        # valid samples - by well past SMOOTHING_WINDOW_SECONDS in, every value should sit
+        # exactly on the 200 mean.
+        power = [200 + (25 if t % 2 == 0 else -25) for t in range(100)]
+        smoothed = _smooth_power_series(power, SMOOTHING_WINDOW_SECONDS)
+        self.assertAlmostEqual(smoothed[-1], 200.0)
+        self.assertAlmostEqual(smoothed[50], 200.0)
+
+    def test_a_missing_sample_stays_missing_not_backfilled(self):
+        power = [200, 200, None, 200, 0, 200]
+        smoothed = _smooth_power_series(power, SMOOTHING_WINDOW_SECONDS)
+        self.assertIsNone(smoothed[2])
+        self.assertIsNone(smoothed[4])
+        self.assertIsNotNone(smoothed[0])
+        self.assertIsNotNone(smoothed[5])
+
+    def test_window_only_covers_the_most_recent_valid_samples(self):
+        # 10 samples at 100, then 10 at 200, with a window of 5 - well past the step, the
+        # average should settle on the new value, not stay dragged down by the old one.
+        power = [100] * 10 + [200] * 10
+        smoothed = _smooth_power_series(power, window_seconds=5)
+        self.assertAlmostEqual(smoothed[-1], 200.0)
+
+    def test_empty_series_returns_empty(self):
+        self.assertEqual(_smooth_power_series([], SMOOTHING_WINDOW_SECONDS), [])
+
+
 class PearsonTests(TestCase):
     def test_perfect_positive_correlation(self):
         self.assertAlmostEqual(pearson([1, 2, 3, 4], [10, 20, 30, 40]), 1.0)
@@ -2149,6 +2180,62 @@ class WorkoutMatchScanEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["duration_basis"], "time")
+
+    def test_defaults_to_no_smoothing_when_the_body_is_omitted(self):
+        response = _bearer_client(self.athlete).post(f"/v1/workouts/{self.workout.id}/match-scans")
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["smooth_power"], False)
+
+    def test_smoothing_raises_correlation_for_a_noisy_but_structurally_matching_candidate(self):
+        # Mirrors a real false-negative found live: a trail run's segment averages matched its
+        # plan almost exactly, but a modest between-segment gap next to real terrain/stride
+        # noise capped the raw correlation well below where a genuine match should score. A
+        # deterministic +-25W zigzag stands in for that noise here - it cancels out almost
+        # completely once smoothed, but dilutes the raw correlation substantially left alone.
+        workout = Workout.objects.create(created_by=self.athlete, name="Smoothing", sport="bike", duration=1800)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=900,
+            target_type="power",
+            target_low=70,
+            target_high=70,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="block",
+            end_type="time",
+            duration=900,
+            target_type="power",
+            target_low=85,
+            target_high=85,
+        )
+        activity = self._make_activity(name="Noisy match", moving_time=1800)
+        for t in range(1801):
+            base_pct = 0.70 if t < 900 else 0.85
+            noise = 25 if t % 2 == 0 else -25
+            Record.objects.create(
+                activity=activity, t=t, ts=self.start + timedelta(seconds=t), power=round(base_pct * 250) + noise
+            )
+
+        client = _bearer_client(self.athlete)
+
+        raw_create = client.post(f"/v1/workouts/{workout.id}/match-scans", {"smooth_power": False}, format="json")
+        raw_scan = client.get(f"/v1/workouts/{workout.id}/match-scans/{raw_create.json()['id']}").json()
+        raw_correlation = raw_scan["candidates"][0]["correlation"]
+
+        smoothed_create = client.post(f"/v1/workouts/{workout.id}/match-scans", {"smooth_power": True}, format="json")
+        self.assertEqual(smoothed_create.json()["smooth_power"], True)
+        smoothed_scan = client.get(f"/v1/workouts/{workout.id}/match-scans/{smoothed_create.json()['id']}").json()
+        smoothed_correlation = smoothed_scan["candidates"][0]["correlation"]
+
+        self.assertLess(raw_correlation, 0.7)
+        self.assertGreater(smoothed_correlation, 0.95)
+        self.assertGreater(smoothed_correlation, raw_correlation)
 
     def test_rejects_an_invalid_duration_basis(self):
         response = _bearer_client(self.athlete).post(
