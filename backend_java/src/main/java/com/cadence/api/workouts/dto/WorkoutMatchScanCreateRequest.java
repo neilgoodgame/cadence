@@ -14,6 +14,11 @@ import java.util.List;
  * than a generic body-deserialization error.
  *
  * <p>{@code smoothPower} (default {@code false}) smooths the power stream before correlating -
- * see {@code WorkoutMatchScan.isSmoothPower()}'s own Javadoc for why it's opt-in. */
-public record WorkoutMatchScanCreateRequest(List<String> excludedStepKinds, String durationBasis, Boolean smoothPower) {
+ * see {@code WorkoutMatchScan.isSmoothPower()}'s own Javadoc for why it's opt-in.
+ *
+ * <p>{@code correlationBasis} ("power", the default, or "laps") picks the scoring method
+ * itself - see {@code WorkoutMatchScan.getCorrelationBasis()}'s own Javadoc for what "laps"
+ * does and requires. Kept as a raw String for the same friendly-400 reason as durationBasis. */
+public record WorkoutMatchScanCreateRequest(
+		List<String> excludedStepKinds, String durationBasis, Boolean smoothPower, String correlationBasis) {
 }

@@ -243,13 +243,17 @@ class WorkoutMatchScanCreateSerializer(serializers.Serializer):
     WorkoutMatchScan.duration_basis's own docstring for why "distance" exists at all.
 
     `smooth_power` (default `false`) smooths the power stream before correlating - see
-    WorkoutMatchScan.smooth_power's own docstring for why it's opt-in."""
+    WorkoutMatchScan.smooth_power's own docstring for why it's opt-in.
+
+    `correlation_basis` ("power", the default, or "laps") picks the scoring method itself - see
+    WorkoutMatchScan.correlation_basis's own docstring for what "laps" does and requires."""
 
     excluded_step_kinds = serializers.ListField(
         child=serializers.ChoiceField(choices=sorted(LEAF_KINDS)), required=False
     )
     duration_basis = serializers.ChoiceField(choices=["time", "distance"], required=False)
     smooth_power = serializers.BooleanField(required=False)
+    correlation_basis = serializers.ChoiceField(choices=["power", "laps"], required=False)
 
 
 class WorkoutMatchScanSerializer(serializers.ModelSerializer):
@@ -266,6 +270,7 @@ class WorkoutMatchScanSerializer(serializers.ModelSerializer):
             "excluded_step_kinds",
             "duration_basis",
             "smooth_power",
+            "correlation_basis",
             "total_candidates",
             "processed_candidates",
             "error_message",

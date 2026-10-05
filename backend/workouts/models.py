@@ -73,6 +73,7 @@ class WorkoutMatchScan(PrefixedIDModel):
     id_prefix = "wms"
 
     DURATION_BASIS_CHOICES = [("time", "Time"), ("distance", "Distance")]
+    CORRELATION_BASIS_CHOICES = [("power", "Power"), ("laps", "Laps")]
 
     workout = models.ForeignKey(Workout, on_delete=models.CASCADE, related_name="match_scans")
     status = models.CharField(max_length=12, choices=MATCH_SCAN_STATUS_CHOICES, default="queued")
@@ -101,6 +102,15 @@ class WorkoutMatchScan(PrefixedIDModel):
     # terrain/stride variability within each segment), not just additional information, so an
     # athlete opts in deliberately rather than every scan's numbers shifting silently.
     smooth_power = models.BooleanField(default=False)
+    # Which scoring method the correlation pass uses - chosen once, at creation, same as the
+    # fields above. "power" (the default) correlates the activity's real power stream against
+    # the plan's %FTP-vs-time/distance curve (see match_scan.correlate_records/
+    # correlate_records_by_step_boundary) - "laps" ignores power entirely and instead checks
+    # whether the activity's own real device laps structurally match the plan's steps (see
+    # match_scan.correlate_laps): "did the athlete run the prescribed structure", not "did they
+    # hit the prescribed numbers". Requires an exact lap-count match against the workout's
+    # steps; duration_basis/smooth_power don't apply in this mode (no power stream involved).
+    correlation_basis = models.CharField(max_length=10, choices=CORRELATION_BASIS_CHOICES, default="power")
     error_message = models.CharField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)

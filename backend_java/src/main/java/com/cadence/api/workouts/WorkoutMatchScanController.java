@@ -79,6 +79,14 @@ public class WorkoutMatchScanController {
 		}
 		boolean smoothPower = request != null && request.smoothPower() != null && request.smoothPower();
 
+		String correlationBasisRaw = request != null && request.correlationBasis() != null ? request.correlationBasis() : "power";
+		MatchScanCorrelationBasis correlationBasis;
+		try {
+			correlationBasis = MatchScanCorrelationBasis.fromWireValue(correlationBasisRaw);
+		} catch (IllegalArgumentException e) {
+			throw new ValidationException("correlationBasis must be one of power, laps.", "correlationBasis");
+		}
+
 		// At most one active scan per workout - a re-POST while one is queued/processing just
 		// hands back that scan's id rather than starting a duplicate, loosely mirroring
 		// ExportJob's one-active-job-per-athlete constraint. Its kind/basis/smoothing selection
@@ -90,6 +98,7 @@ public class WorkoutMatchScanController {
 			created.setExcludedStepKinds(excludedStepKinds);
 			created.setDurationBasis(durationBasis);
 			created.setSmoothPower(smoothPower);
+			created.setCorrelationBasis(correlationBasis);
 			WorkoutMatchScan saved = scanRepository.save(created);
 			workoutMatchScanService.runScan(saved.getId());
 			return saved;
@@ -125,9 +134,9 @@ public class WorkoutMatchScanController {
 						.toList()
 				: List.of();
 		return new WorkoutMatchScanResponse(scan.getId(), scan.getWorkout().getId(), scan.getStatus(),
-				scan.getExcludedStepKinds(), scan.getDurationBasis(), scan.isSmoothPower(), scan.getTotalCandidates(),
-				scan.getProcessedCandidates(), scan.getErrorMessage(), scan.getCreatedAt(), scan.getCompletedAt(),
-				candidates);
+				scan.getExcludedStepKinds(), scan.getDurationBasis(), scan.isSmoothPower(), scan.getCorrelationBasis(),
+				scan.getTotalCandidates(), scan.getProcessedCandidates(), scan.getErrorMessage(), scan.getCreatedAt(),
+				scan.getCompletedAt(), candidates);
 	}
 
 	private static WorkoutMatchScanCandidateResponse toCandidateResponse(WorkoutMatchScanCandidate candidate) {

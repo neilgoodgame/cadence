@@ -482,6 +482,73 @@ public class WorkoutMatchScanService {
 		return cumulative;
 	}
 
+	/** Alternative to {@link #correlateRecords}/{@link #correlateRecordsByStepBoundary} that
+	 * ignores power entirely and instead checks whether {@code activity}'s own real device laps
+	 * structurally match {@code workout}'s planned steps - "did the athlete run the prescribed
+	 * structure", not "did they hit the prescribed numbers". Every activity gets its raw,
+	 * device-recorded laps persisted at upload time unconditionally (same convention {@link
+	 * #cumulativeLapEnds} relies on for the manual-ended-step boundary walk) - including a
+	 * final lap closed by stopping the recording rather than a deliberate lap press, which
+	 * shows up as an ordinary {@code Lap} row no different from any other (the entity has no
+	 * such provenance field to begin with), so this needs no special handling for it.
+	 *
+	 * <p>Requires an *exact* lap count match against {@code workout}'s full flattened step list
+	 * - not a fuzzy one: a workout meant to be scanned this way is expected to have been lapped
+	 * at every step transition, and a mismatched count means either this candidate wasn't
+	 * lapped that way or it's unrelated, neither of which this method can tell apart, so it
+	 * returns {@code null} (dropped from results, like any other "no usable overlap" case
+	 * elsewhere in this class) rather than guessing at a partial alignment.
+	 *
+	 * <p>Returns a {@link CorrelationResult} whose {@code correlation} is {@code
+	 * 1 - mean(relative error)} across every (step, lap) pair's own planned duration ({@code
+	 * TIME}-ended) or distance ({@code DISTANCE}-ended) vs. the lap's real one, each step
+	 * matched to the lap at the same position in sequence. {@code excludedKinds} and a {@code
+	 * MANUAL}-ended step (which has no planned value to compare at all - its length is only
+	 * ever defined by the real lap itself, see the class Javadoc) are skipped from the score
+	 * but still required to have a real lap in the count above - the athlete still lapped
+	 * there, there's just nothing to validate that lap's length against. {@code coverage} is
+	 * the fraction of steps that actually fed the score. {@code impliedFtp} is always {@code
+	 * null} - there's no power regression in this mode.
+	 */
+	public CorrelationResult correlateLaps(Workout workout, Activity activity, Set<StepKind> excludedKinds) {
+		List<Flattened> flattened = WorkoutStepFlattener.flatten(workout);
+		List<Lap> laps = lapRepository.findByActivityIdOrderByIndex(activity.getId());
+		if (flattened.isEmpty() || laps.size() != flattened.size()) {
+			return null;
+		}
+
+		List<Double> relativeErrors = new ArrayList<>();
+		for (int i = 0; i < flattened.size(); i++) {
+			WorkoutStep step = flattened.get(i).step();
+			Lap lap = laps.get(i);
+			if (excludedKinds.contains(step.getKind()) || step.getEndType() == StepEndType.MANUAL) {
+				continue;
+			}
+			Double planned;
+			Double actual;
+			if (step.getEndType() == StepEndType.TIME) {
+				planned = step.getDuration() != null ? (double) step.getDuration() : null;
+				actual = (double) lap.getDuration();
+			}
+			else { // DISTANCE
+				planned = step.getDistance() != null ? (double) step.getDistance() : null;
+				actual = lap.getDistanceKm() * 1000.0;
+			}
+			if (planned == null || planned == 0) {
+				continue;
+			}
+			relativeErrors.add(Math.abs(actual - planned) / planned);
+		}
+
+		if (relativeErrors.isEmpty()) {
+			return null;
+		}
+
+		double score = Math.max(0.0, 1 - mean(relativeErrors));
+		double coverage = (double) relativeErrors.size() / flattened.size();
+		return new CorrelationResult(round4(score), round4(coverage), null);
+	}
+
 	/** The {@code DISTANCE}-ended/{@code MANUAL}-ended-step counterpart to {@link
 	 * #correlateRecords}/{@link #buildCurveFor} - see the class Javadoc for why those two step
 	 * shapes can't be placed on a fixed, reusable time-based curve the way a time-ended one can.
@@ -785,7 +852,10 @@ public class WorkoutMatchScanService {
 			int processed = 0;
 			for (Activity activity : candidates) {
 				CorrelationResult result;
-				if (needsBoundaryWalk) {
+				if (scan.getCorrelationBasis() == MatchScanCorrelationBasis.LAPS) {
+					result = correlateLaps(workout, activity, excludedKinds);
+				}
+				else if (needsBoundaryWalk) {
 					List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 					result = correlateRecordsByStepBoundary(workout, activity, records, reference, excludedKinds,
 							scan.isSmoothPower());

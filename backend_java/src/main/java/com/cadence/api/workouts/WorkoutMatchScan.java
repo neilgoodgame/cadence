@@ -71,6 +71,17 @@ public class WorkoutMatchScan extends PrefixedIdEntity {
 	@Column(name = "smooth_power", nullable = false)
 	private boolean smoothPower;
 
+	// Which scoring method the correlation pass uses - chosen once, at creation, same as the
+	// fields above. POWER (the default) correlates the activity's real power stream against the
+	// plan's %FTP-vs-time/distance curve - LAPS ignores power entirely and instead checks
+	// whether the activity's own real device laps structurally match the plan's steps (see
+	// WorkoutMatchScanService.correlateLaps): "did the athlete run the prescribed structure",
+	// not "did they hit the prescribed numbers". Requires an exact lap-count match against the
+	// workout's steps; durationBasis/smoothPower don't apply in this mode (no power stream
+	// involved).
+	@Column(name = "correlation_basis", nullable = false)
+	private MatchScanCorrelationBasis correlationBasis = MatchScanCorrelationBasis.POWER;
+
 	@Column(name = "error_message")
 	private String errorMessage;
 
@@ -146,6 +157,14 @@ public class WorkoutMatchScan extends PrefixedIdEntity {
 
 	public void setSmoothPower(boolean smoothPower) {
 		this.smoothPower = smoothPower;
+	}
+
+	public MatchScanCorrelationBasis getCorrelationBasis() {
+		return correlationBasis;
+	}
+
+	public void setCorrelationBasis(MatchScanCorrelationBasis correlationBasis) {
+		this.correlationBasis = correlationBasis;
 	}
 
 	public String getErrorMessage() {

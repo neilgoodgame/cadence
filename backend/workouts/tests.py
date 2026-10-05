@@ -21,6 +21,7 @@ from .match_scan import (
     _smooth_power_series,
     build_expected_curve,
     correlate_activity,
+    correlate_laps,
     correlate_records_by_step_boundary,
     pearson,
     rank_workouts_for_activity,
@@ -1566,6 +1567,231 @@ class SmoothPowerSeriesTests(TestCase):
         self.assertEqual(_smooth_power_series([], SMOOTHING_WINDOW_SECONDS), [])
 
 
+class CorrelateLapsTests(TestCase):
+    """Mirrors a real workout-matching case found live: a trail long run's athlete laps lined
+    up with its 3 distance-ended steps (16km/18km/1km) to within a few meters, even though the
+    activity's own power compliance (scored by correlate_records_by_step_boundary) only reached
+    ~0.70 - "did you run the prescribed structure" and "did you hit the prescribed numbers" are
+    different questions, and this is the pure-structure one."""
+
+    def _athlete(self):
+        return User.objects.create_user(email=f"correlate-laps-{id(self)}@example.cc", password="x", name="A")
+
+    def _lap(self, activity, index, duration, distance_km):
+        return Lap.objects.create(activity=activity, index=index, duration=duration, distance_km=distance_km)
+
+    def test_near_exact_lap_structure_scores_close_to_one(self):
+        athlete = self._athlete()
+        workout = Workout.objects.create(created_by=athlete, name="Trail", sport="run", duration=11020)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="warmup",
+            end_type="distance",
+            distance=16000,
+            target_type="power",
+            target_low=79,
+            target_high=86,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="block",
+            end_type="distance",
+            distance=18000,
+            target_type="power",
+            target_low=89,
+            target_high=98,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=2,
+            kind="cool",
+            end_type="distance",
+            distance=1000,
+            target_type="power",
+            target_low=65,
+            target_high=75,
+        )
+        activity = Activity.objects.create(athlete=athlete, sport="run", start_date=timezone.now(), moving_time=10746)
+        self._lap(activity, 0, 5206, 16.0041396484375)
+        self._lap(activity, 1, 5218, 18.009779296875)
+        self._lap(activity, 2, 321, 1.0000900268554687)
+
+        result = correlate_laps(workout, activity)
+
+        self.assertIsNotNone(result)
+        score, coverage, implied_ftp = result
+        self.assertGreater(score, 0.999)
+        self.assertEqual(coverage, 1.0)
+        self.assertIsNone(implied_ftp)
+
+    def test_mismatched_lap_count_returns_none(self):
+        athlete = self._athlete()
+        workout = Workout.objects.create(created_by=athlete, name="Trail", sport="run", duration=1800)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="distance",
+            distance=16000,
+            target_type="power",
+            target_low=80,
+            target_high=80,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="block",
+            end_type="distance",
+            distance=18000,
+            target_type="power",
+            target_low=90,
+            target_high=90,
+        )
+        activity = Activity.objects.create(athlete=athlete, sport="run", start_date=timezone.now(), moving_time=1800)
+        self._lap(activity, 0, 900, 16.0)  # only 1 lap for 2 steps
+
+        self.assertIsNone(correlate_laps(workout, activity))
+
+    def test_a_large_deviation_lowers_the_score(self):
+        athlete = self._athlete()
+        workout = Workout.objects.create(created_by=athlete, name="Trail", sport="run", duration=1800)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="distance",
+            distance=16000,
+            target_type="power",
+            target_low=80,
+            target_high=80,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="block",
+            end_type="distance",
+            distance=18000,
+            target_type="power",
+            target_low=90,
+            target_high=90,
+        )
+        activity = Activity.objects.create(athlete=athlete, sport="run", start_date=timezone.now(), moving_time=1800)
+        self._lap(activity, 0, 900, 16.0)
+        self._lap(activity, 1, 900, 9.0)  # 50% short of the planned 18km
+
+        score, _coverage, _implied_ftp = correlate_laps(workout, activity)
+
+        self.assertLess(score, 0.8)
+
+    def test_manual_step_is_excluded_from_the_score_but_still_requires_a_lap(self):
+        athlete = self._athlete()
+        workout = Workout.objects.create(created_by=athlete, name="Open", sport="bike", duration=900)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="warmup",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=60,
+            target_high=60,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="block",
+            end_type="manual",
+            target_type="open",
+        )
+        activity = Activity.objects.create(athlete=athlete, sport="bike", start_date=timezone.now(), moving_time=900)
+        self._lap(activity, 0, 300, 2.0)
+        self._lap(activity, 1, 600, 4.0)  # the manual step's own real lap - nothing to score it against
+
+        result = correlate_laps(workout, activity)
+
+        self.assertIsNotNone(result)
+        score, coverage, _implied_ftp = result
+        self.assertAlmostEqual(score, 1.0)
+        self.assertEqual(coverage, 0.5)  # 1 of 2 steps actually fed the score
+
+    def test_excluded_kind_is_excluded_from_the_score_but_still_requires_a_lap(self):
+        athlete = self._athlete()
+        workout = Workout.objects.create(created_by=athlete, name="With cooldown", sport="bike", duration=1200)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=900,
+            target_type="power",
+            target_low=90,
+            target_high=90,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="cool",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=60,
+            target_high=60,
+        )
+        activity = Activity.objects.create(athlete=athlete, sport="bike", start_date=timezone.now(), moving_time=1200)
+        self._lap(activity, 0, 900, 8.0)
+        self._lap(activity, 1, 1, 0.01)  # way off the cooldown's real 300s, but excluded from scoring
+
+        result = correlate_laps(workout, activity, excluded_kinds=frozenset({"cool"}))
+
+        self.assertIsNotNone(result)
+        score, coverage, _implied_ftp = result
+        self.assertAlmostEqual(score, 1.0)
+        self.assertEqual(coverage, 0.5)
+
+    def test_all_steps_excluded_or_manual_returns_none(self):
+        athlete = self._athlete()
+        workout = Workout.objects.create(created_by=athlete, name="All open", sport="bike", duration=300)
+        WorkoutStep.objects.create(workout=workout, order=0, kind="block", end_type="manual", target_type="open")
+        activity = Activity.objects.create(athlete=athlete, sport="bike", start_date=timezone.now(), moving_time=300)
+        self._lap(activity, 0, 300, 2.0)
+
+        self.assertIsNone(correlate_laps(workout, activity))
+
+    def test_time_ended_step_compares_against_the_laps_own_duration(self):
+        athlete = self._athlete()
+        workout = Workout.objects.create(created_by=athlete, name="Intervals", sport="bike", duration=600)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=100,
+            target_high=100,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="rec",
+            end_type="time",
+            duration=300,
+            target_type="power",
+            target_low=50,
+            target_high=50,
+        )
+        activity = Activity.objects.create(athlete=athlete, sport="bike", start_date=timezone.now(), moving_time=600)
+        self._lap(activity, 0, 301, 2.0)  # 1s over its planned 300s
+        self._lap(activity, 1, 299, 2.0)  # 1s under its planned 300s
+
+        score, coverage, _implied_ftp = correlate_laps(workout, activity)
+
+        self.assertGreater(score, 0.99)
+        self.assertEqual(coverage, 1.0)
+
+
 class PearsonTests(TestCase):
     def test_perfect_positive_correlation(self):
         self.assertAlmostEqual(pearson([1, 2, 3, 4], [10, 20, 30, 40]), 1.0)
@@ -2186,6 +2412,110 @@ class WorkoutMatchScanEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.json()["smooth_power"], False)
+
+    def test_defaults_to_power_correlation_basis_when_the_body_is_omitted(self):
+        response = _bearer_client(self.athlete).post(f"/v1/workouts/{self.workout.id}/match-scans")
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["correlation_basis"], "power")
+
+    def test_rejects_an_invalid_correlation_basis(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/workouts/{self.workout.id}/match-scans", {"correlation_basis": "nonsense"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_laps_correlation_basis_scores_a_structurally_matching_candidate_near_one(self):
+        # workout.duration set to match moving_time exactly - the (unrelated) duration pre-filter
+        # isn't what this test is about; correlate_laps itself never reads workout.duration at
+        # all, only each step's own distance/duration.
+        workout = Workout.objects.create(created_by=self.athlete, name="Trail", sport="run", duration=10746)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="warmup",
+            end_type="distance",
+            distance=16000,
+            target_type="power",
+            target_low=79,
+            target_high=86,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="block",
+            end_type="distance",
+            distance=18000,
+            target_type="power",
+            target_low=89,
+            target_high=98,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=2,
+            kind="cool",
+            end_type="distance",
+            distance=1000,
+            target_type="power",
+            target_low=65,
+            target_high=75,
+        )
+        activity = self._make_activity(sport="run", name="Trail match", moving_time=10746, distance_km=35.014)
+        Lap.objects.create(activity=activity, index=0, duration=5206, distance_km=16.0041396484375)
+        Lap.objects.create(activity=activity, index=1, duration=5218, distance_km=18.009779296875)
+        Lap.objects.create(activity=activity, index=2, duration=321, distance_km=1.0000900268554687)
+
+        client = _bearer_client(self.athlete)
+        create_response = client.post(
+            f"/v1/workouts/{workout.id}/match-scans",
+            {"excluded_step_kinds": [], "correlation_basis": "laps"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 202)
+        self.assertEqual(create_response.json()["correlation_basis"], "laps")
+        scan_id = create_response.json()["id"]
+
+        detail = client.get(f"/v1/workouts/{workout.id}/match-scans/{scan_id}").json()
+        self.assertEqual(detail["status"], "ready")
+        self.assertEqual([c["activity_id"] for c in detail["candidates"]], [activity.id])
+        self.assertGreater(detail["candidates"][0]["correlation"], 0.999)
+
+    def test_laps_correlation_basis_drops_a_candidate_with_a_mismatched_lap_count(self):
+        workout = Workout.objects.create(created_by=self.athlete, name="Two-step", sport="run", duration=1800)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="distance",
+            distance=8000,
+            target_type="power",
+            target_low=80,
+            target_high=80,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="block",
+            end_type="distance",
+            distance=9000,
+            target_type="power",
+            target_low=90,
+            target_high=90,
+        )
+        activity = self._make_activity(sport="run", name="Unlapped", moving_time=1800)
+        Lap.objects.create(activity=activity, index=0, duration=1800, distance_km=17.0)  # 1 lap, not 2
+
+        client = _bearer_client(self.athlete)
+        create_response = client.post(
+            f"/v1/workouts/{workout.id}/match-scans",
+            {"excluded_step_kinds": [], "correlation_basis": "laps"},
+            format="json",
+        )
+        scan_id = create_response.json()["id"]
+
+        detail = client.get(f"/v1/workouts/{workout.id}/match-scans/{scan_id}").json()
+        self.assertEqual(detail["candidates"], [])
 
     def test_smoothing_raises_correlation_for_a_noisy_but_structurally_matching_candidate(self):
         # Mirrors a real false-negative found live: a trail run's segment averages matched its

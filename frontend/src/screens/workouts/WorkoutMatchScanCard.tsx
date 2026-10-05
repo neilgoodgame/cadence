@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createWorkoutMatchScan, getWorkoutMatchScan } from "../../api/matchScans";
 import { updateActivity } from "../../api/activities";
 import type {
+  MatchScanCorrelationBasis,
   MatchScanDurationBasis,
   StepKind,
   WorkoutMatchScan,
@@ -22,6 +23,10 @@ const DEFAULT_EXCLUDED_KINDS: StepKind[] = ["warmup", "cool"];
 const DURATION_BASIS_OPTIONS: { value: MatchScanDurationBasis; label: string }[] = [
   { value: "time", label: "Time" },
   { value: "distance", label: "Distance" },
+];
+const CORRELATION_BASIS_OPTIONS: { value: MatchScanCorrelationBasis; label: string }[] = [
+  { value: "power", label: "Power" },
+  { value: "laps", label: "Laps" },
 ];
 
 const GRID_COLS = "minmax(140px,1.3fr) 0.6fr 0.7fr 0.55fr 0.9fr";
@@ -184,13 +189,14 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
   const [excludedKinds, setExcludedKinds] = useState<StepKind[]>(DEFAULT_EXCLUDED_KINDS);
   const [durationBasis, setDurationBasis] = useState<MatchScanDurationBasis>("time");
   const [smoothPower, setSmoothPower] = useState(false);
+  const [correlationBasis, setCorrelationBasis] = useState<MatchScanCorrelationBasis>("power");
 
   function toggleKind(kind: StepKind) {
     setExcludedKinds((prev) => (prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind]));
   }
 
   const triggerMutation = useMutation({
-    mutationFn: () => createWorkoutMatchScan(workoutId, excludedKinds, durationBasis, smoothPower),
+    mutationFn: () => createWorkoutMatchScan(workoutId, excludedKinds, durationBasis, smoothPower, correlationBasis),
     onSuccess: (result) => {
       setScanResult(result);
       setConfiguring(false);
@@ -213,18 +219,18 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
       {configuring && (
         <div>
           <div style={{ fontSize: 12, color: "var(--ink2)", marginBottom: 6 }}>
-            Compare candidates by
+            Score candidates by
           </div>
           <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-            {DURATION_BASIS_OPTIONS.map((opt) => (
+            {CORRELATION_BASIS_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
-                onClick={() => setDurationBasis(opt.value)}
+                onClick={() => setCorrelationBasis(opt.value)}
                 style={{
                   ...actionBtn,
-                  background: durationBasis === opt.value ? "var(--ember)" : "transparent",
-                  color: durationBasis === opt.value ? "#fff" : "var(--ink2)",
-                  border: durationBasis === opt.value ? "none" : "1px solid var(--line)",
+                  background: correlationBasis === opt.value ? "var(--ember)" : "transparent",
+                  color: correlationBasis === opt.value ? "#fff" : "var(--ink2)",
+                  border: correlationBasis === opt.value ? "none" : "1px solid var(--line)",
                 }}
               >
                 {opt.label}
@@ -232,10 +238,40 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
             ))}
           </div>
           <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 14, lineHeight: 1.45 }}>
-            {durationBasis === "distance"
-              ? "Matches candidates by how closely their total distance tracks this workout's planned distance - use this for a fully distance-based workout, where a pace-estimated duration can be off by more than normal pacing variance (e.g. a trail run)."
-              : "Matches candidates by how closely their moving time tracks this workout's planned duration - the usual choice for a time-based (interval) workout."}
+            {correlationBasis === "laps"
+              ? "Ignores power entirely and checks whether the activity's own real device laps structurally match this workout's steps - \"did you run the prescribed structure\", not \"did you hit the prescribed numbers\". Requires an exact lap count match against the workout's steps - a candidate lapped differently won't show up here at all."
+              : "Correlates the activity's real power stream against this workout's planned %FTP curve - \"did you hit the prescribed numbers\"."}
           </div>
+
+          {correlationBasis === "power" && (
+            <>
+              <div style={{ fontSize: 12, color: "var(--ink2)", marginBottom: 6 }}>
+                Compare candidates by
+              </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                {DURATION_BASIS_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setDurationBasis(opt.value)}
+                    style={{
+                      ...actionBtn,
+                      background: durationBasis === opt.value ? "var(--ember)" : "transparent",
+                      color: durationBasis === opt.value ? "#fff" : "var(--ink2)",
+                      border: durationBasis === opt.value ? "none" : "1px solid var(--line)",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 14, lineHeight: 1.45 }}>
+                {durationBasis === "distance"
+                  ? "Matches candidates by how closely their total distance tracks this workout's planned distance - use this for a fully distance-based workout, where a pace-estimated duration can be off by more than normal pacing variance (e.g. a trail run)."
+                  : "Matches candidates by how closely their moving time tracks this workout's planned duration - the usual choice for a time-based (interval) workout."}
+              </div>
+            </>
+          )}
+
           <div style={{ fontSize: 12, color: "var(--ink2)", marginBottom: 10 }}>
             Which parts of this workout should count toward the match?
           </div>
@@ -247,15 +283,21 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
               </label>
             ))}
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink)", cursor: "pointer", marginBottom: 6 }}>
-            <input type="checkbox" checked={smoothPower} onChange={() => setSmoothPower((prev) => !prev)} />
-            Smooth power
-          </label>
-          <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 14, lineHeight: 1.45 }}>
-            Filters second-to-second terrain/stride noise before scoring - raises the match
-            score for a genuinely matching session whose segments don't swing far apart in
-            intensity, at the cost of being less sensitive to real short efforts.
-          </div>
+
+          {correlationBasis === "power" && (
+            <>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink)", cursor: "pointer", marginBottom: 6 }}>
+                <input type="checkbox" checked={smoothPower} onChange={() => setSmoothPower((prev) => !prev)} />
+                Smooth power
+              </label>
+              <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 14, lineHeight: 1.45 }}>
+                Filters second-to-second terrain/stride noise before scoring - raises the match
+                score for a genuinely matching session whose segments don't swing far apart in
+                intensity, at the cost of being less sensitive to real short efforts.
+              </div>
+            </>
+          )}
+
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => triggerMutation.mutate()} disabled={triggerMutation.isPending} style={{ ...primaryBtn, cursor: triggerMutation.isPending ? "wait" : "pointer" }}>
               {triggerMutation.isPending ? "Starting…" : "Start scan"}
