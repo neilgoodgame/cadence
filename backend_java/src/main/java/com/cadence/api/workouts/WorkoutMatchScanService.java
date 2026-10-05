@@ -77,6 +77,29 @@ public class WorkoutMatchScanService {
 	// correlation, not by inclusion, so a generous width costs nothing but a few extra rows.
 	private static final int DURATION_TOLERANCE_SECONDS = 60;
 
+	// A distance-ended plan's duration column is itself just a pace estimate (see
+	// totalPlannedDistanceMeters below), so comparing it against a real candidate's moving time
+	// at DURATION_TOLERANCE_SECONDS's tight 60s window can reject a genuine match purely on
+	// normal pacing/terrain variance over a long session - the real bug the DISTANCE basis
+	// option fixes. 500m is deliberately tight relative to that: a real distance-ended match's
+	// recorded distance tracks its plan almost exactly (GPS/footpod distance is far more
+	// reliable than a pace-derived time estimate), so this doesn't need the same generosity
+	// duration does.
+	private static final int DISTANCE_TOLERANCE_METERS = 500;
+
+	// Matches NormalizedPowerCalculator's own rolling window elsewhere in this codebase - a
+	// real property of running power (and, on technical terrain, even bike power):
+	// second-to-second noise from stride/terrain/footing dilutes a correlation against a
+	// workout's flat per-step target even on a textbook-correct match (confirmed live: a trail
+	// long run's segment averages matched its plan almost exactly - 238W vs a 220-240W target,
+	// 263W vs 250-275W - yet still only scored ~0.70 correlation, because the between-segment
+	// signal, ~25W, was small next to the within-segment noise, 9-21W std dev). Smoothing the
+	// power stream before correlating (not touching the boundary walk itself, which still uses
+	// real elapsed time/distance) filters that noise while leaving the real step-to-step signal
+	// untouched - opt-in per scan (WorkoutMatchScan.isSmoothPower()), since it changes the
+	// score, not just adds information.
+	private static final int SMOOTHING_WINDOW_SECONDS = 30;
+
 	// Mirrors WorkoutCalculations.DEFAULT_POWER_REFERENCE - kept as its own copy since that
 	// one is private to its own class.
 	private static final double DEFAULT_POWER_REFERENCE = 265;
@@ -246,6 +269,54 @@ public class WorkoutMatchScanService {
 		return reference != null ? reference : DEFAULT_POWER_REFERENCE;
 	}
 
+	/** Mirrors {@link WorkoutCalculations}'s run-only, time&lt;-&gt;distance inference, but
+	 * against a persisted {@link WorkoutStep} row (not the ephemeral DTO tree) and in the
+	 * opposite direction: a {@code DISTANCE}-ended step's stored distance is exact; a {@code
+	 * TIME}-ended running step targeting power/pace infers one from the athlete's threshold
+	 * pace. Used by {@link #totalPlannedDistanceMeters} for the match-scan's {@code DISTANCE}
+	 * duration-basis option, where the workout's planned *duration* is itself just a pace
+	 * estimate for a distance-ended plan, but its planned *distance* is the one quantity the
+	 * plan actually fixes. */
+	private static int leafDistanceMeters(WorkoutStep step, Sport sport, Double thresholdPaceSecPerKm) {
+		if (step.getEndType() == StepEndType.DISTANCE) {
+			return step.getDistance() != null ? step.getDistance() : 0;
+		}
+		if (sport == Sport.RUN && step.getEndType() == StepEndType.TIME
+				&& (step.getTargetType() == TargetType.PACE || step.getTargetType() == TargetType.POWER)
+				&& step.getDuration() != null && thresholdPaceSecPerKm != null) {
+			double low = step.getTargetLow() != null ? step.getTargetLow() : 0.0;
+			double high = step.getTargetHigh() != null ? step.getTargetHigh() : low;
+			double avgPct = (low + high) / 2;
+			if (avgPct <= 0) {
+				return 0;
+			}
+			double paceSecPerKm = thresholdPaceSecPerKm * 100.0 / avgPct;
+			return (int) Math.round((step.getDuration() / paceSecPerKm) * 1000);
+		}
+		return 0;
+	}
+
+	private int totalPlannedDistanceMeters(Workout workout, List<Flattened> flattened) {
+		Double thresholdPaceSecPerKm = workout.getSport() == Sport.RUN
+				? zoneService.referenceFor(userService.getById(workout.getCreatedBy().getId()), ZoneType.PACE)
+				: null;
+		int total = 0;
+		for (Flattened f : flattened) {
+			total += leafDistanceMeters(f.step(), workout.getSport(), thresholdPaceSecPerKm);
+		}
+		return total;
+	}
+
+	/** The workout's total planned distance, in meters, for the match-scan's {@code DISTANCE}
+	 * duration-basis pre-filter (see {@link #runScanSync}) - 0 when no step's distance can be
+	 * determined at all (e.g. a time-ended-only bike workout), meaning that basis has nothing
+	 * to filter by for this workout. Public so {@link WorkoutMatchScanController} can validate
+	 * a {@code DISTANCE}-basis create request before a scan is even persisted. */
+	public int totalPlannedDistanceMeters(String workoutId) {
+		Workout workout = fetchWithSteps(workoutId);
+		return totalPlannedDistanceMeters(workout, WorkoutStepFlattener.flatten(workout));
+	}
+
 	// Fetch-joins steps - open-in-view is off, and WorkoutStepFlattener.flatten walks
 	// workout.getSteps(), which would otherwise throw LazyInitializationException once this
 	// method's own implicit transaction closes (same class of bug fixed in
@@ -300,13 +371,49 @@ public class WorkoutMatchScanService {
 		return sum / values.size();
 	}
 
+	/** A trailing rolling average over the last up to {@code windowSeconds} *valid* samples
+	 * (treating the series as ~1Hz, same simplifying assumption {@code
+	 * NormalizedPowerCalculator} elsewhere relies on - this class doesn't do time-gap-aware
+	 * windowing anywhere else either). A missing/zero raw sample stays missing here too ({@code
+	 * null}), rather than being backfilled from its neighbors - {@link #correlateRecords}/
+	 * {@link #correlateRecordsByStepBoundary} already treat a literal 0 as a sensor dropout to
+	 * exclude, not a real "no effort" reading, and smoothing shouldn't quietly turn an excluded
+	 * sample into an included one. */
+	private static List<Double> smoothPowerSeries(List<Integer> powerSeries, int windowSeconds) {
+		List<Double> smoothed = new ArrayList<>(powerSeries.size());
+		for (int i = 0; i < powerSeries.size(); i++) {
+			smoothed.add(null);
+		}
+		List<Integer> window = new ArrayList<>();
+		int windowSum = 0;
+		for (int i = 0; i < powerSeries.size(); i++) {
+			Integer p = powerSeries.get(i);
+			if (p == null || p == 0) {
+				continue;
+			}
+			window.add(p);
+			windowSum += p;
+			if (window.size() > windowSeconds) {
+				windowSum -= window.remove(0);
+			}
+			smoothed.set(i, windowSum / (double) window.size());
+		}
+		return smoothed;
+	}
+
 	/** Returns correlation/coverage/impliedFtp for {@code activity} against {@code curve}, or
 	 * {@code null} if there's no usable overlap (no records, no power data, or nothing falls
 	 * inside the workout's planned duration). Thin wrapper around {@link #correlateRecords} for
 	 * a caller that only has one workout to check and hasn't already fetched the activity's
 	 * records. */
 	public CorrelationResult correlateActivity(List<Segment> curve, Activity activity) {
-		return correlateRecords(curve, recordRepository.findByActivityIdOrderByT(activity.getId()));
+		return correlateActivity(curve, activity, false);
+	}
+
+	/** Same as {@link #correlateActivity(List, Activity)}, but with an explicit {@code smooth}
+	 * flag - see {@link #correlateRecords(List, List, boolean)} for what it does. */
+	public CorrelationResult correlateActivity(List<Segment> curve, Activity activity, boolean smooth) {
+		return correlateRecords(curve, recordRepository.findByActivityIdOrderByT(activity.getId()), smooth);
 	}
 
 	/** Same as {@link #correlateActivity}, but takes an already-fetched, {@code t}-ordered
@@ -323,20 +430,33 @@ public class WorkoutMatchScanService {
 	 * correlation outlier against whatever the plan expects at that moment.
 	 */
 	public CorrelationResult correlateRecords(List<Segment> curve, List<Record> records) {
+		return correlateRecords(curve, records, false);
+	}
+
+	/** Same as {@link #correlateRecords(List, List)}, but {@code smooth=true} runs the power
+	 * column through {@link #smoothPowerSeries} first (see {@code SMOOTHING_WINDOW_SECONDS}'s
+	 * own comment for why) - the expected-curve lookup still uses each record's real,
+	 * unsmoothed {@code t}. */
+	public CorrelationResult correlateRecords(List<Segment> curve, List<Record> records, boolean smooth) {
 		if (records.isEmpty()) {
 			return null;
 		}
 		int startT = records.get(0).getT();
+		List<Integer> rawPower = records.stream().map(Record::getPower).toList();
+		List<Double> powerSeries = smooth
+				? smoothPowerSeries(rawPower, SMOOTHING_WINDOW_SECONDS)
+				: rawPower.stream().map(p -> p != null ? (double) p : null).toList();
 		List<Double> xs = new ArrayList<>();
 		List<Double> ys = new ArrayList<>();
-		for (Record r : records) {
-			if (r.getPower() == null || r.getPower() == 0) {
+		for (int i = 0; i < records.size(); i++) {
+			Double power = powerSeries.get(i);
+			if (power == null || power == 0) {
 				continue;
 			}
-			Double expected = sampleExpectedAt(curve, r.getT() - startT);
+			Double expected = sampleExpectedAt(curve, records.get(i).getT() - startT);
 			if (expected != null) {
 				xs.add(expected);
-				ys.add((double) r.getPower());
+				ys.add(power);
 			}
 		}
 		return correlatePairs(xs, ys, records.size());
@@ -412,10 +532,23 @@ public class WorkoutMatchScanService {
 	 */
 	public CorrelationResult correlateRecordsByStepBoundary(Workout workout, Activity activity, List<Record> records,
 			double reference, Set<StepKind> excludedKinds) {
+		return correlateRecordsByStepBoundary(workout, activity, records, reference, excludedKinds, false);
+	}
+
+	/** Same as {@link #correlateRecordsByStepBoundary(Workout, Activity, List, double, Set)},
+	 * but {@code smooth=true} runs the power column through {@link #smoothPowerSeries} first
+	 * (see {@code SMOOTHING_WINDOW_SECONDS}'s own comment for why) - the boundary walk itself
+	 * still uses each record's real, unsmoothed {@code t}/{@code distanceKm}. */
+	public CorrelationResult correlateRecordsByStepBoundary(Workout workout, Activity activity, List<Record> records,
+			double reference, Set<StepKind> excludedKinds, boolean smooth) {
 		if (records.isEmpty()) {
 			return null;
 		}
 		int n = records.size();
+		List<Integer> rawPower = records.stream().map(Record::getPower).toList();
+		List<Double> powerSeries = smooth
+				? smoothPowerSeries(rawPower, SMOOTHING_WINDOW_SECONDS)
+				: rawPower.stream().map(p -> p != null ? (double) p : null).toList();
 		int recordIdx = 0;
 		int offsetT = records.get(0).getT();
 		double offsetDistance = records.get(0).getDistanceKm() != null ? records.get(0).getDistanceKm() : 0.0;
@@ -467,10 +600,10 @@ public class WorkoutMatchScanService {
 			// correlate against - regardless of excludedKinds.
 			if (!excludedKinds.contains(step.getKind()) && step.getEndType() != StepEndType.MANUAL) {
 				double pct = stepIntensityPct(step, reference);
-				for (Record r : records.subList(recordIdx, endIdx + 1)) {
-					if (r.getPower() != null && r.getPower() != 0) {
+				for (Double power : powerSeries.subList(recordIdx, endIdx + 1)) {
+					if (power != null && power != 0) {
 						xs.add(pct);
-						ys.add((double) r.getPower());
+						ys.add(power);
 					}
 				}
 			}
@@ -631,12 +764,20 @@ public class WorkoutMatchScanService {
 			// duration pre-filter below needs the true total, which the persisted column always
 			// has regardless of exclusions.
 			int totalPlannedDuration = workout.getDuration();
+			// 0 (not null) whenever no step's distance is determinable at all - DISTANCE basis
+			// is rejected before a scan is even created (see WorkoutMatchScanController) unless
+			// this is > 0, but computed unconditionally here since durationDiffSeconds/
+			// distanceDiffKm are both informational on every candidate row regardless of which
+			// basis actually filtered it.
+			int totalPlannedDistanceM = totalPlannedDistanceMeters(workout, flattened);
 			String athleteId = workout.getCreatedBy().getId();
 			Sport sport = workout.getSport();
 
 			List<Activity> allCandidates = activityRepository.findByAthleteIdAndSportAndWorkoutIsNull(athleteId, sport);
 			List<Activity> candidates = allCandidates.stream()
-					.filter(a -> Math.abs(a.getMovingTime() - totalPlannedDuration) <= DURATION_TOLERANCE_SECONDS)
+					.filter(a -> scan.getDurationBasis() == MatchScanDurationBasis.DISTANCE
+							? Math.abs(a.getDistanceKm() * 1000 - totalPlannedDistanceM) <= DISTANCE_TOLERANCE_METERS
+							: Math.abs(a.getMovingTime() - totalPlannedDuration) <= DURATION_TOLERANCE_SECONDS)
 					.toList();
 			progressUpdater.updateTotalCandidates(scanId, candidates.size());
 
@@ -646,10 +787,11 @@ public class WorkoutMatchScanService {
 				CorrelationResult result;
 				if (needsBoundaryWalk) {
 					List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
-					result = correlateRecordsByStepBoundary(workout, activity, records, reference, excludedKinds);
+					result = correlateRecordsByStepBoundary(workout, activity, records, reference, excludedKinds,
+							scan.isSmoothPower());
 				}
 				else {
-					result = correlateActivity(curve, activity);
+					result = correlateActivity(curve, activity, scan.isSmoothPower());
 				}
 				if (result != null) {
 					WorkoutMatchScanCandidate row = new WorkoutMatchScanCandidate();
@@ -657,6 +799,9 @@ public class WorkoutMatchScanService {
 					row.setActivity(activity);
 					row.setCorrelation(result.correlation());
 					row.setDurationDiffSeconds(Math.abs(activity.getMovingTime() - totalPlannedDuration));
+					row.setDistanceDiffKm(totalPlannedDistanceM > 0
+							? round4(Math.abs(activity.getDistanceKm() - totalPlannedDistanceM / 1000.0))
+							: null);
 					row.setCoverage(result.coverage());
 					row.setImpliedFtp(result.impliedFtp());
 					rows.add(row);

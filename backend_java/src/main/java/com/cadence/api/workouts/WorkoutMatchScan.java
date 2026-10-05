@@ -48,6 +48,29 @@ public class WorkoutMatchScan extends PrefixedIdEntity {
 	@Column(name = "excluded_step_kinds", nullable = false)
 	private List<String> excludedStepKinds = new ArrayList<>();
 
+	// Whether the candidate pre-filter compares each activity's actual movingTime or
+	// distanceKm against the workout's planned total - chosen once, at creation, same as
+	// excludedStepKinds above. TIME (the default) is exact for a time-ended plan; DISTANCE
+	// exists because a distance-ended plan's `duration` column is itself just a pace estimate
+	// (see WorkoutMatchScanService.totalPlannedDistanceMeters), so for e.g. a trail long run
+	// whose real pacing varies with terrain, comparing distance (the one quantity the plan
+	// actually fixes) instead of duration avoids rejecting a genuine match purely on normal
+	// pacing variance. The athlete picks whichever matches how the workout's steps are
+	// actually structured - a mixed workout (some time-ended, some distance-ended steps) is
+	// valid either way, just less precise.
+	@Column(name = "duration_basis", nullable = false)
+	private MatchScanDurationBasis durationBasis = MatchScanDurationBasis.TIME;
+
+	// Whether the power stream is smoothed (see WorkoutMatchScanService.SMOOTHING_WINDOW_SECONDS)
+	// before correlating against the workout's plan - chosen once, at creation, same as the
+	// fields above. Off by default: it changes the score itself (filtering real
+	// second-to-second noise so a session whose segment averages genuinely match the plan isn't
+	// penalized for terrain/stride variability within each segment), not just additional
+	// information, so an athlete opts in deliberately rather than every scan's numbers shifting
+	// silently.
+	@Column(name = "smooth_power", nullable = false)
+	private boolean smoothPower;
+
 	@Column(name = "error_message")
 	private String errorMessage;
 
@@ -107,6 +130,22 @@ public class WorkoutMatchScan extends PrefixedIdEntity {
 
 	public void setExcludedStepKinds(List<String> excludedStepKinds) {
 		this.excludedStepKinds = excludedStepKinds;
+	}
+
+	public MatchScanDurationBasis getDurationBasis() {
+		return durationBasis;
+	}
+
+	public void setDurationBasis(MatchScanDurationBasis durationBasis) {
+		this.durationBasis = durationBasis;
+	}
+
+	public boolean isSmoothPower() {
+		return smoothPower;
+	}
+
+	public void setSmoothPower(boolean smoothPower) {
+		this.smoothPower = smoothPower;
 	}
 
 	public String getErrorMessage() {

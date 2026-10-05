@@ -13,7 +13,7 @@ from core.auth_context import get_effective_athlete_id
 from core.permissions import user_may_read, user_may_write
 
 from .calculations import compute_chart_preview, compute_duration_and_tss, normalize_power_units
-from .match_scan import scannability_error
+from .match_scan import scannability_error, total_planned_distance_meters
 from .models import Workout, WorkoutFolder, WorkoutMatchScan, WorkoutStep
 from .serializers import (
     WorkoutCreateSerializer,
@@ -391,18 +391,27 @@ class WorkoutMatchScanCreateView(APIView):
         excluded_step_kinds = body_serializer.validated_data.get(
             "excluded_step_kinds", DEFAULT_MATCH_SCAN_EXCLUDED_STEP_KINDS
         )
+        duration_basis = body_serializer.validated_data.get("duration_basis", "time")
+        smooth_power = body_serializer.validated_data.get("smooth_power", False)
 
         error = scannability_error(workout, excluded_kinds=frozenset(excluded_step_kinds))
         if error:
             raise ValidationError({"workout": error})
+        if duration_basis == "distance" and total_planned_distance_meters(workout) <= 0:
+            raise ValidationError({"duration_basis": "This workout has no determinable planned distance to scan by."})
 
         # At most one active scan per workout - a re-POST while one is queued/processing just
         # hands back that scan's id rather than starting a duplicate, loosely mirroring
-        # dataexport.ExportJob's one-active-job-per-athlete constraint. Its kind selection is
-        # whatever the FIRST of the concurrent requests set - a second request's selection is
-        # ignored in that case, same as any other field would be.
+        # dataexport.ExportJob's one-active-job-per-athlete constraint. Its kind/basis/smoothing
+        # selection is whatever the FIRST of the concurrent requests set - a second request's
+        # selection is ignored in that case, same as any other field would be.
         existing = WorkoutMatchScan.objects.filter(workout_id=id, status__in=["queued", "processing"]).first()
-        scan = existing or WorkoutMatchScan.objects.create(workout=workout, excluded_step_kinds=excluded_step_kinds)
+        scan = existing or WorkoutMatchScan.objects.create(
+            workout=workout,
+            excluded_step_kinds=excluded_step_kinds,
+            duration_basis=duration_basis,
+            smooth_power=smooth_power,
+        )
         if not existing:
             run_workout_match_scan_task.delay(scan.id)
 

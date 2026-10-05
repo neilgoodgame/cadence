@@ -2,7 +2,13 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createWorkoutMatchScan, getWorkoutMatchScan } from "../../api/matchScans";
 import { updateActivity } from "../../api/activities";
-import type { StepKind, WorkoutMatchScan, WorkoutMatchScanCandidate, WorkoutStep } from "../../api/types";
+import type {
+  MatchScanDurationBasis,
+  StepKind,
+  WorkoutMatchScan,
+  WorkoutMatchScanCandidate,
+  WorkoutStep,
+} from "../../api/types";
 import { Card } from "../../components/Card";
 import { formatDate, formatDuration } from "../../lib/format";
 import { usePolling } from "../../lib/usePolling";
@@ -13,6 +19,10 @@ const TERMINAL_STATUSES = new Set(["ready", "failed"]);
 // Order to show kind checkboxes in - matches StepDrawer.tsx's own kind ordering.
 const KIND_ORDER: StepKind[] = ["warmup", "block", "rec", "cool"];
 const DEFAULT_EXCLUDED_KINDS: StepKind[] = ["warmup", "cool"];
+const DURATION_BASIS_OPTIONS: { value: MatchScanDurationBasis; label: string }[] = [
+  { value: "time", label: "Time" },
+  { value: "distance", label: "Distance" },
+];
 
 const GRID_COLS = "minmax(140px,1.3fr) 0.6fr 0.7fr 0.55fr 0.9fr";
 
@@ -33,13 +43,13 @@ const primaryBtn = {
   border: "none",
 };
 
-function ColHeaders() {
+function ColHeaders({ durationBasis }: { durationBasis: MatchScanDurationBasis }) {
   const style = { fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--ink3)", textTransform: "uppercase" as const };
   return (
     <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, gap: 10, padding: "0 4px 8px" }}>
       <span style={style}>Activity</span>
       <span style={style}>Match</span>
-      <span style={style}>Duration diff</span>
+      <span style={style}>{durationBasis === "distance" ? "Distance diff" : "Duration diff"}</span>
       <span style={style}>Coverage</span>
       <span />
     </div>
@@ -51,10 +61,12 @@ function ColHeaders() {
 function CandidateRow({
   workoutId,
   candidate,
+  durationBasis,
   onApplied,
 }: {
   workoutId: string;
   candidate: WorkoutMatchScanCandidate;
+  durationBasis: MatchScanDurationBasis;
   onApplied: () => void;
 }) {
   const [applied, setApplied] = useState(false);
@@ -80,7 +92,11 @@ function CandidateRow({
         {Math.round(candidate.correlation * 100)}%
       </span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>
-        {formatDuration(candidate.duration_diff_seconds)}
+        {durationBasis === "distance"
+          ? candidate.distance_diff_km != null
+            ? `${(candidate.distance_diff_km * 1000).toFixed(0)} m`
+            : "—"
+          : formatDuration(candidate.duration_diff_seconds)}
       </span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>
         {Math.round(candidate.coverage * 100)}%
@@ -132,9 +148,15 @@ function ScanResults({
 
   return (
     <div>
-      <ColHeaders />
+      <ColHeaders durationBasis={scan.duration_basis} />
       {scan.candidates.map((candidate) => (
-        <CandidateRow key={candidate.activity_id} workoutId={workoutId} candidate={candidate} onApplied={onApplied} />
+        <CandidateRow
+          key={candidate.activity_id}
+          workoutId={workoutId}
+          candidate={candidate}
+          durationBasis={scan.duration_basis}
+          onApplied={onApplied}
+        />
       ))}
     </div>
   );
@@ -160,13 +182,15 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
     return KIND_ORDER.filter((k) => present.has(k));
   }, [steps]);
   const [excludedKinds, setExcludedKinds] = useState<StepKind[]>(DEFAULT_EXCLUDED_KINDS);
+  const [durationBasis, setDurationBasis] = useState<MatchScanDurationBasis>("time");
+  const [smoothPower, setSmoothPower] = useState(false);
 
   function toggleKind(kind: StepKind) {
     setExcludedKinds((prev) => (prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind]));
   }
 
   const triggerMutation = useMutation({
-    mutationFn: () => createWorkoutMatchScan(workoutId, excludedKinds),
+    mutationFn: () => createWorkoutMatchScan(workoutId, excludedKinds, durationBasis, smoothPower),
     onSuccess: (result) => {
       setScanResult(result);
       setConfiguring(false);
@@ -188,6 +212,30 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
 
       {configuring && (
         <div>
+          <div style={{ fontSize: 12, color: "var(--ink2)", marginBottom: 6 }}>
+            Compare candidates by
+          </div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+            {DURATION_BASIS_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setDurationBasis(opt.value)}
+                style={{
+                  ...actionBtn,
+                  background: durationBasis === opt.value ? "var(--ember)" : "transparent",
+                  color: durationBasis === opt.value ? "#fff" : "var(--ink2)",
+                  border: durationBasis === opt.value ? "none" : "1px solid var(--line)",
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 14, lineHeight: 1.45 }}>
+            {durationBasis === "distance"
+              ? "Matches candidates by how closely their total distance tracks this workout's planned distance - use this for a fully distance-based workout, where a pace-estimated duration can be off by more than normal pacing variance (e.g. a trail run)."
+              : "Matches candidates by how closely their moving time tracks this workout's planned duration - the usual choice for a time-based (interval) workout."}
+          </div>
           <div style={{ fontSize: 12, color: "var(--ink2)", marginBottom: 10 }}>
             Which parts of this workout should count toward the match?
           </div>
@@ -198,6 +246,15 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
                 {kindLabel(kind)}
               </label>
             ))}
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink)", cursor: "pointer", marginBottom: 6 }}>
+            <input type="checkbox" checked={smoothPower} onChange={() => setSmoothPower((prev) => !prev)} />
+            Smooth power
+          </label>
+          <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 14, lineHeight: 1.45 }}>
+            Filters second-to-second terrain/stride noise before scoring - raises the match
+            score for a genuinely matching session whose segments don't swing far apart in
+            intensity, at the cost of being less sensitive to real short efforts.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => triggerMutation.mutate()} disabled={triggerMutation.isPending} style={{ ...primaryBtn, cursor: triggerMutation.isPending ? "wait" : "pointer" }}>
