@@ -4,5 +4,5 @@ import java.time.LocalDate;
 
 public record WorkoutMatchScanCandidateResponse(String activityId, String name, LocalDate date, double correlation,
 		int durationDiffSeconds, Double distanceDiffKm, double coverage, Integer impliedFtp, int movingTime,
-		Integer avgPower) {
+		double distanceKm, Integer avgPower) {
 }

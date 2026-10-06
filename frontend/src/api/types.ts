@@ -890,6 +890,7 @@ export interface WorkoutMatchScanCandidate {
   coverage: number;
   implied_ftp: number | null;
   moving_time: number;
+  distance_km: number;
   avg_power: number | null;
 }
 

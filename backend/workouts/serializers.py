@@ -230,6 +230,7 @@ class WorkoutMatchScanCandidateSerializer(serializers.Serializer):
     coverage = serializers.FloatField()
     implied_ftp = serializers.IntegerField(allow_null=True)
     moving_time = serializers.IntegerField()
+    distance_km = serializers.FloatField()
     avg_power = serializers.IntegerField(allow_null=True)
 
 
@@ -303,6 +304,7 @@ class WorkoutMatchScanSerializer(serializers.ModelSerializer):
                     "coverage": c.coverage,
                     "implied_ftp": c.implied_ftp,
                     "moving_time": c.activity.moving_time,
+                    "distance_km": c.activity.distance_km,
                     "avg_power": c.activity.avg_power,
                 }
             )

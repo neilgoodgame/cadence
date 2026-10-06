@@ -144,6 +144,6 @@ public class WorkoutMatchScanController {
 		return new WorkoutMatchScanCandidateResponse(activity.getId(), activity.getName(),
 				activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), candidate.getCorrelation(),
 				candidate.getDurationDiffSeconds(), candidate.getDistanceDiffKm(), candidate.getCoverage(),
-				candidate.getImpliedFtp(), activity.getMovingTime(), activity.getAvgPower());
+				candidate.getImpliedFtp(), activity.getMovingTime(), activity.getDistanceKm(), activity.getAvgPower());
 	}
 }

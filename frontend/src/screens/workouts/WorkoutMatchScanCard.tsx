@@ -11,7 +11,7 @@ import type {
   WorkoutStep,
 } from "../../api/types";
 import { Card } from "../../components/Card";
-import { formatDate, formatDuration } from "../../lib/format";
+import { formatDate, formatDuration, formatKeyMetric } from "../../lib/format";
 import { usePolling } from "../../lib/usePolling";
 import { flattenLeaves, kindLabel } from "./workoutTree";
 
@@ -96,7 +96,7 @@ function CandidateRow({
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{candidate.name}</div>
         <div className="mono" style={{ fontSize: 11, color: "var(--ink3)" }}>
-          {formatDate(candidate.date)} · {formatDuration(candidate.moving_time)}
+          {formatDate(candidate.date)} · {formatKeyMetric(candidate)}
           {candidate.implied_ftp != null ? ` · implied FTP ${candidate.implied_ftp}W` : ""}
         </div>
       </div>
@@ -137,10 +137,12 @@ function CandidateRow({
 function ScanResults({
   initial,
   workoutId,
+  workoutName,
   onApplied,
 }: {
   initial: { data: WorkoutMatchScan; retryAfterSeconds: number | null };
   workoutId: string;
+  workoutName: string;
   onApplied: () => void;
 }) {
   const scan = usePolling(initial, (id) => getWorkoutMatchScan(workoutId, id), (s) => s.id, (s) => TERMINAL_STATUSES.has(s.status));
@@ -162,6 +164,9 @@ function ScanResults({
 
   return (
     <div>
+      <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 10 }}>
+        Scanned against <span style={{ color: "var(--ink2)", fontWeight: 600 }}>{workoutName}</span>
+      </div>
       <ColHeaders showDistanceDiff={showDistanceDiff} />
       {scan.candidates.map((candidate) => (
         <CandidateRow
@@ -186,7 +191,15 @@ function ScanResults({
  * the workout should count toward the correlation - pre-checked for everything except
  * warmup/cooldown, since those tend to be loosely-executed and add noise rather than
  * discriminating signal. */
-export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; steps: WorkoutStep[] }) {
+export function WorkoutMatchScanCard({
+  workoutId,
+  workoutName,
+  steps,
+}: {
+  workoutId: string;
+  workoutName: string;
+  steps: WorkoutStep[];
+}) {
   const queryClient = useQueryClient();
   const [scanResult, setScanResult] = useState<{ data: WorkoutMatchScan; retryAfterSeconds: number | null } | null>(null);
   const [configuring, setConfiguring] = useState(false);
@@ -323,6 +336,7 @@ export function WorkoutMatchScanCard({ workoutId, steps }: { workoutId: string; 
         <ScanResults
           initial={scanResult}
           workoutId={workoutId}
+          workoutName={workoutName}
           onApplied={() => queryClient.invalidateQueries({ queryKey: ["workout-matches", workoutId] })}
         />
       )}
