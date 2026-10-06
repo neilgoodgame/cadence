@@ -48,13 +48,13 @@ const primaryBtn = {
   border: "none",
 };
 
-function ColHeaders({ durationBasis }: { durationBasis: MatchScanDurationBasis }) {
+function ColHeaders({ showDistanceDiff }: { showDistanceDiff: boolean }) {
   const style = { fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--ink3)", textTransform: "uppercase" as const };
   return (
     <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, gap: 10, padding: "0 4px 8px" }}>
       <span style={style}>Activity</span>
       <span style={style}>Match</span>
-      <span style={style}>{durationBasis === "distance" ? "Distance diff" : "Duration diff"}</span>
+      <span style={style}>{showDistanceDiff ? "Distance diff" : "Duration diff"}</span>
       <span style={style}>Coverage</span>
       <span />
     </div>
@@ -62,16 +62,23 @@ function ColHeaders({ durationBasis }: { durationBasis: MatchScanDurationBasis }
 }
 
 /** A workout template is reusable, so more than one candidate can legitimately be applied to
- * the same workout - each row applies independently rather than the list being a single pick. */
+ * the same workout - each row applies independently rather than the list being a single pick.
+ *
+ * `showDistanceDiff` picks which of `candidate.distance_diff_km`/`duration_diff_seconds` to
+ * show - both are always populated on every candidate regardless of scan options, so this is
+ * purely about which one actually means something for how the scan matched: distance_basis
+ * "distance" (the plan's own fixed quantity) or correlation_basis "laps" (which ignores
+ * duration/the pre-filter built on it entirely - see match_scan.run_match_scan's own comment on
+ * why duration is unreliable for a distance-ended plan). */
 function CandidateRow({
   workoutId,
   candidate,
-  durationBasis,
+  showDistanceDiff,
   onApplied,
 }: {
   workoutId: string;
   candidate: WorkoutMatchScanCandidate;
-  durationBasis: MatchScanDurationBasis;
+  showDistanceDiff: boolean;
   onApplied: () => void;
 }) {
   const [applied, setApplied] = useState(false);
@@ -97,7 +104,7 @@ function CandidateRow({
         {Math.round(candidate.correlation * 100)}%
       </span>
       <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>
-        {durationBasis === "distance"
+        {showDistanceDiff
           ? candidate.distance_diff_km != null
             ? `${(candidate.distance_diff_km * 1000).toFixed(0)} m`
             : "—"
@@ -151,15 +158,17 @@ function ScanResults({
     return <div style={{ fontSize: 13, color: "var(--ink3)" }}>No likely matches found among your unlinked activities.</div>;
   }
 
+  const showDistanceDiff = scan.duration_basis === "distance" || scan.correlation_basis === "laps";
+
   return (
     <div>
-      <ColHeaders durationBasis={scan.duration_basis} />
+      <ColHeaders showDistanceDiff={showDistanceDiff} />
       {scan.candidates.map((candidate) => (
         <CandidateRow
           key={candidate.activity_id}
           workoutId={workoutId}
           candidate={candidate}
-          durationBasis={scan.duration_basis}
+          showDistanceDiff={showDistanceDiff}
           onApplied={onApplied}
         />
       ))}
