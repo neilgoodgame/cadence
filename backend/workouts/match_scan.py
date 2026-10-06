@@ -623,7 +623,16 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
     all_candidates = Activity.objects.filter(
         athlete_id=workout.created_by_id, sport=workout.sport, workout__isnull=True
     )
-    if scan.duration_basis == "distance":
+    if scan.correlation_basis == "laps":
+        # The duration/distance pre-filter below exists to cheaply prune candidates before an
+        # expensive per-second Record fetch - correlate_laps never fetches Records at all (just
+        # a handful of Lap rows) and already has its own correct, cheap filter (an exact
+        # lap-count match), so applying the duration-based one here too would only risk
+        # rejecting a genuine match on account of workout.duration being a pace estimate (see
+        # total_planned_distance_meters's own docstring) - exactly the kind of candidate this
+        # mode exists to catch.
+        candidates = list(all_candidates)
+    elif scan.duration_basis == "distance":
         candidates = [
             a
             for a in all_candidates

@@ -841,11 +841,20 @@ public class WorkoutMatchScanService {
 			Sport sport = workout.getSport();
 
 			List<Activity> allCandidates = activityRepository.findByAthleteIdAndSportAndWorkoutIsNull(athleteId, sport);
-			List<Activity> candidates = allCandidates.stream()
-					.filter(a -> scan.getDurationBasis() == MatchScanDurationBasis.DISTANCE
-							? Math.abs(a.getDistanceKm() * 1000 - totalPlannedDistanceM) <= DISTANCE_TOLERANCE_METERS
-							: Math.abs(a.getMovingTime() - totalPlannedDuration) <= DURATION_TOLERANCE_SECONDS)
-					.toList();
+			// The duration/distance pre-filter below exists to cheaply prune candidates before
+			// an expensive per-second Record fetch - correlateLaps never fetches Records at all
+			// (just a handful of Lap rows) and already has its own correct, cheap filter (an
+			// exact lap-count match), so applying the duration-based one here too would only
+			// risk rejecting a genuine match on account of workout.getDuration() being a pace
+			// estimate for a distance-ended plan (see totalPlannedDistanceMeters's own Javadoc)
+			// - exactly the kind of candidate this mode exists to catch.
+			List<Activity> candidates = scan.getCorrelationBasis() == MatchScanCorrelationBasis.LAPS
+					? allCandidates
+					: allCandidates.stream()
+							.filter(a -> scan.getDurationBasis() == MatchScanDurationBasis.DISTANCE
+									? Math.abs(a.getDistanceKm() * 1000 - totalPlannedDistanceM) <= DISTANCE_TOLERANCE_METERS
+									: Math.abs(a.getMovingTime() - totalPlannedDuration) <= DURATION_TOLERANCE_SECONDS)
+							.toList();
 			progressUpdater.updateTotalCandidates(scanId, candidates.size());
 
 			List<WorkoutMatchScanCandidate> rows = new ArrayList<>();

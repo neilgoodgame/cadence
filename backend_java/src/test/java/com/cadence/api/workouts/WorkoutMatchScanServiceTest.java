@@ -1014,6 +1014,59 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void runScanWithLapsCorrelationBasisIgnoresTheUnreliableDurationPreFilter() {
+		// Regression coverage for a real false negative found live: workout.getDuration()
+		// (11020, matching the real workout exactly) is a pace *estimate* for a distance-ended
+		// plan (see totalPlannedDistanceMeters's own Javadoc) - the real matching activity's
+		// actual moving time (10746) differs from it by 274s, well outside
+		// DURATION_TOLERANCE_SECONDS's 60s window. The whole point of LAPS basis is to not care
+		// about that estimate at all, so this candidate must still be found even though the
+		// duration/distance pre-filter (which any other basis would apply) would have rejected
+		// it outright.
+		User athlete = newAthlete("scan-laps-duration-mismatch@example.cc");
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Trail");
+		workout.setSport(Sport.RUN);
+		workout.setDuration(11020); // the real workout's own pace-estimated duration
+		WorkoutStep warmup = leaf(workout, null, 0, StepKind.WARMUP, 0, 79.0, 86.0);
+		warmup.setEndType(StepEndType.DISTANCE);
+		warmup.setDuration(null);
+		warmup.setDistance(16000);
+		WorkoutStep block = leaf(workout, null, 1, StepKind.BLOCK, 0, 89.0, 98.0);
+		block.setEndType(StepEndType.DISTANCE);
+		block.setDuration(null);
+		block.setDistance(18000);
+		WorkoutStep cool = leaf(workout, null, 2, StepKind.COOL, 0, 65.0, 75.0);
+		cool.setEndType(StepEndType.DISTANCE);
+		cool.setDuration(null);
+		cool.setDistance(1000);
+		workout.getSteps().add(warmup);
+		workout.getSteps().add(block);
+		workout.getSteps().add(cool);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		Activity match = newActivity(athlete, Instant.parse("2026-01-20T06:00:00Z"), Sport.RUN, 10746, null);
+		newLap(match, 0, 5206, 16.0041396484375);
+		newLap(match, 1, 5218, 18.009779296875);
+		newLap(match, 2, 321, 1.0000900268554687);
+
+		WorkoutMatchScan scan = new WorkoutMatchScan();
+		scan.setWorkout(workout);
+		scan.setCorrelationBasis(MatchScanCorrelationBasis.LAPS);
+		scan.setExcludedStepKinds(List.of());
+		scan = scanRepository.save(scan);
+
+		workoutMatchScanService.runScanSync(scan.getId());
+
+		List<WorkoutMatchScanCandidate> candidates =
+				candidateRepository.findByScanIdOrderByCorrelationDescFetchActivity(scan.getId());
+		assertThat(candidates).hasSize(1);
+		assertThat(candidates.get(0).getActivity().getId()).isEqualTo(match.getId());
+		assertThat(candidates.get(0).getCorrelation()).isGreaterThan(0.999);
+	}
+
+	@Test
 	void runScanFindsTheMatchingActivityAndExcludesUnrelatedCandidates() {
 		User athlete = newAthlete("scan-athlete@example.cc");
 		Workout workout = newGorbyWorkout(athlete);

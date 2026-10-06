@@ -2481,6 +2481,62 @@ class WorkoutMatchScanEndpointTests(TestCase):
         self.assertEqual([c["activity_id"] for c in detail["candidates"]], [activity.id])
         self.assertGreater(detail["candidates"][0]["correlation"], 0.999)
 
+    def test_laps_correlation_basis_ignores_the_unreliable_duration_pre_filter(self):
+        # Regression coverage for a real false negative found live: workout.duration (11020)
+        # here is a pace *estimate* for a distance-ended plan (see
+        # total_planned_distance_meters's own docstring) - the real matching activity's actual
+        # moving_time (10746) differs from it by 274s, well outside DURATION_TOLERANCE_SECONDS's
+        # 60s window. The whole point of "laps" basis is to not care about that estimate at all,
+        # so this candidate must still be found even though the duration/distance pre-filter
+        # (which any OTHER basis would apply) would have rejected it outright.
+        workout = Workout.objects.create(created_by=self.athlete, name="Trail", sport="run", duration=11020)
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="warmup",
+            end_type="distance",
+            distance=16000,
+            target_type="power",
+            target_low=79,
+            target_high=86,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=1,
+            kind="block",
+            end_type="distance",
+            distance=18000,
+            target_type="power",
+            target_low=89,
+            target_high=98,
+        )
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=2,
+            kind="cool",
+            end_type="distance",
+            distance=1000,
+            target_type="power",
+            target_low=65,
+            target_high=75,
+        )
+        activity = self._make_activity(sport="run", name="Trail match", moving_time=10746, distance_km=35.014)
+        Lap.objects.create(activity=activity, index=0, duration=5206, distance_km=16.0041396484375)
+        Lap.objects.create(activity=activity, index=1, duration=5218, distance_km=18.009779296875)
+        Lap.objects.create(activity=activity, index=2, duration=321, distance_km=1.0000900268554687)
+
+        client = _bearer_client(self.athlete)
+        create_response = client.post(
+            f"/v1/workouts/{workout.id}/match-scans",
+            {"excluded_step_kinds": [], "correlation_basis": "laps"},
+            format="json",
+        )
+        scan_id = create_response.json()["id"]
+
+        detail = client.get(f"/v1/workouts/{workout.id}/match-scans/{scan_id}").json()
+        self.assertEqual([c["activity_id"] for c in detail["candidates"]], [activity.id])
+        self.assertGreater(detail["candidates"][0]["correlation"], 0.999)
+
     def test_laps_correlation_basis_drops_a_candidate_with_a_mismatched_lap_count(self):
         workout = Workout.objects.create(created_by=self.athlete, name="Two-step", sport="run", duration=1800)
         WorkoutStep.objects.create(
