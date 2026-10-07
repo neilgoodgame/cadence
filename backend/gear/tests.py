@@ -308,6 +308,25 @@ class ShoeViewTests(TestCase):
         self.assertIn("since", data)
         self.assertNotIn("retired", data)
 
+    def test_create_shoe_with_explicit_zero_limit_km_is_not_overridden_by_the_default(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/gear/shoes",
+            {"shoe_model_version_id": self.version.id, "colourway": "Black", "limit_km": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["limit_km"], 0)
+
+    def test_create_shoe_with_omitted_limit_km_defaults_to_the_athletes_preference(self):
+        self.athlete.default_shoe_limit_km = 1000
+        self.athlete.save(update_fields=["default_shoe_limit_km"])
+
+        response = _bearer_client(self.athlete).post(
+            "/v1/gear/shoes", {"shoe_model_version_id": self.version.id, "colourway": "Black"}, format="json"
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["limit_km"], 1000)
+
     def test_create_shoe_with_omitted_name_defaults_to_composed_string(self):
         response = _bearer_client(self.athlete).post(
             "/v1/gear/shoes",
@@ -488,6 +507,19 @@ class ShoeImportViewTests(TestCase):
         shoe = Shoe.objects.get(athlete=self.athlete)
         self.assertEqual(shoe.shoe_model_version_id, self.version.id)
         self.assertEqual(shoe.km, 258)
+
+    def test_imported_shoe_gets_the_athletes_default_limit_km(self):
+        self.athlete.default_shoe_limit_km = 1000
+        self.athlete.save(update_fields=["default_shoe_limit_km"])
+
+        response = _bearer_client(self.athlete).post(
+            "/v1/gear/shoes/import",
+            {"entries": [{"manufacturer": self._MANUFACTURER, "model": "Speedwing", "version": "3"}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        shoe = Shoe.objects.get(athlete=self.athlete)
+        self.assertEqual(shoe.limit_km, 1000)
 
     def test_non_admin_skips_an_unmatched_entry_without_touching_the_catalog(self):
         models_before = ShoeModel.objects.count()

@@ -11,6 +11,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import User
 from core.auth_context import authenticated_user, get_effective_athlete_id
 from core.exceptions import ConflictError, PayloadTooLargeError
 from core.permissions import user_is_admin, user_may_read, user_may_write
@@ -207,12 +208,17 @@ class ShoeListCreateView(APIView):
         if Shoe.objects.filter(athlete_id=athlete_id, name=name).exists():
             raise ConflictError("A pair of shoes with that name already exists.")
 
+        if "limit_km" in data:
+            limit_km = data["limit_km"]
+        else:
+            limit_km = User.objects.values_list("default_shoe_limit_km", flat=True).get(pk=athlete_id)
+
         shoe = Shoe.objects.create(
             athlete_id=athlete_id,
             shoe_model_version=shoe_model_version,
             colourway=data["colourway"],
             name=name,
-            limit_km=data.get("limit_km", 0),
+            limit_km=limit_km,
             image=data.get("image"),
         )
         return Response(ShoeSerializer(shoe).data, status=status.HTTP_201_CREATED)
@@ -236,6 +242,7 @@ class ShoeImportView(APIView):
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
         is_admin = user_is_admin(authenticated_user(request))
+        default_limit_km = User.objects.values_list("default_shoe_limit_km", flat=True).get(pk=athlete_id)
 
         serializer = ShoeImportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -291,6 +298,7 @@ class ShoeImportView(APIView):
                 colourway=colourway,
                 name=name,
                 km=round(distance_km) if distance_km is not None else 0,
+                limit_km=default_limit_km,
             )
             shoes_created += 1
 

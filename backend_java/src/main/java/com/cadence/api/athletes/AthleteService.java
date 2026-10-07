@@ -159,6 +159,9 @@ public class AthleteService {
 		if (request.lapSource() != null) {
 			athlete.setLapSource(request.lapSource());
 		}
+		if (request.defaultShoeLimitKm() != null) {
+			athlete.setDefaultShoeLimitKm(request.defaultShoeLimitKm());
+		}
 		userRepository.save(athlete);
 		if (suggestionsAffected) {
 			thresholdSuggestionService.invalidate(athlete.getId());

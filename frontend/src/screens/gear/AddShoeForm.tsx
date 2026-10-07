@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createShoe, createShoeCatalogEntry, searchShoeCatalog } from "../../api/gear";
+import { useAuth } from "../../auth/AuthContext";
 import type { ShoeCatalogEntry } from "../../api/types";
 
 const inputStyle: React.CSSProperties = {
@@ -13,12 +14,13 @@ const inputStyle: React.CSSProperties = {
 };
 
 export function AddShoeForm({ onDone }: { onDone: () => void }) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<ShoeCatalogEntry | null>(null);
   const [colourway, setColourway] = useState("");
   const [name, setName] = useState("");
-  const [limitKm, setLimitKm] = useState("600");
+  const [limitKm, setLimitKm] = useState(String(user?.default_shoe_limit_km ?? 800));
 
   // "add new model" sub-form state
   const [addingNew, setAddingNew] = useState(false);

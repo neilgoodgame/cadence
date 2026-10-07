@@ -72,6 +72,20 @@ class ShoeServiceImportTest extends IntegrationTest {
 	}
 
 	@Test
+	void importedShoeGetsTheAthletesDefaultLimitKm() {
+		User athlete = newAthlete("gear-shoe-import-limit@example.cc");
+		athlete.setDefaultShoeLimitKm(1000);
+		userRepository.save(athlete);
+		newCatalogEntry("SpeedwingLimit", "3");
+
+		shoeService.importShoes(athlete,
+				List.of(new ShoeImportRequest.Entry(MANUFACTURER, "SpeedwingLimit", "3", null, null)), false);
+
+		Shoe shoe = shoeRepository.findByAthleteIdAndRetiredFalseOrderByIdDesc(athlete.getId()).get(0);
+		assertThat(shoe.getLimitKm()).isEqualTo(1000);
+	}
+
+	@Test
 	void nonAdminSkipsAnUnmatchedEntryWithoutTouchingTheCatalog() {
 		User athlete = newAthlete("gear-shoe-import-skip@example.cc");
 		long modelsBefore = shoeModelRepository.count();

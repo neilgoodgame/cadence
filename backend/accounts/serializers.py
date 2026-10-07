@@ -41,6 +41,7 @@ class UserSerializer(serializers.ModelSerializer):
             "append_match_date_to_name",
             "copy_matched_workout_tags",
             "lap_source",
+            "default_shoe_limit_km",
             "email_verified",
         ]
 

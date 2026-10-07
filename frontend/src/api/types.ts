@@ -73,6 +73,9 @@ export interface Athlete {
    * activity. Independent of the naming preferences above. */
   copy_matched_workout_tags: boolean;
   lap_source: LapSource;
+  /** Applied as a new shoe's limit_km whenever one isn't given explicitly - both the single
+   * "Add shoe" form and the gear CSV import. */
+  default_shoe_limit_km: number;
 }
 
 export interface TokenResponse {
@@ -459,6 +462,7 @@ export interface AthleteUpdate {
   append_match_date_to_name?: boolean;
   copy_matched_workout_tags?: boolean;
   lap_source?: LapSource;
+  default_shoe_limit_km?: number;
 }
 
 export interface ActivityComment {

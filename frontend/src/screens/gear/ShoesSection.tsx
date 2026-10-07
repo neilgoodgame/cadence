@@ -1,22 +1,54 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { listShoes } from "../../api/gear";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { listShoes, updateShoe } from "../../api/gear";
+import { useAuth } from "../../auth/AuthContext";
 import { AddShoeForm } from "./AddShoeForm";
 import { ImportShoesPanel } from "./ImportShoesPanel";
 import { ShoeCard } from "./ShoeCard";
 
 export function ShoesSection() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["shoes"], queryFn: listShoes });
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const shoes = data?.data ?? [];
+  const unsetLimitShoes = shoes.filter((s) => s.limit_km === 0);
+
+  const backfillLimitMutation = useMutation({
+    mutationFn: async () => {
+      const limitKm = user!.default_shoe_limit_km;
+      for (const shoe of unsetLimitShoes) {
+        await updateShoe(shoe.id, { limit_km: limitKm });
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shoes"] }),
+  });
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Run shoes</h2>
         <div style={{ display: "flex", gap: 8 }}>
+          {unsetLimitShoes.length > 0 && (
+            <button
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Set a ${user!.default_shoe_limit_km}km wear limit on ${unsetLimitShoes.length} shoe${unsetLimitShoes.length === 1 ? "" : "s"} with no limit set?`,
+                  )
+                ) {
+                  backfillLimitMutation.mutate();
+                }
+              }}
+              disabled={backfillLimitMutation.isPending}
+              title="Set the default wear limit (from Preferences) on every shoe that doesn't have one"
+              style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600 }}
+            >
+              {backfillLimitMutation.isPending ? "Setting…" : `Set wear limit (${unsetLimitShoes.length})`}
+            </button>
+          )}
           <button
             onClick={() => setImporting(!importing)}
             style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600 }}

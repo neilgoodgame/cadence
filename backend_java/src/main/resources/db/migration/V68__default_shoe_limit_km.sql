@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN default_shoe_limit_km INTEGER NOT NULL DEFAULT 800;
