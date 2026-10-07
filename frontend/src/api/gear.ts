@@ -9,6 +9,8 @@ import type {
   ServiceRecord,
   Shoe,
   ShoeCatalogEntry,
+  ShoeImportEntry,
+  ShoeImportResult,
 } from "./types";
 
 export function listBikes(): Promise<DataList<Bike>> {
@@ -98,6 +100,10 @@ export function updateShoe(id: string, input: ShoeUpdateInput): Promise<Shoe> {
 
 export function deleteShoe(id: string): Promise<void> {
   return apiFetch<void>(`/v1/gear/shoes/${id}`, { method: "DELETE" });
+}
+
+export function importShoes(entries: ShoeImportEntry[]): Promise<ShoeImportResult> {
+  return apiFetch<ShoeImportResult>("/v1/gear/shoes/import", { method: "POST", body: { entries } });
 }
 
 export function searchShoeCatalog(q: string): Promise<DataList<ShoeCatalogEntry>> {

@@ -8,6 +8,7 @@ from .views import (
     ComponentServiceView,
     ShoeCatalogView,
     ShoeDetailView,
+    ShoeImportView,
     ShoeListCreateView,
 )
 
@@ -18,6 +19,9 @@ urlpatterns = [
     path("v1/gear/components/<str:id>", ComponentDetailView.as_view(), name="gear-component-detail"),
     path("v1/gear/components/<str:id>/service", ComponentServiceView.as_view(), name="gear-component-service"),
     path("v1/gear/shoes", ShoeListCreateView.as_view(), name="gear-shoe-list"),
+    # Must come before the <str:id> pattern below, or a POST here would instead match
+    # ShoeDetailView with id="import" (defines no post(), so it'd 405).
+    path("v1/gear/shoes/import", ShoeImportView.as_view(), name="gear-shoe-import"),
     path("v1/gear/shoes/<str:id>", ShoeDetailView.as_view(), name="gear-shoe-detail"),
     path("v1/gear/shoe-catalog", ShoeCatalogView.as_view(), name="gear-shoe-catalog"),
 ]
