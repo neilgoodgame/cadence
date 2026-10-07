@@ -11,6 +11,12 @@ class ConflictError(APIException):
     default_code = "conflict"
 
 
+class PayloadTooLargeError(APIException):
+    status_code = 413
+    default_detail = "The uploaded file is too large."
+    default_code = "payload_too_large"
+
+
 class InvalidCredentialsError(APIException):
     """A plain 401, not rest_framework.exceptions.AuthenticationFailed: DRF downgrades
     AuthenticationFailed to 403 on a view with no authentication_classes (no authenticator

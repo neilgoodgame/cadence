@@ -1,14 +1,17 @@
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { updateShoe } from "../../api/gear";
 import { Card } from "../../components/Card";
 import type { Shoe } from "../../api/types";
 import { WEAR_STATUS_COLOR, wearStatus } from "../../lib/gear";
+import { ShoePhotoTimeline } from "./ShoePhotoTimeline";
 
 const RING_RADIUS = 30;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 export function ShoeCard({ shoe }: { shoe: Shoe }) {
   const queryClient = useQueryClient();
+  const [showPhotos, setShowPhotos] = useState(false);
   const retireMutation = useMutation({
     mutationFn: () => updateShoe(shoe.id, { retired: true }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shoes"] }),
@@ -57,13 +60,27 @@ export function ShoeCard({ shoe }: { shoe: Shoe }) {
         {status === "good" ? "In rotation" : status === "soon" ? "Near limit" : "Retire now"}
       </span>
 
-      <button
-        onClick={() => retireMutation.mutate()}
-        disabled={retireMutation.isPending}
-        style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, fontWeight: 600, padding: 0 }}
-      >
-        Retire
-      </button>
+      <div style={{ display: "flex", gap: 14 }}>
+        <button
+          onClick={() => setShowPhotos((v) => !v)}
+          style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, fontWeight: 600, padding: 0, cursor: "pointer" }}
+        >
+          {showPhotos ? "Hide photos" : "Photos"}
+        </button>
+        <button
+          onClick={() => retireMutation.mutate()}
+          disabled={retireMutation.isPending}
+          style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, fontWeight: 600, padding: 0, cursor: "pointer" }}
+        >
+          Retire
+        </button>
+      </div>
+
+      {showPhotos && (
+        <div style={{ alignSelf: "stretch", textAlign: "left" }}>
+          <ShoePhotoTimeline shoeId={shoe.id} currentKm={shoe.km} />
+        </div>
+      )}
     </Card>
   );
 }

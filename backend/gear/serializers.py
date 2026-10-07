@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Bike, Component, ServiceRecord, Shoe
+from .models import Bike, Component, ServiceRecord, Shoe, ShoePhoto
 
 
 class ComponentSerializer(serializers.ModelSerializer):
@@ -132,6 +132,13 @@ class ShoeCatalogEntrySerializer(serializers.Serializer):
     model = serializers.CharField()
     version = serializers.CharField()
     display_name = serializers.CharField()
+
+
+class ShoePhotoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShoePhoto
+        fields = ["id", "shoe_id", "content_type", "taken_on", "km", "notes", "created"]
+        read_only_fields = fields
 
 
 class ShoeModelCreateSerializer(serializers.Serializer):
