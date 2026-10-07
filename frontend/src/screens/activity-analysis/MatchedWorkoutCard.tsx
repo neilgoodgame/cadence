@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { updateActivity } from "../../api/activities";
 import { getWorkout, getWorkoutMatches } from "../../api/workouts";
 import { LinkedActivitiesList, type LinkedActivityRowData } from "../../components/LinkedActivityRow";
 import type { Activity } from "../../api/types";
@@ -24,6 +25,7 @@ function ChevronIcon({ open }: { open: boolean }) {
 export function MatchedWorkoutCard({ activity }: { activity: Activity }) {
   const [open, setOpen] = useState(false);
   const workoutId = activity.workout_id;
+  const queryClient = useQueryClient();
 
   const { data: workout } = useQuery({
     queryKey: ["workout", workoutId],
@@ -34,6 +36,14 @@ export function MatchedWorkoutCard({ activity }: { activity: Activity }) {
     queryKey: ["workout-matches", workoutId],
     queryFn: () => getWorkoutMatches(workoutId!),
     enabled: !!workoutId,
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: () => updateActivity(activity.id, { workout_id: null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["activity", activity.id] });
+      queryClient.invalidateQueries({ queryKey: ["workout-matches", workoutId] });
+    },
   });
 
   if (!workoutId) {
@@ -68,7 +78,31 @@ export function MatchedWorkoutCard({ activity }: { activity: Activity }) {
         {thisMatch?.compliance != null && (
           <span style={{ fontSize: 12.5, color: "var(--ink3)" }}>· {Math.round(thisMatch.compliance * 100)}% compliant</span>
         )}
+        <button
+          onClick={() => {
+            if (window.confirm(`Unlink this activity from "${workout?.name ?? "this workout"}"?`)) unlinkMutation.mutate();
+          }}
+          disabled={unlinkMutation.isPending}
+          title="Unlink from workout"
+          style={{
+            marginLeft: "auto",
+            fontSize: 11.5,
+            fontWeight: 600,
+            border: "1px solid var(--line)",
+            borderRadius: 6,
+            padding: "3px 9px",
+            background: "transparent",
+            color: "var(--ink3)",
+            cursor: unlinkMutation.isPending ? "default" : "pointer",
+            opacity: unlinkMutation.isPending ? 0.6 : 1,
+          }}
+        >
+          {unlinkMutation.isPending ? "Unlinking…" : "Unlink"}
+        </button>
       </div>
+      {unlinkMutation.isError && (
+        <div style={{ fontSize: 12, color: "#e0442e", marginTop: 8 }}>{(unlinkMutation.error as Error).message}</div>
+      )}
 
       {linked.length > 0 && (
         <>
