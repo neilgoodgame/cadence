@@ -10,6 +10,9 @@ from .views import (
     ShoeDetailView,
     ShoeImportView,
     ShoeListCreateView,
+    ShoePhotoDetailView,
+    ShoePhotoImageView,
+    ShoePhotoListCreateView,
 )
 
 urlpatterns = [
@@ -23,5 +26,8 @@ urlpatterns = [
     # ShoeDetailView with id="import" (defines no post(), so it'd 405).
     path("v1/gear/shoes/import", ShoeImportView.as_view(), name="gear-shoe-import"),
     path("v1/gear/shoes/<str:id>", ShoeDetailView.as_view(), name="gear-shoe-detail"),
+    path("v1/gear/shoes/<str:id>/photos", ShoePhotoListCreateView.as_view(), name="gear-shoe-photo-list"),
+    path("v1/gear/shoe-photos/<str:id>", ShoePhotoDetailView.as_view(), name="gear-shoe-photo-detail"),
+    path("v1/gear/shoe-photos/<str:id>/image", ShoePhotoImageView.as_view(), name="gear-shoe-photo-image"),
     path("v1/gear/shoe-catalog", ShoeCatalogView.as_view(), name="gear-shoe-catalog"),
 ]

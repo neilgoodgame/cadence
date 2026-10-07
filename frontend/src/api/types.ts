@@ -781,6 +781,16 @@ export interface ShoeImportResult {
   skipped_already_in_gear: number;
 }
 
+export interface ShoePhoto {
+  id: string;
+  shoe_id: string;
+  content_type: string;
+  taken_on: string;
+  km: number;
+  notes: string;
+  created: string;
+}
+
 export type WorkoutSport = "bike" | "run";
 export type StepKind = "warmup" | "block" | "rec" | "cool";
 export type StepEndType = "time" | "distance" | "manual";

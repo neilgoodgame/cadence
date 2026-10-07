@@ -1,11 +1,13 @@
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import User, UserRelationship
 from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 
-from .models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
+from .models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion, ShoePhoto
 
 # config.urls is wired up by a concurrent process; until that lands, point the
 # test client straight at this app's own urlconf so these tests are self-contained.
@@ -590,6 +592,132 @@ class ShoeImportViewTests(TestCase):
     def test_rejects_an_empty_entries_list(self):
         response = _bearer_client(self.athlete).post("/v1/gear/shoes/import", {"entries": []}, format="json")
         self.assertEqual(response.status_code, 400)
+
+
+@gear_urlconf
+class ShoePhotoViewTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="photo-athlete@example.cc", password="x", name="Athlete")
+        self.outsider = User.objects.create_user(email="photo-outsider@example.cc", password="x", name="Outsider")
+        shoe_model = ShoeModel.objects.create(manufacturer="Nike", model="Vaporfly")
+        version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="3")
+        self.shoe = Shoe.objects.create(
+            athlete=self.athlete, shoe_model_version=version, colourway="Black", name="Race day", km=150
+        )
+
+    def _image(self, name="sole.jpg", content=b"fake-jpeg-bytes", content_type="image/jpeg"):
+        return SimpleUploadedFile(name, content, content_type=content_type)
+
+    def test_upload_with_explicit_fields(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/gear/shoes/{self.shoe.id}/photos",
+            {"image": self._image(), "taken_on": "2026-03-01", "km": "180", "notes": "lateral heel wear starting"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["shoe_id"], self.shoe.id)
+        self.assertEqual(data["content_type"], "image/jpeg")
+        self.assertEqual(data["taken_on"], "2026-03-01")
+        self.assertEqual(data["km"], 180)
+        self.assertEqual(data["notes"], "lateral heel wear starting")
+        self.assertNotIn("image", data)
+
+        photo = ShoePhoto.objects.get(pk=data["id"])
+        self.assertEqual(bytes(photo.image), b"fake-jpeg-bytes")
+
+    def test_upload_defaults_taken_on_to_today_and_km_to_the_shoes_current_km(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/gear/shoes/{self.shoe.id}/photos", {"image": self._image()}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["taken_on"], timezone.localdate().isoformat())
+        self.assertEqual(data["km"], 150)
+        self.assertEqual(data["notes"], "")
+
+    def test_rejects_a_disallowed_content_type(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/gear/shoes/{self.shoe.id}/photos",
+            {"image": self._image(name="sole.gif", content_type="image/gif")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_accepts_heic(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/gear/shoes/{self.shoe.id}/photos",
+            {"image": self._image(name="sole.heic", content=b"fake-heic-bytes", content_type="image/heic")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201)
+
+    def test_rejects_an_oversized_image(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/gear/shoes/{self.shoe.id}/photos",
+            {"image": self._image(content=b"x" * (8 * 1024 * 1024 + 1))},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 413)
+
+    def test_rejects_upload_without_write_access(self):
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.post(f"/v1/gear/shoes/{self.shoe.id}/photos", {"image": self._image()}, format="multipart")
+        self.assertEqual(response.status_code, 403)
+
+    def test_list_orders_by_taken_on(self):
+        ShoePhoto.objects.create(shoe=self.shoe, image=b"a", content_type="image/jpeg", taken_on="2026-03-01", km=100)
+        ShoePhoto.objects.create(shoe=self.shoe, image=b"b", content_type="image/jpeg", taken_on="2026-01-01", km=50)
+
+        response = _bearer_client(self.athlete).get(f"/v1/gear/shoes/{self.shoe.id}/photos")
+        self.assertEqual(response.status_code, 200)
+        dates = [p["taken_on"] for p in response.json()["data"]]
+        self.assertEqual(dates, ["2026-01-01", "2026-03-01"])
+
+    def test_list_requires_read_access(self):
+        client = _delegated_client(self.outsider, self.athlete, scopes=[])
+        response = client.get(f"/v1/gear/shoes/{self.shoe.id}/photos")
+        self.assertEqual(response.status_code, 403)
+
+    def test_image_endpoint_serves_raw_bytes_with_content_type(self):
+        photo = ShoePhoto.objects.create(
+            shoe=self.shoe, image=b"raw-bytes-here", content_type="image/png", taken_on="2026-03-01", km=100
+        )
+        response = _bearer_client(self.athlete).get(f"/v1/gear/shoe-photos/{photo.id}/image")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response.content, b"raw-bytes-here")
+
+    def test_image_endpoint_requires_read_access(self):
+        photo = ShoePhoto.objects.create(
+            shoe=self.shoe, image=b"raw-bytes-here", content_type="image/png", taken_on="2026-03-01", km=100
+        )
+        client = _delegated_client(self.outsider, self.athlete, scopes=[])
+        response = client.get(f"/v1/gear/shoe-photos/{photo.id}/image")
+        self.assertEqual(response.status_code, 403)
+
+    def test_delete_removes_the_photo(self):
+        photo = ShoePhoto.objects.create(
+            shoe=self.shoe, image=b"raw-bytes-here", content_type="image/png", taken_on="2026-03-01", km=100
+        )
+        response = _bearer_client(self.athlete).delete(f"/v1/gear/shoe-photos/{photo.id}")
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(ShoePhoto.objects.filter(pk=photo.id).exists())
+
+    def test_delete_requires_write_access(self):
+        photo = ShoePhoto.objects.create(
+            shoe=self.shoe, image=b"raw-bytes-here", content_type="image/png", taken_on="2026-03-01", km=100
+        )
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.delete(f"/v1/gear/shoe-photos/{photo.id}")
+        self.assertEqual(response.status_code, 403)
+
+    def test_deleting_a_shoe_cascades_to_its_photos(self):
+        photo = ShoePhoto.objects.create(
+            shoe=self.shoe, image=b"raw-bytes-here", content_type="image/png", taken_on="2026-03-01", km=100
+        )
+        self.shoe.delete()
+        self.assertFalse(ShoePhoto.objects.filter(pk=photo.id).exists())
 
 
 @gear_urlconf

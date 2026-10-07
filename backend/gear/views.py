@@ -1,17 +1,21 @@
+from typing import Any
+
 from django.db.models import Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.auth_context import authenticated_user, get_effective_athlete_id
-from core.exceptions import ConflictError
+from core.exceptions import ConflictError, PayloadTooLargeError
 from core.permissions import user_is_admin, user_may_read, user_may_write
 
-from .models import Bike, Component, ServiceRecord, Shoe, ShoeModel, ShoeModelVersion
+from .models import Bike, Component, ServiceRecord, Shoe, ShoeModel, ShoeModelVersion, ShoePhoto
 from .serializers import (
     BikeCreateSerializer,
     BikeDetailSerializer,
@@ -27,9 +31,24 @@ from .serializers import (
     ShoeImportResultSerializer,
     ShoeImportSerializer,
     ShoeModelCreateSerializer,
+    ShoePhotoSerializer,
     ShoeSerializer,
     ShoeUpdateSerializer,
 )
+
+# A phone camera JPEG/HEIC is typically 2-8MB - generous enough for that, while still
+# bounding growth of this table (stored as a blob directly in Postgres, see ShoePhoto's
+# own docstring for why that's an acceptable tradeoff at this app's scale).
+MAX_SHOE_PHOTO_BYTES = 8 * 1024 * 1024
+
+ALLOWED_SHOE_PHOTO_CONTENT_TYPES = {"image/jpeg", "image/png", "image/heic", "image/heif"}
+
+
+def _to_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _display_name(manufacturer: str, model: str, version: str) -> str:
@@ -283,6 +302,69 @@ class ShoeImportView(APIView):
             "skipped_already_in_gear": skipped_already_in_gear,
         }
         return Response(ShoeImportResultSerializer(result).data, status=status.HTTP_201_CREATED)
+
+
+class ShoePhotoListCreateView(APIView):
+    def get(self, request: Request, id: str) -> Response:
+        shoe = get_object_or_404(Shoe, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, shoe.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        photos = shoe.photos.all()
+        return Response({"data": ShoePhotoSerializer(photos, many=True).data})
+
+    def post(self, request: Request, id: str) -> Response:
+        shoe = get_object_or_404(Shoe, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, shoe.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        image = request.FILES.get("image")
+        if image is None:
+            raise ValidationError({"image": "This field is required."})
+        if image.content_type not in ALLOWED_SHOE_PHOTO_CONTENT_TYPES:
+            raise ValidationError({"image": "Must be a JPEG, PNG, HEIC or HEIF image."})
+        if image.size > MAX_SHOE_PHOTO_BYTES:
+            raise PayloadTooLargeError(f"Images must be {MAX_SHOE_PHOTO_BYTES // (1024 * 1024)}MB or smaller.")
+
+        taken_on_raw = request.data.get("taken_on")
+        taken_on = parse_date(taken_on_raw) if taken_on_raw else timezone.localdate()
+        if taken_on is None:
+            raise ValidationError({"taken_on": "Must be a valid date (YYYY-MM-DD)."})
+
+        km_raw = request.data.get("km")
+        km = _to_int(km_raw) if km_raw not in (None, "") else shoe.km
+        if km is None:
+            raise ValidationError({"km": "Must be a whole number."})
+
+        photo = ShoePhoto.objects.create(
+            shoe=shoe,
+            image=image.read(),
+            content_type=image.content_type,
+            taken_on=taken_on,
+            km=km,
+            notes=request.data.get("notes", ""),
+        )
+        return Response(ShoePhotoSerializer(photo).data, status=status.HTTP_201_CREATED)
+
+
+class ShoePhotoImageView(APIView):
+    def get(self, request: Request, id: str) -> HttpResponse:
+        photo = get_object_or_404(ShoePhoto.objects.select_related("shoe"), pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, photo.shoe.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        return HttpResponse(bytes(photo.image), content_type=photo.content_type)
+
+
+class ShoePhotoDetailView(APIView):
+    def delete(self, request: Request, id: str) -> Response:
+        photo = get_object_or_404(ShoePhoto.objects.select_related("shoe"), pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, photo.shoe.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        photo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ShoeDetailView(APIView):

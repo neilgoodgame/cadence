@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, apiFetchStream } from "./client";
 import type {
   Bike,
   BikeDetail,
@@ -11,6 +11,7 @@ import type {
   ShoeCatalogEntry,
   ShoeImportEntry,
   ShoeImportResult,
+  ShoePhoto,
 } from "./types";
 
 export function listBikes(): Promise<DataList<Bike>> {
@@ -118,4 +119,38 @@ export interface ShoeCatalogCreateInput {
 
 export function createShoeCatalogEntry(input: ShoeCatalogCreateInput): Promise<ShoeCatalogEntry> {
   return apiFetch<ShoeCatalogEntry>("/v1/gear/shoe-catalog", { method: "POST", body: input });
+}
+
+export function listShoePhotos(shoeId: string): Promise<DataList<ShoePhoto>> {
+  return apiFetch<DataList<ShoePhoto>>(`/v1/gear/shoes/${shoeId}/photos`);
+}
+
+export interface ShoePhotoUploadInput {
+  image: File;
+  taken_on?: string;
+  km?: number;
+  notes?: string;
+}
+
+export function uploadShoePhoto(shoeId: string, input: ShoePhotoUploadInput): Promise<ShoePhoto> {
+  const form = new FormData();
+  form.append("image", input.image);
+  if (input.taken_on) form.append("taken_on", input.taken_on);
+  if (input.km != null) form.append("km", String(input.km));
+  if (input.notes) form.append("notes", input.notes);
+  return apiFetch<ShoePhoto>(`/v1/gear/shoes/${shoeId}/photos`, { method: "POST", body: form });
+}
+
+export function deleteShoePhoto(photoId: string): Promise<void> {
+  return apiFetch<void>(`/v1/gear/shoe-photos/${photoId}`, { method: "DELETE" });
+}
+
+/** Shoe photos are served behind the normal Bearer-token auth like everything else in this
+ * app, so a plain `<img src="...">` can't load one directly - fetch the bytes as a blob and
+ * hand the caller an object URL (which it owns and must revoke when done, e.g. via
+ * useEffect's cleanup). */
+export async function fetchShoePhotoUrl(photoId: string): Promise<string> {
+  const response = await apiFetchStream(`/v1/gear/shoe-photos/${photoId}/image`);
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
 }

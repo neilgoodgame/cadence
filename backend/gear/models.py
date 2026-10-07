@@ -114,3 +114,31 @@ class Shoe(PrefixedIDModel):
 
     def __str__(self) -> str:
         return self.name
+
+
+class ShoePhoto(PrefixedIDModel):
+    """A dated photo of a shoe's wear - typically the sole, to track tread degradation
+    visually alongside its recorded km. Stored as a blob directly in Postgres rather than
+    object storage - this app has no existing file-upload-and-serve infrastructure to build
+    on, and at the realistic scale here (a handful of athletes, a few photos per shoe) the
+    size cost is negligible. MAX_IMAGE_BYTES in views.py bounds growth per photo.
+    """
+
+    id_prefix = "shph"
+
+    shoe = models.ForeignKey(Shoe, on_delete=models.CASCADE, related_name="photos")
+    image = models.BinaryField()
+    content_type = models.CharField(max_length=100)
+    taken_on = models.DateField()
+    # The shoe's own km at the moment this photo was taken - distinct from Shoe.km (the
+    # shoe's current total), which keeps moving after the photo was taken.
+    km = models.IntegerField()
+    # e.g. "outsole wear starting on lateral heel" - freeform, optional.
+    notes = models.TextField(blank=True, default="")
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["taken_on", "created"]
+
+    def __str__(self) -> str:
+        return f"{self.shoe_id} photo @ {self.taken_on}"
