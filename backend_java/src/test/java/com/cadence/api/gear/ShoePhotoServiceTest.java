@@ -73,7 +73,7 @@ class ShoePhotoServiceTest extends IntegrationTest {
 
 	@Test
 	void uploadWithExplicitFields() {
-		Shoe shoe = newShoe("shoe-photo-explicit@example.cc", "Speedwing", 150);
+		Shoe shoe = newShoe("shoe-photo-explicit@example.cc", "WearTrackerShoe", 150);
 
 		ShoePhotoResponse response =
 				shoePhotoService.upload(shoe, image(), LocalDate.of(2026, 3, 1), 180, "lateral heel wear starting");
@@ -90,7 +90,7 @@ class ShoePhotoServiceTest extends IntegrationTest {
 
 	@Test
 	void uploadDefaultsTakenOnToTodayAndKmToTheShoesCurrentKm() {
-		Shoe shoe = newShoe("shoe-photo-defaults@example.cc", "Speedwing2", 150);
+		Shoe shoe = newShoe("shoe-photo-defaults@example.cc", "WearTrackerShoe2", 150);
 
 		ShoePhotoResponse response = shoePhotoService.upload(shoe, image(), null, null, null);
 
@@ -101,7 +101,7 @@ class ShoePhotoServiceTest extends IntegrationTest {
 
 	@Test
 	void rejectsADisallowedContentType() {
-		Shoe shoe = newShoe("shoe-photo-badtype@example.cc", "Speedwing3", 100);
+		Shoe shoe = newShoe("shoe-photo-badtype@example.cc", "WearTrackerShoe3", 100);
 		MockMultipartFile gif = new MockMultipartFile("image", "sole.gif", "image/gif", "x".getBytes());
 
 		assertThatThrownBy(() -> shoePhotoService.upload(shoe, gif, null, null, null))
@@ -110,7 +110,7 @@ class ShoePhotoServiceTest extends IntegrationTest {
 
 	@Test
 	void acceptsHeic() {
-		Shoe shoe = newShoe("shoe-photo-heic@example.cc", "Speedwing4", 100);
+		Shoe shoe = newShoe("shoe-photo-heic@example.cc", "WearTrackerShoe4", 100);
 		MockMultipartFile heic = new MockMultipartFile("image", "sole.heic", "image/heic", "fake-heic".getBytes());
 
 		ShoePhotoResponse response = shoePhotoService.upload(shoe, heic, null, null, null);
@@ -120,7 +120,7 @@ class ShoePhotoServiceTest extends IntegrationTest {
 
 	@Test
 	void rejectsAnOversizedImage() {
-		Shoe shoe = newShoe("shoe-photo-oversized@example.cc", "Speedwing5", 100);
+		Shoe shoe = newShoe("shoe-photo-oversized@example.cc", "WearTrackerShoe5", 100);
 		byte[] tooBig = new byte[(int) ShoePhotoService.MAX_IMAGE_BYTES + 1];
 		MockMultipartFile big = new MockMultipartFile("image", "sole.jpg", "image/jpeg", tooBig);
 
@@ -130,7 +130,7 @@ class ShoePhotoServiceTest extends IntegrationTest {
 
 	@Test
 	void listOrdersByTakenOn() {
-		Shoe shoe = newShoe("shoe-photo-list@example.cc", "Speedwing6", 100);
+		Shoe shoe = newShoe("shoe-photo-list@example.cc", "WearTrackerShoe6", 100);
 		shoePhotoService.upload(shoe, image(), LocalDate.of(2026, 3, 1), null, null);
 		shoePhotoService.upload(shoe, image(), LocalDate.of(2026, 1, 1), null, null);
 
@@ -142,7 +142,7 @@ class ShoePhotoServiceTest extends IntegrationTest {
 
 	@Test
 	void deleteRemovesThePhoto() {
-		Shoe shoe = newShoe("shoe-photo-delete@example.cc", "Speedwing7", 100);
+		Shoe shoe = newShoe("shoe-photo-delete@example.cc", "WearTrackerShoe7", 100);
 		ShoePhotoResponse response = shoePhotoService.upload(shoe, image(), null, null, null);
 
 		shoePhotoService.delete(response.id());
@@ -152,7 +152,7 @@ class ShoePhotoServiceTest extends IntegrationTest {
 
 	@Test
 	void deletingAShoeCascadesToItsPhotos() {
-		Shoe shoe = newShoe("shoe-photo-cascade@example.cc", "Speedwing8", 100);
+		Shoe shoe = newShoe("shoe-photo-cascade@example.cc", "WearTrackerShoe8", 100);
 		ShoePhotoResponse response = shoePhotoService.upload(shoe, image(), null, null, null);
 
 		shoeRepository.deleteById(shoe.getId());
@@ -162,7 +162,7 @@ class ShoePhotoServiceTest extends IntegrationTest {
 
 	@Test
 	void getWithShoeAndAthleteLoadsBothEagerly() {
-		Shoe shoe = newShoe("shoe-photo-eager@example.cc", "Speedwing9", 100);
+		Shoe shoe = newShoe("shoe-photo-eager@example.cc", "WearTrackerShoe9", 100);
 		ShoePhotoResponse response = shoePhotoService.upload(shoe, image(), null, null, null);
 
 		ShoePhoto loaded = shoePhotoService.getWithShoeAndAthlete(response.id());
