@@ -2,6 +2,8 @@ import { apiFetch } from "./client";
 import type {
   AdminRelationship,
   AdminShoeCatalogEntry,
+  AdminShoeCatalogImportEntry,
+  AdminShoeCatalogImportResult,
   AdminUser,
   AdminUserUpdate,
   CatalogAuditLogEntry,
@@ -32,6 +34,10 @@ export function addShoeCatalogVersion(shoeModelId: string, version: string): Pro
 
 export function deleteShoeCatalogModel(shoeModelId: string): Promise<void> {
   return apiFetch<void>(`/v1/admin/shoe-catalog/${shoeModelId}`, { method: "DELETE" });
+}
+
+export function importShoeCatalog(entries: AdminShoeCatalogImportEntry[]): Promise<AdminShoeCatalogImportResult> {
+  return apiFetch<AdminShoeCatalogImportResult>("/v1/admin/shoe-catalog/import", { method: "POST", body: { entries } });
 }
 
 export function listAdminUsers(q?: string): Promise<DataList<AdminUser>> {

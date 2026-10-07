@@ -5,6 +5,7 @@ from .views import (
     AdminRelationshipDetailView,
     AdminRelationshipListView,
     AdminShoeCatalogDetailView,
+    AdminShoeCatalogImportView,
     AdminShoeCatalogListCreateView,
     AdminShoeCatalogVersionsView,
     AdminUserDetailView,
@@ -13,6 +14,9 @@ from .views import (
 
 urlpatterns = [
     path("v1/admin/shoe-catalog", AdminShoeCatalogListCreateView.as_view(), name="admin-shoe-catalog"),
+    # Must come before the <str:id> pattern below, or a POST here would instead match
+    # AdminShoeCatalogDetailView with id="import" (defines only delete(), so it'd 405).
+    path("v1/admin/shoe-catalog/import", AdminShoeCatalogImportView.as_view(), name="admin-shoe-catalog-import"),
     path("v1/admin/shoe-catalog/<str:id>", AdminShoeCatalogDetailView.as_view(), name="admin-shoe-catalog-detail"),
     path(
         "v1/admin/shoe-catalog/<str:id>/versions",

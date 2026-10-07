@@ -2,6 +2,8 @@ package com.cadence.api.admin;
 
 import com.cadence.api.admin.dto.AdminShoeCatalogCreateRequest;
 import com.cadence.api.admin.dto.AdminShoeCatalogEntryResponse;
+import com.cadence.api.admin.dto.AdminShoeCatalogImportRequest;
+import com.cadence.api.admin.dto.AdminShoeCatalogImportResponse;
 import com.cadence.api.admin.dto.AdminShoeVersionCreateRequest;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AccessGuard;
@@ -38,6 +40,13 @@ public class AdminShoeCatalogController {
 	public AdminShoeCatalogEntryResponse createOrAppend(@Valid @RequestBody AdminShoeCatalogCreateRequest request) {
 		String admin = accessGuard.requireAdmin();
 		return service.createOrAppend(admin, request.manufacturer(), request.model(), request.version());
+	}
+
+	@PostMapping("/v1/admin/shoe-catalog/import")
+	@ResponseStatus(HttpStatus.CREATED)
+	public AdminShoeCatalogImportResponse importCatalog(@Valid @RequestBody AdminShoeCatalogImportRequest request) {
+		String admin = accessGuard.requireAdmin();
+		return service.importEntries(admin, request.entries());
 	}
 
 	@PostMapping("/v1/admin/shoe-catalog/{id}/versions")

@@ -16,6 +16,8 @@ from .serializers import (
     AdminRelationshipSerializer,
     AdminShoeCatalogCreateSerializer,
     AdminShoeCatalogEntrySerializer,
+    AdminShoeCatalogImportResultSerializer,
+    AdminShoeCatalogImportSerializer,
     AdminShoeVersionCreateSerializer,
     AdminUserSerializer,
     AdminUserUpdateSerializer,
@@ -93,6 +95,48 @@ class AdminShoeCatalogListCreateView(APIView):
             by=admin,
         )
         return Response(AdminShoeCatalogEntrySerializer(_catalog_entry(shoe_model)).data, status=201)
+
+
+class AdminShoeCatalogImportView(APIView):
+    """Bulk create-or-append, for an admin uploading a CSV (e.g. a Strava shoe-rotation export)
+    from the catalog screen - entries are parsed client-side; this just applies them the same
+    way the single-entry endpoint above does, except a duplicate version is silently skipped
+    (counted, not rejected) rather than aborting the whole batch, so re-uploading the same file
+    is idempotent."""
+
+    def post(self, request: Request) -> Response:
+        admin = _require_admin(request)
+        serializer = AdminShoeCatalogImportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entries = serializer.validated_data["entries"]
+
+        models_created = 0
+        versions_added = 0
+        skipped = 0
+        for entry in entries:
+            shoe_model = ShoeModel.objects.filter(
+                manufacturer__iexact=entry["manufacturer"], model__iexact=entry["model"]
+            ).first()
+            is_new_model = shoe_model is None
+            if is_new_model:
+                shoe_model = ShoeModel.objects.create(
+                    manufacturer=entry["manufacturer"], model=entry["model"], created_by=admin
+                )
+            if ShoeModelVersion.objects.filter(shoe_model=shoe_model, version__iexact=entry["version"]).exists():
+                skipped += 1
+                continue
+            ShoeModelVersion.objects.create(shoe_model=shoe_model, version=entry["version"])
+            CatalogAuditLogEntry.objects.create(
+                description=f"{shoe_model.manufacturer} {shoe_model.model} v{entry['version']}",
+                action=CatalogAuditLogEntry.ACTION_ADDED,
+                by=admin,
+            )
+            if is_new_model:
+                models_created += 1
+            versions_added += 1
+
+        result = {"models_created": models_created, "versions_added": versions_added, "skipped": skipped}
+        return Response(AdminShoeCatalogImportResultSerializer(result).data, status=201)
 
 
 class AdminShoeCatalogVersionsView(APIView):
