@@ -55,7 +55,7 @@ class ShoeServiceImportTest extends IntegrationTest {
 
 	@Test
 	void matchesAnExistingCatalogEntryAndRoundsDistance() {
-		User athlete = newAthlete("shoe-import-match@example.cc");
+		User athlete = newAthlete("gear-shoe-import-match@example.cc");
 		ShoeModelVersion smv = newCatalogEntry("Speedwing", "3");
 
 		ShoeImportResponse response = shoeService.importShoes(athlete,
@@ -73,7 +73,7 @@ class ShoeServiceImportTest extends IntegrationTest {
 
 	@Test
 	void nonAdminSkipsAnUnmatchedEntryWithoutTouchingTheCatalog() {
-		User athlete = newAthlete("shoe-import-skip@example.cc");
+		User athlete = newAthlete("gear-shoe-import-skip@example.cc");
 		long modelsBefore = shoeModelRepository.count();
 
 		ShoeImportResponse response = shoeService.importShoes(athlete,
@@ -87,7 +87,7 @@ class ShoeServiceImportTest extends IntegrationTest {
 
 	@Test
 	void adminCreatesTheMissingModelAndVersionThenTheShoe() {
-		User admin = newAthlete("shoe-import-admin@example.cc");
+		User admin = newAthlete("gear-shoe-import-admin@example.cc");
 
 		ShoeImportResponse response = shoeService.importShoes(admin,
 				List.of(new ShoeImportRequest.Entry(MANUFACTURER, "Brand New Model 2", null, null, 192.2)), true);
@@ -102,7 +102,7 @@ class ShoeServiceImportTest extends IntegrationTest {
 
 	@Test
 	void adminOnlyCreatesTheVersionWhenTheModelAlreadyExists() {
-		User admin = newAthlete("shoe-import-admin-version@example.cc");
+		User admin = newAthlete("gear-shoe-import-admin-version@example.cc");
 		newCatalogEntry("Speedwing2", "3");
 		long modelsBefore = shoeModelRepository.count();
 
@@ -116,7 +116,7 @@ class ShoeServiceImportTest extends IntegrationTest {
 
 	@Test
 	void reimportingTheSameFileIsIdempotent() {
-		User athlete = newAthlete("shoe-import-idempotent@example.cc");
+		User athlete = newAthlete("gear-shoe-import-idempotent@example.cc");
 		newCatalogEntry("Speedwing3", "3");
 		List<ShoeImportRequest.Entry> entries =
 				List.of(new ShoeImportRequest.Entry(MANUFACTURER, "Speedwing3", "3", "Red", null));
@@ -132,7 +132,7 @@ class ShoeServiceImportTest extends IntegrationTest {
 
 	@Test
 	void differentColourwaysOfTheSameVersionBothImport() {
-		User athlete = newAthlete("shoe-import-colourways@example.cc");
+		User athlete = newAthlete("gear-shoe-import-colourways@example.cc");
 		newCatalogEntry("Speedwing4", "3");
 
 		ShoeImportResponse response = shoeService.importShoes(athlete,
