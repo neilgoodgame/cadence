@@ -8,6 +8,7 @@ from .zones import reference_for
 
 class AthleteUpdateSerializer(serializers.ModelSerializer):
     best_effort_top_n = serializers.IntegerField(required=False, min_value=0, max_value=50)
+    default_shoe_limit_km = serializers.IntegerField(required=False, min_value=0, max_value=5000)
 
     class Meta:
         model = User
@@ -28,6 +29,7 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "append_match_date_to_name",
             "copy_matched_workout_tags",
             "lap_source",
+            "default_shoe_limit_km",
             "threshold_warning_days",
             "decoupling_vi_limit_bike",
             "decoupling_vi_limit_run",

@@ -135,6 +135,12 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     ]
     lap_source = models.CharField(max_length=20, choices=LAP_SOURCE_CHOICES, default="matched_workout")
 
+    # Applied as a new Shoe's limit_km whenever one isn't given explicitly - both the single
+    # "Add shoe" form (when its own field is left blank) and the gear CSV import (which has no
+    # field for it at all, see gear/views.py's ShoeImportView). Purely a default, not a
+    # constraint - an individual shoe's limit_km can still be edited to anything afterwards.
+    default_shoe_limit_km = models.PositiveIntegerField(default=800)
+
     # Gates high-trust actions (full-account export/import - see dataexport/views.py's
     # _require_email_verified) behind a confirmed email address. Every account here goes
     # through the password-signup flow (RegisterView rejects social signup for now), so this

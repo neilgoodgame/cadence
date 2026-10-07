@@ -145,6 +145,19 @@ class AthleteDetailViewTests(TestCase):
         )
         self.assertEqual(response.json()["zones_recomputed"], [])
 
+    def test_self_can_update_default_shoe_limit_km(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"default_shoe_limit_km": 1000}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["default_shoe_limit_km"], 1000)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.default_shoe_limit_km, 1000)
+
+    def test_default_shoe_limit_km_defaults_to_800(self):
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}")
+        self.assertEqual(response.json()["default_shoe_limit_km"], 800)
+
     def test_viewer_cannot_write(self):
         UserRelationship.objects.create(
             owner=self.athlete,

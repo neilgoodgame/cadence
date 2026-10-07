@@ -107,6 +107,7 @@ export function ProfileTab() {
     decoupling_warm_skin_temp: user?.decoupling_warm_skin_temp ?? 33.0,
     decoupling_hot_air_temp: user?.decoupling_hot_air_temp ?? 30.0,
     decoupling_hot_skin_temp: user?.decoupling_hot_skin_temp ?? 34.0,
+    default_shoe_limit_km: user?.default_shoe_limit_km ?? 800,
   });
 
   const mutation = useMutation({
@@ -357,6 +358,25 @@ export function ProfileTab() {
             triggers from air OR skin temp alone; hot needs both air AND skin elevated together
             - a stricter bar. Core temp isn't used here: a long steady session drives it up from
             sustained effort alone, even on a cool day.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>Gear</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Field label="Default shoe wear limit" unit="km">
+            <input
+              type="number"
+              className="mono"
+              style={inputStyle}
+              value={form.default_shoe_limit_km ?? ""}
+              onChange={(e) => setForm({ ...form, default_shoe_limit_km: Number(e.target.value) })}
+            />
+          </Field>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: "-6px 0 0", lineHeight: 1.5 }}>
+            Applied to a new shoe's wear limit whenever one isn't set explicitly - both the "Add
+            shoes" form and a gear CSV import. Doesn't change any shoe you've already added.
           </p>
         </div>
       </div>

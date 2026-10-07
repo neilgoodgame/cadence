@@ -37,5 +37,6 @@ public record UserResponse(
 		boolean renameMatchedActivities,
 		boolean appendMatchDateToName,
 		boolean copyMatchedWorkoutTags,
-		LapSource lapSource) {
+		LapSource lapSource,
+		int defaultShoeLimitKm) {
 }

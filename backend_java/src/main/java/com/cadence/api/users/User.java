@@ -168,6 +168,13 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "lap_source", nullable = false)
 	private LapSource lapSource = LapSource.MATCHED_WORKOUT;
 
+	// Applied as a new Shoe's limitKm whenever one isn't given explicitly - both the single
+	// "Add shoe" form (when its own field is left blank) and the gear CSV import (which has no
+	// field for it at all, see ShoeImportRequest). Purely a default, not a constraint - an
+	// individual shoe's limitKm can still be edited to anything afterwards.
+	@Column(name = "default_shoe_limit_km", nullable = false)
+	private int defaultShoeLimitKm = 800;
+
 	@Column(name = "date_joined", nullable = false)
 	private Instant dateJoined;
 
@@ -469,6 +476,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setLapSource(LapSource lapSource) {
 		this.lapSource = lapSource;
+	}
+
+	public int getDefaultShoeLimitKm() {
+		return defaultShoeLimitKm;
+	}
+
+	public void setDefaultShoeLimitKm(int defaultShoeLimitKm) {
+		this.defaultShoeLimitKm = defaultShoeLimitKm;
 	}
 
 	public Instant getDateJoined() {

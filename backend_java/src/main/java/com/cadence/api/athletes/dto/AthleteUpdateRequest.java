@@ -22,6 +22,7 @@ public record AthleteUpdateRequest(
 		Boolean appendMatchDateToName,
 		Boolean copyMatchedWorkoutTags,
 		LapSource lapSource,
+		Integer defaultShoeLimitKm,
 		Integer thresholdWarningDays,
 		Double decouplingViLimitBike,
 		Double decouplingViLimitRun,

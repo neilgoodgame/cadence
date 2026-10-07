@@ -55,7 +55,7 @@ public class ShoeService {
 		shoe.setShoeModelVersion(smv);
 		shoe.setColourway(request.colourway());
 		shoe.setName(name);
-		shoe.setLimitKm(request.limitKm() != null ? request.limitKm() : 0);
+		shoe.setLimitKm(request.limitKm() != null ? request.limitKm() : athlete.getDefaultShoeLimitKm());
 		shoe.setImage(request.image());
 		return shoeRepository.save(shoe);
 	}
@@ -136,6 +136,7 @@ public class ShoeService {
 			shoe.setColourway(colourway);
 			shoe.setName(name);
 			shoe.setKm(entry.distanceKm() != null ? (int) Math.round(entry.distanceKm()) : 0);
+			shoe.setLimitKm(athlete.getDefaultShoeLimitKm());
 			shoeRepository.save(shoe);
 			shoesCreated++;
 		}
