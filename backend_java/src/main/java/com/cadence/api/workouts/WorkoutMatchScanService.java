@@ -141,23 +141,40 @@ public class WorkoutMatchScanService {
 	/** {@code null} if the workout can be scanned for matches; otherwise the reason it can't,
 	 * suitable for a 400 response. */
 	public String scannabilityError(String workoutId) {
-		return scannabilityError(workoutId, Set.of());
+		return scannabilityError(workoutId, Set.of(), MatchScanCorrelationBasis.POWER);
 	}
 
 	/** Same as {@link #scannabilityError(String)}, but {@code excludedKinds} (leaf {@link
 	 * StepKind} values, e.g. warmup/cool) are skipped entirely before validation - a step that
 	 * won't be used to build the curve shouldn't be able to disqualify the whole workout (e.g. a
-	 * distance-ended cooldown the caller has chosen to exclude anyway). */
+	 * distance-ended cooldown the caller has chosen to exclude anyway). Assumes power-curve
+	 * correlation - see the {@code correlationBasis} overload for laps mode's looser rules. */
 	public String scannabilityError(String workoutId, Set<StepKind> excludedKinds) {
-		return scannabilityErrorFor(fetchWithSteps(workoutId), excludedKinds);
+		return scannabilityError(workoutId, excludedKinds, MatchScanCorrelationBasis.POWER);
 	}
 
-	private String scannabilityErrorFor(Workout workout, Set<StepKind> excludedKinds) {
+	/** Same as {@link #scannabilityError(String, Set)}, but {@code correlationBasis} - see
+	 * {@link #scannabilityErrorFor}. */
+	public String scannabilityError(String workoutId, Set<StepKind> excludedKinds, MatchScanCorrelationBasis correlationBasis) {
+		return scannabilityErrorFor(fetchWithSteps(workoutId), excludedKinds, correlationBasis);
+	}
+
+	/** {@code correlationBasis == LAPS} skips every check below - {@link #correlateLaps} never
+	 * looks at targetType at all (it compares real lap duration/distance against the step's own
+	 * planned duration/distance, nothing to do with power), and already tolerates a step missing
+	 * its target value or being manual-ended by just excluding that one step from scoring rather
+	 * than rejecting the whole scan - so the power-only/manual-needs-open-target rules below,
+	 * which exist for the power-curve-correlation path, would only reject a workout laps mode
+	 * can actually handle fine. */
+	private String scannabilityErrorFor(Workout workout, Set<StepKind> excludedKinds, MatchScanCorrelationBasis correlationBasis) {
 		List<Flattened> flattened = WorkoutStepFlattener.flatten(workout).stream()
 				.filter(f -> !excludedKinds.contains(f.step().getKind()))
 				.toList();
 		if (flattened.isEmpty()) {
 			return "This workout has no steps to scan against.";
+		}
+		if (correlationBasis == MatchScanCorrelationBasis.LAPS) {
+			return null;
 		}
 		for (Flattened f : flattened) {
 			WorkoutStep step = f.step();
@@ -749,7 +766,7 @@ public class WorkoutMatchScanService {
 				continue;
 			}
 			Workout withSteps = fetchWithSteps(workout.getId());
-			if (scannabilityErrorFor(withSteps, Set.of()) != null) {
+			if (scannabilityErrorFor(withSteps, Set.of(), MatchScanCorrelationBasis.POWER) != null) {
 				continue;
 			}
 			if (reference == null) {

@@ -1833,6 +1833,25 @@ class ScannabilityErrorTests(TestCase):
         )
         self.assertIsNotNone(scannability_error(workout))
 
+    def test_a_pace_target_step_is_scannable_by_laps(self):
+        """correlate_laps never looks at target_type - it only compares real lap duration/
+        distance against the step's own planned duration/distance - so a pace-targeted (or any
+        non-power-targeted) workout, normally rejected outright, should still be scannable by
+        laps."""
+        workout = Workout.objects.create(created_by=self.athlete, name="Pace run", sport="run")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=1200,
+            target_type="pace",
+            target_low=90,
+            target_high=90,
+        )
+        self.assertIsNotNone(scannability_error(workout, correlation_basis="power"))
+        self.assertIsNone(scannability_error(workout, correlation_basis="laps"))
+
     def test_a_manual_end_type_step_with_a_real_target_is_not_scannable(self):
         workout = Workout.objects.create(created_by=self.athlete, name="Manual", sport="bike")
         WorkoutStep.objects.create(

@@ -78,7 +78,9 @@ DISTANCE_TOLERANCE_METERS = 500
 SMOOTHING_WINDOW_SECONDS = 30
 
 
-def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = frozenset()) -> str | None:
+def scannability_error(
+    workout: "Workout", excluded_kinds: frozenset[str] = frozenset(), correlation_basis: str = "power"
+) -> str | None:
     """`None` if `workout` can be scanned for matches; otherwise the reason it can't, suitable
     for a 400 response. See the module docstring for why v1 is power-only, and for why a
     distance-ended or manual+open step is still scannable despite having no fixed time boundary.
@@ -86,10 +88,20 @@ def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = froz
     `excluded_kinds` (leaf `kind` values, e.g. `{"warmup", "cool"}`) are skipped entirely before
     validation - a step that won't be used to build the curve shouldn't be able to disqualify
     the whole workout (e.g. a distance-ended cooldown the caller has chosen to exclude anyway).
+
+    `correlation_basis="laps"` skips every check below - correlate_laps never looks at
+    target_type at all (it compares real lap duration/distance against the step's own planned
+    duration/distance, nothing to do with power), and already tolerates a step missing its
+    target value or being manual-ended by just excluding that one step from scoring rather than
+    rejecting the whole scan - so the power-only/manual-needs-open-target rules below, which
+    exist for the power-curve-correlation path, would only reject a workout laps mode can
+    actually handle fine.
     """
     flattened = [(step, idx) for step, idx in flatten_persisted_steps(workout) if step.kind not in excluded_kinds]
     if not flattened:
         return "This workout has no steps to scan against."
+    if correlation_basis == "laps":
+        return None
     for step, _ in flattened:
         if step.end_type == "manual":
             # A manual-ended step's real boundary is whatever the athlete's own device lap

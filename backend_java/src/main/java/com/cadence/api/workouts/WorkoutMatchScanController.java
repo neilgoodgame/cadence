@@ -61,7 +61,15 @@ public class WorkoutMatchScanController {
 			throw new ValidationException("excludedStepKinds must each be one of warmup, block, rec, cool.", "excludedStepKinds");
 		}
 
-		String error = workoutMatchScanService.scannabilityError(id, excludedKinds);
+		String correlationBasisRaw = request != null && request.correlationBasis() != null ? request.correlationBasis() : "power";
+		MatchScanCorrelationBasis correlationBasis;
+		try {
+			correlationBasis = MatchScanCorrelationBasis.fromWireValue(correlationBasisRaw);
+		} catch (IllegalArgumentException e) {
+			throw new ValidationException("correlationBasis must be one of power, laps.", "correlationBasis");
+		}
+
+		String error = workoutMatchScanService.scannabilityError(id, excludedKinds, correlationBasis);
 		if (error != null) {
 			throw new ValidationException(error, "workout");
 		}
@@ -78,14 +86,6 @@ public class WorkoutMatchScanController {
 			throw new ValidationException("This workout has no determinable planned distance to scan by.", "durationBasis");
 		}
 		boolean smoothPower = request != null && request.smoothPower() != null && request.smoothPower();
-
-		String correlationBasisRaw = request != null && request.correlationBasis() != null ? request.correlationBasis() : "power";
-		MatchScanCorrelationBasis correlationBasis;
-		try {
-			correlationBasis = MatchScanCorrelationBasis.fromWireValue(correlationBasisRaw);
-		} catch (IllegalArgumentException e) {
-			throw new ValidationException("correlationBasis must be one of power, laps.", "correlationBasis");
-		}
 
 		// At most one active scan per workout - a re-POST while one is queued/processing just
 		// hands back that scan's id rather than starting a duplicate, loosely mirroring

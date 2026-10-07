@@ -395,7 +395,9 @@ class WorkoutMatchScanCreateView(APIView):
         smooth_power = body_serializer.validated_data.get("smooth_power", False)
         correlation_basis = body_serializer.validated_data.get("correlation_basis", "power")
 
-        error = scannability_error(workout, excluded_kinds=frozenset(excluded_step_kinds))
+        error = scannability_error(
+            workout, excluded_kinds=frozenset(excluded_step_kinds), correlation_basis=correlation_basis
+        )
         if error:
             raise ValidationError({"workout": error})
         if duration_basis == "distance" and total_planned_distance_meters(workout) <= 0:

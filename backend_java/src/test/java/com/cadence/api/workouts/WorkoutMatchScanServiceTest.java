@@ -429,6 +429,28 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void scannabilityErrorAllowsANonPowerTargetWorkoutWhenCorrelationBasisIsLaps() {
+		// correlateLaps never looks at targetType - it only compares real lap duration/distance
+		// against the step's own planned duration/distance - so a pace-targeted (or any
+		// non-power-targeted) workout, normally rejected outright, should still be scannable by
+		// laps.
+		User athlete = newAthlete("pace-laps-scannable@example.cc");
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Pace workout");
+		workout.setSport(Sport.RUN);
+		WorkoutStep step = leaf(workout, null, 0, StepKind.BLOCK, 300, 100.0, 100.0);
+		step.setTargetType(TargetType.PACE);
+		workout.getSteps().add(step);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		assertThat(workoutMatchScanService.scannabilityError(workout.getId(), Set.of(), MatchScanCorrelationBasis.POWER))
+				.isNotNull();
+		assertThat(workoutMatchScanService.scannabilityError(workout.getId(), Set.of(), MatchScanCorrelationBasis.LAPS))
+				.isNull();
+	}
+
+	@Test
 	void scannabilityErrorRejectsAWorkoutWithNoSteps() {
 		User athlete = newAthlete("empty-not-scannable@example.cc");
 		Workout workout = new Workout();
