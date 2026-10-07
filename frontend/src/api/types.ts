@@ -982,6 +982,18 @@ export interface AdminShoeCatalogEntry {
   added_by: string | null;
 }
 
+export interface AdminShoeCatalogImportEntry {
+  manufacturer: string;
+  model: string;
+  version: string;
+}
+
+export interface AdminShoeCatalogImportResult {
+  models_created: number;
+  versions_added: number;
+  skipped: number;
+}
+
 export interface AdminUser {
   id: string;
   name: string;

@@ -139,6 +139,73 @@ class AdminShoeCatalogTests(TestCase):
         self.assertEqual(by_version["1"], 2)
         self.assertEqual(by_version["2"], 0)
 
+    def test_import_creates_new_models_and_appends_versions(self):
+        existing = ShoeModel.objects.create(manufacturer=_MANUFACTURER, model="Speedster", created_by=self.admin)
+        ShoeModelVersion.objects.create(shoe_model=existing, version="2")
+        before = ShoeModel.objects.count()
+
+        response = self.client_.post(
+            "/v1/admin/shoe-catalog/import",
+            {
+                "entries": [
+                    {"manufacturer": _MANUFACTURER, "model": "Speedster", "version": "3"},
+                    {"manufacturer": _MANUFACTURER, "model": "Trailster", "version": "1"},
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json(), {"models_created": 1, "versions_added": 2, "skipped": 0})
+        self.assertEqual(ShoeModel.objects.count(), before + 1)
+        self.assertEqual(
+            sorted(ShoeModelVersion.objects.filter(shoe_model=existing).values_list("version", flat=True)), ["2", "3"]
+        )
+        self.assertEqual(CatalogAuditLogEntry.objects.count(), 2)
+
+    def test_import_skips_a_version_that_already_exists_instead_of_failing_the_batch(self):
+        shoe_model = ShoeModel.objects.create(manufacturer=_MANUFACTURER, model="Speedster", created_by=self.admin)
+        ShoeModelVersion.objects.create(shoe_model=shoe_model, version="3")
+
+        response = self.client_.post(
+            "/v1/admin/shoe-catalog/import",
+            {
+                "entries": [
+                    {"manufacturer": _MANUFACTURER, "model": "Speedster", "version": "3"},
+                    {"manufacturer": _MANUFACTURER, "model": "Speedster", "version": "4"},
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json(), {"models_created": 0, "versions_added": 1, "skipped": 1})
+        self.assertEqual(
+            sorted(ShoeModelVersion.objects.filter(shoe_model=shoe_model).values_list("version", flat=True)),
+            ["3", "4"],
+        )
+
+    def test_import_is_idempotent_when_the_same_file_is_uploaded_twice(self):
+        entries = [{"manufacturer": _MANUFACTURER, "model": "Speedster", "version": "1"}]
+
+        first = self.client_.post("/v1/admin/shoe-catalog/import", {"entries": entries}, format="json")
+        self.assertEqual(first.json(), {"models_created": 1, "versions_added": 1, "skipped": 0})
+
+        second = self.client_.post("/v1/admin/shoe-catalog/import", {"entries": entries}, format="json")
+        self.assertEqual(second.json(), {"models_created": 0, "versions_added": 0, "skipped": 1})
+        self.assertEqual(ShoeModel.objects.filter(manufacturer=_MANUFACTURER, model="Speedster").count(), 1)
+
+    def test_import_rejects_an_empty_entries_list(self):
+        response = self.client_.post("/v1/admin/shoe-catalog/import", {"entries": []}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_import_requires_admin_access(self):
+        athlete = User.objects.create_user(email="not-admin@example.cc", password="x", name="Athlete")
+        response = _bearer_client(athlete).post(
+            "/v1/admin/shoe-catalog/import",
+            {"entries": [{"manufacturer": _MANUFACTURER, "model": "Speedster", "version": "1"}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_search_filters_case_insensitively(self):
         ShoeModel.objects.create(manufacturer=_MANUFACTURER, model="Speedster", created_by=self.admin)
         ShoeModel.objects.create(manufacturer="Zzzrunner", model="Rocket X", created_by=self.admin)

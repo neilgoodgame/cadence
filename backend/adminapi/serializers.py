@@ -24,6 +24,22 @@ class AdminShoeVersionCreateSerializer(serializers.Serializer):
     version = serializers.CharField(max_length=50)
 
 
+class AdminShoeCatalogImportEntrySerializer(serializers.Serializer):
+    manufacturer = serializers.CharField(max_length=150)
+    model = serializers.CharField(max_length=150)
+    version = serializers.CharField(max_length=50)
+
+
+class AdminShoeCatalogImportSerializer(serializers.Serializer):
+    entries = AdminShoeCatalogImportEntrySerializer(many=True, allow_empty=False)
+
+
+class AdminShoeCatalogImportResultSerializer(serializers.Serializer):
+    models_created = serializers.IntegerField()
+    versions_added = serializers.IntegerField()
+    skipped = serializers.IntegerField()
+
+
 class AdminUserSerializer(serializers.Serializer):
     id = serializers.CharField()
     name = serializers.CharField()

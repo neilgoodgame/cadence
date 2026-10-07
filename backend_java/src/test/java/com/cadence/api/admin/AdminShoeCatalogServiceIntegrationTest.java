@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.admin.dto.AdminShoeCatalogEntryResponse;
+import com.cadence.api.admin.dto.AdminShoeCatalogImportRequest;
+import com.cadence.api.admin.dto.AdminShoeCatalogImportResponse;
 import com.cadence.api.admin.dto.ShoeCatalogVersionUsage;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.gear.Shoe;
@@ -218,6 +220,71 @@ class AdminShoeCatalogServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(byVersion.get("1")).isEqualTo(2L);
 		assertThat(byVersion.get("2")).isZero();
+	}
+
+	@Test
+	void importEntriesCreatesNewModelsAndAppendsVersions() {
+		User admin = newAdmin("shoe-import-new@example.cc");
+		ShoeModel existing = new ShoeModel();
+		existing.setManufacturer(MANUFACTURER);
+		existing.setModel("ImportSpeedster");
+		existing.setCreatedBy(admin);
+		shoeModelRepository.save(existing);
+		ShoeModelVersion v2 = new ShoeModelVersion();
+		v2.setShoeModel(existing);
+		v2.setVersion("2");
+		shoeModelVersionRepository.save(v2);
+
+		AdminShoeCatalogImportResponse response = service.importEntries(admin.getId(), List.of(
+				new AdminShoeCatalogImportRequest.Entry(MANUFACTURER, "ImportSpeedster", "3"),
+				new AdminShoeCatalogImportRequest.Entry(MANUFACTURER, "ImportTrailster", "1")));
+
+		assertThat(response.modelsCreated()).isEqualTo(1);
+		assertThat(response.versionsAdded()).isEqualTo(2);
+		assertThat(response.skipped()).isZero();
+		assertThat(shoeModelVersionRepository.findByShoeModelId(existing.getId()).stream()
+				.map(ShoeModelVersion::getVersion)).containsExactlyInAnyOrder("2", "3");
+	}
+
+	@Test
+	void importEntriesSkipsAVersionThatAlreadyExistsInsteadOfFailingTheBatch() {
+		User admin = newAdmin("shoe-import-skip@example.cc");
+		ShoeModel shoeModel = new ShoeModel();
+		shoeModel.setManufacturer(MANUFACTURER);
+		shoeModel.setModel("ImportDup");
+		shoeModel.setCreatedBy(admin);
+		shoeModelRepository.save(shoeModel);
+		ShoeModelVersion v3 = new ShoeModelVersion();
+		v3.setShoeModel(shoeModel);
+		v3.setVersion("3");
+		shoeModelVersionRepository.save(v3);
+
+		AdminShoeCatalogImportResponse response = service.importEntries(admin.getId(), List.of(
+				new AdminShoeCatalogImportRequest.Entry(MANUFACTURER, "ImportDup", "3"),
+				new AdminShoeCatalogImportRequest.Entry(MANUFACTURER, "ImportDup", "4")));
+
+		assertThat(response.modelsCreated()).isZero();
+		assertThat(response.versionsAdded()).isEqualTo(1);
+		assertThat(response.skipped()).isEqualTo(1);
+		assertThat(shoeModelVersionRepository.findByShoeModelId(shoeModel.getId()).stream()
+				.map(ShoeModelVersion::getVersion)).containsExactlyInAnyOrder("3", "4");
+	}
+
+	@Test
+	void importEntriesIsIdempotentWhenTheSameFileIsUploadedTwice() {
+		User admin = newAdmin("shoe-import-idempotent@example.cc");
+		List<AdminShoeCatalogImportRequest.Entry> entries =
+				List.of(new AdminShoeCatalogImportRequest.Entry(MANUFACTURER, "ImportOnce", "1"));
+
+		AdminShoeCatalogImportResponse first = service.importEntries(admin.getId(), entries);
+		assertThat(first.modelsCreated()).isEqualTo(1);
+		assertThat(first.versionsAdded()).isEqualTo(1);
+		assertThat(first.skipped()).isZero();
+
+		AdminShoeCatalogImportResponse second = service.importEntries(admin.getId(), entries);
+		assertThat(second.modelsCreated()).isZero();
+		assertThat(second.versionsAdded()).isZero();
+		assertThat(second.skipped()).isEqualTo(1);
 	}
 
 	@Test

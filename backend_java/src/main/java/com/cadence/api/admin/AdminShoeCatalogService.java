@@ -1,6 +1,8 @@
 package com.cadence.api.admin;
 
 import com.cadence.api.admin.dto.AdminShoeCatalogEntryResponse;
+import com.cadence.api.admin.dto.AdminShoeCatalogImportRequest;
+import com.cadence.api.admin.dto.AdminShoeCatalogImportResponse;
 import com.cadence.api.admin.dto.ShoeCatalogVersionUsage;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
@@ -95,6 +97,47 @@ public class AdminShoeCatalogService {
 		smv.setVersion(version);
 		shoeModelVersionRepository.save(smv);
 		auditLogService.logAdded(displayName(shoeModel.getManufacturer(), shoeModel.getModel(), version), admin);
+	}
+
+	/** Bulk create-or-append, for an admin uploading a CSV (e.g. a Strava shoe-rotation export)
+	 * from the catalog screen - entries are parsed client-side; this just applies them the same
+	 * way {@link #createOrAppend} does, except a duplicate version is silently skipped (counted,
+	 * not rejected) rather than aborting the whole batch, so re-uploading the same file is
+	 * idempotent. */
+	@Transactional
+	public AdminShoeCatalogImportResponse importEntries(
+			String actingAdminId, List<AdminShoeCatalogImportRequest.Entry> entries) {
+		User admin = userRepository.findById(actingAdminId).orElseThrow(() -> new NotFoundException("No such user."));
+		int modelsCreated = 0;
+		int versionsAdded = 0;
+		int skipped = 0;
+		for (AdminShoeCatalogImportRequest.Entry entry : entries) {
+			ShoeModel shoeModel = shoeModelRepository
+					.findFirstByManufacturerIgnoreCaseAndModelIgnoreCase(entry.manufacturer(), entry.model())
+					.orElse(null);
+			boolean isNewModel = shoeModel == null;
+			if (isNewModel) {
+				shoeModel = new ShoeModel();
+				shoeModel.setManufacturer(entry.manufacturer());
+				shoeModel.setModel(entry.model());
+				shoeModel.setCreatedBy(admin);
+				shoeModelRepository.save(shoeModel);
+			}
+			if (shoeModelVersionRepository.existsByShoeModelIdAndVersionIgnoreCase(shoeModel.getId(), entry.version())) {
+				skipped++;
+				continue;
+			}
+			ShoeModelVersion smv = new ShoeModelVersion();
+			smv.setShoeModel(shoeModel);
+			smv.setVersion(entry.version());
+			shoeModelVersionRepository.save(smv);
+			auditLogService.logAdded(displayName(entry.manufacturer(), entry.model(), entry.version()), admin);
+			if (isNewModel) {
+				modelsCreated++;
+			}
+			versionsAdded++;
+		}
+		return new AdminShoeCatalogImportResponse(modelsCreated, versionsAdded, skipped);
 	}
 
 	@Transactional
