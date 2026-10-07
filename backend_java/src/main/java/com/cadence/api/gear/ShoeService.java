@@ -4,6 +4,8 @@ import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.gear.dto.ShoeCreateRequest;
+import com.cadence.api.gear.dto.ShoeImportRequest;
+import com.cadence.api.gear.dto.ShoeImportResponse;
 import com.cadence.api.gear.dto.ShoeResponse;
 import com.cadence.api.gear.dto.ShoeUpdateRequest;
 import com.cadence.api.users.User;
@@ -15,10 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class ShoeService {
 
 	private final ShoeRepository shoeRepository;
+	private final ShoeModelRepository shoeModelRepository;
 	private final ShoeModelVersionRepository shoeModelVersionRepository;
 
-	public ShoeService(ShoeRepository shoeRepository, ShoeModelVersionRepository shoeModelVersionRepository) {
+	public ShoeService(ShoeRepository shoeRepository, ShoeModelRepository shoeModelRepository,
+			ShoeModelVersionRepository shoeModelVersionRepository) {
 		this.shoeRepository = shoeRepository;
+		this.shoeModelRepository = shoeModelRepository;
 		this.shoeModelVersionRepository = shoeModelVersionRepository;
 	}
 
@@ -53,6 +58,90 @@ public class ShoeService {
 		shoe.setLimitKm(request.limitKm() != null ? request.limitKm() : 0);
 		shoe.setImage(request.image());
 		return shoeRepository.save(shoe);
+	}
+
+	/** Bulk-add gear from a CSV (e.g. a Strava shoe-rotation export), parsed client-side.
+	 *
+	 * <p>A non-admin's import only adds pairs whose manufacturer+model+version already exists in
+	 * the shared catalog - rows that don't match are skipped rather than silently polluting the
+	 * shared catalog with whatever an arbitrary CSV happens to contain. An admin's import may
+	 * also create the missing catalog model/version first, same as the admin shoe-catalog
+	 * screen's own bulk import ({@code AdminShoeCatalogService.importEntries}) - {@code isAdmin}
+	 * must be the real signed-in principal's admin status, never a delegated athlete's, matching
+	 * {@code AccessGuard.requireAdmin}'s own rule.
+	 *
+	 * <p>Idempotent re-upload: a (shoeModelVersion, colourway) pair already present in the
+	 * athlete's gear is skipped too, so re-importing the same file twice doesn't create
+	 * duplicates. */
+	@Transactional
+	public ShoeImportResponse importShoes(User athlete, List<ShoeImportRequest.Entry> entries, boolean isAdmin) {
+		int shoesCreated = 0;
+		int catalogModelsCreated = 0;
+		int catalogVersionsCreated = 0;
+		int skippedNoCatalogMatch = 0;
+		int skippedAlreadyInGear = 0;
+
+		for (ShoeImportRequest.Entry entry : entries) {
+			String manufacturer = entry.manufacturer();
+			String model = entry.model();
+			String version = entry.version() != null ? entry.version() : "";
+			String colourway = entry.colourway() != null ? entry.colourway() : "";
+
+			ShoeModel shoeModel = shoeModelRepository
+					.findFirstByManufacturerIgnoreCaseAndModelIgnoreCase(manufacturer, model)
+					.orElse(null);
+			boolean isNewModel = shoeModel == null;
+			ShoeModelVersion smv = shoeModel == null
+					? null
+					: shoeModelVersionRepository.findFirstByShoeModelIdAndVersionIgnoreCase(shoeModel.getId(), version)
+							.orElse(null);
+
+			if (smv == null) {
+				if (!isAdmin) {
+					skippedNoCatalogMatch++;
+					continue;
+				}
+				if (isNewModel) {
+					shoeModel = new ShoeModel();
+					shoeModel.setManufacturer(manufacturer);
+					shoeModel.setModel(model);
+					shoeModel.setCreatedBy(athlete);
+					shoeModelRepository.save(shoeModel);
+					catalogModelsCreated++;
+				}
+				smv = new ShoeModelVersion();
+				smv.setShoeModel(shoeModel);
+				smv.setVersion(version);
+				shoeModelVersionRepository.save(smv);
+				catalogVersionsCreated++;
+			}
+
+			if (shoeRepository.existsByAthleteIdAndShoeModelVersionIdAndColourwayIgnoreCase(
+					athlete.getId(), smv.getId(), colourway)) {
+				skippedAlreadyInGear++;
+				continue;
+			}
+
+			String baseName = composeImportName(manufacturer, model, version, colourway);
+			String name = baseName;
+			int disambiguator = 2;
+			while (shoeRepository.existsByAthleteIdAndNameIgnoreCase(athlete.getId(), name)) {
+				name = baseName + " (" + disambiguator + ")";
+				disambiguator++;
+			}
+
+			Shoe shoe = new Shoe();
+			shoe.setAthlete(athlete);
+			shoe.setShoeModelVersion(smv);
+			shoe.setColourway(colourway);
+			shoe.setName(name);
+			shoe.setKm(entry.distanceKm() != null ? (int) Math.round(entry.distanceKm()) : 0);
+			shoeRepository.save(shoe);
+			shoesCreated++;
+		}
+
+		return new ShoeImportResponse(
+				shoesCreated, catalogModelsCreated, catalogVersionsCreated, skippedNoCatalogMatch, skippedAlreadyInGear);
 	}
 
 	public Shoe getShoe(String id) {
@@ -97,5 +186,20 @@ public class ShoeService {
 	private String composeDefaultName(ShoeModelVersion smv, String colourway) {
 		ShoeModel sm = smv.getShoeModel();
 		return (sm.getManufacturer() + " " + sm.getModel() + " " + smv.getVersion() + " " + colourway).trim();
+	}
+
+	// Unlike composeDefaultName above (which assumes a single-add form's version/colourway are
+	// both almost always present), an import's version/colourway are routinely blank - joining
+	// only the non-blank parts avoids a doubled space in the middle of the name that trim()
+	// alone wouldn't catch.
+	private static String composeImportName(String manufacturer, String model, String version, String colourway) {
+		StringBuilder name = new StringBuilder(manufacturer).append(' ').append(model);
+		if (!version.isBlank()) {
+			name.append(' ').append(version);
+		}
+		if (!colourway.isBlank()) {
+			name.append(' ').append(colourway);
+		}
+		return name.toString();
 	}
 }

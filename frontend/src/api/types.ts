@@ -765,6 +765,22 @@ export interface Shoe {
   since: string;
 }
 
+export interface ShoeImportEntry {
+  manufacturer: string;
+  model: string;
+  version?: string;
+  colourway?: string;
+  distance_km?: number;
+}
+
+export interface ShoeImportResult {
+  shoes_created: number;
+  catalog_models_created: number;
+  catalog_versions_created: number;
+  skipped_no_catalog_match: number;
+  skipped_already_in_gear: number;
+}
+
 export type WorkoutSport = "bike" | "run";
 export type StepKind = "warmup" | "block" | "rec" | "cool";
 export type StepEndType = "time" | "distance" | "manual";

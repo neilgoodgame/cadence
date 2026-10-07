@@ -7,9 +7,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.auth_context import get_effective_athlete_id
+from core.auth_context import authenticated_user, get_effective_athlete_id
 from core.exceptions import ConflictError
-from core.permissions import user_may_read, user_may_write
+from core.permissions import user_is_admin, user_may_read, user_may_write
 
 from .models import Bike, Component, ServiceRecord, Shoe, ShoeModel, ShoeModelVersion
 from .serializers import (
@@ -24,6 +24,8 @@ from .serializers import (
     ServiceRecordSerializer,
     ShoeCatalogEntrySerializer,
     ShoeCreateSerializer,
+    ShoeImportResultSerializer,
+    ShoeImportSerializer,
     ShoeModelCreateSerializer,
     ShoeSerializer,
     ShoeUpdateSerializer,
@@ -195,6 +197,92 @@ class ShoeListCreateView(APIView):
             image=data.get("image"),
         )
         return Response(ShoeSerializer(shoe).data, status=status.HTTP_201_CREATED)
+
+
+class ShoeImportView(APIView):
+    """Bulk-add gear from a CSV (e.g. a Strava shoe-rotation export), parsed client-side.
+
+    A non-admin's import only adds pairs whose manufacturer+model+version already exists in the
+    shared catalog - rows that don't match are skipped rather than silently polluting the shared
+    catalog with whatever an arbitrary CSV happens to contain. An admin's import may also create
+    the missing catalog model/version first, same as the admin shoe-catalog screen's own bulk
+    import (AdminShoeCatalogImportView) - "admin" here is always the real signed-in principal,
+    never a delegated athlete, matching AccessGuard.requireAdmin's Java equivalent.
+
+    Idempotent re-upload: a (shoe_model_version, colourway) pair already present in the athlete's
+    gear is skipped too, so re-importing the same file twice doesn't create duplicates.
+    """
+
+    def post(self, request: Request) -> Response:
+        _, athlete_id = get_effective_athlete_id(request)
+        _require_write(request, athlete_id)
+        is_admin = user_is_admin(authenticated_user(request))
+
+        serializer = ShoeImportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entries = serializer.validated_data["entries"]
+
+        shoes_created = 0
+        catalog_models_created = 0
+        catalog_versions_created = 0
+        skipped_no_catalog_match = 0
+        skipped_already_in_gear = 0
+
+        for entry in entries:
+            manufacturer = entry["manufacturer"]
+            model = entry["model"]
+            version = entry["version"]
+            colourway = entry["colourway"]
+            distance_km = entry["distance_km"]
+
+            shoe_model = ShoeModel.objects.filter(manufacturer__iexact=manufacturer, model__iexact=model).first()
+            is_new_model = shoe_model is None
+            smv = (
+                None
+                if shoe_model is None
+                else ShoeModelVersion.objects.filter(shoe_model=shoe_model, version__iexact=version).first()
+            )
+
+            if smv is None:
+                if not is_admin:
+                    skipped_no_catalog_match += 1
+                    continue
+                if is_new_model:
+                    shoe_model = ShoeModel.objects.create(
+                        manufacturer=manufacturer, model=model, created_by_id=athlete_id
+                    )
+                    catalog_models_created += 1
+                smv = ShoeModelVersion.objects.create(shoe_model=shoe_model, version=version)
+                catalog_versions_created += 1
+
+            if Shoe.objects.filter(athlete_id=athlete_id, shoe_model_version=smv, colourway__iexact=colourway).exists():
+                skipped_already_in_gear += 1
+                continue
+
+            base_name = " ".join(part for part in (manufacturer, model, version, colourway) if part)
+            name = base_name
+            disambiguator = 2
+            while Shoe.objects.filter(athlete_id=athlete_id, name__iexact=name).exists():
+                name = f"{base_name} ({disambiguator})"
+                disambiguator += 1
+
+            Shoe.objects.create(
+                athlete_id=athlete_id,
+                shoe_model_version=smv,
+                colourway=colourway,
+                name=name,
+                km=round(distance_km) if distance_km is not None else 0,
+            )
+            shoes_created += 1
+
+        result = {
+            "shoes_created": shoes_created,
+            "catalog_models_created": catalog_models_created,
+            "catalog_versions_created": catalog_versions_created,
+            "skipped_no_catalog_match": skipped_no_catalog_match,
+            "skipped_already_in_gear": skipped_already_in_gear,
+        }
+        return Response(ShoeImportResultSerializer(result).data, status=status.HTTP_201_CREATED)
 
 
 class ShoeDetailView(APIView):

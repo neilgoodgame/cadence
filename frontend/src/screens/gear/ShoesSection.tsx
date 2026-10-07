@@ -2,11 +2,13 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listShoes } from "../../api/gear";
 import { AddShoeForm } from "./AddShoeForm";
+import { ImportShoesPanel } from "./ImportShoesPanel";
 import { ShoeCard } from "./ShoeCard";
 
 export function ShoesSection() {
   const { data } = useQuery({ queryKey: ["shoes"], queryFn: listShoes });
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const shoes = data?.data ?? [];
 
@@ -14,14 +16,23 @@ export function ShoesSection() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Run shoes</h2>
-        <button
-          onClick={() => setAdding(!adding)}
-          style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600 }}
-        >
-          {adding ? "Cancel" : "+ Add shoes"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => setImporting(!importing)}
+            style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600 }}
+          >
+            {importing ? "Cancel" : "Import from CSV"}
+          </button>
+          <button
+            onClick={() => setAdding(!adding)}
+            style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, padding: "6px 12px", fontSize: 13, fontWeight: 600 }}
+          >
+            {adding ? "Cancel" : "+ Add shoes"}
+          </button>
+        </div>
       </div>
 
+      {importing && <ImportShoesPanel onDone={() => setImporting(false)} />}
       {adding && <AddShoeForm onDone={() => setAdding(false)} />}
 
       {shoes.length === 0 ? (

@@ -25,6 +25,12 @@ public interface ShoeModelVersionRepository extends JpaRepository<ShoeModelVersi
 	// findFirst - same reasoning as ShoeModelRepository.findFirstByManufacturerAndModel.
 	Optional<ShoeModelVersion> findFirstByShoeModelIdAndVersion(String shoeModelId, String version);
 
+	// Case-insensitive variant for the gear shoe-import's dedup lookup, which (like the Admin
+	// screen's create-or-append) should treat "3"/"3 " or differently-cased text the same -
+	// though version is usually numeric, a CSV import's free-text value shouldn't be treated as
+	// a fresh version just because of casing.
+	Optional<ShoeModelVersion> findFirstByShoeModelIdAndVersionIgnoreCase(String shoeModelId, String version);
+
 	boolean existsByShoeModelIdAndVersionIgnoreCase(String shoeModelId, String version);
 
 	// Fetched before a whole-model delete (shoe_model_version.shoe_model_id is ON DELETE

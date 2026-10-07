@@ -138,3 +138,23 @@ class ShoeModelCreateSerializer(serializers.Serializer):
     manufacturer = serializers.CharField(max_length=150)
     model = serializers.CharField(max_length=150)
     version = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
+
+
+class ShoeImportEntrySerializer(serializers.Serializer):
+    manufacturer = serializers.CharField(max_length=150)
+    model = serializers.CharField(max_length=150)
+    version = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
+    colourway = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    distance_km = serializers.FloatField(required=False, allow_null=True, default=None)
+
+
+class ShoeImportSerializer(serializers.Serializer):
+    entries = ShoeImportEntrySerializer(many=True, allow_empty=False)
+
+
+class ShoeImportResultSerializer(serializers.Serializer):
+    shoes_created = serializers.IntegerField()
+    catalog_models_created = serializers.IntegerField()
+    catalog_versions_created = serializers.IntegerField()
+    skipped_no_catalog_match = serializers.IntegerField()
+    skipped_already_in_gear = serializers.IntegerField()

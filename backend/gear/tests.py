@@ -447,6 +447,152 @@ class ShoeViewTests(TestCase):
 
 
 @gear_urlconf
+class ShoeImportViewTests(TestCase):
+    # The gear app ships with a seeded starter catalog (gear/migrations/0002_seed_shoe_catalog.py,
+    # real brands like Nike/Adidas/Hoka) present in every test DB - use a manufacturer that can't
+    # collide with it, same reasoning as AdminShoeCatalogTests._MANUFACTURER.
+    _MANUFACTURER = "Zzzrunner"
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="import-athlete@example.cc", password="x", name="Athlete")
+        self.admin = User.objects.create_user(
+            email="import-admin@example.cc", password="x", name="Admin", is_admin=True
+        )
+        self.outsider = User.objects.create_user(email="import-outsider@example.cc", password="x", name="Outsider")
+        self.shoe_model = ShoeModel.objects.create(manufacturer=self._MANUFACTURER, model="Speedwing")
+        self.version = ShoeModelVersion.objects.create(shoe_model=self.shoe_model, version="3")
+
+    def test_matches_an_existing_catalog_entry_and_rounds_distance(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/gear/shoes/import",
+            {
+                "entries": [
+                    {"manufacturer": self._MANUFACTURER, "model": "Speedwing", "version": "3", "distance_km": 257.9}
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            response.json(),
+            {
+                "shoes_created": 1,
+                "catalog_models_created": 0,
+                "catalog_versions_created": 0,
+                "skipped_no_catalog_match": 0,
+                "skipped_already_in_gear": 0,
+            },
+        )
+        shoe = Shoe.objects.get(athlete=self.athlete)
+        self.assertEqual(shoe.shoe_model_version_id, self.version.id)
+        self.assertEqual(shoe.km, 258)
+
+    def test_non_admin_skips_an_unmatched_entry_without_touching_the_catalog(self):
+        models_before = ShoeModel.objects.count()
+        response = _bearer_client(self.athlete).post(
+            "/v1/gear/shoes/import",
+            {"entries": [{"manufacturer": self._MANUFACTURER, "model": "Brand New Model"}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            response.json(),
+            {
+                "shoes_created": 0,
+                "catalog_models_created": 0,
+                "catalog_versions_created": 0,
+                "skipped_no_catalog_match": 1,
+                "skipped_already_in_gear": 0,
+            },
+        )
+        self.assertEqual(ShoeModel.objects.count(), models_before)
+        self.assertFalse(Shoe.objects.filter(athlete=self.athlete).exists())
+
+    def test_admin_creates_the_missing_model_and_version_then_the_shoe(self):
+        response = _bearer_client(self.admin).post(
+            "/v1/gear/shoes/import",
+            {"entries": [{"manufacturer": self._MANUFACTURER, "model": "Brand New Model", "distance_km": 192.2}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            response.json(),
+            {
+                "shoes_created": 1,
+                "catalog_models_created": 1,
+                "catalog_versions_created": 1,
+                "skipped_no_catalog_match": 0,
+                "skipped_already_in_gear": 0,
+            },
+        )
+        shoe_model = ShoeModel.objects.get(manufacturer=self._MANUFACTURER, model="Brand New Model")
+        shoe = Shoe.objects.get(athlete=self.admin)
+        self.assertEqual(shoe.shoe_model_version.shoe_model_id, shoe_model.id)
+        self.assertEqual(shoe.km, 192)
+
+    def test_admin_only_creates_the_version_when_the_model_already_exists(self):
+        response = _bearer_client(self.admin).post(
+            "/v1/gear/shoes/import",
+            {"entries": [{"manufacturer": self._MANUFACTURER, "model": "Speedwing", "version": "4"}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body["catalog_models_created"], 0)
+        self.assertEqual(body["catalog_versions_created"], 1)
+        self.assertEqual(ShoeModel.objects.filter(manufacturer=self._MANUFACTURER, model="Speedwing").count(), 1)
+
+    def test_reimporting_the_same_file_is_idempotent(self):
+        client = _bearer_client(self.athlete)
+        entries = {
+            "entries": [{"manufacturer": self._MANUFACTURER, "model": "Speedwing", "version": "3", "colourway": "Red"}]
+        }
+
+        first = client.post("/v1/gear/shoes/import", entries, format="json")
+        self.assertEqual(first.json()["shoes_created"], 1)
+
+        second = client.post("/v1/gear/shoes/import", entries, format="json")
+        self.assertEqual(
+            second.json(),
+            {
+                "shoes_created": 0,
+                "catalog_models_created": 0,
+                "catalog_versions_created": 0,
+                "skipped_no_catalog_match": 0,
+                "skipped_already_in_gear": 1,
+            },
+        )
+        self.assertEqual(Shoe.objects.filter(athlete=self.athlete).count(), 1)
+
+    def test_different_colourways_of_the_same_version_both_import(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/gear/shoes/import",
+            {
+                "entries": [
+                    {"manufacturer": self._MANUFACTURER, "model": "Speedwing", "version": "3", "colourway": "Red"},
+                    {"manufacturer": self._MANUFACTURER, "model": "Speedwing", "version": "3"},
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.json()["shoes_created"], 2)
+        self.assertEqual(Shoe.objects.filter(athlete=self.athlete).count(), 2)
+
+    def test_outsider_without_relationship_forbidden(self):
+        client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
+        response = client.post(
+            "/v1/gear/shoes/import",
+            {"entries": [{"manufacturer": self._MANUFACTURER, "model": "Speedwing", "version": "3"}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_rejects_an_empty_entries_list(self):
+        response = _bearer_client(self.athlete).post("/v1/gear/shoes/import", {"entries": []}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+
+@gear_urlconf
 class ShoeCatalogViewTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")

@@ -22,6 +22,11 @@ public interface ShoeRepository extends JpaRepository<Shoe, String> {
 
 	boolean existsByAthleteIdAndNameIgnoreCase(String athleteId, String name);
 
+	// Import idempotency key - (shoe_model_version, colourway) is the real identity of "this
+	// physical pair", surviving a later rename unlike a name-based check would.
+	boolean existsByAthleteIdAndShoeModelVersionIdAndColourwayIgnoreCase(
+			String athleteId, String shoeModelVersionId, String colourway);
+
 	boolean existsByAthleteIdAndNameIgnoreCaseAndIdNot(String athleteId, String name, String excludingId);
 
 	Optional<Shoe> findByIdAndAthleteId(String id, String athleteId);

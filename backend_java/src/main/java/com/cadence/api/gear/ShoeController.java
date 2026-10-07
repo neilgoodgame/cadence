@@ -2,9 +2,12 @@ package com.cadence.api.gear;
 
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.gear.dto.ShoeCreateRequest;
+import com.cadence.api.gear.dto.ShoeImportRequest;
+import com.cadence.api.gear.dto.ShoeImportResponse;
 import com.cadence.api.gear.dto.ShoeResponse;
 import com.cadence.api.gear.dto.ShoeUpdateRequest;
 import com.cadence.api.security.AccessGuard;
+import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
 import jakarta.validation.Valid;
@@ -46,6 +49,19 @@ public class ShoeController {
 		User athlete = userService.getById(athleteId);
 		Shoe shoe = shoeService.createShoe(athlete, request);
 		return shoeService.toResponse(shoe);
+	}
+
+	@PostMapping("/v1/gear/shoes/import")
+	@ResponseStatus(HttpStatus.CREATED)
+	public ShoeImportResponse importShoes(@Valid @RequestBody ShoeImportRequest request) {
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+		User athlete = userService.getById(athleteId);
+		// Admin-ness is never delegated (see AccessGuard.requireAdmin) - the real signed-in
+		// principal's own admin flag decides whether a missing catalog entry gets created, even
+		// when importing on behalf of a delegated athlete (athleteId above).
+		boolean isAdmin = userService.getById(AuthContextHolder.get().sub()).isAdmin();
+		return shoeService.importShoes(athlete, request.entries(), isAdmin);
 	}
 
 	@PatchMapping("/v1/gear/shoes/{id}")
