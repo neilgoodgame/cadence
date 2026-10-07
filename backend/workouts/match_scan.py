@@ -78,7 +78,9 @@ DISTANCE_TOLERANCE_METERS = 500
 SMOOTHING_WINDOW_SECONDS = 30
 
 
-def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = frozenset()) -> str | None:
+def scannability_error(
+    workout: "Workout", excluded_kinds: frozenset[str] = frozenset(), correlation_basis: str = "power"
+) -> str | None:
     """`None` if `workout` can be scanned for matches; otherwise the reason it can't, suitable
     for a 400 response. See the module docstring for why v1 is power-only, and for why a
     distance-ended or manual+open step is still scannable despite having no fixed time boundary.
@@ -86,10 +88,20 @@ def scannability_error(workout: "Workout", excluded_kinds: frozenset[str] = froz
     `excluded_kinds` (leaf `kind` values, e.g. `{"warmup", "cool"}`) are skipped entirely before
     validation - a step that won't be used to build the curve shouldn't be able to disqualify
     the whole workout (e.g. a distance-ended cooldown the caller has chosen to exclude anyway).
+
+    `correlation_basis="laps"` skips every check below - correlate_laps never looks at
+    target_type at all (it compares real lap duration/distance against the step's own planned
+    duration/distance, nothing to do with power), and already tolerates a step missing its
+    target value or being manual-ended by just excluding that one step from scoring rather than
+    rejecting the whole scan - so the power-only/manual-needs-open-target rules below, which
+    exist for the power-curve-correlation path, would only reject a workout laps mode can
+    actually handle fine.
     """
     flattened = [(step, idx) for step, idx in flatten_persisted_steps(workout) if step.kind not in excluded_kinds]
     if not flattened:
         return "This workout has no steps to scan against."
+    if correlation_basis == "laps":
+        return None
     for step, _ in flattened:
         if step.end_type == "manual":
             # A manual-ended step's real boundary is whatever the athlete's own device lap
@@ -357,6 +369,62 @@ def _cumulative_lap_ends(activity: Activity) -> list[int]:
     return cumulative
 
 
+def correlate_laps(
+    workout: "Workout", activity: Activity, excluded_kinds: frozenset[str] = frozenset()
+) -> tuple[float, float, int | None] | None:
+    """Alternative to `correlate_records`/`correlate_records_by_step_boundary` that ignores
+    power entirely and instead checks whether `activity`'s own real device laps structurally
+    match `workout`'s planned steps - "did the athlete run the prescribed structure", not "did
+    they hit the prescribed numbers". Every activity gets its raw, device-recorded laps
+    persisted at upload time unconditionally (same convention `_cumulative_lap_ends` relies on
+    for the manual-ended-step boundary walk) - including a final lap closed by stopping the
+    recording rather than a deliberate lap press, which shows up as an ordinary `Lap` row no
+    different from any other (the model has no such provenance field to begin with), so this
+    needs no special handling for it.
+
+    Requires an *exact* lap count match against `workout`'s full flattened step list - not a
+    fuzzy one: a workout meant to be scanned this way is expected to have been lapped at every
+    step transition, and a mismatched count means either this candidate wasn't lapped that way
+    or it's unrelated, neither of which this function can tell apart, so it returns `None`
+    (dropped from results, like any other "no usable overlap" case elsewhere in this module)
+    rather than guessing at a partial alignment.
+
+    Returns `(score, coverage, None)` - `score` is `1 - mean(relative error)` across every
+    (step, lap) pair's own planned duration (`time`-ended) or distance (`distance`-ended) vs.
+    the lap's real one, each step matched to the lap at the same position in sequence.
+    `excluded_kinds` and a `manual`-ended step (which has no planned value to compare at all -
+    its length is only ever defined by the real lap itself, see the module docstring) are
+    skipped from the score but still required to have a real lap in the count above - the
+    athlete still lapped there, there's just nothing to validate that lap's length against.
+    `coverage` is the fraction of steps that actually fed the score (steps that are excluded or
+    manual don't). `None` for `implied_ftp` - there's no power regression in this mode.
+    """
+    flattened = flatten_persisted_steps(workout)
+    laps = list(activity.laps.order_by("index"))
+    if not flattened or len(laps) != len(flattened):
+        return None
+
+    relative_errors = []
+    for (step, _), lap in zip(flattened, laps, strict=True):
+        if step.kind in excluded_kinds or step.end_type == "manual":
+            continue
+        if step.end_type == "time":
+            planned, actual = step.duration, lap.duration
+        else:  # "distance"
+            planned = step.distance
+            actual = lap.distance_km * 1000 if lap.distance_km is not None else None
+        if not planned or actual is None:
+            continue
+        relative_errors.append(abs(actual - planned) / planned)
+
+    if not relative_errors:
+        return None
+
+    score = max(0.0, 1 - sum(relative_errors) / len(relative_errors))
+    coverage = len(relative_errors) / len(flattened)
+    return round(score, 4), round(coverage, 4), None
+
+
 def correlate_records_by_step_boundary(
     workout: "Workout",
     activity: Activity,
@@ -567,7 +635,16 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
     all_candidates = Activity.objects.filter(
         athlete_id=workout.created_by_id, sport=workout.sport, workout__isnull=True
     )
-    if scan.duration_basis == "distance":
+    if scan.correlation_basis == "laps":
+        # The duration/distance pre-filter below exists to cheaply prune candidates before an
+        # expensive per-second Record fetch - correlate_laps never fetches Records at all (just
+        # a handful of Lap rows) and already has its own correct, cheap filter (an exact
+        # lap-count match), so applying the duration-based one here too would only risk
+        # rejecting a genuine match on account of workout.duration being a pace estimate (see
+        # total_planned_distance_meters's own docstring) - exactly the kind of candidate this
+        # mode exists to catch.
+        candidates = list(all_candidates)
+    elif scan.duration_basis == "distance":
         candidates = [
             a
             for a in all_candidates
@@ -582,7 +659,9 @@ def run_match_scan(scan: "WorkoutMatchScan") -> None:
 
     rows = []
     for i, activity in enumerate(candidates, start=1):
-        if needs_boundary_walk:
+        if scan.correlation_basis == "laps":
+            result = correlate_laps(workout, activity, excluded_kinds)
+        elif needs_boundary_walk:
             records = list(activity.records.order_by("t").values_list("t", "distance_km", "power"))
             result = correlate_records_by_step_boundary(
                 workout, activity, records, reference, excluded_kinds, smooth=scan.smooth_power

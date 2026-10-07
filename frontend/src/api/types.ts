@@ -869,6 +869,13 @@ export type WorkoutMatchScanStatus = "queued" | "processing" | "ready" | "failed
  * whose real pacing varies with terrain, comparing distance (the one quantity the plan actually
  * fixes) instead of duration avoids rejecting a genuine match purely on normal pacing variance. */
 export type MatchScanDurationBasis = "time" | "distance";
+/** Which scoring method the correlation pass uses. "power" (the default) correlates the
+ * activity's real power stream against the plan's %FTP-vs-time/distance curve. "laps" ignores
+ * power entirely and instead checks whether the activity's own real device laps structurally
+ * match the plan's steps - "did the athlete run the prescribed structure", not "did they hit
+ * the prescribed numbers" - requiring an exact lap-count match; duration_basis/smooth_power
+ * don't apply in this mode. */
+export type MatchScanCorrelationBasis = "power" | "laps";
 
 export interface WorkoutMatchScanCandidate {
   activity_id: string;
@@ -883,6 +890,7 @@ export interface WorkoutMatchScanCandidate {
   coverage: number;
   implied_ftp: number | null;
   moving_time: number;
+  distance_km: number;
   avg_power: number | null;
 }
 
@@ -896,6 +904,7 @@ export interface WorkoutMatchScan {
    * terrain/stride noise that otherwise dilutes a correlation even on a textbook-correct
    * match - off by default since it changes the score, not just adds information. */
   smooth_power: boolean;
+  correlation_basis: MatchScanCorrelationBasis;
   total_candidates: number | null;
   processed_candidates: number;
   error_message: string | null;

@@ -429,6 +429,28 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 	}
 
 	@Test
+	void scannabilityErrorAllowsANonPowerTargetWorkoutWhenCorrelationBasisIsLaps() {
+		// correlateLaps never looks at targetType - it only compares real lap duration/distance
+		// against the step's own planned duration/distance - so a pace-targeted (or any
+		// non-power-targeted) workout, normally rejected outright, should still be scannable by
+		// laps.
+		User athlete = newAthlete("pace-laps-scannable@example.cc");
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Pace workout");
+		workout.setSport(Sport.RUN);
+		WorkoutStep step = leaf(workout, null, 0, StepKind.BLOCK, 300, 100.0, 100.0);
+		step.setTargetType(TargetType.PACE);
+		workout.getSteps().add(step);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		assertThat(workoutMatchScanService.scannabilityError(workout.getId(), Set.of(), MatchScanCorrelationBasis.POWER))
+				.isNotNull();
+		assertThat(workoutMatchScanService.scannabilityError(workout.getId(), Set.of(), MatchScanCorrelationBasis.LAPS))
+				.isNull();
+	}
+
+	@Test
 	void scannabilityErrorRejectsAWorkoutWithNoSteps() {
 		User athlete = newAthlete("empty-not-scannable@example.cc");
 		Workout workout = new Workout();
@@ -887,6 +909,183 @@ class WorkoutMatchScanServiceTest extends IntegrationTest {
 		assertThat(rawCorrelation).isLessThan(0.7);
 		assertThat(smoothedCorrelation).isGreaterThan(0.95);
 		assertThat(smoothedCorrelation).isGreaterThan(rawCorrelation);
+	}
+
+	/** Mirrors a real workout-matching case found live: a trail long run's athlete laps lined
+	 * up with its 3 distance-ended steps (16km/18km/1km) to within a few meters, even though the
+	 * activity's own power compliance only reached ~0.70 - "did you run the prescribed
+	 * structure" and "did you hit the prescribed numbers" are different questions, and this is
+	 * the pure-structure one. */
+	private Workout newTrailWorkout(User athlete) {
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Trail");
+		workout.setSport(Sport.RUN);
+		workout.setDuration(10746);
+		WorkoutStep warmup = leaf(workout, null, 0, StepKind.WARMUP, 0, 79.0, 86.0);
+		warmup.setEndType(StepEndType.DISTANCE);
+		warmup.setDuration(null);
+		warmup.setDistance(16000);
+		WorkoutStep block = leaf(workout, null, 1, StepKind.BLOCK, 0, 89.0, 98.0);
+		block.setEndType(StepEndType.DISTANCE);
+		block.setDuration(null);
+		block.setDistance(18000);
+		WorkoutStep cool = leaf(workout, null, 2, StepKind.COOL, 0, 65.0, 75.0);
+		cool.setEndType(StepEndType.DISTANCE);
+		cool.setDuration(null);
+		cool.setDistance(1000);
+		workout.getSteps().add(warmup);
+		workout.getSteps().add(block);
+		workout.getSteps().add(cool);
+		return workoutRepository.saveAndFlush(workout);
+	}
+
+	private Lap newLap(Activity activity, int index, int duration, double distanceKm) {
+		Lap lap = new Lap();
+		lap.setActivity(activity);
+		lap.setIndex(index);
+		lap.setDuration(duration);
+		lap.setDistanceKm(distanceKm);
+		return lapRepository.save(lap);
+	}
+
+	@Test
+	void correlateLapsScoresANearExactStructuralMatchCloseToOne() {
+		User athlete = newAthlete("correlate-laps-match@example.cc");
+		Workout workout = newTrailWorkout(athlete);
+		Activity activity = newActivity(athlete, Instant.parse("2026-01-15T06:00:00Z"), Sport.RUN, 10746, null);
+		newLap(activity, 0, 5206, 16.0041396484375);
+		newLap(activity, 1, 5218, 18.009779296875);
+		newLap(activity, 2, 321, 1.0000900268554687);
+
+		var result = workoutMatchScanService.correlateLaps(workout, activity, Set.of());
+
+		assertThat(result).isNotNull();
+		assertThat(result.correlation()).isGreaterThan(0.999);
+		assertThat(result.coverage()).isEqualTo(1.0);
+		assertThat(result.impliedFtp()).isNull();
+	}
+
+	@Test
+	void correlateLapsReturnsNullForAMismatchedLapCount() {
+		User athlete = newAthlete("correlate-laps-mismatch@example.cc");
+		Workout workout = newTrailWorkout(athlete);
+		Activity activity = newActivity(athlete, Instant.parse("2026-01-16T06:00:00Z"), Sport.RUN, 1800, null);
+		newLap(activity, 0, 900, 17.0); // only 1 lap for 3 steps
+
+		assertThat(workoutMatchScanService.correlateLaps(workout, activity, Set.of())).isNull();
+	}
+
+	@Test
+	void correlateLapsALargeDeviationLowersTheScore() {
+		User athlete = newAthlete("correlate-laps-deviation@example.cc");
+		Workout workout = newTrailWorkout(athlete);
+		Activity activity = newActivity(athlete, Instant.parse("2026-01-17T06:00:00Z"), Sport.RUN, 10746, null);
+		newLap(activity, 0, 5206, 16.0041396484375);
+		newLap(activity, 1, 5218, 9.0); // 50% short of the planned 18km
+		newLap(activity, 2, 321, 1.0000900268554687);
+
+		var result = workoutMatchScanService.correlateLaps(workout, activity, Set.of());
+
+		assertThat(result).isNotNull();
+		assertThat(result.correlation()).isLessThan(0.85);
+	}
+
+	@Test
+	void correlateLapsExcludedKindIsSkippedFromTheScoreButStillRequiresALap() {
+		User athlete = newAthlete("correlate-laps-excluded@example.cc");
+		Workout workout = newTrailWorkout(athlete);
+		Activity activity = newActivity(athlete, Instant.parse("2026-01-18T06:00:00Z"), Sport.RUN, 10746, null);
+		newLap(activity, 0, 5206, 16.0041396484375);
+		newLap(activity, 1, 5218, 18.009779296875);
+		newLap(activity, 2, 1, 0.01); // way off the cooldown's real 1km, but excluded from scoring
+
+		var result = workoutMatchScanService.correlateLaps(workout, activity, Set.of(StepKind.COOL));
+
+		assertThat(result).isNotNull();
+		assertThat(result.correlation()).isGreaterThan(0.999);
+		assertThat(result.coverage()).isCloseTo(2.0 / 3, org.assertj.core.data.Offset.offset(0.001));
+	}
+
+	@Test
+	void runScanWithLapsCorrelationBasisFindsTheStructuralMatch() {
+		User athlete = newAthlete("scan-laps@example.cc");
+		Workout workout = newTrailWorkout(athlete);
+		Activity match = newActivity(athlete, Instant.parse("2026-01-19T06:00:00Z"), Sport.RUN, 10746, null);
+		newLap(match, 0, 5206, 16.0041396484375);
+		newLap(match, 1, 5218, 18.009779296875);
+		newLap(match, 2, 321, 1.0000900268554687);
+		// An unrelated candidate within the (default TIME-basis) duration tolerance, but no laps at all.
+		Activity unrelated = newActivity(athlete, Instant.parse("2026-01-19T07:00:00Z"), Sport.RUN, 10746 + 30, null);
+
+		WorkoutMatchScan scan = new WorkoutMatchScan();
+		scan.setWorkout(workout);
+		scan.setCorrelationBasis(MatchScanCorrelationBasis.LAPS);
+		scan.setExcludedStepKinds(List.of());
+		scan = scanRepository.save(scan);
+
+		workoutMatchScanService.runScanSync(scan.getId());
+
+		WorkoutMatchScan finished = scanRepository.findById(scan.getId()).orElseThrow();
+		assertThat(finished.getStatus()).isEqualTo(WorkoutMatchScanStatus.READY);
+		List<WorkoutMatchScanCandidate> candidates =
+				candidateRepository.findByScanIdOrderByCorrelationDescFetchActivity(scan.getId());
+		assertThat(candidates).hasSize(1);
+		assertThat(candidates.get(0).getActivity().getId()).isEqualTo(match.getId());
+		assertThat(candidates.get(0).getCorrelation()).isGreaterThan(0.999);
+	}
+
+	@Test
+	void runScanWithLapsCorrelationBasisIgnoresTheUnreliableDurationPreFilter() {
+		// Regression coverage for a real false negative found live: workout.getDuration()
+		// (11020, matching the real workout exactly) is a pace *estimate* for a distance-ended
+		// plan (see totalPlannedDistanceMeters's own Javadoc) - the real matching activity's
+		// actual moving time (10746) differs from it by 274s, well outside
+		// DURATION_TOLERANCE_SECONDS's 60s window. The whole point of LAPS basis is to not care
+		// about that estimate at all, so this candidate must still be found even though the
+		// duration/distance pre-filter (which any other basis would apply) would have rejected
+		// it outright.
+		User athlete = newAthlete("scan-laps-duration-mismatch@example.cc");
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Trail");
+		workout.setSport(Sport.RUN);
+		workout.setDuration(11020); // the real workout's own pace-estimated duration
+		WorkoutStep warmup = leaf(workout, null, 0, StepKind.WARMUP, 0, 79.0, 86.0);
+		warmup.setEndType(StepEndType.DISTANCE);
+		warmup.setDuration(null);
+		warmup.setDistance(16000);
+		WorkoutStep block = leaf(workout, null, 1, StepKind.BLOCK, 0, 89.0, 98.0);
+		block.setEndType(StepEndType.DISTANCE);
+		block.setDuration(null);
+		block.setDistance(18000);
+		WorkoutStep cool = leaf(workout, null, 2, StepKind.COOL, 0, 65.0, 75.0);
+		cool.setEndType(StepEndType.DISTANCE);
+		cool.setDuration(null);
+		cool.setDistance(1000);
+		workout.getSteps().add(warmup);
+		workout.getSteps().add(block);
+		workout.getSteps().add(cool);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		Activity match = newActivity(athlete, Instant.parse("2026-01-20T06:00:00Z"), Sport.RUN, 10746, null);
+		newLap(match, 0, 5206, 16.0041396484375);
+		newLap(match, 1, 5218, 18.009779296875);
+		newLap(match, 2, 321, 1.0000900268554687);
+
+		WorkoutMatchScan scan = new WorkoutMatchScan();
+		scan.setWorkout(workout);
+		scan.setCorrelationBasis(MatchScanCorrelationBasis.LAPS);
+		scan.setExcludedStepKinds(List.of());
+		scan = scanRepository.save(scan);
+
+		workoutMatchScanService.runScanSync(scan.getId());
+
+		List<WorkoutMatchScanCandidate> candidates =
+				candidateRepository.findByScanIdOrderByCorrelationDescFetchActivity(scan.getId());
+		assertThat(candidates).hasSize(1);
+		assertThat(candidates.get(0).getActivity().getId()).isEqualTo(match.getId());
+		assertThat(candidates.get(0).getCorrelation()).isGreaterThan(0.999);
 	}
 
 	@Test

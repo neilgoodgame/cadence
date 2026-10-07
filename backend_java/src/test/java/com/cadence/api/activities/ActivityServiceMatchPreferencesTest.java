@@ -205,6 +205,28 @@ class ActivityServiceMatchPreferencesTest extends IntegrationTest {
 		assertThat(result.getName()).isEqualTo("Renamed by me");
 	}
 
+	/** Regression coverage for a real bug found live: ActivityController loads the activity via
+	 * a plain (non-transactional) repository call, so by the time this reaches the controller
+	 * its `athlete` association is an uninitialized Hibernate proxy bound to that already-closed
+	 * session - the other tests in this class never catch this because newActivity()/newAthlete()
+	 * wire the real, already-loaded User object directly rather than reloading it via
+	 * findById(). Re-fetching here reproduces the same detached-proxy shape ActivityController
+	 * actually hands to ActivityService.updateActivity. */
+	@Test
+	void appliesMatchPreferencesWhenActivityWasLoadedInADifferentTransaction() {
+		User athlete = newAthlete("match-pref-detached@example.cc");
+		athlete.setRenameMatchedActivities(true);
+		userRepository.save(athlete);
+		Activity activity = newActivity(athlete, "Morning Run", Instant.parse("2026-01-01T07:00:00Z"));
+		Workout workout = newWorkout(athlete, "Tempo run", List.of());
+
+		Activity detached = activityRepository.findById(activity.getId()).orElseThrow();
+		activityService.updateActivity(detached, Map.of("workout_id", workout.getId()));
+
+		activity = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(activity.getName()).isEqualTo("Tempo run");
+	}
+
 	@Test
 	void unlinkingAWorkoutDoesNotApplyMatchPreferences() {
 		User athlete = newAthlete("match-pref-unlink@example.cc");

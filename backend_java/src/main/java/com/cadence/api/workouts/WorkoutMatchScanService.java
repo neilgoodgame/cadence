@@ -141,23 +141,40 @@ public class WorkoutMatchScanService {
 	/** {@code null} if the workout can be scanned for matches; otherwise the reason it can't,
 	 * suitable for a 400 response. */
 	public String scannabilityError(String workoutId) {
-		return scannabilityError(workoutId, Set.of());
+		return scannabilityError(workoutId, Set.of(), MatchScanCorrelationBasis.POWER);
 	}
 
 	/** Same as {@link #scannabilityError(String)}, but {@code excludedKinds} (leaf {@link
 	 * StepKind} values, e.g. warmup/cool) are skipped entirely before validation - a step that
 	 * won't be used to build the curve shouldn't be able to disqualify the whole workout (e.g. a
-	 * distance-ended cooldown the caller has chosen to exclude anyway). */
+	 * distance-ended cooldown the caller has chosen to exclude anyway). Assumes power-curve
+	 * correlation - see the {@code correlationBasis} overload for laps mode's looser rules. */
 	public String scannabilityError(String workoutId, Set<StepKind> excludedKinds) {
-		return scannabilityErrorFor(fetchWithSteps(workoutId), excludedKinds);
+		return scannabilityError(workoutId, excludedKinds, MatchScanCorrelationBasis.POWER);
 	}
 
-	private String scannabilityErrorFor(Workout workout, Set<StepKind> excludedKinds) {
+	/** Same as {@link #scannabilityError(String, Set)}, but {@code correlationBasis} - see
+	 * {@link #scannabilityErrorFor}. */
+	public String scannabilityError(String workoutId, Set<StepKind> excludedKinds, MatchScanCorrelationBasis correlationBasis) {
+		return scannabilityErrorFor(fetchWithSteps(workoutId), excludedKinds, correlationBasis);
+	}
+
+	/** {@code correlationBasis == LAPS} skips every check below - {@link #correlateLaps} never
+	 * looks at targetType at all (it compares real lap duration/distance against the step's own
+	 * planned duration/distance, nothing to do with power), and already tolerates a step missing
+	 * its target value or being manual-ended by just excluding that one step from scoring rather
+	 * than rejecting the whole scan - so the power-only/manual-needs-open-target rules below,
+	 * which exist for the power-curve-correlation path, would only reject a workout laps mode
+	 * can actually handle fine. */
+	private String scannabilityErrorFor(Workout workout, Set<StepKind> excludedKinds, MatchScanCorrelationBasis correlationBasis) {
 		List<Flattened> flattened = WorkoutStepFlattener.flatten(workout).stream()
 				.filter(f -> !excludedKinds.contains(f.step().getKind()))
 				.toList();
 		if (flattened.isEmpty()) {
 			return "This workout has no steps to scan against.";
+		}
+		if (correlationBasis == MatchScanCorrelationBasis.LAPS) {
+			return null;
 		}
 		for (Flattened f : flattened) {
 			WorkoutStep step = f.step();
@@ -482,6 +499,73 @@ public class WorkoutMatchScanService {
 		return cumulative;
 	}
 
+	/** Alternative to {@link #correlateRecords}/{@link #correlateRecordsByStepBoundary} that
+	 * ignores power entirely and instead checks whether {@code activity}'s own real device laps
+	 * structurally match {@code workout}'s planned steps - "did the athlete run the prescribed
+	 * structure", not "did they hit the prescribed numbers". Every activity gets its raw,
+	 * device-recorded laps persisted at upload time unconditionally (same convention {@link
+	 * #cumulativeLapEnds} relies on for the manual-ended-step boundary walk) - including a
+	 * final lap closed by stopping the recording rather than a deliberate lap press, which
+	 * shows up as an ordinary {@code Lap} row no different from any other (the entity has no
+	 * such provenance field to begin with), so this needs no special handling for it.
+	 *
+	 * <p>Requires an *exact* lap count match against {@code workout}'s full flattened step list
+	 * - not a fuzzy one: a workout meant to be scanned this way is expected to have been lapped
+	 * at every step transition, and a mismatched count means either this candidate wasn't
+	 * lapped that way or it's unrelated, neither of which this method can tell apart, so it
+	 * returns {@code null} (dropped from results, like any other "no usable overlap" case
+	 * elsewhere in this class) rather than guessing at a partial alignment.
+	 *
+	 * <p>Returns a {@link CorrelationResult} whose {@code correlation} is {@code
+	 * 1 - mean(relative error)} across every (step, lap) pair's own planned duration ({@code
+	 * TIME}-ended) or distance ({@code DISTANCE}-ended) vs. the lap's real one, each step
+	 * matched to the lap at the same position in sequence. {@code excludedKinds} and a {@code
+	 * MANUAL}-ended step (which has no planned value to compare at all - its length is only
+	 * ever defined by the real lap itself, see the class Javadoc) are skipped from the score
+	 * but still required to have a real lap in the count above - the athlete still lapped
+	 * there, there's just nothing to validate that lap's length against. {@code coverage} is
+	 * the fraction of steps that actually fed the score. {@code impliedFtp} is always {@code
+	 * null} - there's no power regression in this mode.
+	 */
+	public CorrelationResult correlateLaps(Workout workout, Activity activity, Set<StepKind> excludedKinds) {
+		List<Flattened> flattened = WorkoutStepFlattener.flatten(workout);
+		List<Lap> laps = lapRepository.findByActivityIdOrderByIndex(activity.getId());
+		if (flattened.isEmpty() || laps.size() != flattened.size()) {
+			return null;
+		}
+
+		List<Double> relativeErrors = new ArrayList<>();
+		for (int i = 0; i < flattened.size(); i++) {
+			WorkoutStep step = flattened.get(i).step();
+			Lap lap = laps.get(i);
+			if (excludedKinds.contains(step.getKind()) || step.getEndType() == StepEndType.MANUAL) {
+				continue;
+			}
+			Double planned;
+			Double actual;
+			if (step.getEndType() == StepEndType.TIME) {
+				planned = step.getDuration() != null ? (double) step.getDuration() : null;
+				actual = (double) lap.getDuration();
+			}
+			else { // DISTANCE
+				planned = step.getDistance() != null ? (double) step.getDistance() : null;
+				actual = lap.getDistanceKm() * 1000.0;
+			}
+			if (planned == null || planned == 0) {
+				continue;
+			}
+			relativeErrors.add(Math.abs(actual - planned) / planned);
+		}
+
+		if (relativeErrors.isEmpty()) {
+			return null;
+		}
+
+		double score = Math.max(0.0, 1 - mean(relativeErrors));
+		double coverage = (double) relativeErrors.size() / flattened.size();
+		return new CorrelationResult(round4(score), round4(coverage), null);
+	}
+
 	/** The {@code DISTANCE}-ended/{@code MANUAL}-ended-step counterpart to {@link
 	 * #correlateRecords}/{@link #buildCurveFor} - see the class Javadoc for why those two step
 	 * shapes can't be placed on a fixed, reusable time-based curve the way a time-ended one can.
@@ -682,7 +766,7 @@ public class WorkoutMatchScanService {
 				continue;
 			}
 			Workout withSteps = fetchWithSteps(workout.getId());
-			if (scannabilityErrorFor(withSteps, Set.of()) != null) {
+			if (scannabilityErrorFor(withSteps, Set.of(), MatchScanCorrelationBasis.POWER) != null) {
 				continue;
 			}
 			if (reference == null) {
@@ -774,18 +858,30 @@ public class WorkoutMatchScanService {
 			Sport sport = workout.getSport();
 
 			List<Activity> allCandidates = activityRepository.findByAthleteIdAndSportAndWorkoutIsNull(athleteId, sport);
-			List<Activity> candidates = allCandidates.stream()
-					.filter(a -> scan.getDurationBasis() == MatchScanDurationBasis.DISTANCE
-							? Math.abs(a.getDistanceKm() * 1000 - totalPlannedDistanceM) <= DISTANCE_TOLERANCE_METERS
-							: Math.abs(a.getMovingTime() - totalPlannedDuration) <= DURATION_TOLERANCE_SECONDS)
-					.toList();
+			// The duration/distance pre-filter below exists to cheaply prune candidates before
+			// an expensive per-second Record fetch - correlateLaps never fetches Records at all
+			// (just a handful of Lap rows) and already has its own correct, cheap filter (an
+			// exact lap-count match), so applying the duration-based one here too would only
+			// risk rejecting a genuine match on account of workout.getDuration() being a pace
+			// estimate for a distance-ended plan (see totalPlannedDistanceMeters's own Javadoc)
+			// - exactly the kind of candidate this mode exists to catch.
+			List<Activity> candidates = scan.getCorrelationBasis() == MatchScanCorrelationBasis.LAPS
+					? allCandidates
+					: allCandidates.stream()
+							.filter(a -> scan.getDurationBasis() == MatchScanDurationBasis.DISTANCE
+									? Math.abs(a.getDistanceKm() * 1000 - totalPlannedDistanceM) <= DISTANCE_TOLERANCE_METERS
+									: Math.abs(a.getMovingTime() - totalPlannedDuration) <= DURATION_TOLERANCE_SECONDS)
+							.toList();
 			progressUpdater.updateTotalCandidates(scanId, candidates.size());
 
 			List<WorkoutMatchScanCandidate> rows = new ArrayList<>();
 			int processed = 0;
 			for (Activity activity : candidates) {
 				CorrelationResult result;
-				if (needsBoundaryWalk) {
+				if (scan.getCorrelationBasis() == MatchScanCorrelationBasis.LAPS) {
+					result = correlateLaps(workout, activity, excludedKinds);
+				}
+				else if (needsBoundaryWalk) {
 					List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 					result = correlateRecordsByStepBoundary(workout, activity, records, reference, excludedKinds,
 							scan.isSmoothPower());

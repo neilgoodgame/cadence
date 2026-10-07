@@ -1,5 +1,6 @@
 package com.cadence.api.workouts.dto;
 
+import com.cadence.api.workouts.MatchScanCorrelationBasis;
 import com.cadence.api.workouts.MatchScanDurationBasis;
 import com.cadence.api.workouts.WorkoutMatchScanStatus;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -8,8 +9,8 @@ import java.util.List;
 
 public record WorkoutMatchScanResponse(String id, String workoutId, WorkoutMatchScanStatus status,
 		List<String> excludedStepKinds, MatchScanDurationBasis durationBasis, boolean smoothPower,
-		Integer totalCandidates, int processedCandidates, String errorMessage, Instant createdAt, Instant completedAt,
-		List<WorkoutMatchScanCandidateResponse> candidates) {
+		MatchScanCorrelationBasis correlationBasis, Integer totalCandidates, int processedCandidates,
+		String errorMessage, Instant createdAt, Instant completedAt, List<WorkoutMatchScanCandidateResponse> candidates) {
 
 	@JsonProperty("object")
 	public String object() {

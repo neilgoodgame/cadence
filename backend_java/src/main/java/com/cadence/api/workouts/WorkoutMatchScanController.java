@@ -61,7 +61,15 @@ public class WorkoutMatchScanController {
 			throw new ValidationException("excludedStepKinds must each be one of warmup, block, rec, cool.", "excludedStepKinds");
 		}
 
-		String error = workoutMatchScanService.scannabilityError(id, excludedKinds);
+		String correlationBasisRaw = request != null && request.correlationBasis() != null ? request.correlationBasis() : "power";
+		MatchScanCorrelationBasis correlationBasis;
+		try {
+			correlationBasis = MatchScanCorrelationBasis.fromWireValue(correlationBasisRaw);
+		} catch (IllegalArgumentException e) {
+			throw new ValidationException("correlationBasis must be one of power, laps.", "correlationBasis");
+		}
+
+		String error = workoutMatchScanService.scannabilityError(id, excludedKinds, correlationBasis);
 		if (error != null) {
 			throw new ValidationException(error, "workout");
 		}
@@ -90,6 +98,7 @@ public class WorkoutMatchScanController {
 			created.setExcludedStepKinds(excludedStepKinds);
 			created.setDurationBasis(durationBasis);
 			created.setSmoothPower(smoothPower);
+			created.setCorrelationBasis(correlationBasis);
 			WorkoutMatchScan saved = scanRepository.save(created);
 			workoutMatchScanService.runScan(saved.getId());
 			return saved;
@@ -125,9 +134,9 @@ public class WorkoutMatchScanController {
 						.toList()
 				: List.of();
 		return new WorkoutMatchScanResponse(scan.getId(), scan.getWorkout().getId(), scan.getStatus(),
-				scan.getExcludedStepKinds(), scan.getDurationBasis(), scan.isSmoothPower(), scan.getTotalCandidates(),
-				scan.getProcessedCandidates(), scan.getErrorMessage(), scan.getCreatedAt(), scan.getCompletedAt(),
-				candidates);
+				scan.getExcludedStepKinds(), scan.getDurationBasis(), scan.isSmoothPower(), scan.getCorrelationBasis(),
+				scan.getTotalCandidates(), scan.getProcessedCandidates(), scan.getErrorMessage(), scan.getCreatedAt(),
+				scan.getCompletedAt(), candidates);
 	}
 
 	private static WorkoutMatchScanCandidateResponse toCandidateResponse(WorkoutMatchScanCandidate candidate) {
@@ -135,6 +144,6 @@ public class WorkoutMatchScanController {
 		return new WorkoutMatchScanCandidateResponse(activity.getId(), activity.getName(),
 				activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), candidate.getCorrelation(),
 				candidate.getDurationDiffSeconds(), candidate.getDistanceDiffKm(), candidate.getCoverage(),
-				candidate.getImpliedFtp(), activity.getMovingTime(), activity.getAvgPower());
+				candidate.getImpliedFtp(), activity.getMovingTime(), activity.getDistanceKm(), activity.getAvgPower());
 	}
 }

@@ -208,6 +208,14 @@ public class ActivityService {
 	 */
 	@Transactional
 	public Activity updateActivity(Activity activity, Map<String, Object> body) {
+		// Re-fetch within this method's own transaction: the controller's own (non-transactional)
+		// lookup already closed its session by the time this method runs, so the passed-in
+		// `activity`'s lazy associations (athlete, workout) are bound to a dead session. Reading
+		// just their id (e.g. the previous workout_id check below) works on a detached proxy, but
+		// fully initializing one - as applyRename/applySideEffects do for `activity.getAthlete()`
+		// once a new match is applied - throws LazyInitializationException without this.
+		activity = activityRepository.findById(activity.getId())
+				.orElseThrow(() -> new NotFoundException("No such activity."));
 		if (body.containsKey("name")) {
 			activity.setName((String) body.get("name"));
 		}
