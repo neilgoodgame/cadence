@@ -7,6 +7,10 @@ ever switches to it (see the root `CLAUDE.md`'s parity requirement). For
 setup/architecture, see `README.md` in this directory and the repo root's
 `GETTING_STARTED.md`/`ARCHITECTURE.md`.
 
+A session started in this directory can also read/edit `../backend_java` —
+see `.claude/settings.json`'s `additionalDirectories` — which is useful when
+checking the other side of a parity change.
+
 ## Commands
 
 - Tests (matches CI): `uv run pytest -m unit -q` (no DB needed) and

@@ -7,6 +7,10 @@ Spring Boot implementation of the Cadence API contract (`../openapi.yaml`).
 deployed). For setup/architecture, see `README.md` in this directory and the
 repo root's `GETTING_STARTED.md`/`ARCHITECTURE.md`.
 
+A session started in this directory can also read/edit `../backend` — see
+`.claude/settings.json`'s `additionalDirectories` — which is useful when
+checking the other side of a parity change.
+
 ## Commands
 
 - Tests (matches CI exactly): `./gradlew unitTest` (no Docker) and

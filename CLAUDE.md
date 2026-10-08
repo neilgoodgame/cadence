@@ -42,6 +42,13 @@ migration chains (Django migrations and Flyway) rather than a shared
 database. When changing one, check whether the other needs the same change
 before calling the work done.
 
+A Claude Code session started inside just `backend/` or just `backend_java/`
+only sees that directory by default, which gets in the way of checking
+parity. Each of those directories has a `.claude/settings.json` granting
+`additionalDirectories` access to the other, so a session rooted in either
+one can still read (and edit) across to its sibling without a repo
+restructure.
+
 ## Running the whole stack locally
 
 Full walkthrough: `GETTING_STARTED.md`. Quick version:
