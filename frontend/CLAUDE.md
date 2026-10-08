@@ -17,6 +17,13 @@ browser to the backend's REST API.
     missed (a strict react-hooks config, among other things).
   - `npm test` (vitest).
 - Build: `npm run build`.
+- **Taming output**: `npx tsc -b` with many errors, and a full `npm test`
+  run, can both print hundreds of lines. Redirect to a file instead of
+  letting it print directly: `npx tsc -b > tsc.log 2>&1; echo $?` (scratch
+  path, not tracked), then read only what's needed. For vitest, `npm test --
+  --reporter=dot` gives a much shorter pass/fail-only run; fall back to the
+  default verbose reporter (or target one file) only once you know which
+  suite failed.
 
 ## Conventions
 

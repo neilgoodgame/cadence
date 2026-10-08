@@ -7,6 +7,10 @@ Spring Boot implementation of the Cadence API contract (`../openapi.yaml`).
 deployed). For setup/architecture, see `README.md` in this directory and the
 repo root's `GETTING_STARTED.md`/`ARCHITECTURE.md`.
 
+A session started in this directory can also read/edit `../backend` — see
+`.claude/settings.json`'s `additionalDirectories` — which is useful when
+checking the other side of a parity change.
+
 ## Commands
 
 - Tests (matches CI exactly): `./gradlew unitTest` (no Docker) and
@@ -17,6 +21,15 @@ repo root's `GETTING_STARTED.md`/`ARCHITECTURE.md`.
   CI's fresh database. See the `IntegrationTest` gotcha below.
 - Compile only: `./gradlew compileJava compileTestJava` — much faster than a
   full test run for checking a change compiles.
+- **Taming output**: a full `./gradlew build`/`test`/`integrationTest` run can
+  dump thousands of lines (every test's stdout, full stack traces on
+  failure) straight into context. Redirect to a file instead of letting it
+  print directly: `./gradlew integrationTest > gradle.log 2>&1; echo $?`
+  (a scratch/temp path, not a tracked file), then read only what's needed — `grep -E "FAILED|ERROR" /tmp/gradle.log` for
+  a failure summary, or the tail of the file for the final `BUILD
+  SUCCESSFUL`/`FAILED` line. `--console=plain` also drops Gradle's
+  progress-bar/ANSI noise. Only pull a failing test's full stack trace into
+  context once `grep` has pointed at which one failed, not before.
 - New migration: add `src/main/resources/db/migration/V<N>__description.sql`
   (Flyway), where `N` is one more than the highest existing `V*` file.
 

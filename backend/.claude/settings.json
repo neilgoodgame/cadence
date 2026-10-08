@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "additionalDirectories": ["../backend_java"],
+    "deny": [
+      "Read(../backend_java/.env)",
+      "Edit(../backend_java/.env)",
+      "Write(../backend_java/.env)",
+      "Read(../backend_java/.env.local)",
+      "Edit(../backend_java/.env.local)",
+      "Write(../backend_java/.env.local)",
+      "Read(../backend_java/keys/**)",
+      "Edit(../backend_java/keys/**)",
+      "Write(../backend_java/keys/**)",
+      "Read(../backend_java/.gradle/**)",
+      "Edit(../backend_java/.gradle/**)",
+      "Write(../backend_java/.gradle/**)",
+      "Read(../backend_java/build/**)",
+      "Edit(../backend_java/build/**)",
+      "Write(../backend_java/build/**)",
+      "Read(../backend_java/media/**)",
+      "Edit(../backend_java/media/**)",
+      "Write(../backend_java/media/**)",
+      "Read(../backend_java/out/**)",
+      "Edit(../backend_java/out/**)",
+      "Write(../backend_java/out/**)",
+      "Read(../backend_java/.idea/**)",
+      "Edit(../backend_java/.idea/**)",
+      "Write(../backend_java/.idea/**)",
+      "Read(../backend_java/*.iml)",
+      "Edit(../backend_java/*.iml)",
+      "Write(../backend_java/*.iml)"
+    ]
+  }
+}
