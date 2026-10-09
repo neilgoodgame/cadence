@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createBike, listBikes } from "../../api/gear";
 import type { BikeKind } from "../../api/types";
 import { BikeCard } from "./BikeCard";
+import { BikesTable } from "./BikesTable";
+import type { GearView } from "./viewMode";
 
 const KINDS: BikeKind[] = ["road", "indoor", "gravel", "tt"];
 
@@ -15,7 +17,7 @@ const inputStyle: React.CSSProperties = {
   color: "var(--ink)",
 };
 
-export function BikesSection() {
+export function BikesSection({ view = "cards" }: { view?: GearView }) {
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["bikes"], queryFn: listBikes });
   const [adding, setAdding] = useState(false);
@@ -70,6 +72,8 @@ export function BikesSection() {
 
       {bikes.length === 0 ? (
         <div style={{ fontSize: 13, color: "var(--ink3)" }}>No bikes in the garage yet.</div>
+      ) : view === "table" ? (
+        <BikesTable bikes={bikes} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {bikes.map((bike) => (

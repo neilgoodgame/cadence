@@ -5,8 +5,10 @@ import { useAuth } from "../../auth/AuthContext";
 import { AddShoeForm } from "./AddShoeForm";
 import { ImportShoesPanel } from "./ImportShoesPanel";
 import { ShoeCard } from "./ShoeCard";
+import { ShoesTable } from "./ShoesTable";
+import type { GearView } from "./viewMode";
 
-export function ShoesSection() {
+export function ShoesSection({ view = "cards" }: { view?: GearView }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["shoes"], queryFn: listShoes });
@@ -70,11 +72,15 @@ export function ShoesSection() {
       {shoes.length === 0 ? (
         <div style={{ fontSize: 13, color: "var(--ink3)" }}>No shoes tracked yet.</div>
       ) : (
+        view === "table" ? (
+          <ShoesTable shoes={shoes} />
+        ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14 }}>
           {shoes.map((shoe) => (
             <ShoeCard key={shoe.id} shoe={shoe} />
           ))}
         </div>
+        )
       )}
     </div>
   );
