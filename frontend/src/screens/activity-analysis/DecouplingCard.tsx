@@ -70,7 +70,7 @@ export function DecouplingCard({ activity, athlete }: { activity: Activity; athl
           <span
             title={
               heatLevel === "hot"
-                ? `Air ≥ ${athlete.decoupling_hot_air_temp} °C and skin ≥ ${athlete.decoupling_hot_skin_temp} °C`
+                ? `Air ≥ ${athlete.decoupling_hot_air_temp} °C or skin ≥ ${athlete.decoupling_hot_skin_temp} °C`
                 : `Air ≥ ${athlete.decoupling_warm_air_temp} °C or skin ≥ ${athlete.decoupling_warm_skin_temp} °C`
             }
             style={{

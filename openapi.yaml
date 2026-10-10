@@ -1566,6 +1566,8 @@ paths:
                 decoupling_vi_limit_run: { type: number, description: See the User schema. }
                 decoupling_if_limit: { type: number, description: See the User schema. }
                 decoupling_min_steady_minutes: { type: integer, description: See the User schema. }
+                decoupling_warmup_minutes: { type: integer, description: See the User schema. }
+                decoupling_use_workout_warmup: { type: boolean, description: See the User schema. }
                 decoupling_warm_air_temp: { type: number, description: See the User schema. }
                 decoupling_warm_skin_temp: { type: number, description: See the User schema. }
                 decoupling_hot_air_temp: { type: number, description: See the User schema. }
@@ -2689,8 +2691,18 @@ components:
         decoupling_min_steady_minutes:
           type: integer
           default: 60
-          description: Aerobic decoupling qualification - minimum moving time (minutes) in the steady window, after the fixed 10-minute warm-up. Read at compute time; not retroactive.
+          description: Aerobic decoupling qualification - minimum moving time (minutes) in the steady window, after the warm-up trim (decoupling_warmup_minutes, or a matched workout's own warmup step - see decoupling_use_workout_warmup). Read at compute time; not retroactive.
           example: 60
+        decoupling_warmup_minutes:
+          type: integer
+          default: 5
+          description: Minutes trimmed off the start of the recording before the steady window is measured. Overridden per-activity by decoupling_use_workout_warmup when it applies. Read at compute time; not retroactive.
+          example: 5
+        decoupling_use_workout_warmup:
+          type: boolean
+          default: false
+          description: When true, an activity matched to a designed workout whose first step is a warmup with a known (time-based) duration trims exactly that duration instead of decoupling_warmup_minutes. Falls back to decoupling_warmup_minutes when unmatched, or the matched workout has no warmup step.
+          example: false
         decoupling_warm_air_temp:
           type: number
           default: 25.0
@@ -2704,12 +2716,12 @@ components:
         decoupling_hot_air_temp:
           type: number
           default: 30.0
-          description: Aerobic decoupling heat-confound "hot" flag - triggers only if avg air °C over the steady window is at or above this AND decoupling_hot_skin_temp is also met (stricter than "warm", which is an OR).
+          description: Aerobic decoupling heat-confound "hot" flag - triggers if avg air °C over the steady window is at or above this, OR decoupling_hot_skin_temp is met.
           example: 30.0
         decoupling_hot_skin_temp:
           type: number
           default: 34.0
-          description: Aerobic decoupling heat-confound "hot" flag - triggers only if avg skin °C over the steady window is at or above this AND decoupling_hot_air_temp is also met.
+          description: Aerobic decoupling heat-confound "hot" flag - triggers if avg skin °C over the steady window is at or above this, OR decoupling_hot_air_temp is met.
           example: 34.0
         lthr: { type: integer, example: 155 }
         max_hr: { type: integer, example: 186 }
@@ -2927,7 +2939,7 @@ components:
         decoupling_hot:
           type: boolean
           default: false
-          description: avg air temp >= athlete's decoupling_hot_air_temp AND avg skin temp >= decoupling_hot_skin_temp (stricter than decoupling_warm, which is an OR). Marked, not excluded from scoring.
+          description: avg air temp >= athlete's decoupling_hot_air_temp OR avg skin temp >= decoupling_hot_skin_temp. Marked, not excluded from scoring.
         decoupling_hr_coverage_pct:
           type: [number, "null"]
           description: "% of steady-window samples with a non-null HR reading, 0-100. Populated whenever there's a steady window, qualified or not."

@@ -85,6 +85,15 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     decoupling_vi_limit_run = models.FloatField(default=1.04)
     decoupling_if_limit = models.FloatField(default=0.85)
     decoupling_min_steady_minutes = models.PositiveSmallIntegerField(default=60)
+    # Minutes trimmed off the start of the recording before the steady window is measured (see
+    # uploads/processing.py's _steady_window_start_index) - a flat per-athlete default, overridden
+    # per-activity by decoupling_use_workout_warmup below when it applies.
+    decoupling_warmup_minutes = models.PositiveSmallIntegerField(default=5)
+    # When true, an activity matched to a designed workout whose first step is a warmup with a
+    # known duration trims exactly that duration instead of decoupling_warmup_minutes - see
+    # uploads/processing.py's _matched_workout_warmup_seconds. Falls back to
+    # decoupling_warmup_minutes when unmatched, or the matched workout has no warmup step.
+    decoupling_use_workout_warmup = models.BooleanField(default=False)
     # Heat-confound flags for the same decoupling card (see uploads/processing.py's
     # compute_decoupling) - two independent severity tiers, both read from air/skin temp only
     # (not core, which drifts up from sustained effort alone on any long session regardless of

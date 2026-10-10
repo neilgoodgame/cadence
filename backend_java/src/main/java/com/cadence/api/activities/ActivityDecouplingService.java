@@ -6,6 +6,10 @@ import com.cadence.api.athletes.ZoneService;
 import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.users.User;
+import com.cadence.api.workouts.StepKind;
+import com.cadence.api.workouts.Workout;
+import com.cadence.api.workouts.WorkoutRepository;
+import com.cadence.api.workouts.WorkoutStep;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,12 +37,14 @@ public class ActivityDecouplingService {
 	private final RecordRepository recordRepository;
 	private final ActivityDurabilityRepository durabilityRepository;
 	private final ZoneService zoneService;
+	private final WorkoutRepository workoutRepository;
 
-	public ActivityDecouplingService(
-			RecordRepository recordRepository, ActivityDurabilityRepository durabilityRepository, ZoneService zoneService) {
+	public ActivityDecouplingService(RecordRepository recordRepository, ActivityDurabilityRepository durabilityRepository,
+			ZoneService zoneService, WorkoutRepository workoutRepository) {
 		this.recordRepository = recordRepository;
 		this.durabilityRepository = durabilityRepository;
 		this.zoneService = zoneService;
+		this.workoutRepository = workoutRepository;
 	}
 
 	/** Re-reads {@code activity}'s own stored Record rows and recomputes+persists both
@@ -99,7 +105,8 @@ public class ActivityDecouplingService {
 			return;
 		}
 
-		Integer start = DecouplingQualificationCalculator.steadyWindowStartIndex(tSeries);
+		int warmupSeconds = resolveWarmupSeconds(activity, athlete);
+		Integer start = DecouplingQualificationCalculator.steadyWindowStartIndex(tSeries, warmupSeconds);
 		if (start == null) {
 			resetDecoupling(activity, List.of("short"));
 			activity.setSteadySeconds(0);
@@ -125,8 +132,8 @@ public class ActivityDecouplingService {
 		Double avgSkin = meanDouble(windowSkin);
 		boolean warm = (avgTemp != null && avgTemp >= athlete.getDecouplingWarmAirTemp())
 				|| (avgSkin != null && avgSkin >= athlete.getDecouplingWarmSkinTemp());
-		boolean hot = avgTemp != null && avgTemp >= athlete.getDecouplingHotAirTemp()
-				&& avgSkin != null && avgSkin >= athlete.getDecouplingHotSkinTemp();
+		boolean hot = (avgTemp != null && avgTemp >= athlete.getDecouplingHotAirTemp())
+				|| (avgSkin != null && avgSkin >= athlete.getDecouplingHotSkinTemp());
 
 		activity.setSteadySeconds(check.steadySeconds());
 		activity.setDecouplingQualified(check.qualified());
@@ -188,6 +195,44 @@ public class ActivityDecouplingService {
 		activity.setEfFirst(efs[0]);
 		activity.setEfSecond(efs[1]);
 		activity.setDecouplingHalves(halves);
+	}
+
+	/** Resolves the warm-up trim to apply before measuring the steady window - the matched
+	 * workout's own warmup step duration when decouplingUseWorkoutWarmup is on and one exists,
+	 * otherwise the athlete's flat decouplingWarmupMinutes setting. */
+	private int resolveWarmupSeconds(Activity activity, User athlete) {
+		if (athlete.isDecouplingUseWorkoutWarmup()) {
+			Integer matched = matchedWorkoutWarmupSeconds(activity);
+			if (matched != null) {
+				return matched;
+			}
+		}
+		return athlete.getDecouplingWarmupMinutes() * 60;
+	}
+
+	/** The matched workout's own warmup step duration, in seconds - null if the activity isn't
+	 * matched to a workout, that workout's first top-level step isn't a warmup, or that step has
+	 * no fixed duration (e.g. a distance-based warmup). Re-fetches the workout with its steps via
+	 * the repository rather than walking activity.getWorkout().getSteps() directly - this method
+	 * can run outside the transaction that loaded activity (see applyDecoupling's own Javadoc on
+	 * the in-memory ingest path), and a lazy OneToMany would throw LazyInitializationException in
+	 * that case; only .getId() on the lazy workout association itself is safe either way (see
+	 * backend_java's own CLAUDE.md gotcha on this). */
+	private Integer matchedWorkoutWarmupSeconds(Activity activity) {
+		Workout workoutRef = activity.getWorkout();
+		if (workoutRef == null) {
+			return null;
+		}
+		Workout workout = workoutRepository.findByIdWithSteps(workoutRef.getId()).orElse(null);
+		if (workout == null) {
+			return null;
+		}
+		return workout.getSteps().stream()
+				.filter(step -> step.getParentStep() == null)
+				.findFirst()
+				.filter(step -> step.getKind() == StepKind.WARMUP && step.getDuration() != null)
+				.map(WorkoutStep::getDuration)
+				.orElse(null);
 	}
 
 	private void resetDecoupling(Activity activity, List<String> reasons) {

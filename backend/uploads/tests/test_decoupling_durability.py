@@ -5,9 +5,11 @@ from django.test import SimpleTestCase, TestCase
 from accounts.models import User
 from activities.models import Activity
 from athletes.models import ThresholdHistory
+from workouts.models import Workout, WorkoutStep
 
 from ..processing import (
     DECOUPLING_MIN_STEADY_SECONDS,
+    DECOUPLING_WARMUP_SECONDS,
     _sliding_window_best_avg,
     _steady_window_start_index,
     check_decoupling_qualification,
@@ -19,7 +21,7 @@ from ..processing import (
 class SteadyWindowStartIndexTests(SimpleTestCase):
     def test_continuous_recording_ends_warmup_at_exactly_600(self):
         t = list(range(4000))
-        self.assertEqual(_steady_window_start_index(t), 600)
+        self.assertEqual(_steady_window_start_index(t, DECOUPLING_WARMUP_SECONDS), 600)
 
     def test_a_long_pause_contributes_at_most_one_second_to_the_active_clock(self):
         # 300 real seconds, then a huge gap (device paused), then recording resumes - every
@@ -28,15 +30,19 @@ class SteadyWindowStartIndexTests(SimpleTestCase):
         # lands at sample index 600 - identical to a fully continuous recording - rather than
         # being pushed out by the gap's real wall-clock duration.
         t = list(range(300)) + [100_000 + i for i in range(400)]
-        start = _steady_window_start_index(t)
+        start = _steady_window_start_index(t, DECOUPLING_WARMUP_SECONDS)
         self.assertEqual(start, 600)
 
     def test_too_short_to_ever_reach_warmup_returns_none(self):
         t = list(range(500))
-        self.assertIsNone(_steady_window_start_index(t))
+        self.assertIsNone(_steady_window_start_index(t, DECOUPLING_WARMUP_SECONDS))
+
+    def test_a_shorter_configured_warmup_ends_earlier(self):
+        t = list(range(400))
+        self.assertEqual(_steady_window_start_index(t, 300), 300)
 
     def test_empty_series_returns_none(self):
-        self.assertIsNone(_steady_window_start_index([]))
+        self.assertIsNone(_steady_window_start_index([], DECOUPLING_WARMUP_SECONDS))
 
 
 def _steady_series(seconds=4000, power=200, hr=140):
@@ -170,6 +176,12 @@ class ComputeDecouplingTests(TestCase):
 
     def test_qualified_session_splits_into_two_equal_halves_and_computes_pct(self):
         athlete = self._athlete()
+        # The HR profile below deliberately bands at t=600 (end of warmup) and t=2400 (midpoint
+        # of a 3600s steady window) - pinned to the design spec's original 10-minute warmup
+        # rather than the athlete-configurable default (5 min) so this test's halves stay exactly
+        # where the fixture intends regardless of what that default is.
+        athlete.decoupling_warmup_minutes = 10
+        athlete.save()
         activity = self._activity(athlete, moving_time=4200)
         self._set_threshold(athlete, activity)
         t = list(range(4200))
@@ -227,13 +239,13 @@ class ComputeDecouplingTests(TestCase):
         t = list(range(4000))
         power = [200] * 4000
         hr = [140] * 4000
-        skin = [34.0] * 4000
+        skin = [33.0] * 4000  # at the warm floor but below the hot floor (34)
         result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, [None] * 4000, skin)
         self.assertTrue(result["decoupling_warm"])
         self.assertFalse(result["decoupling_hot"])
-        self.assertAlmostEqual(result["decoupling_avg_skin"], 34.0, places=1)
+        self.assertAlmostEqual(result["decoupling_avg_skin"], 33.0, places=1)
 
-    def test_hot_requires_both_air_and_skin_elevated(self):
+    def test_hot_from_air_and_skin_both_elevated(self):
         athlete = self._athlete()
         activity = self._activity(athlete)
         self._set_threshold(athlete, activity)
@@ -246,7 +258,9 @@ class ComputeDecouplingTests(TestCase):
         self.assertTrue(result["decoupling_warm"])
         self.assertTrue(result["decoupling_hot"])
 
-    def test_high_air_alone_is_warm_but_not_hot(self):
+    def test_high_air_alone_is_hot_too(self):
+        # Hot is an OR, same as warm - air alone crossing its own (higher) hot floor is enough,
+        # even with skin below both the warm (33) and hot (34) skin floors.
         athlete = self._athlete()
         activity = self._activity(athlete)
         self._set_threshold(athlete, activity)
@@ -254,23 +268,25 @@ class ComputeDecouplingTests(TestCase):
         power = [200] * 4000
         hr = [140] * 4000
         air = [31.0] * 4000
-        skin = [30.0] * 4000  # below both the warm (33) and hot (34) skin floors
+        skin = [30.0] * 4000
         result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, skin)
         self.assertTrue(result["decoupling_warm"])
-        self.assertFalse(result["decoupling_hot"])
+        self.assertTrue(result["decoupling_hot"])
 
-    def test_high_skin_alone_is_warm_but_not_hot(self):
+    def test_high_skin_alone_is_hot_too(self):
+        # Same OR logic from the skin side - air below both the warm (25) and hot (30) air
+        # floors doesn't stop skin alone crossing its own hot floor.
         athlete = self._athlete()
         activity = self._activity(athlete)
         self._set_threshold(athlete, activity)
         t = list(range(4000))
         power = [200] * 4000
         hr = [140] * 4000
-        air = [20.0] * 4000  # below both the warm (25) and hot (30) air floors
+        air = [20.0] * 4000
         skin = [35.0] * 4000
         result = compute_decoupling(activity, athlete, power, hr, t, air, [None] * 4000, skin)
         self.assertTrue(result["decoupling_warm"])
-        self.assertFalse(result["decoupling_hot"])
+        self.assertTrue(result["decoupling_hot"])
 
     def test_high_core_alone_is_neither_warm_nor_hot(self):
         # Core temp no longer gates either flag - a long steady effort drives it up from
@@ -339,11 +355,59 @@ class ComputeDecouplingTests(TestCase):
         self.assertIn("intensity", result["decoupling_reasons"])
         self.assertIsNotNone(result["decoupling_vi"])
         self.assertIsNotNone(result["decoupling_if"])
-        self.assertEqual(result["steady_seconds"], 3400)
+        self.assertEqual(result["steady_seconds"], 3700)  # 4000 - the default 5 min (300s) warmup trim
         self.assertTrue(result["decoupling_warm"])
         self.assertFalse(result["decoupling_hot"])
         self.assertIsNone(result["decoupling_pct"])
         self.assertEqual(result["decoupling_halves"], [])
+
+    def test_matched_workout_warmup_step_overrides_the_flat_default_when_opted_in(self):
+        athlete = self._athlete()
+        athlete.decoupling_use_workout_warmup = True
+        athlete.save()
+        workout = Workout.objects.create(created_by=athlete, name="Steady ride with a long warmup", sport="bike")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="warmup",
+            end_type="time",
+            duration=900,  # 15 min - longer than the flat 5 min default
+            target_type="power",
+            target_low=50,
+            target_high=50,
+        )
+        activity = self._activity(athlete, workout=workout)
+        self._set_threshold(athlete, activity)
+        power = [200] * 4000
+        hr = [140] * 4000
+        t = list(range(4000))
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, [None] * 4000, [None] * 4000)
+        # 4000 - the matched workout's own 900s warmup step, not the flat 300s default.
+        self.assertEqual(result["steady_seconds"], 3100)
+
+    def test_matched_workout_with_no_warmup_step_falls_back_to_the_flat_default(self):
+        athlete = self._athlete()
+        athlete.decoupling_use_workout_warmup = True
+        athlete.save()
+        workout = Workout.objects.create(created_by=athlete, name="Straight into the work", sport="bike")
+        WorkoutStep.objects.create(
+            workout=workout,
+            order=0,
+            kind="block",
+            end_type="time",
+            duration=4000,
+            target_type="power",
+            target_low=100,
+            target_high=100,
+        )
+        activity = self._activity(athlete, workout=workout)
+        self._set_threshold(athlete, activity)
+        power = [200] * 4000
+        hr = [140] * 4000
+        t = list(range(4000))
+        result = compute_decoupling(activity, athlete, power, hr, t, [None] * 4000, [None] * 4000, [None] * 4000)
+        # No warmup step on the matched workout, so this falls back to the flat 300s default.
+        self.assertEqual(result["steady_seconds"], 3700)
 
     def test_athletes_own_configured_thresholds_are_used_not_the_defaults(self):
         # A session that's a clean pass under the design-spec defaults (IF 0.8 <= 0.85) fails

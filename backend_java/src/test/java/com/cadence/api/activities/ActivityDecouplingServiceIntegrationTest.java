@@ -9,6 +9,12 @@ import com.cadence.api.common.domain.Sport;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import com.cadence.api.workouts.StepEndType;
+import com.cadence.api.workouts.StepKind;
+import com.cadence.api.workouts.TargetType;
+import com.cadence.api.workouts.Workout;
+import com.cadence.api.workouts.WorkoutRepository;
+import com.cadence.api.workouts.WorkoutStep;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -33,6 +39,8 @@ class ActivityDecouplingServiceIntegrationTest extends IntegrationTest {
 	private ThresholdHistoryRepository thresholdHistoryRepository;
 	@Autowired
 	private ActivityDurabilityRepository durabilityRepository;
+	@Autowired
+	private WorkoutRepository workoutRepository;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -103,6 +111,12 @@ class ActivityDecouplingServiceIntegrationTest extends IntegrationTest {
 	@Test
 	void qualifiedSessionSplitsIntoTwoEqualHalvesAndComputesPct() {
 		User athlete = newAthlete("decoupling-qualified@example.cc");
+		// The HR profile below deliberately bands at t=600 (end of warmup) and t=2400 (midpoint
+		// of a 3600s steady window) - pinned to the design spec's original 10-minute warmup
+		// rather than the athlete-configurable default (5 min) so this test's halves stay exactly
+		// where the fixture intends regardless of what that default is.
+		athlete.setDecouplingWarmupMinutes(10);
+		athlete = userRepository.save(athlete);
 		Activity activity = newActivity(athlete, Sport.BIKE, 4200);
 		setThreshold(athlete, activity, ThresholdField.FTP, 250);
 
@@ -189,17 +203,17 @@ class ActivityDecouplingServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("decoupling-warm-skin@example.cc");
 		Activity activity = newActivity(athlete, Sport.BIKE, 4000);
 		setThreshold(athlete, activity, ThresholdField.FTP, 250);
-		addRecordsWithTemps(activity, null, null, 34.0);
+		addRecordsWithTemps(activity, null, null, 33.0); // at the warm floor but below the hot floor (34)
 
 		decouplingService.computeAndPersist(activity, athlete);
 
 		assertThat(activity.isDecouplingWarm()).isTrue();
 		assertThat(activity.isDecouplingHot()).isFalse();
-		assertThat(activity.getDecouplingAvgSkin()).isCloseTo(34.0, org.assertj.core.api.Assertions.within(0.1));
+		assertThat(activity.getDecouplingAvgSkin()).isCloseTo(33.0, org.assertj.core.api.Assertions.within(0.1));
 	}
 
 	@Test
-	void hotRequiresBothAirAndSkinElevated() {
+	void hotFromAirAndSkinBothElevated() {
 		User athlete = newAthlete("decoupling-hot@example.cc");
 		Activity activity = newActivity(athlete, Sport.BIKE, 4000);
 		setThreshold(athlete, activity, ThresholdField.FTP, 250);
@@ -212,29 +226,33 @@ class ActivityDecouplingServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void highAirAloneIsWarmButNotHot() {
+	void highAirAloneIsHotToo() {
+		// Hot is an OR, same as warm - air alone crossing its own (higher) hot floor is enough,
+		// even with skin below both the warm (33) and hot (34) skin floors.
 		User athlete = newAthlete("decoupling-warm-only-air@example.cc");
 		Activity activity = newActivity(athlete, Sport.BIKE, 4000);
 		setThreshold(athlete, activity, ThresholdField.FTP, 250);
-		addRecordsWithTemps(activity, 31.0, null, 30.0); // below both the warm (33) and hot (34) skin floors
+		addRecordsWithTemps(activity, 31.0, null, 30.0);
 
 		decouplingService.computeAndPersist(activity, athlete);
 
 		assertThat(activity.isDecouplingWarm()).isTrue();
-		assertThat(activity.isDecouplingHot()).isFalse();
+		assertThat(activity.isDecouplingHot()).isTrue();
 	}
 
 	@Test
-	void highSkinAloneIsWarmButNotHot() {
+	void highSkinAloneIsHotToo() {
+		// Same OR logic from the skin side - air below both the warm (25) and hot (30) air
+		// floors doesn't stop skin alone crossing its own hot floor.
 		User athlete = newAthlete("decoupling-warm-only-skin@example.cc");
 		Activity activity = newActivity(athlete, Sport.BIKE, 4000);
 		setThreshold(athlete, activity, ThresholdField.FTP, 250);
-		addRecordsWithTemps(activity, 20.0, null, 35.0); // below both the warm (25) and hot (30) air floors
+		addRecordsWithTemps(activity, 20.0, null, 35.0);
 
 		decouplingService.computeAndPersist(activity, athlete);
 
 		assertThat(activity.isDecouplingWarm()).isTrue();
-		assertThat(activity.isDecouplingHot()).isFalse();
+		assertThat(activity.isDecouplingHot()).isTrue();
 	}
 
 	@Test
@@ -301,9 +319,79 @@ class ActivityDecouplingServiceIntegrationTest extends IntegrationTest {
 		assertThat(activity.getDecouplingReasons()).contains("intensity");
 		assertThat(activity.getDecouplingVi()).isNotNull();
 		assertThat(activity.getDecouplingIf()).isNotNull();
-		assertThat(activity.getSteadySeconds()).isEqualTo(3400);
+		assertThat(activity.getSteadySeconds()).isEqualTo(3700); // 4000 - the default 5 min (300s) warmup trim
 		assertThat(activity.getDecouplingPct()).isNull();
 		assertThat(activity.getDecouplingHalves()).isEmpty();
+	}
+
+	@Test
+	void matchedWorkoutWarmupStepOverridesTheFlatDefaultWhenOptedIn() {
+		User athlete = newAthlete("decoupling-workout-warmup@example.cc");
+		athlete.setDecouplingUseWorkoutWarmup(true);
+		athlete = userRepository.save(athlete);
+
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Steady ride with a long warmup");
+		workout.setSport(Sport.BIKE);
+		workout.setDuration(4000);
+		WorkoutStep warmupStep = new WorkoutStep();
+		warmupStep.setWorkout(workout);
+		warmupStep.setOrder(0);
+		warmupStep.setKind(StepKind.WARMUP);
+		warmupStep.setEndType(StepEndType.TIME);
+		warmupStep.setDuration(900); // 15 min - longer than the flat 5 min default
+		warmupStep.setTargetType(TargetType.POWER);
+		warmupStep.setTargetLow(50.0);
+		warmupStep.setTargetHigh(50.0);
+		workout.getSteps().add(warmupStep);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		Activity activity = newActivity(athlete, Sport.BIKE, 4000);
+		activity.setWorkout(workout);
+		activity = activityRepository.save(activity);
+		setThreshold(athlete, activity, ThresholdField.FTP, 250);
+		addRecords(activity, 4000, 200, 140);
+
+		decouplingService.computeAndPersist(activity, athlete);
+
+		// 4000 - the matched workout's own 900s warmup step, not the flat 300s default.
+		assertThat(activity.getSteadySeconds()).isEqualTo(3100);
+	}
+
+	@Test
+	void matchedWorkoutWithNoWarmupStepFallsBackToTheFlatDefault() {
+		User athlete = newAthlete("decoupling-workout-no-warmup@example.cc");
+		athlete.setDecouplingUseWorkoutWarmup(true);
+		athlete = userRepository.save(athlete);
+
+		Workout workout = new Workout();
+		workout.setCreatedBy(athlete);
+		workout.setName("Straight into the work, no warmup step");
+		workout.setSport(Sport.BIKE);
+		workout.setDuration(4000);
+		WorkoutStep blockStep = new WorkoutStep();
+		blockStep.setWorkout(workout);
+		blockStep.setOrder(0);
+		blockStep.setKind(StepKind.BLOCK);
+		blockStep.setEndType(StepEndType.TIME);
+		blockStep.setDuration(4000);
+		blockStep.setTargetType(TargetType.POWER);
+		blockStep.setTargetLow(100.0);
+		blockStep.setTargetHigh(100.0);
+		workout.getSteps().add(blockStep);
+		workout = workoutRepository.saveAndFlush(workout);
+
+		Activity activity = newActivity(athlete, Sport.BIKE, 4000);
+		activity.setWorkout(workout);
+		activity = activityRepository.save(activity);
+		setThreshold(athlete, activity, ThresholdField.FTP, 250);
+		addRecords(activity, 4000, 200, 140);
+
+		decouplingService.computeAndPersist(activity, athlete);
+
+		// No warmup step on the matched workout, so this falls back to the flat 300s default.
+		assertThat(activity.getSteadySeconds()).isEqualTo(3700);
 	}
 
 	@Test

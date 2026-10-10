@@ -31,5 +31,11 @@ public record AthleteUpdateRequest(
 		Double decouplingWarmAirTemp,
 		Double decouplingWarmSkinTemp,
 		Double decouplingHotAirTemp,
-		Double decouplingHotSkinTemp) {
+		Double decouplingHotSkinTemp,
+		// Appended at the end rather than grouped with the other decoupling fields above -
+		// AthleteServiceIntegrationTest constructs this record positionally with many flat
+		// all-null calls; appending avoids re-indexing every one of them (see backend_java's own
+		// CLAUDE.md "Records used as DTOs" gotcha).
+		Integer decouplingWarmupMinutes,
+		Boolean decouplingUseWorkoutWarmup) {
 }

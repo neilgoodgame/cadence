@@ -121,6 +121,14 @@ public class AthleteService {
 			athlete.setDecouplingMinSteadyMinutes(request.decouplingMinSteadyMinutes());
 			changed.add("decouplingMinSteadyMinutes");
 		}
+		if (request.decouplingWarmupMinutes() != null) {
+			athlete.setDecouplingWarmupMinutes(request.decouplingWarmupMinutes());
+			changed.add("decouplingWarmupMinutes");
+		}
+		if (request.decouplingUseWorkoutWarmup() != null) {
+			athlete.setDecouplingUseWorkoutWarmup(request.decouplingUseWorkoutWarmup());
+			changed.add("decouplingUseWorkoutWarmup");
+		}
 		if (request.decouplingWarmAirTemp() != null) {
 			athlete.setDecouplingWarmAirTemp(request.decouplingWarmAirTemp());
 			changed.add("decouplingWarmAirTemp");

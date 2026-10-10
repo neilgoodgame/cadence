@@ -13,6 +13,9 @@ import java.util.OptionalDouble;
  * uploads/processing.py there for the shared rationale. */
 public final class DecouplingQualificationCalculator {
 
+	// The design spec's own original fixed warm-up trim - no longer used at compute time (see
+	// User.decouplingWarmupMinutes, default 5 min), kept only as a documented reference value
+	// and for tests exercising steadyWindowStartIndex directly.
 	public static final int WARMUP_SECONDS = 600;
 	// VI/IF limit and minimum steady minutes are athlete-configurable (User.
 	// decoupleViLimitBike/Run/decouplingIfLimit/decouplingMinSteadyMinutes) - these are just
@@ -33,9 +36,14 @@ public final class DecouplingQualificationCalculator {
 	 * contributes at most 1s, same convention LapDerivationService already uses for pause
 	 * handling, so a stop of any length removes itself from "steady window moving time" simply
 	 * by having no Record rows - no separate "stops >= 5 min" filter needed on top of this) has
-	 * advanced >= WARMUP_SECONDS past the activity's start. null if the recording never reaches
-	 * that - too short to ever qualify. */
-	public static Integer steadyWindowStartIndex(List<Integer> tSeries) {
+	 * advanced >= warmupSeconds past the activity's start. null if the recording never reaches
+	 * that - too short to ever qualify.
+	 *
+	 * @param warmupSeconds the athlete's own configured trim (User.decouplingWarmupMinutes * 60,
+	 * or a matched workout's own warmup step duration - see
+	 * ActivityDecouplingService.matchedWorkoutWarmupSeconds) - the caller resolves which one
+	 * applies; this method doesn't read athlete or workout state directly. */
+	public static Integer steadyWindowStartIndex(List<Integer> tSeries, int warmupSeconds) {
 		if (tSeries.isEmpty()) {
 			return null;
 		}
@@ -43,7 +51,7 @@ public final class DecouplingQualificationCalculator {
 		int t0 = tSeries.get(0);
 		for (int i = 1; i < tSeries.size(); i++) {
 			active += Math.min(tSeries.get(i) - tSeries.get(i - 1), 1);
-			if (active - t0 >= WARMUP_SECONDS) {
+			if (active - t0 >= warmupSeconds) {
 				return i;
 			}
 		}

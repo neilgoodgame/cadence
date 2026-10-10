@@ -18,7 +18,8 @@ class DecouplingDurabilityCalculatorTest {
 	@Test
 	void continuousRecordingEndsWarmupAtExactly600() {
 		List<Integer> t = sequence(4000);
-		assertThat(DecouplingQualificationCalculator.steadyWindowStartIndex(t)).isEqualTo(600);
+		assertThat(DecouplingQualificationCalculator.steadyWindowStartIndex(t, DecouplingQualificationCalculator.WARMUP_SECONDS))
+				.isEqualTo(600);
 	}
 
 	@Test
@@ -27,17 +28,25 @@ class DecouplingDurabilityCalculatorTest {
 		for (int i = 0; i < 400; i++) {
 			t.add(100_000 + i);
 		}
-		assertThat(DecouplingQualificationCalculator.steadyWindowStartIndex(t)).isEqualTo(600);
+		assertThat(DecouplingQualificationCalculator.steadyWindowStartIndex(t, DecouplingQualificationCalculator.WARMUP_SECONDS))
+				.isEqualTo(600);
 	}
 
 	@Test
 	void tooShortToEverReachWarmupReturnsNull() {
-		assertThat(DecouplingQualificationCalculator.steadyWindowStartIndex(sequence(500))).isNull();
+		assertThat(DecouplingQualificationCalculator.steadyWindowStartIndex(sequence(500), DecouplingQualificationCalculator.WARMUP_SECONDS))
+				.isNull();
+	}
+
+	@Test
+	void aShorterConfiguredWarmupEndsEarlier() {
+		List<Integer> t = sequence(400);
+		assertThat(DecouplingQualificationCalculator.steadyWindowStartIndex(t, 300)).isEqualTo(300);
 	}
 
 	@Test
 	void emptySeriesReturnsNull() {
-		assertThat(DecouplingQualificationCalculator.steadyWindowStartIndex(List.of())).isNull();
+		assertThat(DecouplingQualificationCalculator.steadyWindowStartIndex(List.of(), DecouplingQualificationCalculator.WARMUP_SECONDS)).isNull();
 	}
 
 	// ---- checkQualification ----

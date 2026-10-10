@@ -31,6 +31,8 @@ class UserSerializer(serializers.ModelSerializer):
             "decoupling_vi_limit_run",
             "decoupling_if_limit",
             "decoupling_min_steady_minutes",
+            "decoupling_warmup_minutes",
+            "decoupling_use_workout_warmup",
             "decoupling_warm_air_temp",
             "decoupling_warm_skin_temp",
             "decoupling_hot_air_temp",
