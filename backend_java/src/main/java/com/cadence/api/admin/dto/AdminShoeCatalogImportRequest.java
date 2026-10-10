@@ -11,6 +11,6 @@ public record AdminShoeCatalogImportRequest(@NotEmpty @Valid List<Entry> entries
 	public record Entry(
 			@NotBlank @Size(max = 150) String manufacturer,
 			@NotBlank @Size(max = 150) String model,
-			@NotBlank @Size(max = 50) String version) {
+			@Size(max = 50) String version) {
 	}
 }

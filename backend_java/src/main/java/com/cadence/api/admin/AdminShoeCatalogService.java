@@ -112,6 +112,7 @@ public class AdminShoeCatalogService {
 		int versionsAdded = 0;
 		int skipped = 0;
 		for (AdminShoeCatalogImportRequest.Entry entry : entries) {
+			String version = entry.version() != null ? entry.version() : "";
 			ShoeModel shoeModel = shoeModelRepository
 					.findFirstByManufacturerIgnoreCaseAndModelIgnoreCase(entry.manufacturer(), entry.model())
 					.orElse(null);
@@ -123,15 +124,15 @@ public class AdminShoeCatalogService {
 				shoeModel.setCreatedBy(admin);
 				shoeModelRepository.save(shoeModel);
 			}
-			if (shoeModelVersionRepository.existsByShoeModelIdAndVersionIgnoreCase(shoeModel.getId(), entry.version())) {
+			if (shoeModelVersionRepository.existsByShoeModelIdAndVersionIgnoreCase(shoeModel.getId(), version)) {
 				skipped++;
 				continue;
 			}
 			ShoeModelVersion smv = new ShoeModelVersion();
 			smv.setShoeModel(shoeModel);
-			smv.setVersion(entry.version());
+			smv.setVersion(version);
 			shoeModelVersionRepository.save(smv);
-			auditLogService.logAdded(displayName(entry.manufacturer(), entry.model(), entry.version()), admin);
+			auditLogService.logAdded(displayName(entry.manufacturer(), entry.model(), version), admin);
 			if (isNewModel) {
 				modelsCreated++;
 			}
@@ -184,6 +185,9 @@ public class AdminShoeCatalogService {
 	}
 
 	private String displayName(String manufacturer, String model, String version) {
+		if (version == null || version.isBlank()) {
+			return manufacturer + " " + model;
+		}
 		return manufacturer + " " + model + " v" + version;
 	}
 }
