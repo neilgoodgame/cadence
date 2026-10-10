@@ -182,8 +182,9 @@ interface ParsedImportRow {
 }
 
 /** Groups parsed CSV rows into distinct (manufacturer, model, version) catalog entries - a
- * version-less row (e.g. a Strava export's "Evo SL" with no generation number) defaults to "1"
- * rather than being dropped, and rows that only differ by a column the catalog doesn't track
+ * version-less row (e.g. a Strava export's "Evo SL" with no generation number) is kept with an
+ * empty version rather than being dropped, so the composed display name omits it instead of
+ * showing a misleading "1", and rows that only differ by a column the catalog doesn't track
  * (colourway, mileage, ...) collapse into the same entry instead of trying to add the same
  * version twice. */
 function groupImportRows(rows: string[][]): ParsedImportRow[] {
@@ -202,7 +203,7 @@ function groupImportRows(rows: string[][]): ParsedImportRow[] {
   for (const row of rows.slice(1)) {
     const manufacturer = (row[manufacturerIdx] ?? "").trim();
     const model = (row[modelIdx] ?? "").trim();
-    const version = (versionIdx === -1 ? "" : (row[versionIdx] ?? "").trim()) || "1";
+    const version = versionIdx === -1 ? "" : (row[versionIdx] ?? "").trim();
     if (!manufacturer || !model) continue;
     const key = `${manufacturer.toLowerCase()}|${model.toLowerCase()}|${version.toLowerCase()}`;
     const existing = byKey.get(key);
@@ -256,7 +257,7 @@ function ImportCsvPanel() {
       <input type="file" accept=".csv,text/csv" onChange={onFileSelected} style={{ fontSize: 12.5, color: "var(--ink2)", width: "100%" }} />
       <div style={{ fontSize: 11.5, color: "var(--ink3)", lineHeight: 1.5, marginTop: 10 }}>
         Expects a header row with Manufacturer, Model and (optionally) Version columns - e.g. a Strava shoe-rotation
-        export. Other columns are ignored. A row with no version is imported as version "1". Entries that already
+        export. Other columns are ignored. A row with no version is imported without one. Entries that already
         exist in the catalog are skipped, so re-importing the same file is safe.
       </div>
       {error && <div style={{ fontSize: 12, color: "#e0442e", marginTop: 10 }}>{error}</div>}
@@ -282,7 +283,7 @@ function ImportCsvPanel() {
                   {p.manufacturer} {p.model}
                 </span>
                 <span className="mono" style={{ color: "var(--ink3)", flexShrink: 0 }}>
-                  v{p.version}
+                  {p.version ? `v${p.version}` : ""}
                 </span>
               </div>
             ))}

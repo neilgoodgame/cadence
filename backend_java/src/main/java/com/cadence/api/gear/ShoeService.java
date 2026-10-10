@@ -186,7 +186,7 @@ public class ShoeService {
 
 	private String composeDefaultName(ShoeModelVersion smv, String colourway) {
 		ShoeModel sm = smv.getShoeModel();
-		return (sm.getManufacturer() + " " + sm.getModel() + " " + smv.getVersion() + " " + colourway).trim();
+		return composeImportName(sm.getManufacturer(), sm.getModel(), smv.getVersion(), colourway);
 	}
 
 	// Unlike composeDefaultName above (which assumes a single-add form's version/colourway are

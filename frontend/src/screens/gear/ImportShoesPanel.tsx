@@ -14,9 +14,10 @@ interface ParsedImportRow extends ShoeImportEntry {
 /** Groups parsed CSV rows into import entries - unlike the admin catalog's bulk import (which
  * only tracks manufacturer+model+version), colourway and distance genuinely distinguish one
  * physical pair from another here, so every row (after dropping exact full duplicates) becomes
- * its own entry rather than being collapsed. A version-less row defaults to "1" - matching the
- * admin catalog importer's own default, so the same CSV resolves to the same catalog identity
- * through either importer. */
+ * its own entry rather than being collapsed. A version-less row is imported with an empty
+ * version - matching the admin catalog importer's own handling, so the same CSV resolves to the
+ * same catalog identity through either importer, and the composed name omits the version
+ * instead of showing a misleading "1". */
 function parseImportRows(rows: string[][]): ParsedImportRow[] {
   if (rows.length < 2) {
     throw new Error("This file has no data rows.");
@@ -36,7 +37,7 @@ function parseImportRows(rows: string[][]): ParsedImportRow[] {
     const manufacturer = (row[manufacturerIdx] ?? "").trim();
     const model = (row[modelIdx] ?? "").trim();
     if (!manufacturer || !model) continue;
-    const version = (versionIdx === -1 ? "" : (row[versionIdx] ?? "").trim()) || "1";
+    const version = versionIdx === -1 ? "" : (row[versionIdx] ?? "").trim();
     const colourway = colourwayIdx === -1 ? "" : (row[colourwayIdx] ?? "").trim();
     const rawDistance = distanceIdx === -1 ? "" : (row[distanceIdx] ?? "").trim();
     const distance_km = rawDistance ? Number(rawDistance) : undefined;
@@ -98,7 +99,7 @@ export function ImportShoesPanel({ onDone }: { onDone: () => void }) {
       <input type="file" accept=".csv,text/csv" onChange={onFileSelected} style={{ fontSize: 13, color: "var(--ink2)" }} />
       <div style={{ fontSize: 12, color: "var(--ink3)", lineHeight: 1.5 }}>
         Expects a header row with Manufacturer, Model and (optionally) Version, Colourway and Distance_km columns -
-        e.g. a Strava shoe-rotation export. A row with no version is imported as version "1".{" "}
+        e.g. a Strava shoe-rotation export. A row with no version is imported without one.{" "}
         {isAdminAccount
           ? "As an admin, any shoe not already in the shared catalog is added to it as part of this import."
           : "Only shoes already in the shared catalog can be imported this way - rows that don't match are skipped (ask an admin to add them to the catalog first)."}
@@ -124,7 +125,7 @@ export function ImportShoesPanel({ onDone }: { onDone: () => void }) {
                 }}
               >
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {p.manufacturer} {p.model} v{p.version}
+                  {p.manufacturer} {p.model}{p.version ? ` v${p.version}` : ""}
                   {p.colourway ? ` · ${p.colourway}` : ""}
                 </span>
                 <span className="mono" style={{ color: "var(--ink3)", flexShrink: 0 }}>

@@ -200,9 +200,15 @@ class ShoeListCreateView(APIView):
             ShoeModelVersion.objects.select_related("shoe_model"), pk=data["shoe_model_version_id"]
         )
 
-        name = data.get("name") or (
-            f"{shoe_model_version.shoe_model.manufacturer} {shoe_model_version.shoe_model.model} "
-            f"{shoe_model_version.version} {data['colourway']}"
+        name = data.get("name") or " ".join(
+            part
+            for part in (
+                shoe_model_version.shoe_model.manufacturer,
+                shoe_model_version.shoe_model.model,
+                shoe_model_version.version,
+                data["colourway"],
+            )
+            if part
         )
 
         if Shoe.objects.filter(athlete_id=athlete_id, name=name).exists():

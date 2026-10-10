@@ -32,6 +32,12 @@ def _require_admin(request: Request) -> User:
     return user
 
 
+def _audit_display_name(manufacturer: str, model: str, version: str) -> str:
+    if not version:
+        return f"{manufacturer} {model}"
+    return f"{manufacturer} {model} v{version}"
+
+
 def _catalog_entry(shoe_model: ShoeModel) -> dict:
     # usage_count counts every Shoe referencing that version regardless of its retired flag,
     # matching the delete-block check below exactly - it should read as "why can't I delete
@@ -57,7 +63,7 @@ def _append_version(shoe_model: ShoeModel, version: str, admin: User) -> ShoeMod
         raise ConflictError("This shoe model already has that version.")
     created = ShoeModelVersion.objects.create(shoe_model=shoe_model, version=version)
     CatalogAuditLogEntry.objects.create(
-        description=f"{shoe_model.manufacturer} {shoe_model.model} v{version}",
+        description=_audit_display_name(shoe_model.manufacturer, shoe_model.model, version),
         action=CatalogAuditLogEntry.ACTION_ADDED,
         by=admin,
     )
@@ -90,7 +96,7 @@ class AdminShoeCatalogListCreateView(APIView):
         shoe_model = ShoeModel.objects.create(manufacturer=data["manufacturer"], model=data["model"], created_by=admin)
         ShoeModelVersion.objects.create(shoe_model=shoe_model, version=data["version"])
         CatalogAuditLogEntry.objects.create(
-            description=f"{shoe_model.manufacturer} {shoe_model.model} v{data['version']}",
+            description=_audit_display_name(shoe_model.manufacturer, shoe_model.model, data["version"]),
             action=CatalogAuditLogEntry.ACTION_ADDED,
             by=admin,
         )
@@ -127,7 +133,7 @@ class AdminShoeCatalogImportView(APIView):
                 continue
             ShoeModelVersion.objects.create(shoe_model=shoe_model, version=entry["version"])
             CatalogAuditLogEntry.objects.create(
-                description=f"{shoe_model.manufacturer} {shoe_model.model} v{entry['version']}",
+                description=_audit_display_name(shoe_model.manufacturer, shoe_model.model, entry["version"]),
                 action=CatalogAuditLogEntry.ACTION_ADDED,
                 by=admin,
             )
