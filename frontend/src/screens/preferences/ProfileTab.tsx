@@ -103,6 +103,8 @@ export function ProfileTab() {
     decoupling_vi_limit_run: user?.decoupling_vi_limit_run ?? 1.04,
     decoupling_if_limit: user?.decoupling_if_limit ?? 0.85,
     decoupling_min_steady_minutes: user?.decoupling_min_steady_minutes ?? 60,
+    decoupling_warmup_minutes: user?.decoupling_warmup_minutes ?? 5,
+    decoupling_use_workout_warmup: user?.decoupling_use_workout_warmup ?? false,
     decoupling_warm_air_temp: user?.decoupling_warm_air_temp ?? 25.0,
     decoupling_warm_skin_temp: user?.decoupling_warm_skin_temp ?? 33.0,
     decoupling_hot_air_temp: user?.decoupling_hot_air_temp ?? 30.0,
@@ -301,6 +303,27 @@ export function ProfileTab() {
               onChange={(e) => setForm({ ...form, decoupling_min_steady_minutes: Number(e.target.value) })}
             />
           </Field>
+          <Field label="Warm-up trim" unit="minutes">
+            <input
+              type="number"
+              className="mono"
+              style={inputStyle}
+              value={form.decoupling_warmup_minutes ?? ""}
+              onChange={(e) => setForm({ ...form, decoupling_warmup_minutes: Number(e.target.value) })}
+            />
+          </Field>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 13, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={form.decoupling_use_workout_warmup ?? false}
+              onChange={(e) => setForm({ ...form, decoupling_use_workout_warmup: e.target.checked })}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              When an activity is matched to a designed workout with its own warmup step, trim
+              that step's exact duration instead of the flat warm-up trim above
+            </span>
+          </label>
           <p style={{ fontSize: 12, color: "var(--ink3)", margin: "-6px 0 0", lineHeight: 1.5 }}>
             Gates whether a session's Pw:HR decoupling % gets computed at all - too variable, too
             intense, or too short a steady effort and it's skipped instead of scored. Read at
@@ -354,10 +377,10 @@ export function ProfileTab() {
             />
           </Field>
           <p style={{ fontSize: 12, color: "var(--ink3)", margin: "-6px 0 0", lineHeight: 1.5 }}>
-            Flags a decoupling reading as heat-confounded, not excluded from scoring. Warm
-            triggers from air OR skin temp alone; hot needs both air AND skin elevated together
-            - a stricter bar. Core temp isn't used here: a long steady session drives it up from
-            sustained effort alone, even on a cool day.
+            Flags a decoupling reading as heat-confounded, not excluded from scoring. Both warm
+            and hot trigger from air OR skin temp alone - either one elevated is enough. Core
+            temp isn't used here: a long steady session drives it up from sustained effort
+            alone, even on a cool day.
           </p>
         </div>
       </div>

@@ -46,10 +46,17 @@ export interface Athlete {
   decoupling_vi_limit_run: number;
   decoupling_if_limit: number;
   decoupling_min_steady_minutes: number;
+  /** Minutes trimmed off the start of the recording before the steady window is measured -
+   * overridden per-activity by decoupling_use_workout_warmup when it applies. */
+  decoupling_warmup_minutes: number;
+  /** When true, an activity matched to a designed workout whose first step is a warmup with a
+   * known duration trims exactly that duration instead of decoupling_warmup_minutes. Falls back
+   * to decoupling_warmup_minutes when unmatched, or the matched workout has no warmup step. */
+  decoupling_use_workout_warmup: boolean;
   /** Heat-confound flags for the same decoupling card - two independent severity tiers, both
    * read from air/skin temp only (not core, which drifts up from sustained effort alone on any
-   * long session regardless of weather). Warm is an OR (either signal elevated is enough);
-   * hot is an AND (both have to be elevated - a stricter bar). */
+   * long session regardless of weather). Both warm and hot are an OR (either signal elevated
+   * is enough). */
   decoupling_warm_air_temp: number;
   decoupling_warm_skin_temp: number;
   decoupling_hot_air_temp: number;
@@ -411,8 +418,7 @@ export interface Activity {
   decoupling_avg_skin: number | null;
   /** avg air >= athlete's decoupling_warm_air_temp OR avg skin >= decoupling_warm_skin_temp. */
   decoupling_warm: boolean;
-  /** avg air >= athlete's decoupling_hot_air_temp AND avg skin >= decoupling_hot_skin_temp -
-   * stricter than decoupling_warm (an AND, not an OR). */
+  /** avg air >= athlete's decoupling_hot_air_temp OR avg skin >= decoupling_hot_skin_temp. */
   decoupling_hot: boolean;
   /** % of steady-window samples with a non-null HR/power reading, 0-100. */
   decoupling_hr_coverage_pct: number | null;
@@ -448,6 +454,8 @@ export interface AthleteUpdate {
   decoupling_vi_limit_run?: number;
   decoupling_if_limit?: number;
   decoupling_min_steady_minutes?: number;
+  decoupling_warmup_minutes?: number;
+  decoupling_use_workout_warmup?: boolean;
   decoupling_warm_air_temp?: number;
   decoupling_warm_skin_temp?: number;
   decoupling_hot_air_temp?: number;

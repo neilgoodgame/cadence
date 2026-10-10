@@ -95,10 +95,24 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "decoupling_min_steady_minutes", nullable = false)
 	private int decouplingMinSteadyMinutes = 60;
 
+	/** Minutes trimmed off the start of the recording before the steady window is measured (see
+	 * DecouplingQualificationCalculator.steadyWindowStartIndex) - a flat per-athlete default,
+	 * overridden per-activity by decouplingUseWorkoutWarmup below when it applies. */
+	@Column(name = "decoupling_warmup_minutes", nullable = false)
+	private int decouplingWarmupMinutes = 5;
+
+	/** When true, an activity matched to a designed workout whose first step is a warmup with a
+	 * known duration trims exactly that duration instead of decouplingWarmupMinutes - see
+	 * ActivityDecouplingService.matchedWorkoutWarmupSeconds. Falls back to
+	 * decouplingWarmupMinutes when unmatched, or the matched workout has no warmup step. */
+	@Column(name = "decoupling_use_workout_warmup", nullable = false)
+	private boolean decouplingUseWorkoutWarmup = false;
+
 	// Heat-confound flags for the same decoupling card - two independent severity tiers, both
 	// read from air/skin temp only (not core, which drifts up from sustained effort alone on
-	// any long session regardless of weather). Warm is an OR (either signal elevated is enough
-	// to caveat the reading); hot is an AND (both have to be elevated - a stricter bar).
+	// any long session regardless of weather). Both warm and hot are an OR (either signal
+	// alone crossing its bar is enough - e.g. high skin temp from exertion on a cool day
+	// still counts as heat stress).
 	@Column(name = "decoupling_warm_air_temp", nullable = false)
 	private double decouplingWarmAirTemp = 25.0;
 
@@ -356,6 +370,22 @@ public class User extends PrefixedIdEntity {
 
 	public void setDecouplingMinSteadyMinutes(int decouplingMinSteadyMinutes) {
 		this.decouplingMinSteadyMinutes = decouplingMinSteadyMinutes;
+	}
+
+	public int getDecouplingWarmupMinutes() {
+		return decouplingWarmupMinutes;
+	}
+
+	public void setDecouplingWarmupMinutes(int decouplingWarmupMinutes) {
+		this.decouplingWarmupMinutes = decouplingWarmupMinutes;
+	}
+
+	public boolean isDecouplingUseWorkoutWarmup() {
+		return decouplingUseWorkoutWarmup;
+	}
+
+	public void setDecouplingUseWorkoutWarmup(boolean decouplingUseWorkoutWarmup) {
+		this.decouplingUseWorkoutWarmup = decouplingUseWorkoutWarmup;
 	}
 
 	public double getDecouplingWarmAirTemp() {

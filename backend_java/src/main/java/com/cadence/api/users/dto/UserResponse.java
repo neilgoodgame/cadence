@@ -25,6 +25,8 @@ public record UserResponse(
 		double decouplingViLimitRun,
 		double decouplingIfLimit,
 		int decouplingMinSteadyMinutes,
+		int decouplingWarmupMinutes,
+		boolean decouplingUseWorkoutWarmup,
 		double decouplingWarmAirTemp,
 		double decouplingWarmSkinTemp,
 		double decouplingHotAirTemp,

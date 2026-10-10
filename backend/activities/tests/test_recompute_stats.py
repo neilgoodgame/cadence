@@ -163,7 +163,7 @@ class RecomputeActivityStatsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertTrue(body["decoupling_qualified"])
-        self.assertEqual(body["steady_seconds"], 3600)
+        self.assertEqual(body["steady_seconds"], 3900)  # 4200 - the default 5 min (300s) warmup trim
         self.assertIsNotNone(body["decoupling_pct"])
 
         activity.refresh_from_db()

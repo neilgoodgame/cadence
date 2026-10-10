@@ -17,6 +17,7 @@ from scheduling.models import ScheduledWorkout
 from scheduling.serializers import ScheduledWorkoutSerializer
 from webhooks.events import fire_event
 from workouts.match_scan import rank_workouts_for_activity
+from workouts.models import WorkoutStep
 
 from .models import Upload
 from .parsers import parse_file
@@ -48,6 +49,9 @@ POWER_BEST_EFFORT_WINDOWS = [
 # Aerobic decoupling / durability (see compute_decoupling / compute_durability_rows below).
 # "ride" in the design spec maps to this codebase's "bike" sport value throughout.
 DECOUPLING_SPORTS = ("bike", "run")
+# The design spec's own original fixed warm-up trim - no longer used at compute time (see
+# User.decoupling_warmup_minutes, default 5 min), kept only as a documented reference value and
+# for tests exercising _steady_window_start_index directly.
 DECOUPLING_WARMUP_SECONDS = 600
 # VI/IF limit and minimum steady minutes are athlete-configurable (User.decoupling_vi_limit_bike/
 # _run/decoupling_if_limit/decoupling_min_steady_minutes) - these are just the defaults new
@@ -65,7 +69,9 @@ DECOUPLING_POWER_COVERAGE_MIN = 0.95
 # skin only, not core temp: a long steady session drives core temp up from sustained effort
 # alone, even on a cool day (a 3-hour run can cross 38 C core on a 16 C day with no heat stress
 # involved), so core is informational only (Activity.decoupling_avg_core) and doesn't gate
-# either flag. Warm is an OR of its two thresholds; hot is an AND - a stricter bar.
+# either flag. Both warm and hot are an OR of their two thresholds - either air or skin
+# alone crossing its bar is enough (e.g. high skin temp from exertion on a cool day still
+# counts as heat stress).
 DECOUPLING_WARM_AIR_TEMP_C = 25.0
 DECOUPLING_WARM_SKIN_TEMP_C = 33.0
 DECOUPLING_HOT_AIR_TEMP_C = 30.0
@@ -378,22 +384,52 @@ def _sliding_window_best_avg_with_offset(values: Sequence[float], window: int) -
     return best, best_start
 
 
-def _steady_window_start_index(t_series: Sequence[int]) -> int | None:
+def _steady_window_start_index(t_series: Sequence[int], warmup_seconds: int) -> int | None:
     """First record index where "active" elapsed time (see activities/lap_derivation.py's own
     active_t convention, duplicated here as a 3-line local calc rather than imported - a
     recording gap of any length contributes at most 1s, so a pause never inflates the warm-up
     cutoff, and a stop of any length already removes itself from "steady window moving time"
     simply by having no Record rows - no separate "stops >= 5 min" filter is needed on top of
-    this) has advanced >= DECOUPLING_WARMUP_SECONDS past the activity's start. None if the
-    recording never reaches that - too short to ever qualify."""
+    this) has advanced >= warmup_seconds past the activity's start. None if the recording never
+    reaches that - too short to ever qualify.
+
+    warmup_seconds is the athlete's own configured trim (User.decoupling_warmup_minutes * 60, or
+    a matched workout's own warmup step duration - see _matched_workout_warmup_seconds) - the
+    caller (compute_decoupling) resolves which one applies; this function doesn't read athlete or
+    workout state directly."""
     if not t_series:
         return None
     active = t_series[0]
     for i in range(1, len(t_series)):
         active += min(t_series[i] - t_series[i - 1], 1)
-        if active - t_series[0] >= DECOUPLING_WARMUP_SECONDS:
+        if active - t_series[0] >= warmup_seconds:
             return i
     return None
+
+
+def _matched_workout_warmup_seconds(activity: Activity) -> int | None:
+    """The matched workout's own warmup step duration, in seconds - None if the activity isn't
+    matched to a workout, that workout's first top-level step isn't a warmup, or that step has
+    no fixed duration (e.g. a distance-based warmup)."""
+    if activity.workout_id is None:
+        return None
+    first_step = (
+        WorkoutStep.objects.filter(workout_id=activity.workout_id, parent__isnull=True).order_by("order").first()
+    )
+    if first_step is None or first_step.kind != "warmup" or first_step.duration is None:
+        return None
+    return first_step.duration
+
+
+def _resolve_warmup_seconds(activity: Activity, athlete: User) -> int:
+    """The warm-up trim to apply before measuring the steady window - the matched workout's own
+    warmup step duration when decoupling_use_workout_warmup is on and one exists, otherwise the
+    athlete's flat decoupling_warmup_minutes setting."""
+    if athlete.decoupling_use_workout_warmup:
+        matched = _matched_workout_warmup_seconds(activity)
+        if matched is not None:
+            return matched
+    return athlete.decoupling_warmup_minutes * 60
 
 
 def check_decoupling_qualification(
@@ -497,7 +533,8 @@ def compute_decoupling(
     if not any(p is not None for p in power_series):
         return {**empty, "decoupling_reasons": ["no_power"]}
 
-    start = _steady_window_start_index(t_series)
+    warmup_seconds = _resolve_warmup_seconds(activity, athlete)
+    start = _steady_window_start_index(t_series, warmup_seconds)
     if start is None:
         return {**empty, "decoupling_reasons": ["short"], "steady_seconds": 0}
 
@@ -527,11 +564,8 @@ def compute_decoupling(
     warm = (avg_temp is not None and avg_temp >= athlete.decoupling_warm_air_temp) or (
         avg_skin is not None and avg_skin >= athlete.decoupling_warm_skin_temp
     )
-    hot = (
-        avg_temp is not None
-        and avg_temp >= athlete.decoupling_hot_air_temp
-        and avg_skin is not None
-        and avg_skin >= athlete.decoupling_hot_skin_temp
+    hot = (avg_temp is not None and avg_temp >= athlete.decoupling_hot_air_temp) or (
+        avg_skin is not None and avg_skin >= athlete.decoupling_hot_skin_temp
     )
 
     result = {
