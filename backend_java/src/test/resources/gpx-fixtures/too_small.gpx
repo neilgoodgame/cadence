@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test"><trk><name>fixture</name><trkseg>
+<trkpt lat="51.500000" lon="-0.100000"><ele>100.0</ele></trkpt>
+<trkpt lat="51.500100" lon="-0.099900"><ele>100.0</ele></trkpt>
+<trkpt lat="51.500200" lon="-0.099800"><ele>100.0</ele></trkpt>
+<trkpt lat="51.500300" lon="-0.099700"><ele>100.0</ele></trkpt>
+<trkpt lat="51.500400" lon="-0.099600"><ele>100.0</ele></trkpt>
+<trkpt lat="51.500500" lon="-0.099500"><ele>100.0</ele></trkpt>
+<trkpt lat="51.500600" lon="-0.099400"><ele>100.0</ele></trkpt>
+<trkpt lat="51.500700" lon="-0.099300"><ele>100.0</ele></trkpt>
+<trkpt lat="51.500800" lon="-0.099200"><ele>100.0</ele></trkpt>
+<trkpt lat="51.500900" lon="-0.099100"><ele>100.0</ele></trkpt>
+</trkseg></trk></gpx>

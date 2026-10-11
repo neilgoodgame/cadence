@@ -324,7 +324,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		}
 
 		assertThat(seen).containsExactly(
-				"equipment", "workouts", "activities", "races", "scheduled_workouts", "threshold_history");
+				"equipment", "workouts", "activities", "courses", "races", "scheduled_workouts", "threshold_history");
 	}
 
 	@Test
@@ -626,6 +626,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 				"step:equipment", "total:3", "progress:3",
 				"step:workouts", "total:1", "progress:1",
 				"step:activities", "total:1", "progress:1",
+				"step:courses", "total:0", "progress:0",
 				"step:races", "total:1", "progress:1",
 				"step:scheduled_workouts", "total:1", "progress:1",
 				"step:threshold_history", "total:0", "progress:0");

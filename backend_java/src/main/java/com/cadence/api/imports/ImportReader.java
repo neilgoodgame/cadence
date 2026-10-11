@@ -30,6 +30,10 @@ import com.cadence.api.gear.dto.ComponentResponse;
 import com.cadence.api.gear.dto.ShoeCreateRequest;
 import com.cadence.api.gear.dto.ShoeResponse;
 import com.cadence.api.imports.dto.ImportCounts;
+import com.cadence.api.races.Race;
+import com.cadence.api.races.RaceComment;
+import com.cadence.api.races.RaceCommentRepository;
+import com.cadence.api.races.RaceCommentRole;
 import com.cadence.api.races.RaceService;
 import com.cadence.api.races.dto.RaceCreateRequest;
 import com.cadence.api.races.dto.RaceResponse;
@@ -103,7 +107,9 @@ public class ImportReader {
 	private final ShoeModelRepository shoeModelRepository;
 	private final ShoeModelVersionRepository shoeModelVersionRepository;
 	private final WorkoutService workoutService;
+	private final com.cadence.api.courses.CourseService courseService;
 	private final RaceService raceService;
+	private final RaceCommentRepository raceCommentRepository;
 	private final SchedulingService schedulingService;
 	private final TagService tagService;
 	private final ActivityRepository activityRepository;
@@ -117,8 +123,10 @@ public class ImportReader {
 	private final TransactionTemplate transactionTemplate;
 
 	public ImportReader(GearService gearService, ShoeService shoeService, ShoeModelRepository shoeModelRepository,
-			ShoeModelVersionRepository shoeModelVersionRepository, WorkoutService workoutService, RaceService raceService,
-			SchedulingService schedulingService, TagService tagService, ActivityRepository activityRepository,
+			ShoeModelVersionRepository shoeModelVersionRepository, WorkoutService workoutService,
+			com.cadence.api.courses.CourseService courseService, RaceService raceService,
+			RaceCommentRepository raceCommentRepository, SchedulingService schedulingService, TagService tagService,
+			ActivityRepository activityRepository,
 			LapRepository lapRepository, com.cadence.api.activities.ActivityDurabilityRepository activityDurabilityRepository,
 			JdbcBatchItemWriter<RecordRow> recordItemWriter, JsonMapper jsonMapper,
 			UserRepository userRepository, ThresholdHistoryRepository thresholdHistoryRepository,
@@ -129,7 +137,9 @@ public class ImportReader {
 		this.shoeModelRepository = shoeModelRepository;
 		this.shoeModelVersionRepository = shoeModelVersionRepository;
 		this.workoutService = workoutService;
+		this.courseService = courseService;
 		this.raceService = raceService;
+		this.raceCommentRepository = raceCommentRepository;
 		this.schedulingService = schedulingService;
 		this.tagService = tagService;
 		this.activityRepository = activityRepository;
@@ -164,7 +174,9 @@ public class ImportReader {
 
 	private static final class Counts {
 		int activities;
+		int courses;
 		int races;
+		int raceComments;
 		int workouts;
 		int scheduledWorkouts;
 		int thresholdHistory;
@@ -241,6 +253,8 @@ public class ImportReader {
 		Map<String, Shoe> shoesByOldId = new HashMap<>();
 		Map<String, Workout> workoutsByOldId = new HashMap<>();
 		Map<String, String> activityIdMap = new HashMap<>();
+		Map<String, String> courseIdMap = new HashMap<>();
+		Map<String, String> raceIdMap = new HashMap<>();
 		List<DeferredActivityLink> deferredLinks = new ArrayList<>();
 		// Populated by the "counts" case below, which the writer always emits before any section -
 		// null only for a file exported before that field existed.
@@ -274,12 +288,19 @@ public class ImportReader {
 								deferredLinks, counts, progress);
 						progress.flush();
 					}
+					case "courses" -> {
+						Progress progress = startSection(
+								onStep, onTotal, onProgress, "courses", fileCounts == null ? null : (int) fileCounts.courses());
+						importCourses(parser, athlete, activityIdMap, courseIdMap, counts, progress);
+						progress.flush();
+					}
 					case "races" -> {
 						Progress progress = startSection(
 								onStep, onTotal, onProgress, "races", fileCounts == null ? null : (int) fileCounts.races());
-						importRaces(parser, athlete, activityIdMap, counts, progress);
+						importRaces(parser, athlete, activityIdMap, courseIdMap, raceIdMap, counts, progress);
 						progress.flush();
 					}
+					case "race_comments" -> importRaceComments(parser, raceIdMap, counts);
 					case "scheduled_workouts" -> {
 						Progress progress = startSection(onStep, onTotal, onProgress, "scheduled_workouts",
 								fileCounts == null ? null : (int) fileCounts.scheduledWorkouts());
@@ -300,8 +321,8 @@ public class ImportReader {
 
 		resolveDeferredLinks(deferredLinks, activityIdMap);
 
-		return new ImportCounts(counts.activities, counts.races, counts.workouts, counts.scheduledWorkouts,
-				counts.thresholdHistory, counts.bikes, counts.shoes, counts.components, counts.skipped);
+		return new ImportCounts(counts.activities, counts.courses, counts.races, counts.raceComments, counts.workouts,
+				counts.scheduledWorkouts, counts.thresholdHistory, counts.bikes, counts.shoes, counts.components, counts.skipped);
 	}
 
 	private static Progress startSection(
@@ -678,16 +699,84 @@ public class ImportReader {
 		}
 	}
 
+	private void importCourses(
+			JsonParser parser, User athlete, Map<String, String> activityIdMap, Map<String, String> courseIdMap,
+			Counts counts, Progress progress) {
+		while (parser.nextToken() != JsonToken.END_ARRAY) {
+			com.cadence.api.export.dto.CourseExportEntry entry = parser.readValueAs(com.cadence.api.export.dto.CourseExportEntry.class);
+			try {
+				String newSourceActivityId = entry.sourceActivityId() != null ? activityIdMap.get(entry.sourceActivityId()) : null;
+				transactionTemplate.executeWithoutResult(status -> {
+					var created = courseService.importCourse(athlete, entry, newSourceActivityId);
+					courseIdMap.put(entry.id(), created.getId());
+				});
+				counts.courses++;
+			}
+			catch (Exception e) {
+				counts.skipped++;
+				log.warn("Skipped course import", e);
+			}
+			progress.tick();
+		}
+	}
+
+	/** Single-level threading and the export writing oldest-first together guarantee a top-level
+	 * comment is always created before any reply to it, so one forward pass (no deferred-link
+	 * pass, unlike activities' parent/primary links) is enough to resolve parentId. authorId
+	 * isn't carried over - every imported comment is attributed to the importing athlete, same
+	 * as the Python backend's import_reader.py. Not wrapped in startSection/progress - comments
+	 * are written/read inside the "races" step, see ExportWriter.writeRaceComments. */
+	private void importRaceComments(JsonParser parser, Map<String, String> raceIdMap, Counts counts) {
+		Map<String, String> commentsByOldId = new HashMap<>();
+		while (parser.nextToken() != JsonToken.END_ARRAY) {
+			com.cadence.api.export.dto.RaceCommentExportEntry entry =
+					parser.readValueAs(com.cadence.api.export.dto.RaceCommentExportEntry.class);
+			String raceId = raceIdMap.get(entry.raceId());
+			if (raceId == null) {
+				counts.skipped++;
+				continue;
+			}
+			try {
+				String[] newId = new String[1];
+				transactionTemplate.executeWithoutResult(status -> {
+					Race race = raceService.getRace(raceId);
+					RaceComment created = new RaceComment();
+					created.setRace(race);
+					created.setAuthor(race.getAthlete());
+					created.setRole(entry.role() != null ? RaceCommentRole.fromWireValue(entry.role()) : RaceCommentRole.ATHLETE);
+					created.setText(entry.text());
+					created.setWeek(entry.week());
+					created.setParent(entry.parentId() != null && commentsByOldId.get(entry.parentId()) != null
+							? raceCommentRepository.findById(commentsByOldId.get(entry.parentId())).orElse(null)
+							: null);
+					raceCommentRepository.save(created);
+					newId[0] = created.getId();
+				});
+				commentsByOldId.put(entry.id(), newId[0]);
+				counts.raceComments++;
+			}
+			catch (Exception e) {
+				counts.skipped++;
+				log.warn("Skipped race comment import", e);
+			}
+		}
+	}
+
 	private void importRaces(
-			JsonParser parser, User athlete, Map<String, String> activityIdMap, Counts counts, Progress progress) {
+			JsonParser parser, User athlete, Map<String, String> activityIdMap, Map<String, String> courseIdMap,
+			Map<String, String> raceIdMap, Counts counts, Progress progress) {
 		while (parser.nextToken() != JsonToken.END_ARRAY) {
 			RaceResponse rr = parser.readValueAs(RaceResponse.class);
 			try {
 				String newActivityId = rr.activityId() != null ? activityIdMap.get(rr.activityId()) : null;
-				transactionTemplate.executeWithoutResult(status -> raceService.createRace(athlete,
-						new RaceCreateRequest(rr.name(), rr.date(), rr.sport() == null || rr.sport().isBlank() ? null : rr.sport(),
-								rr.distanceKm(), rr.goalTime(), rr.resultTime(), newActivityId, rr.url(), rr.resultsUrl(),
-								rr.notes())));
+				String newCourseId = rr.courseId() != null ? courseIdMap.get(rr.courseId()) : null;
+				transactionTemplate.executeWithoutResult(status -> {
+					Race created = raceService.createRace(athlete,
+							new RaceCreateRequest(rr.name(), rr.date(), rr.sport() == null || rr.sport().isBlank() ? null : rr.sport(),
+									rr.distanceKm(), rr.goalTime(), rr.resultTime(), newActivityId, rr.url(), rr.resultsUrl(),
+									rr.notes(), rr.priority(), newCourseId));
+					raceIdMap.put(rr.id(), created.getId());
+				});
 				counts.races++;
 			}
 			catch (Exception e) {

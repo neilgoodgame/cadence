@@ -1,0 +1,152 @@
+from datetime import date
+
+from django.test import TestCase
+
+from accounts.models import User, UserRelationship
+from activities.tests.helpers import _bearer_client, _delegated_client
+from courses.models import Course
+from races.models import Race, RaceComment
+
+
+class RaceCrudTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")
+
+    def test_create_race_defaults_priority_to_a(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/races", {"name": "Spring Marathon", "date": "2026-04-12", "sport": "run"}, format="json"
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["priority"], "A")
+
+    def test_create_race_with_priority_and_course(self):
+        course = Course.objects.create(athlete=self.athlete, name="Valencia", source="gpx", distance_km=42.2)
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {
+                "name": "Valencia Marathon",
+                "date": "2026-12-06",
+                "sport": "run",
+                "priority": "B",
+                "course_id": course.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["priority"], "B")
+        self.assertEqual(data["course_id"], course.id)
+
+    def test_list_includes_computed_block_fields_for_a_race(self):
+        Race.objects.create(
+            athlete=self.athlete, name="Goal Marathon", date=date(2026, 10, 12), priority="A", sport="run"
+        )
+        response = _bearer_client(self.athlete).get("/v1/races")
+        self.assertEqual(response.status_code, 200)
+        race_data = response.json()["data"][0]
+        self.assertIsNone(race_data["parent_race_id"])
+        self.assertEqual(race_data["block_weeks"], 16)
+        self.assertIsNotNone(race_data["block_start"])
+
+    def test_list_includes_parent_race_id_for_b_race_in_a_block(self):
+        a_race = Race.objects.create(athlete=self.athlete, name="Goal Marathon", date=date(2026, 10, 12), priority="A")
+        Race.objects.create(athlete=self.athlete, name="Tune-up Half", date=date(2026, 9, 14), priority="B")
+
+        response = _bearer_client(self.athlete).get("/v1/races")
+        by_name = {r["name"]: r for r in response.json()["data"]}
+        self.assertEqual(by_name["Tune-up Half"]["parent_race_id"], a_race.id)
+
+
+class RaceBlockAndSplitsViewTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")
+        self.outsider = User.objects.create_user(email="outsider@example.cc", password="x", name="Outsider")
+        self.race = Race.objects.create(
+            athlete=self.athlete,
+            name="Goal Marathon",
+            date=date(2026, 10, 12),
+            priority="A",
+            sport="run",
+            distance_km=42.2,
+        )
+
+    def test_block_endpoint_returns_weeks(self):
+        response = _bearer_client(self.athlete).get(f"/v1/races/{self.race.id}/block")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["weeks"]), 16)
+
+    def test_block_endpoint_denies_outsider(self):
+        client = _delegated_client(self.outsider, self.athlete, ["activities:read"])
+        response = client.get(f"/v1/races/{self.race.id}/block")
+        self.assertEqual(response.status_code, 403)
+
+    def test_splits_endpoint_rejects_unknown_mode(self):
+        response = _bearer_client(self.athlete).get(f"/v1/races/{self.race.id}/splits", {"mode": "weird"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_splits_endpoint_defaults_to_laps(self):
+        response = _bearer_client(self.athlete).get(f"/v1/races/{self.race.id}/splits")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("has_laps", response.json())
+
+
+class RaceCommentTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")
+        self.coach = User.objects.create_user(email="coach@example.cc", password="x", name="Coach")
+        UserRelationship.objects.create(
+            owner=self.athlete,
+            grantee=self.coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
+        )
+        self.outsider = User.objects.create_user(email="outsider@example.cc", password="x", name="Outsider")
+        self.race = Race.objects.create(
+            athlete=self.athlete, name="Goal Marathon", date=date(2026, 10, 12), priority="A"
+        )
+
+    def test_athlete_can_post_and_list_comments(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/races/{self.race.id}/comments", {"text": "Feeling strong this week."}, format="json"
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["role"], "athlete")
+
+        listing = _bearer_client(self.athlete).get(f"/v1/races/{self.race.id}/comments")
+        self.assertEqual(len(listing.json()["data"]), 1)
+
+    def test_coach_with_grant_posts_as_coach_role(self):
+        client = _delegated_client(self.coach, self.athlete, ["activities:read", "activities:write", "coach"])
+        response = client.post(
+            f"/v1/races/{self.race.id}/comments", {"text": "Great block so far.", "week": 3}, format="json"
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["role"], "coach")
+        self.assertEqual(response.json()["week"], 3)
+
+    def test_outsider_without_grant_cannot_comment(self):
+        client = _delegated_client(self.outsider, self.athlete, ["activities:read"])
+        response = client.post(f"/v1/races/{self.race.id}/comments", {"text": "Uninvited."}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_reply_to_a_reply_is_rejected(self):
+        top_level = RaceComment.objects.create(race=self.race, author=self.athlete, role="athlete", text="Top level")
+        reply = RaceComment.objects.create(
+            race=self.race, author=self.athlete, role="athlete", text="A reply", parent=top_level
+        )
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/races/{self.race.id}/comments", {"text": "Reply to a reply", "parent_id": reply.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_author_can_delete_own_comment(self):
+        comment = RaceComment.objects.create(race=self.race, author=self.athlete, role="athlete", text="Delete me")
+        response = _bearer_client(self.athlete).delete(f"/v1/races/{self.race.id}/comments/{comment.id}")
+        self.assertEqual(response.status_code, 204)
+
+    def test_cannot_delete_someone_elses_comment(self):
+        comment = RaceComment.objects.create(race=self.race, author=self.athlete, role="athlete", text="Not yours")
+        client = _delegated_client(self.coach, self.athlete, ["activities:read", "coach"])
+        response = client.delete(f"/v1/races/{self.race.id}/comments/{comment.id}")
+        self.assertEqual(response.status_code, 403)

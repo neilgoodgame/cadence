@@ -37,5 +37,7 @@ public record AthleteUpdateRequest(
 		// all-null calls; appending avoids re-indexing every one of them (see backend_java's own
 		// CLAUDE.md "Records used as DTOs" gotcha).
 		Integer decouplingWarmupMinutes,
-		Boolean decouplingUseWorkoutWarmup) {
+		Boolean decouplingUseWorkoutWarmup,
+		Integer raceBlockWeeks,
+		Integer raceKeySessionCap) {
 }

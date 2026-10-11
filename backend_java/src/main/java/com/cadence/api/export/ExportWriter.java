@@ -11,6 +11,9 @@ import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.courses.Course;
+import com.cadence.api.courses.CourseRepository;
+import com.cadence.api.courses.CourseService;
 import com.cadence.api.export.dto.ActivityExportEntry;
 import com.cadence.api.export.dto.ExportCounts;
 import com.cadence.api.export.dto.ThresholdHistoryExportEntry;
@@ -24,6 +27,7 @@ import com.cadence.api.gear.ShoeService;
 import com.cadence.api.gear.dto.BikeResponse;
 import com.cadence.api.gear.dto.ComponentResponse;
 import com.cadence.api.gear.dto.ShoeResponse;
+import com.cadence.api.races.RaceCommentRepository;
 import com.cadence.api.races.RaceRepository;
 import com.cadence.api.races.RaceService;
 import com.cadence.api.scheduling.ScheduledWorkoutRepository;
@@ -98,8 +102,11 @@ public class ExportWriter {
 	private final LapRepository lapRepository;
 	private final LapMapper lapMapper;
 	private final StreamService streamService;
+	private final CourseRepository courseRepository;
+	private final CourseService courseService;
 	private final RaceRepository raceRepository;
 	private final RaceService raceService;
+	private final RaceCommentRepository raceCommentRepository;
 	private final WorkoutRepository workoutRepository;
 	private final WorkoutMapper workoutMapper;
 	private final ScheduledWorkoutRepository scheduledWorkoutRepository;
@@ -122,7 +129,8 @@ public class ExportWriter {
 			Sport.RUN, java.util.List.of(ThresholdField.CRITICAL_RUN_POWER, ThresholdField.THRESHOLD_PACE));
 
 	public ExportWriter(ActivityRepository activityRepository, ActivityService activityService, LapRepository lapRepository,
-			LapMapper lapMapper, StreamService streamService, RaceRepository raceRepository, RaceService raceService,
+			LapMapper lapMapper, StreamService streamService, CourseRepository courseRepository, CourseService courseService,
+			RaceRepository raceRepository, RaceService raceService, RaceCommentRepository raceCommentRepository,
 			WorkoutRepository workoutRepository, WorkoutMapper workoutMapper,
 			ScheduledWorkoutRepository scheduledWorkoutRepository, SchedulingMapper schedulingMapper,
 			GearService gearService, ShoeService shoeService, BikeRepository bikeRepository, ShoeRepository shoeRepository,
@@ -133,8 +141,11 @@ public class ExportWriter {
 		this.lapRepository = lapRepository;
 		this.lapMapper = lapMapper;
 		this.streamService = streamService;
+		this.courseRepository = courseRepository;
+		this.courseService = courseService;
 		this.raceRepository = raceRepository;
 		this.raceService = raceService;
+		this.raceCommentRepository = raceCommentRepository;
 		this.workoutRepository = workoutRepository;
 		this.workoutMapper = workoutMapper;
 		this.scheduledWorkoutRepository = scheduledWorkoutRepository;
@@ -218,9 +229,14 @@ public class ExportWriter {
 		writeActivities(athleteId, sportFilter, generator, progress);
 		progress.flush();
 
+		progress = startSection(onStep, onTotal, onProgress, "courses", (int) counts.courses());
+		writeCourses(athleteId, generator, progress);
+		progress.flush();
+
 		progress = startSection(onStep, onTotal, onProgress, "races", (int) counts.races());
 		writeRaces(athleteId, sportFilter, generator, progress);
 		progress.flush();
+		writeRaceComments(athleteId, generator);
 
 		progress = startSection(onStep, onTotal, onProgress, "scheduled_workouts", (int) counts.scheduledWorkouts());
 		writeScheduledWorkouts(athleteId, sportFilter, generator, progress);
@@ -254,9 +270,12 @@ public class ExportWriter {
 		long thresholdHistory = sportFilter == null
 				? thresholdHistoryRepository.countByAthleteId(athleteId)
 				: thresholdHistoryRepository.countByAthleteIdAndFieldIn(athleteId, thresholdFieldsFor(sportFilter));
-		// Equipment is always exported in full, regardless of the sport filter - it's small, and
-		// shoes have no sport of their own to filter by.
-		return new ExportCounts(activities, races, workouts, scheduledWorkouts, thresholdHistory,
+		// Courses and equipment are always exported in full, regardless of the sport filter -
+		// courses have no sport of their own (a course could in principle be raced by more than
+		// one sport), equipment is small and shoes have no sport of their own either.
+		long courses = courseRepository.countByAthleteId(athleteId);
+		long raceComments = raceCommentRepository.countByRaceAthleteId(athleteId);
+		return new ExportCounts(activities, courses, races, raceComments, workouts, scheduledWorkouts, thresholdHistory,
 				bikeRepository.countByAthleteId(athleteId), shoeRepository.countByAthleteIdAndRetiredFalse(athleteId),
 				componentRepository.countByBikeAthleteId(athleteId));
 	}
@@ -283,6 +302,28 @@ public class ExportWriter {
 					streamService.getStreams(activity, null, "high")));
 			entityManager.clear();
 			progress.tick();
+		}
+		generator.writeEndArray();
+	}
+
+	private void writeCourses(String athleteId, JsonGenerator generator, Progress progress) {
+		generator.writeArrayPropertyStart("courses");
+		for (Course course : courseRepository.findByAthleteId(athleteId)) {
+			generator.writePOJO(courseService.toExportEntry(course));
+			progress.tick();
+		}
+		generator.writeEndArray();
+	}
+
+	private void writeRaceComments(String athleteId, JsonGenerator generator) {
+		// Written inside the "races" step (no separate onStep/progress total of its own) - a
+		// race's handful of comments isn't worth a dedicated progress-bar section.
+		generator.writeArrayPropertyStart("race_comments");
+		for (var comment : raceCommentRepository.findByRaceAthleteIdOrderByCreatedAt(athleteId)) {
+			String parentId = comment.getParent() != null ? comment.getParent().getId() : null;
+			generator.writePOJO(new com.cadence.api.export.dto.RaceCommentExportEntry(
+					comment.getId(), comment.getRace().getId(), comment.getRole().wireValue(), comment.getText(),
+					comment.getWeek(), parentId, comment.getCreatedAt()));
 		}
 		generator.writeEndArray();
 	}

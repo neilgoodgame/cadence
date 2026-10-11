@@ -17,6 +17,12 @@ class PayloadTooLargeError(APIException):
     default_code = "payload_too_large"
 
 
+class UnprocessableEntityError(APIException):
+    status_code = 422
+    default_detail = "The uploaded file could not be processed."
+    default_code = "unprocessable_entity"
+
+
 class InvalidCredentialsError(APIException):
     """A plain 401, not rest_framework.exceptions.AuthenticationFailed: DRF downgrades
     AuthenticationFailed to 403 on a view with no authentication_classes (no authenticator
@@ -68,6 +74,7 @@ def cadence_exception_handler(exc: Exception, context: dict[str, Any]) -> Respon
         405: "method_not_allowed",
         409: "conflict",
         413: "payload_too_large",
+        422: "unprocessable_entity",
         429: "rate_limited",
     }
     type_by_status = {
@@ -78,6 +85,7 @@ def cadence_exception_handler(exc: Exception, context: dict[str, Any]) -> Respon
         405: "invalid_request_error",
         409: "conflict_error",
         413: "invalid_request_error",
+        422: "invalid_request_error",
         429: "rate_limit_error",
     }
     code = code_by_status.get(response.status_code, "error")

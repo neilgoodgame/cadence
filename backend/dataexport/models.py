@@ -18,6 +18,7 @@ DATA_TRANSFER_STEPS = [
     ("equipment", "Equipment"),
     ("workouts", "Workouts"),
     ("activities", "Activities"),
+    ("courses", "Courses"),
     ("races", "Races"),
     ("scheduled_workouts", "Scheduled workouts"),
     ("threshold_history", "Threshold history"),
@@ -60,7 +61,9 @@ class ImportJob(PrefixedIDModel):
     total_items = models.IntegerField(null=True, blank=True)
     processed_items = models.IntegerField(default=0)
     activities_imported = models.IntegerField(default=0)
+    courses_imported = models.IntegerField(default=0)
     races_imported = models.IntegerField(default=0)
+    race_comments_imported = models.IntegerField(default=0)
     workouts_imported = models.IntegerField(default=0)
     scheduled_workouts_imported = models.IntegerField(default=0)
     threshold_history_imported = models.IntegerField(default=0)

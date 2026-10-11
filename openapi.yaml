@@ -69,6 +69,10 @@ tags:
     description: Roster access for coaches.
   - name: Gear
     description: Bikes with wear components and service history, and shoes via the catalog.
+  - name: Races
+    description: Goal races, A/B/C priority, training blocks, splits and coach comments.
+  - name: Courses
+    description: Reusable race courses - route, elevation profile and climbs, from a GPX upload or an activity's GPS track.
   - name: Webhooks
     description: Subscribe to platform events.
 
@@ -1580,6 +1584,8 @@ paths:
                     Optional; only feeds the Karvonen HRR% stat, not a zone
                     reference threshold, so changing it never appears in
                     zones_recomputed.
+                race_block_weeks: { type: integer, enum: [12, 16, 20, 24], description: See the User schema. }
+                race_key_session_cap: { type: integer, enum: [6, 8, 10, 12, 15, 20], description: See the User schema. }
       responses:
         "200":
           description: Updated athlete.
@@ -2406,6 +2412,514 @@ paths:
               schema:
                 $ref: "#/components/schemas/ServiceRecord"
 
+  /v1/races:
+    get:
+      tags: [Races]
+      summary: List races
+      operationId: listRaces
+      description: Upcoming and past races, any sport, all priorities.
+      responses:
+        "200":
+          description: Races.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Race"
+    post:
+      tags: [Races]
+      summary: Add a race
+      operationId: createRace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, date]
+              properties:
+                name: { type: string }
+                date: { type: string, format: date }
+                sport: { $ref: "#/components/schemas/Sport" }
+                priority: { type: string, enum: [A, B, C], default: A }
+                course_id: { type: [string, "null"], description: An existing course to link. }
+                distance_km: { type: number }
+                goal_time: { type: [string, "null"], description: "H:MM:SS, optional and editable later." }
+                result_time: { type: [string, "null"], description: "H:MM:SS, set once the race has happened." }
+                activity_id: { type: [string, "null"], description: The matching recorded activity, if any. }
+                url: { type: [string, "null"], format: uri }
+                results_url: { type: [string, "null"], format: uri }
+                notes: { type: string }
+      responses:
+        "201":
+          description: Race created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Race" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/races/{id}:
+    parameters:
+      - $ref: "#/components/parameters/RaceId"
+    get:
+      tags: [Races]
+      summary: Retrieve a race
+      operationId: getRace
+      responses:
+        "200":
+          description: Race.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Race" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Races]
+      summary: Update a race
+      operationId: updateRace
+      description: Editing and deleting a race happen only on the race's own page - there is no separate race list to edit from.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                date: { type: string, format: date }
+                sport: { $ref: "#/components/schemas/Sport" }
+                priority: { type: string, enum: [A, B, C] }
+                course_id: { type: [string, "null"] }
+                distance_km: { type: number }
+                goal_time: { type: [string, "null"], description: "H:MM:SS, or null to remove the goal." }
+                result_time: { type: [string, "null"] }
+                activity_id: { type: [string, "null"] }
+                url: { type: [string, "null"], format: uri }
+                results_url: { type: [string, "null"], format: uri }
+                notes: { type: string }
+      responses:
+        "200":
+          description: Updated race.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Race" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      tags: [Races]
+      summary: Delete a race
+      operationId: deleteRace
+      responses:
+        "204":
+          description: Race deleted.
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/races/{id}/block:
+    parameters:
+      - $ref: "#/components/parameters/RaceId"
+    get:
+      tags: [Races]
+      summary: Training block (A race) or 5-week window (B/C race)
+      operationId: getRaceBlock
+      description: >
+        An A race's full training block, using the athlete's `race_block_weeks`
+        preference, truncated if an earlier A race's block would otherwise
+        overlap it (`truncated_by_race_id`). A B/C race instead gets a fixed
+        5-week window centred on the race (`phases` is empty and `parent`
+        replaces `comparison`/`prediction`/`durability`).
+      responses:
+        "200":
+          description: Weekly breakdown, race-day form, comparison, prediction, key sessions and durability.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  start: { type: string, format: date }
+                  end: { type: string, format: date }
+                  weeks_requested: { type: integer, description: The preference/window length asked for, before any truncation. }
+                  truncated_by_race_id: { type: [string, "null"] }
+                  phases:
+                    type: array
+                    description: Empty for a B/C race.
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string, enum: [Base, Build, Peak, Taper] }
+                        start_week: { type: integer, description: 1-based index into `weeks` below. }
+                        end_week: { type: integer }
+                  parent:
+                    type: [object, "null"]
+                    description: B/C races only - the containing A block, if any.
+                    properties:
+                      race_id: { type: string }
+                      week: { type: integer }
+                      of: { type: integer }
+                  weeks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        week_start: { type: string, format: date }
+                        tss: { type: [integer, "null"] }
+                        tss_races: { type: [integer, "null"] }
+                        run_km: { type: [number, "null"] }
+                        run_moving_s: { type: [integer, "null"] }
+                        run_count: { type: [integer, "null"] }
+                        run_avg_pace_s_per_km: { type: [number, "null"] }
+                        run_long_km: { type: [number, "null"], description: Longest non-race run that week. }
+                        ride_km: { type: [number, "null"] }
+                        ride_moving_s: { type: [integer, "null"] }
+                        ride_count: { type: [integer, "null"] }
+                        ride_avg_power_w: { type: [integer, "null"], description: Time-weighted average. }
+                        ride_long_km: { type: [number, "null"] }
+                        hours: { type: [number, "null"] }
+                        sessions: { type: [integer, "null"] }
+                        ctl: { type: [number, "null"] }
+                        atl: { type: [number, "null"] }
+                        planned:
+                          type: boolean
+                          description: True for a future week - its values come from scheduled workouts, or are all null if nothing's scheduled yet.
+                        races:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id: { type: string }
+                              name: { type: string }
+                              priority: { type: string, enum: [A, B, C] }
+                              result_s: { type: [integer, "null"] }
+                  race_day_form:
+                    type: object
+                    description: A races only.
+                    properties:
+                      ctl: { type: number }
+                      atl: { type: [number, "null"] }
+                      tsb: { type: [number, "null"] }
+                      band: { type: [string, "null"], enum: [very_fresh, fresh, neutral, fatigued] }
+                      projected: { type: boolean, description: True when the race is still upcoming. }
+                      insufficient_data: { type: boolean, description: True when an upcoming race has nothing scheduled yet to project from. }
+                  comparison:
+                    type: [object, "null"]
+                    description: A races only - the most recent earlier A race at the same distance (within 2%), aligned counting back from race day.
+                    properties:
+                      race_id: { type: string }
+                      weeks:
+                        type: array
+                        items:
+                          type: object
+                          description: Same shape as `weeks` above.
+                  prediction:
+                    type: [object, "null"]
+                    description: A run-race blocks only - the fastest Riegel prediction from a completed B/C race in the block.
+                    properties:
+                      time_s: { type: integer }
+                      from_race_id: { type: string }
+                  key_sessions:
+                    type: object
+                    properties:
+                      total_candidates: { type: integer }
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date: { type: string, format: date }
+                            name: { type: string }
+                            activity_id: { type: [string, "null"] }
+                            scheduled_workout_id: { type: [string, "null"] }
+                            reason: { type: string, enum: [race, tagged, long, quality, best_effort, planned] }
+                            label: { type: string }
+                            km: { type: [number, "null"] }
+                            tss: { type: [integer, "null"] }
+                  durability:
+                    type: [object, "null"]
+                    description: A races (run or bike) only.
+                    properties:
+                      sport: { type: string, enum: [ride, run] }
+                      current: { $ref: "#/components/schemas/DurabilitySportSection" }
+                      comparison: { $ref: "#/components/schemas/DurabilitySportSection" }
+                  sweat_rate_l_per_h: { type: number }
+                  sweat_rate_source: { type: string, enum: [measured, default] }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/races/{id}/splits:
+    parameters:
+      - $ref: "#/components/parameters/RaceId"
+    get:
+      tags: [Races]
+      summary: Splits for a race's linked activity
+      operationId: getRaceSplits
+      parameters:
+        - name: mode
+          in: query
+          schema: { type: string, enum: [laps, "1", "5"], default: laps }
+          description: Manual laps, or fixed 1km/5km splits.
+      responses:
+        "200":
+          description: Splits against the goal pace (or average pace, if there's no goal).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_laps: { type: boolean, description: False when mode=laps and the activity has one lap or none. }
+                  ref: { type: string, enum: [goal, average] }
+                  ref_pace_s_per_km: { type: [number, "null"] }
+                  halves:
+                    type: [object, "null"]
+                    properties:
+                      first_s: { type: integer }
+                      second_s: { type: integer }
+                  splits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        label: { type: [string, "null"], description: "e.g. \"Lap 2\" or \"Finish\" for the last partial split." }
+                        start_km: { type: number }
+                        end_km: { type: number }
+                        time_s: { type: integer }
+                        pace_s_per_km: { type: [number, "null"] }
+                        avg_hr: { type: [integer, "null"] }
+                        delta_vs_ref_s_per_km: { type: [number, "null"] }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/races/{id}/comments:
+    parameters:
+      - $ref: "#/components/parameters/RaceId"
+    get:
+      tags: [Races]
+      summary: List a race's comments
+      operationId: listRaceComments
+      description: Same self-or-coach-with-grant permission as the race itself (unlike activity comments, not open to a read-only viewer share). Oldest first.
+      responses:
+        "200":
+          description: Comments.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RaceComment"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Races]
+      summary: Comment on a race plan
+      operationId: createRaceComment
+      description: "`role` is resolved server-side from the poster's relationship to the athlete at post time, and stored - not recomputed later."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 2000 }
+                week: { type: integer, description: Pins the comment to a training-block week. }
+                parent_id: { type: string, description: Reply to a top-level comment - only one level of threading is allowed. }
+      responses:
+        "201":
+          description: Comment created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RaceComment" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/races/{id}/comments/{comment_id}:
+    parameters:
+      - $ref: "#/components/parameters/RaceId"
+      - name: comment_id
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Races]
+      summary: Delete a race comment
+      operationId: deleteRaceComment
+      description: Only the comment's own author may delete it.
+      responses:
+        "204":
+          description: Comment deleted.
+        "403":
+          description: Not the comment's author.
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/courses:
+    get:
+      tags: [Courses]
+      summary: List or search courses
+      operationId: listCourses
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Matches against name and location_name.
+      responses:
+        "200":
+          description: Courses.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/CourseSummary" }
+    post:
+      tags: [Courses]
+      summary: Upload a GPX course
+      operationId: uploadCourse
+      description: >
+        Parses the track synchronously (distance, smoothed elevation gain/loss,
+        climbs, a simplified route polyline, and a resampled elevation profile) -
+        the response is exactly what gets saved, including the reverse-geocoded
+        `location_name` (editable afterwards).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [gpx, name]
+              properties:
+                gpx: { type: string, format: binary }
+                name: { type: string }
+                location_name: { type: string, description: Overrides the reverse-geocoded default. }
+      responses:
+        "201":
+          description: Course created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Course" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /v1/courses/from-activity:
+    post:
+      tags: [Courses]
+      summary: Build a course from an activity's GPS track
+      operationId: createCourseFromActivity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [activity_id, name]
+              properties:
+                activity_id: { type: string }
+                name: { type: string }
+      responses:
+        "201":
+          description: Course created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Course" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /v1/courses/{id}:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+    get:
+      tags: [Courses]
+      summary: Retrieve a course
+      operationId: getCourse
+      responses:
+        "200":
+          description: Course, including its route, elevation profile, climbs and race history.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Course" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Courses]
+      summary: Rename a course or edit its location
+      operationId: updateCourse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                location_name: { type: string }
+      responses:
+        "200":
+          description: Updated course.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Course" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      tags: [Courses]
+      summary: Delete a course
+      operationId: deleteCourse
+      description: Races linked to this course have their course_id cleared, not deleted.
+      responses:
+        "204":
+          description: Course deleted.
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/courses/{id}/gpx:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+    get:
+      tags: [Courses]
+      summary: Download a course's GPX
+      operationId: downloadCourseGpx
+      description: The original uploaded file, or a GPX regenerated from the stored route when the course came from an activity (source=activity).
+      responses:
+        "200":
+          description: A .gpx file.
+          content:
+            application/gpx+xml:
+              schema: { type: string, format: binary }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/webhooks/{id}:
     parameters:
       - name: id
@@ -2501,6 +3015,16 @@ components:
       in: path
       required: true
       schema: { type: string }
+    RaceId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    CourseId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
 
   responses:
     BadRequest:
@@ -2535,6 +3059,17 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    UnprocessableEntity:
+      description: The uploaded file could not be processed (too small, too large, or unparseable).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              type: invalid_request_error
+              code: unprocessable_entity
+              message: "GPX file has fewer than 50 usable track points."
+              param: gpx
 
   schemas:
     Sport:
@@ -2733,6 +3268,18 @@ components:
           type: boolean
           description: Whether this user also coaches other users. A user can train and coach at once.
           example: true
+        race_block_weeks:
+          type: integer
+          enum: [12, 16, 20, 24]
+          default: 16
+          description: Training-block length for an A race (see GET /v1/races/{id}/block). The B/C "around the race" window is a fixed 5 weeks regardless of this setting.
+          example: 16
+        race_key_session_cap:
+          type: integer
+          enum: [6, 8, 10, 12, 15, 20]
+          default: 10
+          description: Maximum key sessions returned per race block - see `key_sessions.total_candidates` on GET /v1/races/{id}/block for how many were found before the cap.
+          example: 10
 
     Athlete:
       allOf:
@@ -3621,6 +4168,115 @@ components:
         model: { type: string, example: Vaporfly }
         version: { type: string, example: "3" }
         display_name: { type: string, example: Nike Vaporfly 3 }
+
+    Race:
+      type: object
+      properties:
+        id: { type: string, example: race_v4l3nc1a }
+        athlete_id: { type: string }
+        name: { type: string, example: Valencia Marathon }
+        date: { type: string, format: date }
+        sport: { $ref: "#/components/schemas/Sport" }
+        priority:
+          type: string
+          enum: [A, B, C]
+          default: A
+          description: A races get a training block; B and C are tune-ups that nest inside the A race whose block they fall in.
+          example: A
+        course_id: { type: [string, "null"] }
+        distance_km: { type: [number, "null"] }
+        goal_time: { type: [string, "null"], description: "H:MM:SS. Optional and editable even once the race has a result." }
+        result_time: { type: [string, "null"], description: "H:MM:SS, once raced." }
+        activity_id: { type: [string, "null"], description: The matching recorded activity, if linked. }
+        url: { type: [string, "null"], format: uri }
+        results_url: { type: [string, "null"], format: uri, description: Link to the athlete's own results page on the race organiser's site. }
+        notes: { type: string }
+        parent_race_id:
+          type: [string, "null"]
+          description: B/C races only - the first A race on/after this one whose block contains this race's week. Null for an A race, or a standalone tune-up.
+        block_start:
+          type: [string, "null"]
+          format: date
+          description: Start of this race's own training block (A), or of its parent A's block (B/C with a parent). Null for a standalone B/C race.
+        block_weeks:
+          type: [integer, "null"]
+          description: Length of the block named by block_start, possibly truncated by an earlier A race - see GET /v1/races/{id}/block.
+
+    RaceComment:
+      type: object
+      properties:
+        id: { type: string, example: rcm_8kq2a7 }
+        race_id: { type: string }
+        author_id: { type: string }
+        author_name: { type: string }
+        role:
+          type: string
+          enum: [athlete, coach]
+          description: Snapshotted at post time, not recomputed if the coaching relationship later changes.
+        text: { type: string, maxLength: 2000 }
+        week: { type: [integer, "null"] }
+        parent_id: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+
+    CourseSummary:
+      type: object
+      description: The shape returned by GET /v1/courses - full route/elevation detail is on GET /v1/courses/{id} only.
+      properties:
+        id: { type: string, example: course_v4l3nc1a }
+        athlete_id: { type: string }
+        name: { type: string, example: Valencia Marathon }
+        location_name: { type: string, example: "Valencia, Spain" }
+        distance_km: { type: [number, "null"] }
+        source: { type: string, enum: [gpx, activity] }
+        created_at: { type: string, format: date-time }
+        race_count: { type: integer }
+
+    Course:
+      allOf:
+        - $ref: "#/components/schemas/CourseSummary"
+        - type: object
+          properties:
+            start_lat: { type: [number, "null"] }
+            start_lng: { type: [number, "null"] }
+            elevation_gain_m: { type: [integer, "null"] }
+            elevation_loss_m: { type: [integer, "null"] }
+            elevation_max_m: { type: [integer, "null"] }
+            elevation_min_m: { type: [integer, "null"] }
+            is_loop: { type: boolean, description: Start and finish within 200m. }
+            source_activity_id: { type: [string, "null"] }
+            gpx_filename: { type: string, description: Empty for a course created from an activity. }
+            route_polyline:
+              type: array
+              description: Simplified [lat, lng] points (Douglas-Peucker), ~300-500 points.
+              items:
+                type: array
+                items: { type: number }
+            elevation_profile:
+              type: array
+              description: "[km, elevation_m] pairs, ~200 points evenly spaced by distance."
+              items:
+                type: array
+                items: { type: number }
+            climbs:
+              type: array
+              items:
+                type: object
+                properties:
+                  start_km: { type: number }
+                  end_km: { type: number }
+                  gain_m: { type: integer }
+                  avg_grade_pct: { type: number }
+            races:
+              type: array
+              description: Every race run on this course.
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  date: { type: string, format: date }
+                  priority: { type: string, enum: [A, B, C] }
+                  result_s: { type: [integer, "null"] }
 
 webhooks:
   activityCreated:

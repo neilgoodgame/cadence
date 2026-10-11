@@ -9,10 +9,13 @@ real activity. Everything else (races, workouts, gear, ...) keeps the original c
 policy, same as the Java backend.
 
 Mirrors backend_java's ImportReader (backend_java/src/main/java/com/cadence/api/imports/
-ImportReader.java) section for section - equipment and workouts first (activities
-reference them), activities next (races/scheduled_workouts reference them), then races
-and scheduled_workouts, with the same deferred-link trick for multisport parent/primary
-activity references that may point at an activity appearing later in the same array.
+ImportReader.java) section for section, for every section Java has implemented so far -
+equipment and workouts first (activities reference them), activities next (courses/races/
+scheduled_workouts reference them), then courses, races and scheduled_workouts, with the
+same deferred-link trick for multisport parent/primary activity references that may point
+at an activity appearing later in the same array. "courses" and "race_comments" (read right
+after races, from its own "race_comments" array) are new in this Python backend and don't
+exist yet in Java's ImportReader - see export_writer.py's write_export docstring.
 
 Streaming approach: ijson.items() can't be chained against one shared stream - each call
 needs to see its target array from a stream position it recognizes, and one exhausted
@@ -31,6 +34,7 @@ raw Python arithmetic on step target values, and float * Decimal raises TypeErro
 single workout silently landed in items_skipped until this was traced down.
 """
 
+import base64
 import datetime
 import gzip
 import logging
@@ -38,6 +42,7 @@ from collections.abc import Callable
 from typing import Any
 
 import ijson
+from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.utils.dateparse import parse_date, parse_datetime, parse_duration
 
@@ -46,8 +51,9 @@ from activities.models import Activity, ActivityDurability, ActivityTag, Lap, Re
 from athletes import threshold_suggestions
 from athletes.models import ThresholdHistory
 from athletes.zones import reference_for
+from courses.models import Course
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
-from races.models import Race
+from races.models import Race, RaceComment
 from scheduling.models import ScheduledWorkout
 from workouts.calculations import compute_chart_preview, compute_duration_and_tss, normalize_power_units
 from workouts.models import Workout, WorkoutStep
@@ -84,7 +90,9 @@ class _Progress:
 
 COUNT_KEYS = [
     "activities_imported",
+    "courses_imported",
     "races_imported",
+    "race_comments_imported",
     "workouts_imported",
     "scheduled_workouts_imported",
     "bikes_imported",
@@ -488,17 +496,67 @@ def _resolve_deferred_links(deferred_links: list[tuple[str, str, bool]], activit
             Activity.objects.filter(pk=new_child_id).update(primary_activity_id=new_target_id)
 
 
+def _import_courses(
+    athlete_id: str,
+    stored_path: str,
+    activity_id_map: dict[str, str],
+    course_id_map: dict[str, str],
+    counts: dict,
+    progress: _Progress,
+) -> None:
+    with _stream(stored_path) as gz:
+        for course in ijson.items(gz, "courses.item", use_float=True):
+            try:
+                created = Course.objects.create(
+                    athlete_id=athlete_id,
+                    name=course["name"],
+                    location_name=course.get("location_name") or "",
+                    start_lat=course.get("start_lat"),
+                    start_lng=course.get("start_lng"),
+                    distance_km=course.get("distance_km"),
+                    elevation_gain_m=course.get("elevation_gain_m"),
+                    elevation_loss_m=course.get("elevation_loss_m"),
+                    elevation_max_m=course.get("elevation_max_m"),
+                    elevation_min_m=course.get("elevation_min_m"),
+                    is_loop=course.get("is_loop") or False,
+                    source=course.get("source") or "gpx",
+                    source_activity_id=activity_id_map.get(course.get("source_activity_id")),
+                    gpx_filename=course.get("gpx_filename") or "",
+                    route_polyline=course.get("route_polyline") or [],
+                    elevation_profile=course.get("elevation_profile") or [],
+                    climbs=course.get("climbs") or [],
+                )
+                if course.get("gpx_base64"):
+                    raw = base64.b64decode(course["gpx_base64"])
+                    created.gpx_file = default_storage.save(f"courses/{athlete_id}/{created.id}.gpx", ContentFile(raw))
+                    created.save(update_fields=["gpx_file"])
+                course_id_map[course["id"]] = created.id
+                counts["courses_imported"] += 1
+            except Exception:
+                logger.warning("Skipped course import (old id %s)", course.get("id"), exc_info=True)
+                counts["items_skipped"] += 1
+            progress.tick()
+
+
 def _import_races(
-    athlete_id: str, stored_path: str, activity_id_map: dict[str, str], counts: dict, progress: _Progress
+    athlete_id: str,
+    stored_path: str,
+    activity_id_map: dict[str, str],
+    course_id_map: dict[str, str],
+    race_id_map: dict[str, str],
+    counts: dict,
+    progress: _Progress,
 ) -> None:
     with _stream(stored_path) as gz:
         for race in ijson.items(gz, "races.item", use_float=True):
             try:
-                Race.objects.create(
+                created = Race.objects.create(
                     athlete_id=athlete_id,
                     name=race["name"],
                     date=race["date"],
                     sport=race.get("sport") or "",
+                    priority=race.get("priority") or "A",
+                    course_id=course_id_map.get(race.get("course_id")),
                     distance_km=race.get("distance_km"),
                     # parse_duration, not the raw "H:MM:SS"/"HH:MM:SS" string - both this and
                     # the Java backend's writer are lenient about the hour digit count on
@@ -510,11 +568,43 @@ def _import_races(
                     results_url=race.get("results_url"),
                     notes=race.get("notes") or "",
                 )
+                race_id_map[race["id"]] = created.id
                 counts["races_imported"] += 1
             except Exception:
                 logger.warning("Skipped race import (old id %s)", race.get("id"), exc_info=True)
                 counts["items_skipped"] += 1
             progress.tick()
+
+
+def _import_race_comments(athlete_id: str, stored_path: str, race_id_map: dict[str, str], counts: dict) -> None:
+    # Single-level threading and the export writing oldest-first together guarantee a
+    # top-level comment is always created before any reply to it, so one forward pass (no
+    # deferred-link pass, unlike activities' parent/primary links) is enough to resolve
+    # parent_id. author_id isn't carried over - an imported comment's original author may not
+    # exist on the importing account at all (a coach account on a different system, say), so
+    # every imported comment is attributed to the importing athlete, same as the rest of this
+    # reader's "create brand-new rows" policy.
+    comments_by_old_id: dict[str, str] = {}
+    with _stream(stored_path) as gz:
+        for comment in ijson.items(gz, "race_comments.item", use_float=True):
+            race_id = race_id_map.get(comment.get("race_id"))
+            if not race_id:
+                counts["items_skipped"] += 1
+                continue
+            try:
+                created = RaceComment.objects.create(
+                    race_id=race_id,
+                    author_id=athlete_id,
+                    role=comment.get("role") or "athlete",
+                    text=comment["text"],
+                    week=comment.get("week"),
+                    parent_id=comments_by_old_id.get(comment.get("parent_id")),
+                )
+                comments_by_old_id[comment["id"]] = created.id
+                counts["race_comments_imported"] += 1
+            except Exception:
+                logger.warning("Skipped race comment import (old id %s)", comment.get("id"), exc_info=True)
+                counts["items_skipped"] += 1
 
 
 def _import_scheduled_workouts(
@@ -612,7 +702,7 @@ def read_import(
     on_progress: OnProgress | None = None,
 ) -> dict[str, int]:
     """`on_step` (if given) is called once per section, right as it starts - see
-    ImportJob.current_step (models.py's DATA_TRANSFER_STEPS) for the fixed 6-step order this
+    ImportJob.current_step (models.py's DATA_TRANSFER_STEPS) for the fixed 7-step order this
     walks through, same as export_writer.write_export's on_step. `on_total`/`on_progress` (if
     given) turn that into a fine-grained item-level progress bar *scoped to the current
     section*, mirroring write_export's: `on_total` fires once per section, right after on_step,
@@ -627,6 +717,8 @@ def read_import(
     shoes_by_old_id: dict[str, str] = {}
     workouts_by_old_id: dict[str, str] = {}
     activity_id_map: dict[str, str] = {}
+    course_id_map: dict[str, str] = {}
+    race_id_map: dict[str, str] = {}
     deferred_links: list[tuple[str, str, bool]] = []
     file_counts = _read_counts(stored_path) if on_total else None
 
@@ -666,9 +758,14 @@ def read_import(
     )
     progress.flush()
 
-    progress = start_section("races", "races")
-    _import_races(athlete_id, stored_path, activity_id_map, counts, progress)
+    progress = start_section("courses", "courses")
+    _import_courses(athlete_id, stored_path, activity_id_map, course_id_map, counts, progress)
     progress.flush()
+
+    progress = start_section("races", "races")
+    _import_races(athlete_id, stored_path, activity_id_map, course_id_map, race_id_map, counts, progress)
+    progress.flush()
+    _import_race_comments(athlete_id, stored_path, race_id_map, counts)
 
     progress = start_section("scheduled_workouts", "scheduled_workouts")
     _import_scheduled_workouts(athlete_id, stored_path, workouts_by_old_id, activity_id_map, counts, progress)

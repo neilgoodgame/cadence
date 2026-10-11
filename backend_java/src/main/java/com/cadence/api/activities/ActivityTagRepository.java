@@ -12,6 +12,10 @@ public interface ActivityTagRepository extends JpaRepository<ActivityTag, Long> 
 	@Query("select t.name from ActivityTag at join at.tag t where at.activity.id = :activityId order by t.name")
 	List<String> findTagNamesByActivityId(@Param("activityId") String activityId);
 
+	// RaceBlockService's "Key session"-tagged candidates.
+	@Query("select at.activity.id from ActivityTag at where at.tag = :tag")
+	java.util.Set<String> findActivityIdsByTag(@Param("tag") Tag tag);
+
 	Optional<ActivityTag> findByActivityIdAndTagId(String activityId, String tagId);
 
 	boolean existsByActivityIdAndTagId(String activityId, String tagId);

@@ -10,8 +10,9 @@ from accounts.models import User
 from activities.models import Activity, Lap, Record
 from athletes.models import ThresholdHistory
 from authn.oauth_utils import issue_token_pair
+from courses.models import Course
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
-from races.models import Race
+from races.models import Race, RaceComment
 from scheduling.models import ScheduledWorkout
 from workouts.models import Workout, WorkoutStep
 
@@ -667,6 +668,7 @@ class ExportCountsTests(TestCase):
             doc["counts"],
             {
                 "activities": 2,
+                "courses": 0,
                 "races": 1,
                 "workouts": 1,
                 "scheduled_workouts": 1,
@@ -678,6 +680,7 @@ class ExportCountsTests(TestCase):
         )
         # And they genuinely match what's in the rest of the same file, not just a hardcoded number.
         self.assertEqual(doc["counts"]["activities"], len(doc["activities"]))
+        self.assertEqual(doc["counts"]["courses"], len(doc["courses"]))
         self.assertEqual(doc["counts"]["races"], len(doc["races"]))
         self.assertEqual(doc["counts"]["workouts"], len(doc["workouts"]))
         self.assertEqual(doc["counts"]["scheduled_workouts"], len(doc["scheduled_workouts"]))
@@ -704,6 +707,7 @@ class ExportCountsTests(TestCase):
             doc["counts"],
             {
                 "activities": 1,
+                "courses": 0,
                 "races": 1,
                 "workouts": 0,
                 "scheduled_workouts": 0,
@@ -713,6 +717,89 @@ class ExportCountsTests(TestCase):
                 "components": 1,
             },
         )
+
+        default_storage.delete(relative_path)
+
+
+class CourseAndRaceCommentExportImportTests(TestCase):
+    """Courses and race comments are new to this export/import round trip (not covered by
+    _seed_full_account above) - exercised standalone here rather than folded into that shared
+    fixture, so existing counts-based assertions elsewhere don't need updating every time this
+    area grows."""
+
+    def setUp(self):
+        self.source = _verified_user(email="course-export-source@example.cc", password="x", name="Source")
+        self.target = _verified_user(email="course-export-target@example.cc", password="x", name="Target")
+
+        from django.core.files.storage import default_storage
+
+        self.course = Course.objects.create(
+            athlete=self.source,
+            name="Valencia Marathon",
+            location_name="Valencia, Spain",
+            source="gpx",
+            distance_km=42.2,
+            is_loop=False,
+            route_polyline=[[39.47, -0.38], [39.48, -0.37]],
+            elevation_profile=[[0, 10], [42.2, 12]],
+            climbs=[],
+        )
+        self.course.gpx_filename = "valencia.gpx"
+        self.course.gpx_file = default_storage.save(
+            f"courses/{self.source.id}/{self.course.id}.gpx", SimpleUploadedFile("valencia.gpx", b"<gpx>fixture</gpx>")
+        )
+        self.course.save(update_fields=["gpx_filename", "gpx_file"])
+
+        self.race = Race.objects.create(
+            athlete=self.source,
+            name="Valencia Marathon",
+            date=date(2026, 12, 6),
+            sport="run",
+            priority="A",
+            course=self.course,
+            distance_km=42.2,
+        )
+        top_level = RaceComment.objects.create(
+            race=self.race, author=self.source, role="athlete", text="Feeling ready for this one."
+        )
+        RaceComment.objects.create(
+            race=self.race, author=self.source, role="coach", text="Great block.", parent=top_level, week=10
+        )
+
+    def test_course_and_race_comments_survive_a_round_trip(self):
+        from django.core.files.storage import default_storage
+
+        relative_path = "exports/test/course-roundtrip.json.gz"
+        write_export(self.source.id, None, relative_path)
+        counts = read_import(self.target.id, relative_path)
+
+        self.assertEqual(counts["courses_imported"], 1)
+        self.assertEqual(counts["races_imported"], 1)
+        self.assertEqual(counts["race_comments_imported"], 2)
+
+        imported_course = Course.objects.get(athlete=self.target)
+        self.assertEqual(imported_course.name, "Valencia Marathon")
+        self.assertEqual(imported_course.distance_km, 42.2)
+        self.assertNotEqual(imported_course.id, self.course.id)
+
+        with default_storage.open(imported_course.gpx_file, "rb") as f:
+            self.assertEqual(f.read(), b"<gpx>fixture</gpx>")
+
+        imported_race = Race.objects.get(athlete=self.target)
+        self.assertEqual(imported_race.priority, "A")
+        self.assertEqual(imported_race.course_id, imported_course.id)
+
+        comments = list(RaceComment.objects.filter(race=imported_race).order_by("created_at"))
+        self.assertEqual(len(comments), 2)
+        top, reply = comments
+        self.assertIsNone(top.parent_id)
+        self.assertEqual(reply.parent_id, top.id)
+        self.assertEqual(reply.week, 10)
+        # Author identity isn't carried over - every imported comment is attributed to the
+        # importing athlete (see import_reader._import_race_comments).
+        self.assertEqual(top.author_id, self.target.id)
+        self.assertEqual(reply.author_id, self.target.id)
+        self.assertEqual(reply.role, "coach")
 
         default_storage.delete(relative_path)
 

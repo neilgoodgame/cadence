@@ -23,6 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DurabilityQueryService {
 
+	// Same "no real activity predates 1970" sentinel as Instant.EPOCH below, but as a LocalDate
+	// for the durability-section query's closed date range.
+	private static final LocalDate EPOCH_DATE = LocalDate.of(1970, 1, 1);
+
 	private final ActivityRepository activityRepository;
 	private final ActivityDurabilityRepository durabilityRepository;
 
@@ -101,12 +105,25 @@ public class DurabilityQueryService {
 				avg3(last28.stream().map(Point::ef).toList()),
 				avg3(prev28.stream().map(Point::ef).toList()));
 
+		LocalDate sectionStart = cutoff != null ? cutoff : EPOCH_DATE;
 		DurabilityResponse.Sections.SportSection rideSection =
-				sports.contains(Sport.BIKE) ? section(athlete, Sport.BIKE, cutoff) : null;
+				sports.contains(Sport.BIKE) ? section(athlete, Sport.BIKE, sectionStart, today) : null;
 		DurabilityResponse.Sections.SportSection runSection =
-				sports.contains(Sport.RUN) ? section(athlete, Sport.RUN, cutoff) : null;
+				sports.contains(Sport.RUN) ? section(athlete, Sport.RUN, sectionStart, today) : null;
 
 		return new DurabilityResponse(sessions, rolling, summary, new DurabilityResponse.Sections(rideSection, runSection));
+	}
+
+	/**
+	 * The training-block durability section for one sport over an explicit date range - used by
+	 * RaceBlockService for a race's own block and its comparison block, rather than the
+	 * period-enum-to-cutoff conversion {@link #get} does for the Best Efforts screen. Calls the
+	 * same {@link #section} helper {@link #get} does, so the two can never compute this
+	 * differently.
+	 */
+	@Transactional(readOnly = true)
+	public DurabilityResponse.Sections.SportSection getSectionForRange(User athlete, Sport sport, LocalDate start, LocalDate end) {
+		return section(athlete, sport, start, end);
 	}
 
 	/** Whole-steady-window EF (avg power / avg HR), derived from the two stored halves rather
@@ -153,14 +170,13 @@ public class DurabilityQueryService {
 		return rolling;
 	}
 
-	private DurabilityResponse.Sections.SportSection section(User athlete, Sport sport, LocalDate cutoff) {
+	private DurabilityResponse.Sections.SportSection section(User athlete, Sport sport, LocalDate start, LocalDate end) {
 		String basis = sport == Sport.BIKE ? "kj" : "minutes";
 		List<Integer> thresholds = sport == Sport.BIKE ? List.of(0, 1000, 2000, 3000) : List.of(0, 60, 90);
 		List<Integer> windows = List.of(300, 1200, 3600);
 
-		List<ActivityDurability> rows = cutoff != null
-				? durabilityRepository.findByAthleteIdAndSportAndActivityDateGreaterThanEqual(athlete.getId(), sport, cutoff)
-				: durabilityRepository.findByAthleteIdAndSport(athlete.getId(), sport);
+		List<ActivityDurability> rows =
+				durabilityRepository.findByAthleteIdAndSportAndActivityDateBetween(athlete.getId(), sport, start, end);
 
 		Map<List<Integer>, ActivityDurability> bestByCell = new LinkedHashMap<>();
 		for (ActivityDurability row : rows) {

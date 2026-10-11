@@ -241,14 +241,21 @@ def _durability_rolling_series(points: list[dict]) -> list[dict]:
     return rolling
 
 
-def _durability_section(athlete: User, internal_sport: str, cutoff) -> dict:
+def _durability_section(athlete: User, internal_sport: str, start=None, end=None) -> dict:
+    """`start`/`end` bound `activity_date` on either or both sides - either may be None.
+    AthleteDurabilityView only ever needs a lower bound (its `period` enum converted to a
+    cutoff, open-ended up to now); races/blocks.py's training-block durability calls this
+    directly with both bounds set to the block's own date range, rather than going through
+    a public query parameter."""
     basis = "kj" if internal_sport == "bike" else "minutes"
     thresholds = [0, 1000, 2000, 3000] if internal_sport == "bike" else [0, 60, 90]
     windows = [300, 1200, 3600]
 
     qs = ActivityDurability.objects.filter(athlete=athlete, sport=internal_sport).select_related("activity")
-    if cutoff:
-        qs = qs.filter(activity_date__gte=cutoff)
+    if start:
+        qs = qs.filter(activity_date__gte=start)
+    if end:
+        qs = qs.filter(activity_date__lte=end)
 
     best_by_cell: dict[tuple[int, int], ActivityDurability] = {}
     for row in qs:
@@ -361,7 +368,8 @@ class AthleteDurabilityView(APIView):
             s["date"] = s["date"].isoformat()
 
         durability = {
-            _DURABILITY_WIRE_SPORT[sport]: _durability_section(athlete, sport, cutoff) for sport in internal_sports
+            _DURABILITY_WIRE_SPORT[sport]: _durability_section(athlete, sport, start=cutoff)
+            for sport in internal_sports
         }
 
         return Response(

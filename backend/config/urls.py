@@ -23,6 +23,7 @@ urlpatterns = [
     path("", include("workouts.urls")),
     path("", include("activities.urls")),
     path("", include("races.urls")),
+    path("", include("courses.urls")),
     path("", include("scheduling.urls")),
     path("", include("uploads.urls")),
     path("", include("dataexport.urls")),

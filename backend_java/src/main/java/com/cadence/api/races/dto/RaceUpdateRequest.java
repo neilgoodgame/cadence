@@ -10,5 +10,7 @@ public record RaceUpdateRequest(
 		String activityId,
 		String url,
 		String resultsUrl,
-		String notes
+		String notes,
+		String priority,
+		String courseId
 ) {}

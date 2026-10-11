@@ -106,6 +106,12 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     ftp_calculation_method = models.CharField(
         max_length=20, choices=FTP_CALCULATION_METHOD_CHOICES, default="twenty_min_test"
     )
+    # Races feature preferences (see races/blocks.py). Training-block length for an A race;
+    # the B/C "around the race" window is a fixed 5 weeks regardless of this setting.
+    RACE_BLOCK_WEEKS_CHOICES = [(12, "12 weeks"), (16, "16 weeks"), (20, "20 weeks"), (24, "24 weeks")]
+    race_block_weeks = models.PositiveSmallIntegerField(choices=RACE_BLOCK_WEEKS_CHOICES, default=16)
+    RACE_KEY_SESSION_CAP_CHOICES = [(n, str(n)) for n in (6, 8, 10, 12, 15, 20)]
+    race_key_session_cap = models.PositiveSmallIntegerField(choices=RACE_KEY_SESSION_CAP_CHOICES, default=10)
     # Which running-power reading to trust when a FIT file carries both: a watch's own
     # accelerometer-based estimate (e.g. Garmin Running Power) and a third-party footpod's
     # (e.g. Stryd). The two commonly disagree substantially - native running-power algorithms

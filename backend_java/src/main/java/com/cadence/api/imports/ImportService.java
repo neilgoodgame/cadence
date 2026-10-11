@@ -54,7 +54,9 @@ public class ImportService {
 						importJobRepository.save(job);
 					});
 			job.setActivitiesImported(counts.activitiesImported());
+			job.setCoursesImported(counts.coursesImported());
 			job.setRacesImported(counts.racesImported());
+			job.setRaceCommentsImported(counts.raceCommentsImported());
 			job.setWorkoutsImported(counts.workoutsImported());
 			job.setScheduledWorkoutsImported(counts.scheduledWorkoutsImported());
 			job.setThresholdHistoryImported(counts.thresholdHistoryImported());
