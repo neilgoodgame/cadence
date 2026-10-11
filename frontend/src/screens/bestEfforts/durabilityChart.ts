@@ -30,13 +30,27 @@ export function metricImproving(metric: DurabilityMetric, recent: number, previo
   return metric === "dec" ? recent < previous : recent > previous;
 }
 
-/** Fixed 0-15 for decoupling (with Good/Moderate/High bands); data-driven +-0.05 padding for EF. */
-export function yDomain(metric: DurabilityMetric, sessions: DurabilitySession[]): [number, number] {
-  if (metric === "dec") return [0, 15];
+/** Decoupling: at least 0-15 (the Good/Moderate/High bands), grown in steps of 5 to fit any
+ * session or rolling-average value outside it. EF: data-driven +-0.05 padding. */
+export function yDomain(metric: DurabilityMetric, sessions: DurabilitySession[], extra: number[] = []): [number, number] {
+  if (metric === "dec") {
+    const values = [...sessions.map((s) => s.decoupling_pct), ...extra].filter((v) => Number.isFinite(v));
+    if (values.length === 0) return [0, 15];
+    const [min, max] = extent(values) as [number, number];
+    return [Math.min(0, Math.floor(min / 5) * 5), Math.max(15, Math.ceil(max / 5) * 5)];
+  }
   const values = sessions.map((s) => s.ef).filter((v): v is number => v != null);
   if (values.length === 0) return [1, 2];
   const [min, max] = extent(values) as [number, number];
   return [min - 0.05, max + 0.05];
+}
+
+/** Gridline/tick values for the decoupling axis: every 5, or every 10 once the range gets tall. */
+export function decouplingTicks([min, max]: [number, number]): number[] {
+  const step = max - min > 40 ? 10 : 5;
+  const ticks: number[] = [];
+  for (let v = Math.ceil(min / step) * step; v <= max; v += step) ticks.push(v);
+  return ticks;
 }
 
 export interface RollingSeries {

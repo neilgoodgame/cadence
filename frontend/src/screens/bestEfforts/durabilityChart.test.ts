@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { metricImproving, metricValue, visibleRollingSeries, yDomain } from "./durabilityChart";
+import { decouplingTicks, metricImproving, metricValue, visibleRollingSeries, yDomain } from "./durabilityChart";
 import type { DurabilitySession } from "../../api/types";
 
 function session(overrides: Partial<DurabilitySession> = {}): DurabilitySession {
@@ -43,8 +43,17 @@ describe("metricImproving", () => {
 });
 
 describe("yDomain", () => {
-  it("is a fixed 0-15 for decoupling regardless of the data", () => {
-    expect(yDomain("dec", [session({ decoupling_pct: 40 })])).toEqual([0, 15]);
+  it("is 0-15 for decoupling when the data fits inside it", () => {
+    expect(yDomain("dec", [session({ decoupling_pct: 8 })])).toEqual([0, 15]);
+  });
+
+  it("expands decoupling to fit outliers above and below, in steps of 5", () => {
+    const sessions = [session({ decoupling_pct: 18.2 }), session({ decoupling_pct: -7.4 })];
+    expect(yDomain("dec", sessions)).toEqual([-10, 20]);
+  });
+
+  it("expands decoupling to fit rolling-average values too", () => {
+    expect(yDomain("dec", [session({ decoupling_pct: 4 })], [22])).toEqual([0, 25]);
   });
 
   it("pads the data range by 0.05 for EF", () => {
@@ -76,5 +85,15 @@ describe("visibleRollingSeries", () => {
 
   it("omits a sport the response doesn't include at all", () => {
     expect(visibleRollingSeries({ ride: rolling.ride }, "all").map((s) => s.sport)).toEqual(["ride"]);
+  });
+});
+
+describe("decouplingTicks", () => {
+  it("ticks every 5 over the default range", () => {
+    expect(decouplingTicks([0, 15])).toEqual([0, 5, 10, 15]);
+  });
+
+  it("ticks every 10 once the range is tall", () => {
+    expect(decouplingTicks([-10, 40])).toEqual([-10, 0, 10, 20, 30, 40]);
   });
 });
