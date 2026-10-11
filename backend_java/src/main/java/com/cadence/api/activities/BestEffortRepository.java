@@ -11,6 +11,10 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 	Optional<BestEffort> findByAthleteIdAndKindAndWindowAndActivityId(
 			String athleteId, BestEffortKind kind, String window, String activityId);
 
+	/** RaceBlockService's "best effort" key-session candidates - every effort for the athlete,
+	 * re-capped via BestEffortController#capPerWindow against the race block's own date range. */
+	List<BestEffort> findByAthleteId(String athleteId);
+
 	/** All records for a window, best-first (for higher-is-better kinds: power, HR). */
 	List<BestEffort> findByAthleteIdAndKindAndWindowOrderByValueDesc(
 			String athleteId, BestEffortKind kind, String window);

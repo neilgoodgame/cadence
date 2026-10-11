@@ -47,6 +47,10 @@ dependencies {
 
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1")
 	implementation("com.garmin:fit:21.217.0")
+	// Course GPX parsing (races feature) - distance/elevation/track points off a course's
+	// uploaded GPX, separate from GpxFileParser (which builds an Activity's full sample
+	// stream, not what a Course needs).
+	implementation("io.jenetics:jpx:3.2.1")
 
 	// SPIKE: compatibility check only, see infra/... plan - MCP transport under Spring Boot 4.1.0.
 	implementation(platform("org.springframework.ai:spring-ai-bom:2.0.1"))

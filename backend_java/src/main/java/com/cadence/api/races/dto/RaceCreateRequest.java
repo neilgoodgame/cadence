@@ -13,5 +13,7 @@ public record RaceCreateRequest(
 		String activityId,
 		String url,
 		String resultsUrl,
-		String notes
+		String notes,
+		String priority,
+		String courseId
 ) {}

@@ -29,6 +29,18 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 			+ "and not exists (select 1 from ScheduledWorkout sw where sw.activity = a)")
 	List<Activity> findUnplannedInRange(@Param("athleteId") String athleteId, @Param("start") Instant start, @Param("end") Instant end);
 
+	// RaceBlockService's weekly aggregates and key-session candidate window - same multisport/
+	// duplicate exclusion as findStartDatesAndTssInRange above, full entities rather than just
+	// (startDate, tss).
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.startDate >= :start and a.startDate < :end "
+			+ "and a.parentActivity is null and a.primaryActivity is null order by a.startDate")
+	List<Activity> findForWeekRange(@Param("athleteId") String athleteId, @Param("start") Instant start, @Param("end") Instant end);
+
+	// RaceBlockService's sweat-rate estimate - hydration-logged runs of 60 minutes or more.
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.sport = com.cadence.api.common.domain.Sport.RUN "
+			+ "and a.movingTime >= 3600 and a.startWeightKg is not null and a.endWeightKg is not null and a.fluidsMl is not null")
+	List<Activity> findForSweatRate(@Param("athleteId") String athleteId);
+
 	List<Activity> findByWorkoutId(String workoutId);
 
 	// WorkoutMatchScanService's candidate pool - same athlete, same sport as the workout being

@@ -79,6 +79,18 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "threshold_warning_days", nullable = false)
 	private int thresholdWarningDays = 21;
 
+	/** Races feature (see com.cadence.api.races.RaceBlockService) - training-block length for an
+	 * A race. One of 12/16/20/24; the B/C "around the race" window is a fixed 5 weeks regardless
+	 * of this setting. No fixed-choice-integer validation convention exists elsewhere in this
+	 * codebase (bestEffortTopN/thresholdWarningDays above are plain ints too) - enforced only in
+	 * AthleteService.updateProfile, same as every other preference field here. */
+	@Column(name = "race_block_weeks", nullable = false)
+	private int raceBlockWeeks = 16;
+
+	/** Maximum key sessions returned per race block - see RaceBlockService's key_sessions.total_candidates. */
+	@Column(name = "race_key_session_cap", nullable = false)
+	private int raceKeySessionCap = 10;
+
 	// Aerobic decoupling qualification thresholds (see DecouplingQualificationCalculator) - the
 	// defaults match the design spec's own fixed limits. Read at compute time (ingest/
 	// recompute), same "not retroactive until recomputed" convention as thresholdWindowDays/
@@ -338,6 +350,22 @@ public class User extends PrefixedIdEntity {
 
 	public void setThresholdWarningDays(int thresholdWarningDays) {
 		this.thresholdWarningDays = thresholdWarningDays;
+	}
+
+	public int getRaceBlockWeeks() {
+		return raceBlockWeeks;
+	}
+
+	public void setRaceBlockWeeks(int raceBlockWeeks) {
+		this.raceBlockWeeks = raceBlockWeeks;
+	}
+
+	public int getRaceKeySessionCap() {
+		return raceKeySessionCap;
+	}
+
+	public void setRaceKeySessionCap(int raceKeySessionCap) {
+		this.raceKeySessionCap = raceKeySessionCap;
 	}
 
 	public double getDecouplingViLimitBike() {

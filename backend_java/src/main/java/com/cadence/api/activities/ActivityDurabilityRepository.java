@@ -14,5 +14,11 @@ public interface ActivityDurabilityRepository extends JpaRepository<ActivityDura
 
 	List<ActivityDurability> findByAthleteIdAndSport(String athleteId, Sport sport);
 
+	// Races feature's training-block durability (RaceBlockService) - an explicit closed
+	// [start, end] range rather than the open-ended "since" cutoff the period-based query
+	// above uses.
+	List<ActivityDurability> findByAthleteIdAndSportAndActivityDateBetween(
+			String athleteId, Sport sport, LocalDate start, LocalDate end);
+
 	void deleteByActivityId(String activityId);
 }

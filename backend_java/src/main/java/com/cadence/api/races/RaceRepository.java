@@ -11,6 +11,33 @@ import org.springframework.data.repository.query.Param;
 public interface RaceRepository extends JpaRepository<Race, String> {
 	List<Race> findByAthleteIdOrderByDateAsc(String athleteId);
 
+	// --- RaceBlockService -------------------------------------------------------------
+
+	List<Race> findByAthleteIdAndDateBetween(String athleteId, LocalDate start, LocalDate end);
+
+	Optional<Race> findFirstByAthleteIdAndPriorityAndDateLessThanOrderByDateDesc(
+			String athleteId, RacePriority priority, LocalDate date);
+
+	List<Race> findByAthleteIdAndPriorityAndDateGreaterThanEqualOrderByDateAsc(
+			String athleteId, RacePriority priority, LocalDate date);
+
+	Optional<Race> findFirstByAthleteIdAndPriorityAndSportAndDistanceKmBetweenAndDateLessThanOrderByDateDesc(
+			String athleteId, RacePriority priority, Sport sport, double distanceLow, double distanceHigh, LocalDate date);
+
+	List<Race> findByAthleteIdAndPriorityInAndSportAndDateBetweenAndResultTimeIsNotNullAndDistanceKmIsNotNull(
+			String athleteId, List<RacePriority> priorities, Sport sport, LocalDate start, LocalDate end);
+
+	// --- CourseService ------------------------------------------------------------------
+
+	List<Race> findByCourseIdOrderByDateDesc(String courseId);
+
+	long countByCourseId(String courseId);
+
+	// RaceBlockService's "Long" key-session candidates exclude activities that are themselves
+	// someone's race result - Race.activity is a OneToOne with no inverse mapping on Activity,
+	// so this tiny existence check is cheaper than adding one.
+	boolean existsByActivityId(String activityId);
+
 	// The Threshold suggestions feature's "race booked" suppression rule (upcomingDrop) - the
 	// earliest race in the field's sport between today (inclusive) and the current value's
 	// expiry (exclusive).

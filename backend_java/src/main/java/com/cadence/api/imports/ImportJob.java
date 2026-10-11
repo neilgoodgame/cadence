@@ -41,8 +41,14 @@ public class ImportJob extends PrefixedIdEntity {
 	@Column(name = "activities_imported", nullable = false)
 	private int activitiesImported;
 
+	@Column(name = "courses_imported", nullable = false)
+	private int coursesImported;
+
 	@Column(name = "races_imported", nullable = false)
 	private int racesImported;
+
+	@Column(name = "race_comments_imported", nullable = false)
+	private int raceCommentsImported;
 
 	@Column(name = "workouts_imported", nullable = false)
 	private int workoutsImported;
@@ -134,12 +140,28 @@ public class ImportJob extends PrefixedIdEntity {
 		this.activitiesImported = activitiesImported;
 	}
 
+	public int getCoursesImported() {
+		return coursesImported;
+	}
+
+	public void setCoursesImported(int coursesImported) {
+		this.coursesImported = coursesImported;
+	}
+
 	public int getRacesImported() {
 		return racesImported;
 	}
 
 	public void setRacesImported(int racesImported) {
 		this.racesImported = racesImported;
+	}
+
+	public int getRaceCommentsImported() {
+		return raceCommentsImported;
+	}
+
+	public void setRaceCommentsImported(int raceCommentsImported) {
+		this.raceCommentsImported = raceCommentsImported;
 	}
 
 	public int getWorkoutsImported() {

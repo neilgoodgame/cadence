@@ -3,9 +3,12 @@ package com.cadence.api.races;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.id.PrefixedIdEntity;
+import com.cadence.api.courses.Course;
 import com.cadence.api.users.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -27,6 +30,16 @@ public class Race extends PrefixedIdEntity {
 	private LocalDate date;
 
 	private Sport sport;
+
+	// "A"/"B"/"C" matches the wire format exactly, so the standard JPA enum mapping needs no
+	// custom converter here (same reasoning as ScheduledWorkout.TimeOfDay).
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false)
+	private RacePriority priority = RacePriority.A;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "course_id")
+	private Course course;
 
 	@Column(name = "distance_km")
 	private Double distanceKm;
@@ -67,6 +80,12 @@ public class Race extends PrefixedIdEntity {
 
 	public Sport getSport() { return sport; }
 	public void setSport(Sport sport) { this.sport = sport; }
+
+	public RacePriority getPriority() { return priority; }
+	public void setPriority(RacePriority priority) { this.priority = priority; }
+
+	public Course getCourse() { return course; }
+	public void setCourse(Course course) { this.course = course; }
 
 	public Double getDistanceKm() { return distanceKm; }
 	public void setDistanceKm(Double distanceKm) { this.distanceKm = distanceKm; }

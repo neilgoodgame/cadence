@@ -4,10 +4,13 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.courses.Course;
+import com.cadence.api.courses.CourseRepository;
 import com.cadence.api.races.dto.RaceCreateRequest;
 import com.cadence.api.races.dto.RaceResponse;
 import com.cadence.api.races.dto.RaceUpdateRequest;
 import com.cadence.api.users.User;
+import com.cadence.api.users.UserRepository;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -18,10 +21,17 @@ public class RaceService {
 
 	private final RaceRepository raceRepository;
 	private final ActivityRepository activityRepository;
+	private final CourseRepository courseRepository;
+	private final RaceBlockService raceBlockService;
+	private final UserRepository userRepository;
 
-	public RaceService(RaceRepository raceRepository, ActivityRepository activityRepository) {
+	public RaceService(RaceRepository raceRepository, ActivityRepository activityRepository,
+			CourseRepository courseRepository, RaceBlockService raceBlockService, UserRepository userRepository) {
 		this.raceRepository = raceRepository;
 		this.activityRepository = activityRepository;
+		this.courseRepository = courseRepository;
+		this.userRepository = userRepository;
+		this.raceBlockService = raceBlockService;
 	}
 
 	public List<Race> listRaces(String athleteId) {
@@ -39,6 +49,8 @@ public class RaceService {
 		race.setName(req.name());
 		race.setDate(LocalDate.parse(req.date()));
 		race.setSport(parseSport(req.sport()));
+		race.setPriority(req.priority() != null ? RacePriority.fromWireValue(req.priority()) : RacePriority.A);
+		race.setCourse(resolveCourse(req.courseId()));
 		race.setDistanceKm(req.distanceKm());
 		race.setGoalTime(parseDuration(req.goalTime()));
 		race.setResultTime(parseDuration(req.resultTime()));
@@ -54,6 +66,8 @@ public class RaceService {
 		if (req.name() != null) race.setName(req.name());
 		if (req.date() != null) race.setDate(LocalDate.parse(req.date()));
 		if (req.sport() != null) race.setSport(parseSport(req.sport()));
+		if (req.priority() != null) race.setPriority(RacePriority.fromWireValue(req.priority()));
+		if (req.courseId() != null) race.setCourse(req.courseId().isEmpty() ? null : resolveCourse(req.courseId()));
 		if (req.distanceKm() != null) race.setDistanceKm(req.distanceKm());
 		if (req.goalTime() != null) race.setGoalTime(parseDuration(req.goalTime()));
 		if (req.resultTime() != null) race.setResultTime(parseDuration(req.resultTime()));
@@ -69,21 +83,61 @@ public class RaceService {
 		raceRepository.deleteById(id);
 	}
 
+	/**
+	 * {@code @Transactional}, and re-fetches the athlete fresh rather than trusting
+	 * {@code race.getAthlete()} - {@code race} may have been loaded by a plain (non-
+	 * transactional) repository call in the caller (e.g. RaceController.listRaces), in a
+	 * session this method's own transaction doesn't reattach it to. {@code .getId()} alone is
+	 * always safe off a lazy proxy regardless; touching any other field (getRaceBlockWeeks())
+	 * is not. See backend_java's own CLAUDE.md "JPA entity's lazy association" gotcha.
+	 */
+	@Transactional(readOnly = true)
 	public RaceResponse toResponse(Race race) {
+		User athlete = userRepository.findById(race.getAthlete().getId()).orElseThrow();
+		int blockWeeksPref = athlete.getRaceBlockWeeks();
+		String parentRaceId = null;
+		LocalDate blockStart = null;
+		Integer blockWeeks = null;
+
+		if (race.getPriority() == RacePriority.A) {
+			RaceBlockService.BlockRange block = raceBlockService.aRaceBlockRange(race, blockWeeksPref);
+			blockStart = block.startWeek();
+			blockWeeks = block.weeks();
+		}
+		else {
+			Race parent = raceBlockService.findParentARace(race, blockWeeksPref);
+			if (parent != null) {
+				parentRaceId = parent.getId();
+				RaceBlockService.BlockRange block = raceBlockService.aRaceBlockRange(parent, blockWeeksPref);
+				blockStart = block.startWeek();
+				blockWeeks = block.weeks();
+			}
+		}
+
 		return new RaceResponse(
 				race.getId(),
 				race.getAthlete().getId(),
 				race.getName(),
 				race.getDate().toString(),
 				race.getSport() != null ? race.getSport().wireValue() : "",
+				race.getPriority().wireValue(),
+				race.getCourse() != null ? race.getCourse().getId() : null,
 				race.getDistanceKm(),
 				formatDuration(race.getGoalTime()),
 				formatDuration(race.getResultTime()),
 				race.getActivity() != null ? race.getActivity().getId() : null,
 				race.getUrl(),
 				race.getResultsUrl(),
-				race.getNotes()
+				race.getNotes(),
+				parentRaceId,
+				blockStart,
+				blockWeeks
 		);
+	}
+
+	private Course resolveCourse(String courseId) {
+		if (courseId == null || courseId.isBlank()) return null;
+		return courseRepository.findById(courseId).orElseThrow(() -> new NotFoundException("No such course."));
 	}
 
 	// "H:MM:SS" or "HH:MM:SS" → total seconds; null/blank → null

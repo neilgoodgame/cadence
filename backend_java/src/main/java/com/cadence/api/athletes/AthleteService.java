@@ -1,6 +1,7 @@
 package com.cadence.api.athletes;
 
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.util.HashSet;
@@ -11,6 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AthleteService {
+
+	private static final Set<Integer> RACE_BLOCK_WEEKS_CHOICES = Set.of(12, 16, 20, 24);
+	private static final Set<Integer> RACE_KEY_SESSION_CAP_CHOICES = Set.of(6, 8, 10, 12, 15, 20);
 
 	private final UserRepository userRepository;
 	private final ZoneService zoneService;
@@ -169,6 +173,18 @@ public class AthleteService {
 		}
 		if (request.defaultShoeLimitKm() != null) {
 			athlete.setDefaultShoeLimitKm(request.defaultShoeLimitKm());
+		}
+		if (request.raceBlockWeeks() != null) {
+			if (!RACE_BLOCK_WEEKS_CHOICES.contains(request.raceBlockWeeks())) {
+				throw new ValidationException("Must be one of 12, 16, 20, 24.", "raceBlockWeeks");
+			}
+			athlete.setRaceBlockWeeks(request.raceBlockWeeks());
+		}
+		if (request.raceKeySessionCap() != null) {
+			if (!RACE_KEY_SESSION_CAP_CHOICES.contains(request.raceKeySessionCap())) {
+				throw new ValidationException("Must be one of 6, 8, 10, 12, 15, 20.", "raceKeySessionCap");
+			}
+			athlete.setRaceKeySessionCap(request.raceKeySessionCap());
 		}
 		userRepository.save(athlete);
 		if (suggestionsAffected) {

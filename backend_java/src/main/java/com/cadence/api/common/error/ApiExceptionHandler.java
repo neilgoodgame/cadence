@@ -31,6 +31,7 @@ public class ApiExceptionHandler {
 			HttpStatus.METHOD_NOT_ALLOWED, "method_not_allowed",
 			HttpStatus.CONFLICT, "conflict",
 			HttpStatus.CONTENT_TOO_LARGE, "payload_too_large",
+			HttpStatus.UNPROCESSABLE_ENTITY, "unprocessable_entity",
 			HttpStatus.TOO_MANY_REQUESTS, "rate_limited");
 
 	private static final Map<HttpStatus, String> TYPE_BY_STATUS = Map.of(
@@ -41,6 +42,7 @@ public class ApiExceptionHandler {
 			HttpStatus.METHOD_NOT_ALLOWED, "invalid_request_error",
 			HttpStatus.CONFLICT, "conflict_error",
 			HttpStatus.CONTENT_TOO_LARGE, "invalid_request_error",
+			HttpStatus.UNPROCESSABLE_ENTITY, "invalid_request_error",
 			HttpStatus.TOO_MANY_REQUESTS, "rate_limit_error");
 
 	@ExceptionHandler(ApiException.class)
