@@ -43,14 +43,14 @@ dependencies {
 
 	// Auth via the default credentials/region provider chain (the EC2 instance profile in
 	// prod, ~/.aws/credentials locally) - no static keys configured anywhere in this repo.
-	implementation("software.amazon.awssdk:sesv2:2.55.9")
+	implementation("software.amazon.awssdk:sesv2:2.55.13")
 
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1")
-	implementation("com.garmin:fit:21.217.0")
+	implementation("com.garmin:fit:21.218.0")
 	// Course GPX parsing (races feature) - distance/elevation/track points off a course's
 	// uploaded GPX, separate from GpxFileParser (which builds an Activity's full sample
 	// stream, not what a Course needs).
-	implementation("io.jenetics:jpx:3.2.1")
+	implementation("io.jenetics:jpx:4.0.1")
 
 	// SPIKE: compatibility check only, see infra/... plan - MCP transport under Spring Boot 4.1.0.
 	implementation(platform("org.springframework.ai:spring-ai-bom:2.0.1"))
