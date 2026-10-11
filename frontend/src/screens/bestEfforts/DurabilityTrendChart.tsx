@@ -8,6 +8,7 @@ import {
   HOT_RING_COLOR,
   SPORT_COLOR,
   metricAxisTitle,
+  decouplingTicks,
   metricTickLabel,
   metricValue,
   visibleRollingSeries,
@@ -51,10 +52,14 @@ export function DurabilityTrendChart({
 
     const [t0, t1] = extent(points.map((p) => p.date)) as [Date, Date];
     const x = scaleTime().domain([t0, t1]).range([0, W]);
-    const [yMin, yMax] = yDomain(metric, sessions);
-    const y = scaleLinear().domain([yMin, yMax]).range([H, 0]);
+    const rollingSeries = visibleRollingSeries(rolling, sportFilter);
+    const rollingValues = rollingSeries.flatMap((rs) =>
+      rs.points.map((p) => (metric === "dec" ? p.decoupling_pct : p.ef)).filter((v): v is number => v != null),
+    );
+    const domain = yDomain(metric, sessions, metric === "dec" ? rollingValues : []);
+    const y = scaleLinear().domain(domain).range([H, 0]);
 
-    const yTicks = (metric === "dec" ? [0, 5, 10, 15] : y.ticks(4)).map((v) => ({ value: v, y: y(v) }));
+    const yTicks = (metric === "dec" ? decouplingTicks(domain) : y.ticks(4)).map((v) => ({ value: v, y: y(v) }));
 
     const spanDays = (t1.getTime() - t0.getTime()) / 86_400_000;
     const step = monthTickStep(spanDays);
@@ -68,7 +73,7 @@ export function DurabilityTrendChart({
       xTicks.push({ date: m, label: MONTHS[m.getMonth()], x: x(m) });
     }
 
-    const rollingLines = visibleRollingSeries(rolling, sportFilter).map((series) => {
+    const rollingLines = rollingSeries.map((series) => {
       const linePoints = series.points
         .map((p) => ({ date: new Date(p.date), value: metric === "dec" ? p.decoupling_pct : p.ef }))
         .filter((p): p is { date: Date; value: number } => p.value != null);
@@ -125,10 +130,10 @@ export function DurabilityTrendChart({
           <g transform="translate(0,5)">
             {metric === "dec" && (
               <>
-                <rect x={0} y={chart.y(15)} width={W} height={chart.y(10) - chart.y(15)} fill={BAND_BG.high} />
+                <rect x={0} y={0} width={W} height={chart.y(10)} fill={BAND_BG.high} />
                 <rect x={0} y={chart.y(10)} width={W} height={chart.y(5) - chart.y(10)} fill={BAND_BG.moderate} />
                 <rect x={0} y={chart.y(5)} width={W} height={chart.y(0) - chart.y(5)} fill={BAND_BG.good} />
-                <text x={W - 4} y={chart.y(15) + 14} textAnchor="end" fontSize={11} fill="var(--ink3)">High</text>
+                <text x={W - 4} y={14} textAnchor="end" fontSize={11} fill="var(--ink3)">High</text>
                 <text x={W - 4} y={(chart.y(10) + chart.y(5)) / 2 + 4} textAnchor="end" fontSize={11} fill="var(--ink3)">Moderate</text>
                 <text x={W - 4} y={chart.y(0) - 6} textAnchor="end" fontSize={11} fill="var(--ink3)">Good</text>
               </>
