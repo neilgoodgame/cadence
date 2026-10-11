@@ -27,7 +27,9 @@ class ExportJobSerializer(serializers.ModelSerializer):
 
 class ImportCountsSerializer(serializers.Serializer):
     activities_imported = serializers.IntegerField()
+    courses_imported = serializers.IntegerField()
     races_imported = serializers.IntegerField()
+    race_comments_imported = serializers.IntegerField()
     workouts_imported = serializers.IntegerField()
     scheduled_workouts_imported = serializers.IntegerField()
     threshold_history_imported = serializers.IntegerField()

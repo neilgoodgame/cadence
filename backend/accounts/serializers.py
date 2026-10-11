@@ -45,6 +45,8 @@ class UserSerializer(serializers.ModelSerializer):
             "lap_source",
             "default_shoe_limit_km",
             "email_verified",
+            "race_block_weeks",
+            "race_key_session_cap",
         ]
 
 

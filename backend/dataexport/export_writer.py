@@ -12,6 +12,7 @@ The one thing this still has to get right is not materializing a huge activity's
 Record queryset at once - see _build_streams' use of .iterator().
 """
 
+import base64
 import gzip
 import json
 import os
@@ -25,9 +26,10 @@ from django.utils import timezone
 
 from activities.models import Activity, Lap, Record
 from activities.serializers import ActivitySerializer, LapSerializer
+from courses.models import Course
 from gear.models import Bike, Component, Shoe
 from gear.serializers import BikeSerializer, ComponentSerializer, ShoeSerializer
-from races.models import Race
+from races.models import Race, RaceComment
 from races.serializers import RaceSerializer
 from scheduling.models import ScheduledWorkout
 from scheduling.serializers import ScheduledWorkoutSerializer
@@ -167,6 +169,16 @@ def _races_qs(athlete_id: str, sport: str | None):
     return qs
 
 
+def _courses_qs(athlete_id: str):
+    # No sport field of its own to filter by - exported in full regardless of the export's
+    # sport filter, same reasoning as equipment.
+    return Course.objects.filter(athlete_id=athlete_id)
+
+
+def _race_comments_qs(athlete_id: str):
+    return RaceComment.objects.filter(race__athlete_id=athlete_id).order_by("created_at")
+
+
 def _scheduled_workouts_qs(athlete_id: str, sport: str | None):
     qs = ScheduledWorkout.objects.filter(athlete_id=athlete_id).order_by("date")
     if sport:
@@ -180,6 +192,7 @@ def _counts(athlete_id: str, sport: str | None) -> dict:
     from the same querysets so the two can never drift apart."""
     return {
         "activities": _activities_qs(athlete_id, sport).count(),
+        "courses": _courses_qs(athlete_id).count(),
         "races": _races_qs(athlete_id, sport).count(),
         "workouts": _workouts_qs(athlete_id, sport).count(),
         "scheduled_workouts": _scheduled_workouts_qs(athlete_id, sport).count(),
@@ -270,8 +283,63 @@ def _write_threshold_history(
     _write_array(gz, entries, progress)
 
 
+def _course_export_dict(course: Course) -> dict[str, Any]:
+    # gpx_file is a default_storage path (see courses.models.Course), not a DB blob - the
+    # original upload is read and base64-embedded here so the export is self-contained.
+    # Dropped (null) for a course with no original file, e.g. source=activity.
+    gpx_base64 = None
+    if course.gpx_file and default_storage.exists(course.gpx_file):
+        with default_storage.open(course.gpx_file, "rb") as f:
+            gpx_base64 = base64.b64encode(f.read()).decode("ascii")
+    return {
+        "id": course.id,
+        "name": course.name,
+        "location_name": course.location_name,
+        "start_lat": course.start_lat,
+        "start_lng": course.start_lng,
+        "distance_km": course.distance_km,
+        "elevation_gain_m": course.elevation_gain_m,
+        "elevation_loss_m": course.elevation_loss_m,
+        "elevation_max_m": course.elevation_max_m,
+        "elevation_min_m": course.elevation_min_m,
+        "is_loop": course.is_loop,
+        "source": course.source,
+        "source_activity_id": course.source_activity_id,
+        "gpx_filename": course.gpx_filename,
+        "gpx_base64": gpx_base64,
+        "route_polyline": course.route_polyline,
+        "elevation_profile": course.elevation_profile,
+        "climbs": course.climbs,
+        "created_at": course.created_at,
+    }
+
+
+def _write_courses(gz: gzip.GzipFile, athlete_id: str, progress: "_Progress | None" = None) -> None:
+    _write_array(gz, (_course_export_dict(c) for c in _courses_qs(athlete_id)), progress)
+
+
 def _write_races(gz: gzip.GzipFile, athlete_id: str, sport: str | None, progress: "_Progress | None" = None) -> None:
     _write_array(gz, (RaceSerializer(r).data for r in _races_qs(athlete_id, sport)), progress)
+
+
+def _write_race_comments(gz: gzip.GzipFile, athlete_id: str) -> None:
+    # Written inside the "races" step (no separate on_step/progress total of its own) - a
+    # race's handful of comments isn't worth a dedicated progress-bar section.
+    _write_array(
+        gz,
+        (
+            {
+                "id": c.id,
+                "race_id": c.race_id,
+                "role": c.role,
+                "text": c.text,
+                "week": c.week,
+                "parent_id": c.parent_id,
+                "created_at": c.created_at,
+            }
+            for c in _race_comments_qs(athlete_id)
+        ),
+    )
 
 
 def _write_scheduled_workouts(
@@ -298,12 +366,17 @@ def write_export(
     project's MEDIA_ROOT is local disk, which is what makes true incremental streaming
     writes possible; see the module docstring). Returns the file size in bytes.
 
-    Field order matches Java's ExportWriter.write exactly: generated_at/athlete_id/counts
-    first (counts is a handful of cheap .count() queries, computed upfront so a reader can see
-    what the file contains without having to fully parse it), then equipment and workouts
-    (which activities reference) before activities, activities (which races/scheduled_workouts
-    reference) before those - dependency order, in case any consumer relies on it. `on_step`
-    (if given) is called once per section, right as it starts. `on_total`/`on_progress` (if
+    Field order matches Java's ExportWriter.write for every section Java has implemented so
+    far: generated_at/athlete_id/counts first (counts is a handful of cheap .count() queries,
+    computed upfront so a reader can see what the file contains without having to fully parse
+    it), then equipment and workouts (which activities reference) before activities, activities
+    before courses and races (both of which can reference an activity) and scheduled_workouts -
+    dependency order, in case any consumer relies on it. "courses" and "race_comments" are new
+    in this Python backend (the Races feature's courses/comments additions) and don't exist yet
+    in Java's ExportWriter - a session porting that parity work needs to add them in the same
+    position (courses before races, race_comments right after races) to keep the two file
+    formats compatible. `on_step` (if given) is called once per section, right as it starts.
+    `on_total`/`on_progress` (if
     given) turn that into a fine-grained item-level progress bar *scoped to the current
     section* - e.g. while `on_step` is "activities", `on_total`/`on_progress` report "how many
     of this athlete's activities have been written", not a blended count across every kind of
@@ -347,10 +420,17 @@ def write_export(
         _write_activities(gz, athlete_id, sport, progress)
         progress.flush()
 
+        progress = start_section("courses", counts["courses"])
+        gz.write(b',"courses":')
+        _write_courses(gz, athlete_id, progress)
+        progress.flush()
+
         progress = start_section("races", counts["races"])
         gz.write(b',"races":')
         _write_races(gz, athlete_id, sport, progress)
         progress.flush()
+        gz.write(b',"race_comments":')
+        _write_race_comments(gz, athlete_id)
 
         progress = start_section("scheduled_workouts", counts["scheduled_workouts"])
         gz.write(b',"scheduled_workouts":')

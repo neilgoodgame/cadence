@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "gear",
     "adminapi",
     "races",
+    "courses",
     "dataexport",
     "webhooks",
     "core",

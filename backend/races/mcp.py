@@ -8,6 +8,7 @@ from typing import Any
 from authn.mcp_scopes import ACTIVITIES_READ
 from authn.mcp_toolset import ScopedMCPToolset
 
+from .blocks import get_race_block
 from .models import Race
 
 
@@ -39,6 +40,8 @@ class RaceMCPTools(ScopedMCPToolset):
                     "name": r.name,
                     "date": r.date.isoformat(),
                     "sport": r.sport,
+                    "priority": r.priority,
+                    "course_id": r.course_id,
                     "distance_km": r.distance_km,
                     "goal_time": _format_duration(r.goal_time),
                     "result_time": _format_duration(r.result_time),
@@ -50,3 +53,15 @@ class RaceMCPTools(ScopedMCPToolset):
                 for r in races
             ]
         }
+
+    def get_race_block(self, race_id: str) -> dict[str, Any]:
+        """Get an A race's training block (weekly load/distance, race-day form,
+        predicted time, key sessions) or a B/C race's 5-week window around it."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+
+        race = Race.objects.filter(pk=race_id, athlete_id=athlete_id).first()
+        if race is None:
+            return {"error": "not_found"}
+        return get_race_block(race)
