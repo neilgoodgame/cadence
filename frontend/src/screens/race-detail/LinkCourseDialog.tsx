@@ -118,7 +118,9 @@ function UploadTab({ raceDistanceKm, onLinked }: { raceDistanceKm: number | null
 function ActivityTab({ raceActivityId, onLinked }: { raceActivityId: string | null; onLinked: (id: string) => void }) {
   const [selected, setSelected] = useState<string | null>(raceActivityId);
   const [name, setName] = useState("");
-  const { data } = useQuery({ queryKey: ["activities", "with-gps"], queryFn: () => listActivities({ limit: 50, sort: "-start_date" }) });
+  // `sort` is a CQL field name ("date"), not the model column ("start_date") - an unknown sort
+  // field makes both backends 400 the whole request.
+  const { data, isLoading, isError } = useQuery({ queryKey: ["activities", "with-gps"], queryFn: () => listActivities({ limit: 50, sort: "-date" }) });
   const activities = (data?.data ?? []).filter((a) => a.has_gps);
 
   const mutation = useMutation({
@@ -139,7 +141,9 @@ function ActivityTab({ raceActivityId, onLinked }: { raceActivityId: string | nu
             )}
           </label>
         ))}
-        {activities.length === 0 && <div style={{ fontSize: 13, color: "var(--ink3)" }}>No activities with GPS found.</div>}
+        {isLoading && <div style={{ fontSize: 13, color: "var(--ink3)" }}>Loading activities…</div>}
+        {isError && <div style={{ fontSize: 13, color: "#e0442e" }}>Couldn't load activities.</div>}
+        {!isLoading && !isError && activities.length === 0 && <div style={{ fontSize: 13, color: "var(--ink3)" }}>No activities with GPS found.</div>}
       </div>
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Course name" style={fieldStyle} />
       <button
