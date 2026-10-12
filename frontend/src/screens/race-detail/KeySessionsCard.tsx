@@ -65,6 +65,43 @@ function pageButtonStyle(disabled: boolean): React.CSSProperties {
   };
 }
 
+const ALL_REASONS = Object.keys(REASON_LABEL) as KeySessionReason[];
+
+function FilterChip({
+  reason,
+  sport,
+  active,
+  count,
+  onToggle,
+}: {
+  reason: KeySessionReason;
+  sport: Sport | null;
+  active: boolean;
+  count: number;
+  onToggle: () => void;
+}) {
+  const style = reasonStyle(reason, sport);
+  return (
+    <button
+      onClick={onToggle}
+      disabled={count === 0}
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        padding: "2px 9px",
+        borderRadius: 20,
+        cursor: count === 0 ? "default" : "pointer",
+        background: active ? style.color : "none",
+        color: active ? "var(--card)" : count === 0 ? "var(--ink3)" : style.color,
+        border: style.border,
+        opacity: count === 0 ? 0.4 : 1,
+      }}
+    >
+      {REASON_LABEL[reason]} ({count})
+    </button>
+  );
+}
+
 /** README §4.2.10 "Key sessions" card. Header: "KEY SESSIONS IN THIS BLOCK" for an A race's
  * full block, "AROUND THE RACE" for a B/C race's 5-week window. The backend returns every
  * candidate session found (unpaginated) - this card paginates client-side, using the athlete's
@@ -82,11 +119,31 @@ export function KeySessionsCard({
   pageSize: number;
 }) {
   const [page, setPage] = useState(0);
+  const [activeReasons, setActiveReasons] = useState<Set<KeySessionReason>>(new Set(ALL_REASONS));
 
   const total = keySessions.items.length;
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const countByReason = ALL_REASONS.reduce(
+    (acc, reason) => {
+      acc[reason] = keySessions.items.filter((item) => item.reason === reason).length;
+      return acc;
+    },
+    {} as Record<KeySessionReason, number>,
+  );
+  const filteredItems = keySessions.items.filter((item) => activeReasons.has(item.reason));
+  const filteredTotal = filteredItems.length;
+  const pageCount = Math.max(1, Math.ceil(filteredTotal / pageSize));
   const clampedPage = Math.min(page, pageCount - 1);
-  const pageItems = keySessions.items.slice(clampedPage * pageSize, (clampedPage + 1) * pageSize);
+  const pageItems = filteredItems.slice(clampedPage * pageSize, (clampedPage + 1) * pageSize);
+
+  function toggleReason(reason: KeySessionReason) {
+    setPage(0);
+    setActiveReasons((prev) => {
+      const next = new Set(prev);
+      if (next.has(reason)) next.delete(reason);
+      else next.add(reason);
+      return next;
+    });
+  }
 
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
@@ -94,10 +151,28 @@ export function KeySessionsCard({
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink3)" }}>
           {isARace ? "Key sessions in this block" : "Around the race"}
         </div>
-        <span className="mono" style={{ fontSize: 11, color: "var(--ink3)" }}>{total} total</span>
+        <span className="mono" style={{ fontSize: 11, color: "var(--ink3)" }}>
+          {filteredTotal === total ? `${total} total` : `${filteredTotal} of ${total}`}
+        </span>
       </div>
+      {total > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+          {ALL_REASONS.map((reason) => (
+            <FilterChip
+              key={reason}
+              reason={reason}
+              sport={sport}
+              active={activeReasons.has(reason)}
+              count={countByReason[reason]}
+              onToggle={() => toggleReason(reason)}
+            />
+          ))}
+        </div>
+      )}
       {total === 0 ? (
         <div style={{ fontSize: 13, color: "var(--ink3)" }}>No key sessions found yet.</div>
+      ) : filteredTotal === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--ink3)" }}>No sessions match the selected filters.</div>
       ) : (
         <>
           <div>
