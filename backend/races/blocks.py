@@ -463,6 +463,7 @@ def _activity_candidate(activity: Activity, reason: str, label: str) -> dict[str
         "label": label,
         "km": activity.distance_km,
         "tss": activity.tss,
+        "sport": activity.sport,
     }
 
 
@@ -485,6 +486,7 @@ def key_sessions(race: Race, window_start: date, window_end: date) -> dict[str, 
                 "label": f"{r.priority} race",
                 "km": r.distance_km,
                 "tss": r.activity.tss if r.activity_id else None,
+                "sport": r.sport or None,
             }
         )
         if r.activity_id:
@@ -556,6 +558,7 @@ def key_sessions(race: Race, window_start: date, window_end: date) -> dict[str, 
                     "label": "Planned",
                     "km": None,
                     "tss": sw.workout.tss,
+                    "sport": sw.workout.sport,
                 }
             )
             planned_count += 1

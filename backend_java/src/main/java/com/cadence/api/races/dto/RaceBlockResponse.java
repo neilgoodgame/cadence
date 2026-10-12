@@ -1,6 +1,7 @@
 package com.cadence.api.races.dto;
 
 import com.cadence.api.athletes.dto.DurabilityResponse;
+import com.cadence.api.common.domain.Sport;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -36,7 +37,7 @@ public record RaceBlockResponse(
 
 	public record KeySessionItem(
 			LocalDate date, String name, String activityId, String scheduledWorkoutId, String reason, String label,
-			Double km, Integer tss) {}
+			Double km, Integer tss, Sport sport) {}
 
 	public record KeySessions(int totalCandidates, List<KeySessionItem> items) {}
 
