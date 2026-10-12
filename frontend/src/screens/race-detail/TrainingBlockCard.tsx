@@ -165,7 +165,26 @@ export function TrainingBlockCard({
         </div>
       </div>
 
-      <div style={{ marginTop: 18 }}>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: "var(--ink3)", marginTop: 14 }}>
+        {(sport === "all" ? (["run", "ride", "other"] as const) : [sport]).map((s) =>
+          legendItem(SEGMENT_LABEL[s], { background: SEGMENT_COLOR[s] }),
+        )}
+        {metric === "tss" && sport === "all" && legendItem("Race", { background: "repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 4px)", opacity: 0.7 })}
+        {legendItem("Planned", { border: "1px dashed var(--ink2)" })}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 16, height: 2, background: "var(--ink)", display: "inline-block" }} />
+          Fitness (CTL)
+        </span>
+        {comparisonWeeks && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, border: "1px dashed var(--ink3)", display: "inline-block" }} />
+            <span style={{ width: 16, borderTop: "2px dashed var(--ink3)", display: "inline-block" }} />
+            {comparisonRace?.name ?? "Comparison"} {comparisonYear} block
+          </span>
+        )}
+      </div>
+
+      <div style={{ marginTop: 14 }}>
         <TrainingBlockChart
           weeks={block.weeks}
           comparisonWeeks={comparisonWeeks}
@@ -175,16 +194,8 @@ export function TrainingBlockCard({
           currentIndex={currentIndex}
           selectedIndex={selectedIndex}
           onSelectWeek={onSelectIndex}
+          phases={block.phases}
         />
-      </div>
-
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: "var(--ink3)", marginTop: 8 }}>
-        {(sport === "all" ? (["run", "ride", "other"] as const) : [sport]).map((s) =>
-          legendItem(SEGMENT_LABEL[s], { background: SEGMENT_COLOR[s] }),
-        )}
-        {metric === "tss" && sport === "all" && legendItem("Race", { background: "repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 4px)", opacity: 0.7 })}
-        {legendItem("Planned", { border: "1px dashed var(--ink2)" })}
-        {comparisonWeeks && legendItem(`${comparisonYear ?? "Comparison"}`, { border: "1px dashed var(--ink3)" })}
       </div>
 
       {hoveredWeek && (
