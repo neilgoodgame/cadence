@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 from django.test import TestCase
 
 from accounts.models import User
+from activities.models import ActivityTag, Tag
 from activities.tests.helpers import _make_activity
 from races.blocks import (
     a_race_block_range,
@@ -206,6 +207,38 @@ class KeySessionsTests(TestCase):
         result = key_sessions(race, date(2026, 9, 1), date(2026, 10, 11))
         names = [item["name"] for item in result["items"]]
         self.assertIn(tune_up.name, names)
+
+    def test_each_item_carries_its_own_sport_for_frontend_filtering(self):
+        race = Race.objects.create(
+            athlete=self.athlete,
+            name="Goal Marathon",
+            date=date(2026, 10, 12),
+            priority="A",
+            sport="run",
+            distance_km=42.2,
+        )
+        tag = Tag.objects.create(athlete=self.athlete, name="Key session")
+        bike_tagged = _make_activity(
+            self.athlete,
+            name="Tagged ride",
+            start_date=datetime(2026, 9, 5, 7, 0, tzinfo=UTC),
+            distance_km=40.0,
+            sport="bike",
+        )
+        ActivityTag.objects.create(activity=bike_tagged, tag=tag)
+        run_tagged = _make_activity(
+            self.athlete,
+            name="Tagged run",
+            start_date=datetime(2026, 9, 6, 7, 0, tzinfo=UTC),
+            distance_km=12.0,
+            sport="run",
+        )
+        ActivityTag.objects.create(activity=run_tagged, tag=tag)
+
+        result = key_sessions(race, date(2026, 9, 1), date(2026, 10, 11))
+        by_id = {item["activity_id"]: item for item in result["items"]}
+        self.assertEqual(by_id[bike_tagged.id]["sport"], "bike")
+        self.assertEqual(by_id[run_tagged.id]["sport"], "run")
 
 
 class GetRaceBlockSmokeTests(TestCase):

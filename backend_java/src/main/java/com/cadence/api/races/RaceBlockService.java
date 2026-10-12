@@ -471,11 +471,11 @@ public class RaceBlockService {
 	}
 
 	private record Candidate(LocalDate date, String name, String activityId, String scheduledWorkoutId, String reason,
-			String label, Double km, Integer tss) {}
+			String label, Double km, Integer tss, Sport sport) {}
 
 	private Candidate activityCandidate(Activity a, String reason, String label) {
 		return new Candidate(a.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), a.getName(), a.getId(), null, reason,
-				label, a.getDistanceKm(), a.getTss());
+				label, a.getDistanceKm(), a.getTss(), a.getSport());
 	}
 
 	private RaceBlockResponse.KeySessions keySessions(Race race, LocalDate windowStart, LocalDate windowEnd) {
@@ -488,7 +488,7 @@ public class RaceBlockService {
 			String activityId = r.getActivity() != null ? r.getActivity().getId() : null;
 			Integer tss = r.getActivity() != null ? r.getActivity().getTss() : null;
 			candidates.add(new Candidate(r.getDate(), r.getName(), activityId, null, "race",
-					r.getPriority().wireValue() + " race", r.getDistanceKm(), tss));
+					r.getPriority().wireValue() + " race", r.getDistanceKm(), tss, r.getSport()));
 			if (activityId != null) seenActivityIds.add(activityId);
 		}
 
@@ -540,7 +540,7 @@ public class RaceBlockService {
 				if (plannedCount >= 3) break;
 				if (!isLongOrQualityWorkout(sw.getWorkout())) continue;
 				candidates.add(new Candidate(sw.getDate(), sw.getWorkout().getName(), null, sw.getId(), "planned",
-						"Planned", null, sw.getWorkout().getTss()));
+						"Planned", null, sw.getWorkout().getTss(), sw.getWorkout().getSport()));
 				plannedCount++;
 			}
 		}
@@ -550,7 +550,7 @@ public class RaceBlockService {
 
 		List<RaceBlockResponse.KeySessionItem> items = candidates.stream()
 				.map(c -> new RaceBlockResponse.KeySessionItem(c.date(), c.name(), c.activityId(), c.scheduledWorkoutId(),
-						c.reason(), c.label(), c.km(), c.tss()))
+						c.reason(), c.label(), c.km(), c.tss(), c.sport()))
 				.toList();
 		return new RaceBlockResponse.KeySessions(totalCandidates, items);
 	}

@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.ActivityTag;
+import com.cadence.api.activities.ActivityTagRepository;
+import com.cadence.api.activities.Tag;
+import com.cadence.api.activities.TagRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.races.dto.RaceBlockResponse;
 import com.cadence.api.support.IntegrationTest;
@@ -12,6 +16,8 @@ import com.cadence.api.users.UserRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -27,6 +33,10 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 	private UserRepository userRepository;
 	@Autowired
 	private ActivityRepository activityRepository;
+	@Autowired
+	private TagRepository tagRepository;
+	@Autowired
+	private ActivityTagRepository activityTagRepository;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -206,6 +216,55 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(result.keySessions().totalCandidates()).isGreaterThanOrEqualTo(4);
 		assertThat(result.keySessions().items()).hasSize(result.keySessions().totalCandidates());
+	}
+
+	/** Each key session item carries its own sport, independent of the race's sport - the
+	 * frontend's sport filter chips key off this field. */
+	@Test
+	void keySessionItemsCarryTheirOwnSportForFrontendFiltering() {
+		User athlete = newAthlete("block-key-sessions-sport@example.cc");
+		Race race = newRace(athlete, "Goal Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
+		race.setSport(Sport.RUN);
+		race.setDistanceKm(42.2);
+		raceRepository.save(race);
+
+		Tag tag = new Tag();
+		tag.setAthlete(athlete);
+		tag.setName("Key session");
+		tag = tagRepository.save(tag);
+
+		Activity bikeTagged = new Activity();
+		bikeTagged.setAthlete(athlete);
+		bikeTagged.setSport(Sport.BIKE);
+		bikeTagged.setName("Tagged ride");
+		bikeTagged.setStartDate(Instant.parse("2026-09-05T07:00:00Z"));
+		bikeTagged.setDistanceKm(40.0);
+		bikeTagged.setMovingTime(5400);
+		bikeTagged = activityRepository.save(bikeTagged);
+		ActivityTag bikeLink = new ActivityTag();
+		bikeLink.setActivity(bikeTagged);
+		bikeLink.setTag(tag);
+		activityTagRepository.save(bikeLink);
+
+		Activity runTagged = new Activity();
+		runTagged.setAthlete(athlete);
+		runTagged.setSport(Sport.RUN);
+		runTagged.setName("Tagged run");
+		runTagged.setStartDate(Instant.parse("2026-09-06T07:00:00Z"));
+		runTagged.setDistanceKm(12.0);
+		runTagged.setMovingTime(3000);
+		runTagged = activityRepository.save(runTagged);
+		ActivityTag runLink = new ActivityTag();
+		runLink.setActivity(runTagged);
+		runLink.setTag(tag);
+		activityTagRepository.save(runLink);
+
+		RaceBlockResponse result = raceBlockService.getRaceBlock(race);
+		Map<String, RaceBlockResponse.KeySessionItem> byActivityId = result.keySessions().items().stream()
+				.collect(Collectors.toMap(RaceBlockResponse.KeySessionItem::activityId, i -> i));
+
+		assertThat(byActivityId.get(bikeTagged.getId()).sport()).isEqualTo(Sport.BIKE);
+		assertThat(byActivityId.get(runTagged.getId()).sport()).isEqualTo(Sport.RUN);
 	}
 
 	@Test

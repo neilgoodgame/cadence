@@ -2649,6 +2649,14 @@ paths:
                             label: { type: string }
                             km: { type: [number, "null"] }
                             tss: { type: [integer, "null"] }
+                            sport:
+                              type: [string, "null"]
+                              enum: [bike, run, swim, walk, multisport, transition, null]
+                              description: >
+                                The candidate's own sport (the underlying race/activity/workout's
+                                sport), independent of the race's own sport - lets the frontend
+                                offer a sport filter alongside the reason filter. Null only for a
+                                race candidate whose own sport was never set.
                   durability:
                     type: [object, "null"]
                     description: A races (run or bike) only.

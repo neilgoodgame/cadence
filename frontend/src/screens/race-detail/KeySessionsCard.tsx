@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { KeySessionItem, KeySessionReason, KeySessions, Sport } from "../../api/types";
-import { sportColor } from "../../lib/sportColors";
+import { sportColor, sportLabel } from "../../lib/sportColors";
+
+const SPORT_ORDER: Sport[] = ["bike", "run", "swim", "walk", "row", "multisport", "transition"];
 
 const REASON_LABEL: Record<KeySessionReason, string> = {
   race: "Race",
@@ -68,19 +70,20 @@ function pageButtonStyle(disabled: boolean): React.CSSProperties {
 const ALL_REASONS = Object.keys(REASON_LABEL) as KeySessionReason[];
 
 function FilterChip({
-  reason,
-  sport,
+  label,
+  color,
+  border,
   active,
   count,
   onToggle,
 }: {
-  reason: KeySessionReason;
-  sport: Sport | null;
+  label: string;
+  color: string;
+  border: string;
   active: boolean;
   count: number;
   onToggle: () => void;
 }) {
-  const style = reasonStyle(reason, sport);
   return (
     <button
       onClick={onToggle}
@@ -91,13 +94,13 @@ function FilterChip({
         padding: "2px 9px",
         borderRadius: 20,
         cursor: count === 0 ? "default" : "pointer",
-        background: active ? style.color : "none",
-        color: active ? "var(--card)" : count === 0 ? "var(--ink3)" : style.color,
-        border: style.border,
+        background: active ? color : "none",
+        color: active ? "var(--card)" : count === 0 ? "var(--ink3)" : color,
+        border,
         opacity: count === 0 ? 0.4 : 1,
       }}
     >
-      {REASON_LABEL[reason]} ({count})
+      {label} ({count})
     </button>
   );
 }
@@ -120,6 +123,7 @@ export function KeySessionsCard({
 }) {
   const [page, setPage] = useState(0);
   const [activeReasons, setActiveReasons] = useState<Set<KeySessionReason>>(new Set(ALL_REASONS));
+  const [activeSports, setActiveSports] = useState<Set<Sport> | null>(null);
 
   const total = keySessions.items.length;
   const countByReason = ALL_REASONS.reduce(
@@ -129,7 +133,21 @@ export function KeySessionsCard({
     },
     {} as Record<KeySessionReason, number>,
   );
-  const filteredItems = keySessions.items.filter((item) => activeReasons.has(item.reason));
+  const sportsPresent = SPORT_ORDER.filter((s) => keySessions.items.some((item) => item.sport === s));
+  const countBySport = sportsPresent.reduce(
+    (acc, s) => {
+      acc[s] = keySessions.items.filter((item) => item.sport === s).length;
+      return acc;
+    },
+    {} as Record<Sport, number>,
+  );
+  // null (not yet touched) behaves as "every sport present" without needing an effect to seed it
+  // once sportsPresent is known.
+  const effectiveActiveSports = activeSports ?? new Set(sportsPresent);
+
+  const filteredItems = keySessions.items.filter(
+    (item) => activeReasons.has(item.reason) && (item.sport == null || effectiveActiveSports.has(item.sport)),
+  );
   const filteredTotal = filteredItems.length;
   const pageCount = Math.max(1, Math.ceil(filteredTotal / pageSize));
   const clampedPage = Math.min(page, pageCount - 1);
@@ -145,6 +163,16 @@ export function KeySessionsCard({
     });
   }
 
+  function toggleSport(sport: Sport) {
+    setPage(0);
+    setActiveSports((prev) => {
+      const next = new Set(prev ?? sportsPresent);
+      if (next.has(sport)) next.delete(sport);
+      else next.add(sport);
+      return next;
+    });
+  }
+
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
@@ -156,15 +184,34 @@ export function KeySessionsCard({
         </span>
       </div>
       {total > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: sportsPresent.length > 1 ? 8 : 14 }}>
+          {ALL_REASONS.map((reason) => {
+            const style = reasonStyle(reason, sport);
+            return (
+              <FilterChip
+                key={reason}
+                label={REASON_LABEL[reason]}
+                color={style.color as string}
+                border={style.border as string}
+                active={activeReasons.has(reason)}
+                count={countByReason[reason]}
+                onToggle={() => toggleReason(reason)}
+              />
+            );
+          })}
+        </div>
+      )}
+      {sportsPresent.length > 1 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-          {ALL_REASONS.map((reason) => (
+          {sportsPresent.map((s) => (
             <FilterChip
-              key={reason}
-              reason={reason}
-              sport={sport}
-              active={activeReasons.has(reason)}
-              count={countByReason[reason]}
-              onToggle={() => toggleReason(reason)}
+              key={s}
+              label={sportLabel(s)}
+              color={sportColor(s)}
+              border={`1px solid ${sportColor(s)}`}
+              active={effectiveActiveSports.has(s)}
+              count={countBySport[s]}
+              onToggle={() => toggleSport(s)}
             />
           ))}
         </div>

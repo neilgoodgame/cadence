@@ -1105,6 +1105,7 @@ export interface KeySessionItem {
   label: string;
   km: number | null;
   tss: number | null;
+  sport: Sport | null;
 }
 
 export interface KeySessions {
