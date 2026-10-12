@@ -68,19 +68,52 @@ function phaseLabel(block: RaceBlock, race: Race, index: number): string {
   return relativeWeekLabel(block.weeks, race.date, index);
 }
 
+const DAY_MS = 86_400_000;
+
+/** "29 Jun" - en-GB order, matching the prototype (and "Sep" rather than en-GB's "Sept"). */
+function shortDate(isoDate: string, extraDays = 0, opts: Intl.DateTimeFormatOptions = {}): string {
+  const d = new Date(new Date(isoDate + "T00:00:00Z").getTime() + extraDays * DAY_MS);
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC", ...opts }).replace("Sept", "Sep");
+}
+
+/** Whole-minute "H:MM", e.g. 13300s -> "3:41". */
+function hm(seconds: number): string {
+  const totalMin = Math.round(seconds / 60);
+  return `${Math.floor(totalMin / 60)}:${String(totalMin % 60).padStart(2, "0")}`;
+}
+
+/** A planned week with nothing scheduled - RaceBlockWeek's "all null" case. */
+function isUnscheduled(week: RaceBlockWeek): boolean {
+  return week.planned && week.tss == null;
+}
+
+function weekKm(week: RaceBlockWeek): number | null {
+  return week.run_km == null && week.ride_km == null ? null : (week.run_km ?? 0) + (week.ride_km ?? 0);
+}
+
+function raceNote(r: RaceBlockWeek["races"][number]): string {
+  return `${r.priority} · ${r.name}${r.result_s != null ? ` · ${formatDuration(r.result_s)}` : ""}`;
+}
+
 function totalsTile(label: string, value: string, sub?: string) {
   return (
-    <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--canvas)", minWidth: 110 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)" }}>{label}</div>
-      <div className="mono" style={{ fontSize: 17, fontWeight: 700, marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 1 }}>{sub}</div>}
+    <div key={label} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px" }}>
+      <div className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)" }}>{label}</div>
+      <div className="mono" style={{ fontSize: 16, fontWeight: 600, marginTop: 3 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: "var(--ink3)", marginTop: 1 }}>{sub}</div>}
     </div>
   );
 }
 
-/** README §4.2.7 "Training block" card - the weekly bar+CTL chart plus a hover-synced
- * weekly table. Totals tiles only make sense for a full A-race block (a B/C's 5-week window
- * is too short to read trend from), so they're gated on `race.priority === "A"`. */
+/** Weekly table columns: Wk, Week of, Phase, TSS, then RUN (km, time, runs, pace, long), RIDE
+ * (time, rides, avg W), CTL, vs comparison, note - the RUN/RIDE group header spans by index. */
+const MONO = '"JetBrains Mono", monospace';
+const TABLE_COLS = "28px 60px 48px repeat(11, minmax(44px,1fr)) minmax(100px,1.3fr)";
+
+/** README §4.2.7 "Training block" card - the weekly bar+CTL chart, a detail panel for the
+ * hovered/selected week, totals tiles and a hover-synced weekly table (layout per the Races
+ * prototype). Totals tiles only make sense for a full A-race block (a B/C's 5-week window is
+ * too short to read trend from), so they're gated on `race.priority === "A"`. */
 export function TrainingBlockCard({
   race,
   block,
@@ -104,23 +137,44 @@ export function TrainingBlockCard({
   const comparisonYear = comparisonWeeks?.[0] ? new Date(comparisonWeeks[0].week_start + "T00:00:00").getFullYear() : null;
   const truncatedByRace = block.truncated_by_race_id ? allRaces.find((r) => r.id === block.truncated_by_race_id) ?? null : null;
 
-  const hoveredIndex = selectedIndex ?? currentIndex;
-  const hoveredWeek = hoveredIndex >= 0 ? block.weeks[hoveredIndex] : null;
-  const hoveredComparisonWeek = comparisonWeeks && hoveredIndex >= 0 ? comparisonWeeks[hoveredIndex] ?? null : null;
+  const isA = race.priority === "A";
+  const N = block.weeks.length;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const inProgress = currentIndex >= 0;
+  const notStarted = isA && !inProgress && block.weeks.length > 0 && todayIso < block.weeks[0].week_start;
+  const actualWeeks = block.weeks.map((week, index) => ({ week, index })).filter(({ week }) => !week.planned);
 
-  // Peak week / longest session "excluding races" - the API doesn't break a week's totals
-  // into race vs training portions, so this approximates by excluding weeks that contain a
-  // race entirely rather than subtracting the race's own contribution out of a race week.
-  const nonRaceWeeks = block.weeks.filter((w) => w.races.length === 0);
-  const peakWeekKm = nonRaceWeeks.length > 0 ? Math.max(...nonRaceWeeks.map((w) => (w.run_km ?? 0) + (w.ride_km ?? 0))) : null;
-  const longestKm = nonRaceWeeks.length > 0 ? Math.max(...nonRaceWeeks.map((w) => Math.max(w.run_long_km ?? 0, w.ride_long_km ?? 0))) : null;
-  const totalKm = block.weeks.reduce((sum, w) => sum + (w.run_km ?? 0) + (w.ride_km ?? 0), 0);
-  const totalHours = block.weeks.reduce((sum, w) => sum + (w.hours ?? 0), 0);
-  const totalSessions = block.weeks.reduce((sum, w) => sum + (w.sessions ?? 0), 0);
+  // The week the detail panel describes when nothing's been hovered/clicked: this week if the
+  // block is in progress, the race week for a B/C, the peak-load week of a finished A block,
+  // else week 1.
+  const raceWeekIndex = currentWeekIndex(block.weeks, new Date(race.date + "T00:00:00"));
+  const peakLoadIndex = actualWeeks.reduce((best, { week, index }) => ((week.tss ?? 0) > (block.weeks[best]?.tss ?? -1) ? index : best), -1);
+  const defaultIndex = inProgress ? currentIndex : !isA && raceWeekIndex >= 0 ? raceWeekIndex : peakLoadIndex >= 0 ? peakLoadIndex : 0;
+  const focusIndex = selectedIndex ?? defaultIndex;
+  const focusWeek = block.weeks[focusIndex] ?? null;
+  const focusComparisonWeek = comparisonWeeks?.[focusIndex] ?? null;
+
+  // Peak week "excluding races" - the API doesn't break a week's distance into race vs
+  // training portions, so this approximates by skipping weeks that contain a race. The long
+  // session needs no such approximation: run_long_km/ride_long_km already exclude race activities.
+  const peakWeek = actualWeeks
+    .filter(({ week }) => week.races.length === 0)
+    .reduce<{ km: number; index: number } | null>((best, { week, index }) => {
+      const km = weekKm(week) ?? 0;
+      return best == null || km > best.km ? { km, index } : best;
+    }, null);
+  const longest = actualWeeks.reduce<{ km: number; index: number } | null>((best, { week, index }) => {
+    const km = Math.max(week.run_long_km ?? 0, week.ride_long_km ?? 0);
+    return best == null || km > best.km ? { km, index } : best;
+  }, null);
+  const totalKm = actualWeeks.reduce((sum, { week }) => sum + (weekKm(week) ?? 0), 0);
+  const totalHours = actualWeeks.reduce((sum, { week }) => sum + (week.hours ?? 0), 0);
+  const totalSessions = actualWeeks.reduce((sum, { week }) => sum + (week.sessions ?? 0), 0);
   const week1Ctl = block.weeks[0]?.ctl ?? null;
-  const latestCtl = currentIndex >= 0 ? block.weeks[currentIndex]?.ctl ?? null : block.weeks.at(-1)?.ctl ?? null;
+  const latestCtl = actualWeeks.at(-1)?.week.ctl ?? null;
   const ctlChange = week1Ctl != null && latestCtl != null ? latestCtl - week1Ctl : null;
-  const stillPlanned = block.weeks.filter((w) => w.planned).length;
+  const plannedWeeks = block.weeks.filter((w) => w.planned && !isUnscheduled(w));
+  const span = inProgress ? "so far" : "over the block";
 
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
@@ -165,7 +219,33 @@ export function TrainingBlockCard({
         </div>
       </div>
 
-      <div style={{ marginTop: 18 }}>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: "var(--ink3)", marginTop: 14 }}>
+        {(sport === "all" ? (["run", "ride", "other"] as const) : [sport]).map((s) =>
+          legendItem(SEGMENT_LABEL[s], { background: SEGMENT_COLOR[s] }),
+        )}
+        {metric === "tss" && sport === "all" && legendItem("Race", { background: "repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 4px)", opacity: 0.7 })}
+        {legendItem("Planned", { border: "1px dashed var(--ink2)" })}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 16, height: 2, background: "var(--ink)", display: "inline-block" }} />
+          Fitness (CTL)
+        </span>
+        {comparisonWeeks && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, border: "1px dashed var(--ink3)", display: "inline-block" }} />
+            <span style={{ width: 16, borderTop: "2px dashed var(--ink3)", display: "inline-block" }} />
+            {comparisonRace?.name ?? "Comparison"} {comparisonYear} block
+          </span>
+        )}
+      </div>
+
+      {notStarted && (
+        <div style={{ fontSize: 12.5, color: "var(--ink2)", background: "var(--elev)", border: "1px dashed var(--line)", borderRadius: 10, padding: "10px 12px", marginTop: 14 }}>
+          This block starts {shortDate(block.weeks[0].week_start, 0, { weekday: "short" })}. Weeks with scheduled workouts show as
+          planned; the rest fill in as you schedule them.
+        </div>
+      )}
+
+      <div style={{ marginTop: 14 }}>
         <TrainingBlockChart
           weeks={block.weeks}
           comparisonWeeks={comparisonWeeks}
@@ -173,92 +253,169 @@ export function TrainingBlockCard({
           sport={sport}
           height={210}
           currentIndex={currentIndex}
-          selectedIndex={selectedIndex}
+          selectedIndex={focusIndex}
           onSelectWeek={onSelectIndex}
+          phases={block.phases}
         />
       </div>
 
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: "var(--ink3)", marginTop: 8 }}>
-        {(sport === "all" ? (["run", "ride", "other"] as const) : [sport]).map((s) =>
-          legendItem(SEGMENT_LABEL[s], { background: SEGMENT_COLOR[s] }),
-        )}
-        {metric === "tss" && sport === "all" && legendItem("Race", { background: "repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 4px)", opacity: 0.7 })}
-        {legendItem("Planned", { border: "1px dashed var(--ink2)" })}
-        {comparisonWeeks && legendItem(`${comparisonYear ?? "Comparison"}`, { border: "1px dashed var(--ink3)" })}
-      </div>
-
-      {hoveredWeek && (
-        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 12.5, color: "var(--ink2)", marginTop: 10, padding: "8px 12px", background: "var(--canvas)", borderRadius: 8 }}>
-          <span className="mono" style={{ fontWeight: 700 }}>{hoveredWeek.week_start}</span>
-          <span>{metricAxisLabel(metric)}: {formatMetric(metricValue(hoveredWeek, metric, sport), metric)}</span>
-          {sport === "all" && (["run", "ride"] as const).map((s) => (
-            <span key={s} style={{ color: SEGMENT_COLOR[s] }}>{SEGMENT_LABEL[s]}: {formatMetric(metricValue(hoveredWeek, metric, s), metric)}</span>
-          ))}
-          {hoveredWeek.races.map((r) => <span key={r.id} style={{ color: "var(--ember)" }}>⚑ {r.name}</span>)}
-          {hoveredComparisonWeek && <span style={{ color: "var(--ink3)" }}>vs {metricAxisLabel(metric)}: {formatMetric(metricValue(hoveredComparisonWeek, metric, sport), metric)}</span>}
-        </div>
-      )}
-
-      {race.priority === "A" && (
-        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-          {totalsTile("Distance", `${totalKm.toFixed(0)} km`)}
-          {totalsTile("Time", formatDuration(totalHours * 3600), `${totalSessions} sessions`)}
-          {peakWeekKm != null && totalsTile("Peak week", `${peakWeekKm.toFixed(0)} km`)}
-          {longestKm != null && totalsTile("Longest session", `${longestKm.toFixed(1)} km`)}
-          {ctlChange != null && totalsTile("Fitness change", `${ctlChange >= 0 ? "+" : ""}${ctlChange.toFixed(0)}`)}
-          {totalsTile("Still planned", `${stillPlanned} wk`)}
-        </div>
-      )}
-
-      <div style={{ maxHeight: 360, overflowY: "auto", marginTop: 18 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr style={{ position: "sticky", top: 0, background: "var(--card)", textAlign: "left" }}>
-              {["Wk", "Week of", "Phase", "TSS", "Run km", "Run time", "Runs", "Pace", "Long", "Ride time", "Rides", "Avg W", "CTL", comparisonYear ? `vs ${comparisonYear}` : "vs comp."].map((h) => (
-                <th key={h} style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--ink3)", padding: "5px 7px", borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" }}>
-                  {h}
-                </th>
+      {focusWeek && (
+        <div style={{ background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 3, marginTop: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>
+            {isA ? `Week ${focusIndex + 1} of ${N}` : phaseLabel(block, race, focusIndex) === "Race" ? "Race week" : phaseLabel(block, race, focusIndex)}
+            {` · ${shortDate(focusWeek.week_start)}–${shortDate(focusWeek.week_start, 6)}`}
+            {focusIndex === currentIndex ? " · this week" : focusWeek.planned ? " · planned" : ""}
+          </div>
+          <div className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
+            {isUnscheduled(focusWeek)
+              ? "Nothing scheduled yet"
+              : [
+                  focusWeek.tss != null && `${focusWeek.tss} TSS`,
+                  weekKm(focusWeek) != null && `${weekKm(focusWeek)!.toFixed(1)} km`,
+                  focusWeek.hours != null && `${hm(focusWeek.hours * 3600)} h`,
+                  focusWeek.sessions != null && `${focusWeek.sessions} sessions`,
+                  (race.sport === "bike" ? focusWeek.ride_long_km : focusWeek.run_long_km) != null &&
+                    `long ${(race.sport === "bike" ? focusWeek.ride_long_km : focusWeek.run_long_km)!.toFixed(1)} km`,
+                  focusWeek.ctl != null && `CTL ${Math.round(focusWeek.ctl)}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+          </div>
+          {sport === "all" && !isUnscheduled(focusWeek) && (
+            <div className="mono" style={{ fontSize: 12, display: "flex", gap: 12 }}>
+              {(["run", "ride"] as const).map((s) => (
+                <span key={s} style={{ color: SEGMENT_COLOR[s] }}>
+                  {SEGMENT_LABEL[s]}: {formatMetric(metricValue(focusWeek, metric, s), metric)} {metricAxisLabel(metric)}
+                </span>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {block.weeks.map((week, i) => {
-              const comparisonWeek = comparisonWeeks?.[i] ?? null;
-              const delta = comparisonWeek ? (metricValue(week, metric, sport) ?? 0) - (metricValue(comparisonWeek, metric, sport) ?? 0) : null;
-              const isCurrent = i === currentIndex;
-              const isSelected = i === selectedIndex;
-              return (
-                <tr
-                  key={i}
-                  onMouseEnter={() => onSelectIndex(i)}
+            </div>
+          )}
+          {focusWeek.races.length > 0 && (
+            <div style={{ fontSize: 12, fontWeight: 600 }}>⚑ {focusWeek.races.map((r) => raceNote(r).replace(`${r.priority} ·`, `${r.priority} race ·`)).join(", ")}</div>
+          )}
+          {focusComparisonWeek && (
+            <div className="mono" style={{ fontSize: 11.5, color: "var(--ink3)" }}>
+              {comparisonRace?.name ?? "Comparison"} {comparisonYear}, week {focusIndex + 1}:{" "}
+              {isUnscheduled(focusComparisonWeek) || focusComparisonWeek.tss == null
+                ? "no data"
+                : [
+                    `${focusComparisonWeek.tss} TSS`,
+                    weekKm(focusComparisonWeek) != null && `${weekKm(focusComparisonWeek)!.toFixed(1)} km`,
+                    focusComparisonWeek.ctl != null && `CTL ${Math.round(focusComparisonWeek.ctl)}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isA && actualWeeks.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginTop: 14 }}>
+          {totalsTile("Distance", `${Math.round(totalKm).toLocaleString("en-GB")} km`, span)}
+          {totalsTile("Time", `${hm(totalHours * 3600)} h`, `${totalSessions} sessions`)}
+          {peakWeek && totalsTile("Peak week", `${Math.round(peakWeek.km)} km`, `week ${peakWeek.index + 1}, excluding races`)}
+          {longest && longest.km > 0 && totalsTile("Longest session", `${longest.km.toFixed(1)} km`, `week ${longest.index + 1}, excluding races`)}
+          {week1Ctl != null && latestCtl != null && ctlChange != null &&
+            totalsTile("Fitness (CTL)", `${Math.round(week1Ctl)} → ${Math.round(latestCtl)}`, `${ctlChange >= 0 ? "+" : ""}${Math.round(ctlChange)} ${span}`)}
+          {inProgress && plannedWeeks.length > 0 &&
+            totalsTile(
+              "Still planned",
+              `${plannedWeeks.length} ${plannedWeeks.length === 1 ? "week" : "weeks"}`,
+              `${plannedWeeks.reduce((sum, w) => sum + (w.tss ?? 0), 0).toLocaleString("en-GB")} TSS scheduled`,
+            )}
+        </div>
+      )}
+
+      <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflowX: "auto", overflowY: "hidden", marginTop: 14 }}>
+        <div style={{ minWidth: 910 }}>
+          <div className="mono" style={{ display: "grid", gridTemplateColumns: TABLE_COLS, gap: 10, padding: "8px 14px 0", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "var(--ink2)" }}>
+            <div style={{ gridColumn: "5 / 10", borderBottom: `2px solid ${SEGMENT_COLOR.run}`, paddingBottom: 3, textAlign: "center" }}>RUN</div>
+            <div style={{ gridColumn: "10 / 13", borderBottom: `2px solid ${SEGMENT_COLOR.ride}`, paddingBottom: 3, textAlign: "center" }}>RIDE</div>
+          </div>
+          <div className="mono" style={{ display: "grid", gridTemplateColumns: TABLE_COLS, gap: 10, padding: "8px 14px", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)" }}>
+            <div>Wk</div>
+            <div>Week of</div>
+            <div>Phase</div>
+            {["TSS", "km", "Time", "Runs", "Pace", "Long", "Time", "Rides", "Avg W", "CTL"].map((h, i) => (
+              <div key={i} style={{ textAlign: "right" }} title={h === "Pace" ? "Average pace, min/km" : undefined}>{h}</div>
+            ))}
+            <div style={{ textAlign: "right" }} title={`${metricAxisLabel(metric)} difference vs the comparison block, same week`}>
+              {!isA ? "" : comparisonYear ? `vs ${comparisonYear}` : "vs prev"}
+            </div>
+            <div />
+          </div>
+          {block.weeks.map((week, i) => {
+            const comparisonWeek = comparisonWeeks?.[i] ?? null;
+            const none = isUnscheduled(week);
+            const thisValue = metricValue(week, metric, sport);
+            const compValue = comparisonWeek ? metricValue(comparisonWeek, metric, sport) : null;
+            const delta = none || thisValue == null || compValue == null ? null : thisValue - compValue;
+            const isCurrent = i === currentIndex;
+            const isSelected = i === focusIndex;
+            const ink = none ? "var(--ink3)" : week.planned ? "var(--ink2)" : "var(--ink)";
+            const num = (bold = false): React.CSSProperties => ({ fontFamily: MONO, textAlign: "right", fontSize: 12.5, color: ink, fontWeight: bold ? 700 : 500 });
+            const dash = "—";
+            const note = none
+              ? "Not scheduled"
+              : week.races.length > 0
+                ? `⚑ ${week.races.map(raceNote).join(", ")}`
+                : week.planned
+                  ? "Planned"
+                  : isCurrent
+                    ? "This week"
+                    : "";
+            return (
+              <div
+                key={i}
+                onMouseEnter={() => onSelectIndex(i)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: TABLE_COLS,
+                  gap: 10,
+                  padding: "8px 14px",
+                  alignItems: "center",
+                  borderTop: "1px solid var(--line)",
+                  cursor: "pointer",
+                  background: isSelected ? "var(--elev)" : "transparent",
+                  boxShadow: isCurrent ? "inset 3px 0 0 var(--ember)" : "none",
+                  fontStyle: week.planned ? "italic" : "normal",
+                }}
+              >
+                <div style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 700, color: isCurrent ? "var(--ember)" : ink }}>{i + 1}</div>
+                <div style={{ fontFamily: MONO, fontSize: 12, color: "var(--ink2)" }}>{shortDate(week.week_start)}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink3)" }}>{phaseLabel(block, race, i)}</div>
+                <div style={num(true)}>{week.tss ?? dash}</div>
+                <div style={num()}>{week.run_km?.toFixed(1) ?? dash}</div>
+                <div style={num()}>{week.run_moving_s != null && !none ? hm(week.run_moving_s) : dash}</div>
+                <div style={num()}>{week.run_count ?? dash}</div>
+                <div style={num()}>{week.run_avg_pace_s_per_km != null ? formatPace(week.run_avg_pace_s_per_km).replace(" /km", "") : dash}</div>
+                <div style={num()}>{week.run_long_km?.toFixed(1) ?? dash}</div>
+                <div style={num()}>{week.ride_moving_s ? hm(week.ride_moving_s) : dash}</div>
+                <div style={num()}>{week.ride_count || dash}</div>
+                <div style={num()}>{week.ride_avg_power_w != null ? `${week.ride_avg_power_w} W` : dash}</div>
+                <div style={num()}>{week.ctl != null && !none ? Math.round(week.ctl) : dash}</div>
+                <div style={{ ...num(), fontWeight: 600, color: delta == null ? "var(--ink3)" : delta >= 0 ? "#2fa66a" : "#e0442e" }}>
+                  {delta == null ? (isA ? dash : "") : `${delta >= 0 ? "+" : "−"}${formatMetric(Math.abs(delta), metric)}`}
+                </div>
+                <div
                   style={{
-                    cursor: "pointer",
-                    fontStyle: week.planned ? "italic" : "normal",
-                    background: isSelected ? "var(--canvas)" : "transparent",
-                    boxShadow: isCurrent ? "inset 3px 0 0 var(--ember)" : undefined,
+                    fontSize: 12,
+                    fontWeight: !none && week.races.length > 0 ? 600 : 500,
+                    color: !none && week.races.length > 0 ? "var(--ink)" : "var(--ink3)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    fontStyle: "normal",
                   }}
+                  title={note}
                 >
-                  <td className="mono" style={{ padding: "5px 7px" }}>{i + 1}</td>
-                  <td className="mono" style={{ padding: "5px 7px", whiteSpace: "nowrap" }}>{week.week_start}</td>
-                  <td style={{ padding: "5px 7px", whiteSpace: "nowrap" }}>{phaseLabel(block, race, i)}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.tss?.toFixed(0) ?? "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.run_km?.toFixed(0) ?? "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.run_moving_s != null ? formatDuration(week.run_moving_s) : "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.run_count ?? "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.run_avg_pace_s_per_km != null ? formatPace(week.run_avg_pace_s_per_km) : "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.run_long_km?.toFixed(1) ?? week.ride_long_km?.toFixed(0) ?? "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.ride_moving_s != null ? formatDuration(week.ride_moving_s) : "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.ride_count ?? "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.ride_avg_power_w ?? "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px" }}>{week.ctl?.toFixed(0) ?? "–"}</td>
-                  <td className="mono" style={{ padding: "5px 7px", color: delta == null ? "var(--ink3)" : delta >= 0 ? "#2fa66a" : "#e0442e" }}>
-                    {delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(0)}` : "–"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  {note}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
