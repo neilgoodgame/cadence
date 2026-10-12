@@ -13,6 +13,8 @@ import { GearScreen } from "./screens/GearScreen";
 import { ImportScreen } from "./screens/ImportScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { PreferencesScreen } from "./screens/PreferencesScreen";
+import { RaceDetailScreen } from "./screens/RaceDetailScreen";
+import { RacesScreen } from "./screens/RacesScreen";
 import { ScheduledWorkoutScreen } from "./screens/ScheduledWorkoutScreen";
 import { ThresholdHistoryScreen } from "./screens/ThresholdHistoryScreen";
 import { VerifyEmailScreen } from "./screens/VerifyEmailScreen";
@@ -44,6 +46,8 @@ export function App() {
                 <Route path="/workouts/:id" element={<WorkoutDetailScreen />} />
                 <Route path="/workouts/:id/compare" element={<WorkoutComparisonScreen />} />
                 <Route path="/preferences" element={<PreferencesScreen />} />
+                <Route path="/races" element={<RacesScreen />} />
+                <Route path="/races/:raceId" element={<RaceDetailScreen />} />
                 <Route path="/scheduled/:id" element={<ScheduledWorkoutScreen />} />
                 <Route path="/thresholds/:field" element={<ThresholdHistoryScreen />} />
                 {/* ThresholdHistoryScreen itself redirects an invalid :field to /thresholds/ftp

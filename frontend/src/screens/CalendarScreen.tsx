@@ -405,8 +405,9 @@ export function CalendarScreen() {
                     );
                   })}
                   {(racesByDate.get(key) ?? []).map((race) => (
-                    <div
+                    <Link
                       key={race.id}
+                      to={`/races/${race.id}`}
                       onClick={(e) => e.stopPropagation()}
                       style={{
                         fontSize: 11,
@@ -415,6 +416,7 @@ export function CalendarScreen() {
                         borderLeft: `3px solid var(--ember)`,
                         background: "var(--ember)22",
                         color: "var(--ink)",
+                        textDecoration: "none",
                         display: "block",
                       }}
                     >
@@ -424,7 +426,7 @@ export function CalendarScreen() {
                           {[race.distance_km != null && `${race.distance_km} km`, race.goal_time && `Goal: ${race.goal_time}`].filter(Boolean).join(" · ")}
                         </div>
                       )}
-                    </div>
+                    </Link>
                   ))}
                 </div>
               );

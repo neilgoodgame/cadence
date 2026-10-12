@@ -13,7 +13,7 @@ import { LapsTab } from "./activity-analysis/LapsTab";
 import { MatchedWorkoutCard } from "./activity-analysis/MatchedWorkoutCard";
 import { MultisportLegs } from "./activity-analysis/MultisportLegs";
 import { MultisportStreamChart } from "./activity-analysis/MultisportStreamChart";
-import { RouteMap } from "./activity-analysis/RouteMap";
+import { ActivityRouteMap } from "./activity-analysis/RouteMap";
 import { StatRow } from "./activity-analysis/StatRow";
 import { StatsTab } from "./activity-analysis/StatsTab";
 import { StreamChart } from "./activity-analysis/StreamChart";
@@ -78,7 +78,7 @@ export function ActivityAnalysisScreen() {
             <StreamChart activity={activity} />
           )}
         </div>
-        <RouteMap activity={activity} />
+        <ActivityRouteMap activity={activity} />
       </div>
 
       <HydrationBlock activity={activity} />

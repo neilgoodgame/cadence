@@ -9,6 +9,15 @@ export function formatDuration(totalSeconds: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+/** "H:MM:SS" or "M:SS" -> total seconds, or null if unparseable - the inverse of formatDuration,
+ * for race goal/result times (Django DurationField / Java Duration both serialize this way). */
+export function parseDuration(value: string): number | null {
+  const parts = value.split(":").map(Number);
+  if (parts.length < 2 || parts.length > 3 || parts.some((p) => Number.isNaN(p))) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return parts[0] * 60 + parts[1];
+}
+
 /** Seconds per km -> "M:SS /km". */
 export function formatPace(secondsPerKm: number): string {
   const minutes = Math.floor(secondsPerKm / 60);

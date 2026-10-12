@@ -27,7 +27,7 @@ export function NextRaceCard() {
 
   return (
     <div
-      onClick={() => navigate("/preferences?tab=races")}
+      onClick={() => navigate(`/races/${next.id}`)}
       style={{
         display: "flex",
         alignItems: "center",

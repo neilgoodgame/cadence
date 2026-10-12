@@ -1,185 +1,109 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { deleteRace, listRaces, updateRace } from "../../api/races";
-import type { Race } from "../../api/types";
+import { useMutation } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { updateAthlete } from "../../api/athletes";
+import { useAuth } from "../../auth/AuthContext";
+import type { AthleteUpdate } from "../../api/types";
 
-const SPORTS = ["run", "bike", "swim", "multisport"];
+const BLOCK_WEEKS = [12, 16, 20, 24];
+const KEY_SESSION_CAPS = [6, 8, 10, 12, 15, 20];
 
-function formatGoalTime(iso: string | null): string {
-  if (!iso) return "";
-  // Django DurationField returns "HH:MM:SS" or "H:MM:SS"
-  return iso;
-}
-
-function RaceRow({ race, onDelete }: { race: Race; onDelete: () => void }) {
-  const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(race.name);
-  const [date, setDate] = useState(race.date);
-  const [sport, setSport] = useState(race.sport);
-  const [distanceKm, setDistanceKm] = useState(race.distance_km?.toString() ?? "");
-  const [goalTime, setGoalTime] = useState(formatGoalTime(race.goal_time));
-  const [resultTime, setResultTime] = useState(formatGoalTime(race.result_time));
-  const [url, setUrl] = useState(race.url ?? "");
-  const [resultsUrl, setResultsUrl] = useState(race.results_url ?? "");
-  const [notes, setNotes] = useState(race.notes);
-
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      updateRace(race.id, {
-        name,
-        date,
-        sport: sport || undefined,
-        distance_km: distanceKm ? parseFloat(distanceKm) : null,
-        goal_time: goalTime || null,
-        result_time: resultTime || null,
-        url: url || null,
-        results_url: resultsUrl || null,
-        notes,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["races"] });
-      setEditing(false);
-    },
+/** Race CRUD now lives on the race detail page (`/races/:id`) - this tab is just a pointer
+ * there, plus the two block-level settings (README §4 "Preferences › Races"). */
+export function RacesTab() {
+  const { user, setUser } = useAuth();
+  const [form, setForm] = useState<AthleteUpdate>({
+    race_block_weeks: user?.race_block_weeks ?? 16,
+    race_key_session_cap: user?.race_key_session_cap ?? 10,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteRace(race.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["races"] });
-      onDelete();
-    },
+  const mutation = useMutation({
+    mutationFn: () => updateAthlete(user!.id, form),
+    onSuccess: (updated) => setUser(updated),
   });
 
-  const isPast = race.date < new Date().toISOString().slice(0, 10);
-
-  if (editing) {
-    return (
-      <div style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Race name" style={inputStyle} />
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
-          <select value={sport} onChange={(e) => setSport(e.target.value)} style={inputStyle}>
-            <option value="">Sport (optional)</option>
-            {SPORTS.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-          </select>
-          <input value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} placeholder="Distance (km)" type="number" step="0.1" style={inputStyle} />
-          <input value={goalTime} onChange={(e) => setGoalTime(e.target.value)} placeholder="Goal time (H:MM:SS)" style={inputStyle} />
-          <input value={resultTime} onChange={(e) => setResultTime(e.target.value)} placeholder="Result time (H:MM:SS)" style={inputStyle} />
-        </div>
-        <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Race website (optional)" style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
-        <input type="url" value={resultsUrl} onChange={(e) => setResultsUrl(e.target.value)} placeholder="Results URL (optional)" style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
-        <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" style={{ ...inputStyle, width: "100%", boxSizing: "border-box" }} />
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button onClick={() => saveMutation.mutate()} disabled={!name || !date || saveMutation.isPending} style={primaryBtn}>
-            {saveMutation.isPending ? "Saving…" : "Save"}
-          </button>
-          <button onClick={() => setEditing(false)} style={ghostBtn}>Cancel</button>
-        </div>
-      </div>
-    );
+  if (!user) {
+    return null;
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: "1px solid var(--line)", opacity: isPast && !race.result_time ? 0.6 : 1 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>{race.name}</div>
-        <div style={{ fontSize: 12, color: "var(--ink3)" }}>
-          {race.date}
-          {race.sport && ` · ${race.sport.charAt(0).toUpperCase() + race.sport.slice(1)}`}
-          {race.distance_km != null && ` · ${race.distance_km} km`}
-          {race.goal_time && ` · Goal: ${race.goal_time}`}
-          {race.result_time && ` · Result: ${race.result_time}`}
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 460 }}>
+      <Link
+        to="/races"
+        style={{
+          display: "block",
+          padding: "14px 18px",
+          borderRadius: 10,
+          border: "1px solid var(--line)",
+          background: "var(--card)",
+          color: "var(--ink)",
+          fontSize: 14,
+          fontWeight: 600,
+          textDecoration: "none",
+        }}
+      >
+        Go to Races →
+        <div style={{ fontSize: 12, color: "var(--ink3)", fontWeight: 400, marginTop: 2 }}>
+          Add, edit and delete races, link courses, and set goals from the race page itself.
         </div>
-        {race.url && (
-          <a href={race.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ fontSize: 12, color: "var(--ember)", marginTop: 2, display: "block" }}>
-            {new URL(race.url).hostname}
-          </a>
-        )}
-        {race.results_url && (
-          <a href={race.results_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ fontSize: 12, color: "var(--ember)", marginTop: 2, display: "block" }}>
-            Results ↗
-          </a>
-        )}
-        {race.notes && <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>{race.notes}</div>}
+      </Link>
+
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>Training block length</h3>
+        <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 10 }}>
+          How many weeks an A race's training block covers. B and C races always use a fixed 5-week window around the
+          race itself.
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {BLOCK_WEEKS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setForm({ ...form, race_block_weeks: n })}
+              style={{
+                flex: 1,
+                padding: "7px 0",
+                borderRadius: 8,
+                border: `1px solid ${form.race_block_weeks === n ? "var(--ember)" : "var(--line)"}`,
+                background: form.race_block_weeks === n ? "var(--ember)22" : "transparent",
+                color: form.race_block_weeks === n ? "var(--ember)" : "var(--ink2)",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
       </div>
-      {isPast && !race.result_time && (
-        <span style={{ fontSize: 11, color: "var(--ink3)", fontStyle: "italic" }}>no result</span>
-      )}
-      {race.activity_id && (
-        <span style={{ fontSize: 11, color: "#2fa66a", fontWeight: 600 }}>linked</span>
-      )}
-      <button onClick={() => setEditing(true)} style={ghostBtn}>Edit</button>
-      <button onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending} style={{ ...ghostBtn, color: "#e0442e" }}>Delete</button>
+
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>Key sessions shown per race</h3>
+        <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 10 }}>
+          How many of the ranked key sessions to show on a race's training-block card.
+        </div>
+        <select
+          value={form.race_key_session_cap}
+          onChange={(e) => setForm({ ...form, race_key_session_cap: Number(e.target.value) })}
+          style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid var(--line)", fontSize: 13, maxWidth: 160 }}
+        >
+          {KEY_SESSION_CAPS.map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <button
+          onClick={() => mutation.mutate()}
+          disabled={mutation.isPending}
+          style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700 }}
+        >
+          {mutation.isPending ? "Saving…" : "Save changes"}
+        </button>
+        {mutation.isSuccess && <span style={{ marginLeft: 10, fontSize: 13, color: "#2fa66a" }}>Saved.</span>}
+      </div>
     </div>
   );
 }
-
-export function RacesTab() {
-  const { data } = useQuery({ queryKey: ["races"], queryFn: listRaces });
-
-  const races = data?.data ?? [];
-  const today = new Date().toISOString().slice(0, 10);
-  const upcoming = races.filter((r) => r.date >= today);
-  const past = races.filter((r) => r.date < today);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 560 }}>
-      <p style={{ fontSize: 13, color: "var(--ink3)", margin: 0 }}>
-        Add races from the Calendar view. Link a completed race to an activity to track your result automatically.
-      </p>
-
-      {upcoming.length > 0 && (
-        <div>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 4px" }}>Upcoming</h3>
-          {upcoming.map((r) => <RaceRow key={r.id} race={r} onDelete={() => {}} />)}
-        </div>
-      )}
-
-      {past.length > 0 && (
-        <div>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--ink3)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 4px" }}>Past</h3>
-          {past.map((r) => <RaceRow key={r.id} race={r} onDelete={() => {}} />)}
-        </div>
-      )}
-
-      {races.length === 0 && (
-        <div style={{ fontSize: 13, color: "var(--ink3)" }}>No races yet. Add one from the Calendar.</div>
-      )}
-    </div>
-  );
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: "8px 12px",
-  borderRadius: 8,
-  border: "1px solid var(--line)",
-  background: "var(--elev)",
-  color: "var(--ink)",
-  fontSize: 13,
-  width: "100%",
-  boxSizing: "border-box",
-};
-
-const ghostBtn: React.CSSProperties = {
-  padding: "6px 12px",
-  borderRadius: 8,
-  border: "1px solid var(--line)",
-  background: "none",
-  color: "var(--ink2)",
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const primaryBtn: React.CSSProperties = {
-  alignSelf: "flex-start",
-  padding: "8px 16px",
-  borderRadius: 8,
-  border: "none",
-  background: "var(--ember)",
-  color: "#fff",
-  fontSize: 13,
-  fontWeight: 700,
-  cursor: "pointer",
-};
