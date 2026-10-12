@@ -143,6 +143,38 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void getRaceReturnsRaceForOwner() {
+		User athlete = newUser("races-get-owner@example.cc");
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Goal Marathon");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		race.setPriority(RacePriority.A);
+		race = raceRepository.save(race);
+		authAsSelf(athlete.getId());
+
+		RaceResponse response = raceController.getRace(race.getId());
+
+		assertThat(response.name()).isEqualTo("Goal Marathon");
+		assertThat(response.priority()).isEqualTo("A");
+	}
+
+	@Test
+	void outsiderWithoutGrantCannotGetSomeoneElsesRace() {
+		User athlete = newUser("races-get-outsider-athlete@example.cc");
+		User outsider = newUser("races-get-outsider@example.cc");
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Goal Marathon");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		race = raceRepository.save(race);
+		final String raceId = race.getId();
+		authAsDelegated(outsider.getId(), athlete.getId(), Set.of());
+
+		assertThatThrownBy(() -> raceController.getRace(raceId)).isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
 	void athleteCanPostAndListComments() {
 		User athlete = newUser("race-comments-athlete@example.cc");
 		Race race = new Race();
