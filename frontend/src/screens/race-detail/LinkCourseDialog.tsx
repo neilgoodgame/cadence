@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listActivities } from "../../api/activities";
+import { getActivity, listActivities } from "../../api/activities";
 import { createCourseFromActivity, listCourses, updateCourse, uploadCourseGpx } from "../../api/courses";
 import { updateRace } from "../../api/races";
 import type { Course } from "../../api/types";
@@ -121,10 +121,20 @@ function ActivityTab({ raceActivityId, onLinked }: { raceActivityId: string | nu
   // `sort` is a CQL field name ("date"), not the model column ("start_date") - an unknown sort
   // field makes both backends 400 the whole request.
   const { data, isLoading, isError } = useQuery({ queryKey: ["activities", "with-gps"], queryFn: () => listActivities({ limit: 50, sort: "-date" }) });
-  const activities = (data?.data ?? []).filter((a) => a.has_gps);
+  // The race's own activity may be older than the 50 most recent, so fetch it separately and pin
+  // it to the top of the list (it's pre-selected above).
+  const { data: raceActivity } = useQuery({
+    queryKey: ["activity", raceActivityId],
+    queryFn: () => getActivity(raceActivityId!),
+    enabled: raceActivityId != null,
+  });
+  const recent = (data?.data ?? []).filter((a) => a.has_gps && a.id !== raceActivityId);
+  const activities = raceActivity?.has_gps ? [raceActivity, ...recent] : recent;
+  // Ignore a selection that isn't listed (e.g. the pre-selected race activity has no GPS).
+  const chosen = activities.some((a) => a.id === selected) ? selected : null;
 
   const mutation = useMutation({
-    mutationFn: () => createCourseFromActivity(selected!, name || "New course"),
+    mutationFn: () => createCourseFromActivity(chosen!, name || "New course"),
     onSuccess: (course) => onLinked(course.id),
   });
 
@@ -132,8 +142,8 @@ function ActivityTab({ raceActivityId, onLinked }: { raceActivityId: string | nu
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
         {activities.map((a) => (
-          <label key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, cursor: "pointer", background: selected === a.id ? "var(--canvas)" : "transparent" }}>
-            <input type="radio" checked={selected === a.id} onChange={() => setSelected(a.id)} />
+          <label key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, cursor: "pointer", background: chosen === a.id ? "var(--canvas)" : "transparent" }}>
+            <input type="radio" checked={chosen === a.id} onChange={() => setSelected(a.id)} />
             <span style={{ flex: 1, fontSize: 13 }}>{a.name}</span>
             <span style={{ fontSize: 11, color: "var(--ink3)" }}>{a.start_date.slice(0, 10)}</span>
             {a.id === raceActivityId && (
@@ -148,7 +158,7 @@ function ActivityTab({ raceActivityId, onLinked }: { raceActivityId: string | nu
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Course name" style={fieldStyle} />
       <button
         onClick={() => mutation.mutate()}
-        disabled={!selected || !name || mutation.isPending}
+        disabled={!chosen || !name || mutation.isPending}
         style={{ alignSelf: "flex-start", border: "none", borderRadius: 8, background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px", cursor: "pointer" }}
       >
         {mutation.isPending ? "Creating…" : "Create course"}
