@@ -69,6 +69,13 @@ public class RaceController {
 		return response;
 	}
 
+	@GetMapping("/v1/races/{id}")
+	public RaceResponse getRace(@PathVariable String id) {
+		Race race = raceService.getRace(id);
+		accessGuard.requireRead(race.getAthlete().getId());
+		return raceService.toResponse(race);
+	}
+
 	@PatchMapping("/v1/races/{id}")
 	public RaceResponse updateRace(@PathVariable String id, @RequestBody RaceUpdateRequest request) {
 		Race race = raceService.getRace(id);
