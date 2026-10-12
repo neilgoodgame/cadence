@@ -33,8 +33,6 @@ QUALITY_TYPE_KEYWORDS = ("threshold", "tempo", "vo2", "race pace", "marathon pac
 QUALITY_INTENSITY_FACTOR = 0.85
 GOAL_PACE_WINDOW_S = 20 * 60
 
-_REASON_RANK = {"race": 0, "tagged": 1, "long": 2, "quality": 3, "best_effort": 4, "planned": 5}
-
 
 # --- week arithmetic -------------------------------------------------------------
 
@@ -462,7 +460,7 @@ def _activity_candidate(activity: Activity, reason: str, label: str) -> dict[str
     }
 
 
-def key_sessions(race: Race, window_start: date, window_end: date, cap: int) -> dict[str, Any]:
+def key_sessions(race: Race, window_start: date, window_end: date) -> dict[str, Any]:
     athlete_id = race.athlete_id
     candidates: list[dict[str, Any]] = []
     seen_activity_ids: set[str] = set()
@@ -557,12 +555,10 @@ def key_sessions(race: Race, window_start: date, window_end: date, cap: int) -> 
             planned_count += 1
 
     total_candidates = len(candidates)
-    candidates.sort(key=lambda c: (_REASON_RANK[c["reason"]], -c["date"].toordinal()))
-    top = candidates[:cap]
-    top.sort(key=lambda c: c["date"])
-    for c in top:
+    candidates.sort(key=lambda c: c["date"])
+    for c in candidates:
         c["date"] = c["date"].isoformat()
-    return {"total_candidates": total_candidates, "items": top}
+    return {"total_candidates": total_candidates, "items": candidates}
 
 
 # --- sweat rate -----------------------------------------------------------------------
@@ -596,7 +592,6 @@ def get_race_block(race: Race) -> dict[str, Any]:
     athlete: User = race.athlete
     today = timezone.now().date()
     block_weeks_pref = athlete.race_block_weeks
-    cap = athlete.race_key_session_cap
 
     if race.priority == "A":
         block = a_race_block_range(race, block_weeks_pref)
@@ -630,7 +625,7 @@ def get_race_block(race: Race) -> dict[str, Any]:
         "truncated_by_race_id": truncated_by_race_id,
         "phases": phase_list,
         "race_day_form": race_day_form(race),
-        "key_sessions": key_sessions(race, start_week, end_week, cap),
+        "key_sessions": key_sessions(race, start_week, end_week),
         "sweat_rate_l_per_h": sweat_rate_value,
         "sweat_rate_source": sweat_rate_source,
     }
