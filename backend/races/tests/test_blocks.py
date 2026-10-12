@@ -158,7 +158,10 @@ class KeySessionsTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")
 
-    def test_cap_limits_items_but_reports_true_total(self):
+    def test_returns_every_candidate_not_just_a_capped_subset(self):
+        """key_sessions no longer trims to the athlete's race_key_session_cap - the frontend
+        paginates the full candidate list client-side instead, using that preference as its
+        page size. items must always equal total_candidates."""
         race = Race.objects.create(
             athlete=self.athlete,
             name="Goal Marathon",
@@ -179,9 +182,9 @@ class KeySessionsTests(TestCase):
                 sport="run",
             )
 
-        result = key_sessions(race, window_start, window_end, cap=3)
-        self.assertEqual(len(result["items"]), 3)
+        result = key_sessions(race, window_start, window_end)
         self.assertGreaterEqual(result["total_candidates"], 4)  # 4 "long" candidates kept at most
+        self.assertEqual(len(result["items"]), result["total_candidates"])
 
     def test_races_in_window_are_always_included(self):
         race = Race.objects.create(
@@ -200,7 +203,7 @@ class KeySessionsTests(TestCase):
             sport="run",
             distance_km=10.0,
         )
-        result = key_sessions(race, date(2026, 9, 1), date(2026, 10, 11), cap=10)
+        result = key_sessions(race, date(2026, 9, 1), date(2026, 10, 11))
         names = [item["name"] for item in result["items"]]
         self.assertIn(tune_up.name, names)
 

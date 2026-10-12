@@ -58,9 +58,6 @@ public class RaceBlockService {
 	private static final double QUALITY_INTENSITY_FACTOR = 0.85;
 	private static final int GOAL_PACE_WINDOW_S = 20 * 60;
 
-	private static final Map<String, Integer> REASON_RANK =
-			Map.of("race", 0, "tagged", 1, "long", 2, "quality", 3, "best_effort", 4, "planned", 5);
-
 	private final RaceRepository raceRepository;
 	private final ActivityRepository activityRepository;
 	private final ScheduledWorkoutRepository scheduledWorkoutRepository;
@@ -473,7 +470,7 @@ public class RaceBlockService {
 				label, a.getDistanceKm(), a.getTss());
 	}
 
-	private RaceBlockResponse.KeySessions keySessions(Race race, LocalDate windowStart, LocalDate windowEnd, int cap) {
+	private RaceBlockResponse.KeySessions keySessions(Race race, LocalDate windowStart, LocalDate windowEnd) {
 		String athleteId = race.getAthlete().getId();
 		List<Candidate> candidates = new ArrayList<>();
 		Set<String> seenActivityIds = new java.util.HashSet<>();
@@ -541,11 +538,9 @@ public class RaceBlockService {
 		}
 
 		int totalCandidates = candidates.size();
-		candidates.sort(Comparator.<Candidate>comparingInt(c -> REASON_RANK.get(c.reason()))
-				.thenComparing(Comparator.comparing(Candidate::date).reversed()));
-		List<Candidate> top = candidates.stream().limit(cap).sorted(Comparator.comparing(Candidate::date)).toList();
+		candidates.sort(Comparator.comparing(Candidate::date));
 
-		List<RaceBlockResponse.KeySessionItem> items = top.stream()
+		List<RaceBlockResponse.KeySessionItem> items = candidates.stream()
 				.map(c -> new RaceBlockResponse.KeySessionItem(c.date(), c.name(), c.activityId(), c.scheduledWorkoutId(),
 						c.reason(), c.label(), c.km(), c.tss()))
 				.toList();
@@ -583,7 +578,6 @@ public class RaceBlockService {
 		User athlete = userRepository.findById(race.getAthlete().getId()).orElseThrow();
 		LocalDate today = LocalDate.now();
 		int blockWeeksPref = athlete.getRaceBlockWeeks();
-		int cap = athlete.getRaceKeySessionCap();
 
 		LocalDate startWeek;
 		LocalDate endWeek;
@@ -645,7 +639,7 @@ public class RaceBlockService {
 		}
 
 		return new RaceBlockResponse(startWeek, endWeek, weeksRequested, truncatedByRaceId, phaseList, parent, weekly,
-				raceDayForm(race), comparison, prediction, keySessions(race, startWeek, endWeek, cap), durability,
+				raceDayForm(race), comparison, prediction, keySessions(race, startWeek, endWeek), durability,
 				sweat.value(), sweat.source());
 	}
 

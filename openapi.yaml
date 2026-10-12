@@ -2627,6 +2627,11 @@ paths:
                       from_race_id: { type: string }
                   key_sessions:
                     type: object
+                    description: >
+                      `items` holds every candidate session found in the block/window, sorted by
+                      date - it is not trimmed by the athlete's race_key_session_cap preference
+                      (that preference is a frontend-only paging size; the client paginates this
+                      array itself). `total_candidates` always equals `items.length`.
                     properties:
                       total_candidates: { type: integer }
                       items:
@@ -3278,7 +3283,7 @@ components:
           type: integer
           enum: [6, 8, 10, 12, 15, 20]
           default: 10
-          description: Maximum key sessions returned per race block - see `key_sessions.total_candidates` on GET /v1/races/{id}/block for how many were found before the cap.
+          description: Frontend-only paging size for the key sessions list on a race's page - GET /v1/races/{id}/block's key_sessions.items always returns every candidate found (unpaginated); this preference isn't read by either backend.
           example: 10
 
     Athlete:

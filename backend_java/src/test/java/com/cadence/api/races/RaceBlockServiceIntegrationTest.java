@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /** Mirrors the Python backend's races/tests/test_blocks.py - block range/truncation, the
- * parent-A lookup, comparison alignment, Riegel prediction and key-session cap. */
+ * parent-A lookup, comparison alignment, Riegel prediction and key sessions. */
 class RaceBlockServiceIntegrationTest extends IntegrationTest {
 
 	@Autowired
@@ -178,15 +178,18 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 		assertThat(result.prediction().fromRaceId()).isEqualTo(fastSource.getId());
 	}
 
+	/** The athlete's race_key_session_cap preference no longer trims key_sessions.items - the
+	 * frontend paginates the full candidate list client-side instead, using that preference as
+	 * its page size. items.size() must always equal totalCandidates(). */
 	@Test
-	void keySessionCapLimitsItemsButReportsTrueTotal() {
+	void keySessionsReturnsEveryCandidateRegardlessOfCap() {
 		User athlete = newAthlete("block-key-sessions@example.cc");
 		Race race = newRace(athlete, "Goal Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
 		race.setSport(Sport.RUN);
 		race.setDistanceKm(42.2);
 		raceRepository.save(race);
-		User athleteWithLowCap = athlete;
-		athleteWithLowCap.setRaceKeySessionCap(6); // closest valid choice below the candidate count
+		athlete.setRaceKeySessionCap(6); // lower than the candidate count this setup produces
+		userRepository.save(athlete);
 
 		for (int i = 0; i < 6; i++) {
 			Activity run = new Activity();
@@ -198,11 +201,10 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 			run.setMovingTime(9000);
 			activityRepository.save(run);
 		}
-		userRepository.save(athleteWithLowCap);
 
 		RaceBlockResponse result = raceBlockService.getRaceBlock(race);
 
-		assertThat(result.keySessions().items()).hasSizeLessThanOrEqualTo(6);
 		assertThat(result.keySessions().totalCandidates()).isGreaterThanOrEqualTo(4);
+		assertThat(result.keySessions().items()).hasSize(result.keySessions().totalCandidates());
 	}
 }
