@@ -92,7 +92,13 @@ export function RaceDetailScreen() {
 
       {showComments && <CommentsCard raceId={race.id} selectedWeek={selectedWeek} onSelectWeek={setSelectedWeek} />}
 
-      <KeySessionsCard keySessions={block.key_sessions} isARace={race.priority === "A"} sport={sportCast} />
+      <KeySessionsCard
+        key={race.id}
+        keySessions={block.key_sessions}
+        isARace={race.priority === "A"}
+        sport={sportCast}
+        pageSize={user.race_key_session_cap}
+      />
 
       {editing && <EditRaceModal race={race} onClose={() => setEditing(false)} />}
     </div>

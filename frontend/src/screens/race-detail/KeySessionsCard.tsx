@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { KeySessionItem, KeySessionReason, KeySessions, Sport } from "../../api/types";
 import { sportColor } from "../../lib/sportColors";
@@ -50,35 +51,78 @@ function Row({ item, sport }: { item: KeySessionItem; sport: Sport | null }) {
   return to ? <Link to={to} style={rowStyle}>{content}</Link> : <div style={rowStyle}>{content}</div>;
 }
 
+function pageButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    border: "1px solid var(--line)",
+    background: "none",
+    borderRadius: 7,
+    fontSize: 12,
+    fontWeight: 600,
+    padding: "4px 10px",
+    cursor: disabled ? "default" : "pointer",
+    color: disabled ? "var(--ink3)" : "var(--ink2)",
+    opacity: disabled ? 0.5 : 1,
+  };
+}
+
 /** README §4.2.10 "Key sessions" card. Header: "KEY SESSIONS IN THIS BLOCK" for an A race's
- * full block, "AROUND THE RACE" for a B/C race's 5-week window. */
+ * full block, "AROUND THE RACE" for a B/C race's 5-week window. The backend returns every
+ * candidate session found (unpaginated) - this card paginates client-side, using the athlete's
+ * race_key_session_cap preference as the page size. Give this component a `key={race.id}` from
+ * the caller so `page` resets when navigating between races. */
 export function KeySessionsCard({
   keySessions,
   isARace,
   sport,
+  pageSize,
 }: {
   keySessions: KeySessions;
   isARace: boolean;
   sport: Sport | null;
+  pageSize: number;
 }) {
+  const [page, setPage] = useState(0);
+
+  const total = keySessions.items.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const clampedPage = Math.min(page, pageCount - 1);
+  const pageItems = keySessions.items.slice(clampedPage * pageSize, (clampedPage + 1) * pageSize);
+
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink3)" }}>
           {isARace ? "Key sessions in this block" : "Around the race"}
         </div>
-        <span className="mono" style={{ fontSize: 11, color: "var(--ink3)" }}>
-          {keySessions.items.length} of {keySessions.total_candidates} · top {keySessions.items.length}
-        </span>
+        <span className="mono" style={{ fontSize: 11, color: "var(--ink3)" }}>{total} total</span>
       </div>
-      {keySessions.items.length === 0 ? (
+      {total === 0 ? (
         <div style={{ fontSize: 13, color: "var(--ink3)" }}>No key sessions found yet.</div>
       ) : (
-        <div>
-          {keySessions.items.map((item, i) => (
-            <Row key={i} item={item} sport={sport} />
-          ))}
-        </div>
+        <>
+          <div>
+            {pageItems.map((item, i) => (
+              <Row key={clampedPage * pageSize + i} item={item} sport={sport} />
+            ))}
+          </div>
+          {pageCount > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 14 }}>
+              <button onClick={() => setPage(clampedPage - 1)} disabled={clampedPage === 0} style={pageButtonStyle(clampedPage === 0)}>
+                ← Prev
+              </button>
+              <span className="mono" style={{ fontSize: 11.5, color: "var(--ink3)" }}>
+                Page {clampedPage + 1} of {pageCount}
+              </span>
+              <button
+                onClick={() => setPage(clampedPage + 1)}
+                disabled={clampedPage === pageCount - 1}
+                style={pageButtonStyle(clampedPage === pageCount - 1)}
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
