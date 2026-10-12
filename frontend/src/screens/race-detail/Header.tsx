@@ -1,0 +1,119 @@
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
+import { deleteRace } from "../../api/races";
+import type { Race, RacePriority } from "../../api/types";
+
+const PRIORITY_STYLE: Record<RacePriority, React.CSSProperties> = {
+  A: { border: "1px solid var(--ember)", color: "var(--ember)" },
+  B: { border: "1px solid var(--ink2)", color: "var(--ink2)" },
+  C: { border: "1px dashed var(--ink3)", color: "var(--ink3)" },
+};
+
+function daysUntil(dateStr: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((new Date(dateStr + "T00:00:00").getTime() - today.getTime()) / 86_400_000);
+}
+
+function statusLabel(race: Race): string {
+  if (race.result_time) return "Completed";
+  const days = daysUntil(race.date);
+  if (days < 0) return "No result";
+  if (days === 0) return "Today";
+  return `In ${days} day${days === 1 ? "" : "s"}`;
+}
+
+/** Race detail page header - README §4.2.1. */
+export function Header({ race, onEdit }: { race: Race; onEdit: () => void }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteRace(race.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["races"] });
+      navigate("/races");
+    },
+  });
+
+  return (
+    <div>
+      <Link to="/races" style={{ fontSize: 13, color: "var(--ink3)", textDecoration: "none" }}>
+        ← All races
+      </Link>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>{race.name}</h1>
+        <span
+          style={{
+            fontSize: 11.5,
+            fontWeight: 700,
+            padding: "2px 10px",
+            borderRadius: 20,
+            color: race.result_time ? "#2fa66a" : "var(--ink2)",
+            border: `1px solid ${race.result_time ? "#2fa66a" : "var(--line)"}`,
+          }}
+        >
+          {statusLabel(race)}
+        </span>
+        <span
+          className="mono"
+          style={{ fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 5, ...PRIORITY_STYLE[race.priority] }}
+        >
+          {race.priority}
+        </span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            onClick={onEdit}
+            style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, fontWeight: 600, padding: "6px 14px", cursor: "pointer", color: "var(--ink)" }}
+          >
+            Edit
+          </button>
+          {confirming ? (
+            <>
+              <button
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                style={{ border: "none", background: "#e0442e", color: "#fff", borderRadius: 8, fontSize: 13, fontWeight: 600, padding: "6px 14px", cursor: "pointer" }}
+              >
+                {deleteMutation.isPending ? "Deleting…" : "Confirm delete"}
+              </button>
+              <button
+                onClick={() => setConfirming(false)}
+                style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, fontWeight: 600, padding: "6px 14px", cursor: "pointer", color: "var(--ink)" }}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setConfirming(true)}
+              style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, fontWeight: 600, padding: "6px 14px", cursor: "pointer", color: "#e0442e" }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ fontSize: 13, color: "var(--ink3)", marginTop: 6, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <span>
+          {race.date}
+          {race.sport && ` · ${race.sport.charAt(0).toUpperCase() + race.sport.slice(1)}`}
+          {race.distance_km != null && ` · ${race.distance_km} km`}
+        </span>
+        {race.url && (
+          <a href={race.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ember)" }}>
+            Website ↗
+          </a>
+        )}
+        {race.results_url && (
+          <a href={race.results_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ember)" }}>
+            Results ↗
+          </a>
+        )}
+      </div>
+      {race.notes && <div style={{ fontSize: 13, color: "var(--ink2)", marginTop: 8 }}>{race.notes}</div>}
+    </div>
+  );
+}

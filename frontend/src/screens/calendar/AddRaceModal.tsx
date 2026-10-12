@@ -1,8 +1,16 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { listCourses } from "../../api/courses";
 import { createRace } from "../../api/races";
+import type { RacePriority } from "../../api/types";
 
 const SPORTS = ["run", "bike", "swim", "multisport"];
+
+const PRIORITIES: { key: RacePriority; label: string; hint: string }[] = [
+  { key: "A", label: "A", hint: "The goal race - gets its own training block" },
+  { key: "B", label: "B", hint: "A tune-up, hard effort but not the main goal" },
+  { key: "C", label: "C", hint: "Low-key, run as training" },
+];
 
 const RUN_PRESETS: { label: string; km: number }[] = [
   { label: "5K", km: 5 },
@@ -43,10 +51,14 @@ export function AddRaceModal({
   const [name, setName] = useState("");
   const [raceDate, setRaceDate] = useState(date);
   const [sport, setSport] = useState(initialSport);
+  const [priority, setPriority] = useState<RacePriority>("A");
+  const [courseId, setCourseId] = useState("");
   const [distanceKm, setDistanceKm] = useState("");
   const [goalTime, setGoalTime] = useState("");
   const [url, setUrl] = useState("");
   const [notes, setNotes] = useState("");
+
+  const { data: coursesData } = useQuery({ queryKey: ["courses", ""], queryFn: () => listCourses() });
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -54,6 +66,8 @@ export function AddRaceModal({
         name,
         date: raceDate,
         sport: sport || undefined,
+        priority,
+        course_id: courseId || null,
         distance_km: distanceKm ? parseFloat(distanceKm) : null,
         goal_time: goalTime || null,
         url: url || null,
@@ -91,6 +105,44 @@ export function AddRaceModal({
           <select value={sport} onChange={(e) => setSport(e.target.value)} style={fieldStyle}>
             <option value="">—</option>
             {SPORTS.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+          </select>
+        </label>
+
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Priority</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {PRIORITIES.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => setPriority(p.key)}
+                title={p.hint}
+                style={{
+                  flex: 1,
+                  padding: "7px 0",
+                  borderRadius: 8,
+                  border: `1px solid ${priority === p.key ? "var(--ember)" : "var(--line)"}`,
+                  background: priority === p.key ? "var(--ember)22" : "transparent",
+                  color: priority === p.key ? "var(--ember)" : "var(--ink2)",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 4 }}>
+            {PRIORITIES.find((p) => p.key === priority)?.hint}
+          </div>
+        </div>
+
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Course (optional)</div>
+          <select value={courseId} onChange={(e) => setCourseId(e.target.value)} style={fieldStyle}>
+            <option value="">—</option>
+            {(coursesData?.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
 

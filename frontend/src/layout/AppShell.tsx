@@ -5,14 +5,24 @@ import { ProfileChip } from "./ProfileChip";
 import { ThemeToggle } from "./ThemeToggle";
 import { TrainingContextSwitcher } from "./TrainingContextSwitcher";
 
+function FlagIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.5 14.5V2" />
+      <path d="M3.5 2.5h8.5l-2 3 2 3H3.5" />
+    </svg>
+  );
+}
+
 // Only screens with a real route get a link; the rest are later stages and stay inert
 // labels rather than linking to a route that doesn't exist yet.
-const NAV_ITEMS = [
+const NAV_ITEMS: { label: string; path: string; icon?: () => React.ReactElement }[] = [
   { label: "Dashboard", path: "/" },
   { label: "Activities", path: "/activities" },
   { label: "Best efforts", path: "/best-efforts" },
   { label: "Import", path: "/import" },
   { label: "Calendar", path: "/calendar" },
+  { label: "Races", path: "/races", icon: FlagIcon },
   { label: "Workouts", path: "/workouts" },
   { label: "Gear", path: "/gear" },
   { label: "Preferences", path: "/preferences" },
@@ -52,10 +62,14 @@ export function AppShell() {
                   fontSize: 14,
                   fontWeight: 600,
                   textDecoration: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                   color: isActive ? "var(--ink)" : "var(--ink2)",
                   background: isActive ? "var(--elev)" : "transparent",
                 })}
               >
+                {item.icon?.()}
                 {item.label}
               </NavLink>
             ) : (

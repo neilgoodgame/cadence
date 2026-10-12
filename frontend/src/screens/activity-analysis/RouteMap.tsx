@@ -1,33 +1,15 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import * as maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
-// maplibre-gl v6's own worker chunk imports a sibling .mjs Vite's plain dependency
-// pre-bundling doesn't carry along, so the worker fails on its first import and no vector
-// tiles ever load (no visible error - the map just silently never fetches tile data).
-// ?worker&url routes it through Vite's worker pipeline instead, which does bundle correctly.
-// https://github.com/maplibre/maplibre-gl-js/issues/7339
-import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { getStreams } from "../../api/activities";
 import type { Activity } from "../../api/types";
-
-maplibregl.setWorkerUrl(maplibreWorkerUrl);
+import { RouteMap } from "../../components/RouteMap";
 
 const HEIGHT = 360;
 
-// Free Carto vector basemaps - no API key required.
-const STYLE_URLS = {
-  light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-};
-
-function currentStyleUrl(): string {
-  return document.documentElement.dataset.theme === "day" ? STYLE_URLS.light : STYLE_URLS.dark;
-}
-
-export function RouteMap({ activity }: { activity: Activity }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
+/** Activity-page wrapper around the generic `RouteMap` - fetches this activity's own GPS
+ * stream, handles the no-GPS/loading states, and overlays the temp/humidity badge. The
+ * generic component (map lifecycle, theme switch, markers) lives in `components/RouteMap`. */
+export function ActivityRouteMap({ activity }: { activity: Activity }) {
   const { data } = useQuery({
     queryKey: ["activity-streams-route", activity.id],
     queryFn: () => getStreams(activity.id, ["latlng"], "low"),
@@ -43,55 +25,6 @@ export function RouteMap({ activity }: { activity: Activity }) {
     // GeoJSON coordinate order is [lng, lat].
     return latlng.map(([lat, lng]) => [lng, lat] as [number, number]);
   }, [data]);
-
-  useEffect(() => {
-    if (!coordinates || !containerRef.current) return;
-
-    const ember = getComputedStyle(document.documentElement).getPropertyValue("--ember").trim() || "#e0442e";
-
-    const bounds = coordinates.reduce(
-      (acc, coord) => acc.extend(coord),
-      new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
-    );
-
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: currentStyleUrl(),
-      bounds,
-      fitBoundsOptions: { padding: 32 },
-      // Plain scroll keeps scrolling the page; Ctrl/Cmd+scroll zooms the map.
-      cooperativeGestures: true,
-      attributionControl: { compact: true },
-    });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-
-    new maplibregl.Marker({ color: "#2fa66a", scale: 0.7 }).setLngLat(coordinates[0]).addTo(map);
-    new maplibregl.Marker({ color: ember, scale: 0.7 }).setLngLat(coordinates.at(-1)!).addTo(map);
-
-    // style.load fires on initial load and again after every setStyle (theme switch),
-    // and setStyle wipes custom sources/layers - so the route is (re-)added here.
-    map.on("style.load", () => {
-      map.addSource("route", {
-        type: "geojson",
-        data: { type: "Feature", geometry: { type: "LineString", coordinates }, properties: {} },
-      });
-      map.addLayer({
-        id: "route-line",
-        type: "line",
-        source: "route",
-        layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": ember, "line-width": 3 },
-      });
-    });
-
-    const themeObserver = new MutationObserver(() => map.setStyle(currentStyleUrl()));
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-
-    return () => {
-      themeObserver.disconnect();
-      map.remove();
-    };
-  }, [coordinates]);
 
   if (!activity.has_gps) {
     return (
@@ -120,8 +53,8 @@ export function RouteMap({ activity }: { activity: Activity }) {
   }
 
   return (
-    <div style={{ position: "relative", height: HEIGHT, borderRadius: 12, border: "1px solid var(--line)", overflow: "hidden" }}>
-      <div ref={containerRef} role="img" aria-label="Route map" style={{ width: "100%", height: "100%" }} />
+    <div style={{ position: "relative" }}>
+      <RouteMap coordinates={coordinates} height={HEIGHT} />
       {activity.avg_air_temp != null && (
         <div
           className="mono"

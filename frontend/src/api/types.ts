@@ -83,6 +83,11 @@ export interface Athlete {
   /** Applied as a new shoe's limit_km whenever one isn't given explicitly - both the single
    * "Add shoe" form and the gear CSV import. */
   default_shoe_limit_km: number;
+  /** Training-block length for an A race - 12/16/20/24. The B/C "around the race" window is
+   * a fixed 5 weeks regardless of this setting. */
+  race_block_weeks: number;
+  /** Maximum key sessions returned per race block. */
+  race_key_session_cap: number;
 }
 
 export interface TokenResponse {
@@ -471,6 +476,8 @@ export interface AthleteUpdate {
   copy_matched_workout_tags?: boolean;
   lap_source?: LapSource;
   default_shoe_limit_km?: number;
+  race_block_weeks?: number;
+  race_key_session_cap?: number;
 }
 
 export interface ActivityComment {
@@ -979,12 +986,16 @@ export interface CalendarResponse {
   unplanned_activities: Activity[];
 }
 
+export type RacePriority = "A" | "B" | "C";
+
 export interface Race {
   id: string;
   athlete_id: string;
   name: string;
   date: string;
   sport: string;
+  priority: RacePriority;
+  course_id: string | null;
   distance_km: number | null;
   goal_time: string | null;
   result_time: string | null;
@@ -992,12 +1003,21 @@ export interface Race {
   url: string | null;
   results_url: string | null;
   notes: string;
+  /** B/C races only - the first A race on/after this one whose block contains this race's
+   * week. Null for an A race, or a standalone tune-up. */
+  parent_race_id: string | null;
+  /** Start of this race's own block (A), or its parent A's block (B/C with a parent). Null
+   * for a standalone B/C race. */
+  block_start: string | null;
+  block_weeks: number | null;
 }
 
 export interface RaceCreate {
   name: string;
   date: string;
   sport?: string;
+  priority?: RacePriority;
+  course_id?: string | null;
   distance_km?: number | null;
   goal_time?: string | null;
   result_time?: string | null;
@@ -1005,6 +1025,217 @@ export interface RaceCreate {
   url?: string | null;
   results_url?: string | null;
   notes?: string;
+}
+
+export interface RaceBlockPhase {
+  name: string;
+  /** 1-based index into RaceBlock.weeks, not a calendar week. */
+  start_week: number;
+  end_week: number;
+}
+
+export interface RaceBlockParent {
+  race_id: string;
+  week: number;
+  of: number;
+}
+
+export interface RaceBlockWeekRace {
+  id: string;
+  name: string;
+  priority: RacePriority;
+  result_s: number | null;
+}
+
+export interface RaceBlockWeek {
+  week_start: string;
+  tss: number | null;
+  tss_races: number | null;
+  run_km: number | null;
+  run_moving_s: number | null;
+  run_count: number | null;
+  run_avg_pace_s_per_km: number | null;
+  run_long_km: number | null;
+  ride_km: number | null;
+  ride_moving_s: number | null;
+  ride_count: number | null;
+  ride_avg_power_w: number | null;
+  ride_long_km: number | null;
+  hours: number | null;
+  sessions: number | null;
+  ctl: number | null;
+  atl: number | null;
+  /** True for a future week - its values come from scheduled workouts, or are all null if
+   * nothing's scheduled yet. */
+  planned: boolean;
+  races: RaceBlockWeekRace[];
+}
+
+export type RaceDayFormBand = "very_fresh" | "fresh" | "neutral" | "fatigued";
+
+export interface RaceDayForm {
+  ctl: number;
+  atl: number | null;
+  tsb: number | null;
+  band: RaceDayFormBand | null;
+  projected: boolean;
+  insufficient_data: boolean;
+}
+
+export interface RaceComparison {
+  race_id: string;
+  weeks: RaceBlockWeek[];
+}
+
+export interface RacePrediction {
+  time_s: number;
+  from_race_id: string;
+}
+
+export type KeySessionReason = "race" | "tagged" | "long" | "quality" | "best_effort" | "planned";
+
+export interface KeySessionItem {
+  date: string;
+  name: string;
+  activity_id: string | null;
+  scheduled_workout_id: string | null;
+  reason: KeySessionReason;
+  label: string;
+  km: number | null;
+  tss: number | null;
+}
+
+export interface KeySessions {
+  total_candidates: number;
+  items: KeySessionItem[];
+}
+
+export interface RaceBlockDurability {
+  sport: "ride" | "run";
+  current: DurabilitySportSection;
+  comparison: DurabilitySportSection | null;
+}
+
+/** GET /v1/races/{id}/block - A races get the full training block (weeks_requested weeks,
+ * truncated if an earlier A race's block would overlap); B/C races get a fixed 5-week window
+ * (phases is empty, parent replaces comparison/prediction/durability). */
+export interface RaceBlock {
+  start: string;
+  end: string;
+  weeks_requested: number;
+  truncated_by_race_id: string | null;
+  phases: RaceBlockPhase[];
+  parent: RaceBlockParent | null;
+  weeks: RaceBlockWeek[];
+  race_day_form: RaceDayForm;
+  comparison: RaceComparison | null;
+  prediction: RacePrediction | null;
+  key_sessions: KeySessions;
+  durability: RaceBlockDurability | null;
+  sweat_rate_l_per_h: number;
+  sweat_rate_source: "measured" | "default";
+}
+
+export type SplitsMode = "laps" | "1" | "5";
+
+export interface RaceSplit {
+  /** e.g. "Lap 2" or "Finish" for the last partial split. */
+  label: string | null;
+  start_km: number;
+  end_km: number;
+  time_s: number;
+  pace_s_per_km: number | null;
+  avg_hr: number | null;
+  delta_vs_ref_s_per_km: number | null;
+}
+
+export interface RaceSplitsHalves {
+  first_s: number;
+  second_s: number;
+}
+
+export interface RaceSplits {
+  /** False when mode=laps and the activity has one lap or none. */
+  has_laps: boolean;
+  ref: "goal" | "average";
+  ref_pace_s_per_km: number | null;
+  halves: RaceSplitsHalves | null;
+  splits: RaceSplit[];
+}
+
+export type RaceCommentRole = "athlete" | "coach";
+
+export interface RaceComment {
+  id: string;
+  race_id: string;
+  author_id: string;
+  author_name: string;
+  role: RaceCommentRole;
+  text: string;
+  /** Pins the comment to a training-block week. */
+  week: number | null;
+  parent_id: string | null;
+  created_at: string;
+}
+
+export interface RaceCommentCreate {
+  text: string;
+  week?: number | null;
+  /** Reply to a top-level comment - only one level of threading is allowed. */
+  parent_id?: string | null;
+}
+
+export interface Climb {
+  start_km: number;
+  end_km: number;
+  gain_m: number;
+  avg_grade_pct: number;
+}
+
+export interface CourseRaceSummary {
+  id: string;
+  name: string;
+  date: string;
+  priority: RacePriority;
+  result_s: number | null;
+}
+
+/** The shape returned by GET /v1/courses - full route/elevation detail is on
+ * GET /v1/courses/{id} only (Course below). */
+export interface CourseSummary {
+  id: string;
+  athlete_id: string;
+  name: string;
+  location_name: string;
+  distance_km: number | null;
+  source: "gpx" | "activity";
+  created_at: string;
+  race_count: number;
+}
+
+export interface Course extends CourseSummary {
+  start_lat: number | null;
+  start_lng: number | null;
+  elevation_gain_m: number | null;
+  elevation_loss_m: number | null;
+  elevation_max_m: number | null;
+  elevation_min_m: number | null;
+  /** Start and finish within 200m. */
+  is_loop: boolean;
+  source_activity_id: string | null;
+  /** Empty for a course created from an activity. */
+  gpx_filename: string;
+  /** Simplified [lat, lng] points (Douglas-Peucker), ~300-500 points. */
+  route_polyline: [number, number][];
+  /** [km, elevation_m] pairs, ~200 points evenly spaced by distance. */
+  elevation_profile: [number, number][];
+  climbs: Climb[];
+  races: CourseRaceSummary[];
+}
+
+export interface CourseUpdate {
+  name?: string;
+  location_name?: string;
 }
 
 export interface ShoeCatalogVersionUsage {
