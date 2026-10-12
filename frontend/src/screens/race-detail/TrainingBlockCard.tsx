@@ -1,7 +1,15 @@
 import { useState } from "react";
 import type { Race, RaceBlock, RaceBlockWeek } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
-import { currentWeekIndex, metricAxisLabel, metricValue, type BlockChartMetric } from "./raceBlockChart";
+import {
+  SEGMENT_COLOR,
+  SEGMENT_LABEL,
+  currentWeekIndex,
+  metricAxisLabel,
+  metricValue,
+  type BlockChartMetric,
+  type BlockChartSport,
+} from "./raceBlockChart";
 import { TrainingBlockChart } from "./TrainingBlockChart";
 
 const METRICS: { key: BlockChartMetric; label: string }[] = [
@@ -9,6 +17,25 @@ const METRICS: { key: BlockChartMetric; label: string }[] = [
   { key: "distance", label: "Distance" },
   { key: "time", label: "Time" },
 ];
+
+const SPORTS: { key: BlockChartSport; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "run", label: "Run" },
+  { key: "ride", label: "Ride" },
+];
+
+function legendItem(label: string, swatch: React.CSSProperties) {
+  return (
+    <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <span style={{ width: 10, height: 10, borderRadius: 2, display: "inline-block", ...swatch }} />
+      {label}
+    </span>
+  );
+}
+
+function formatMetric(value: number | null, metric: BlockChartMetric): string {
+  return value?.toFixed(metric === "tss" ? 0 : 1) ?? "–";
+}
 
 function segStyle(active: boolean): React.CSSProperties {
   return {
@@ -68,6 +95,7 @@ export function TrainingBlockCard({
   onSelectIndex: (index: number | null) => void;
 }) {
   const [metric, setMetric] = useState<BlockChartMetric>("tss");
+  const [sport, setSport] = useState<BlockChartSport>("all");
   const [compareOn, setCompareOn] = useState(block.comparison != null);
 
   const currentIndex = currentWeekIndex(block.weeks, new Date());
@@ -125,6 +153,11 @@ export function TrainingBlockCard({
             </button>
           )}
           <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
+            {SPORTS.map((s) => (
+              <div key={s.key} onClick={() => setSport(s.key)} style={segStyle(s.key === sport)}>{s.label}</div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
             {METRICS.map((m) => (
               <div key={m.key} onClick={() => setMetric(m.key)} style={segStyle(m.key === metric)}>{m.label}</div>
             ))}
@@ -132,11 +165,12 @@ export function TrainingBlockCard({
         </div>
       </div>
 
-      <div style={{ height: 210, marginTop: 18 }}>
+      <div style={{ marginTop: 18 }}>
         <TrainingBlockChart
           weeks={block.weeks}
           comparisonWeeks={comparisonWeeks}
           metric={metric}
+          sport={sport}
           height={210}
           currentIndex={currentIndex}
           selectedIndex={selectedIndex}
@@ -144,12 +178,24 @@ export function TrainingBlockCard({
         />
       </div>
 
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: "var(--ink3)", marginTop: 8 }}>
+        {(sport === "all" ? (["run", "ride", "other"] as const) : [sport]).map((s) =>
+          legendItem(SEGMENT_LABEL[s], { background: SEGMENT_COLOR[s] }),
+        )}
+        {metric === "tss" && sport === "all" && legendItem("Race", { background: "repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 4px)", opacity: 0.7 })}
+        {legendItem("Planned", { border: "1px dashed var(--ink2)" })}
+        {comparisonWeeks && legendItem(`${comparisonYear ?? "Comparison"}`, { border: "1px dashed var(--ink3)" })}
+      </div>
+
       {hoveredWeek && (
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 12.5, color: "var(--ink2)", marginTop: 10, padding: "8px 12px", background: "var(--canvas)", borderRadius: 8 }}>
           <span className="mono" style={{ fontWeight: 700 }}>{hoveredWeek.week_start}</span>
-          <span>{metricAxisLabel(metric)}: {metricValue(hoveredWeek, metric)?.toFixed(1) ?? "–"}</span>
+          <span>{metricAxisLabel(metric)}: {formatMetric(metricValue(hoveredWeek, metric, sport), metric)}</span>
+          {sport === "all" && (["run", "ride"] as const).map((s) => (
+            <span key={s} style={{ color: SEGMENT_COLOR[s] }}>{SEGMENT_LABEL[s]}: {formatMetric(metricValue(hoveredWeek, metric, s), metric)}</span>
+          ))}
           {hoveredWeek.races.map((r) => <span key={r.id} style={{ color: "var(--ember)" }}>⚑ {r.name}</span>)}
-          {hoveredComparisonWeek && <span style={{ color: "var(--ink3)" }}>vs {metricAxisLabel(metric)}: {metricValue(hoveredComparisonWeek, metric)?.toFixed(1) ?? "–"}</span>}
+          {hoveredComparisonWeek && <span style={{ color: "var(--ink3)" }}>vs {metricAxisLabel(metric)}: {formatMetric(metricValue(hoveredComparisonWeek, metric, sport), metric)}</span>}
         </div>
       )}
 
@@ -178,7 +224,7 @@ export function TrainingBlockCard({
           <tbody>
             {block.weeks.map((week, i) => {
               const comparisonWeek = comparisonWeeks?.[i] ?? null;
-              const delta = comparisonWeek ? (metricValue(week, metric) ?? 0) - (metricValue(comparisonWeek, metric) ?? 0) : null;
+              const delta = comparisonWeek ? (metricValue(week, metric, sport) ?? 0) - (metricValue(comparisonWeek, metric, sport) ?? 0) : null;
               const isCurrent = i === currentIndex;
               const isSelected = i === selectedIndex;
               return (

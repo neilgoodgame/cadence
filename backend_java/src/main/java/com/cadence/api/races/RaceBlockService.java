@@ -227,11 +227,13 @@ public class RaceBlockService {
 		Integer runCount;
 		Double runAvgPace;
 		Double runLongKm;
+		Integer runTss;
 		Double rideKm;
 		Integer rideMovingS;
 		Integer rideCount;
 		Integer rideAvgPowerW;
 		Double rideLongKm;
+		Integer rideTss;
 		Double hours;
 		Integer sessions;
 
@@ -251,6 +253,7 @@ public class RaceBlockService {
 			runAvgPace = runKm > 0 ? runMovingS / runKm : null;
 			List<Activity> nonRaceRuns = runs.stream().filter(a -> !raceActivityIds.contains(a.getId())).toList();
 			runLongKm = nonRaceRuns.isEmpty() ? null : nonRaceRuns.stream().mapToDouble(Activity::getDistanceKm).max().getAsDouble();
+			runTss = runs.stream().mapToInt(Activity::getTss).sum();
 
 			List<Activity> rides = activities.stream().filter(a -> a.getSport() == Sport.BIKE).toList();
 			rideKm = rides.stream().mapToDouble(Activity::getDistanceKm).sum();
@@ -263,6 +266,7 @@ public class RaceBlockService {
 					: null;
 			List<Activity> nonRaceRides = rides.stream().filter(a -> !raceActivityIds.contains(a.getId())).toList();
 			rideLongKm = nonRaceRides.isEmpty() ? null : nonRaceRides.stream().mapToDouble(Activity::getDistanceKm).max().getAsDouble();
+			rideTss = rides.stream().mapToInt(Activity::getTss).sum();
 
 			hours = activities.stream().mapToInt(Activity::getMovingTime).sum() / 3600.0;
 			sessions = activities.size();
@@ -274,8 +278,10 @@ public class RaceBlockService {
 				tssRaces = null;
 				runMovingS = null;
 				runCount = null;
+				runTss = null;
 				rideMovingS = null;
 				rideCount = null;
+				rideTss = null;
 				hours = null;
 				sessions = null;
 			}
@@ -286,8 +292,10 @@ public class RaceBlockService {
 				List<ScheduledWorkout> ridesSw = scheduled.stream().filter(sw -> sw.getWorkout().getSport() == Sport.BIKE).toList();
 				runMovingS = runsSw.stream().mapToInt(sw -> sw.getWorkout().getDuration()).sum();
 				runCount = runsSw.size();
+				runTss = runsSw.stream().mapToInt(sw -> sw.getWorkout().getTss()).sum();
 				rideMovingS = ridesSw.stream().mapToInt(sw -> sw.getWorkout().getDuration()).sum();
 				rideCount = ridesSw.size();
+				rideTss = ridesSw.stream().mapToInt(sw -> sw.getWorkout().getTss()).sum();
 				hours = scheduled.stream().mapToInt(sw -> sw.getWorkout().getDuration()).sum() / 3600.0;
 				sessions = scheduled.size();
 			}
@@ -304,7 +312,7 @@ public class RaceBlockService {
 		Double atl = series.isEmpty() ? null : series.get(0).atl();
 
 		return new RaceBlockResponse.WeekAggregate(weekStartD, tss, tssRaces, runKm, runMovingS, runCount, runAvgPace, runLongKm,
-				rideKm, rideMovingS, rideCount, rideAvgPowerW, rideLongKm, hours, sessions, ctl, atl, isPlanned, racesList);
+				runTss, rideKm, rideMovingS, rideCount, rideAvgPowerW, rideLongKm, rideTss, hours, sessions, ctl, atl, isPlanned, racesList);
 	}
 
 	// --- race-day form ---------------------------------------------------------------------

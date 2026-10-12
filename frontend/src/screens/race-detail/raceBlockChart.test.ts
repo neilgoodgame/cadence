@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBlockChart, currentWeekIndex, metricValue, splitProjectedLine } from "./raceBlockChart";
+import { barSegments, buildBlockChart, currentWeekIndex, metricValue, splitProjectedLine } from "./raceBlockChart";
 import type { RaceBlockWeek } from "../../api/types";
 
 function week(overrides: Partial<RaceBlockWeek> = {}): RaceBlockWeek {
@@ -12,11 +12,13 @@ function week(overrides: Partial<RaceBlockWeek> = {}): RaceBlockWeek {
     run_count: 4,
     run_avg_pace_s_per_km: 360,
     run_long_km: 20,
+    run_tss: 100,
     ride_km: null,
     ride_moving_s: null,
     ride_count: null,
     ride_avg_power_w: null,
     ride_long_km: null,
+    ride_tss: null,
     hours: 4,
     sessions: 4,
     ctl: 60,
@@ -42,6 +44,45 @@ describe("metricValue", () => {
   });
 });
 
+describe("metricValue by sport", () => {
+  it("picks the sport's own tss, distance and time", () => {
+    const w = week({ run_tss: 60, ride_tss: 90, run_km: 30, ride_km: 80, run_moving_s: 7200, ride_moving_s: 10800 });
+    expect(metricValue(w, "tss", "run")).toBe(60);
+    expect(metricValue(w, "tss", "ride")).toBe(90);
+    expect(metricValue(w, "distance", "ride")).toBe(80);
+    expect(metricValue(w, "time", "run")).toBe(2);
+    expect(metricValue(w, "time", "ride")).toBe(3);
+  });
+
+  it("is null for a sport with no data", () => {
+    expect(metricValue(week({ ride_moving_s: null }), "time", "ride")).toBeNull();
+  });
+});
+
+describe("barSegments", () => {
+  it("stacks run, ride and the remainder as other", () => {
+    const segs = barSegments(week({ tss: 200, run_tss: 80, ride_tss: 100 }), "tss", "all");
+    expect(segs).toEqual([
+      { sport: "run", from: 0, to: 80 },
+      { sport: "ride", from: 80, to: 180 },
+      { sport: "other", from: 180, to: 200 },
+    ]);
+  });
+
+  it("is a single segment for a sport filter", () => {
+    expect(barSegments(week({ run_tss: 80, ride_tss: 100 }), "tss", "ride")).toEqual([{ sport: "ride", from: 0, to: 100 }]);
+  });
+
+  it("never stacks past the week's total", () => {
+    const segs = barSegments(week({ tss: 100, run_tss: 70, ride_tss: 70 }), "tss", "all");
+    expect(segs.at(-1)).toEqual({ sport: "ride", from: 70, to: 100 });
+  });
+
+  it("is empty for an unscheduled planned week", () => {
+    expect(barSegments(week({ tss: null, run_tss: null, ride_tss: null }), "tss", "all")).toEqual([]);
+  });
+});
+
 describe("buildBlockChart", () => {
   it("produces one bar per week, in order", () => {
     const weeks = [week({ week_start: "2026-01-05" }), week({ week_start: "2026-01-12" })];
@@ -60,6 +101,11 @@ describe("buildBlockChart", () => {
   it("race portion is 0 for a non-tss metric", () => {
     const weeks = [week({ tss_races: 80 })];
     const chart = buildBlockChart(weeks, null, "distance");
+    expect(chart.bars[0].raceValue).toBe(0);
+  });
+
+  it("race portion is 0 under a sport filter", () => {
+    const chart = buildBlockChart([week({ tss_races: 80 })], null, "tss", "run");
     expect(chart.bars[0].raceValue).toBe(0);
   });
 

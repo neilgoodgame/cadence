@@ -21,8 +21,8 @@ public record RaceBlockResponse(
 
 	public record WeekAggregate(
 			LocalDate weekStart, Integer tss, Integer tssRaces, Double runKm, Integer runMovingS, Integer runCount,
-			Double runAvgPaceSPerKm, Double runLongKm, Double rideKm, Integer rideMovingS, Integer rideCount,
-			Integer rideAvgPowerW, Double rideLongKm, Double hours, Integer sessions, Double ctl, Double atl,
+			Double runAvgPaceSPerKm, Double runLongKm, Integer runTss, Double rideKm, Integer rideMovingS,
+			Integer rideCount, Integer rideAvgPowerW, Double rideLongKm, Integer rideTss, Double hours, Integer sessions, Double ctl, Double atl,
 			boolean planned, List<WeekRace> races) {}
 
 	public record RaceDayForm(double ctl, Double atl, Double tsb, String band, boolean projected, boolean insufficientData) {}

@@ -2578,11 +2578,13 @@ paths:
                         run_count: { type: [integer, "null"] }
                         run_avg_pace_s_per_km: { type: [number, "null"] }
                         run_long_km: { type: [number, "null"], description: Longest non-race run that week. }
+                        run_tss: { type: [integer, "null"], description: TSS from runs only (part of tss). }
                         ride_km: { type: [number, "null"] }
                         ride_moving_s: { type: [integer, "null"] }
                         ride_count: { type: [integer, "null"] }
                         ride_avg_power_w: { type: [integer, "null"], description: Time-weighted average. }
                         ride_long_km: { type: [number, "null"] }
+                        ride_tss: { type: [integer, "null"], description: TSS from rides only (part of tss). }
                         hours: { type: [number, "null"] }
                         sessions: { type: [integer, "null"] }
                         ctl: { type: [number, "null"] }

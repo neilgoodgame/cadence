@@ -73,7 +73,7 @@ export function CurrentBlockCard({ race, tuneUps }: { race: Race; tuneUps: Race[
 
       {block && (
         <>
-          <div style={{ height: 96, marginTop: 16 }}>
+          <div style={{ marginTop: 16 }}>
             <TrainingBlockChart
               weeks={block.weeks}
               comparisonWeeks={block.comparison?.weeks ?? null}

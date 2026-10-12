@@ -207,4 +207,36 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 		assertThat(result.keySessions().totalCandidates()).isGreaterThanOrEqualTo(4);
 		assertThat(result.keySessions().items()).hasSize(result.keySessions().totalCandidates());
 	}
+
+	@Test
+	void weekTssIsSplitBySport() {
+		User athlete = newAthlete("block-sport-split@example.cc");
+		Race race = newRace(athlete, "Spring Marathon", LocalDate.of(2026, 3, 1), RacePriority.A);
+		race.setSport(Sport.RUN);
+		raceRepository.save(race);
+
+		saveActivity(athlete, Sport.RUN, 80, "2026-02-17T07:00:00Z");
+		saveActivity(athlete, Sport.BIKE, 120, "2026-02-18T07:00:00Z");
+		saveActivity(athlete, Sport.SWIM, 30, "2026-02-19T07:00:00Z");
+
+		RaceBlockResponse result = raceBlockService.getRaceBlock(race);
+		RaceBlockResponse.WeekAggregate week = result.weeks().stream()
+				.filter(w -> w.weekStart().equals(LocalDate.of(2026, 2, 16))).findFirst().orElseThrow();
+
+		assertThat(week.tss()).isEqualTo(230);
+		assertThat(week.runTss()).isEqualTo(80);
+		assertThat(week.rideTss()).isEqualTo(120);
+	}
+
+	private void saveActivity(User athlete, Sport sport, int tss, String startDate) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(sport);
+		activity.setName("Session");
+		activity.setStartDate(Instant.parse(startDate));
+		activity.setDistanceKm(10.0);
+		activity.setMovingTime(3600);
+		activity.setTss(tss);
+		activityRepository.save(activity);
+	}
 }

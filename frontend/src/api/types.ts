@@ -1056,11 +1056,13 @@ export interface RaceBlockWeek {
   run_count: number | null;
   run_avg_pace_s_per_km: number | null;
   run_long_km: number | null;
+  run_tss: number | null;
   ride_km: number | null;
   ride_moving_s: number | null;
   ride_count: number | null;
   ride_avg_power_w: number | null;
   ride_long_km: number | null;
+  ride_tss: number | null;
   hours: number | null;
   sessions: number | null;
   ctl: number | null;
