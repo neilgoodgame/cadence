@@ -246,3 +246,17 @@ class GetRaceBlockSmokeTests(TestCase):
         self.assertEqual(len(result["weeks"]), 5)
         self.assertEqual(result["phases"], [])
         self.assertIn("parent", result)
+
+    def test_week_tss_is_split_by_sport(self):
+        race = Race.objects.create(
+            athlete=self.athlete, name="Spring Marathon", date=date(2026, 3, 1), priority="A", sport="run"
+        )
+        _make_activity(self.athlete, sport="run", tss=80, start_date=datetime(2026, 2, 17, 7, 0, tzinfo=UTC))
+        _make_activity(self.athlete, sport="bike", tss=120, start_date=datetime(2026, 2, 18, 7, 0, tzinfo=UTC))
+        _make_activity(self.athlete, sport="swim", tss=30, start_date=datetime(2026, 2, 19, 7, 0, tzinfo=UTC))
+
+        result = get_race_block(race)
+        week = next(w for w in result["weeks"] if w["week_start"] == "2026-02-16")
+        self.assertEqual(week["tss"], 230)
+        self.assertEqual(week["run_tss"], 80)
+        self.assertEqual(week["ride_tss"], 120)
