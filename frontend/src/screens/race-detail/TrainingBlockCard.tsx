@@ -154,22 +154,30 @@ export function TrainingBlockCard({
   const focusWeek = block.weeks[focusIndex] ?? null;
   const focusComparisonWeek = comparisonWeeks?.[focusIndex] ?? null;
 
-  // Peak week "excluding races" - the API doesn't break a week's distance into race vs
-  // training portions, so this approximates by skipping weeks that contain a race. The long
-  // session needs no such approximation: run_long_km/ride_long_km already exclude race activities.
-  const peakWeek = actualWeeks
-    .filter(({ week }) => week.races.length === 0)
-    .reduce<{ km: number; index: number } | null>((best, { week, index }) => {
-      const km = weekKm(week) ?? 0;
-      return best == null || km > best.km ? { km, index } : best;
-    }, null);
-  const longest = actualWeeks.reduce<{ km: number; index: number } | null>((best, { week, index }) => {
-    const km = Math.max(week.run_long_km ?? 0, week.ride_long_km ?? 0);
+  // Totals tiles are scoped to the race's own sport (run vs ride) - a running race's block
+  // mixes in bike cross-training (or vice versa) that would otherwise distort its stats.
+  const raceSport: "run" | "ride" = race.sport === "bike" ? "ride" : "run";
+  const sportKm = (week: RaceBlockWeek) => (raceSport === "ride" ? week.ride_km : week.run_km);
+  const sportMovingS = (week: RaceBlockWeek) => (raceSport === "ride" ? week.ride_moving_s : week.run_moving_s);
+  const sportLongKm = (week: RaceBlockWeek) => (raceSport === "ride" ? week.ride_long_km : week.run_long_km);
+  const sportSessions = (week: RaceBlockWeek) => (raceSport === "ride" ? week.ride_count : week.run_count);
+
+  // Peak week and longest session include race weeks/race-day efforts. sportKm already counts
+  // race activities (the API sums every run/ride in the week regardless of race status), but
+  // sportLongKm excludes them (it backs the weekly table's "Long" training-run column), so the
+  // race's own distance is folded in separately for the week it falls in.
+  const peakWeek = actualWeeks.reduce<{ km: number; index: number } | null>((best, { week, index }) => {
+    const km = sportKm(week) ?? 0;
     return best == null || km > best.km ? { km, index } : best;
   }, null);
-  const totalKm = actualWeeks.reduce((sum, { week }) => sum + (weekKm(week) ?? 0), 0);
-  const totalHours = actualWeeks.reduce((sum, { week }) => sum + (week.hours ?? 0), 0);
-  const totalSessions = actualWeeks.reduce((sum, { week }) => sum + (week.sessions ?? 0), 0);
+  const longest = actualWeeks.reduce<{ km: number; index: number } | null>((best, { week, index }) => {
+    let km = sportLongKm(week) ?? 0;
+    if (index === raceWeekIndex && race.distance_km != null) km = Math.max(km, race.distance_km);
+    return best == null || km > best.km ? { km, index } : best;
+  }, null);
+  const totalKm = actualWeeks.reduce((sum, { week }) => sum + (sportKm(week) ?? 0), 0);
+  const totalHours = actualWeeks.reduce((sum, { week }) => sum + (sportMovingS(week) ?? 0) / 3600, 0);
+  const totalSessions = actualWeeks.reduce((sum, { week }) => sum + (sportSessions(week) ?? 0), 0);
   const week1Ctl = block.weeks[0]?.ctl ?? null;
   const latestCtl = actualWeeks.at(-1)?.week.ctl ?? null;
   const ctlChange = week1Ctl != null && latestCtl != null ? latestCtl - week1Ctl : null;
@@ -290,6 +298,23 @@ export function TrainingBlockCard({
               ))}
             </div>
           )}
+          {sport === "all" && !isUnscheduled(focusWeek) && (
+            <div className="mono" style={{ fontSize: 12, display: "flex", gap: 14, flexWrap: "wrap" }}>
+              {(["run", "ride"] as const)
+                .filter((s) => ((s === "run" ? focusWeek.run_count : focusWeek.ride_count) ?? 0) > 0)
+                .map((s) => {
+                  const km = s === "run" ? focusWeek.run_km : focusWeek.ride_km;
+                  const movingS = s === "run" ? focusWeek.run_moving_s : focusWeek.ride_moving_s;
+                  const count = (s === "run" ? focusWeek.run_count : focusWeek.ride_count)!;
+                  return (
+                    <span key={s} style={{ color: SEGMENT_COLOR[s] }}>
+                      {SEGMENT_LABEL[s]}: {km != null ? `${km.toFixed(1)} km` : "–"} ·{" "}
+                      {movingS != null ? `${hm(movingS)} h` : "–"} · {count} session{count === 1 ? "" : "s"}
+                    </span>
+                  );
+                })}
+            </div>
+          )}
           {focusWeek.races.length > 0 && (
             <div style={{ fontSize: 12, fontWeight: 600 }}>⚑ {focusWeek.races.map((r) => raceNote(r).replace(`${r.priority} ·`, `${r.priority} race ·`)).join(", ")}</div>
           )}
@@ -314,8 +339,8 @@ export function TrainingBlockCard({
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginTop: 14 }}>
           {totalsTile("Distance", `${Math.round(totalKm).toLocaleString("en-GB")} km`, span)}
           {totalsTile("Time", `${hm(totalHours * 3600)} h`, `${totalSessions} sessions`)}
-          {peakWeek && totalsTile("Peak week", `${Math.round(peakWeek.km)} km`, `week ${peakWeek.index + 1}, excluding races`)}
-          {longest && longest.km > 0 && totalsTile("Longest session", `${longest.km.toFixed(1)} km`, `week ${longest.index + 1}, excluding races`)}
+          {peakWeek && totalsTile("Peak week", `${Math.round(peakWeek.km)} km`, `week ${peakWeek.index + 1}`)}
+          {longest && longest.km > 0 && totalsTile("Longest session", `${longest.km.toFixed(1)} km`, `week ${longest.index + 1}`)}
           {week1Ctl != null && latestCtl != null && ctlChange != null &&
             totalsTile("Fitness (CTL)", `${Math.round(week1Ctl)} → ${Math.round(latestCtl)}`, `${ctlChange >= 0 ? "+" : ""}${Math.round(ctlChange)} ${span}`)}
           {inProgress && plannedWeeks.length > 0 &&
