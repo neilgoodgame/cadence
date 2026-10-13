@@ -2,6 +2,7 @@ package com.cadence.api.races.dto;
 
 import com.cadence.api.athletes.dto.DurabilityResponse;
 import com.cadence.api.common.domain.Sport;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -9,7 +10,8 @@ import java.util.List;
 public record RaceBlockResponse(
 		LocalDate start, LocalDate end, int weeksRequested, String truncatedByRaceId, List<Phase> phases,
 		Parent parent, List<WeekAggregate> weeks, RaceDayForm raceDayForm, Comparison comparison,
-		Prediction prediction, KeySessions keySessions, Durability durability, double sweatRateLPerH,
+		Prediction prediction, KeySessions keySessions, Durability durability,
+		@JsonProperty("sweat_rate_l_per_h") double sweatRateLPerH,
 		String sweatRateSource) {
 
 	/** 1-based week-of-block indices into {@code weeks} above, not calendar dates. */
@@ -20,9 +22,13 @@ public record RaceBlockResponse(
 
 	public record WeekRace(String id, String name, String priority, Integer resultS) {}
 
+	/** Jackson's SNAKE_CASE naming strategy collapses consecutive capitals (no underscore
+	 * between adjacent uppercase letters), so a single-letter-unit field followed by another
+	 * capitalised word - "...SPerKm" - needs an explicit @JsonProperty or it serializes as
+	 * "...sper_km" instead of the contract's "..._s_per_km" (openapi.yaml). */
 	public record WeekAggregate(
 			LocalDate weekStart, Integer tss, Integer tssRaces, Double runKm, Integer runMovingS, Integer runCount,
-			Double runAvgPaceSPerKm, Double runLongKm, Integer runTss, Double rideKm, Integer rideMovingS,
+			@JsonProperty("run_avg_pace_s_per_km") Double runAvgPaceSPerKm, Double runLongKm, Integer runTss, Double rideKm, Integer rideMovingS,
 			Integer rideCount, Integer rideAvgPowerW, Double rideLongKm, Integer rideTss, Double hours, Integer sessions, Double ctl, Double atl,
 			boolean planned, List<WeekRace> races) {}
 
