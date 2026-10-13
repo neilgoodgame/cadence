@@ -7,7 +7,6 @@ import com.cadence.api.activities.BestEffort;
 import com.cadence.api.activities.BestEffortKind;
 import com.cadence.api.activities.BestEffortRepository;
 import com.cadence.api.activities.DurabilityQueryService;
-import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagRepository;
@@ -407,7 +406,7 @@ public class RaceBlockService {
 	 * than goal pace for at least that long), via a two-pointer scan over the activity's
 	 * recorded (t, distanceKm) stream. */
 	private boolean bestPaceMeetsGoal(Activity activity, double goalPaceSPerKm) {
-		List<Record> rows = recordRepository.findByActivityIdOrderByT(activity.getId());
+		List<RecordRepository.TimeDistance> rows = recordRepository.findTimeDistanceByActivityIdOrderByT(activity.getId());
 		if (rows.size() < 2) return false;
 		int left = 0;
 		for (int right = 0; right < rows.size(); right++) {

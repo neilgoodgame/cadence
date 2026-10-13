@@ -6,6 +6,9 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.ActivityTag;
 import com.cadence.api.activities.ActivityTagRepository;
+import com.cadence.api.activities.Record;
+import com.cadence.api.activities.RecordId;
+import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagRepository;
 import com.cadence.api.common.domain.Sport;
@@ -16,6 +19,8 @@ import com.cadence.api.users.UserRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -37,6 +42,8 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 	private TagRepository tagRepository;
 	@Autowired
 	private ActivityTagRepository activityTagRepository;
+	@Autowired
+	private RecordRepository recordRepository;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -265,6 +272,60 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(byActivityId.get(bikeTagged.getId()).sport()).isEqualTo(Sport.BIKE);
 		assertThat(byActivityId.get(runTagged.getId()).sport()).isEqualTo(Sport.RUN);
+	}
+
+	/** A run below the intensity threshold still counts as a "quality" key session if its
+	 * recorded stream shows >= 20 continuous minutes at or faster than the race's goal pace -
+	 * the scan that reads each run's (t, distance_km) stream. */
+	@Test
+	void runAtGoalPaceForTwentyMinutesIsAQualityKeySession() {
+		User athlete = newAthlete("block-goal-pace@example.cc");
+		Race race = newRace(athlete, "Goal Pace Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
+		race.setSport(Sport.RUN);
+		race.setDistanceKm(42.2);
+		race.setGoalTime(3 * 3600); // ~256 s/km
+		raceRepository.save(race);
+
+		// Four longer runs take the "long" slots, so the two below are judged on pace alone.
+		for (int i = 0; i < 4; i++) {
+			goalPaceRun(athlete, "Long run " + i, "2026-09-0" + (i + 2) + "T07:00:00Z", 30.0 + i, null);
+		}
+		Activity fast = goalPaceRun(athlete, "Tempo", "2026-09-10T07:00:00Z", 8.0, 240.0);
+		Activity easy = goalPaceRun(athlete, "Easy", "2026-09-11T07:00:00Z", 6.0, 360.0);
+
+		RaceBlockResponse result = raceBlockService.getRaceBlock(race);
+		Map<String, String> reasonByActivityId = result.keySessions().items().stream()
+				.filter(i -> i.activityId() != null)
+				.collect(Collectors.toMap(RaceBlockResponse.KeySessionItem::activityId, RaceBlockResponse.KeySessionItem::reason));
+
+		assertThat(reasonByActivityId).containsEntry(fast.getId(), "quality");
+		assertThat(reasonByActivityId).doesNotContainKey(easy.getId());
+	}
+
+	/** A run with no intensity set, plus (when paceSPerKm is non-null) 30 minutes of 10-second
+	 * records at that steady pace. */
+	private Activity goalPaceRun(User athlete, String name, String startDate, double distanceKm, Double paceSPerKm) {
+		Activity run = new Activity();
+		run.setAthlete(athlete);
+		run.setSport(Sport.RUN);
+		run.setName(name);
+		run.setStartDate(Instant.parse(startDate));
+		run.setDistanceKm(distanceKm);
+		run.setMovingTime(3600);
+		run = activityRepository.save(run);
+		if (paceSPerKm != null) {
+			List<Record> records = new ArrayList<>();
+			for (int t = 0; t <= 30 * 60; t += 10) {
+				Record r = new Record();
+				r.setId(new RecordId(run.getId(), run.getStartDate().plusSeconds(t)));
+				r.setActivity(run);
+				r.setT(t);
+				r.setDistanceKm(t / paceSPerKm);
+				records.add(r);
+			}
+			recordRepository.saveAll(records);
+		}
+		return run;
 	}
 
 	@Test

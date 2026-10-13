@@ -18,4 +18,8 @@ RUN chmod +x ./entrypoint.sh
 
 EXPOSE 8080
 ENTRYPOINT ["./entrypoint.sh"]
-CMD ["java", "-jar", "app.jar"]
+# ExitOnOutOfMemoryError: an OOM otherwise leaves the JVM up but broken (it once killed
+# Tomcat's acceptor thread, so staging stopped accepting connections for hours while systemd
+# still saw the container running) - exiting lets the service's Restart=always recover it.
+# MaxRAMPercentage: the JVM defaults to 25% of RAM, ~250MB on staging's 1GB t4g.micro.
+CMD ["java", "-XX:MaxRAMPercentage=60", "-XX:+ExitOnOutOfMemoryError", "-jar", "app.jar"]

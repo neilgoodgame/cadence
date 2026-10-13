@@ -21,6 +21,20 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 	@Query("select r from Record r where r.id.activityId = :activityId order by r.t")
 	List<Record> findByActivityIdOrderByT(@Param("activityId") String activityId);
 
+	/** Just (t, distance_km), as scalars rather than managed Record entities - for callers that
+	 * scan many activities' streams inside one transaction, where every entity a full
+	 * findByActivityIdOrderByT loads stays in the persistence context until the transaction ends.
+	 * RaceBlockService's goal-pace scan over every run in a training block did exactly that and
+	 * took the backend OOM in staging. */
+	interface TimeDistance {
+		int getT();
+
+		Double getDistanceKm();
+	}
+
+	@Query("select r.t as t, r.distanceKm as distanceKm from Record r where r.id.activityId = :activityId order by r.t")
+	List<TimeDistance> findTimeDistanceByActivityIdOrderByT(@Param("activityId") String activityId);
+
 	@Query("select min(r.t) from Record r where r.id.activityId = :activityId")
 	Integer findMinTByActivityId(@Param("activityId") String activityId);
 
