@@ -26,6 +26,44 @@ resource "aws_cloudwatch_log_group" "backend" {
   tags = var.tags
 }
 
+# Counts JVM heap exhaustion in the backend's logs. With -XX:+ExitOnOutOfMemoryError
+# (backend_java/Dockerfile) an OOM now exits the container and systemd restarts it within a
+# minute - which would otherwise leave no trace beyond the logs. Matches both a request
+# failing with OutOfMemoryError and the JVM's own "Terminating due to ..." line on exit.
+resource "aws_cloudwatch_log_metric_filter" "backend_oom" {
+  name           = "cadence-${var.environment}-backend-oom"
+  log_group_name = aws_cloudwatch_log_group.backend.name
+  pattern        = "\"OutOfMemoryError\""
+
+  metric_transformation {
+    name          = "OutOfMemoryErrors"
+    namespace     = "Cadence/Backend/${var.environment}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+# No alarm_actions - this is a console-visible signal only (CloudWatch > Alarms, and the
+# sidebar's in-alarm count). Hourly periods over 24 evaluation periods, alarming on any one
+# breaching hour, keep it in ALARM for a day after an OOM rather than flipping back to OK
+# five minutes later, before anyone has looked. Wire an SNS topic into alarm_actions to
+# get an email as well.
+resource "aws_cloudwatch_metric_alarm" "backend_oom" {
+  alarm_name          = "cadence-${var.environment}-backend-out-of-memory"
+  alarm_description   = "The ${var.environment} Java backend ran out of heap in the last 24h and was restarted. Check log group ${aws_cloudwatch_log_group.backend.name} for OutOfMemoryError."
+  namespace           = "Cadence/Backend/${var.environment}"
+  metric_name         = "OutOfMemoryErrors"
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 24
+  datapoints_to_alarm = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+
+  tags = var.tags
+}
+
 resource "aws_iam_role" "this" {
   name = "cadence-${var.environment}-backend"
 
