@@ -298,6 +298,23 @@ export function TrainingBlockCard({
               ))}
             </div>
           )}
+          {sport === "all" && !isUnscheduled(focusWeek) && (
+            <div className="mono" style={{ fontSize: 12, display: "flex", gap: 14, flexWrap: "wrap" }}>
+              {(["run", "ride"] as const)
+                .filter((s) => ((s === "run" ? focusWeek.run_count : focusWeek.ride_count) ?? 0) > 0)
+                .map((s) => {
+                  const km = s === "run" ? focusWeek.run_km : focusWeek.ride_km;
+                  const movingS = s === "run" ? focusWeek.run_moving_s : focusWeek.ride_moving_s;
+                  const count = (s === "run" ? focusWeek.run_count : focusWeek.ride_count)!;
+                  return (
+                    <span key={s} style={{ color: SEGMENT_COLOR[s] }}>
+                      {SEGMENT_LABEL[s]}: {km != null ? `${km.toFixed(1)} km` : "–"} ·{" "}
+                      {movingS != null ? `${hm(movingS)} h` : "–"} · {count} session{count === 1 ? "" : "s"}
+                    </span>
+                  );
+                })}
+            </div>
+          )}
           {focusWeek.races.length > 0 && (
             <div style={{ fontSize: 12, fontWeight: 600 }}>⚑ {focusWeek.races.map((r) => raceNote(r).replace(`${r.priority} ·`, `${r.priority} race ·`)).join(", ")}</div>
           )}
