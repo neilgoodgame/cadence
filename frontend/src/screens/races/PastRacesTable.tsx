@@ -32,6 +32,7 @@ export function PastRacesTable({ races }: { races: Race[] }) {
     byYear.set(year, [...(byYear.get(year) ?? []), race]);
   }
   const years = [...byYear.keys()].sort((a, b) => b - a);
+  for (const yearRaces of byYear.values()) yearRaces.sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
