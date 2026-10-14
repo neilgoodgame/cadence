@@ -2,6 +2,7 @@ package com.cadence.api.athletes;
 
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.common.error.ValidationException;
+import com.cadence.api.courses.CourseSections;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.util.HashSet;
@@ -185,6 +186,16 @@ public class AthleteService {
 				throw new ValidationException("Must be one of 6, 8, 10, 12, 15, 20.", "raceKeySessionCap");
 			}
 			athlete.setRaceKeySessionCap(request.raceKeySessionCap());
+		}
+		if (request.courseSectionSettings() != null) {
+			CourseSections.Settings merged = request.courseSectionSettings().mergeInto(athlete.getCourseSectionSettings());
+			try {
+				merged.validate();
+			}
+			catch (IllegalArgumentException e) {
+				throw new ValidationException(e.getMessage(), "courseSectionSettings");
+			}
+			athlete.setCourseSectionSettings(merged);
 		}
 		userRepository.save(athlete);
 		if (suggestionsAffected) {

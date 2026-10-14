@@ -11,8 +11,12 @@ from courses.sections import (
     ELEVATION_QUALITY_OK,
     ELEVATION_QUALITY_SPARSE,
     FLAT,
+    SERIES_STEP_M,
     SectionSettings,
+    build_elevation_series,
+    climbs_from_sections,
     detect_sections,
+    sections_from_series,
 )
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "sections"
@@ -163,3 +167,37 @@ class SettingsValidationTests(SimpleTestCase):
     def test_steep_threshold_must_exceed_flat_band(self):
         with self.assertRaisesMessage(ValueError, "steep_min_pct"):
             SectionSettings(flat_max_pct=3.0, steep_min_pct=2.5).validate()
+
+
+class ElevationSeriesTests(SimpleTestCase):
+    def test_series_is_the_raw_track_on_a_10m_grid(self):
+        distances, elevations = _profile("chicago")
+        quality, series = build_elevation_series(distances, elevations)
+        self.assertEqual(quality, ELEVATION_QUALITY_OK)
+        self.assertEqual(len(series), int(distances[-1] * 1000 // SERIES_STEP_M) + 1)
+        self.assertEqual(series[0], elevations[0])
+
+    def test_sections_from_the_series_match_detecting_from_the_track(self):
+        distances, elevations = _profile("leeds")
+        _, series = build_elevation_series(distances, elevations)
+        for settings in (DEFAULT_SETTINGS, replace(DEFAULT_SETTINGS, algorithm="bottom_up", resample_step_m=20.0)):
+            with self.subTest(settings=settings):
+                self.assertEqual(
+                    sections_from_series(series, settings), detect_sections(distances, elevations, settings).sections
+                )
+
+    def test_missing_elevation_stores_no_series(self):
+        distances = [i * 0.01 for i in range(500)]
+        self.assertEqual(build_elevation_series(distances, [None] * 500), (ELEVATION_QUALITY_MISSING, []))
+
+    def test_a_too_short_series_has_no_sections(self):
+        self.assertEqual(sections_from_series([]), [])
+        self.assertEqual(sections_from_series([100.0]), [])
+
+    def test_climbs_are_the_climb_and_steep_climb_sections(self):
+        sections = _sections("yorkshire_route", algorithm="bottom_up")
+        climbs = climbs_from_sections(sections)
+        expected = [s for s in sections if s["type"] in ("climb", "steep_climb")]
+        self.assertEqual(len(climbs), len(expected))
+        self.assertEqual(set(climbs[0]), {"start_km", "end_km", "gain_m", "avg_grade_pct"})
+        self.assertEqual(climbs[-1]["start_km"], expected[-1]["start_km"])

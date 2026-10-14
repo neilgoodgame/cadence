@@ -44,6 +44,10 @@ public final class CourseSections {
 	 * straight-line resampling - a route-planner export with points only at turns. */
 	static final double SPARSE_MEDIAN_SPACING_M = 100.0;
 	static final double STEEPEST_WINDOW_M = 100.0;
+	/** Spacing of the stored elevation series (Course.elevationSeries). Sections are always
+	 * calculated from that series, so a coarser resampleStepM resamples it again; finer isn't
+	 * allowed (Settings.validate). */
+	public static final double SERIES_STEP_M = 10.0;
 
 	public record Settings(
 			String algorithm, double flatMaxPct, double steepMinPct, double fitToleranceM, double minSectionM,
@@ -96,6 +100,9 @@ public final class CourseSections {
 
 	public record Result(String elevationQuality, List<Section> sections) {}
 
+	/** What a Course stores: the elevation quality, plus the series when it's ok. */
+	public record ElevationSeries(String elevationQuality, List<Double> series) {}
+
 	private record Seg(int i, int j) {}
 
 	private record Track(double[] xs, double[] ys) {}
@@ -105,17 +112,48 @@ public final class CourseSections {
 
 	/** Sections covering the whole track, or none (with the reason as elevationQuality) when the
 	 * elevation is missing or too sparse to trust. distancesKm must be cumulative; elevations may
-	 * contain nulls (a point with no altitude). */
+	 * contain nulls (a point with no altitude). Equivalent to buildElevationSeries then
+	 * sectionsFromSeries. */
 	public static Result detect(List<Double> distancesKm, List<Double> elevationsM, Settings settings) {
 		settings.validate();
+		ElevationSeries series = buildElevationSeries(distancesKm, elevationsM);
+		if (!ELEVATION_QUALITY_OK.equals(series.elevationQuality())) return new Result(series.elevationQuality(), List.of());
+		return new Result(series.elevationQuality(), sectionsFromSeries(series.series(), settings));
+	}
+
+	/** The elevation quality plus, when it's ok, the raw (unsmoothed) elevation resampled to
+	 * SERIES_STEP_M from the track's start. Unsmoothed so every setting, smoothing included, still
+	 * applies at read time; full precision because rounding even to the centimetre shifts
+	 * bottom-up's near-tied merges. */
+	public static ElevationSeries buildElevationSeries(List<Double> distancesKm, List<Double> elevationsM) {
 		String quality = elevationQuality(distancesKm, elevationsM);
-		if (!ELEVATION_QUALITY_OK.equals(quality)) return new Result(quality, List.of());
+		if (!ELEVATION_QUALITY_OK.equals(quality)) return new ElevationSeries(quality, List.of());
 		Track raw = clean(distancesKm, elevationsM);
-		Track grid = resample(raw.xs(), raw.ys(), settings.resampleStepM());
-		double[] xs = grid.xs();
-		if (xs.length < 2) return new Result(quality, List.of());
+		double[] ys = resample(raw.xs(), raw.ys(), SERIES_STEP_M).ys();
+		List<Double> series = new ArrayList<>(ys.length);
+		for (double y : ys) series.add(y);
+		return new ElevationSeries(quality, series);
+	}
+
+	/** Sections for a stored elevation series (see buildElevationSeries), positioned in km from the
+	 * track's start. */
+	public static List<Section> sectionsFromSeries(List<Double> series, Settings settings) {
+		settings.validate();
+		if (series.size() < 2) return List.of();
+		double[] xs = new double[series.size()];
+		double[] ys = new double[series.size()];
+		for (int k = 0; k < xs.length; k++) {
+			xs[k] = k * SERIES_STEP_M;
+			ys[k] = series.get(k);
+		}
 		double step = settings.resampleStepM();
-		double[] ys = runningMedian(grid.ys(), halfWindow(settings.spikeWindowM(), step));
+		if (step != SERIES_STEP_M) {
+			Track grid = resample(xs, ys, step);
+			xs = grid.xs();
+			ys = grid.ys();
+			if (xs.length < 2) return List.of();
+		}
+		ys = runningMedian(ys, halfWindow(settings.spikeWindowM(), step));
 		ys = runningMean(ys, halfWindow(settings.smoothingWindowM(), step));
 		List<Seg> segs = ALGORITHM_BOTTOM_UP.equals(settings.algorithm())
 				? bottomUp(xs, ys, settings.fitToleranceM())
@@ -123,7 +161,18 @@ public final class CourseSections {
 		segs = tidy(xs, ys, segs, settings);
 		List<Section> sections = new ArrayList<>(segs.size());
 		for (Seg seg : segs) sections.add(describe(xs, ys, seg, settings));
-		return new Result(quality, sections);
+		return sections;
+	}
+
+	/** The climb and steep-climb sections in the shape the API's `climbs` has always had. */
+	public static List<Climb> climbsFromSections(List<Section> sections) {
+		List<Climb> climbs = new ArrayList<>();
+		for (Section s : sections) {
+			if (CLIMB.equals(s.type()) || STEEP_CLIMB.equals(s.type())) {
+				climbs.add(new Climb(s.startKm(), s.endKm(), s.gainM(), s.avgGradePct()));
+			}
+		}
+		return climbs;
 	}
 
 	public static String elevationQuality(List<Double> distancesKm, List<Double> elevationsM) {

@@ -46,8 +46,10 @@ public class CourseTools {
 				.toList();
 	}
 
-	@McpTool(name = "get_course", description = "Get one course's full detail - climbs, elevation "
-			+ "profile summary, and the races run on it.",
+	@McpTool(name = "get_course", description = "Get one course's full detail - the whole course split "
+			+ "into flat, climb and descent sections (each with distance range, gain/loss, average and "
+			+ "steepest-100m grade), the climbs among them, and the races run on it. elevation_quality is "
+			+ "\"ok\", or \"missing\"/\"sparse\" when the course's elevation can't support sections.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public Map<String, Object> getCourse(String courseId) {
@@ -65,6 +67,7 @@ public class CourseTools {
 		if (!course.getAthlete().getId().equals(athleteId)) {
 			return Map.of("error", "not_found");
 		}
+		course = courseService.ensureElevationSeries(course);
 		var response = courseService.toResponse(course);
 		Map<String, Object> m = new java.util.LinkedHashMap<>();
 		m.put("id", response.id());
@@ -74,6 +77,8 @@ public class CourseTools {
 		m.put("elevation_gain_m", response.elevationGainM());
 		m.put("elevation_loss_m", response.elevationLossM());
 		m.put("is_loop", response.isLoop());
+		m.put("elevation_quality", response.elevationQuality());
+		m.put("sections", response.sections());
 		m.put("climbs", response.climbs());
 		m.put("races", response.races());
 		return m;

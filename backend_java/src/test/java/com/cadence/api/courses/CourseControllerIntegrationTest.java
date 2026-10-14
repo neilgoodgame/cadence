@@ -16,6 +16,8 @@ import com.cadence.api.users.UserRepository;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -106,7 +108,7 @@ class CourseControllerIntegrationTest extends IntegrationTest {
 		// behind it - AccessGuard.requireRead must still deny it.
 		authAsDelegated(outsider.getId(), athlete.getId(), Set.of("activities:read"));
 
-		assertThatThrownBy(() -> courseController.getCourse(courseId)).isInstanceOf(ForbiddenException.class);
+		assertThatThrownBy(() -> courseController.getCourse(courseId, Map.of())).isInstanceOf(ForbiddenException.class);
 	}
 
 	@Test
@@ -172,5 +174,143 @@ class CourseControllerIntegrationTest extends IntegrationTest {
 
 		assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
 		assertThat(new String(response.getBody())).contains("<gpx");
+	}
+
+	// --- Course sections (calculated on read from the stored elevation series) ---
+
+	private CourseResponse uploadHillLoop(User athlete) throws IOException {
+		authAsSelf(athlete.getId());
+		MockMultipartFile gpx = new MockMultipartFile("gpx", "hill_loop.gpx", "application/gpx+xml", fixture("hill_loop.gpx"));
+		return courseController.uploadCourse(gpx, "Hill Loop", null);
+	}
+
+	private static List<String> types(CourseResponse response) {
+		return response.sections().stream().map(CourseSections.Section::type).toList();
+	}
+
+	@Test
+	void aNewCourseHasSectionsAndClimbsFromThem() throws IOException {
+		CourseResponse response = uploadHillLoop(newUser("course-sections-new@example.cc"));
+
+		assertThat(response.elevationQuality()).isEqualTo("ok");
+		assertThat(types(response)).containsExactly("steep_climb", "flat", "steep_descent");
+		assertThat(response.sections().get(0).startKm()).isEqualTo(0.0);
+		assertThat(response.climbs()).extracting(Climb::gainM).containsExactly(25);
+	}
+
+	@Test
+	void previewOverridesApplyToThisResponseOnly() throws IOException {
+		User athlete = newUser("course-sections-preview@example.cc");
+		String courseId = uploadHillLoop(athlete).id();
+
+		CourseResponse preview = courseController.getCourse(courseId, Map.of("steep_min_pct", "5"));
+
+		assertThat(types(preview).get(0)).isEqualTo("climb");
+		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getCourseSectionSettings().steepMinPct()).isEqualTo(4.0);
+		assertThat(types(courseController.getCourse(courseId, Map.of())).get(0)).isEqualTo("steep_climb");
+	}
+
+	@Test
+	void invalidPreviewOverridesAreRejected() throws IOException {
+		String courseId = uploadHillLoop(newUser("course-sections-invalid-preview@example.cc")).id();
+
+		assertThatThrownBy(() -> courseController.getCourse(courseId, Map.of("fit_tolerance_m", "0.1")))
+				.isInstanceOf(ValidationException.class);
+		assertThatThrownBy(() -> courseController.getCourse(courseId, Map.of("fit_tolerance_m", "abc")))
+				.isInstanceOf(ValidationException.class);
+		assertThatThrownBy(() -> courseController.getCourse(courseId, Map.of("algorithm", "kmeans")))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void theAthletesSavedSettingsApplyToEveryRead() throws IOException {
+		User athlete = newUser("course-sections-saved@example.cc");
+		String courseId = uploadHillLoop(athlete).id();
+		User stored = userRepository.findById(athlete.getId()).orElseThrow();
+		CourseSections.Settings d = CourseSections.Settings.DEFAULTS;
+		stored.setCourseSectionSettings(new CourseSections.Settings(CourseSections.ALGORITHM_BOTTOM_UP, d.flatMaxPct(), 5.0,
+				d.fitToleranceM(), d.minSectionM(), d.keepMinRiseM(), d.spikeWindowM(), d.smoothingWindowM(), d.resampleStepM()));
+		userRepository.save(stored);
+
+		assertThat(types(courseController.getCourse(courseId, Map.of())).get(0)).isEqualTo("climb");
+	}
+
+	@Test
+	void aCourseFromBeforeSectionsIsFilledInOnFirstRead() throws IOException {
+		String courseId = uploadHillLoop(newUser("course-sections-backfill@example.cc")).id();
+		Course stored = courseRepository.findById(courseId).orElseThrow();
+		stored.setElevationQuality("");
+		stored.setElevationSeries(List.of());
+		courseRepository.save(stored);
+
+		CourseResponse response = courseController.getCourse(courseId, Map.of());
+
+		assertThat(response.elevationQuality()).isEqualTo("ok");
+		assertThat(response.climbs()).extracting(Climb::gainM).containsExactly(25);
+		assertThat(courseRepository.findById(courseId).orElseThrow().getElevationSeries()).hasSizeGreaterThan(200);
+	}
+
+	private Course orphanCourse(User athlete) {
+		Course course = new Course();
+		course.setAthlete(athlete);
+		course.setName("Orphan");
+		course.setSource(CourseSource.ACTIVITY);
+		return courseRepository.save(course);
+	}
+
+	@Test
+	void aCourseWithNoSourceLeftIsMarkedMissing() {
+		User athlete = newUser("course-sections-orphan@example.cc");
+		authAsSelf(athlete.getId());
+		String courseId = orphanCourse(athlete).getId();
+
+		CourseResponse response = courseController.getCourse(courseId, Map.of());
+
+		assertThat(response.elevationQuality()).isEqualTo("missing");
+		assertThat(response.sections()).isEmpty();
+		assertThat(response.climbs()).isEmpty();
+	}
+
+	@Test
+	void recomputeRebuildsFromTheGpx() throws IOException {
+		String courseId = uploadHillLoop(newUser("course-sections-recompute@example.cc")).id();
+		Course stored = courseRepository.findById(courseId).orElseThrow();
+		stored.setElevationQuality("missing");
+		stored.setElevationSeries(List.of());
+		courseRepository.save(stored);
+
+		assertThat(courseController.recomputeCourseElevation(courseId).elevationQuality()).isEqualTo("ok");
+	}
+
+	@Test
+	void recomputeWithoutSourceDataIsUnprocessable() {
+		User athlete = newUser("course-sections-recompute-orphan@example.cc");
+		authAsSelf(athlete.getId());
+		String courseId = orphanCourse(athlete).getId();
+
+		assertThatThrownBy(() -> courseController.recomputeCourseElevation(courseId))
+				.isInstanceOf(UnprocessableEntityException.class);
+	}
+
+	@Test
+	void athleteWideRecomputeCountsUpdatedAndSkipped() throws IOException {
+		User athlete = newUser("course-sections-recompute-all@example.cc");
+		uploadHillLoop(athlete);
+		orphanCourse(athlete);
+
+		assertThat(courseController.recomputeAthleteCourseElevation(athlete.getId()))
+				.isEqualTo(new CourseService.RecomputeCounts(1, 1));
+	}
+
+	@Test
+	void outsiderCannotRecompute() throws IOException {
+		User athlete = newUser("course-sections-recompute-owner@example.cc");
+		User outsider = newUser("course-sections-recompute-outsider@example.cc");
+		String courseId = uploadHillLoop(athlete).id();
+		authAsDelegated(outsider.getId(), athlete.getId(), Set.of("activities:read", "activities:write"));
+
+		assertThatThrownBy(() -> courseController.recomputeCourseElevation(courseId)).isInstanceOf(ForbiddenException.class);
+		assertThatThrownBy(() -> courseController.recomputeAthleteCourseElevation(athlete.getId()))
+				.isInstanceOf(ForbiddenException.class);
 	}
 }

@@ -3,6 +3,7 @@ package com.cadence.api.users.dto;
 import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.RunningPowerSource;
+import com.cadence.api.courses.CourseSections;
 
 public record UserResponse(
 		String id,
@@ -42,5 +43,6 @@ public record UserResponse(
 		LapSource lapSource,
 		int defaultShoeLimitKm,
 		int raceBlockWeeks,
-		int raceKeySessionCap) {
+		int raceKeySessionCap,
+		CourseSections.Settings courseSectionSettings) {
 }

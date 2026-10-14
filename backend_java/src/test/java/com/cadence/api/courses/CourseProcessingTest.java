@@ -64,20 +64,23 @@ class CourseProcessingTest {
 	}
 
 	@Test
-	void detectsOneClimbAboveThresholds() {
-		List<CourseProcessing.TrackPoint> points = flatThenHillThenFlat(300, 50.0);
-		Double[] smoothed = CourseProcessing.smoothedElevations(points);
-		List<Climb> climbs = CourseProcessing.detectClimbs(points, smoothed);
+	void processingStoresTheSeriesSectionsAreCalculatedFrom() {
+		CourseProcessing.ProcessedTrack track = CourseProcessing.processTrackPoints(flatThenHillThenFlat(300, 50.0));
+		assertThat(track.elevationQuality()).isEqualTo(CourseSections.ELEVATION_QUALITY_OK);
+		assertThat(track.elevationSeries()).hasSize(300);
+		List<Climb> climbs = CourseSections.climbsFromSections(
+				CourseSections.sectionsFromSeries(track.elevationSeries(), CourseSections.Settings.DEFAULTS));
 		assertThat(climbs).hasSize(1);
 		assertThat(climbs.get(0).gainM()).isGreaterThanOrEqualTo(45);
-		assertThat(climbs.get(0).avgGradePct()).isGreaterThanOrEqualTo(1.5);
 	}
 
 	@Test
-	void subThresholdBumpIsNotAClimb() {
-		List<CourseProcessing.TrackPoint> points = flatThenHillThenFlat(300, 5.0); // below the 12m gain floor
-		Double[] smoothed = CourseProcessing.smoothedElevations(points);
-		assertThat(CourseProcessing.detectClimbs(points, smoothed)).isEmpty();
+	void aTrackWithoutElevationStoresNoSeries() {
+		List<CourseProcessing.TrackPoint> points = new ArrayList<>();
+		for (int i = 0; i < 300; i++) points.add(new CourseProcessing.TrackPoint(51.5 + i * 0.0001, -0.1, null, i * 0.01));
+		CourseProcessing.ProcessedTrack track = CourseProcessing.processTrackPoints(points);
+		assertThat(track.elevationQuality()).isEqualTo(CourseSections.ELEVATION_QUALITY_MISSING);
+		assertThat(track.elevationSeries()).isEmpty();
 	}
 
 	@Test
@@ -133,11 +136,11 @@ class CourseProcessingTest {
 	 * Parity check against the Python backend's reference output for the exact same fixture
 	 * (see backend/courses/fixtures/hill_loop.gpx, shared verbatim with
 	 * backend/courses/tests/test_processing.py) - README §3.6 requires the two backends agree
-	 * on distance/gain/loss/climbs within 0.5%. Reference values computed once by running the
+	 * on distance/gain/loss within 0.5%. Reference values computed once by running the
 	 * Python backend's own process_track_points against this file:
 	 * distance_km=2.247, elevation_gain_m=25, elevation_loss_m=25, elevation_max_m=125,
-	 * elevation_min_m=100, is_loop=true, one climb (start_km=0.19, end_km=1.66, gain_m=25,
-	 * avg_grade_pct=1.7).
+	 * elevation_min_m=100, is_loop=true; its sections (CourseSectionsTest covers their parity) give
+	 * one climb of gain_m=25.
 	 */
 	@Test
 	void hillLoopFixtureMatchesThePythonBackendWithin0Point5Percent() throws IOException {
@@ -153,11 +156,10 @@ class CourseProcessingTest {
 		assertThat(track.elevationMaxM()).isEqualTo(125);
 		assertThat(track.elevationMinM()).isEqualTo(100);
 		assertThat(track.isLoop()).isTrue();
-		assertThat(track.climbs()).hasSize(1);
-		Climb climb = track.climbs().get(0);
-		assertThat(climb.gainM()).isEqualTo(25);
-		assertThat(climb.startKm()).isCloseTo(0.19, within(0.05));
-		assertThat(climb.endKm()).isCloseTo(1.66, within(0.05));
+		assertThat(track.elevationQuality()).isEqualTo(CourseSections.ELEVATION_QUALITY_OK);
+		List<Climb> climbs = CourseSections.climbsFromSections(
+				CourseSections.sectionsFromSeries(track.elevationSeries(), CourseSections.Settings.DEFAULTS));
+		assertThat(climbs).extracting(Climb::gainM).containsExactly(25);
 		assertThat(track.routePolyline()).hasSizeLessThanOrEqualTo(500);
 		assertThat(track.elevationProfile()).hasSizeLessThanOrEqualTo(201);
 	}

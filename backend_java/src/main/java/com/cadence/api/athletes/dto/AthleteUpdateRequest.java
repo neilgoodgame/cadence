@@ -3,6 +3,7 @@ package com.cadence.api.athletes.dto;
 import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.RunningPowerSource;
+import com.cadence.api.courses.CourseSections;
 
 public record AthleteUpdateRequest(
 		String name,
@@ -39,5 +40,26 @@ public record AthleteUpdateRequest(
 		Integer decouplingWarmupMinutes,
 		Boolean decouplingUseWorkoutWarmup,
 		Integer raceBlockWeeks,
-		Integer raceKeySessionCap) {
+		Integer raceKeySessionCap,
+		SectionSettingsUpdate courseSectionSettings) {
+
+	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
+	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */
+	public record SectionSettingsUpdate(
+			String algorithm, Double flatMaxPct, Double steepMinPct, Double fitToleranceM, Double minSectionM,
+			Double keepMinRiseM, Double spikeWindowM, Double smoothingWindowM, Double resampleStepM) {
+
+		public CourseSections.Settings mergeInto(CourseSections.Settings current) {
+			return new CourseSections.Settings(
+					algorithm != null ? algorithm : current.algorithm(),
+					flatMaxPct != null ? flatMaxPct : current.flatMaxPct(),
+					steepMinPct != null ? steepMinPct : current.steepMinPct(),
+					fitToleranceM != null ? fitToleranceM : current.fitToleranceM(),
+					minSectionM != null ? minSectionM : current.minSectionM(),
+					keepMinRiseM != null ? keepMinRiseM : current.keepMinRiseM(),
+					spikeWindowM != null ? spikeWindowM : current.spikeWindowM(),
+					smoothingWindowM != null ? smoothingWindowM : current.smoothingWindowM(),
+					resampleStepM != null ? resampleStepM : current.resampleStepM());
+		}
+	}
 }

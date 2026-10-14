@@ -524,7 +524,10 @@ def _import_courses(
                     gpx_filename=course.get("gpx_filename") or "",
                     route_polyline=course.get("route_polyline") or [],
                     elevation_profile=course.get("elevation_profile") or [],
-                    climbs=course.get("climbs") or [],
+                    # An export from before sections existed has neither - the course then
+                    # builds its series from the imported GPX or activity on first read.
+                    elevation_quality=course.get("elevation_quality") or "",
+                    elevation_series=course.get("elevation_series") or [],
                 )
                 if course.get("gpx_base64"):
                     raw = base64.b64decode(course["gpx_base64"])

@@ -1,5 +1,6 @@
 package com.cadence.api.courses;
 
+import com.cadence.api.common.error.UnprocessableEntityException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.courses.dto.CourseResponse;
@@ -11,6 +12,7 @@ import com.cadence.api.users.UserService;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -81,11 +83,36 @@ public class CourseController {
 
 	public record FromActivityRequest(String activityId, String name) {}
 
+	/** Query parameters named like course_section_settings' fields override the owner's settings for
+	 * this response only - a live preview that saves nothing. */
 	@GetMapping("/v1/courses/{id}")
-	public CourseResponse getCourse(@PathVariable String id) {
+	public CourseResponse getCourse(@PathVariable String id, @RequestParam Map<String, String> query) {
 		Course course = courseService.getCourse(id);
 		accessGuard.requireRead(course.getAthlete().getId());
+		CourseSections.Settings settings = courseService.settingsWithOverrides(course, query);
+		course = courseService.ensureElevationSeries(course);
+		return courseService.toResponse(course, settings);
+	}
+
+	/** Rebuilds the stored elevation series from the course's GPX file or source activity - only
+	 * needed after the source data or the resampling code changes, since every section setting
+	 * applies at read time. */
+	@PostMapping("/v1/courses/{id}/recompute-elevation")
+	public CourseResponse recomputeCourseElevation(@PathVariable String id) {
+		Course course = courseService.getCourse(id);
+		accessGuard.requireWrite(course.getAthlete().getId());
+		if (!courseService.rebuildElevationSeries(course)) {
+			throw new UnprocessableEntityException(
+					"This course's GPX file and source activity are both gone, so its elevation can't be rebuilt.");
+		}
 		return courseService.toResponse(course);
+	}
+
+	@PostMapping("/v1/athletes/{id}/recompute-elevation")
+	public CourseService.RecomputeCounts recomputeAthleteCourseElevation(@PathVariable String id) {
+		accessGuard.requireWrite(id);
+		userService.getById(id);
+		return courseService.recomputeElevationForAthlete(id);
 	}
 
 	@PatchMapping("/v1/courses/{id}")

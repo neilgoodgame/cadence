@@ -4,6 +4,7 @@ import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.id.PrefixedIdEntity;
+import com.cadence.api.courses.CourseSections;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.PrePersist;
@@ -90,6 +91,36 @@ public class User extends PrefixedIdEntity {
 	/** Maximum key sessions returned per race block - see RaceBlockService's key_sessions.total_candidates. */
 	@Column(name = "race_key_session_cap", nullable = false)
 	private int raceKeySessionCap = 10;
+
+	// Course-section preferences - every setting CourseSections.Settings takes, with the same
+	// defaults. Sections are calculated on every course read, so a change applies the next time a
+	// course is viewed; nothing is recomputed.
+	@Column(name = "section_algorithm", nullable = false)
+	private String sectionAlgorithm = CourseSections.ALGORITHM_DOUGLAS_PEUCKER;
+
+	@Column(name = "section_flat_max_pct", nullable = false)
+	private double sectionFlatMaxPct = 1.0;
+
+	@Column(name = "section_steep_min_pct", nullable = false)
+	private double sectionSteepMinPct = 4.0;
+
+	@Column(name = "section_fit_tolerance_m", nullable = false)
+	private double sectionFitToleranceM = 2.0;
+
+	@Column(name = "section_min_length_m", nullable = false)
+	private double sectionMinLengthM = 250.0;
+
+	@Column(name = "section_keep_min_rise_m", nullable = false)
+	private double sectionKeepMinRiseM = 5.0;
+
+	@Column(name = "section_spike_window_m", nullable = false)
+	private double sectionSpikeWindowM = 30.0;
+
+	@Column(name = "section_smoothing_window_m", nullable = false)
+	private double sectionSmoothingWindowM = 100.0;
+
+	@Column(name = "section_resample_step_m", nullable = false)
+	private double sectionResampleStepM = 10.0;
 
 	// Aerobic decoupling qualification thresholds (see DecouplingQualificationCalculator) - the
 	// defaults match the design spec's own fixed limits. Read at compute time (ingest/
@@ -366,6 +397,23 @@ public class User extends PrefixedIdEntity {
 
 	public void setRaceKeySessionCap(int raceKeySessionCap) {
 		this.raceKeySessionCap = raceKeySessionCap;
+	}
+
+	public CourseSections.Settings getCourseSectionSettings() {
+		return new CourseSections.Settings(sectionAlgorithm, sectionFlatMaxPct, sectionSteepMinPct, sectionFitToleranceM,
+				sectionMinLengthM, sectionKeepMinRiseM, sectionSpikeWindowM, sectionSmoothingWindowM, sectionResampleStepM);
+	}
+
+	public void setCourseSectionSettings(CourseSections.Settings settings) {
+		this.sectionAlgorithm = settings.algorithm();
+		this.sectionFlatMaxPct = settings.flatMaxPct();
+		this.sectionSteepMinPct = settings.steepMinPct();
+		this.sectionFitToleranceM = settings.fitToleranceM();
+		this.sectionMinLengthM = settings.minSectionM();
+		this.sectionKeepMinRiseM = settings.keepMinRiseM();
+		this.sectionSpikeWindowM = settings.spikeWindowM();
+		this.sectionSmoothingWindowM = settings.smoothingWindowM();
+		this.sectionResampleStepM = settings.resampleStepM();
 	}
 
 	public double getDecouplingViLimitBike() {

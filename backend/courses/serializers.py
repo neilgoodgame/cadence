@@ -1,6 +1,8 @@
 from rest_framework import serializers
 
+from .elevation import sections_for
 from .models import Course
+from .sections import climbs_from_sections
 
 
 class CourseRaceSerializer(serializers.Serializer):
@@ -38,12 +40,22 @@ class CourseSerializer(serializers.ModelSerializer):
             "gpx_filename",
             "route_polyline",
             "elevation_profile",
-            "climbs",
+            "elevation_quality",
             "created_at",
             "race_count",
             "races",
         ]
         read_only_fields = [f for f in fields if f not in ("name", "location_name")]
+
+    def to_representation(self, course: Course) -> dict:
+        """Adds `sections` and `climbs`, calculated now from the stored elevation series -
+        with context["section_settings"] when a preview passes overrides, else the owning
+        athlete's own settings."""
+        data = super().to_representation(course)
+        sections = sections_for(course, self.context.get("section_settings"))
+        data["sections"] = sections
+        data["climbs"] = climbs_from_sections(sections)
+        return data
 
     def get_race_count(self, course: Course) -> int:
         return course.races.count()

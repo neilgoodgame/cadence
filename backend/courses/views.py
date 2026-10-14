@@ -1,4 +1,6 @@
 import io
+from dataclasses import fields as dataclass_fields
+from dataclasses import replace
 from xml.sax.saxutils import escape
 
 from django.core.files.storage import default_storage
@@ -11,14 +13,17 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import User
 from activities.models import Activity
 from core.auth_context import get_effective_athlete_id
 from core.exceptions import UnprocessableEntityError
 from core.permissions import user_may_read, user_may_write
 
 from . import processing
+from .elevation import ensure_elevation_series, rebuild_elevation_series
 from .geocoding import reverse_geocode
 from .models import Course
+from .sections import SectionSettings
 from .serializers import CourseListSerializer, CourseSerializer, CourseUpdateSerializer
 
 
@@ -32,6 +37,35 @@ def _require_write(request: Request, athlete_id: str) -> None:
     sub, _ = get_effective_athlete_id(request)
     if not user_may_write(sub, athlete_id):
         raise PermissionDenied("You do not have write access to that athlete's data.")
+
+
+_SETTING_TYPES = {f.name: f.type for f in dataclass_fields(SectionSettings)}
+
+
+def _preview_settings(request: Request, course: Course) -> SectionSettings | None:
+    """The owner's section settings with any overrides from the query string (the same names
+    as course_section_settings, e.g. ?algorithm=bottom_up&fit_tolerance_m=3) - a live preview
+    that saves nothing. None when the query string has none."""
+    overrides: dict[str, object] = {}
+    for name, kind in _SETTING_TYPES.items():
+        raw = request.query_params.get(name)
+        if raw is None:
+            continue
+        if kind in (float, "float"):
+            try:
+                overrides[name] = float(raw)
+            except ValueError as exc:
+                raise ValidationError({name: "Must be a number."}) from exc
+        else:
+            overrides[name] = raw
+    if not overrides:
+        return None
+    settings = replace(course.athlete.section_settings(), **overrides)
+    try:
+        settings.validate()
+    except ValueError as exc:
+        raise ValidationError({"course_section_settings": str(exc)}) from exc
+    return settings
 
 
 class CourseListCreateView(APIView):
@@ -119,7 +153,9 @@ class CourseDetailView(APIView):
         sub, _ = get_effective_athlete_id(request)
         if not user_may_read(sub, course.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
-        return Response(CourseSerializer(course).data)
+        settings = _preview_settings(request, course)
+        ensure_elevation_series(course)
+        return Response(CourseSerializer(course, context={"section_settings": settings}).data)
 
     def patch(self, request: Request, id: str) -> Response:
         course = get_object_or_404(Course, pk=id)
@@ -170,3 +206,34 @@ class CourseGpxView(APIView):
         response = HttpResponse(content, content_type="application/gpx+xml")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+
+class CourseRecomputeElevationView(APIView):
+    def post(self, request: Request, id: str) -> Response:
+        """Rebuilds the stored elevation series from the course's GPX file or source activity -
+        only needed after the source data or the resampling code changes, since every section
+        setting applies at read time."""
+        course = get_object_or_404(Course, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, course.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        if not rebuild_elevation_series(course):
+            raise UnprocessableEntityError(
+                "This course's GPX file and source activity are both gone, so its elevation can't be rebuilt."
+            )
+        return Response(CourseSerializer(course).data)
+
+
+class AthleteRecomputeCourseElevationView(APIView):
+    def post(self, request: Request, id: str) -> Response:
+        """The per-course recompute for every one of an athlete's courses, one at a time.
+        Synchronous: an athlete has tens of courses at most and each takes milliseconds."""
+        _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        updated = skipped = 0
+        for course in Course.objects.filter(athlete=athlete).select_related("source_activity"):
+            if rebuild_elevation_series(course):
+                updated += 1
+            else:
+                skipped += 1
+        return Response({"updated": updated, "skipped": skipped})

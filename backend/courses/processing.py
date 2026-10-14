@@ -1,9 +1,9 @@
-"""GPX/track processing for Course: distance, elevation smoothing, climb detection,
-route simplification and elevation-profile resampling. Shared by a GPX upload and a
+"""GPX/track processing for Course: distance, elevation smoothing, the stored elevation
+series sections are calculated from, route simplification and elevation-profile resampling. Shared by a GPX upload and a
 from-activity course - both end up as a list of TrackPoint before process_track_points
 takes over, so the two sources produce identical Course fields for the same geometry.
 
-Java (io.jenetics:jpx) must apply the same smoothing/gain/climb rules - see
+Java (io.jenetics:jpx) must apply the same smoothing/gain rules - see
 backend/courses/fixtures/ and the parity test planned for backend_java/.
 """
 
@@ -15,16 +15,13 @@ import gpxpy
 
 from uploads.parsers.gpx import _haversine_km
 
+from .sections import build_elevation_series
+
 MAX_GPX_BYTES = 10 * 1024 * 1024
 MIN_TRACK_POINTS = 50
 
 ELEVATION_SMOOTH_WINDOW_M = 50.0
 ELEVATION_NOISE_THRESHOLD_M = 2.0
-
-CLIMB_MIN_LENGTH_M = 400.0
-CLIMB_MIN_GRADE_PCT = 1.5
-CLIMB_MIN_GAIN_M = 12.0
-CLIMB_MERGE_GAP_M = 200.0
 
 ROUTE_SIMPLIFY_MAX_POINTS = 500
 ELEVATION_PROFILE_POINTS = 200
@@ -143,89 +140,6 @@ def _gain_loss(smoothed: list[float | None]) -> tuple[int, int]:
     return round(gain), round(loss)
 
 
-def _pivot_indices(smoothed: list[float | None]) -> list[int]:
-    """Indices of local min/max in the smoothed series (a zigzag filter using the
-    same 2m noise threshold as _gain_loss), alternating starting with the first
-    point. Feeds climb detection below."""
-    idxs = [i for i, v in enumerate(smoothed) if v is not None]
-    if len(idxs) < 2:
-        return idxs
-
-    pivots = [idxs[0]]
-    direction = 0  # 0 undetermined, 1 trending up, -1 trending down
-    extreme_idx = idxs[0]
-    for i in idxs[1:]:
-        v = smoothed[i]
-        extreme_v = smoothed[extreme_idx]
-        if direction >= 0 and v >= extreme_v:
-            extreme_idx, direction = i, 1
-        elif direction <= 0 and v <= extreme_v:
-            extreme_idx, direction = i, -1
-        elif (direction == 1 and extreme_v - v >= ELEVATION_NOISE_THRESHOLD_M) or (
-            direction == -1 and v - extreme_v >= ELEVATION_NOISE_THRESHOLD_M
-        ):
-            pivots.append(extreme_idx)
-            direction, extreme_idx = -direction, i
-    if pivots[-1] != extreme_idx:
-        pivots.append(extreme_idx)
-    return pivots
-
-
-def _detect_climbs(points: list[TrackPoint], smoothed: list[float | None]) -> list[dict[str, Any]]:
-    pivots = _pivot_indices(smoothed)
-    if len(pivots) < 2:
-        return []
-
-    legs = [
-        {"start_idx": a, "end_idx": b, "uphill": smoothed[b] > smoothed[a]}
-        for a, b in zip(pivots[:-1], pivots[1:], strict=True)
-    ]
-
-    merged: list[dict[str, Any]] = []
-    i = 0
-    while i < len(legs):
-        leg = legs[i]
-        if not leg["uphill"]:
-            i += 1
-            continue
-        start_idx, end_idx = leg["start_idx"], leg["end_idx"]
-        gain_m = smoothed[end_idx] - smoothed[start_idx]
-        j = i + 1
-        # Fold in a short descent (< 200m) followed by another climb leg, so a
-        # minor dip doesn't split one climb into two.
-        while j + 1 < len(legs) and not legs[j]["uphill"]:
-            dip = legs[j]
-            dip_km = points[dip["end_idx"]].distance_km - points[dip["start_idx"]].distance_km
-            if dip_km * 1000.0 >= CLIMB_MERGE_GAP_M:
-                break
-            next_up = legs[j + 1]
-            end_idx = next_up["end_idx"]
-            gain_m += smoothed[next_up["end_idx"]] - smoothed[next_up["start_idx"]]
-            j += 2
-        merged.append({"start_idx": start_idx, "end_idx": end_idx, "gain_m": gain_m})
-        i = j
-
-    climbs = []
-    for m in merged:
-        start_km, end_km = points[m["start_idx"]].distance_km, points[m["end_idx"]].distance_km
-        length_m = (end_km - start_km) * 1000.0
-        gain_m = m["gain_m"]
-        if length_m < CLIMB_MIN_LENGTH_M or gain_m < CLIMB_MIN_GAIN_M:
-            continue
-        grade_pct = (gain_m / length_m) * 100.0 if length_m else 0.0
-        if grade_pct < CLIMB_MIN_GRADE_PCT:
-            continue
-        climbs.append(
-            {
-                "start_km": round(start_km, 2),
-                "end_km": round(end_km, 2),
-                "gain_m": round(gain_m),
-                "avg_grade_pct": round(grade_pct, 1),
-            }
-        )
-    return climbs
-
-
 def _perpendicular_distance(point: tuple[float, float], start: tuple[float, float], end: tuple[float, float]) -> float:
     (x, y), (x1, y1), (x2, y2) = point, start, end
     if (x1, y1) == (x2, y2):
@@ -296,8 +210,11 @@ def _is_loop(points: list[TrackPoint]) -> bool:
 
 
 def process_track_points(points: list[TrackPoint]) -> dict[str, Any]:
-    """Turns a parsed/extracted track into every derived Course field."""
+    """Turns a parsed/extracted track into every derived Course field. Sections and climbs
+    aren't among them - they're calculated on read from elevation_series with the athlete's
+    current settings (see courses/sections.py)."""
     smoothed = _smoothed_elevations(points)
+    quality, series = build_elevation_series([p.distance_km for p in points], [p.elevation for p in points])
     gain_m, loss_m = _gain_loss(smoothed)
     elevations = [v for v in smoothed if v is not None]
     return {
@@ -311,5 +228,6 @@ def process_track_points(points: list[TrackPoint]) -> dict[str, Any]:
         "is_loop": _is_loop(points),
         "route_polyline": _simplify_route(points),
         "elevation_profile": _elevation_profile(points, smoothed),
-        "climbs": _detect_climbs(points, smoothed),
+        "elevation_quality": quality,
+        "elevation_series": series,
     }

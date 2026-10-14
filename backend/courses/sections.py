@@ -40,6 +40,10 @@ MISSING_MIN_RANGE_M = 1.0
 # straight-line resampling - a route-planner export with points only at turns.
 SPARSE_MEDIAN_SPACING_M = 100.0
 STEEPEST_WINDOW_M = 100.0
+# Spacing of the stored elevation series (Course.elevation_series). Sections are always
+# calculated from that series, so a coarser resample_step_m resamples it again; finer isn't
+# allowed (SectionSettings.validate).
+SERIES_STEP_M = 10.0
 
 
 @dataclass(frozen=True)
@@ -359,23 +363,34 @@ def _describe(xs: list[float], ys: list[float], seg: tuple[int, int], settings: 
     }
 
 
-def detect_sections(
-    distances_km: Sequence[float],
-    elevations_m: Sequence[float | None],
-    settings: SectionSettings = DEFAULT_SETTINGS,
-) -> SectionsResult:
-    """Sections covering the whole track, or none (with the reason as elevation_quality)
-    when the elevation is missing or too sparse to trust. distances_km must be cumulative;
-    elevations may contain None (a point with no altitude)."""
-    settings.validate()
+def build_elevation_series(
+    distances_km: Sequence[float], elevations_m: Sequence[float | None]
+) -> tuple[str, list[float]]:
+    """The elevation quality plus, when it's ok, the raw (unsmoothed) elevation resampled to
+    SERIES_STEP_M from the track's start - what a Course stores. Unsmoothed so every setting,
+    smoothing included, still applies at read time; full precision because rounding even to
+    the centimetre shifts bottom-up's near-tied merges."""
     quality = elevation_quality(distances_km, elevations_m)
     if quality != ELEVATION_QUALITY_OK:
-        return SectionsResult(quality)
+        return quality, []
     raw_x, raw_y = _clean(distances_km, elevations_m)
-    xs, ys = resample(raw_x, raw_y, settings.resample_step_m)
-    if len(xs) < 2:
-        return SectionsResult(quality)
+    _, ys = resample(raw_x, raw_y, SERIES_STEP_M)
+    return quality, ys
+
+
+def sections_from_series(series: Sequence[float], settings: SectionSettings = DEFAULT_SETTINGS) -> list[dict]:
+    """Sections for a stored elevation series (see build_elevation_series), positioned in km
+    from the track's start."""
+    settings.validate()
+    if len(series) < 2:
+        return []
+    xs = [k * SERIES_STEP_M for k in range(len(series))]
+    ys = list(series)
     step = settings.resample_step_m
+    if step != SERIES_STEP_M:
+        xs, ys = resample(xs, ys, step)
+        if len(xs) < 2:
+            return []
     ys = _running_median(ys, _half_window(settings.spike_window_m, step))
     ys = _running_mean(ys, _half_window(settings.smoothing_window_m, step))
     if settings.algorithm == ALGORITHM_BOTTOM_UP:
@@ -383,4 +398,34 @@ def detect_sections(
     else:
         segs = _douglas_peucker(xs, ys, settings.fit_tolerance_m)
     segs = _tidy(xs, ys, segs, settings)
-    return SectionsResult(quality, [_describe(xs, ys, seg, settings) for seg in segs])
+    return [_describe(xs, ys, seg, settings) for seg in segs]
+
+
+def climbs_from_sections(sections: Sequence[dict]) -> list[dict]:
+    """The climb and steep-climb sections in the shape the API's `climbs` has always had."""
+    return [
+        {
+            "start_km": s["start_km"],
+            "end_km": s["end_km"],
+            "gain_m": s["gain_m"],
+            "avg_grade_pct": s["avg_grade_pct"],
+        }
+        for s in sections
+        if s["type"] in (CLIMB, STEEP_CLIMB)
+    ]
+
+
+def detect_sections(
+    distances_km: Sequence[float],
+    elevations_m: Sequence[float | None],
+    settings: SectionSettings = DEFAULT_SETTINGS,
+) -> SectionsResult:
+    """Sections covering the whole track, or none (with the reason as elevation_quality)
+    when the elevation is missing or too sparse to trust. distances_km must be cumulative;
+    elevations may contain None (a point with no altitude). Equivalent to
+    build_elevation_series then sections_from_series."""
+    settings.validate()
+    quality, series = build_elevation_series(distances_km, elevations_m)
+    if quality != ELEVATION_QUALITY_OK:
+        return SectionsResult(quality)
+    return SectionsResult(quality, sections_from_series(series, settings))

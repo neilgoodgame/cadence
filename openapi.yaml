@@ -1586,6 +1586,12 @@ paths:
                     zones_recomputed.
                 race_block_weeks: { type: integer, enum: [12, 16, 20, 24], description: See the User schema. }
                 race_key_session_cap: { type: integer, enum: [6, 8, 10, 12, 15, 20], description: See the User schema. }
+                course_section_settings:
+                  allOf:
+                    - $ref: "#/components/schemas/CourseSectionSettings"
+                  description: >
+                    Any subset of the settings, merged into the athlete's current ones; the
+                    merged result must satisfy every range (400 otherwise, nothing saved).
       responses:
         "200":
           description: Updated athlete.
@@ -2874,12 +2880,30 @@ paths:
       tags: [Courses]
       summary: Retrieve a course
       operationId: getCourse
+      description: >
+        Sections and climbs are calculated on this request from the course's stored elevation,
+        with the owning athlete's course_section_settings. Any of the optional query parameters
+        below (named like CourseSectionSettings' fields) override those settings for this
+        response only - a live preview that saves nothing. A course from before sections existed
+        has its elevation series built from its GPX or source activity on first read.
+      parameters:
+        - { name: algorithm, in: query, required: false, schema: { type: string, enum: [douglas_peucker, bottom_up] } }
+        - { name: flat_max_pct, in: query, required: false, schema: { type: number } }
+        - { name: steep_min_pct, in: query, required: false, schema: { type: number } }
+        - { name: fit_tolerance_m, in: query, required: false, schema: { type: number } }
+        - { name: min_section_m, in: query, required: false, schema: { type: number } }
+        - { name: keep_min_rise_m, in: query, required: false, schema: { type: number } }
+        - { name: spike_window_m, in: query, required: false, schema: { type: number } }
+        - { name: smoothing_window_m, in: query, required: false, schema: { type: number } }
+        - { name: resample_step_m, in: query, required: false, schema: { type: number } }
       responses:
         "200":
-          description: Course, including its route, elevation profile, climbs and race history.
+          description: Course, including its route, elevation profile, sections, climbs and race history.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Course" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -2930,6 +2954,55 @@ paths:
           content:
             application/gpx+xml:
               schema: { type: string, format: binary }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/courses/{id}/recompute-elevation:
+    parameters:
+      - $ref: "#/components/parameters/CourseId"
+    post:
+      tags: [Courses]
+      summary: Rebuild a course's stored elevation series
+      operationId: recomputeCourseElevation
+      description: >
+        Rebuilds the stored elevation series from the course's GPX file, or its source activity
+        when there's no file. Only needed after the source data or the resampling code changes -
+        every section setting applies at read time, so changing settings never needs this.
+      responses:
+        "200":
+          description: The course, with sections from the rebuilt series.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Course" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: The course's GPX file and source activity are both gone.
+
+  /v1/athletes/{id}/recompute-elevation:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    post:
+      tags: [Courses]
+      summary: Rebuild the elevation series of every one of an athlete's courses
+      operationId: recomputeAthleteCourseElevation
+      description: >
+        POST /v1/courses/{id}/recompute-elevation for each course, one at a time. Synchronous - an
+        athlete has tens of courses at most and each takes milliseconds.
+      responses:
+        "200":
+          description: How many courses were rebuilt, and how many were skipped because their source data is gone.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated: { type: integer }
+                  skipped: { type: integer }
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -3295,6 +3368,8 @@ components:
           default: 10
           description: Frontend-only paging size for the key sessions list on a race's page - GET /v1/races/{id}/block's key_sessions.items always returns every candidate found (unpaginated); this preference isn't read by either backend.
           example: 10
+        course_section_settings:
+          $ref: "#/components/schemas/CourseSectionSettings"
 
     Athlete:
       allOf:
@@ -4246,6 +4321,34 @@ components:
         created_at: { type: string, format: date-time }
         race_count: { type: integer }
 
+    CourseSectionSettings:
+      type: object
+      description: >
+        How courses are split into sections (backend/courses/sections.py, backend_java's
+        CourseSections). Ranges keep a marathon from being cut into thousands of sections.
+      properties:
+        algorithm: { type: string, enum: [douglas_peucker, bottom_up], default: douglas_peucker }
+        flat_max_pct: { type: number, minimum: 0.5, maximum: 3, default: 1.0, description: "Average grade within +/- this is flat." }
+        steep_min_pct: { type: number, minimum: 2, maximum: 10, default: 4.0, description: "Average grade beyond +/- this is steep. Must be greater than flat_max_pct." }
+        fit_tolerance_m: { type: number, minimum: 0.5, maximum: 10, default: 2.0, description: Max vertical error of each straight-line section against the smoothed profile. }
+        min_section_m: { type: number, minimum: 50, maximum: 1000, default: 250, description: Shorter sections fold into a neighbour, unless they rise or drop at least keep_min_rise_m. }
+        keep_min_rise_m: { type: number, minimum: 1, maximum: 20, default: 5 }
+        spike_window_m: { type: number, minimum: 0, maximum: 100, default: 30, description: Running-median window for spike removal. }
+        smoothing_window_m: { type: number, minimum: 20, maximum: 300, default: 100, description: Running-mean window. }
+        resample_step_m: { type: number, minimum: 10, maximum: 50, default: 10 }
+
+    CourseSection:
+      type: object
+      properties:
+        type: { type: string, enum: [steep_descent, descent, flat, climb, steep_climb] }
+        start_km: { type: number }
+        end_km: { type: number }
+        length_m: { type: integer }
+        gain_m: { type: integer }
+        loss_m: { type: integer }
+        avg_grade_pct: { type: number }
+        steepest_100m_pct: { type: number, description: Steepest 100m inside the section - uphill for a climb or flat, downhill for a descent. }
+
     Course:
       allOf:
         - $ref: "#/components/schemas/CourseSummary"
@@ -4272,8 +4375,22 @@ components:
               items:
                 type: array
                 items: { type: number }
+            elevation_quality:
+              type: string
+              enum: [ok, missing, sparse]
+              description: >
+                ok, or why the course has no sections - missing (no or flat elevation in the source)
+                or sparse (points too far apart to see hills between them).
+            sections:
+              type: array
+              description: >
+                The whole course split into flat, climb and descent sections, calculated on this
+                request with the owner's course_section_settings (or a preview's overrides). Empty
+                unless elevation_quality is ok. Positions are km from the course's start.
+              items: { $ref: "#/components/schemas/CourseSection" }
             climbs:
               type: array
+              description: The climb and steep_climb sections, in the shape climbs have always had.
               items:
                 type: object
                 properties:

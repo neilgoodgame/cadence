@@ -26,6 +26,7 @@ from django.utils import timezone
 
 from activities.models import Activity, Lap, Record
 from activities.serializers import ActivitySerializer, LapSerializer
+from courses.elevation import climbs_for
 from courses.models import Course
 from gear.models import Bike, Component, Shoe
 from gear.serializers import BikeSerializer, ComponentSerializer, ShoeSerializer
@@ -309,7 +310,11 @@ def _course_export_dict(course: Course) -> dict[str, Any]:
         "gpx_base64": gpx_base64,
         "route_polyline": course.route_polyline,
         "elevation_profile": course.elevation_profile,
-        "climbs": course.climbs,
+        # Calculated with the athlete's settings at export time - kept for readers of older
+        # exports; an import rebuilds climbs from elevation_series instead.
+        "climbs": climbs_for(course),
+        "elevation_quality": course.elevation_quality,
+        "elevation_series": course.elevation_series,
         "created_at": course.created_at,
     }
 
