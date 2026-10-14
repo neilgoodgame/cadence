@@ -410,6 +410,25 @@ def sections_from_series(series: Sequence[float], settings: SectionSettings = DE
     return [_describe(xs, ys, seg, settings) for seg in segs]
 
 
+PROFILE_POINTS = 200
+
+
+def profile_from_series(
+    series: Sequence[float], settings: SectionSettings = DEFAULT_SETTINGS, points: int = PROFILE_POINTS
+) -> list[list[float]]:
+    """At most `points` [km, elevation] pairs for drawing a stored series, smoothed with the
+    settings' spike and smoothing windows so the line matches what the sections were fitted
+    to. Evenly spaced by integer index, so both backends pick the same samples."""
+    settings.validate()
+    n = len(series)
+    if n < 2:
+        return []
+    ys = _running_median(list(series), _half_window(settings.spike_window_m, SERIES_STEP_M))
+    ys = _running_mean(ys, _half_window(settings.smoothing_window_m, SERIES_STEP_M))
+    indices = range(n) if n <= points else [(i * (n - 1)) // (points - 1) for i in range(points)]
+    return [[_round_half_up(k * SERIES_STEP_M / 1000.0, 3), _round_half_up(ys[k], 1)] for k in indices]
+
+
 def climbs_from_sections(sections: Sequence[dict]) -> list[dict]:
     """The climb and steep-climb sections in the shape the API's `climbs` has always had."""
     return [

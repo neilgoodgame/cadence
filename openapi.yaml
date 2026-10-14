@@ -867,6 +867,66 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/activities/{id}/sections:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Activities]
+      summary: Flat, climb and descent sections of a run, walk or ride
+      operationId: getActivitySections
+      description: >
+        The course sections calculation applied to the activity's recorded altitude, with the
+        owning athlete's course_section_settings. The optional query parameters override those
+        settings for this response only, exactly as on GET /v1/courses/{id}. The activity's
+        elevation is resampled every 10 m and stored on the first request.
+      parameters:
+        - { name: algorithm, in: query, required: false, schema: { type: string, enum: [douglas_peucker, bottom_up] } }
+        - { name: flat_max_pct, in: query, required: false, schema: { type: number } }
+        - { name: steep_min_pct, in: query, required: false, schema: { type: number } }
+        - { name: fit_tolerance_m, in: query, required: false, schema: { type: number } }
+        - { name: min_section_m, in: query, required: false, schema: { type: number } }
+        - { name: keep_min_rise_m, in: query, required: false, schema: { type: number } }
+        - { name: spike_window_m, in: query, required: false, schema: { type: number } }
+        - { name: smoothing_window_m, in: query, required: false, schema: { type: number } }
+        - { name: resample_step_m, in: query, required: false, schema: { type: number } }
+      responses:
+        "200":
+          description: The activity's sections.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActivitySections" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: The activity isn't a run, walk or ride.
+
+  /v1/activities/{id}/recompute-elevation:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Rebuild an activity's stored elevation series
+      operationId: recomputeActivityElevation
+      description: >
+        Rebuilds the stored 10 m elevation series from the activity's records. Section settings
+        apply at read time, so changing them never needs this.
+      responses:
+        "200":
+          description: The activity's sections from the rebuilt series.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActivitySections" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: The activity isn't a run, walk or ride.
+
   /v1/activities/{id}/streams:
     parameters:
       - $ref: "#/components/parameters/ActivityId"
@@ -4337,6 +4397,40 @@ components:
         smoothing_window_m: { type: number, minimum: 20, maximum: 300, default: 100, description: Running-mean window. }
         resample_step_m: { type: number, minimum: 10, maximum: 50, default: 10 }
 
+    ActivitySections:
+      type: object
+      required: [object, activity_id, elevation_quality, elevation_profile, sections, climbs]
+      properties:
+        object: { type: string, enum: [activity_sections] }
+        activity_id: { type: string }
+        elevation_quality:
+          type: string
+          enum: [ok, missing, sparse]
+          description: >
+            ok, or why there are no sections - missing (no or flat altitude recorded) or sparse
+            (samples too far apart to see hills between them).
+        elevation_profile:
+          type: array
+          description: >
+            At most 200 [km, elevation_m] pairs from the stored series, smoothed with the same
+            spike and smoothing windows as the sections. Empty unless elevation_quality is ok.
+          items:
+            type: array
+            items: { type: number }
+        sections:
+          type: array
+          description: The whole activity split into sections; positions are km from its start.
+          items: { $ref: "#/components/schemas/CourseSection" }
+        climbs:
+          type: array
+          description: The climb and steep_climb sections, in Course.climbs' shape.
+          items:
+            type: object
+            properties:
+              start_km: { type: number }
+              end_km: { type: number }
+              gain_m: { type: integer }
+              avg_grade_pct: { type: number }
     CourseSection:
       type: object
       properties:

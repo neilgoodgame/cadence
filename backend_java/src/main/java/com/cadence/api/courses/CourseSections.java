@@ -169,6 +169,30 @@ public final class CourseSections {
 	}
 
 	/** The climb and steep-climb sections in the shape the API's `climbs` has always had. */
+	public static final int PROFILE_POINTS = 200;
+
+	/**
+	 * At most PROFILE_POINTS [km, elevation] pairs for drawing a stored series, smoothed with the
+	 * settings' spike and smoothing windows so the line matches what the sections were fitted to.
+	 * Evenly spaced by integer index, so both backends pick the same samples.
+	 */
+	public static List<double[]> profileFromSeries(List<Double> series, Settings settings) {
+		settings.validate();
+		int n = series.size();
+		if (n < 2) return List.of();
+		double[] ys = new double[n];
+		for (int k = 0; k < n; k++) ys[k] = series.get(k);
+		ys = runningMedian(ys, halfWindow(settings.spikeWindowM(), SERIES_STEP_M));
+		ys = runningMean(ys, halfWindow(settings.smoothingWindowM(), SERIES_STEP_M));
+		int points = Math.min(n, PROFILE_POINTS);
+		List<double[]> profile = new ArrayList<>(points);
+		for (int i = 0; i < points; i++) {
+			int k = n <= PROFILE_POINTS ? i : (int) ((long) i * (n - 1) / (PROFILE_POINTS - 1));
+			profile.add(new double[] {roundHalfUp(k * SERIES_STEP_M / 1000.0, 3), roundHalfUp(ys[k], 1)});
+		}
+		return profile;
+	}
+
 	public static List<Climb> climbsFromSections(List<Section> sections) {
 		List<Climb> climbs = new ArrayList<>();
 		for (Section s : sections) {

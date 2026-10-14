@@ -73,6 +73,24 @@ class CourseSectionsTest {
 	}
 
 	@Test
+	void everyGoldenProfileMatchesThePythonBackendExactly() throws IOException {
+		JsonNode profiles = MAPPER.readTree(FIXTURES.resolve("expected.json").toFile()).get("profiles");
+		assertThat(profiles.size()).isGreaterThanOrEqualTo(5);
+		for (JsonNode c : profiles) {
+			String where = c.get("profile").asText() + " " + c.get("settings");
+			Profile p = profile(c.get("profile").asText());
+			List<Double> series = CourseSections.buildElevationSeries(p.distancesKm(), p.elevationsM()).series();
+			List<double[]> points = CourseSections.profileFromSeries(series, settings(c.get("settings")));
+			JsonNode expected = c.get("points");
+			assertThat(points).as(where).hasSize(expected.size());
+			for (int k = 0; k < expected.size(); k++) {
+				assertThat(points.get(k)).as(where + " point " + k)
+						.containsExactly(expected.get(k).get(0).asDouble(), expected.get(k).get(1).asDouble());
+			}
+		}
+	}
+
+	@Test
 	void fixturesAreAnExactCopyOfThePythonBackends() throws IOException {
 		if (!Files.isDirectory(PYTHON_FIXTURES)) return; // backend/ not checked out alongside
 		try (Stream<Path> files = Files.list(PYTHON_FIXTURES)) {

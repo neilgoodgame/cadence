@@ -1227,6 +1227,18 @@ export interface CourseSection {
  * sparse (points too far apart to see hills between them). */
 export type ElevationQuality = "ok" | "missing" | "sparse";
 
+/** GET /v1/activities/{id}/sections - a run, walk or ride split into sections the same way as a
+ * course, from its recorded altitude. */
+export interface ActivitySections {
+  object: "activity_sections";
+  activity_id: string;
+  elevation_quality: ElevationQuality;
+  /** At most 200 [km, elevation_m] pairs, smoothed like the sections. */
+  elevation_profile: [number, number][];
+  sections: CourseSection[];
+  climbs: Climb[];
+}
+
 export interface Climb {
   start_km: number;
   end_km: number;

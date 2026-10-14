@@ -10,9 +10,10 @@ from rest_framework.views import APIView
 
 from core.auth_context import get_effective_athlete_id
 from core.cql import compile_ast_to_q, parse, resolve_order_by
-from core.exceptions import ConflictError
+from core.exceptions import ConflictError, UnprocessableEntityError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
+from courses.views import preview_settings
 from uploads.processing import (
     backfill_extended_stats,
     compute_decoupling_and_durability_for_activity,
@@ -27,6 +28,7 @@ from workouts.match_scan import DURATION_TOLERANCE_SECONDS, rank_workouts_for_ac
 from workouts.models import Workout
 
 from .comments import resolve_parent_comment
+from .elevation import SECTION_SPORTS, ensure_elevation, rebuild_elevation, sections_payload
 from .lap_derivation import replace_laps_with_derived
 from .match_preferences import apply_match_rename, apply_match_side_effects
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Record, Tag
@@ -496,6 +498,35 @@ class ActivityWorkoutMatchCandidatesView(APIView):
                 ]
             }
         )
+
+
+def _require_section_sport(activity: Activity) -> None:
+    if activity.sport not in SECTION_SPORTS:
+        raise UnprocessableEntityError("Sections are only calculated for runs, walks and rides.")
+
+
+class ActivitySectionsView(APIView):
+    def get(self, request: Request, id: str) -> Response:
+        """Flat / climb / descent sections of a run, walk or ride, calculated on each read with the
+        owner's course section settings - or a preview's overrides from the query string."""
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        _require_section_sport(activity)
+        settings = preview_settings(request, activity.athlete.section_settings())
+        return Response(sections_payload(activity, ensure_elevation(activity), settings))
+
+
+class ActivityRecomputeElevationView(APIView):
+    def post(self, request: Request, id: str) -> Response:
+        """Rebuilds the stored elevation series from the activity's records."""
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+        _require_section_sport(activity)
+        return Response(sections_payload(activity, rebuild_elevation(activity), None))
 
 
 class StreamsView(APIView):

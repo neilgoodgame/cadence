@@ -35,6 +35,18 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 	@Query("select r.t as t, r.distanceKm as distanceKm from Record r where r.id.activityId = :activityId order by r.t")
 	List<TimeDistance> findTimeDistanceByActivityIdOrderByT(@Param("activityId") String activityId);
 
+	/** Just (distance_km, altitude), as scalars - ActivitySectionsService builds an activity's
+	 * elevation series from these without loading whole Record entities (see TimeDistance). */
+	interface DistanceAltitude {
+		Double getDistanceKm();
+
+		Double getAltitude();
+	}
+
+	@Query("select r.distanceKm as distanceKm, r.altitude as altitude from Record r"
+			+ " where r.id.activityId = :activityId and r.distanceKm is not null order by r.t")
+	List<DistanceAltitude> findDistanceAltitudeByActivityIdOrderByT(@Param("activityId") String activityId);
+
 	@Query("select min(r.t) from Record r where r.id.activityId = :activityId")
 	Integer findMinTByActivityId(@Param("activityId") String activityId);
 

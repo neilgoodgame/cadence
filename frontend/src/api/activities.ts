@@ -2,7 +2,9 @@ import { apiFetch } from "./client";
 import type {
   Activity,
   ActivityComment,
+  ActivitySections,
   ActivityUpdate,
+  CourseSectionSettings,
   DataList,
   DurationCurve,
   Lap,
@@ -60,6 +62,17 @@ export async function listAllActivities(params: Omit<ListActivitiesParams, "limi
 
 export function getActivity(id: string): Promise<Activity> {
   return apiFetch<Activity>(`/v1/activities/${id}`);
+}
+
+/** Runs, walks and rides only (422 otherwise). `preview` overrides the owner's section settings
+ * for this response only, as on getCourse. */
+export function getActivitySections(id: string, preview?: Partial<CourseSectionSettings>): Promise<ActivitySections> {
+  return apiFetch<ActivitySections>(`/v1/activities/${id}/sections${toQueryString(preview ?? {})}`);
+}
+
+/** Rebuilds the stored elevation series from the activity's records. */
+export function recomputeActivityElevation(id: string): Promise<ActivitySections> {
+  return apiFetch<ActivitySections>(`/v1/activities/${id}/recompute-elevation`, { method: "POST" });
 }
 
 export function updateActivity(id: string, patch: ActivityUpdate): Promise<Activity> {

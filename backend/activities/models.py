@@ -426,3 +426,17 @@ class ActivityComment(PrefixedIDModel):
 
     def __str__(self) -> str:
         return f"{self.author_id} on {self.activity_id}"
+
+
+class ActivityElevation(models.Model):
+    """An activity's elevation resampled to 10 m from its records (see
+    courses.sections.build_elevation_series), for calculating sections on read. Its own table so
+    activity lists never load the series; no row yet means it hasn't been built, which
+    activities.elevation does on the first sections read."""
+
+    activity = models.OneToOneField(Activity, on_delete=models.CASCADE, primary_key=True, related_name="elevation")
+    elevation_quality = models.CharField(max_length=10)
+    elevation_series = models.JSONField(default=list)
+
+    def __str__(self) -> str:
+        return f"{self.activity_id} elevation ({self.elevation_quality})"
