@@ -1,0 +1,389 @@
+<title>Chicago Marathon Sections</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; the profile chart is the hero, the section table sits under it. */
+:root {
+  --bg: #f7f8f7;
+  --surface: #fcfcfb;
+  --ink: #111614;
+  --ink-2: #4b524f;
+  --muted: #7d8481;
+  --grid: #e3e6e3;
+  --axis: #bfc4c0;
+  --ring: rgba(17,22,20,0.10);
+  --accent: #1c5cab;
+  --hover: rgba(17,22,20,0.05);
+
+  --g-steep-descent: #1c5cab;
+  --g-descent: #86b6ef;
+  --g-flat: #e4e2db;
+  --g-climb: #ee9a8d;
+  --g-steep-climb: #b8302f;
+  --cadence-bar: #4b524f;
+
+  --f-display: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1211; --surface: #171a19; --ink: #eef0ee; --ink-2: #c0c6c2; --muted: #8b928e;
+    --grid: #262a28; --axis: #3a3f3c; --ring: rgba(255,255,255,0.10); --accent: #6da7ec; --hover: rgba(255,255,255,0.05);
+    --g-steep-descent: #6da7ec; --g-descent: #2a6ac0; --g-flat: #3a3a37; --g-climb: #b0443e; --g-steep-climb: #ec7b78;
+    --cadence-bar: #c0c6c2;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1211; --surface: #171a19; --ink: #eef0ee; --ink-2: #c0c6c2; --muted: #8b928e;
+  --grid: #262a28; --axis: #3a3f3c; --ring: rgba(255,255,255,0.10); --accent: #6da7ec; --hover: rgba(255,255,255,0.05);
+  --g-steep-descent: #6da7ec; --g-descent: #2a6ac0; --g-flat: #3a3a37; --g-climb: #b0443e; --g-steep-climb: #ec7b78;
+  --cadence-bar: #c0c6c2;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+main { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: 0.005em; }
+h1 { font-size: clamp(28px, 4.2vw, 40px); font-weight: 700; line-height: 1.05; }
+h2 { font-size: 21px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; color: var(--ink-2); }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+header { display: grid; gap: 10px; }
+.num { font-variant-numeric: tabular-nums; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+
+/* summary strip */
+.strip { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline; }
+.strip div { display: grid; gap: 0; }
+.strip b { font-family: var(--f-display); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.strip span { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* controls */
+.controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; padding: 2px; background: var(--surface); }
+.seg button {
+  font: 500 13px var(--f-body); color: var(--ink-2); background: none; border: 0; border-radius: 6px;
+  padding: 6px 12px; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.seg button:focus-visible, .check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.check { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.chip { width: 12px; height: 12px; border-radius: 3px; display: inline-block; box-shadow: inset 0 0 0 1px var(--ring); flex: none; }
+
+/* chart */
+.figure { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px 12px 8px; display: grid; gap: 12px; min-width: 0; }
+.chart-wrap { position: relative; min-width: 0; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { font-family: var(--f-mono); font-size: 11px; fill: var(--muted); }
+svg .lbl { font-family: var(--f-display); font-size: 12px; font-weight: 600; fill: var(--ink-2); }
+.tip {
+  position: absolute; pointer-events: none; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 180px; transform: translate(-50%, 0);
+}
+.tip .t { font-family: var(--f-display); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.tip .r { display: flex; justify-content: space-between; gap: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* table */
+.table-wrap { overflow-x: auto; border: 1px solid var(--ring); border-radius: 12px; background: var(--surface); min-width: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; text-align: right; white-space: nowrap; }
+th { font: 600 11px var(--f-body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--grid); position: sticky; top: 0; background: var(--surface); }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+tbody tr { border-bottom: 1px solid var(--grid); cursor: default; }
+tbody tr:last-child { border-bottom: 0; }
+tbody tr.on { background: var(--hover); }
+td.type { display: flex; gap: 8px; align-items: center; font-weight: 500; }
+td.neg { color: var(--ink-2); }
+
+/* notes */
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px 40px; }
+.notes > section { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.notes ol, .notes ul { margin: 0; padding-left: 20px; color: var(--ink-2); display: grid; gap: 4px; }
+.cmp { font-size: 13px; }
+.cmp td, .cmp th { padding: 5px 10px; text-align: left; white-space: normal; vertical-align: top; }
+@media (prefers-reduced-motion: no-preference) { tbody tr { transition: background 120ms; } }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">Course segmentation prototype · Chicago Marathon</div>
+    <h1>Chicago Marathon, split into climbs, descents and flats</h1>
+    <p>Elevation from your Chicago Marathon 2025 run (the activity this course was built from), resampled to a 10&nbsp;m grid, smoothed, then cut into straight-line sections. Each section is labelled by its average grade. The whole course spans only about 15&nbsp;m of altitude, so the chart's vertical scale is heavily stretched.</p>
+  </header>
+
+  <div class="strip" id="strip"></div>
+
+  <div class="figure">
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Segmentation algorithm">
+        <button id="alg-bu" type="button" aria-pressed="true" data-alg="bottom_up">Bottom-up merge</button>
+        <button id="alg-dp" type="button" aria-pressed="false" data-alg="douglas_peucker">Douglas–Peucker</button>
+      </div>
+      <label class="check"><input type="checkbox" id="show-cadence" checked> Current Cadence climbs</label>
+      <label class="check"><input type="checkbox" id="show-raw"> Unsmoothed elevation</label>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="chart-wrap" id="chart-wrap">
+      <svg id="chart" role="img" aria-label="Elevation profile with sections colour-coded by grade"></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+  </div>
+
+  <section style="display:grid; gap:12px; min-width:0">
+    <h2>Sections</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Type</th><th>Start km</th><th>End km</th><th>Length</th>
+          <th>Elev start → end</th><th>Gain</th><th>Loss</th><th>Avg grade</th><th>Steepest 100 m</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="notes">
+    <section>
+      <h2>How it was computed</h2>
+      <ol>
+        <li>Resampled the 850 recorded points (about one every 50&nbsp;m) onto a 10&nbsp;m distance grid.</li>
+        <li>Smoothed with a 30&nbsp;m running median (removes spikes), then a 100&nbsp;m running mean.</li>
+        <li>Segmented into straight lines that stay within <span class="mono">2&nbsp;m</span> of the smoothed profile everywhere.
+          <b>Bottom-up</b> starts with tiny pieces and repeatedly joins the neighbouring pair that fits a line best.
+          <b>Douglas–Peucker</b> starts with one line and keeps splitting at the worst-fitting point.</li>
+        <li>Labelled each piece by average grade: steep descent below −4%, descent −4 to −1%, flat ±1% or less, climb 1 to 4%, steep climb 4% or more.</li>
+        <li>Joined neighbours with the same label, and folded anything shorter than 250&nbsp;m into the neighbour with the closer grade, unless it rises or drops at least 5&nbsp;m, so short, sharp hills survive.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Compared with today's climb detection</h2>
+      <p>Cadence stores no climbs for this course today, so the bar row above the chart is empty.</p>
+      <table class="cmp" id="cmp"></table>
+    </section>
+  </div>
+</main>
+
+<script>
+const DATA = {"params": {"step_m": 10.0, "median_m": 30.0, "mean_m": 100.0, "eps_m": 2.0, "min_seg_m": 250.0, "min_rise_m": 5.0, "bands": [[-4.0, "steep_descent"], [-1.0, "descent"], [1.0, "flat"], [4.0, "climb"], [null, "steep_climb"]]}, "profile": [[0.0, 182.6, 182.6], [0.05, 182.8, 182.6], [0.1, 183.4, 183.2], [0.15, 184.6, 184.7], [0.2, 185.7, 185.9], [0.25, 186.1, 186.2], [0.3, 186.0, 186.0], [0.35, 185.7, 185.7], [0.4, 185.5, 185.4], [0.45, 185.5, 185.5], [0.5, 185.8, 185.8], [0.55, 185.8, 185.9], [0.6, 185.6, 185.5], [0.65, 185.4, 185.4], [0.7, 185.3, 185.4], [0.75, 185.1, 185.1], [0.8, 185.2, 184.9], [0.85, 185.8, 185.8], [0.9, 186.8, 186.8], [0.95, 187.5, 187.7], [1.0, 187.7, 187.8], [1.05, 187.1, 187.4], [1.1, 185.6, 185.8], [1.15, 183.6, 183.4], [1.2, 182.1, 181.8], [1.25, 181.6, 181.5], [1.3, 181.6, 181.6], [1.35, 181.7, 181.7], [1.4, 182.0, 181.9], [1.45, 182.3, 182.3], [1.5, 182.3, 182.6], [1.55, 181.9, 182.0], [1.6, 181.5, 181.2], [1.65, 181.7, 181.5], [1.7, 182.2, 182.3], [1.75, 182.6, 182.6], [1.8, 183.1, 183.0], [1.85, 183.5, 183.6], [1.9, 183.8, 183.8], [1.95, 183.9, 183.9], [2.0, 184.1, 184.1], [2.05, 184.5, 184.5], [2.1, 184.8, 184.8], [2.15, 185.2, 185.2], [2.2, 185.5, 185.4], [2.25, 186.5, 186.1], [2.3, 187.8, 188.1], [2.35, 188.8, 188.9], [2.4, 188.8, 189.0], [2.45, 187.9, 188.0], [2.5, 186.7, 186.7], [2.55, 185.6, 185.5], [2.6, 184.8, 184.7], [2.65, 184.3, 184.3], [2.7, 184.2, 184.2], [2.75, 184.3, 184.2], [2.8, 184.4, 184.4], [2.85, 184.6, 184.6], [2.9, 184.8, 184.8], [2.95, 185.0, 185.0], [3.0, 185.1, 185.2], [3.05, 185.1, 185.0], [3.1, 185.1, 185.1], [3.15, 185.2, 185.2], [3.2, 185.1, 185.1], [3.25, 185.0, 184.9], [3.3, 185.2, 185.1], [3.35, 185.6, 185.8], [3.4, 185.7, 185.6], [3.45, 185.7, 185.8], [3.5, 185.6, 185.6], [3.55, 185.5, 185.4], [3.6, 185.7, 185.7], [3.65, 185.8, 185.8], [3.7, 185.9, 186.0], [3.75, 185.9, 185.9], [3.8, 185.9, 185.9], [3.85, 185.9, 185.9], [3.9, 186.1, 186.1], [3.95, 186.4, 186.5], [4.0, 186.7, 186.7], [4.05, 187.0, 187.0], [4.1, 187.5, 187.5], [4.15, 187.9, 187.8], [4.2, 188.4, 188.3], [4.25, 188.9, 189.0], [4.3, 189.2, 189.2], [4.35, 189.4, 189.2], [4.4, 189.7, 189.8], [4.45, 190.0, 189.9], [4.5, 190.1, 190.1], [4.55, 190.3, 190.3], [4.6, 190.3, 190.3], [4.65, 190.6, 190.4], [4.7, 191.2, 191.2], [4.75, 192.2, 192.1], [4.8, 193.5, 193.5], [4.85, 194.6, 194.8], [4.9, 195.2, 195.3], [4.95, 195.2, 195.1], [5.0, 194.9, 195.1], [5.05, 194.1, 194.0], [5.1, 193.3, 193.2], [5.15, 193.3, 193.3], [5.2, 193.5, 193.5], [5.25, 193.6, 193.6], [5.3, 193.7, 193.6], [5.35, 193.6, 193.8], [5.4, 193.5, 193.2], [5.45, 193.5, 193.8], [5.5, 193.5, 193.4], [5.55, 193.4, 193.4], [5.6, 193.4, 193.4], [5.65, 193.6, 193.4], [5.7, 193.9, 194.0], [5.75, 194.3, 194.3], [5.8, 194.7, 194.7], [5.85, 194.9, 194.9], [5.9, 195.0, 195.0], [5.95, 195.1, 195.1], [6.0, 195.3, 195.4], [6.05, 195.5, 195.5], [6.1, 195.5, 195.4], [6.15, 195.5, 195.6], [6.2, 195.3, 195.4], [6.25, 195.0, 195.0], [6.3, 194.7, 194.6], [6.35, 194.5, 194.6], [6.4, 194.4, 194.2], [6.45, 194.5, 194.5], [6.5, 194.7, 194.7], [6.55, 194.8, 194.7], [6.6, 195.1, 195.1], [6.65, 195.4, 195.5], [6.7, 195.4, 195.4], [6.75, 195.4, 195.4], [6.8, 195.3, 195.4], [6.85, 195.3, 195.2], [6.9, 195.4, 195.4], [6.95, 195.5, 195.6], [7.0, 195.5, 195.4], [7.05, 195.4, 195.4], [7.1, 195.2, 195.2], [7.15, 195.0, 195.0], [7.2, 194.8, 194.7], [7.25, 194.7, 194.7], [7.3, 194.7, 194.7], [7.35, 194.6, 194.6], [7.4, 194.8, 194.8], [7.45, 194.9, 194.9], [7.5, 194.8, 194.8], [7.55, 194.6, 194.7], [7.6, 194.2, 194.2], [7.65, 193.8, 193.7], [7.7, 193.6, 193.6], [7.75, 193.6, 193.6], [7.8, 193.5, 193.4], [7.85, 193.5, 193.6], [7.9, 193.3, 193.3], [7.95, 193.0, 192.9], [8.0, 192.8, 192.8], [8.05, 192.7, 192.7], [8.1, 192.6, 192.7], [8.15, 192.4, 192.4], [8.2, 191.9, 191.9], [8.25, 191.5, 191.6], [8.3, 191.1, 191.1], [8.35, 190.9, 190.9], [8.4, 190.6, 190.7], [8.45, 190.0, 190.0], [8.5, 189.5, 189.4], [8.55, 189.3, 189.2], [8.6, 189.4, 189.6], [8.65, 189.1, 189.2], [8.7, 188.5, 188.4], [8.75, 188.2, 188.2], [8.8, 188.0, 188.0], [8.85, 187.8, 187.8], [8.9, 187.7, 187.6], [8.95, 187.6, 187.5], [9.0, 187.7, 187.8], [9.05, 187.8, 187.9], [9.1, 187.3, 187.3], [9.15, 186.9, 186.8], [9.2, 186.9, 186.9], [9.25, 187.0, 187.0], [9.3, 187.0, 187.0], [9.35, 186.7, 186.9], [9.4, 186.1, 186.1], [9.45, 185.3, 185.2], [9.5, 184.9, 184.8], [9.55, 184.8, 184.8], [9.6, 184.8, 184.8], [9.65, 184.7, 184.6], [9.7, 184.6, 184.6], [9.75, 184.5, 184.5], [9.8, 184.3, 184.3], [9.85, 184.3, 184.3], [9.9, 184.5, 184.5], [9.95, 184.6, 184.6], [10.0, 184.6, 184.6], [10.05, 184.7, 184.7], [10.1, 184.7, 184.8], [10.15, 184.7, 184.6], [10.2, 185.0, 184.9], [10.25, 185.6, 185.6], [10.3, 186.1, 186.4], [10.35, 185.9, 186.0], [10.4, 185.3, 185.2], [10.45, 184.8, 184.8], [10.5, 184.7, 184.7], [10.55, 184.7, 184.7], [10.6, 184.7, 184.7], [10.65, 184.5, 184.5], [10.7, 184.4, 184.4], [10.75, 184.3, 184.3], [10.8, 184.4, 184.3], [10.85, 184.4, 184.5], [10.9, 184.4, 184.3], [10.95, 184.5, 184.6], [11.0, 184.5, 184.4], [11.05, 184.5, 184.6], [11.1, 184.6, 184.6], [11.15, 184.5, 184.5], [11.2, 184.4, 184.5], [11.25, 184.2, 184.1], [11.3, 184.0, 183.8], [11.35, 184.0, 184.1], [11.4, 184.1, 184.0], [11.45, 184.2, 184.2], [11.5, 184.3, 184.4], [11.55, 184.2, 184.2], [11.6, 184.0, 184.0], [11.65, 183.9, 183.8], [11.7, 183.8, 183.8], [11.75, 184.0, 183.9], [11.8, 184.1, 184.1], [11.85, 184.3, 184.3], [11.9, 184.5, 184.5], [11.95, 184.6, 184.6], [12.0, 184.6, 184.6], [12.05, 184.7, 184.7], [12.1, 184.8, 184.8], [12.15, 184.8, 184.8], [12.2, 184.7, 184.7], [12.25, 184.7, 184.7], [12.3, 184.6, 184.6], [12.35, 184.4, 184.3], [12.4, 184.4, 184.3], [12.45, 184.5, 184.5], [12.5, 184.4, 184.4], [12.55, 184.2, 184.2], [12.6, 184.2, 184.0], [12.65, 184.3, 184.4], [12.7, 184.4, 184.6], [12.75, 184.4, 184.3], [12.8, 184.3, 184.4], [12.85, 184.3, 184.3], [12.9, 184.3, 184.3], [12.95, 184.5, 184.5], [13.0, 184.8, 184.8], [13.05, 185.1, 185.1], [13.1, 185.3, 185.3], [13.15, 185.4, 185.4], [13.2, 185.3, 185.3], [13.25, 185.2, 185.2], [13.3, 185.2, 185.2], [13.35, 185.1, 185.2], [13.4, 185.0, 185.0], [13.45, 184.9, 185.0], [13.5, 184.9, 184.8], [13.55, 184.9, 185.0], [13.6, 184.8, 184.8], [13.65, 184.6, 184.6], [13.7, 184.4, 184.4], [13.75, 184.2, 184.1], [13.8, 184.3, 184.3], [13.85, 184.4, 184.4], [13.9, 184.5, 184.5], [13.95, 184.6, 184.6], [14.0, 184.6, 184.6], [14.05, 184.7, 184.7], [14.1, 184.7, 184.7], [14.15, 184.7, 184.6], [14.2, 184.7, 184.8], [14.25, 184.7, 184.6], [14.3, 184.8, 184.8], [14.35, 185.0, 185.0], [14.4, 185.1, 185.2], [14.45, 185.1, 185.0], [14.5, 185.1, 185.2], [14.55, 185.0, 184.9], [14.6, 184.9, 184.9], [14.65, 184.8, 184.9], [14.7, 184.7, 184.7], [14.75, 184.8, 184.8], [14.8, 184.7, 184.7], [14.85, 184.6, 184.6], [14.9, 184.7, 184.7], [14.95, 184.6, 184.6], [15.0, 184.6, 184.6], [15.05, 184.6, 184.6], [15.1, 184.7, 184.6], [15.15, 184.7, 184.8], [15.2, 184.7, 184.6], [15.25, 184.9, 184.8], [15.3, 185.5, 185.5], [15.35, 186.1, 186.1], [15.4, 186.5, 186.5], [15.45, 186.8, 186.8], [15.5, 187.0, 187.0], [15.55, 187.1, 187.1], [15.6, 187.2, 187.2], [15.65, 187.4, 187.4], [15.7, 187.4, 187.4], [15.75, 187.4, 187.3], [15.8, 187.6, 187.6], [15.85, 187.8, 188.0], [15.9, 188.0, 187.9], [15.95, 188.0, 188.2], [16.0, 187.9, 188.0], [16.05, 187.8, 187.6], [16.1, 187.7, 187.8], [16.15, 187.8, 187.8], [16.2, 187.7, 187.8], [16.25, 187.6, 187.5], [16.3, 187.5, 187.5], [16.35, 187.6, 187.6], [16.4, 187.8, 187.8], [16.45, 188.0, 188.0], [16.5, 188.1, 188.1], [16.55, 188.0, 188.0], [16.6, 187.8, 187.8], [16.65, 187.8, 187.8], [16.7, 187.6, 187.7], [16.75, 187.4, 187.5], [16.8, 187.2, 187.1], [16.85, 187.0, 187.0], [16.9, 186.9, 186.9], [16.95, 186.6, 186.7], [17.0, 186.4, 186.4], [17.05, 186.3, 186.4], [17.1, 186.2, 186.2], [17.15, 186.1, 186.2], [17.2, 185.9, 186.0], [17.25, 185.6, 185.6], [17.3, 185.3, 185.2], [17.35, 185.2, 185.0], [17.4, 185.3, 185.5], [17.45, 185.4, 185.5], [17.5, 185.2, 185.2], [17.55, 185.2, 185.2], [17.6, 185.2, 185.3], [17.65, 185.1, 185.1], [17.7, 184.9, 184.9], [17.75, 184.7, 184.7], [17.8, 184.7, 184.7], [17.85, 184.8, 184.8], [17.9, 184.7, 184.8], [17.95, 184.6, 184.6], [18.0, 184.6, 184.6], [18.05, 184.6, 184.8], [18.1, 184.6, 184.4], [18.15, 184.9, 184.9], [18.2, 185.1, 185.2], [18.25, 185.1, 185.1], [18.3, 185.1, 185.1], [18.35, 185.2, 185.2], [18.4, 185.2, 185.2], [18.45, 185.0, 185.0], [18.5, 184.8, 184.8], [18.55, 184.8, 184.8], [18.6, 184.7, 184.7], [18.65, 184.6, 184.6], [18.7, 184.5, 184.5], [18.75, 184.4, 184.4], [18.8, 184.4, 184.4], [18.85, 184.3, 184.4], [18.9, 184.3, 184.2], [18.95, 184.3, 184.4], [19.0, 184.3, 184.2], [19.05, 184.2, 184.2], [19.1, 184.3, 184.4], [19.15, 184.3, 184.3], [19.2, 184.2, 184.2], [19.25, 184.2, 184.2], [19.3, 184.1, 184.1], [19.35, 184.0, 184.0], [19.4, 184.1, 184.1], [19.45, 184.2, 184.3], [19.5, 184.3, 184.4], [19.55, 184.1, 184.1], [19.6, 183.9, 183.7], [19.65, 184.1, 184.2], [19.7, 184.2, 184.2], [19.75, 184.1, 184.2], [19.8, 184.0, 184.0], [19.85, 183.9, 183.8], [19.9, 183.8, 183.8], [19.95, 183.9, 184.0], [20.0, 183.9, 184.0], [20.05, 183.8, 183.7], [20.1, 183.7, 183.6], [20.15, 183.9, 183.9], [20.2, 184.0, 184.1], [20.25, 184.0, 184.0], [20.3, 183.9, 183.9], [20.35, 183.8, 183.8], [20.4, 183.9, 183.9], [20.45, 184.1, 184.1], [20.5, 184.2, 184.2], [20.55, 184.3, 184.3], [20.6, 184.4, 184.4], [20.65, 184.4, 184.4], [20.7, 184.8, 184.5], [20.75, 185.7, 185.8], [20.8, 186.6, 186.8], [20.85, 186.8, 186.9], [20.9, 186.7, 186.5], [20.95, 186.7, 186.8], [21.0, 186.7, 186.7], [21.05, 186.6, 186.4], [21.1, 186.6, 186.6], [21.15, 186.7, 186.8], [21.2, 186.7, 186.6], [21.25, 186.7, 186.7], [21.3, 186.7, 186.8], [21.35, 186.6, 186.5], [21.4, 186.6, 186.6], [21.45, 186.7, 186.8], [21.5, 186.7, 186.7], [21.55, 186.9, 186.8], [21.6, 187.0, 187.2], [21.65, 187.0, 187.0], [21.7, 187.1, 187.0], [21.75, 187.1, 187.2], [21.8, 187.1, 187.0], [21.85, 187.0, 187.0], [21.9, 187.0, 187.0], [21.95, 187.1, 187.1], [22.0, 187.2, 187.2], [22.05, 187.6, 187.5], [22.1, 188.3, 188.3], [22.15, 189.1, 189.2], [22.2, 189.1, 189.3], [22.25, 188.4, 188.5], [22.3, 187.3, 187.4], [22.35, 186.0, 185.9], [22.4, 185.4, 185.2], [22.45, 185.1, 185.2], [22.5, 185.0, 184.8], [22.55, 184.9, 185.0], [22.6, 185.0, 185.0], [22.65, 185.1, 185.0], [22.7, 185.6, 185.6], [22.75, 186.0, 186.4], [22.8, 185.7, 185.7], [22.85, 184.9, 184.9], [22.9, 184.7, 184.6], [22.95, 184.7, 184.7], [23.0, 184.7, 184.7], [23.05, 184.6, 184.6], [23.1, 184.5, 184.5], [23.15, 184.4, 184.4], [23.2, 184.4, 184.4], [23.25, 184.4, 184.4], [23.3, 184.4, 184.4], [23.35, 184.5, 184.4], [23.4, 184.5, 184.6], [23.45, 184.5, 184.4], [23.5, 184.5, 184.6], [23.55, 184.5, 184.4], [23.6, 184.6, 184.7], [23.65, 184.7, 184.7], [23.7, 184.8, 184.7], [23.75, 185.0, 185.0], [23.8, 185.1, 185.1], [23.85, 184.9, 184.9], [23.9, 184.8, 184.8], [23.95, 184.8, 184.8], [24.0, 184.7, 184.7], [24.05, 184.6, 184.6], [24.1, 184.7, 184.6], [24.15, 184.8, 184.8], [24.2, 184.8, 184.8], [24.25, 184.8, 184.8], [24.3, 184.8, 184.6], [24.35, 184.9, 185.1], [24.4, 184.9, 184.9], [24.45, 184.7, 184.8], [24.5, 184.6, 184.5], [24.55, 184.6, 184.7], [24.6, 184.6, 184.6], [24.65, 184.5, 184.5], [24.7, 184.5, 184.5], [24.75, 184.6, 184.5], [24.8, 184.6, 184.7], [24.85, 184.5, 184.5], [24.9, 184.6, 184.6], [24.95, 184.8, 184.8], [25.0, 184.8, 184.8], [25.05, 184.8, 184.8], [25.1, 184.8, 184.8], [25.15, 184.8, 184.8], [25.2, 184.8, 184.8], [25.25, 184.8, 184.8], [25.3, 184.8, 184.8], [25.35, 184.8, 184.8], [25.4, 184.7, 184.7], [25.45, 184.6, 184.6], [25.5, 184.6, 184.6], [25.55, 184.7, 184.7], [25.6, 184.7, 184.7], [25.65, 184.9, 184.9], [25.7, 185.2, 185.2], [25.75, 185.3, 185.3], [25.8, 185.3, 185.3], [25.85, 185.4, 185.4], [25.9, 185.5, 185.6], [25.95, 185.4, 185.3], [26.0, 185.3, 185.3], [26.05, 185.4, 185.4], [26.1, 185.3, 185.3], [26.15, 185.3, 185.3], [26.2, 185.2, 185.3], [26.25, 185.1, 185.1], [26.3, 185.1, 185.2], [26.35, 185.0, 185.0], [26.4, 184.8, 184.8], [26.45, 184.7, 184.8], [26.5, 184.6, 184.6], [26.55, 184.5, 184.4], [26.6, 184.5, 184.6], [26.65, 184.6, 184.6], [26.7, 184.5, 184.4], [26.75, 184.4, 184.4], [26.8, 184.4, 184.4], [26.85, 184.5, 184.5], [26.9, 184.5, 184.5], [26.95, 184.4, 184.4], [27.0, 184.5, 184.5], [27.05, 184.6, 184.6], [27.1, 184.7, 184.7], [27.15, 184.8, 184.8], [27.2, 184.8, 184.8], [27.25, 184.8, 184.8], [27.3, 184.7, 184.8], [27.35, 184.7, 184.6], [27.4, 184.9, 184.9], [27.45, 185.1, 185.2], [27.5, 185.3, 185.2], [27.55, 185.4, 185.4], [27.6, 185.4, 185.6], [27.65, 185.4, 185.2], [27.7, 185.3, 185.4], [27.75, 185.4, 185.3], [27.8, 185.4, 185.5], [27.85, 185.3, 185.2], [27.9, 185.2, 185.3], [27.95, 185.1, 185.0], [28.0, 185.1, 185.2], [28.05, 185.4, 185.1], [28.1, 186.2, 186.3], [28.15, 186.8, 187.2], [28.2, 186.4, 186.6], [28.25, 185.7, 185.5], [28.3, 185.2, 185.0], [28.35, 185.1, 185.2], [28.4, 185.0, 184.9], [28.45, 185.1, 185.1], [28.5, 185.2, 185.2], [28.55, 185.2, 185.2], [28.6, 185.1, 185.1], [28.65, 185.0, 185.0], [28.7, 185.1, 185.1], [28.75, 185.2, 185.2], [28.8, 185.2, 185.2], [28.85, 185.3, 185.3], [28.9, 185.4, 185.4], [28.95, 185.5, 185.5], [29.0, 185.6, 185.6], [29.05, 185.6, 185.6], [29.1, 185.6, 185.6], [29.15, 185.8, 185.8], [29.2, 185.9, 185.9], [29.25, 185.8, 185.8], [29.3, 185.9, 185.9], [29.35, 186.0, 186.0], [29.4, 186.0, 186.0], [29.45, 186.1, 186.1], [29.5, 186.1, 186.1], [29.55, 186.0, 186.0], [29.6, 186.1, 186.1], [29.65, 186.1, 186.1], [29.7, 186.0, 186.0], [29.75, 186.1, 186.1], [29.8, 186.3, 186.4], [29.85, 186.3, 186.2], [29.9, 186.4, 186.4], [29.95, 186.4, 186.4], [30.0, 186.5, 186.4], [30.05, 186.6, 186.6], [30.1, 186.7, 186.6], [30.15, 186.6, 186.8], [30.2, 186.5, 186.4], [30.25, 186.5, 186.6], [30.3, 186.4, 186.4], [30.35, 186.3, 186.2], [30.4, 186.2, 186.2], [30.45, 186.0, 186.0], [30.5, 185.9, 185.8], [30.55, 185.8, 185.8], [30.6, 185.8, 185.8], [30.65, 185.6, 185.6], [30.7, 185.4, 185.3], [30.75, 185.4, 185.5], [30.8, 185.3, 185.3], [30.85, 185.1, 185.2], [30.9, 184.8, 184.9], [30.95, 184.5, 184.3], [31.0, 184.3, 184.4], [31.05, 184.4, 184.2], [31.1, 184.8, 184.9], [31.15, 185.2, 185.3], [31.2, 185.2, 185.2], [31.25, 185.0, 184.9], [31.3, 185.1, 185.1], [31.35, 185.2, 185.2], [31.4, 185.3, 185.4], [31.45, 185.4, 185.4], [31.5, 185.5, 185.6], [31.55, 185.6, 185.6], [31.6, 185.6, 185.6], [31.65, 185.7, 185.8], [31.7, 185.8, 185.8], [31.75, 185.8, 185.8], [31.8, 185.7, 185.6], [31.85, 185.6, 185.8], [31.9, 185.6, 185.4], [31.95, 185.7, 185.8], [32.0, 185.8, 185.8], [32.05, 185.8, 185.8], [32.1, 185.8, 185.8], [32.15, 186.0, 185.8], [32.2, 186.4, 186.4], [32.25, 186.5, 187.0], [32.3, 186.2, 186.0], [32.35, 185.9, 185.8], [32.4, 185.7, 185.8], [32.45, 185.6, 185.6], [32.5, 185.5, 185.4], [32.55, 185.5, 185.6], [32.6, 185.4, 185.4], [32.65, 185.3, 185.2], [32.7, 185.3, 185.4], [32.75, 185.2, 185.2], [32.8, 185.0, 185.0], [32.85, 184.8, 184.8], [32.9, 184.7, 184.6], [32.95, 184.7, 184.8], [33.0, 184.7, 184.6], [33.05, 184.7, 184.7], [33.1, 184.6, 184.6], [33.15, 184.4, 184.4], [33.2, 184.0, 184.0], [33.25, 183.6, 183.6], [33.3, 183.2, 183.0], [33.35, 183.1, 183.1], [33.4, 183.3, 183.3], [33.45, 183.5, 183.5], [33.5, 183.6, 183.6], [33.55, 183.6, 183.6], [33.6, 183.6, 183.6], [33.65, 183.7, 183.8], [33.7, 183.8, 183.8], [33.75, 183.8, 183.8], [33.8, 183.6, 183.6], [33.85, 183.4, 183.4], [33.9, 183.2, 183.0], [33.95, 183.1, 183.2], [34.0, 183.0, 183.0], [34.05, 183.0, 182.8], [34.1, 183.4, 183.3], [34.15, 184.5, 184.3], [34.2, 186.0, 186.2], [34.25, 186.2, 186.7], [34.3, 184.9, 184.9], [34.35, 183.2, 183.2], [34.4, 181.8, 181.7], [34.45, 181.2, 181.1], [34.5, 181.2, 181.1], [34.55, 181.7, 181.6], [34.6, 182.8, 182.9], [34.65, 183.6, 183.7], [34.7, 183.8, 183.8], [34.75, 183.8, 183.8], [34.8, 183.8, 183.8], [34.85, 183.8, 183.8], [34.9, 183.7, 183.7], [34.95, 183.6, 183.6], [35.0, 183.6, 183.6], [35.05, 183.6, 183.6], [35.1, 183.4, 183.4], [35.15, 183.3, 183.2], [35.2, 183.3, 183.4], [35.25, 183.3, 183.2], [35.3, 183.2, 183.2], [35.35, 183.1, 183.4], [35.4, 183.1, 182.7], [35.45, 183.5, 183.5], [35.5, 183.9, 184.0], [35.55, 183.5, 183.6], [35.6, 183.0, 182.9], [35.65, 182.8, 182.8], [35.7, 182.9, 182.8], [35.75, 183.1, 183.2], [35.8, 183.1, 183.3], [35.85, 182.2, 182.1], [35.9, 181.8, 181.3], [35.95, 182.4, 182.8], [36.0, 183.0, 183.0], [36.05, 182.9, 183.0], [36.1, 182.8, 182.8], [36.15, 182.9, 182.8], [36.2, 183.0, 183.0], [36.25, 183.0, 183.0], [36.3, 182.9, 182.9], [36.35, 182.8, 182.8], [36.4, 182.8, 182.8], [36.45, 182.8, 182.8], [36.5, 182.9, 183.0], [36.55, 182.9, 182.9], [36.6, 182.8, 182.7], [36.65, 182.8, 182.7], [36.7, 182.7, 182.7], [36.75, 182.7, 182.7], [36.8, 182.7, 182.8], [36.85, 182.7, 182.6], [36.9, 182.8, 182.9], [36.95, 182.9, 182.8], [37.0, 182.8, 182.8], [37.05, 182.8, 182.6], [37.1, 183.1, 183.2], [37.15, 183.3, 183.4], [37.2, 183.4, 183.4], [37.25, 183.4, 183.3], [37.3, 183.3, 183.4], [37.35, 183.3, 183.2], [37.4, 183.2, 183.2], [37.45, 183.2, 183.3], [37.5, 183.2, 183.2], [37.55, 183.2, 183.4], [37.6, 183.2, 183.0], [37.65, 183.1, 183.2], [37.7, 183.0, 183.0], [37.75, 183.1, 183.0], [37.8, 183.3, 183.3], [37.85, 183.4, 183.5], [37.9, 183.3, 183.3], [37.95, 183.0, 183.0], [38.0, 182.9, 182.9], [38.05, 182.7, 182.7], [38.1, 182.7, 182.7], [38.15, 182.8, 182.8], [38.2, 182.8, 182.8], [38.25, 182.7, 182.6], [38.3, 182.8, 182.8], [38.35, 183.0, 183.0], [38.4, 183.2, 183.2], [38.45, 183.3, 183.2], [38.5, 183.4, 183.4], [38.55, 183.5, 183.5], [38.6, 183.7, 183.7], [38.65, 183.8, 183.8], [38.7, 183.9, 183.9], [38.75, 184.0, 184.1], [38.8, 184.0, 184.0], [38.85, 184.2, 184.0], [38.9, 184.3, 184.4], [38.95, 184.4, 184.4], [39.0, 184.4, 184.4], [39.05, 184.4, 184.4], [39.1, 184.4, 184.4], [39.15, 184.4, 184.2], [39.2, 184.4, 184.5], [39.25, 184.4, 184.4], [39.3, 184.4, 184.4], [39.35, 184.3, 184.3], [39.4, 184.2, 184.2], [39.45, 184.1, 184.0], [39.5, 184.0, 184.0], [39.55, 184.1, 184.2], [39.6, 184.1, 184.0], [39.65, 184.0, 184.1], [39.7, 183.8, 183.7], [39.75, 183.6, 183.6], [39.8, 183.5, 183.6], [39.85, 183.4, 183.4], [39.9, 183.4, 183.4], [39.95, 183.2, 183.2], [40.0, 183.2, 183.0], [40.05, 183.5, 183.4], [40.1, 183.9, 184.2], [40.15, 183.7, 183.7], [40.2, 183.5, 183.3], [40.25, 183.5, 183.6], [40.3, 183.7, 183.7], [40.35, 183.8, 184.0], [40.4, 183.9, 183.8], [40.45, 184.0, 184.2], [40.5, 184.2, 184.0], [40.55, 184.4, 184.4], [40.6, 184.7, 184.6], [40.65, 184.8, 185.0], [40.7, 185.0, 184.9], [40.75, 185.1, 185.2], [40.8, 185.1, 185.1], [40.85, 185.1, 185.1], [40.9, 185.3, 185.3], [40.95, 185.5, 185.5], [41.0, 185.6, 185.6], [41.05, 185.6, 185.6], [41.1, 185.8, 185.7], [41.15, 185.9, 186.0], [41.2, 185.9, 185.8], [41.25, 185.8, 185.8], [41.3, 186.0, 185.8], [41.35, 186.3, 186.6], [41.4, 186.6, 186.6], [41.45, 186.6, 186.6], [41.5, 186.6, 186.6], [41.55, 186.5, 186.4], [41.6, 186.6, 186.6], [41.65, 186.6, 186.6], [41.7, 186.7, 186.7], [41.75, 186.8, 186.9], [41.8, 187.0, 187.0], [41.85, 187.0, 187.0], [41.9, 187.3, 187.3], [41.95, 187.6, 187.7], [42.0, 187.9, 187.8], [42.05, 188.3, 188.3], [42.1, 188.6, 188.6], [42.15, 188.6, 188.6], [42.2, 188.6, 188.6], [42.25, 188.8, 188.7], [42.3, 189.4, 189.2], [42.35, 190.6, 190.5], [42.4, 192.2, 192.2], [42.45, 193.9, 193.9], [42.5, 195.1, 195.4], [42.55, 195.2, 195.5], [42.6, 194.6, 194.4], [42.65, 193.9, 194.0], [42.7, 193.2, 193.1], [42.75, 192.5, 192.3], [42.79, 192.2, 192.0]], "results": {"bottom_up": {"raw_segment_count": 21, "raw_breakpoints_km": [0.0, 0.94, 1.2, 2.2, 2.36, 2.72, 4.66, 4.86, 8.12, 9.5, 15.42, 20.7, 22.18, 22.4, 32.22, 34.1, 34.2, 34.48, 39.98, 42.32, 42.52, 42.79], "segments": [{"start_km": 0.0, "end_km": 0.94, "length_m": 940, "elev_start_m": 182.6, "elev_end_m": 187.4, "gain_m": 6, "loss_m": 1, "avg_grade_pct": 0.5, "steepest_100m_pct": 2.4, "type": "flat"}, {"start_km": 0.94, "end_km": 1.2, "length_m": 260, "elev_start_m": 187.4, "elev_end_m": 182.1, "gain_m": 0, "loss_m": 6, "avg_grade_pct": -2.0, "steepest_100m_pct": -3.8, "type": "descent"}, {"start_km": 1.2, "end_km": 2.36, "length_m": 1160, "elev_start_m": 182.1, "elev_end_m": 188.8, "gain_m": 8, "loss_m": 1, "avg_grade_pct": 0.6, "steepest_100m_pct": 2.5, "type": "flat"}, {"start_km": 2.36, "end_km": 2.72, "length_m": 360, "elev_start_m": 188.8, "elev_end_m": 184.2, "gain_m": 0, "loss_m": 5, "avg_grade_pct": -1.3, "steepest_100m_pct": -2.4, "type": "descent"}, {"start_km": 2.72, "end_km": 34.2, "length_m": 31480, "elev_start_m": 184.2, "elev_end_m": 186.0, "gain_m": 49, "loss_m": 47, "avg_grade_pct": 0.0, "steepest_100m_pct": 2.6, "type": "flat"}, {"start_km": 34.2, "end_km": 34.48, "length_m": 280, "elev_start_m": 186.0, "elev_end_m": 181.1, "gain_m": 0, "loss_m": 5, "avg_grade_pct": -1.7, "steepest_100m_pct": -3.2, "type": "descent"}, {"start_km": 34.48, "end_km": 42.32, "length_m": 7840, "elev_start_m": 181.1, "elev_end_m": 189.8, "gain_m": 16, "loss_m": 7, "avg_grade_pct": 0.1, "steepest_100m_pct": 1.9, "type": "flat"}, {"start_km": 42.32, "end_km": 42.52, "length_m": 200, "elev_start_m": 189.8, "elev_end_m": 195.3, "gain_m": 6, "loss_m": 0, "avg_grade_pct": 2.8, "steepest_100m_pct": 3.3, "type": "climb"}, {"start_km": 42.52, "end_km": 42.79, "length_m": 270, "elev_start_m": 195.3, "elev_end_m": 192.2, "gain_m": 0, "loss_m": 3, "avg_grade_pct": -1.1, "steepest_100m_pct": -1.5, "type": "descent"}]}, "douglas_peucker": {"raw_segment_count": 28, "raw_breakpoints_km": [0.0, 0.23, 0.78, 0.99, 1.26, 1.64, 2.37, 2.68, 3.85, 4.65, 4.9, 6.08, 7.51, 9.81, 15.05, 16.5, 20.09, 22.18, 22.43, 23.18, 32.24, 34.03, 34.23, 34.48, 34.72, 40.23, 42.24, 42.52, 42.79], "segments": [{"start_km": 0.0, "end_km": 0.99, "length_m": 990, "elev_start_m": 182.6, "elev_end_m": 187.7, "gain_m": 6, "loss_m": 1, "avg_grade_pct": 0.5, "steepest_100m_pct": 2.4, "type": "flat"}, {"start_km": 0.99, "end_km": 1.26, "length_m": 270, "elev_start_m": 187.7, "elev_end_m": 181.6, "gain_m": 0, "loss_m": 6, "avg_grade_pct": -2.3, "steepest_100m_pct": -3.8, "type": "descent"}, {"start_km": 1.26, "end_km": 1.64, "length_m": 380, "elev_start_m": 181.6, "elev_end_m": 181.6, "gain_m": 1, "loss_m": 1, "avg_grade_pct": 0.0, "steepest_100m_pct": 0.6, "type": "flat"}, {"start_km": 1.64, "end_km": 2.37, "length_m": 730, "elev_start_m": 181.6, "elev_end_m": 188.9, "gain_m": 7, "loss_m": 0, "avg_grade_pct": 1.0, "steepest_100m_pct": 2.5, "type": "climb"}, {"start_km": 2.37, "end_km": 2.68, "length_m": 310, "elev_start_m": 188.9, "elev_end_m": 184.2, "gain_m": 0, "loss_m": 5, "avg_grade_pct": -1.5, "steepest_100m_pct": -2.4, "type": "descent"}, {"start_km": 2.68, "end_km": 4.65, "length_m": 1970, "elev_start_m": 184.2, "elev_end_m": 190.6, "gain_m": 7, "loss_m": 0, "avg_grade_pct": 0.3, "steepest_100m_pct": 1.0, "type": "flat"}, {"start_km": 4.65, "end_km": 4.9, "length_m": 250, "elev_start_m": 190.6, "elev_end_m": 195.2, "gain_m": 5, "loss_m": 0, "avg_grade_pct": 1.8, "steepest_100m_pct": 2.4, "type": "climb"}, {"start_km": 4.9, "end_km": 22.18, "length_m": 17280, "elev_start_m": 195.2, "elev_end_m": 189.2, "gain_m": 23, "loss_m": 28, "avg_grade_pct": -0.0, "steepest_100m_pct": -1.6, "type": "flat"}, {"start_km": 22.18, "end_km": 22.43, "length_m": 250, "elev_start_m": 189.2, "elev_end_m": 185.2, "gain_m": 0, "loss_m": 4, "avg_grade_pct": -1.6, "steepest_100m_pct": -2.4, "type": "descent"}, {"start_km": 22.43, "end_km": 34.23, "length_m": 11800, "elev_start_m": 185.2, "elev_end_m": 186.3, "gain_m": 15, "loss_m": 14, "avg_grade_pct": 0.0, "steepest_100m_pct": 2.6, "type": "flat"}, {"start_km": 34.23, "end_km": 34.48, "length_m": 250, "elev_start_m": 186.3, "elev_end_m": 181.1, "gain_m": 0, "loss_m": 5, "avg_grade_pct": -2.1, "steepest_100m_pct": -3.2, "type": "descent"}, {"start_km": 34.48, "end_km": 42.24, "length_m": 7760, "elev_start_m": 181.1, "elev_end_m": 188.7, "gain_m": 15, "loss_m": 7, "avg_grade_pct": 0.1, "steepest_100m_pct": 1.9, "type": "flat"}, {"start_km": 42.24, "end_km": 42.52, "length_m": 280, "elev_start_m": 188.7, "elev_end_m": 195.3, "gain_m": 7, "loss_m": 0, "avg_grade_pct": 2.4, "steepest_100m_pct": 3.3, "type": "climb"}, {"start_km": 42.52, "end_km": 42.79, "length_m": 270, "elev_start_m": 195.3, "elev_end_m": 192.2, "gain_m": 0, "loss_m": 3, "avg_grade_pct": -1.1, "steepest_100m_pct": -1.5, "type": "descent"}]}}};
+const CADENCE = []; // Cadence stores no climbs for this course
+const TYPES = {
+  steep_descent: {name: "Steep descent", v: "--g-steep-descent"},
+  descent:       {name: "Descent",       v: "--g-descent"},
+  flat:          {name: "Flat",          v: "--g-flat"},
+  climb:         {name: "Climb",         v: "--g-climb"},
+  steep_climb:   {name: "Steep climb",   v: "--g-steep-climb"},
+};
+const ORDER = ["steep_descent", "descent", "flat", "climb", "steep_climb"];
+const NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+const fmt1 = n => (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(1);
+
+let alg = "bottom_up";
+let hoverIdx = -1;
+
+$("legend").innerHTML = ORDER.map(t => `<span><i class="chip" style="background:var(${TYPES[t].v})"></i>${TYPES[t].name}</span>`).join("");
+
+function segs() { return DATA.results[alg].segments; }
+
+function renderStrip() {
+  const s = segs();
+  const sum = (t, k) => s.filter(r => t.includes(r.type)).reduce((a, r) => a + r[k], 0);
+  const up = ["climb", "steep_climb"], down = ["descent", "steep_descent"];
+  const items = [
+    [s.length, "sections"],
+    [s.filter(r => up.includes(r.type)).length, "climbs"],
+    [(sum(up, "length_m") / 1000).toFixed(1) + " km", "climbing"],
+    [(sum(down, "length_m") / 1000).toFixed(1) + " km", "descending"],
+    [(sum(["flat"], "length_m") / 1000).toFixed(1) + " km", "flat"],
+    [s.reduce((a, r) => a + r.gain_m, 0) + " m", "total gain"],
+  ];
+  $("strip").innerHTML = items.map(([b, l]) => `<div><b>${b}</b><span>${l}</span></div>`).join("");
+}
+
+function renderTable() {
+  $("rows").innerHTML = segs().map((r, i) => `
+    <tr data-i="${i}">
+      <td class="num">${i + 1}</td>
+      <td class="type"><i class="chip" style="background:var(${TYPES[r.type].v})"></i>${TYPES[r.type].name}</td>
+      <td>${r.start_km.toFixed(2)}</td><td>${r.end_km.toFixed(2)}</td>
+      <td>${r.length_m >= 1000 ? (r.length_m / 1000).toFixed(2) + " km" : r.length_m + " m"}</td>
+      <td>${Math.round(r.elev_start_m)} → ${Math.round(r.elev_end_m)} m</td>
+      <td>${r.gain_m} m</td><td class="neg">${r.loss_m} m</td>
+      <td><b>${fmt1(r.avg_grade_pct)}%</b></td><td>${fmt1(r.steepest_100m_pct)}%</td>
+    </tr>`).join("");
+  for (const tr of $("rows").children) {
+    tr.addEventListener("mouseenter", () => setHover(+tr.dataset.i));
+    tr.addEventListener("mouseleave", () => setHover(-1));
+  }
+}
+
+function renderCmp() {
+  const s = DATA.results;
+  const n = a => s[a].segments.filter(r => r.type === "climb" || r.type === "steep_climb");
+  const desc = a => n(a).length ? n(a).map(r => `climb ${r.start_km.toFixed(2)}–${r.end_km.toFixed(2)} @ ${fmt1(r.avg_grade_pct)}%`).join("<br>") : "none";
+  $("cmp").innerHTML = `<thead><tr><th>Method</th><th>Climbs found</th></tr></thead><tbody>` +
+    `<tr><td>Cadence today</td><td>none</td></tr>` +
+    `<tr><td>Bottom-up merge</td><td>${desc("bottom_up")}</td></tr>` +
+    `<tr><td>Douglas–Peucker</td><td>${desc("douglas_peucker")}</td></tr></tbody>`;
+}
+
+/* ---------------- chart ---------------- */
+const P = DATA.profile; // [km, smoothed, raw]
+const maxKm = P[P.length - 1][0];
+let geom = null;
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function renderChart() {
+  const svg = $("chart");
+  const W = Math.max(320, $("chart-wrap").clientWidth);
+  const narrow = W < 600;
+  const H = narrow ? 300 : 380;
+  const m = {l: 40, r: 10, t: $("show-cadence").checked ? 34 : 14, b: 28};
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = "";
+  const lo = Math.min(...P.map(p => Math.min(p[1], p[2]))), hi = Math.max(...P.map(p => Math.max(p[1], p[2])));
+  const yStep = hi - lo > 60 ? 20 : 5;
+  const yMin = Math.floor(lo / yStep) * yStep, yMax = Math.ceil(hi / yStep) * yStep;
+  const x = km => m.l + (km / maxKm) * (W - m.l - m.r);
+  const y = e => m.t + (1 - (e - yMin) / (yMax - yMin)) * (H - m.t - m.b);
+  geom = {W, H, m, x, y};
+  const base = y(yMin);
+
+  // grid + axes
+  const g = el("g", {}, svg);
+  for (let e = yMin; e <= yMax; e += yStep) {
+    el("line", {x1: m.l, x2: W - m.r, y1: y(e), y2: y(e), stroke: "var(--grid)", "stroke-width": 1}, g);
+    const t = el("text", {x: m.l - 6, y: y(e) + 4, "text-anchor": "end"}, g); t.textContent = e;
+  }
+  const step = narrow ? 10 : 5;
+  for (let k = 0; k <= maxKm; k += step) {
+    const t = el("text", {x: x(k), y: H - 8, "text-anchor": "middle"}, g); t.textContent = k + (k === 0 ? " km" : "");
+  }
+  const yl = el("text", {x: m.l - 6, y: m.t - 4 + ($("show-cadence").checked ? 0 : 0), "text-anchor": "end"}, g);
+  if (!$("show-cadence").checked) yl.textContent = "m";
+
+  // segment fills
+  const fills = el("g", {}, svg);
+  segs().forEach((s, i) => {
+    const pts = P.filter(p => p[0] >= s.start_km - 1e-6 && p[0] <= s.end_km + 1e-6);
+    if (!pts.length) return;
+    let d = `M${x(s.start_km)},${base} L${x(s.start_km)},${y(interp(s.start_km))}`;
+    for (const p of pts) d += ` L${x(p[0])},${y(p[1])}`;
+    d += ` L${x(s.end_km)},${y(interp(s.end_km))} L${x(s.end_km)},${base} Z`;
+    el("path", {d, fill: `var(${TYPES[s.type].v})`, "data-i": i, class: "fill"}, fills);
+  });
+  // 2px surface gaps between sections
+  segs().slice(1).forEach(s => el("line", {x1: x(s.start_km), x2: x(s.start_km), y1: base, y2: y(interp(s.start_km)), stroke: "var(--surface)", "stroke-width": 2}, fills));
+  el("line", {x1: m.l, x2: W - m.r, y1: base, y2: base, stroke: "var(--axis)", "stroke-width": 1}, svg);
+
+  // raw line
+  if ($("show-raw").checked) {
+    el("path", {d: "M" + P.map(p => `${x(p[0])},${y(p[2])}`).join(" L"), fill: "none", stroke: "var(--muted)", "stroke-width": 1, "stroke-dasharray": "2 2"}, svg);
+  }
+  // smoothed profile line
+  el("path", {d: "M" + P.map(p => `${x(p[0])},${y(p[1])}`).join(" L"), fill: "none", stroke: "var(--ink)", "stroke-width": 1.5, "stroke-linejoin": "round"}, svg);
+
+  // direct labels on longer climbs / steep sections
+  const minLabelM = narrow ? 1400 : 900;
+  segs().forEach(s => {
+    if (!["climb", "steep_climb", "steep_descent"].includes(s.type) || s.length_m < minLabelM) return;
+    const mid = (s.start_km + s.end_km) / 2;
+    const top = Math.max(interp(s.start_km), interp(s.end_km), interp(mid));
+    const t = el("text", {x: x(mid), y: y(top) - 8, "text-anchor": "middle", class: "lbl"}, svg);
+    t.textContent = fmt1(s.avg_grade_pct) + "%";
+  });
+
+  // current Cadence climbs as bars above the plot
+  if ($("show-cadence").checked) {
+    const cg = el("g", {}, svg);
+    const t = el("text", {x: m.l, y: 10, "text-anchor": "start"}, cg);
+    t.textContent = "Current Cadence climbs";
+    CADENCE.forEach(c => el("rect", {x: x(c.startKm), y: 16, width: Math.max(2, x(c.endKm) - x(c.startKm)), height: 6, rx: 2, fill: "var(--cadence-bar)", opacity: 0.55}, cg));
+  }
+
+  // hover layer
+  const hl = el("g", {id: "hl"}, svg);
+  el("rect", {x: m.l, y: m.t, width: W - m.l - m.r, height: base - m.t, fill: "transparent", id: "hit"}, svg);
+  const hit = $("hit");
+  hit.addEventListener("mousemove", ev => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    const km = Math.min(maxKm, Math.max(0, (px - m.l) / (W - m.l - m.r) * maxKm));
+    const i = segs().findIndex(s => km >= s.start_km && km <= s.end_km);
+    setHover(i, km);
+  });
+  hit.addEventListener("mouseleave", () => setHover(-1));
+  applyHover();
+}
+
+function interp(km) {
+  let lo = 0, hi = P.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (P[mid][0] <= km) lo = mid; else hi = mid; }
+  const a = P[lo], b = P[hi];
+  if (b[0] === a[0]) return a[1];
+  return a[1] + (b[1] - a[1]) * (km - a[0]) / (b[0] - a[0]);
+}
+
+let hoverKm = null;
+function setHover(i, km) { hoverIdx = i; hoverKm = km ?? null; applyHover(); }
+
+function applyHover() {
+  for (const tr of $("rows").children) tr.classList.toggle("on", +tr.dataset.i === hoverIdx);
+  document.querySelectorAll("#chart .fill").forEach(p => p.setAttribute("opacity", hoverIdx < 0 || +p.dataset.i === hoverIdx ? 1 : 0.35));
+  const hl = document.getElementById("hl");
+  const tip = $("tip");
+  if (!hl) return;
+  hl.innerHTML = "";
+  if (hoverIdx < 0) { tip.hidden = true; return; }
+  const s = segs()[hoverIdx];
+  const {x, y, m, H, W} = geom;
+  const km = hoverKm ?? (s.start_km + s.end_km) / 2;
+  el("line", {x1: x(km), x2: x(km), y1: m.t, y2: y(40), stroke: "var(--ink-2)", "stroke-width": 1, "stroke-dasharray": "3 3"}, hl);
+  el("circle", {cx: x(km), cy: y(interp(km)), r: 4, fill: "var(--ink)", stroke: "var(--surface)", "stroke-width": 2}, hl);
+  tip.innerHTML = `
+    <div class="t"><i class="chip" style="background:var(${TYPES[s.type].v})"></i>${TYPES[s.type].name} · #${hoverIdx + 1}</div>
+    <div class="r"><span>Here</span><span>km ${km.toFixed(2)} · ${Math.round(interp(km))} m</span></div>
+    <div class="r"><span>Section</span><span>km ${s.start_km.toFixed(2)}–${s.end_km.toFixed(2)}</span></div>
+    <div class="r"><span>Avg grade</span><span>${fmt1(s.avg_grade_pct)}%</span></div>
+    <div class="r"><span>Gain / loss</span><span>${s.gain_m} / ${s.loss_m} m</span></div>`;
+  tip.hidden = false;
+  const svgR = $("chart").getBoundingClientRect();
+  const scale = svgR.width / W;
+  const cx = x(km) * scale;
+  const left = cx > svgR.width / 2 ? cx - 115 : cx + 115;
+  tip.style.left = Math.min(svgR.width - 100, Math.max(100, left)) + "px";
+  tip.style.top = (m.t * scale + 4) + "px";
+}
+
+function renderAll() { renderStrip(); renderTable(); renderChart(); }
+
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+  alg = b.dataset.alg;
+  document.querySelectorAll(".seg button").forEach(o => o.setAttribute("aria-pressed", String(o === b)));
+  hoverIdx = -1; renderAll();
+}));
+$("show-cadence").addEventListener("change", renderChart);
+$("show-raw").addEventListener("change", renderChart);
+new ResizeObserver(() => renderChart()).observe($("chart-wrap"));
+renderAll();
+renderCmp();
+</script>
