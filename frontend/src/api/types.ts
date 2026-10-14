@@ -88,6 +88,8 @@ export interface Athlete {
   race_block_weeks: number;
   /** Maximum key sessions returned per race block. */
   race_key_session_cap: number;
+  /** How courses are split into sections - see CourseSectionSettings. */
+  course_section_settings: CourseSectionSettings;
 }
 
 export interface TokenResponse {
@@ -478,6 +480,9 @@ export interface AthleteUpdate {
   default_shoe_limit_km?: number;
   race_block_weeks?: number;
   race_key_session_cap?: number;
+  /** Any subset - merged into the athlete's current settings, and the merged result must be
+   * within every range (400 otherwise, nothing saved). */
+  course_section_settings?: Partial<CourseSectionSettings>;
 }
 
 export interface ActivityComment {
@@ -1188,6 +1193,40 @@ export interface RaceCommentCreate {
   parent_id?: string | null;
 }
 
+export type SectionAlgorithm = "douglas_peucker" | "bottom_up";
+
+/** How courses are split into sections (backend courses/sections.py, backend_java's
+ * CourseSections). Ranges are in lib/courseSections.ts's SETTING_FIELDS. */
+export interface CourseSectionSettings {
+  algorithm: SectionAlgorithm;
+  flat_max_pct: number;
+  steep_min_pct: number;
+  fit_tolerance_m: number;
+  min_section_m: number;
+  keep_min_rise_m: number;
+  spike_window_m: number;
+  smoothing_window_m: number;
+  resample_step_m: number;
+}
+
+export type SectionType = "steep_descent" | "descent" | "flat" | "climb" | "steep_climb";
+
+export interface CourseSection {
+  type: SectionType;
+  start_km: number;
+  end_km: number;
+  length_m: number;
+  gain_m: number;
+  loss_m: number;
+  avg_grade_pct: number;
+  /** Steepest 100m inside the section - uphill for a climb or flat, downhill for a descent. */
+  steepest_100m_pct: number;
+}
+
+/** ok, or why a course has no sections: missing (no or flat elevation in the source) or
+ * sparse (points too far apart to see hills between them). */
+export type ElevationQuality = "ok" | "missing" | "sparse";
+
 export interface Climb {
   start_km: number;
   end_km: number;
@@ -1232,8 +1271,13 @@ export interface Course extends CourseSummary {
   route_polyline: [number, number][];
   /** [km, elevation_m] pairs, ~200 points evenly spaced by distance. */
   elevation_profile: [number, number][];
+  /** The climb and steep_climb sections. */
   climbs: Climb[];
   races: CourseRaceSummary[];
+  elevation_quality: ElevationQuality;
+  /** The whole course split by grade, calculated on each request with the owner's settings
+   * (or a preview's overrides). Empty unless elevation_quality is ok. */
+  sections: CourseSection[];
 }
 
 export interface CourseUpdate {

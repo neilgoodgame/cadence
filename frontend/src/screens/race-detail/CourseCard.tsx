@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { scaleLinear } from "d3-scale";
 import { RouteMap } from "../../components/RouteMap";
-import { downloadCourseGpxUrl } from "../../api/courses";
+import { downloadCourseGpxUrl, recomputeCourseElevation } from "../../api/courses";
 import { updateRace } from "../../api/races";
-import type { Course, Race } from "../../api/types";
+import type { Course, CourseSection, Race } from "../../api/types";
+import { CourseSectionsProfile } from "../../components/CourseSectionsProfile";
+import { SECTION_COLORS, SECTION_LABELS, formatGrade } from "../../lib/courseSections";
 import { LinkCourseDialog } from "./LinkCourseDialog";
 
 function statGrid(course: Course) {
@@ -29,53 +30,102 @@ function statGrid(course: Course) {
   );
 }
 
-/** Width reserved on the left, in the chart's own coordinate space, for the y-axis tick labels. */
-const ELEVATION_AXIS_W = 40;
+
+const QUALITY_NOTICE: Record<"missing" | "sparse", string> = {
+  missing: "This course's GPX has no elevation data, so climbs and flats can't be shown. Try a GPX from a route planner, or create the course from your activity.",
+  sparse: "This course's GPX has too few points to show climbs and flats reliably - hills between points are lost. Try a GPX from a route planner, or create the course from your activity.",
+};
+
+function ElevationNotice({ course }: { course: Course }) {
+  const queryClient = useQueryClient();
+  const rebuild = useMutation({
+    mutationFn: () => recomputeCourseElevation(course.id),
+    onSuccess: (updated) => queryClient.setQueryData(["course", course.id], updated),
+  });
+  if (course.elevation_quality === "ok") return null;
+  return (
+    <div style={{ marginTop: 16, fontSize: 12.5, color: "var(--ink2)", background: "var(--elev)", borderRadius: 8, padding: "10px 12px" }}>
+      {QUALITY_NOTICE[course.elevation_quality]}
+      <div style={{ marginTop: 6 }}>
+        <button
+          onClick={() => rebuild.mutate()}
+          disabled={rebuild.isPending}
+          style={{ border: "none", background: "none", padding: 0, color: "var(--ember)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}
+        >
+          {rebuild.isPending ? "Rebuilding…" : "Rebuild from the source file"}
+        </button>
+        {rebuild.isError && <span style={{ marginLeft: 8, color: "#e0442e" }}>{(rebuild.error as Error).message}</span>}
+      </div>
+    </div>
+  );
+}
+
+function SectionTable({ sections }: { sections: CourseSection[] }) {
+  const th: CSSProperties = { textAlign: "right", padding: "4px 6px", fontWeight: 600, color: "var(--ink3)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.04em" };
+  const td: CSSProperties = { textAlign: "right", padding: "4px 6px" };
+  return (
+    <div style={{ overflowX: "auto", marginTop: 8 }}>
+      <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--line)" }}>
+            <th style={{ ...th, textAlign: "left" }}>Type</th>
+            <th style={th}>km</th>
+            <th style={th}>Length</th>
+            <th style={th}>Gain / loss</th>
+            <th style={th}>Avg</th>
+            <th style={th}>Steepest 100 m</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sections.map((s, i) => (
+            <tr key={i} style={{ borderBottom: "1px solid var(--line)" }}>
+              <td style={{ ...td, textAlign: "left", whiteSpace: "nowrap" }}>
+                <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, marginRight: 6, background: SECTION_COLORS[s.type] }} />
+                {SECTION_LABELS[s.type]}
+              </td>
+              <td style={td}>{s.start_km.toFixed(1)}–{s.end_km.toFixed(1)}</td>
+              <td style={td}>{s.length_m >= 1000 ? `${(s.length_m / 1000).toFixed(2)} km` : `${s.length_m} m`}</td>
+              <td style={td}>
+                {s.gain_m ? `+${s.gain_m}` : "0"} / {s.loss_m ? `−${s.loss_m}` : "0"} m
+              </td>
+              <td style={{ ...td, fontWeight: 700 }}>{formatGrade(s.avg_grade_pct)}</td>
+              <td style={td}>{formatGrade(s.steepest_100m_pct)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function ElevationProfile({ course }: { course: Course }) {
-  const points = course.elevation_profile;
-  if (points.length < 2) return null;
-  const W = 1000;
-  const H = 110;
-  const plotW = W - ELEVATION_AXIS_W;
-  const maxKm = points[points.length - 1][0];
-  const minEle = Math.min(...points.map((p) => p[1]));
-  const maxEle = Math.max(...points.map((p) => p[1]));
-  const x = (km: number) => (km / maxKm) * plotW;
-  const y = scaleLinear()
-    .domain([minEle, Math.max(maxEle, minEle + 1)])
-    .range([H, 0]);
-  const yTicks = y.ticks(4);
-
-  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p[0])} ${y(p[1])}`).join(" ");
-  const areaPath = `${linePath} L ${x(points[points.length - 1][0])} ${H} L ${x(0)} ${H} Z`;
-
+  const [showSections, setShowSections] = useState(false);
+  const climbs = course.sections.filter((s) => s.type === "climb" || s.type === "steep_climb");
   return (
     <div style={{ marginTop: 16 }}>
-      <svg width="100%" viewBox={`0 0 ${W} ${H + 18}`} style={{ display: "block" }}>
-        <g transform={`translate(${ELEVATION_AXIS_W},0)`}>
-          {yTicks.map((tick) => (
-            <g key={tick}>
-              <line x1={0} x2={plotW} y1={y(tick)} y2={y(tick)} stroke="var(--line)" strokeDasharray="3,3" />
-              <text x={-8} y={y(tick)} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="var(--ink3)" className="mono">
-                {`${tick}m`}
-              </text>
-            </g>
+      <CourseSectionsProfile profile={course.elevation_profile} sections={course.sections} />
+      {climbs.length > 0 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          {climbs.map((c, i) => (
+            <span key={i} style={{ fontSize: 11, color: "var(--ink2)", background: "var(--canvas)", borderRadius: 20, padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 2, background: SECTION_COLORS[c.type] }} />
+              C{i + 1} · km {c.start_km.toFixed(1)}–{c.end_km.toFixed(1)} · +{c.gain_m} m · {c.avg_grade_pct.toFixed(1)}%
+              {c.type === "steep_climb" && " · steep"}
+            </span>
           ))}
-          <path d={areaPath} fill="var(--ember)22" />
-          <path d={linePath} fill="none" stroke="var(--ember)" strokeWidth={1.5} />
-          {course.climbs.map((c, i) => (
-            <rect key={i} x={x(c.start_km)} y={0} width={Math.max(1, x(c.end_km) - x(c.start_km))} height={H} fill="var(--ink)" opacity={0.08} />
-          ))}
-        </g>
-      </svg>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-        {course.climbs.map((c, i) => (
-          <span key={i} style={{ fontSize: 11, color: "var(--ink2)", background: "var(--canvas)", borderRadius: 20, padding: "3px 9px" }}>
-            C{i + 1} · km {c.start_km.toFixed(1)}–{c.end_km.toFixed(1)} · +{c.gain_m.toFixed(0)} m · {c.avg_grade_pct.toFixed(1)}%
-          </span>
-        ))}
-      </div>
+        </div>
+      )}
+      {course.sections.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowSections(!showSections)}
+            style={{ marginTop: 10, border: "none", background: "none", padding: 0, color: "var(--ink2)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+          >
+            {showSections ? "Hide sections" : `Show all ${course.sections.length} sections`}
+          </button>
+          {showSections && <SectionTable sections={course.sections} />}
+        </>
+      )}
     </div>
   );
 }
@@ -206,6 +256,7 @@ export function CourseCard({ race, course }: { race: Race; course: Course | null
 
       {statGrid(course)}
       <ElevationProfile course={course} />
+      <ElevationNotice course={course} />
       <RacedOnThisCourse course={course} currentRaceId={race.id} />
 
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
