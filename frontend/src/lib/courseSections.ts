@@ -1,4 +1,4 @@
-import type { CourseSection, CourseSectionSettings, SectionType } from "../api/types";
+import type { Activity, CourseSection, CourseSectionSettings, SectionType } from "../api/types";
 
 /** Steepest-down first, so legends and summaries read left to right like a gradient. */
 export const SECTION_TYPES: SectionType[] = ["steep_descent", "descent", "flat", "climb", "steep_climb"];
@@ -19,6 +19,10 @@ export const SECTION_COLORS: Record<SectionType, string> = {
   climb: "var(--grade-climb)",
   steep_climb: "var(--grade-steep-climb)",
 };
+
+/** Activity sports the backend splits into sections (GET /v1/activities/{id}/sections is a 422
+ * for anything else). */
+export const SECTION_SPORTS: Activity["sport"][] = ["run", "walk", "bike"];
 
 export const DEFAULT_SECTION_SETTINGS: CourseSectionSettings = {
   algorithm: "douglas_peucker",

@@ -232,7 +232,12 @@ public class CourseService {
 	}
 
 	private CourseSections.Settings ownerSettings(Course course) {
-		return userRepository.findById(course.getAthlete().getId())
+		return settingsFor(course.getAthlete().getId());
+	}
+
+	/** An athlete's saved section settings - shared by course and activity sections. */
+	public CourseSections.Settings settingsFor(String athleteId) {
+		return userRepository.findById(athleteId)
 				.map(User::getCourseSectionSettings)
 				.orElse(CourseSections.Settings.DEFAULTS);
 	}
@@ -242,6 +247,12 @@ public class CourseService {
 	 * saves nothing. Null when there are none. */
 	@Transactional(readOnly = true)
 	public CourseSections.Settings settingsWithOverrides(Course course, Map<String, String> query) {
+		return settingsWithOverrides(course.getAthlete().getId(), query);
+	}
+
+	/** The athlete's section settings with a preview's query-string overrides, or null when the
+	 * query has none. */
+	public CourseSections.Settings settingsWithOverrides(String athleteId, Map<String, String> query) {
 		String algorithm = query.get("algorithm");
 		Double[] values = new Double[8];
 		String[] names = {"flat_max_pct", "steep_min_pct", "fit_tolerance_m", "min_section_m", "keep_min_rise_m",
@@ -259,7 +270,7 @@ public class CourseService {
 			}
 		}
 		if (!any) return null;
-		CourseSections.Settings base = ownerSettings(course);
+		CourseSections.Settings base = settingsFor(athleteId);
 		CourseSections.Settings merged = new CourseSections.Settings(
 				algorithm != null ? algorithm : base.algorithm(),
 				values[0] != null ? values[0] : base.flatMaxPct(),

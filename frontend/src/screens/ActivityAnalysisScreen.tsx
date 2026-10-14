@@ -3,7 +3,9 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getActivity } from "../api/activities";
 import { useAuth } from "../auth/AuthContext";
+import { SECTION_SPORTS } from "../lib/courseSections";
 import { ActivityBestEffortsCard } from "./activity-analysis/ActivityBestEffortsCard";
+import { ActivitySectionsCard } from "./activity-analysis/ActivitySectionsCard";
 import { CommentsSection } from "./activity-analysis/CommentsSection";
 import { CurvesTab } from "./activity-analysis/CurvesTab";
 import { DuplicateBanner, DuplicatesCard } from "./activity-analysis/DuplicatesCard";
@@ -80,6 +82,8 @@ export function ActivityAnalysisScreen() {
         </div>
         <ActivityRouteMap activity={activity} />
       </div>
+
+      {SECTION_SPORTS.includes(activity.sport) && <ActivitySectionsCard activity={activity} />}
 
       <HydrationBlock activity={activity} />
 

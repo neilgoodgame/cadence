@@ -15,7 +15,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[2]))
 
-from courses.sections import SectionSettings, detect_sections  # noqa: E402
+from courses.sections import (  # noqa: E402
+    SectionSettings,
+    build_elevation_series,
+    detect_sections,
+    profile_from_series,
+)
 
 JAVA_DIR = HERE.parents[3] / "backend_java" / "src" / "test" / "resources" / "section-fixtures"
 
@@ -46,11 +51,19 @@ def main() -> None:
                 "sections": result.sections,
             }
         )
-    (HERE / "expected.json").write_text(json.dumps({"cases": cases}, indent=1) + "\n")
+    profiles = []
+    for profile, overrides in [(p, {}) for p in PROFILES] + [NON_DEFAULT[2]]:
+        data = json.loads((HERE / f"{profile}.json").read_text())
+        settings = SectionSettings(**overrides)
+        _, series = build_elevation_series(data["distance_km"], data["elevation_m"])
+        profiles.append(
+            {"profile": profile, "settings": asdict(settings), "points": profile_from_series(series, settings)}
+        )
+    (HERE / "expected.json").write_text(json.dumps({"cases": cases, "profiles": profiles}, indent=1) + "\n")
     JAVA_DIR.mkdir(parents=True, exist_ok=True)
     for name in [f"{p}.json" for p in PROFILES] + ["expected.json"]:
         shutil.copyfile(HERE / name, JAVA_DIR / name)
-    print(f"{len(cases)} cases written; copied to {JAVA_DIR}")
+    print(f"{len(cases)} cases and {len(profiles)} profiles written; copied to {JAVA_DIR}")
 
 
 if __name__ == "__main__":

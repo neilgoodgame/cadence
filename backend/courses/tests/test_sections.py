@@ -16,6 +16,7 @@ from courses.sections import (
     build_elevation_series,
     climbs_from_sections,
     detect_sections,
+    profile_from_series,
     sections_from_series,
 )
 
@@ -58,6 +59,14 @@ class GoldenFixtureTests(SimpleTestCase):
                 result = detect_sections(distances, elevations, SectionSettings(**case["settings"]))
                 self.assertEqual(result.elevation_quality, case["elevation_quality"])
                 self.assertEqual(result.sections, case["sections"])
+
+    def test_every_profile_matches_the_golden_output(self):
+        profiles = json.loads((FIXTURES / "expected.json").read_text())["profiles"]
+        self.assertGreaterEqual(len(profiles), 5)
+        for case in profiles:
+            with self.subTest(profile=case["profile"], settings=case["settings"]):
+                _, series = build_elevation_series(*_profile(case["profile"]))
+                self.assertEqual(profile_from_series(series, SectionSettings(**case["settings"])), case["points"])
 
     def test_java_copy_of_the_fixtures_is_identical(self):
         if not JAVA_FIXTURES.exists():
@@ -207,3 +216,20 @@ class ElevationSeriesTests(SimpleTestCase):
         self.assertEqual(len(climbs), len(expected))
         self.assertEqual(set(climbs[0]), {"start_km", "end_km", "gain_m", "avg_grade_pct"})
         self.assertEqual(climbs[-1]["start_km"], expected[-1]["start_km"])
+
+
+class ProfileFromSeriesTests(SimpleTestCase):
+    def test_short_series_keeps_every_point(self):
+        settings = SectionSettings(spike_window_m=0, smoothing_window_m=20)
+        profile = profile_from_series([10.0, 10.0, 10.0], settings)
+        self.assertEqual(profile, [[0.0, 10.0], [0.01, 10.0], [0.02, 10.0]])
+
+    def test_long_series_is_capped_and_keeps_both_ends(self):
+        series = [100.0 + k * 0.05 for k in range(5001)]
+        profile = profile_from_series(series)
+        self.assertEqual(len(profile), 200)
+        self.assertEqual(profile[0][0], 0.0)
+        self.assertEqual(profile[-1][0], 50.0)
+
+    def test_empty(self):
+        self.assertEqual(profile_from_series([]), [])

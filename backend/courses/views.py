@@ -42,8 +42,8 @@ def _require_write(request: Request, athlete_id: str) -> None:
 _SETTING_TYPES = {f.name: f.type for f in dataclass_fields(SectionSettings)}
 
 
-def _preview_settings(request: Request, course: Course) -> SectionSettings | None:
-    """The owner's section settings with any overrides from the query string (the same names
+def preview_settings(request: Request, base: SectionSettings) -> SectionSettings | None:
+    """The owner's section settings (base) with any overrides from the query string (the same names
     as course_section_settings, e.g. ?algorithm=bottom_up&fit_tolerance_m=3) - a live preview
     that saves nothing. None when the query string has none."""
     overrides: dict[str, object] = {}
@@ -60,7 +60,7 @@ def _preview_settings(request: Request, course: Course) -> SectionSettings | Non
             overrides[name] = raw
     if not overrides:
         return None
-    settings = replace(course.athlete.section_settings(), **overrides)
+    settings = replace(base, **overrides)
     error = settings.validation_error()
     if error is not None:
         raise ValidationError({"course_section_settings": error})
@@ -152,7 +152,7 @@ class CourseDetailView(APIView):
         sub, _ = get_effective_athlete_id(request)
         if not user_may_read(sub, course.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
-        settings = _preview_settings(request, course)
+        settings = preview_settings(request, course.athlete.section_settings())
         ensure_elevation_series(course)
         return Response(CourseSerializer(course, context={"section_settings": settings}).data)
 

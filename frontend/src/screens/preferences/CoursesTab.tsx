@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { updateAthlete } from "../../api/athletes";
 import { getCourse, listCourses, recomputeAthleteCourseElevation } from "../../api/courses";
 import { useAuth } from "../../auth/AuthContext";
@@ -65,11 +65,12 @@ function NumberField({
   );
 }
 
-/** Preferences › Courses - how every course is split into flat, climb and descent sections.
- * Sections are calculated on each course read, so saving here applies the next time any
- * course is viewed; the preview shows the unsaved settings on one course first. */
+/** Preferences › Courses - how every course (and run, walk and ride) is split into flat, climb
+ * and descent sections. Sections are calculated on each read, so saving here applies the next
+ * time one is viewed; the preview shows the unsaved settings on one course first. */
 export function CoursesTab() {
   const { user, setUser } = useAuth();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<CourseSectionSettings>(user?.course_section_settings ?? DEFAULT_SECTION_SETTINGS);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [previewId, setPreviewId] = useState("");
@@ -87,7 +88,10 @@ export function CoursesTab() {
 
   const save = useMutation({
     mutationFn: () => updateAthlete(user!.id, { course_section_settings: form }),
-    onSuccess: (updated) => setUser(updated),
+    onSuccess: (updated) => {
+      setUser(updated);
+      void queryClient.invalidateQueries({ queryKey: ["activity-sections"] });
+    },
   });
   const rebuild = useMutation({ mutationFn: () => recomputeAthleteCourseElevation(user!.id) });
 
@@ -103,8 +107,8 @@ export function CoursesTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 620 }}>
       <div style={{ fontSize: 13, color: "var(--ink2)" }}>
-        How a course's elevation is split into flat, climb and descent sections on its race page. Changes apply the next
-        time a course is viewed.
+        How elevation is split into flat, climb and descent sections - on a course's race page and on every run, walk
+        and ride. Changes apply the next time one is viewed.
       </div>
 
       <div>
