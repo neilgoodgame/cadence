@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { scaleLinear } from "d3-scale";
 import { RouteMap } from "../../components/RouteMap";
 import { downloadCourseGpxUrl } from "../../api/courses";
 import { updateRace } from "../../api/races";
@@ -28,16 +29,23 @@ function statGrid(course: Course) {
   );
 }
 
+/** Width reserved on the left, in the chart's own coordinate space, for the y-axis tick labels. */
+const ELEVATION_AXIS_W = 40;
+
 function ElevationProfile({ course }: { course: Course }) {
   const points = course.elevation_profile;
   if (points.length < 2) return null;
   const W = 1000;
   const H = 110;
+  const plotW = W - ELEVATION_AXIS_W;
   const maxKm = points[points.length - 1][0];
   const minEle = Math.min(...points.map((p) => p[1]));
   const maxEle = Math.max(...points.map((p) => p[1]));
-  const x = (km: number) => (km / maxKm) * W;
-  const y = (ele: number) => H - ((ele - minEle) / Math.max(1, maxEle - minEle)) * H;
+  const x = (km: number) => (km / maxKm) * plotW;
+  const y = scaleLinear()
+    .domain([minEle, Math.max(maxEle, minEle + 1)])
+    .range([H, 0]);
+  const yTicks = y.ticks(4);
 
   const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p[0])} ${y(p[1])}`).join(" ");
   const areaPath = `${linePath} L ${x(points[points.length - 1][0])} ${H} L ${x(0)} ${H} Z`;
@@ -45,11 +53,21 @@ function ElevationProfile({ course }: { course: Course }) {
   return (
     <div style={{ marginTop: 16 }}>
       <svg width="100%" viewBox={`0 0 ${W} ${H + 18}`} style={{ display: "block" }}>
-        <path d={areaPath} fill="var(--ember)22" />
-        <path d={linePath} fill="none" stroke="var(--ember)" strokeWidth={1.5} />
-        {course.climbs.map((c, i) => (
-          <rect key={i} x={x(c.start_km)} y={0} width={Math.max(1, x(c.end_km) - x(c.start_km))} height={H} fill="var(--ink)" opacity={0.08} />
-        ))}
+        <g transform={`translate(${ELEVATION_AXIS_W},0)`}>
+          {yTicks.map((tick) => (
+            <g key={tick}>
+              <line x1={0} x2={plotW} y1={y(tick)} y2={y(tick)} stroke="var(--line)" strokeDasharray="3,3" />
+              <text x={-8} y={y(tick)} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="var(--ink3)" className="mono">
+                {`${tick}m`}
+              </text>
+            </g>
+          ))}
+          <path d={areaPath} fill="var(--ember)22" />
+          <path d={linePath} fill="none" stroke="var(--ember)" strokeWidth={1.5} />
+          {course.climbs.map((c, i) => (
+            <rect key={i} x={x(c.start_km)} y={0} width={Math.max(1, x(c.end_km) - x(c.start_km))} height={H} fill="var(--ink)" opacity={0.08} />
+          ))}
+        </g>
       </svg>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
         {course.climbs.map((c, i) => (
