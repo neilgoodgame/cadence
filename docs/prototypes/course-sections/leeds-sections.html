@@ -1,0 +1,415 @@
+<title>Leeds Marathon Sections</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; the profile chart is the hero, the section table sits under it. */
+:root {
+  --bg: #f7f8f7;
+  --surface: #fcfcfb;
+  --ink: #111614;
+  --ink-2: #4b524f;
+  --muted: #7d8481;
+  --grid: #e3e6e3;
+  --axis: #bfc4c0;
+  --ring: rgba(17,22,20,0.10);
+  --accent: #1c5cab;
+  --hover: rgba(17,22,20,0.05);
+
+  --g-steep-descent: #1c5cab;
+  --g-descent: #86b6ef;
+  --g-flat: #e4e2db;
+  --g-climb: #ee9a8d;
+  --g-steep-climb: #b8302f;
+  --cadence-bar: #4b524f;
+
+  --f-display: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1211; --surface: #171a19; --ink: #eef0ee; --ink-2: #c0c6c2; --muted: #8b928e;
+    --grid: #262a28; --axis: #3a3f3c; --ring: rgba(255,255,255,0.10); --accent: #6da7ec; --hover: rgba(255,255,255,0.05);
+    --g-steep-descent: #6da7ec; --g-descent: #2a6ac0; --g-flat: #3a3a37; --g-climb: #b0443e; --g-steep-climb: #ec7b78;
+    --cadence-bar: #c0c6c2;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1211; --surface: #171a19; --ink: #eef0ee; --ink-2: #c0c6c2; --muted: #8b928e;
+  --grid: #262a28; --axis: #3a3f3c; --ring: rgba(255,255,255,0.10); --accent: #6da7ec; --hover: rgba(255,255,255,0.05);
+  --g-steep-descent: #6da7ec; --g-descent: #2a6ac0; --g-flat: #3a3a37; --g-climb: #b0443e; --g-steep-climb: #ec7b78;
+  --cadence-bar: #c0c6c2;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+main { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: 0.005em; }
+h1 { font-size: clamp(28px, 4.2vw, 40px); font-weight: 700; line-height: 1.05; }
+h2 { font-size: 21px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; color: var(--ink-2); }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+header { display: grid; gap: 10px; }
+.num { font-variant-numeric: tabular-nums; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+
+/* summary strip */
+.strip { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline; }
+.strip div { display: grid; gap: 0; }
+.strip b { font-family: var(--f-display); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.strip span { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* controls */
+.controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; padding: 2px; background: var(--surface); }
+.seg button {
+  font: 500 13px var(--f-body); color: var(--ink-2); background: none; border: 0; border-radius: 6px;
+  padding: 6px 12px; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.seg button:focus-visible, .check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.check { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.chip { width: 12px; height: 12px; border-radius: 3px; display: inline-block; box-shadow: inset 0 0 0 1px var(--ring); flex: none; }
+
+/* chart */
+.figure { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px 12px 8px; display: grid; gap: 12px; min-width: 0; }
+.chart-wrap { position: relative; min-width: 0; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { font-family: var(--f-mono); font-size: 11px; fill: var(--muted); }
+svg .lbl { font-family: var(--f-display); font-size: 12px; font-weight: 600; fill: var(--ink-2); }
+.tip {
+  position: absolute; pointer-events: none; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 180px; transform: translate(-50%, 0);
+}
+.tip .t { font-family: var(--f-display); font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.tip .r { display: flex; justify-content: space-between; gap: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* table */
+.table-wrap { overflow-x: auto; border: 1px solid var(--ring); border-radius: 12px; background: var(--surface); min-width: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; text-align: right; white-space: nowrap; }
+th { font: 600 11px var(--f-body); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--grid); position: sticky; top: 0; background: var(--surface); }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+tbody tr { border-bottom: 1px solid var(--grid); cursor: default; }
+tbody tr:last-child { border-bottom: 0; }
+tbody tr.on { background: var(--hover); }
+td.type { display: flex; gap: 8px; align-items: center; font-weight: 500; }
+td.neg { color: var(--ink-2); }
+
+/* notes */
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px 40px; }
+.notes > section { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.notes ol, .notes ul { margin: 0; padding-left: 20px; color: var(--ink-2); display: grid; gap: 4px; }
+.cmp { font-size: 13px; }
+.cmp td, .cmp th { padding: 5px 10px; text-align: left; white-space: normal; vertical-align: top; }
+@media (prefers-reduced-motion: no-preference) { tbody tr { transition: background 120ms; } }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">Course segmentation prototype · Leeds Marathon</div>
+    <h1>Leeds Marathon, split into climbs, descents and flats</h1>
+    <p>Elevation from your Leeds Marathon 2026 run (the activity this course was built from), resampled to a 10&nbsp;m grid, smoothed, then cut into straight-line sections. Each section is labelled by its average grade.</p>
+  </header>
+
+  <div class="strip" id="strip"></div>
+
+  <div class="figure">
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Segmentation algorithm">
+        <button id="alg-bu" type="button" aria-pressed="true" data-alg="bottom_up">Bottom-up merge</button>
+        <button id="alg-dp" type="button" aria-pressed="false" data-alg="douglas_peucker">Douglas–Peucker</button>
+      </div>
+      <label class="check"><input type="checkbox" id="show-cadence" checked> Current Cadence climbs</label>
+      <label class="check"><input type="checkbox" id="show-raw"> Unsmoothed elevation</label>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="chart-wrap" id="chart-wrap">
+      <svg id="chart" role="img" aria-label="Elevation profile with sections colour-coded by grade"></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+  </div>
+
+  <section style="display:grid; gap:12px; min-width:0">
+    <h2>Sections</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Type</th><th>Start km</th><th>End km</th><th>Length</th>
+          <th>Elev start → end</th><th>Gain</th><th>Loss</th><th>Avg grade</th><th>Steepest 100 m</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="notes">
+    <section>
+      <h2>How it was computed</h2>
+      <ol>
+        <li>Resampled the 828 recorded points (about one every 50&nbsp;m) onto a 10&nbsp;m distance grid.</li>
+        <li>Smoothed with a 30&nbsp;m running median (removes spikes), then a 100&nbsp;m running mean.</li>
+        <li>Segmented into straight lines that stay within <span class="mono">2&nbsp;m</span> of the smoothed profile everywhere.
+          <b>Bottom-up</b> starts with tiny pieces and repeatedly joins the neighbouring pair that fits a line best.
+          <b>Douglas–Peucker</b> starts with one line and keeps splitting at the worst-fitting point.</li>
+        <li>Labelled each piece by average grade: steep descent below −4%, descent −4 to −1%, flat ±1% or less, climb 1 to 4%, steep climb 4% or more.</li>
+        <li>Joined neighbours with the same label, and folded anything shorter than 250&nbsp;m into the neighbour with the closer grade, unless it rises or drops at least 5&nbsp;m, so short, sharp hills survive.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Compared with today's climb detection</h2>
+      <p>The bars above the chart are the climbs Cadence stores for this course now. The <b>VV</b> strip under the chart is VeloViewer's gradient colouring, reproduced from VeloViewer's own code and applied to this run's elevation: green is 0%, fading to olive or teal by ±2.5% and to yellow or cyan by ±7.5%. With flat taken as ±1%, VeloViewer's method gives 14.0&nbsp;km flat, 15.1&nbsp;km up and 13.6&nbsp;km down, against 13.9, 14.8 and 13.9 here. Where the Cadence climbs differ from this prototype:</p>
+      <table class="cmp" id="cmp"></table>
+    </section>
+  </div>
+</main>
+
+<script>
+const DATA = {"params": {"step_m": 10.0, "median_m": 30.0, "mean_m": 100.0, "eps_m": 2.0, "min_seg_m": 250.0, "min_rise_m": 5.0, "bands": [[-4.0, "steep_descent"], [-1.0, "descent"], [1.0, "flat"], [4.0, "climb"], [null, "steep_climb"]]}, "profile": [[0.0, 79.4, 78.8], [0.05, 79.7, 79.8], [0.1, 79.9, 80.3], [0.15, 78.8, 79.2], [0.2, 76.8, 76.7], [0.25, 74.7, 74.6], [0.3, 72.9, 72.9], [0.35, 71.1, 71.1], [0.4, 69.4, 69.4], [0.45, 67.6, 67.6], [0.5, 66.3, 66.0], [0.55, 66.3, 66.0], [0.6, 67.5, 67.4], [0.65, 69.3, 69.2], [0.7, 71.3, 71.3], [0.75, 73.3, 73.3], [0.8, 75.1, 75.2], [0.85, 76.6, 76.7], [0.9, 77.3, 77.4], [0.95, 77.3, 77.3], [1.0, 77.1, 77.1], [1.05, 77.1, 77.1], [1.1, 77.2, 77.2], [1.15, 77.4, 77.3], [1.2, 78.1, 78.0], [1.25, 79.1, 79.1], [1.3, 80.4, 80.4], [1.35, 82.2, 82.0], [1.4, 84.3, 84.5], [1.45, 85.6, 85.8], [1.5, 85.9, 86.0], [1.55, 85.3, 85.6], [1.6, 83.7, 83.8], [1.65, 81.8, 81.7], [1.7, 80.3, 80.2], [1.75, 79.3, 79.2], [1.8, 78.9, 78.8], [1.85, 78.9, 78.8], [1.9, 79.2, 79.2], [1.95, 79.8, 79.8], [2.0, 80.4, 80.5], [2.05, 81.1, 81.0], [2.1, 82.0, 82.0], [2.15, 83.3, 83.3], [2.2, 84.6, 84.6], [2.25, 85.6, 85.6], [2.3, 86.4, 86.4], [2.35, 87.4, 87.4], [2.4, 88.5, 88.6], [2.45, 89.2, 89.3], [2.5, 89.6, 89.5], [2.55, 90.2, 90.1], [2.6, 91.1, 91.1], [2.65, 91.8, 91.8], [2.7, 92.3, 92.3], [2.75, 92.8, 92.8], [2.8, 93.0, 93.2], [2.85, 92.6, 92.8], [2.9, 91.9, 91.6], [2.95, 91.3, 91.4], [3.0, 90.7, 90.8], [3.05, 90.0, 89.9], [3.1, 89.4, 89.4], [3.15, 88.7, 88.9], [3.2, 87.3, 87.3], [3.25, 85.9, 85.8], [3.3, 84.5, 84.5], [3.35, 83.2, 83.1], [3.4, 81.9, 82.0], [3.45, 80.2, 80.4], [3.5, 77.7, 77.5], [3.55, 75.7, 75.5], [3.6, 74.7, 74.7], [3.65, 74.2, 74.1], [3.7, 74.2, 74.1], [3.75, 75.1, 74.9], [3.8, 76.9, 76.8], [3.85, 79.0, 79.1], [3.9, 80.8, 80.8], [3.95, 82.7, 82.6], [4.0, 84.5, 84.7], [4.05, 86.1, 86.1], [4.1, 87.2, 87.4], [4.15, 88.1, 87.9], [4.2, 89.0, 89.2], [4.25, 89.9, 89.8], [4.3, 90.7, 90.8], [4.35, 91.4, 91.4], [4.4, 92.0, 91.9], [4.45, 92.4, 92.7], [4.5, 92.5, 92.5], [4.55, 92.0, 92.2], [4.6, 90.9, 90.9], [4.65, 89.7, 89.5], [4.7, 89.2, 89.2], [4.75, 88.9, 89.0], [4.8, 88.0, 88.1], [4.85, 87.0, 86.9], [4.9, 86.2, 86.1], [4.95, 85.9, 85.9], [5.0, 85.9, 85.7], [5.05, 86.2, 86.2], [5.1, 86.6, 86.6], [5.15, 87.1, 86.9], [5.2, 87.8, 87.7], [5.25, 89.1, 88.9], [5.3, 91.1, 90.9], [5.35, 93.2, 93.4], [5.4, 95.0, 95.1], [5.45, 96.5, 96.5], [5.5, 98.1, 98.1], [5.55, 99.6, 99.7], [5.6, 100.6, 100.9], [5.65, 100.6, 101.0], [5.7, 99.5, 99.6], [5.75, 97.5, 97.6], [5.8, 95.5, 95.2], [5.85, 93.8, 93.8], [5.9, 92.4, 92.4], [5.95, 91.1, 91.2], [6.0, 89.9, 89.8], [6.05, 88.9, 88.8], [6.1, 88.6, 88.6], [6.15, 88.6, 88.7], [6.2, 87.8, 87.9], [6.25, 86.7, 86.5], [6.3, 86.1, 86.1], [6.35, 85.5, 85.5], [6.4, 84.7, 84.8], [6.45, 83.8, 83.9], [6.5, 83.0, 82.8], [6.55, 82.5, 82.4], [6.6, 82.1, 82.3], [6.65, 81.6, 81.5], [6.7, 81.3, 81.2], [6.75, 81.4, 81.4], [6.8, 81.8, 81.7], [6.85, 82.4, 82.3], [6.9, 83.4, 83.3], [6.95, 84.8, 84.7], [7.0, 86.5, 86.5], [7.05, 88.0, 88.0], [7.1, 89.0, 89.1], [7.15, 89.8, 89.8], [7.2, 90.1, 90.1], [7.25, 90.3, 90.3], [7.3, 90.6, 90.6], [7.35, 91.2, 91.2], [7.4, 92.2, 92.1], [7.45, 93.4, 93.4], [7.5, 95.0, 94.9], [7.55, 96.9, 96.9], [7.6, 99.3, 99.3], [7.65, 101.6, 101.7], [7.7, 103.8, 103.8], [7.75, 105.8, 105.8], [7.8, 107.8, 107.9], [7.85, 109.5, 109.6], [7.9, 110.8, 110.9], [7.95, 112.0, 112.0], [8.0, 113.2, 113.2], [8.05, 114.6, 114.6], [8.1, 115.8, 115.8], [8.15, 117.3, 117.3], [8.2, 118.9, 119.0], [8.25, 120.2, 120.2], [8.3, 121.6, 121.4], [8.35, 123.3, 123.3], [8.4, 125.2, 125.2], [8.45, 126.9, 126.9], [8.5, 128.4, 128.3], [8.55, 129.8, 129.8], [8.6, 131.1, 131.1], [8.65, 132.3, 132.3], [8.7, 133.7, 133.7], [8.75, 135.2, 135.2], [8.8, 136.6, 136.7], [8.85, 137.6, 137.7], [8.9, 138.0, 138.0], [8.95, 138.3, 138.3], [9.0, 138.7, 138.7], [9.05, 139.3, 139.2], [9.1, 140.0, 140.1], [9.15, 140.6, 140.7], [9.2, 140.8, 140.8], [9.25, 140.8, 140.8], [9.3, 140.9, 140.8], [9.35, 141.1, 141.1], [9.4, 141.5, 141.5], [9.45, 142.0, 142.0], [9.5, 142.6, 142.5], [9.55, 143.2, 143.3], [9.6, 143.5, 143.6], [9.65, 143.6, 143.4], [9.7, 143.8, 143.7], [9.75, 144.1, 144.1], [9.8, 144.3, 144.2], [9.85, 144.6, 144.5], [9.9, 145.0, 145.3], [9.95, 145.3, 145.0], [10.0, 146.1, 146.2], [10.05, 147.0, 147.0], [10.1, 147.3, 147.3], [10.15, 147.4, 147.5], [10.2, 147.1, 147.1], [10.25, 146.6, 146.6], [10.3, 146.3, 146.4], [10.35, 145.9, 145.9], [10.4, 145.2, 145.2], [10.45, 144.6, 144.7], [10.5, 144.0, 144.0], [10.55, 143.1, 143.1], [10.6, 142.4, 142.2], [10.65, 141.9, 142.0], [10.7, 141.1, 141.2], [10.75, 140.2, 140.2], [10.8, 139.3, 139.3], [10.85, 138.5, 138.4], [10.9, 137.9, 137.8], [10.95, 137.6, 137.6], [11.0, 137.2, 137.2], [11.05, 136.7, 136.8], [11.1, 136.0, 136.1], [11.15, 134.7, 134.8], [11.2, 133.0, 132.9], [11.25, 131.2, 131.2], [11.3, 129.4, 129.5], [11.35, 127.3, 127.5], [11.4, 124.4, 124.5], [11.45, 120.9, 120.7], [11.5, 118.6, 118.0], [11.55, 118.1, 118.0], [11.6, 118.9, 118.3], [11.65, 120.7, 120.7], [11.7, 123.2, 123.2], [11.75, 125.6, 125.8], [11.8, 127.6, 127.5], [11.85, 129.5, 129.5], [11.9, 131.3, 131.5], [11.95, 132.3, 132.6], [12.0, 132.4, 132.4], [12.05, 132.3, 132.4], [12.1, 132.5, 132.2], [12.15, 133.4, 133.1], [12.2, 135.2, 135.2], [12.25, 137.0, 137.1], [12.3, 138.7, 138.7], [12.35, 140.2, 140.3], [12.4, 141.7, 141.7], [12.45, 143.5, 143.1], [12.5, 145.8, 145.9], [12.55, 148.2, 148.2], [12.6, 150.0, 150.3], [12.65, 150.9, 151.2], [12.7, 151.0, 151.0], [12.75, 150.4, 150.6], [12.8, 149.6, 149.5], [12.85, 148.7, 148.8], [12.9, 147.6, 147.8], [12.95, 146.3, 146.2], [13.0, 145.1, 145.1], [13.05, 143.9, 144.2], [13.1, 142.0, 142.1], [13.15, 139.9, 139.6], [13.2, 139.0, 138.6], [13.25, 140.2, 140.2], [13.3, 142.1, 142.1], [13.35, 143.7, 143.7], [13.4, 145.4, 145.4], [13.45, 147.0, 147.0], [13.5, 148.3, 148.3], [13.55, 149.3, 149.3], [13.6, 150.3, 150.3], [13.65, 151.3, 151.4], [13.7, 151.9, 151.9], [13.75, 152.3, 152.3], [13.8, 152.8, 152.8], [13.85, 153.8, 153.6], [13.9, 155.3, 155.2], [13.95, 157.2, 157.2], [14.0, 159.3, 159.3], [14.05, 161.5, 161.6], [14.1, 163.7, 163.7], [14.15, 165.6, 165.7], [14.2, 166.8, 167.0], [14.25, 167.2, 167.3], [14.3, 167.1, 167.2], [14.35, 166.4, 166.5], [14.4, 165.1, 165.0], [14.45, 164.5, 164.3], [14.5, 164.7, 164.7], [14.55, 165.1, 165.1], [14.6, 165.3, 165.4], [14.65, 165.2, 165.4], [14.7, 164.3, 164.5], [14.75, 162.4, 162.6], [14.8, 159.8, 159.7], [14.85, 157.5, 157.4], [14.9, 155.4, 155.4], [14.95, 153.1, 153.4], [15.0, 150.3, 150.3], [15.05, 147.2, 147.1], [15.1, 144.5, 144.5], [15.15, 142.0, 142.0], [15.2, 139.8, 139.7], [15.25, 138.1, 138.0], [15.3, 137.1, 137.0], [15.35, 136.9, 136.7], [15.4, 137.2, 137.2], [15.45, 137.8, 137.8], [15.5, 138.5, 138.6], [15.55, 139.2, 139.2], [15.6, 139.7, 139.8], [15.65, 140.3, 140.2], [15.7, 141.1, 141.2], [15.75, 141.6, 141.6], [15.8, 141.9, 141.8], [15.85, 142.3, 142.4], [15.9, 142.7, 142.6], [15.95, 143.2, 143.2], [16.0, 144.0, 143.9], [16.05, 145.2, 145.1], [16.1, 146.6, 146.6], [16.15, 148.0, 147.9], [16.2, 149.8, 149.7], [16.25, 151.9, 152.1], [16.3, 153.8, 153.9], [16.35, 155.1, 155.1], [16.4, 156.0, 156.1], [16.45, 156.1, 156.6], [16.5, 154.9, 155.1], [16.55, 152.8, 152.9], [16.6, 150.0, 150.2], [16.65, 146.6, 146.5], [16.7, 143.2, 143.0], [16.75, 140.6, 140.6], [16.8, 138.0, 138.2], [16.85, 134.6, 134.8], [16.9, 131.2, 130.8], [16.95, 128.8, 128.5], [17.0, 128.1, 127.7], [17.05, 127.9, 128.5], [17.1, 126.2, 126.7], [17.15, 122.8, 122.8], [17.2, 118.9, 118.8], [17.25, 115.3, 115.3], [17.3, 112.3, 111.9], [17.35, 109.6, 110.1], [17.4, 106.6, 106.5], [17.45, 102.9, 103.2], [17.5, 98.9, 98.6], [17.55, 94.8, 95.0], [17.6, 90.7, 90.6], [17.65, 86.9, 86.7], [17.7, 84.1, 84.0], [17.75, 81.8, 81.9], [17.8, 79.1, 79.3], [17.85, 75.6, 75.6], [17.9, 72.2, 71.9], [17.95, 69.9, 69.4], [18.0, 69.0, 68.8], [18.05, 69.0, 69.0], [18.1, 69.1, 69.3], [18.15, 68.4, 68.7], [18.2, 66.5, 66.4], [18.25, 64.3, 64.1], [18.3, 63.0, 62.9], [18.35, 61.9, 61.9], [18.4, 61.1, 60.9], [18.45, 60.7, 60.9], [18.5, 59.8, 59.8], [18.55, 58.7, 58.8], [18.6, 57.5, 57.3], [18.65, 56.3, 56.4], [18.7, 55.2, 55.1], [18.75, 54.3, 54.2], [18.8, 53.5, 53.6], [18.85, 52.6, 52.6], [18.9, 51.5, 51.4], [18.95, 50.9, 50.8], [19.0, 50.5, 50.6], [19.05, 49.9, 49.9], [19.1, 49.3, 49.3], [19.15, 48.6, 48.8], [19.2, 48.0, 47.8], [19.25, 47.6, 47.6], [19.3, 47.8, 47.6], [19.35, 48.4, 48.4], [19.4, 49.0, 49.2], [19.45, 49.1, 49.4], [19.5, 48.6, 48.6], [19.55, 47.9, 47.7], [19.6, 47.6, 47.4], [19.65, 47.8, 47.7], [19.7, 48.3, 48.2], [19.75, 49.1, 49.2], [19.8, 49.7, 49.7], [19.85, 50.0, 50.2], [19.9, 50.0, 50.0], [19.95, 50.3, 50.2], [20.0, 51.2, 51.2], [20.05, 52.0, 52.0], [20.1, 52.6, 52.6], [20.15, 53.6, 53.4], [20.2, 54.7, 54.8], [20.25, 55.8, 55.7], [20.3, 56.9, 57.0], [20.35, 57.9, 58.1], [20.4, 58.6, 58.5], [20.45, 59.3, 59.4], [20.5, 60.0, 60.0], [20.55, 60.2, 60.6], [20.6, 60.3, 59.9], [20.65, 60.8, 60.6], [20.7, 61.4, 61.9], [20.75, 60.8, 60.9], [20.8, 59.3, 59.2], [20.85, 58.4, 58.3], [20.9, 58.0, 58.0], [20.95, 57.7, 57.7], [21.0, 57.2, 57.3], [21.05, 56.2, 56.3], [21.1, 55.1, 54.9], [21.15, 54.6, 54.3], [21.2, 54.9, 55.0], [21.25, 55.3, 55.4], [21.3, 55.6, 55.6], [21.35, 56.0, 56.0], [21.4, 56.4, 56.4], [21.45, 57.0, 57.1], [21.5, 57.6, 57.7], [21.55, 58.0, 58.1], [21.6, 58.0, 57.9], [21.65, 58.0, 58.1], [21.7, 57.7, 57.7], [21.75, 57.3, 57.3], [21.8, 56.8, 56.8], [21.85, 56.6, 56.5], [21.9, 56.9, 57.0], [21.95, 57.0, 57.2], [22.0, 56.5, 56.4], [22.05, 56.2, 56.1], [22.1, 56.3, 56.4], [22.15, 56.4, 56.4], [22.2, 56.5, 56.6], [22.25, 56.4, 56.6], [22.3, 55.9, 55.8], [22.35, 55.4, 55.5], [22.4, 54.7, 54.7], [22.45, 53.8, 53.8], [22.5, 53.0, 53.0], [22.55, 51.9, 52.0], [22.6, 50.9, 50.8], [22.65, 50.6, 50.4], [22.7, 51.2, 51.1], [22.75, 51.9, 52.1], [22.8, 52.4, 52.4], [22.85, 52.2, 52.5], [22.9, 51.6, 51.6], [22.95, 51.0, 50.8], [23.0, 50.8, 50.8], [23.05, 51.1, 51.0], [23.1, 51.5, 51.6], [23.15, 51.9, 51.8], [23.2, 52.4, 52.3], [23.25, 53.1, 53.1], [23.3, 54.0, 54.0], [23.35, 55.0, 55.0], [23.4, 55.9, 55.9], [23.45, 56.7, 56.9], [23.5, 56.7, 57.0], [23.55, 55.5, 55.6], [23.6, 53.7, 53.6], [23.65, 52.7, 52.6], [23.7, 52.4, 52.4], [23.75, 52.2, 52.3], [23.8, 51.6, 51.6], [23.85, 50.9, 50.7], [23.9, 50.9, 50.8], [23.95, 51.2, 51.3], [24.0, 51.6, 51.5], [24.05, 51.8, 51.9], [24.1, 51.9, 52.0], [24.15, 51.3, 51.3], [24.2, 50.7, 50.6], [24.25, 50.4, 50.4], [24.3, 50.5, 50.5], [24.35, 50.7, 50.7], [24.4, 50.8, 50.9], [24.45, 50.9, 51.0], [24.5, 50.8, 50.8], [24.55, 50.7, 50.8], [24.6, 50.6, 50.6], [24.65, 50.7, 50.6], [24.7, 50.8, 50.8], [24.75, 50.9, 50.8], [24.8, 51.1, 51.2], [24.85, 51.3, 51.2], [24.9, 51.4, 51.4], [24.95, 51.5, 51.6], [25.0, 51.4, 51.4], [25.05, 51.3, 51.2], [25.1, 51.3, 51.3], [25.15, 51.4, 51.4], [25.2, 51.6, 51.7], [25.25, 51.8, 51.8], [25.3, 51.9, 51.9], [25.35, 51.9, 51.9], [25.4, 52.0, 52.0], [25.45, 52.3, 52.3], [25.5, 52.5, 52.5], [25.55, 52.7, 52.7], [25.6, 52.9, 52.9], [25.65, 53.0, 53.1], [25.7, 52.9, 52.8], [25.75, 52.9, 52.8], [25.8, 53.1, 53.0], [25.85, 53.4, 53.4], [25.9, 54.0, 53.6], [25.95, 55.2, 55.5], [26.0, 56.1, 56.2], [26.05, 56.7, 56.4], [26.1, 57.7, 57.7], [26.15, 58.8, 59.1], [26.2, 59.4, 59.6], [26.25, 59.4, 59.4], [26.3, 59.1, 59.1], [26.35, 58.7, 58.8], [26.4, 58.2, 57.9], [26.45, 58.2, 58.0], [26.5, 59.0, 59.0], [26.55, 60.1, 60.1], [26.6, 60.9, 60.9], [26.65, 61.5, 61.5], [26.7, 62.2, 62.2], [26.75, 62.8, 62.9], [26.8, 63.3, 63.3], [26.85, 63.4, 63.5], [26.9, 63.3, 63.4], [26.95, 63.0, 62.9], [27.0, 62.8, 62.8], [27.05, 63.0, 62.9], [27.1, 63.6, 63.4], [27.15, 64.3, 64.5], [27.2, 65.0, 64.9], [27.25, 65.3, 65.7], [27.3, 65.2, 65.0], [27.35, 65.1, 65.0], [27.4, 65.3, 65.2], [27.45, 65.4, 65.6], [27.5, 65.6, 65.4], [27.55, 65.9, 66.0], [27.6, 66.3, 66.2], [27.65, 66.8, 66.9], [27.7, 67.3, 67.2], [27.75, 68.1, 67.9], [27.8, 69.3, 69.6], [27.85, 70.2, 70.2], [27.9, 70.7, 70.8], [27.95, 71.2, 71.0], [28.0, 71.9, 72.0], [28.05, 72.9, 72.8], [28.1, 74.1, 74.0], [28.15, 75.7, 75.6], [28.2, 77.3, 77.5], [28.25, 78.8, 78.6], [28.3, 80.6, 80.6], [28.35, 82.3, 82.4], [28.4, 83.8, 83.8], [28.45, 85.3, 85.3], [28.5, 86.8, 86.8], [28.55, 88.4, 88.3], [28.6, 90.1, 90.3], [28.65, 91.6, 91.5], [28.7, 92.7, 92.8], [28.75, 94.0, 93.9], [28.8, 95.6, 95.7], [28.85, 97.1, 97.2], [28.9, 98.6, 98.4], [28.95, 100.3, 100.4], [29.0, 101.9, 101.9], [29.05, 103.6, 103.5], [29.1, 105.2, 105.3], [29.15, 106.6, 106.7], [29.2, 107.9, 107.8], [29.25, 109.2, 109.2], [29.3, 110.6, 110.6], [29.35, 112.1, 112.1], [29.4, 113.4, 113.4], [29.45, 114.6, 114.6], [29.5, 115.9, 115.8], [29.55, 117.4, 117.4], [29.6, 118.8, 118.9], [29.65, 119.9, 119.8], [29.7, 121.2, 121.1], [29.75, 122.8, 122.9], [29.8, 124.3, 124.4], [29.85, 125.5, 125.4], [29.9, 126.9, 126.9], [29.95, 128.5, 128.5], [30.0, 130.0, 130.0], [30.05, 131.4, 131.4], [30.1, 132.8, 132.8], [30.15, 134.2, 134.2], [30.2, 135.4, 135.4], [30.25, 136.8, 136.8], [30.3, 138.2, 138.3], [30.35, 139.6, 139.6], [30.4, 141.0, 140.9], [30.45, 142.8, 142.8], [30.5, 144.2, 144.4], [30.55, 145.7, 145.3], [30.6, 147.2, 147.4], [30.65, 149.1, 148.9], [30.7, 150.9, 151.0], [30.75, 153.0, 152.9], [30.8, 155.0, 155.1], [30.85, 156.8, 156.7], [30.9, 158.6, 158.6], [30.95, 160.5, 160.6], [31.0, 161.9, 162.0], [31.05, 163.0, 162.9], [31.1, 164.5, 164.5], [31.15, 166.0, 165.9], [31.2, 167.7, 167.6], [31.25, 170.0, 170.0], [31.3, 172.1, 172.1], [31.35, 174.1, 174.1], [31.4, 175.7, 176.1], [31.45, 176.0, 176.1], [31.5, 175.5, 175.4], [31.55, 175.0, 174.9], [31.6, 174.7, 174.7], [31.65, 174.6, 174.6], [31.7, 174.3, 174.5], [31.75, 173.6, 173.7], [31.8, 172.6, 172.5], [31.85, 171.9, 171.8], [31.9, 171.7, 171.7], [31.95, 171.8, 171.8], [32.0, 171.9, 171.9], [32.05, 171.9, 171.9], [32.1, 172.2, 172.1], [32.15, 172.6, 172.6], [32.2, 173.0, 172.9], [32.25, 173.5, 173.5], [32.3, 174.1, 174.1], [32.35, 174.6, 174.7], [32.4, 174.9, 174.9], [32.45, 175.0, 175.1], [32.5, 174.9, 175.1], [32.55, 174.5, 174.4], [32.6, 174.3, 174.3], [32.65, 174.1, 174.3], [32.7, 173.4, 173.6], [32.75, 171.9, 171.9], [32.8, 170.3, 170.3], [32.85, 168.9, 168.9], [32.9, 167.7, 167.7], [32.95, 166.9, 166.7], [33.0, 166.5, 166.5], [33.05, 166.2, 166.3], [33.1, 165.9, 165.8], [33.15, 165.7, 165.7], [33.2, 165.4, 165.4], [33.25, 164.9, 164.9], [33.3, 164.0, 164.1], [33.35, 163.1, 162.9], [33.4, 162.3, 162.4], [33.45, 161.6, 161.5], [33.5, 161.1, 161.1], [33.55, 160.8, 160.8], [33.6, 160.5, 160.5], [33.65, 160.0, 160.1], [33.7, 159.4, 159.3], [33.75, 158.5, 158.7], [33.8, 157.3, 157.2], [33.85, 156.1, 156.2], [33.9, 155.0, 154.9], [33.95, 153.8, 154.0], [34.0, 152.4, 152.4], [34.05, 150.7, 150.8], [34.1, 149.0, 149.0], [34.15, 147.4, 147.4], [34.2, 146.0, 146.0], [34.25, 145.0, 144.8], [34.3, 144.5, 144.5], [34.35, 144.4, 144.5], [34.4, 144.0, 144.0], [34.45, 143.6, 143.7], [34.5, 142.8, 142.9], [34.55, 141.5, 141.5], [34.6, 140.3, 140.3], [34.65, 139.0, 139.0], [34.7, 137.9, 137.7], [34.75, 136.8, 137.1], [34.8, 135.7, 135.4], [34.85, 134.9, 135.0], [34.9, 134.3, 134.2], [34.95, 134.1, 134.0], [35.0, 134.2, 134.2], [35.05, 134.4, 134.4], [35.1, 134.5, 134.8], [35.15, 134.2, 134.2], [35.2, 133.6, 133.6], [35.25, 133.1, 133.0], [35.3, 132.4, 132.6], [35.35, 131.5, 131.6], [35.4, 130.4, 130.2], [35.45, 129.8, 129.7], [35.5, 129.6, 129.6], [35.55, 129.9, 129.8], [35.6, 130.5, 130.5], [35.65, 131.2, 131.1], [35.7, 131.9, 131.9], [35.75, 132.5, 132.6], [35.8, 133.1, 132.8], [35.85, 133.9, 134.0], [35.9, 134.9, 134.7], [35.95, 135.8, 136.0], [36.0, 136.6, 136.5], [36.05, 137.0, 137.2], [36.1, 137.3, 137.3], [36.15, 137.2, 137.5], [36.2, 136.8, 136.8], [36.25, 136.1, 136.1], [36.3, 135.6, 135.4], [36.35, 135.1, 135.4], [36.4, 134.3, 134.2], [36.45, 133.4, 133.4], [36.5, 132.6, 132.4], [36.55, 132.2, 132.2], [36.6, 132.0, 131.8], [36.65, 132.1, 132.0], [36.7, 132.7, 132.6], [36.75, 133.8, 133.8], [36.8, 134.9, 135.0], [36.85, 135.9, 135.8], [36.9, 136.9, 136.9], [36.95, 137.7, 137.8], [37.0, 138.4, 138.3], [37.05, 139.0, 139.1], [37.1, 139.6, 139.7], [37.15, 140.0, 140.0], [37.2, 140.5, 140.4], [37.25, 141.4, 141.3], [37.3, 142.6, 142.6], [37.35, 144.0, 144.0], [37.4, 145.1, 145.2], [37.45, 146.1, 146.1], [37.5, 146.7, 146.8], [37.55, 147.1, 147.2], [37.6, 147.3, 147.3], [37.65, 147.3, 147.4], [37.7, 147.1, 147.2], [37.75, 146.7, 146.7], [37.8, 146.1, 146.2], [37.85, 145.5, 145.5], [37.9, 145.0, 145.0], [37.95, 144.5, 144.5], [38.0, 144.2, 144.2], [38.05, 144.0, 144.0], [38.1, 143.9, 143.9], [38.15, 143.8, 143.8], [38.2, 143.5, 143.5], [38.25, 143.0, 143.0], [38.3, 142.7, 142.6], [38.35, 142.5, 142.5], [38.4, 142.3, 142.3], [38.45, 142.3, 142.3], [38.5, 142.1, 142.2], [38.55, 141.7, 141.7], [38.6, 141.2, 141.2], [38.65, 140.6, 140.6], [38.7, 140.0, 140.0], [38.75, 139.4, 139.3], [38.8, 138.9, 138.9], [38.85, 138.4, 138.5], [38.9, 137.8, 137.8], [38.95, 137.0, 137.0], [39.0, 135.8, 135.9], [39.05, 134.2, 134.2], [39.1, 132.8, 132.7], [39.15, 131.6, 131.5], [39.2, 130.4, 130.5], [39.25, 129.2, 129.1], [39.3, 127.8, 128.1], [39.35, 126.0, 126.1], [39.4, 124.0, 124.0], [39.45, 122.1, 122.0], [39.5, 120.4, 120.4], [39.55, 118.9, 118.9], [39.6, 117.5, 117.5], [39.65, 116.3, 116.3], [39.7, 115.0, 115.0], [39.75, 113.7, 113.7], [39.8, 112.2, 112.2], [39.85, 110.9, 110.8], [39.9, 109.6, 109.7], [39.95, 107.9, 108.0], [40.0, 105.7, 105.8], [40.05, 103.3, 103.2], [40.1, 101.2, 101.1], [40.15, 99.2, 99.3], [40.2, 97.1, 97.1], [40.25, 94.9, 94.9], [40.3, 92.9, 92.8], [40.35, 91.4, 91.3], [40.4, 90.5, 90.4], [40.45, 90.1, 90.1], [40.5, 89.7, 89.7], [40.55, 89.3, 89.3], [40.6, 88.9, 88.9], [40.65, 88.5, 88.5], [40.7, 87.8, 87.9], [40.75, 86.6, 86.6], [40.8, 85.0, 85.0], [40.85, 83.5, 83.3], [40.9, 82.3, 82.2], [40.95, 81.4, 81.4], [41.0, 80.9, 80.8], [41.05, 80.8, 80.8], [41.1, 80.9, 80.8], [41.15, 81.2, 81.2], [41.2, 81.6, 81.6], [41.25, 82.1, 81.9], [41.3, 82.8, 82.9], [41.35, 83.8, 83.7], [41.4, 84.7, 84.8], [41.45, 85.5, 85.6], [41.5, 86.1, 86.0], [41.55, 86.8, 86.9], [41.6, 87.4, 87.7], [41.65, 87.2, 87.3], [41.7, 86.5, 86.6], [41.75, 85.4, 85.5], [41.8, 83.8, 83.8], [41.85, 82.2, 82.1], [41.9, 81.2, 81.1], [41.95, 80.8, 80.9], [42.0, 80.6, 80.5], [42.05, 80.3, 80.3], [42.1, 79.9, 80.0], [42.15, 78.9, 79.1], [42.2, 77.4, 77.4], [42.25, 75.8, 75.7], [42.3, 74.5, 74.5], [42.35, 73.6, 73.5], [42.4, 73.1, 73.1], [42.45, 73.1, 73.0], [42.5, 73.2, 73.2], [42.55, 73.6, 73.5], [42.6, 73.8, 74.1], [42.61, 73.9, 74.3]], "results": {"bottom_up": {"raw_segment_count": 73, "raw_breakpoints_km": [0.0, 0.1, 0.54, 0.84, 1.14, 1.46, 1.8, 2.82, 3.14, 3.54, 3.74, 4.06, 4.52, 4.92, 5.2, 5.54, 5.68, 6.04, 6.7, 7.52, 7.78, 8.82, 10.16, 11.16, 11.46, 11.6, 11.92, 12.14, 12.68, 13.18, 13.92, 14.12, 14.3, 14.72, 15.28, 15.96, 16.38, 16.52, 16.9, 17.06, 17.66, 17.98, 19.24, 19.96, 20.52, 21.14, 22.24, 22.6, 23.5, 23.64, 24.2, 25.88, 26.74, 27.52, 28.08, 30.56, 31.42, 31.88, 32.68, 32.92, 33.74, 34.26, 34.84, 35.52, 36.06, 36.6, 37.52, 38.98, 39.94, 40.3, 41.0, 41.58, 42.34, 42.61], "segments": [{"start_km": 0.0, "end_km": 0.54, "length_m": 540, "elev_start_m": 79.4, "elev_end_m": 66.2, "gain_m": 1, "loss_m": 14, "avg_grade_pct": -2.4, "steepest_100m_pct": -4.1, "type": "descent"}, {"start_km": 0.54, "end_km": 0.84, "length_m": 300, "elev_start_m": 66.2, "elev_end_m": 76.3, "gain_m": 10, "loss_m": 0, "avg_grade_pct": 3.4, "steepest_100m_pct": 4.0, "type": "climb"}, {"start_km": 0.84, "end_km": 1.14, "length_m": 300, "elev_start_m": 76.3, "elev_end_m": 77.4, "gain_m": 1, "loss_m": 0, "avg_grade_pct": 0.3, "steepest_100m_pct": 1.0, "type": "flat"}, {"start_km": 1.14, "end_km": 1.46, "length_m": 320, "elev_start_m": 77.4, "elev_end_m": 85.7, "gain_m": 8, "loss_m": 0, "avg_grade_pct": 2.6, "steepest_100m_pct": 3.9, "type": "climb"}, {"start_km": 1.46, "end_km": 1.8, "length_m": 340, "elev_start_m": 85.7, "elev_end_m": 78.9, "gain_m": 0, "loss_m": 7, "avg_grade_pct": -2.0, "steepest_100m_pct": -3.7, "type": "descent"}, {"start_km": 1.8, "end_km": 2.82, "length_m": 1020, "elev_start_m": 78.9, "elev_end_m": 92.9, "gain_m": 14, "loss_m": 0, "avg_grade_pct": 1.4, "steepest_100m_pct": 2.5, "type": "climb"}, {"start_km": 2.82, "end_km": 3.74, "length_m": 920, "elev_start_m": 92.9, "elev_end_m": 74.8, "gain_m": 1, "loss_m": 19, "avg_grade_pct": -2.0, "steepest_100m_pct": -4.6, "type": "descent"}, {"start_km": 3.74, "end_km": 4.52, "length_m": 780, "elev_start_m": 74.8, "elev_end_m": 92.4, "gain_m": 18, "loss_m": 0, "avg_grade_pct": 2.3, "steepest_100m_pct": 4.1, "type": "climb"}, {"start_km": 4.52, "end_km": 4.92, "length_m": 400, "elev_start_m": 92.4, "elev_end_m": 86.0, "gain_m": 0, "loss_m": 6, "avg_grade_pct": -1.6, "steepest_100m_pct": -2.3, "type": "descent"}, {"start_km": 4.92, "end_km": 5.2, "length_m": 280, "elev_start_m": 86.0, "elev_end_m": 87.8, "gain_m": 2, "loss_m": 0, "avg_grade_pct": 0.6, "steepest_100m_pct": 1.2, "type": "flat"}, {"start_km": 5.2, "end_km": 5.54, "length_m": 340, "elev_start_m": 87.8, "elev_end_m": 99.3, "gain_m": 12, "loss_m": 0, "avg_grade_pct": 3.4, "steepest_100m_pct": 4.2, "type": "climb"}, {"start_km": 5.54, "end_km": 6.7, "length_m": 1160, "elev_start_m": 99.3, "elev_end_m": 81.3, "gain_m": 1, "loss_m": 20, "avg_grade_pct": -1.6, "steepest_100m_pct": -4.0, "type": "descent"}, {"start_km": 6.7, "end_km": 7.52, "length_m": 820, "elev_start_m": 81.3, "elev_end_m": 95.7, "gain_m": 14, "loss_m": 0, "avg_grade_pct": 1.8, "steepest_100m_pct": 3.2, "type": "climb"}, {"start_km": 7.52, "end_km": 7.78, "length_m": 260, "elev_start_m": 95.7, "elev_end_m": 107.1, "gain_m": 11, "loss_m": 0, "avg_grade_pct": 4.4, "steepest_100m_pct": 4.7, "type": "steep_climb"}, {"start_km": 7.78, "end_km": 8.82, "length_m": 1040, "elev_start_m": 107.1, "elev_end_m": 137.1, "gain_m": 30, "loss_m": 0, "avg_grade_pct": 2.9, "steepest_100m_pct": 3.7, "type": "climb"}, {"start_km": 8.82, "end_km": 10.16, "length_m": 1340, "elev_start_m": 137.1, "elev_end_m": 147.4, "gain_m": 10, "loss_m": 0, "avg_grade_pct": 0.8, "steepest_100m_pct": 1.6, "type": "flat"}, {"start_km": 10.16, "end_km": 11.6, "length_m": 1440, "elev_start_m": 147.4, "elev_end_m": 118.9, "gain_m": 1, "loss_m": 29, "avg_grade_pct": -2.0, "steepest_100m_pct": -6.6, "type": "descent"}, {"start_km": 11.6, "end_km": 11.92, "length_m": 320, "elev_start_m": 118.9, "elev_end_m": 131.8, "gain_m": 13, "loss_m": 0, "avg_grade_pct": 4.0, "steepest_100m_pct": 4.9, "type": "steep_climb"}, {"start_km": 11.92, "end_km": 12.68, "length_m": 760, "elev_start_m": 131.8, "elev_end_m": 151.0, "gain_m": 19, "loss_m": 0, "avg_grade_pct": 2.5, "steepest_100m_pct": 4.7, "type": "climb"}, {"start_km": 12.68, "end_km": 13.18, "length_m": 500, "elev_start_m": 151.0, "elev_end_m": 139.1, "gain_m": 0, "loss_m": 12, "avg_grade_pct": -2.4, "steepest_100m_pct": -4.0, "type": "descent"}, {"start_km": 13.18, "end_km": 13.92, "length_m": 740, "elev_start_m": 139.1, "elev_end_m": 156.0, "gain_m": 17, "loss_m": 0, "avg_grade_pct": 2.3, "steepest_100m_pct": 3.5, "type": "climb"}, {"start_km": 13.92, "end_km": 14.12, "length_m": 200, "elev_start_m": 156.0, "elev_end_m": 164.5, "gain_m": 8, "loss_m": 0, "avg_grade_pct": 4.2, "steepest_100m_pct": 4.4, "type": "steep_climb"}, {"start_km": 14.12, "end_km": 14.72, "length_m": 600, "elev_start_m": 164.5, "elev_end_m": 163.7, "gain_m": 4, "loss_m": 4, "avg_grade_pct": -0.1, "steepest_100m_pct": -2.1, "type": "flat"}, {"start_km": 14.72, "end_km": 15.28, "length_m": 560, "elev_start_m": 163.7, "elev_end_m": 137.4, "gain_m": 0, "loss_m": 26, "avg_grade_pct": -4.7, "steepest_100m_pct": -5.9, "type": "steep_descent"}, {"start_km": 15.28, "end_km": 15.96, "length_m": 680, "elev_start_m": 137.4, "elev_end_m": 143.4, "gain_m": 6, "loss_m": 1, "avg_grade_pct": 0.9, "steepest_100m_pct": 1.4, "type": "flat"}, {"start_km": 15.96, "end_km": 16.52, "length_m": 560, "elev_start_m": 143.4, "elev_end_m": 154.1, "gain_m": 13, "loss_m": 2, "avg_grade_pct": 1.9, "steepest_100m_pct": 4.1, "type": "climb"}, {"start_km": 16.52, "end_km": 17.98, "length_m": 1460, "elev_start_m": 154.1, "elev_end_m": 69.2, "gain_m": 0, "loss_m": 85, "avg_grade_pct": -5.8, "steepest_100m_pct": -8.1, "type": "steep_descent"}, {"start_km": 17.98, "end_km": 19.24, "length_m": 1260, "elev_start_m": 69.2, "elev_end_m": 47.7, "gain_m": 0, "loss_m": 22, "avg_grade_pct": -1.7, "steepest_100m_pct": -4.1, "type": "descent"}, {"start_km": 19.24, "end_km": 19.96, "length_m": 720, "elev_start_m": 47.7, "elev_end_m": 50.5, "gain_m": 4, "loss_m": 2, "avg_grade_pct": 0.4, "steepest_100m_pct": 1.5, "type": "flat"}, {"start_km": 19.96, "end_km": 20.52, "length_m": 560, "elev_start_m": 50.5, "elev_end_m": 60.2, "gain_m": 10, "loss_m": 0, "avg_grade_pct": 1.7, "steepest_100m_pct": 2.3, "type": "climb"}, {"start_km": 20.52, "end_km": 22.24, "length_m": 1720, "elev_start_m": 60.2, "elev_end_m": 56.5, "gain_m": 5, "loss_m": 9, "avg_grade_pct": -0.2, "steepest_100m_pct": -2.5, "type": "flat"}, {"start_km": 22.24, "end_km": 22.6, "length_m": 360, "elev_start_m": 56.5, "elev_end_m": 50.9, "gain_m": 0, "loss_m": 6, "avg_grade_pct": -1.5, "steepest_100m_pct": -2.0, "type": "descent"}, {"start_km": 22.6, "end_km": 25.88, "length_m": 3280, "elev_start_m": 50.9, "elev_end_m": 53.7, "gain_m": 13, "loss_m": 10, "avg_grade_pct": 0.1, "steepest_100m_pct": 1.9, "type": "flat"}, {"start_km": 25.88, "end_km": 26.74, "length_m": 860, "elev_start_m": 53.7, "elev_end_m": 62.7, "gain_m": 10, "loss_m": 1, "avg_grade_pct": 1.1, "steepest_100m_pct": 2.2, "type": "climb"}, {"start_km": 26.74, "end_km": 27.52, "length_m": 780, "elev_start_m": 62.7, "elev_end_m": 65.7, "gain_m": 4, "loss_m": 1, "avg_grade_pct": 0.4, "steepest_100m_pct": 1.5, "type": "flat"}, {"start_km": 27.52, "end_km": 31.42, "length_m": 3900, "elev_start_m": 65.7, "elev_end_m": 176.0, "gain_m": 110, "loss_m": 0, "avg_grade_pct": 2.8, "steepest_100m_pct": 4.4, "type": "climb"}, {"start_km": 31.42, "end_km": 32.68, "length_m": 1260, "elev_start_m": 176.0, "elev_end_m": 173.8, "gain_m": 3, "loss_m": 6, "avg_grade_pct": -0.2, "steepest_100m_pct": -1.9, "type": "flat"}, {"start_km": 32.68, "end_km": 34.84, "length_m": 2160, "elev_start_m": 173.8, "elev_end_m": 135.0, "gain_m": 0, "loss_m": 39, "avg_grade_pct": -1.8, "steepest_100m_pct": -3.4, "type": "descent"}, {"start_km": 34.84, "end_km": 35.52, "length_m": 680, "elev_start_m": 135.0, "elev_end_m": 129.7, "gain_m": 0, "loss_m": 6, "avg_grade_pct": -0.8, "steepest_100m_pct": -2.1, "type": "flat"}, {"start_km": 35.52, "end_km": 36.06, "length_m": 540, "elev_start_m": 129.7, "elev_end_m": 137.1, "gain_m": 7, "loss_m": 0, "avg_grade_pct": 1.4, "steepest_100m_pct": 1.9, "type": "climb"}, {"start_km": 36.06, "end_km": 36.6, "length_m": 540, "elev_start_m": 137.1, "elev_end_m": 132.0, "gain_m": 0, "loss_m": 5, "avg_grade_pct": -1.0, "steepest_100m_pct": -1.8, "type": "flat"}, {"start_km": 36.6, "end_km": 37.52, "length_m": 920, "elev_start_m": 132.0, "elev_end_m": 146.9, "gain_m": 15, "loss_m": 0, "avg_grade_pct": 1.6, "steepest_100m_pct": 2.6, "type": "climb"}, {"start_km": 37.52, "end_km": 38.98, "length_m": 1460, "elev_start_m": 146.9, "elev_end_m": 136.3, "gain_m": 0, "loss_m": 11, "avg_grade_pct": -0.7, "steepest_100m_pct": -1.8, "type": "flat"}, {"start_km": 38.98, "end_km": 39.94, "length_m": 960, "elev_start_m": 136.3, "elev_end_m": 108.3, "gain_m": 0, "loss_m": 28, "avg_grade_pct": -2.9, "steepest_100m_pct": -4.0, "type": "descent"}, {"start_km": 39.94, "end_km": 40.3, "length_m": 360, "elev_start_m": 108.3, "elev_end_m": 92.9, "gain_m": 0, "loss_m": 15, "avg_grade_pct": -4.3, "steepest_100m_pct": -4.7, "type": "steep_descent"}, {"start_km": 40.3, "end_km": 41.0, "length_m": 700, "elev_start_m": 92.9, "elev_end_m": 80.9, "gain_m": 0, "loss_m": 12, "avg_grade_pct": -1.7, "steepest_100m_pct": -3.1, "type": "descent"}, {"start_km": 41.0, "end_km": 41.58, "length_m": 580, "elev_start_m": 80.9, "elev_end_m": 87.2, "gain_m": 6, "loss_m": 0, "avg_grade_pct": 1.1, "steepest_100m_pct": 1.9, "type": "climb"}, {"start_km": 41.58, "end_km": 42.34, "length_m": 760, "elev_start_m": 87.2, "elev_end_m": 73.7, "gain_m": 0, "loss_m": 14, "avg_grade_pct": -1.8, "steepest_100m_pct": -3.2, "type": "descent"}, {"start_km": 42.34, "end_km": 42.61, "length_m": 270, "elev_start_m": 73.7, "elev_end_m": 73.9, "gain_m": 1, "loss_m": 1, "avg_grade_pct": 0.0, "steepest_100m_pct": 0.6, "type": "flat"}]}, "douglas_peucker": {"raw_segment_count": 81, "raw_breakpoints_km": [0.0, 0.13, 0.53, 0.85, 1.19, 1.46, 1.86, 2.81, 3.15, 3.56, 3.69, 4.05, 4.33, 4.52, 5.03, 5.22, 5.62, 6.04, 6.77, 7.44, 7.84, 8.86, 10.18, 11.11, 11.55, 11.91, 12.16, 12.62, 12.87, 13.2, 13.5, 13.86, 14.15, 14.27, 14.7, 15.18, 15.32, 15.97, 16.34, 16.48, 16.93, 17.1, 17.65, 17.94, 19.21, 19.94, 20.7, 21.13, 21.56, 22.23, 22.64, 23.04, 23.48, 23.87, 25.76, 26.19, 26.44, 26.79, 27.57, 28.06, 30.38, 31.44, 31.88, 32.67, 32.94, 33.72, 34.23, 34.47, 34.83, 35.46, 36.1, 36.65, 37.56, 38.54, 38.94, 39.27, 39.93, 40.38, 41.03, 41.64, 42.35, 42.61], "segments": [{"start_km": 0.0, "end_km": 0.53, "length_m": 530, "elev_start_m": 79.4, "elev_end_m": 66.1, "gain_m": 1, "loss_m": 14, "avg_grade_pct": -2.5, "steepest_100m_pct": -4.1, "type": "descent"}, {"start_km": 0.53, "end_km": 0.85, "length_m": 320, "elev_start_m": 66.1, "elev_end_m": 76.6, "gain_m": 10, "loss_m": 0, "avg_grade_pct": 3.3, "steepest_100m_pct": 4.0, "type": "climb"}, {"start_km": 0.85, "end_km": 1.19, "length_m": 340, "elev_start_m": 76.6, "elev_end_m": 77.9, "gain_m": 2, "loss_m": 0, "avg_grade_pct": 0.4, "steepest_100m_pct": 0.7, "type": "flat"}, {"start_km": 1.19, "end_km": 1.46, "length_m": 270, "elev_start_m": 77.9, "elev_end_m": 85.7, "gain_m": 8, "loss_m": 0, "avg_grade_pct": 2.9, "steepest_100m_pct": 3.9, "type": "climb"}, {"start_km": 1.46, "end_km": 1.86, "length_m": 400, "elev_start_m": 85.7, "elev_end_m": 79.0, "gain_m": 0, "loss_m": 7, "avg_grade_pct": -1.7, "steepest_100m_pct": -3.7, "type": "descent"}, {"start_km": 1.86, "end_km": 2.81, "length_m": 950, "elev_start_m": 79.0, "elev_end_m": 93.0, "gain_m": 14, "loss_m": 0, "avg_grade_pct": 1.5, "steepest_100m_pct": 2.5, "type": "climb"}, {"start_km": 2.81, "end_km": 3.69, "length_m": 880, "elev_start_m": 93.0, "elev_end_m": 74.1, "gain_m": 0, "loss_m": 19, "avg_grade_pct": -2.1, "steepest_100m_pct": -4.6, "type": "descent"}, {"start_km": 3.69, "end_km": 4.33, "length_m": 640, "elev_start_m": 74.1, "elev_end_m": 91.1, "gain_m": 17, "loss_m": 0, "avg_grade_pct": 2.7, "steepest_100m_pct": 4.1, "type": "climb"}, {"start_km": 4.33, "end_km": 5.03, "length_m": 700, "elev_start_m": 91.1, "elev_end_m": 86.0, "gain_m": 2, "loss_m": 7, "avg_grade_pct": -0.7, "steepest_100m_pct": -2.3, "type": "flat"}, {"start_km": 5.03, "end_km": 5.62, "length_m": 590, "elev_start_m": 86.0, "elev_end_m": 100.8, "gain_m": 15, "loss_m": 0, "avg_grade_pct": 2.5, "steepest_100m_pct": 4.2, "type": "climb"}, {"start_km": 5.62, "end_km": 6.77, "length_m": 1150, "elev_start_m": 100.8, "elev_end_m": 81.6, "gain_m": 0, "loss_m": 20, "avg_grade_pct": -1.7, "steepest_100m_pct": -4.0, "type": "descent"}, {"start_km": 6.77, "end_km": 7.44, "length_m": 670, "elev_start_m": 81.6, "elev_end_m": 93.2, "gain_m": 12, "loss_m": 0, "avg_grade_pct": 1.7, "steepest_100m_pct": 3.2, "type": "climb"}, {"start_km": 7.44, "end_km": 7.84, "length_m": 400, "elev_start_m": 93.2, "elev_end_m": 109.2, "gain_m": 16, "loss_m": 0, "avg_grade_pct": 4.0, "steepest_100m_pct": 4.7, "type": "steep_climb"}, {"start_km": 7.84, "end_km": 8.86, "length_m": 1020, "elev_start_m": 109.2, "elev_end_m": 137.7, "gain_m": 29, "loss_m": 0, "avg_grade_pct": 2.8, "steepest_100m_pct": 3.7, "type": "climb"}, {"start_km": 8.86, "end_km": 10.18, "length_m": 1320, "elev_start_m": 137.7, "elev_end_m": 147.2, "gain_m": 10, "loss_m": 0, "avg_grade_pct": 0.7, "steepest_100m_pct": 1.6, "type": "flat"}, {"start_km": 10.18, "end_km": 11.11, "length_m": 930, "elev_start_m": 147.2, "elev_end_m": 135.8, "gain_m": 0, "loss_m": 11, "avg_grade_pct": -1.2, "steepest_100m_pct": -1.9, "type": "descent"}, {"start_km": 11.11, "end_km": 11.55, "length_m": 440, "elev_start_m": 135.8, "elev_end_m": 118.1, "gain_m": 0, "loss_m": 18, "avg_grade_pct": -4.0, "steepest_100m_pct": -6.6, "type": "steep_descent"}, {"start_km": 11.55, "end_km": 11.91, "length_m": 360, "elev_start_m": 118.1, "elev_end_m": 131.6, "gain_m": 14, "loss_m": 0, "avg_grade_pct": 3.8, "steepest_100m_pct": 4.9, "type": "climb"}, {"start_km": 11.91, "end_km": 12.16, "length_m": 250, "elev_start_m": 131.6, "elev_end_m": 133.7, "gain_m": 2, "loss_m": 0, "avg_grade_pct": 0.8, "steepest_100m_pct": 1.4, "type": "flat"}, {"start_km": 12.16, "end_km": 12.62, "length_m": 460, "elev_start_m": 133.7, "elev_end_m": 150.5, "gain_m": 17, "loss_m": 0, "avg_grade_pct": 3.7, "steepest_100m_pct": 4.7, "type": "climb"}, {"start_km": 12.62, "end_km": 12.87, "length_m": 250, "elev_start_m": 150.5, "elev_end_m": 148.3, "gain_m": 1, "loss_m": 3, "avg_grade_pct": -0.9, "steepest_100m_pct": -1.8, "type": "flat"}, {"start_km": 12.87, "end_km": 13.2, "length_m": 330, "elev_start_m": 148.3, "elev_end_m": 139.0, "gain_m": 0, "loss_m": 9, "avg_grade_pct": -2.8, "steepest_100m_pct": -4.0, "type": "descent"}, {"start_km": 13.2, "end_km": 14.27, "length_m": 1070, "elev_start_m": 139.0, "elev_end_m": 167.3, "gain_m": 28, "loss_m": 0, "avg_grade_pct": 2.6, "steepest_100m_pct": 4.4, "type": "climb"}, {"start_km": 14.27, "end_km": 14.7, "length_m": 430, "elev_start_m": 167.3, "elev_end_m": 164.3, "gain_m": 1, "loss_m": 4, "avg_grade_pct": -0.7, "steepest_100m_pct": -2.1, "type": "flat"}, {"start_km": 14.7, "end_km": 15.32, "length_m": 620, "elev_start_m": 164.3, "elev_end_m": 136.9, "gain_m": 0, "loss_m": 27, "avg_grade_pct": -4.4, "steepest_100m_pct": -5.9, "type": "steep_descent"}, {"start_km": 15.32, "end_km": 16.48, "length_m": 1160, "elev_start_m": 136.9, "elev_end_m": 155.5, "gain_m": 19, "loss_m": 1, "avg_grade_pct": 1.6, "steepest_100m_pct": 4.1, "type": "climb"}, {"start_km": 16.48, "end_km": 17.94, "length_m": 1460, "elev_start_m": 155.5, "elev_end_m": 70.2, "gain_m": 0, "loss_m": 85, "avg_grade_pct": -5.8, "steepest_100m_pct": -8.1, "type": "steep_descent"}, {"start_km": 17.94, "end_km": 19.21, "length_m": 1270, "elev_start_m": 70.2, "elev_end_m": 47.9, "gain_m": 0, "loss_m": 23, "avg_grade_pct": -1.8, "steepest_100m_pct": -4.1, "type": "descent"}, {"start_km": 19.21, "end_km": 19.94, "length_m": 730, "elev_start_m": 47.9, "elev_end_m": 50.2, "gain_m": 4, "loss_m": 2, "avg_grade_pct": 0.3, "steepest_100m_pct": 1.5, "type": "flat"}, {"start_km": 19.94, "end_km": 20.7, "length_m": 760, "elev_start_m": 50.2, "elev_end_m": 61.4, "gain_m": 11, "loss_m": 0, "avg_grade_pct": 1.5, "steepest_100m_pct": 2.3, "type": "climb"}, {"start_km": 20.7, "end_km": 21.13, "length_m": 430, "elev_start_m": 61.4, "elev_end_m": 54.7, "gain_m": 0, "loss_m": 7, "avg_grade_pct": -1.6, "steepest_100m_pct": -2.5, "type": "descent"}, {"start_km": 21.13, "end_km": 22.23, "length_m": 1100, "elev_start_m": 54.7, "elev_end_m": 56.5, "gain_m": 4, "loss_m": 2, "avg_grade_pct": 0.2, "steepest_100m_pct": 1.2, "type": "flat"}, {"start_km": 22.23, "end_km": 22.64, "length_m": 410, "elev_start_m": 56.5, "elev_end_m": 50.6, "gain_m": 0, "loss_m": 6, "avg_grade_pct": -1.4, "steepest_100m_pct": -2.0, "type": "descent"}, {"start_km": 22.64, "end_km": 23.04, "length_m": 400, "elev_start_m": 50.6, "elev_end_m": 51.0, "gain_m": 2, "loss_m": 2, "avg_grade_pct": 0.1, "steepest_100m_pct": 1.4, "type": "flat"}, {"start_km": 23.04, "end_km": 23.48, "length_m": 440, "elev_start_m": 51.0, "elev_end_m": 56.9, "gain_m": 6, "loss_m": 0, "avg_grade_pct": 1.3, "steepest_100m_pct": 1.9, "type": "climb"}, {"start_km": 23.48, "end_km": 23.87, "length_m": 390, "elev_start_m": 56.9, "elev_end_m": 50.8, "gain_m": 0, "loss_m": 6, "avg_grade_pct": -1.6, "steepest_100m_pct": -3.1, "type": "descent"}, {"start_km": 23.87, "end_km": 25.76, "length_m": 1890, "elev_start_m": 50.8, "elev_end_m": 52.9, "gain_m": 4, "loss_m": 2, "avg_grade_pct": 0.1, "steepest_100m_pct": 0.7, "type": "flat"}, {"start_km": 25.76, "end_km": 26.19, "length_m": 430, "elev_start_m": 52.9, "elev_end_m": 59.4, "gain_m": 6, "loss_m": 0, "avg_grade_pct": 1.5, "steepest_100m_pct": 2.2, "type": "climb"}, {"start_km": 26.19, "end_km": 26.44, "length_m": 250, "elev_start_m": 59.4, "elev_end_m": 58.1, "gain_m": 0, "loss_m": 1, "avg_grade_pct": -0.5, "steepest_100m_pct": -0.9, "type": "flat"}, {"start_km": 26.44, "end_km": 26.79, "length_m": 350, "elev_start_m": 58.1, "elev_end_m": 63.2, "gain_m": 5, "loss_m": 0, "avg_grade_pct": 1.5, "steepest_100m_pct": 2.0, "type": "climb"}, {"start_km": 26.79, "end_km": 27.57, "length_m": 780, "elev_start_m": 63.2, "elev_end_m": 66.1, "gain_m": 4, "loss_m": 1, "avg_grade_pct": 0.4, "steepest_100m_pct": 1.5, "type": "flat"}, {"start_km": 27.57, "end_km": 31.44, "length_m": 3870, "elev_start_m": 66.1, "elev_end_m": 176.1, "gain_m": 110, "loss_m": 0, "avg_grade_pct": 2.8, "steepest_100m_pct": 4.4, "type": "climb"}, {"start_km": 31.44, "end_km": 32.67, "length_m": 1230, "elev_start_m": 176.1, "elev_end_m": 173.9, "gain_m": 3, "loss_m": 5, "avg_grade_pct": -0.2, "steepest_100m_pct": -1.9, "type": "flat"}, {"start_km": 32.67, "end_km": 34.83, "length_m": 2160, "elev_start_m": 173.9, "elev_end_m": 135.2, "gain_m": 0, "loss_m": 39, "avg_grade_pct": -1.8, "steepest_100m_pct": -3.4, "type": "descent"}, {"start_km": 34.83, "end_km": 35.46, "length_m": 630, "elev_start_m": 135.2, "elev_end_m": 129.7, "gain_m": 0, "loss_m": 6, "avg_grade_pct": -0.9, "steepest_100m_pct": -2.1, "type": "flat"}, {"start_km": 35.46, "end_km": 36.1, "length_m": 640, "elev_start_m": 129.7, "elev_end_m": 137.3, "gain_m": 8, "loss_m": 0, "avg_grade_pct": 1.2, "steepest_100m_pct": 1.9, "type": "climb"}, {"start_km": 36.1, "end_km": 36.65, "length_m": 550, "elev_start_m": 137.3, "elev_end_m": 132.1, "gain_m": 0, "loss_m": 5, "avg_grade_pct": -0.9, "steepest_100m_pct": -1.8, "type": "flat"}, {"start_km": 36.65, "end_km": 37.56, "length_m": 910, "elev_start_m": 132.1, "elev_end_m": 147.2, "gain_m": 15, "loss_m": 0, "avg_grade_pct": 1.7, "steepest_100m_pct": 2.6, "type": "climb"}, {"start_km": 37.56, "end_km": 38.54, "length_m": 980, "elev_start_m": 147.2, "elev_end_m": 141.8, "gain_m": 0, "loss_m": 6, "avg_grade_pct": -0.6, "steepest_100m_pct": -1.2, "type": "flat"}, {"start_km": 38.54, "end_km": 41.03, "length_m": 2490, "elev_start_m": 141.8, "elev_end_m": 80.8, "gain_m": 0, "loss_m": 61, "avg_grade_pct": -2.4, "steepest_100m_pct": -4.7, "type": "descent"}, {"start_km": 41.03, "end_km": 41.64, "length_m": 610, "elev_start_m": 80.8, "elev_end_m": 87.3, "gain_m": 7, "loss_m": 0, "avg_grade_pct": 1.1, "steepest_100m_pct": 1.9, "type": "climb"}, {"start_km": 41.64, "end_km": 42.35, "length_m": 710, "elev_start_m": 87.3, "elev_end_m": 73.6, "gain_m": 0, "loss_m": 14, "avg_grade_pct": -1.9, "steepest_100m_pct": -3.2, "type": "descent"}, {"start_km": 42.35, "end_km": 42.61, "length_m": 260, "elev_start_m": 73.6, "elev_end_m": 73.9, "gain_m": 1, "loss_m": 1, "avg_grade_pct": 0.1, "steepest_100m_pct": 0.6, "type": "flat"}]}}};
+// VeloViewer's method applied to this run: [startKm, endKm, gradePct] of each simplified piece
+const VV = [[0.0, 0.096, 0.81], [0.096, 0.15, -2.01], [0.15, 0.424, -3.7], [0.424, 0.476, -3.13], [0.476, 0.528, -1.45], [0.528, 0.581, 1.58], [0.581, 0.779, 3.68], [0.779, 0.878, 2.69], [0.878, 1.081, 0.1], [1.081, 1.182, 0.62], [1.182, 1.331, 2.41], [1.331, 1.428, 3.81], [1.428, 1.478, 1.15], [1.478, 1.533, -0.21], [1.533, 1.691, -3.14], [1.691, 1.744, -2.13], [1.744, 1.85, -0.49], [1.85, 2.056, 1.09], [2.056, 2.214, 2.3], [2.214, 2.427, 1.91], [2.427, 2.646, 1.27], [2.646, 2.801, 0.8], [2.801, 3.133, -1.19], [3.133, 3.411, -2.68], [3.411, 3.522, -4.37], [3.522, 3.576, -2.74], [3.576, 3.683, -0.89], [3.683, 3.731, 0.98], [3.731, 3.783, 2.98], [3.783, 4.045, 3.67], [4.045, 4.302, 1.87], [4.302, 4.457, 1.13], [4.457, 4.509, -0.26], [4.509, 4.562, -1.04], [4.562, 4.671, -2.16], [4.671, 4.779, -0.93], [4.779, 4.881, -1.9], [4.881, 4.985, -0.62], [4.985, 5.036, 0.48], [5.036, 5.14, 0.86], [5.14, 5.243, 1.91], [5.243, 5.391, 3.87], [5.391, 5.541, 3.07], [5.541, 5.591, 2.25], [5.591, 5.643, 0.4], [5.643, 5.695, -2.1], [5.695, 5.858, -3.61], [5.858, 6.022, -2.54], [6.022, 6.181, -0.81], [6.181, 6.235, -2.21], [6.235, 6.51, -1.49], [6.51, 6.667, -0.88], [6.667, 6.77, 0.15], [6.77, 6.868, 1.17], [6.868, 7.02, 2.86], [7.02, 7.121, 2.23], [7.121, 7.327, 0.77], [7.327, 7.427, 1.93], [7.427, 7.531, 3.19], [7.531, 7.675, 4.52], [7.675, 7.823, 3.98], [7.823, 8.271, 2.71], [8.271, 8.469, 3.38], [8.469, 8.568, 2.85], [8.568, 8.815, 2.7], [8.815, 8.866, 1.6], [8.866, 9.016, 0.76], [9.016, 9.165, 1.18], [9.165, 9.368, 0.29], [9.368, 9.563, 1.07], [9.563, 9.812, 0.4], [9.812, 9.968, 0.7], [9.968, 10.067, 1.61], [10.067, 10.168, 0.31], [10.168, 10.428, -0.93], [10.428, 10.688, -1.38], [10.688, 10.847, -1.76], [10.847, 11.054, -0.91], [11.054, 11.106, -1.67], [11.106, 11.158, -2.67], [11.158, 11.324, -3.59], [11.324, 11.373, -4.8], [11.373, 11.434, -6.58], [11.434, 11.49, -5.34], [11.49, 11.544, -1.34], [11.544, 11.598, 1.07], [11.598, 11.647, 3.71], [11.647, 11.743, 4.75], [11.743, 11.889, 3.83], [11.889, 11.939, 2.4], [11.939, 12.097, 0.28], [12.097, 12.144, 1.63], [12.144, 12.449, 3.33], [12.449, 12.59, 4.38], [12.59, 12.639, 2.25], [12.639, 12.744, -0.19], [12.744, 12.849, -1.7], [12.849, 13.059, -2.43], [13.059, 13.168, -3.77], [13.168, 13.221, -0.0], [13.221, 13.42, 3.28], [13.42, 13.521, 2.68], [13.521, 13.672, 1.9], [13.672, 13.827, 1.12], [13.827, 13.878, 2.54], [13.878, 14.17, 3.92], [14.17, 14.222, 1.81], [14.222, 14.275, 0.21], [14.275, 14.328, -0.67], [14.328, 14.427, -2.06], [14.427, 14.631, 0.27], [14.631, 14.682, -1.26], [14.682, 14.736, -3.1], [14.736, 14.954, -4.62], [14.954, 15.064, -5.84], [15.064, 15.173, -4.99], [15.173, 15.228, -3.86], [15.228, 15.281, -2.57], [15.281, 15.332, -1.1], [15.332, 15.436, 0.7], [15.436, 15.696, 1.29], [15.696, 15.902, 0.83], [15.902, 16.004, 1.42], [16.004, 16.154, 2.68], [16.154, 16.302, 3.77], [16.302, 16.404, 2.08], [16.404, 16.456, 0.03], [16.456, 16.508, -2.72], [16.508, 16.564, -4.51], [16.564, 16.723, -6.3], [16.723, 16.834, -5.5], [16.834, 16.888, -7.11], [16.888, 16.939, -5.12], [16.939, 16.99, -2.43], [16.99, 17.04, -0.3], [17.04, 17.093, -3.02], [17.093, 17.292, -6.87], [17.292, 17.399, -5.77], [17.399, 17.454, -7.14], [17.454, 17.613, -8.09], [17.613, 17.671, -6.99], [17.671, 17.784, -5.03], [17.784, 17.897, -6.62], [17.897, 17.954, -4.56], [17.954, 18.003, -1.66], [18.003, 18.11, -0.14], [18.11, 18.167, -2.07], [18.167, 18.278, -3.82], [18.278, 18.383, -2.13], [18.383, 18.49, -1.24], [18.49, 18.705, -2.25], [18.705, 18.924, -1.81], [18.924, 19.193, -1.15], [19.193, 19.297, -0.21], [19.297, 19.447, 0.83], [19.447, 19.611, -0.89], [19.611, 19.818, 1.06], [19.818, 19.924, 0.25], [19.924, 20.137, 1.5], [20.137, 20.343, 2.2], [20.343, 20.447, 1.45], [20.447, 20.711, 0.78], [20.711, 20.822, -2.26], [20.822, 20.979, -0.91], [20.979, 21.145, -1.66], [21.145, 21.562, 0.8], [21.562, 21.668, -0.07], [21.668, 21.828, -0.78], [21.828, 21.932, 0.4], [21.932, 22.041, -0.77], [22.041, 22.206, 0.16], [22.206, 22.364, -0.82], [22.364, 22.634, -1.68], [22.634, 22.793, 0.99], [22.793, 22.845, 0.01], [22.845, 22.952, -1.15], [22.952, 23.057, 0.11], [23.057, 23.218, 0.93], [23.218, 23.424, 1.77], [23.424, 23.475, 1.0], [23.475, 23.528, -1.36], [23.528, 23.637, -2.86], [23.637, 23.854, -0.94], [23.854, 24.064, 0.43], [24.064, 24.227, -0.8], [24.227, 24.645, 0.03], [24.645, 25.377, 0.18], [25.377, 25.637, 0.41], [25.637, 25.743, -0.11], [25.743, 25.902, 0.74], [25.902, 26.154, 1.92], [26.154, 26.204, 0.96], [26.204, 26.414, -0.61], [26.414, 26.467, 0.72], [26.467, 26.573, 1.89], [26.573, 26.777, 1.27], [26.777, 26.88, 0.32], [26.88, 27.039, -0.27], [27.039, 27.245, 1.16], [27.245, 27.348, -0.25], [27.348, 27.602, 0.49], [27.602, 27.705, 1.04], [27.705, 27.801, 2.01], [27.801, 28.05, 1.45], [28.05, 28.246, 2.91], [28.246, 28.588, 3.25], [28.588, 28.886, 2.81], [28.886, 29.135, 3.26], [29.135, 29.674, 2.63], [29.674, 30.017, 2.93], [30.017, 30.398, 2.75], [30.398, 30.642, 3.19], [30.642, 30.933, 3.81], [30.933, 31.177, 2.88], [31.177, 31.365, 4.09], [31.365, 31.412, 2.63], [31.412, 31.461, 0.01], [31.461, 31.717, -0.67], [31.717, 31.825, -1.81], [31.825, 31.926, -0.42], [31.926, 32.121, 0.29], [32.121, 32.415, 0.87], [32.415, 32.466, 0.26], [32.466, 32.665, -0.55], [32.665, 32.719, -1.95], [32.719, 32.826, -3.03], [32.826, 32.928, -2.35], [32.928, 33.234, -0.73], [33.234, 33.44, -1.57], [33.44, 33.642, -0.82], [33.642, 33.746, -1.48], [33.746, 33.952, -2.32], [33.952, 34.217, -3.05], [34.217, 34.272, -1.82], [34.272, 34.377, -0.47], [34.377, 34.483, -1.06], [34.483, 34.799, -2.33], [34.799, 34.949, -1.04], [34.949, 35.097, 0.24], [35.097, 35.146, -0.71], [35.146, 35.302, -1.13], [35.302, 35.407, -1.99], [35.407, 35.456, -1.04], [35.456, 35.554, 0.19], [35.554, 35.8, 1.25], [35.8, 35.994, 1.74], [35.994, 36.093, 0.79], [36.093, 36.146, 0.11], [36.146, 36.348, -1.06], [36.348, 36.502, -1.62], [36.502, 36.604, -0.61], [36.604, 36.652, 0.37], [36.652, 36.946, 1.86], [36.946, 37.238, 1.21], [37.238, 37.43, 2.36], [37.43, 37.575, 1.06], [37.575, 37.673, 0.06], [37.673, 37.973, -0.98], [37.973, 38.534, -0.45], [38.534, 38.939, -1.16], [38.939, 39.297, -2.57], [39.297, 39.513, -3.64], [39.513, 39.935, -2.76], [39.935, 40.261, -4.27], [40.261, 40.314, -3.81], [40.314, 40.368, -2.6], [40.368, 40.679, -0.95], [40.679, 40.892, -2.63], [40.892, 40.996, -1.45], [40.996, 41.099, -0.07], [41.099, 41.244, 0.75], [41.244, 41.557, 1.56], [41.557, 41.608, 0.94], [41.608, 41.659, -0.62], [41.659, 41.714, -1.57], [41.714, 41.879, -2.78], [41.879, 42.088, -0.77], [42.088, 42.142, -1.67], [42.142, 42.253, -2.99], [42.253, 42.364, -2.07], [42.364, 42.468, -0.31], [42.468, 42.618, 0.81]];
+// VeloViewer's colScale2 (vv.p3d.js): piecewise-linear over gradient
+const VV_DOM = [-0.35, -0.25, -0.15, -0.075, -0.025, 0, 0.025, 0.075, 0.15, 0.25];
+const VV_RNG = ["#460c46", "#823882", "#0000DD", "#00EEEE", "#79C7C6", "#00CC00", "#C6C779", "#EEEE00", "#DD0000", "#440000"];
+function vvCol(g) {
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  if (g <= VV_DOM[0]) return VV_RNG[0];
+  for (let i = 1; i < VV_DOM.length; i++) if (g <= VV_DOM[i]) {
+    const f = (g - VV_DOM[i - 1]) / (VV_DOM[i] - VV_DOM[i - 1]), a = hex(VV_RNG[i - 1]), b = hex(VV_RNG[i]);
+    return `rgb(${a.map((v, k) => Math.round(v + f * (b[k] - v))).join(",")})`;
+  }
+  return VV_RNG[VV_RNG.length - 1];
+}
+const CADENCE = [
+  {startKm:0.53,endKm:1.52,gainM:21,avgGradePct:2.1},{startKm:3.71,endKm:4.53,gainM:19,avgGradePct:2.3},
+  {startKm:4.99,endKm:5.64,gainM:15,avgGradePct:2.3},{startKm:6.73,endKm:10.18,gainM:66,avgGradePct:1.9},
+  {startKm:11.52,endKm:12.64,gainM:33,avgGradePct:3.0},{startKm:13.19,endKm:14.24,gainM:29,avgGradePct:2.8},
+  {startKm:15.34,endKm:16.43,gainM:20,avgGradePct:1.8},{startKm:24.24,endKm:31.42,gainM:126,avgGradePct:1.8},
+  {startKm:36.63,endKm:37.66,gainM:16,avgGradePct:1.5}
+];
+const TYPES = {
+  steep_descent: {name: "Steep descent", v: "--g-steep-descent"},
+  descent:       {name: "Descent",       v: "--g-descent"},
+  flat:          {name: "Flat",          v: "--g-flat"},
+  climb:         {name: "Climb",         v: "--g-climb"},
+  steep_climb:   {name: "Steep climb",   v: "--g-steep-climb"},
+};
+const ORDER = ["steep_descent", "descent", "flat", "climb", "steep_climb"];
+const NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+const fmt1 = n => (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(1);
+
+let alg = "bottom_up";
+let hoverIdx = -1;
+
+$("legend").innerHTML = ORDER.map(t => `<span><i class="chip" style="background:var(${TYPES[t].v})"></i>${TYPES[t].name}</span>`).join("");
+
+function segs() { return DATA.results[alg].segments; }
+
+function renderStrip() {
+  const s = segs();
+  const sum = (t, k) => s.filter(r => t.includes(r.type)).reduce((a, r) => a + r[k], 0);
+  const up = ["climb", "steep_climb"], down = ["descent", "steep_descent"];
+  const items = [
+    [s.length, "sections"],
+    [s.filter(r => up.includes(r.type)).length, "climbs"],
+    [(sum(up, "length_m") / 1000).toFixed(1) + " km", "climbing"],
+    [(sum(down, "length_m") / 1000).toFixed(1) + " km", "descending"],
+    [(sum(["flat"], "length_m") / 1000).toFixed(1) + " km", "flat"],
+    [s.reduce((a, r) => a + r.gain_m, 0) + " m", "total gain"],
+  ];
+  $("strip").innerHTML = items.map(([b, l]) => `<div><b>${b}</b><span>${l}</span></div>`).join("");
+}
+
+function renderTable() {
+  $("rows").innerHTML = segs().map((r, i) => `
+    <tr data-i="${i}">
+      <td class="num">${i + 1}</td>
+      <td class="type"><i class="chip" style="background:var(${TYPES[r.type].v})"></i>${TYPES[r.type].name}</td>
+      <td>${r.start_km.toFixed(2)}</td><td>${r.end_km.toFixed(2)}</td>
+      <td>${r.length_m >= 1000 ? (r.length_m / 1000).toFixed(2) + " km" : r.length_m + " m"}</td>
+      <td>${Math.round(r.elev_start_m)} → ${Math.round(r.elev_end_m)} m</td>
+      <td>${r.gain_m} m</td><td class="neg">${r.loss_m} m</td>
+      <td><b>${fmt1(r.avg_grade_pct)}%</b></td><td>${fmt1(r.steepest_100m_pct)}%</td>
+    </tr>`).join("");
+  for (const tr of $("rows").children) {
+    tr.addEventListener("mouseenter", () => setHover(+tr.dataset.i));
+    tr.addEventListener("mouseleave", () => setHover(-1));
+  }
+}
+
+function renderCmp() {
+  const s = DATA.results.bottom_up.segments;
+  const pick = (a, b) => s.filter(r => r.end_km > a && r.start_km < b);
+  const rows = [
+    ["km 6.7–10.2", "1 climb, 66 m @ 1.9%", pick(6.7, 10.2)],
+    ["km 24.2–31.4", "1 climb, 126 m @ 1.8%", pick(24.2, 31.4)],
+  ];
+  $("cmp").innerHTML = `<thead><tr><th>Stretch</th><th>Today</th><th>This prototype</th></tr></thead><tbody>` +
+    rows.map(([k, now, segsIn]) => `<tr><td>${k}</td><td>${now}</td><td style="text-align:left">${
+      segsIn.map(r => `${TYPES[r.type].name.toLowerCase()} ${r.start_km.toFixed(1)}–${r.end_km.toFixed(1)} @ ${fmt1(r.avg_grade_pct)}%`).join("<br>")
+    }</td></tr>`).join("") + `</tbody>`;
+}
+
+/* ---------------- chart ---------------- */
+const P = DATA.profile; // [km, smoothed, raw]
+const maxKm = P[P.length - 1][0];
+let geom = null;
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function renderChart() {
+  const svg = $("chart");
+  const W = Math.max(320, $("chart-wrap").clientWidth);
+  const narrow = W < 600;
+  const H = narrow ? 300 : 380;
+  const m = {l: 40, r: 10, t: $("show-cadence").checked ? 34 : 14, b: 46};
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = "";
+  const yMin = 40, yMax = 180;
+  const x = km => m.l + (km / maxKm) * (W - m.l - m.r);
+  const y = e => m.t + (1 - (e - yMin) / (yMax - yMin)) * (H - m.t - m.b);
+  geom = {W, H, m, x, y};
+  const base = y(yMin);
+
+  // grid + axes
+  const g = el("g", {}, svg);
+  for (let e = 40; e <= 180; e += 20) {
+    el("line", {x1: m.l, x2: W - m.r, y1: y(e), y2: y(e), stroke: "var(--grid)", "stroke-width": 1}, g);
+    const t = el("text", {x: m.l - 6, y: y(e) + 4, "text-anchor": "end"}, g); t.textContent = e;
+  }
+  const step = narrow ? 10 : 5;
+  for (let k = 0; k <= maxKm; k += step) {
+    const t = el("text", {x: x(k), y: H - 8, "text-anchor": "middle"}, g); t.textContent = k + (k === 0 ? " km" : "");
+  }
+  const yl = el("text", {x: m.l - 6, y: m.t - 4 + ($("show-cadence").checked ? 0 : 0), "text-anchor": "end"}, g);
+  if (!$("show-cadence").checked) yl.textContent = "m";
+
+  // segment fills
+  const fills = el("g", {}, svg);
+  segs().forEach((s, i) => {
+    const pts = P.filter(p => p[0] >= s.start_km - 1e-6 && p[0] <= s.end_km + 1e-6);
+    if (!pts.length) return;
+    let d = `M${x(s.start_km)},${base} L${x(s.start_km)},${y(interp(s.start_km))}`;
+    for (const p of pts) d += ` L${x(p[0])},${y(p[1])}`;
+    d += ` L${x(s.end_km)},${y(interp(s.end_km))} L${x(s.end_km)},${base} Z`;
+    el("path", {d, fill: `var(${TYPES[s.type].v})`, "data-i": i, class: "fill"}, fills);
+  });
+  // 2px surface gaps between sections
+  segs().slice(1).forEach(s => el("line", {x1: x(s.start_km), x2: x(s.start_km), y1: base, y2: y(interp(s.start_km)), stroke: "var(--surface)", "stroke-width": 2}, fills));
+  el("line", {x1: m.l, x2: W - m.r, y1: base, y2: base, stroke: "var(--axis)", "stroke-width": 1}, svg);
+
+  // raw line
+  if ($("show-raw").checked) {
+    el("path", {d: "M" + P.map(p => `${x(p[0])},${y(p[2])}`).join(" L"), fill: "none", stroke: "var(--muted)", "stroke-width": 1, "stroke-dasharray": "2 2"}, svg);
+  }
+  // smoothed profile line
+  el("path", {d: "M" + P.map(p => `${x(p[0])},${y(p[1])}`).join(" L"), fill: "none", stroke: "var(--ink)", "stroke-width": 1.5, "stroke-linejoin": "round"}, svg);
+
+  // direct labels on longer climbs / steep sections
+  const minLabelM = narrow ? 1400 : 900;
+  segs().forEach(s => {
+    if (!["climb", "steep_climb", "steep_descent"].includes(s.type) || s.length_m < minLabelM) return;
+    const mid = (s.start_km + s.end_km) / 2;
+    const top = Math.max(interp(s.start_km), interp(s.end_km), interp(mid));
+    const t = el("text", {x: x(mid), y: y(top) - 8, "text-anchor": "middle", class: "lbl"}, svg);
+    t.textContent = fmt1(s.avg_grade_pct) + "%";
+  });
+
+  // current Cadence climbs as bars above the plot
+  if ($("show-cadence").checked) {
+    const cg = el("g", {}, svg);
+    const t = el("text", {x: m.l, y: 10, "text-anchor": "start"}, cg);
+    t.textContent = "Current Cadence climbs";
+    CADENCE.forEach(c => el("rect", {x: x(c.startKm), y: 16, width: Math.max(2, x(c.endKm) - x(c.startKm)), height: 6, rx: 2, fill: "var(--cadence-bar)", opacity: 0.55}, cg));
+  }
+
+  // VeloViewer's map colouring applied to this profile, replicated (continuous scale, no bands)
+  const vg = el("g", {}, svg);
+  VV.forEach(([a, b, g]) => el("rect", {x: x(a), y: base + 6, width: Math.max(0.5, x(b) - x(a)) + 0.4, height: 10, fill: vvCol(g / 100)}, vg));
+  const vt = el("text", {x: m.l - 6, y: base + 15, "text-anchor": "end"}, vg); vt.textContent = "VV";
+
+  // hover layer
+  const hl = el("g", {id: "hl"}, svg);
+  el("rect", {x: m.l, y: m.t, width: W - m.l - m.r, height: base - m.t, fill: "transparent", id: "hit"}, svg);
+  const hit = $("hit");
+  hit.addEventListener("mousemove", ev => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    const km = Math.min(maxKm, Math.max(0, (px - m.l) / (W - m.l - m.r) * maxKm));
+    const i = segs().findIndex(s => km >= s.start_km && km <= s.end_km);
+    setHover(i, km);
+  });
+  hit.addEventListener("mouseleave", () => setHover(-1));
+  applyHover();
+}
+
+function interp(km) {
+  let lo = 0, hi = P.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (P[mid][0] <= km) lo = mid; else hi = mid; }
+  const a = P[lo], b = P[hi];
+  if (b[0] === a[0]) return a[1];
+  return a[1] + (b[1] - a[1]) * (km - a[0]) / (b[0] - a[0]);
+}
+
+let hoverKm = null;
+function setHover(i, km) { hoverIdx = i; hoverKm = km ?? null; applyHover(); }
+
+function applyHover() {
+  for (const tr of $("rows").children) tr.classList.toggle("on", +tr.dataset.i === hoverIdx);
+  document.querySelectorAll("#chart .fill").forEach(p => p.setAttribute("opacity", hoverIdx < 0 || +p.dataset.i === hoverIdx ? 1 : 0.35));
+  const hl = document.getElementById("hl");
+  const tip = $("tip");
+  if (!hl) return;
+  hl.innerHTML = "";
+  if (hoverIdx < 0) { tip.hidden = true; return; }
+  const s = segs()[hoverIdx];
+  const {x, y, m, H, W} = geom;
+  const km = hoverKm ?? (s.start_km + s.end_km) / 2;
+  el("line", {x1: x(km), x2: x(km), y1: m.t, y2: y(40), stroke: "var(--ink-2)", "stroke-width": 1, "stroke-dasharray": "3 3"}, hl);
+  el("circle", {cx: x(km), cy: y(interp(km)), r: 4, fill: "var(--ink)", stroke: "var(--surface)", "stroke-width": 2}, hl);
+  tip.innerHTML = `
+    <div class="t"><i class="chip" style="background:var(${TYPES[s.type].v})"></i>${TYPES[s.type].name} · #${hoverIdx + 1}</div>
+    <div class="r"><span>Here</span><span>km ${km.toFixed(2)} · ${Math.round(interp(km))} m</span></div>
+    <div class="r"><span>Section</span><span>km ${s.start_km.toFixed(2)}–${s.end_km.toFixed(2)}</span></div>
+    <div class="r"><span>Avg grade</span><span>${fmt1(s.avg_grade_pct)}%</span></div>
+    <div class="r"><span>Gain / loss</span><span>${s.gain_m} / ${s.loss_m} m</span></div>`;
+  tip.hidden = false;
+  const svgR = $("chart").getBoundingClientRect();
+  const scale = svgR.width / W;
+  const cx = x(km) * scale;
+  const left = cx > svgR.width / 2 ? cx - 115 : cx + 115;
+  tip.style.left = Math.min(svgR.width - 100, Math.max(100, left)) + "px";
+  tip.style.top = (m.t * scale + 4) + "px";
+}
+
+function renderAll() { renderStrip(); renderTable(); renderChart(); }
+
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+  alg = b.dataset.alg;
+  document.querySelectorAll(".seg button").forEach(o => o.setAttribute("aria-pressed", String(o === b)));
+  hoverIdx = -1; renderAll();
+}));
+$("show-cadence").addEventListener("change", renderChart);
+$("show-raw").addEventListener("change", renderChart);
+new ResizeObserver(() => renderChart()).observe($("chart-wrap"));
+renderAll();
+renderCmp();
+</script>

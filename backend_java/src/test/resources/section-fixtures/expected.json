@@ -1,0 +1,4332 @@
+{
+ "cases": [
+  {
+   "profile": "chicago",
+   "settings": {
+    "algorithm": "douglas_peucker",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "flat",
+     "start_km": 0.0,
+     "end_km": 0.99,
+     "length_m": 990,
+     "gain_m": 6,
+     "loss_m": 1,
+     "avg_grade_pct": 0.5,
+     "steepest_100m_pct": 2.4
+    },
+    {
+     "type": "descent",
+     "start_km": 0.99,
+     "end_km": 1.26,
+     "length_m": 270,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -2.3,
+     "steepest_100m_pct": -3.8
+    },
+    {
+     "type": "flat",
+     "start_km": 1.26,
+     "end_km": 1.64,
+     "length_m": 380,
+     "gain_m": 1,
+     "loss_m": 1,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 0.6
+    },
+    {
+     "type": "climb",
+     "start_km": 1.64,
+     "end_km": 2.37,
+     "length_m": 730,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 1.0,
+     "steepest_100m_pct": 2.5
+    },
+    {
+     "type": "descent",
+     "start_km": 2.37,
+     "end_km": 2.68,
+     "length_m": 310,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.5,
+     "steepest_100m_pct": -2.4
+    },
+    {
+     "type": "flat",
+     "start_km": 2.68,
+     "end_km": 4.65,
+     "length_m": 1970,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 0.3,
+     "steepest_100m_pct": 1.0
+    },
+    {
+     "type": "climb",
+     "start_km": 4.65,
+     "end_km": 4.9,
+     "length_m": 250,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.8,
+     "steepest_100m_pct": 2.4
+    },
+    {
+     "type": "flat",
+     "start_km": 4.9,
+     "end_km": 22.18,
+     "length_m": 17280,
+     "gain_m": 23,
+     "loss_m": 28,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -1.6
+    },
+    {
+     "type": "descent",
+     "start_km": 22.18,
+     "end_km": 22.43,
+     "length_m": 250,
+     "gain_m": 0,
+     "loss_m": 4,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -2.4
+    },
+    {
+     "type": "flat",
+     "start_km": 22.43,
+     "end_km": 34.23,
+     "length_m": 11800,
+     "gain_m": 15,
+     "loss_m": 14,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "descent",
+     "start_km": 34.23,
+     "end_km": 34.48,
+     "length_m": 250,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -2.1,
+     "steepest_100m_pct": -3.2
+    },
+    {
+     "type": "flat",
+     "start_km": 34.48,
+     "end_km": 42.24,
+     "length_m": 7760,
+     "gain_m": 15,
+     "loss_m": 7,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "climb",
+     "start_km": 42.24,
+     "end_km": 42.52,
+     "length_m": 280,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 2.4,
+     "steepest_100m_pct": 3.3
+    },
+    {
+     "type": "descent",
+     "start_km": 42.52,
+     "end_km": 42.79,
+     "length_m": 270,
+     "gain_m": 0,
+     "loss_m": 3,
+     "avg_grade_pct": -1.1,
+     "steepest_100m_pct": -1.5
+    }
+   ]
+  },
+  {
+   "profile": "chicago",
+   "settings": {
+    "algorithm": "bottom_up",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "flat",
+     "start_km": 0.0,
+     "end_km": 0.94,
+     "length_m": 940,
+     "gain_m": 6,
+     "loss_m": 1,
+     "avg_grade_pct": 0.5,
+     "steepest_100m_pct": 2.4
+    },
+    {
+     "type": "descent",
+     "start_km": 0.94,
+     "end_km": 1.2,
+     "length_m": 260,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -3.8
+    },
+    {
+     "type": "flat",
+     "start_km": 1.2,
+     "end_km": 2.36,
+     "length_m": 1160,
+     "gain_m": 8,
+     "loss_m": 1,
+     "avg_grade_pct": 0.6,
+     "steepest_100m_pct": 2.5
+    },
+    {
+     "type": "descent",
+     "start_km": 2.36,
+     "end_km": 2.72,
+     "length_m": 360,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.3,
+     "steepest_100m_pct": -2.4
+    },
+    {
+     "type": "flat",
+     "start_km": 2.72,
+     "end_km": 34.2,
+     "length_m": 31480,
+     "gain_m": 49,
+     "loss_m": 47,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "descent",
+     "start_km": 34.2,
+     "end_km": 34.48,
+     "length_m": 280,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.7,
+     "steepest_100m_pct": -3.2
+    },
+    {
+     "type": "flat",
+     "start_km": 34.48,
+     "end_km": 42.32,
+     "length_m": 7840,
+     "gain_m": 16,
+     "loss_m": 7,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "climb",
+     "start_km": 42.32,
+     "end_km": 42.52,
+     "length_m": 200,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 2.8,
+     "steepest_100m_pct": 3.3
+    },
+    {
+     "type": "descent",
+     "start_km": 42.52,
+     "end_km": 42.79,
+     "length_m": 270,
+     "gain_m": 0,
+     "loss_m": 3,
+     "avg_grade_pct": -1.1,
+     "steepest_100m_pct": -1.5
+    }
+   ]
+  },
+  {
+   "profile": "leeds",
+   "settings": {
+    "algorithm": "douglas_peucker",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "descent",
+     "start_km": 0.0,
+     "end_km": 0.53,
+     "length_m": 530,
+     "gain_m": 1,
+     "loss_m": 14,
+     "avg_grade_pct": -2.5,
+     "steepest_100m_pct": -4.1
+    },
+    {
+     "type": "climb",
+     "start_km": 0.53,
+     "end_km": 0.85,
+     "length_m": 320,
+     "gain_m": 10,
+     "loss_m": 0,
+     "avg_grade_pct": 3.3,
+     "steepest_100m_pct": 4.0
+    },
+    {
+     "type": "flat",
+     "start_km": 0.85,
+     "end_km": 1.19,
+     "length_m": 340,
+     "gain_m": 2,
+     "loss_m": 0,
+     "avg_grade_pct": 0.4,
+     "steepest_100m_pct": 0.7
+    },
+    {
+     "type": "climb",
+     "start_km": 1.19,
+     "end_km": 1.46,
+     "length_m": 270,
+     "gain_m": 8,
+     "loss_m": 0,
+     "avg_grade_pct": 2.9,
+     "steepest_100m_pct": 3.9
+    },
+    {
+     "type": "descent",
+     "start_km": 1.46,
+     "end_km": 1.86,
+     "length_m": 400,
+     "gain_m": 0,
+     "loss_m": 7,
+     "avg_grade_pct": -1.7,
+     "steepest_100m_pct": -3.7
+    },
+    {
+     "type": "climb",
+     "start_km": 1.86,
+     "end_km": 2.81,
+     "length_m": 950,
+     "gain_m": 14,
+     "loss_m": 0,
+     "avg_grade_pct": 1.5,
+     "steepest_100m_pct": 2.5
+    },
+    {
+     "type": "descent",
+     "start_km": 2.81,
+     "end_km": 3.69,
+     "length_m": 880,
+     "gain_m": 0,
+     "loss_m": 19,
+     "avg_grade_pct": -2.1,
+     "steepest_100m_pct": -4.6
+    },
+    {
+     "type": "climb",
+     "start_km": 3.69,
+     "end_km": 4.33,
+     "length_m": 640,
+     "gain_m": 17,
+     "loss_m": 0,
+     "avg_grade_pct": 2.7,
+     "steepest_100m_pct": 4.1
+    },
+    {
+     "type": "flat",
+     "start_km": 4.33,
+     "end_km": 5.03,
+     "length_m": 700,
+     "gain_m": 2,
+     "loss_m": 7,
+     "avg_grade_pct": -0.7,
+     "steepest_100m_pct": -2.3
+    },
+    {
+     "type": "climb",
+     "start_km": 5.03,
+     "end_km": 5.62,
+     "length_m": 590,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 2.5,
+     "steepest_100m_pct": 4.2
+    },
+    {
+     "type": "descent",
+     "start_km": 5.62,
+     "end_km": 6.77,
+     "length_m": 1150,
+     "gain_m": 0,
+     "loss_m": 20,
+     "avg_grade_pct": -1.7,
+     "steepest_100m_pct": -4.0
+    },
+    {
+     "type": "climb",
+     "start_km": 6.77,
+     "end_km": 7.44,
+     "length_m": 670,
+     "gain_m": 12,
+     "loss_m": 0,
+     "avg_grade_pct": 1.7,
+     "steepest_100m_pct": 3.2
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 7.44,
+     "end_km": 7.84,
+     "length_m": 400,
+     "gain_m": 16,
+     "loss_m": 0,
+     "avg_grade_pct": 4.0,
+     "steepest_100m_pct": 4.7
+    },
+    {
+     "type": "climb",
+     "start_km": 7.84,
+     "end_km": 8.86,
+     "length_m": 1020,
+     "gain_m": 29,
+     "loss_m": 0,
+     "avg_grade_pct": 2.8,
+     "steepest_100m_pct": 3.7
+    },
+    {
+     "type": "flat",
+     "start_km": 8.86,
+     "end_km": 10.18,
+     "length_m": 1320,
+     "gain_m": 10,
+     "loss_m": 0,
+     "avg_grade_pct": 0.7,
+     "steepest_100m_pct": 1.6
+    },
+    {
+     "type": "descent",
+     "start_km": 10.18,
+     "end_km": 11.11,
+     "length_m": 930,
+     "gain_m": 0,
+     "loss_m": 11,
+     "avg_grade_pct": -1.2,
+     "steepest_100m_pct": -1.9
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 11.11,
+     "end_km": 11.55,
+     "length_m": 440,
+     "gain_m": 0,
+     "loss_m": 18,
+     "avg_grade_pct": -4.0,
+     "steepest_100m_pct": -6.6
+    },
+    {
+     "type": "climb",
+     "start_km": 11.55,
+     "end_km": 11.91,
+     "length_m": 360,
+     "gain_m": 14,
+     "loss_m": 0,
+     "avg_grade_pct": 3.8,
+     "steepest_100m_pct": 4.9
+    },
+    {
+     "type": "flat",
+     "start_km": 11.91,
+     "end_km": 12.16,
+     "length_m": 250,
+     "gain_m": 2,
+     "loss_m": 0,
+     "avg_grade_pct": 0.8,
+     "steepest_100m_pct": 1.4
+    },
+    {
+     "type": "climb",
+     "start_km": 12.16,
+     "end_km": 12.62,
+     "length_m": 460,
+     "gain_m": 17,
+     "loss_m": 0,
+     "avg_grade_pct": 3.7,
+     "steepest_100m_pct": 4.7
+    },
+    {
+     "type": "flat",
+     "start_km": 12.62,
+     "end_km": 12.87,
+     "length_m": 250,
+     "gain_m": 1,
+     "loss_m": 3,
+     "avg_grade_pct": -0.9,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "descent",
+     "start_km": 12.87,
+     "end_km": 13.2,
+     "length_m": 330,
+     "gain_m": 0,
+     "loss_m": 9,
+     "avg_grade_pct": -2.8,
+     "steepest_100m_pct": -4.0
+    },
+    {
+     "type": "climb",
+     "start_km": 13.2,
+     "end_km": 14.27,
+     "length_m": 1070,
+     "gain_m": 28,
+     "loss_m": 0,
+     "avg_grade_pct": 2.6,
+     "steepest_100m_pct": 4.4
+    },
+    {
+     "type": "flat",
+     "start_km": 14.27,
+     "end_km": 14.7,
+     "length_m": 430,
+     "gain_m": 1,
+     "loss_m": 4,
+     "avg_grade_pct": -0.7,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 14.7,
+     "end_km": 15.32,
+     "length_m": 620,
+     "gain_m": 0,
+     "loss_m": 27,
+     "avg_grade_pct": -4.4,
+     "steepest_100m_pct": -5.9
+    },
+    {
+     "type": "climb",
+     "start_km": 15.32,
+     "end_km": 16.48,
+     "length_m": 1160,
+     "gain_m": 19,
+     "loss_m": 1,
+     "avg_grade_pct": 1.6,
+     "steepest_100m_pct": 4.1
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 16.48,
+     "end_km": 17.94,
+     "length_m": 1460,
+     "gain_m": 0,
+     "loss_m": 85,
+     "avg_grade_pct": -5.8,
+     "steepest_100m_pct": -8.1
+    },
+    {
+     "type": "descent",
+     "start_km": 17.94,
+     "end_km": 19.21,
+     "length_m": 1270,
+     "gain_m": 0,
+     "loss_m": 23,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -4.1
+    },
+    {
+     "type": "flat",
+     "start_km": 19.21,
+     "end_km": 19.94,
+     "length_m": 730,
+     "gain_m": 4,
+     "loss_m": 2,
+     "avg_grade_pct": 0.3,
+     "steepest_100m_pct": 1.5
+    },
+    {
+     "type": "climb",
+     "start_km": 19.94,
+     "end_km": 20.7,
+     "length_m": 760,
+     "gain_m": 11,
+     "loss_m": 0,
+     "avg_grade_pct": 1.5,
+     "steepest_100m_pct": 2.3
+    },
+    {
+     "type": "descent",
+     "start_km": 20.7,
+     "end_km": 21.13,
+     "length_m": 430,
+     "gain_m": 0,
+     "loss_m": 7,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -2.5
+    },
+    {
+     "type": "flat",
+     "start_km": 21.13,
+     "end_km": 22.23,
+     "length_m": 1100,
+     "gain_m": 4,
+     "loss_m": 2,
+     "avg_grade_pct": 0.2,
+     "steepest_100m_pct": 1.2
+    },
+    {
+     "type": "descent",
+     "start_km": 22.23,
+     "end_km": 22.64,
+     "length_m": 410,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -1.4,
+     "steepest_100m_pct": -2.0
+    },
+    {
+     "type": "flat",
+     "start_km": 22.64,
+     "end_km": 23.04,
+     "length_m": 400,
+     "gain_m": 2,
+     "loss_m": 2,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 1.4
+    },
+    {
+     "type": "climb",
+     "start_km": 23.04,
+     "end_km": 23.48,
+     "length_m": 440,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 1.3,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 23.48,
+     "end_km": 23.87,
+     "length_m": 390,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -3.1
+    },
+    {
+     "type": "flat",
+     "start_km": 23.87,
+     "end_km": 25.76,
+     "length_m": 1890,
+     "gain_m": 4,
+     "loss_m": 2,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 0.7
+    },
+    {
+     "type": "climb",
+     "start_km": 25.76,
+     "end_km": 26.19,
+     "length_m": 430,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 1.5,
+     "steepest_100m_pct": 2.2
+    },
+    {
+     "type": "flat",
+     "start_km": 26.19,
+     "end_km": 26.44,
+     "length_m": 250,
+     "gain_m": 0,
+     "loss_m": 1,
+     "avg_grade_pct": -0.5,
+     "steepest_100m_pct": -0.9
+    },
+    {
+     "type": "climb",
+     "start_km": 26.44,
+     "end_km": 26.79,
+     "length_m": 350,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.5,
+     "steepest_100m_pct": 2.0
+    },
+    {
+     "type": "flat",
+     "start_km": 26.79,
+     "end_km": 27.57,
+     "length_m": 780,
+     "gain_m": 4,
+     "loss_m": 1,
+     "avg_grade_pct": 0.4,
+     "steepest_100m_pct": 1.5
+    },
+    {
+     "type": "climb",
+     "start_km": 27.57,
+     "end_km": 31.44,
+     "length_m": 3870,
+     "gain_m": 110,
+     "loss_m": 0,
+     "avg_grade_pct": 2.8,
+     "steepest_100m_pct": 4.4
+    },
+    {
+     "type": "flat",
+     "start_km": 31.44,
+     "end_km": 32.67,
+     "length_m": 1230,
+     "gain_m": 3,
+     "loss_m": 5,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 32.67,
+     "end_km": 34.83,
+     "length_m": 2160,
+     "gain_m": 0,
+     "loss_m": 39,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -3.4
+    },
+    {
+     "type": "flat",
+     "start_km": 34.83,
+     "end_km": 35.46,
+     "length_m": 630,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -0.9,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "climb",
+     "start_km": 35.46,
+     "end_km": 36.1,
+     "length_m": 640,
+     "gain_m": 8,
+     "loss_m": 0,
+     "avg_grade_pct": 1.2,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "flat",
+     "start_km": 36.1,
+     "end_km": 36.65,
+     "length_m": 550,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -0.9,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "climb",
+     "start_km": 36.65,
+     "end_km": 37.56,
+     "length_m": 910,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 1.7,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "flat",
+     "start_km": 37.56,
+     "end_km": 38.54,
+     "length_m": 980,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -0.6,
+     "steepest_100m_pct": -1.2
+    },
+    {
+     "type": "descent",
+     "start_km": 38.54,
+     "end_km": 41.03,
+     "length_m": 2490,
+     "gain_m": 0,
+     "loss_m": 61,
+     "avg_grade_pct": -2.4,
+     "steepest_100m_pct": -4.7
+    },
+    {
+     "type": "climb",
+     "start_km": 41.03,
+     "end_km": 41.64,
+     "length_m": 610,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 1.1,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 41.64,
+     "end_km": 42.35,
+     "length_m": 710,
+     "gain_m": 0,
+     "loss_m": 14,
+     "avg_grade_pct": -1.9,
+     "steepest_100m_pct": -3.2
+    },
+    {
+     "type": "flat",
+     "start_km": 42.35,
+     "end_km": 42.61,
+     "length_m": 260,
+     "gain_m": 1,
+     "loss_m": 1,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 0.6
+    }
+   ]
+  },
+  {
+   "profile": "leeds",
+   "settings": {
+    "algorithm": "bottom_up",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "descent",
+     "start_km": 0.0,
+     "end_km": 0.54,
+     "length_m": 540,
+     "gain_m": 1,
+     "loss_m": 14,
+     "avg_grade_pct": -2.4,
+     "steepest_100m_pct": -4.1
+    },
+    {
+     "type": "climb",
+     "start_km": 0.54,
+     "end_km": 0.84,
+     "length_m": 300,
+     "gain_m": 10,
+     "loss_m": 0,
+     "avg_grade_pct": 3.4,
+     "steepest_100m_pct": 4.0
+    },
+    {
+     "type": "flat",
+     "start_km": 0.84,
+     "end_km": 1.14,
+     "length_m": 300,
+     "gain_m": 1,
+     "loss_m": 0,
+     "avg_grade_pct": 0.3,
+     "steepest_100m_pct": 1.0
+    },
+    {
+     "type": "climb",
+     "start_km": 1.14,
+     "end_km": 1.46,
+     "length_m": 320,
+     "gain_m": 8,
+     "loss_m": 0,
+     "avg_grade_pct": 2.6,
+     "steepest_100m_pct": 3.9
+    },
+    {
+     "type": "descent",
+     "start_km": 1.46,
+     "end_km": 1.8,
+     "length_m": 340,
+     "gain_m": 0,
+     "loss_m": 7,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -3.7
+    },
+    {
+     "type": "climb",
+     "start_km": 1.8,
+     "end_km": 2.82,
+     "length_m": 1020,
+     "gain_m": 14,
+     "loss_m": 0,
+     "avg_grade_pct": 1.4,
+     "steepest_100m_pct": 2.5
+    },
+    {
+     "type": "descent",
+     "start_km": 2.82,
+     "end_km": 3.74,
+     "length_m": 920,
+     "gain_m": 1,
+     "loss_m": 19,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -4.6
+    },
+    {
+     "type": "climb",
+     "start_km": 3.74,
+     "end_km": 4.52,
+     "length_m": 780,
+     "gain_m": 18,
+     "loss_m": 0,
+     "avg_grade_pct": 2.3,
+     "steepest_100m_pct": 4.1
+    },
+    {
+     "type": "descent",
+     "start_km": 4.52,
+     "end_km": 4.92,
+     "length_m": 400,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -2.3
+    },
+    {
+     "type": "flat",
+     "start_km": 4.92,
+     "end_km": 5.2,
+     "length_m": 280,
+     "gain_m": 2,
+     "loss_m": 0,
+     "avg_grade_pct": 0.6,
+     "steepest_100m_pct": 1.2
+    },
+    {
+     "type": "climb",
+     "start_km": 5.2,
+     "end_km": 5.62,
+     "length_m": 420,
+     "gain_m": 13,
+     "loss_m": 0,
+     "avg_grade_pct": 3.1,
+     "steepest_100m_pct": 4.2
+    },
+    {
+     "type": "descent",
+     "start_km": 5.62,
+     "end_km": 6.7,
+     "length_m": 1080,
+     "gain_m": 0,
+     "loss_m": 20,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -4.0
+    },
+    {
+     "type": "climb",
+     "start_km": 6.7,
+     "end_km": 7.52,
+     "length_m": 820,
+     "gain_m": 14,
+     "loss_m": 0,
+     "avg_grade_pct": 1.8,
+     "steepest_100m_pct": 3.2
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 7.52,
+     "end_km": 7.78,
+     "length_m": 260,
+     "gain_m": 11,
+     "loss_m": 0,
+     "avg_grade_pct": 4.4,
+     "steepest_100m_pct": 4.7
+    },
+    {
+     "type": "climb",
+     "start_km": 7.78,
+     "end_km": 8.82,
+     "length_m": 1040,
+     "gain_m": 30,
+     "loss_m": 0,
+     "avg_grade_pct": 2.9,
+     "steepest_100m_pct": 3.7
+    },
+    {
+     "type": "flat",
+     "start_km": 8.82,
+     "end_km": 10.16,
+     "length_m": 1340,
+     "gain_m": 10,
+     "loss_m": 0,
+     "avg_grade_pct": 0.8,
+     "steepest_100m_pct": 1.6
+    },
+    {
+     "type": "descent",
+     "start_km": 10.16,
+     "end_km": 11.6,
+     "length_m": 1440,
+     "gain_m": 1,
+     "loss_m": 29,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -6.6
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 11.6,
+     "end_km": 11.92,
+     "length_m": 320,
+     "gain_m": 13,
+     "loss_m": 0,
+     "avg_grade_pct": 4.0,
+     "steepest_100m_pct": 4.9
+    },
+    {
+     "type": "climb",
+     "start_km": 11.92,
+     "end_km": 12.68,
+     "length_m": 760,
+     "gain_m": 19,
+     "loss_m": 0,
+     "avg_grade_pct": 2.5,
+     "steepest_100m_pct": 4.7
+    },
+    {
+     "type": "descent",
+     "start_km": 12.68,
+     "end_km": 13.18,
+     "length_m": 500,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -2.4,
+     "steepest_100m_pct": -4.0
+    },
+    {
+     "type": "climb",
+     "start_km": 13.18,
+     "end_km": 13.92,
+     "length_m": 740,
+     "gain_m": 17,
+     "loss_m": 0,
+     "avg_grade_pct": 2.3,
+     "steepest_100m_pct": 3.5
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 13.92,
+     "end_km": 14.12,
+     "length_m": 200,
+     "gain_m": 8,
+     "loss_m": 0,
+     "avg_grade_pct": 4.2,
+     "steepest_100m_pct": 4.4
+    },
+    {
+     "type": "flat",
+     "start_km": 14.12,
+     "end_km": 14.72,
+     "length_m": 600,
+     "gain_m": 4,
+     "loss_m": 4,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 14.72,
+     "end_km": 15.28,
+     "length_m": 560,
+     "gain_m": 0,
+     "loss_m": 26,
+     "avg_grade_pct": -4.7,
+     "steepest_100m_pct": -5.9
+    },
+    {
+     "type": "flat",
+     "start_km": 15.28,
+     "end_km": 15.96,
+     "length_m": 680,
+     "gain_m": 6,
+     "loss_m": 1,
+     "avg_grade_pct": 0.9,
+     "steepest_100m_pct": 1.4
+    },
+    {
+     "type": "climb",
+     "start_km": 15.96,
+     "end_km": 16.52,
+     "length_m": 560,
+     "gain_m": 13,
+     "loss_m": 2,
+     "avg_grade_pct": 1.9,
+     "steepest_100m_pct": 4.1
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 16.52,
+     "end_km": 17.98,
+     "length_m": 1460,
+     "gain_m": 0,
+     "loss_m": 85,
+     "avg_grade_pct": -5.8,
+     "steepest_100m_pct": -8.1
+    },
+    {
+     "type": "descent",
+     "start_km": 17.98,
+     "end_km": 19.24,
+     "length_m": 1260,
+     "gain_m": 0,
+     "loss_m": 22,
+     "avg_grade_pct": -1.7,
+     "steepest_100m_pct": -4.1
+    },
+    {
+     "type": "flat",
+     "start_km": 19.24,
+     "end_km": 19.96,
+     "length_m": 720,
+     "gain_m": 4,
+     "loss_m": 2,
+     "avg_grade_pct": 0.4,
+     "steepest_100m_pct": 1.5
+    },
+    {
+     "type": "climb",
+     "start_km": 19.96,
+     "end_km": 20.52,
+     "length_m": 560,
+     "gain_m": 10,
+     "loss_m": 0,
+     "avg_grade_pct": 1.7,
+     "steepest_100m_pct": 2.3
+    },
+    {
+     "type": "flat",
+     "start_km": 20.52,
+     "end_km": 22.24,
+     "length_m": 1720,
+     "gain_m": 5,
+     "loss_m": 9,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -2.5
+    },
+    {
+     "type": "descent",
+     "start_km": 22.24,
+     "end_km": 22.6,
+     "length_m": 360,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -1.5,
+     "steepest_100m_pct": -2.0
+    },
+    {
+     "type": "flat",
+     "start_km": 22.6,
+     "end_km": 25.88,
+     "length_m": 3280,
+     "gain_m": 13,
+     "loss_m": 10,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "climb",
+     "start_km": 25.88,
+     "end_km": 26.74,
+     "length_m": 860,
+     "gain_m": 10,
+     "loss_m": 1,
+     "avg_grade_pct": 1.1,
+     "steepest_100m_pct": 2.2
+    },
+    {
+     "type": "flat",
+     "start_km": 26.74,
+     "end_km": 27.52,
+     "length_m": 780,
+     "gain_m": 4,
+     "loss_m": 1,
+     "avg_grade_pct": 0.4,
+     "steepest_100m_pct": 1.5
+    },
+    {
+     "type": "climb",
+     "start_km": 27.52,
+     "end_km": 31.42,
+     "length_m": 3900,
+     "gain_m": 110,
+     "loss_m": 0,
+     "avg_grade_pct": 2.8,
+     "steepest_100m_pct": 4.4
+    },
+    {
+     "type": "flat",
+     "start_km": 31.42,
+     "end_km": 32.68,
+     "length_m": 1260,
+     "gain_m": 3,
+     "loss_m": 6,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 32.68,
+     "end_km": 34.84,
+     "length_m": 2160,
+     "gain_m": 0,
+     "loss_m": 39,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -3.4
+    },
+    {
+     "type": "flat",
+     "start_km": 34.84,
+     "end_km": 35.52,
+     "length_m": 680,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -0.8,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "climb",
+     "start_km": 35.52,
+     "end_km": 36.06,
+     "length_m": 540,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 1.4,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "flat",
+     "start_km": 36.06,
+     "end_km": 36.6,
+     "length_m": 540,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.0,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "climb",
+     "start_km": 36.6,
+     "end_km": 37.52,
+     "length_m": 920,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 1.6,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "flat",
+     "start_km": 37.52,
+     "end_km": 38.98,
+     "length_m": 1460,
+     "gain_m": 0,
+     "loss_m": 11,
+     "avg_grade_pct": -0.7,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "descent",
+     "start_km": 38.98,
+     "end_km": 39.94,
+     "length_m": 960,
+     "gain_m": 0,
+     "loss_m": 28,
+     "avg_grade_pct": -2.9,
+     "steepest_100m_pct": -4.0
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 39.94,
+     "end_km": 40.3,
+     "length_m": 360,
+     "gain_m": 0,
+     "loss_m": 15,
+     "avg_grade_pct": -4.3,
+     "steepest_100m_pct": -4.7
+    },
+    {
+     "type": "descent",
+     "start_km": 40.3,
+     "end_km": 41.0,
+     "length_m": 700,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -1.7,
+     "steepest_100m_pct": -3.1
+    },
+    {
+     "type": "climb",
+     "start_km": 41.0,
+     "end_km": 41.58,
+     "length_m": 580,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 1.1,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 41.58,
+     "end_km": 42.34,
+     "length_m": 760,
+     "gain_m": 0,
+     "loss_m": 14,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -3.2
+    },
+    {
+     "type": "flat",
+     "start_km": 42.34,
+     "end_km": 42.61,
+     "length_m": 270,
+     "gain_m": 1,
+     "loss_m": 1,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 0.6
+    }
+   ]
+  },
+  {
+   "profile": "yorkshire",
+   "settings": {
+    "algorithm": "douglas_peucker",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "descent",
+     "start_km": 0.0,
+     "end_km": 0.46,
+     "length_m": 460,
+     "gain_m": 2,
+     "loss_m": 10,
+     "avg_grade_pct": -1.7,
+     "steepest_100m_pct": -3.9
+    },
+    {
+     "type": "flat",
+     "start_km": 0.46,
+     "end_km": 1.76,
+     "length_m": 1300,
+     "gain_m": 2,
+     "loss_m": 7,
+     "avg_grade_pct": -0.4,
+     "steepest_100m_pct": -2.9
+    },
+    {
+     "type": "climb",
+     "start_km": 1.76,
+     "end_km": 2.26,
+     "length_m": 500,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 1.3,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "flat",
+     "start_km": 2.26,
+     "end_km": 7.53,
+     "length_m": 5270,
+     "gain_m": 10,
+     "loss_m": 14,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -1.6
+    },
+    {
+     "type": "climb",
+     "start_km": 7.53,
+     "end_km": 7.71,
+     "length_m": 180,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 3.9,
+     "steepest_100m_pct": 4.9
+    },
+    {
+     "type": "descent",
+     "start_km": 7.71,
+     "end_km": 7.94,
+     "length_m": 230,
+     "gain_m": 0,
+     "loss_m": 7,
+     "avg_grade_pct": -3.1,
+     "steepest_100m_pct": -4.2
+    },
+    {
+     "type": "flat",
+     "start_km": 7.94,
+     "end_km": 13.8,
+     "length_m": 5860,
+     "gain_m": 18,
+     "loss_m": 3,
+     "avg_grade_pct": 0.2,
+     "steepest_100m_pct": 2.3
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 13.8,
+     "end_km": 14.07,
+     "length_m": 270,
+     "gain_m": 13,
+     "loss_m": 0,
+     "avg_grade_pct": 4.9,
+     "steepest_100m_pct": 6.0
+    },
+    {
+     "type": "descent",
+     "start_km": 14.07,
+     "end_km": 14.42,
+     "length_m": 350,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -3.6,
+     "steepest_100m_pct": -5.5
+    },
+    {
+     "type": "climb",
+     "start_km": 14.42,
+     "end_km": 14.81,
+     "length_m": 390,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.3,
+     "steepest_100m_pct": 2.2
+    },
+    {
+     "type": "flat",
+     "start_km": 14.81,
+     "end_km": 15.06,
+     "length_m": 250,
+     "gain_m": 1,
+     "loss_m": 1,
+     "avg_grade_pct": -0.3,
+     "steepest_100m_pct": -1.1
+    },
+    {
+     "type": "climb",
+     "start_km": 15.06,
+     "end_km": 15.36,
+     "length_m": 300,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 2.4,
+     "steepest_100m_pct": 4.2
+    },
+    {
+     "type": "descent",
+     "start_km": 15.36,
+     "end_km": 15.95,
+     "length_m": 590,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -3.9
+    },
+    {
+     "type": "flat",
+     "start_km": 15.95,
+     "end_km": 23.84,
+     "length_m": 7890,
+     "gain_m": 21,
+     "loss_m": 31,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "climb",
+     "start_km": 23.84,
+     "end_km": 24.34,
+     "length_m": 500,
+     "gain_m": 8,
+     "loss_m": 0,
+     "avg_grade_pct": 1.5,
+     "steepest_100m_pct": 2.8
+    },
+    {
+     "type": "flat",
+     "start_km": 24.34,
+     "end_km": 25.75,
+     "length_m": 1410,
+     "gain_m": 2,
+     "loss_m": 5,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -0.8
+    },
+    {
+     "type": "climb",
+     "start_km": 25.75,
+     "end_km": 26.66,
+     "length_m": 910,
+     "gain_m": 11,
+     "loss_m": 0,
+     "avg_grade_pct": 1.2,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 26.66,
+     "end_km": 27.57,
+     "length_m": 910,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -1.3,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "flat",
+     "start_km": 27.57,
+     "end_km": 30.04,
+     "length_m": 2470,
+     "gain_m": 5,
+     "loss_m": 8,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -1.3
+    },
+    {
+     "type": "climb",
+     "start_km": 30.04,
+     "end_km": 30.53,
+     "length_m": 490,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 1.1,
+     "steepest_100m_pct": 1.3
+    },
+    {
+     "type": "flat",
+     "start_km": 30.53,
+     "end_km": 30.93,
+     "length_m": 400,
+     "gain_m": 0,
+     "loss_m": 3,
+     "avg_grade_pct": -0.5,
+     "steepest_100m_pct": -1.3
+    },
+    {
+     "type": "climb",
+     "start_km": 30.93,
+     "end_km": 31.82,
+     "length_m": 890,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 1.7,
+     "steepest_100m_pct": 2.4
+    },
+    {
+     "type": "descent",
+     "start_km": 31.82,
+     "end_km": 32.74,
+     "length_m": 920,
+     "gain_m": 0,
+     "loss_m": 18,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -3.7
+    },
+    {
+     "type": "flat",
+     "start_km": 32.74,
+     "end_km": 41.42,
+     "length_m": 8680,
+     "gain_m": 18,
+     "loss_m": 25,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "climb",
+     "start_km": 41.42,
+     "end_km": 41.87,
+     "length_m": 450,
+     "gain_m": 12,
+     "loss_m": 0,
+     "avg_grade_pct": 2.7,
+     "steepest_100m_pct": 4.7
+    },
+    {
+     "type": "descent",
+     "start_km": 41.87,
+     "end_km": 42.32,
+     "length_m": 450,
+     "gain_m": 0,
+     "loss_m": 8,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -2.6
+    }
+   ]
+  },
+  {
+   "profile": "yorkshire",
+   "settings": {
+    "algorithm": "bottom_up",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "descent",
+     "start_km": 0.0,
+     "end_km": 0.46,
+     "length_m": 460,
+     "gain_m": 2,
+     "loss_m": 10,
+     "avg_grade_pct": -1.7,
+     "steepest_100m_pct": -3.9
+    },
+    {
+     "type": "flat",
+     "start_km": 0.46,
+     "end_km": 7.54,
+     "length_m": 7080,
+     "gain_m": 19,
+     "loss_m": 21,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -2.9
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 7.54,
+     "end_km": 7.7,
+     "length_m": 160,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 4.2,
+     "steepest_100m_pct": 4.9
+    },
+    {
+     "type": "descent",
+     "start_km": 7.7,
+     "end_km": 7.98,
+     "length_m": 280,
+     "gain_m": 0,
+     "loss_m": 7,
+     "avg_grade_pct": -2.6,
+     "steepest_100m_pct": -4.2
+    },
+    {
+     "type": "flat",
+     "start_km": 7.98,
+     "end_km": 13.7,
+     "length_m": 5720,
+     "gain_m": 15,
+     "loss_m": 3,
+     "avg_grade_pct": 0.2,
+     "steepest_100m_pct": 1.1
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 13.7,
+     "end_km": 14.08,
+     "length_m": 380,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 4.1,
+     "steepest_100m_pct": 6.0
+    },
+    {
+     "type": "descent",
+     "start_km": 14.08,
+     "end_km": 14.38,
+     "length_m": 300,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -3.9,
+     "steepest_100m_pct": -5.5
+    },
+    {
+     "type": "flat",
+     "start_km": 14.38,
+     "end_km": 15.06,
+     "length_m": 680,
+     "gain_m": 6,
+     "loss_m": 2,
+     "avg_grade_pct": 0.5,
+     "steepest_100m_pct": 2.2
+    },
+    {
+     "type": "climb",
+     "start_km": 15.06,
+     "end_km": 15.4,
+     "length_m": 340,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 2.1,
+     "steepest_100m_pct": 4.2
+    },
+    {
+     "type": "descent",
+     "start_km": 15.4,
+     "end_km": 15.86,
+     "length_m": 460,
+     "gain_m": 0,
+     "loss_m": 10,
+     "avg_grade_pct": -2.2,
+     "steepest_100m_pct": -3.9
+    },
+    {
+     "type": "flat",
+     "start_km": 15.86,
+     "end_km": 23.72,
+     "length_m": 7860,
+     "gain_m": 21,
+     "loss_m": 33,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "climb",
+     "start_km": 23.72,
+     "end_km": 24.3,
+     "length_m": 580,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 1.3,
+     "steepest_100m_pct": 2.8
+    },
+    {
+     "type": "flat",
+     "start_km": 24.3,
+     "end_km": 25.68,
+     "length_m": 1380,
+     "gain_m": 2,
+     "loss_m": 5,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -0.8
+    },
+    {
+     "type": "climb",
+     "start_km": 25.68,
+     "end_km": 26.68,
+     "length_m": 1000,
+     "gain_m": 12,
+     "loss_m": 0,
+     "avg_grade_pct": 1.2,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 26.68,
+     "end_km": 27.52,
+     "length_m": 840,
+     "gain_m": 0,
+     "loss_m": 11,
+     "avg_grade_pct": -1.3,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "flat",
+     "start_km": 27.52,
+     "end_km": 30.08,
+     "length_m": 2560,
+     "gain_m": 6,
+     "loss_m": 8,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -1.3
+    },
+    {
+     "type": "climb",
+     "start_km": 30.08,
+     "end_km": 30.56,
+     "length_m": 480,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.1,
+     "steepest_100m_pct": 1.3
+    },
+    {
+     "type": "flat",
+     "start_km": 30.56,
+     "end_km": 30.98,
+     "length_m": 420,
+     "gain_m": 1,
+     "loss_m": 3,
+     "avg_grade_pct": -0.4,
+     "steepest_100m_pct": -1.3
+    },
+    {
+     "type": "climb",
+     "start_km": 30.98,
+     "end_km": 31.84,
+     "length_m": 860,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 1.7,
+     "steepest_100m_pct": 2.4
+    },
+    {
+     "type": "descent",
+     "start_km": 31.84,
+     "end_km": 32.76,
+     "length_m": 920,
+     "gain_m": 0,
+     "loss_m": 18,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -3.7
+    },
+    {
+     "type": "flat",
+     "start_km": 32.76,
+     "end_km": 41.42,
+     "length_m": 8660,
+     "gain_m": 18,
+     "loss_m": 25,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "climb",
+     "start_km": 41.42,
+     "end_km": 41.88,
+     "length_m": 460,
+     "gain_m": 12,
+     "loss_m": 0,
+     "avg_grade_pct": 2.6,
+     "steepest_100m_pct": 4.7
+    },
+    {
+     "type": "descent",
+     "start_km": 41.88,
+     "end_km": 42.32,
+     "length_m": 440,
+     "gain_m": 0,
+     "loss_m": 8,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -2.6
+    }
+   ]
+  },
+  {
+   "profile": "yorkshire_route",
+   "settings": {
+    "algorithm": "douglas_peucker",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "descent",
+     "start_km": 0.0,
+     "end_km": 0.45,
+     "length_m": 450,
+     "gain_m": 0,
+     "loss_m": 14,
+     "avg_grade_pct": -3.1,
+     "steepest_100m_pct": -5.1
+    },
+    {
+     "type": "flat",
+     "start_km": 0.45,
+     "end_km": 1.53,
+     "length_m": 1080,
+     "gain_m": 1,
+     "loss_m": 3,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -0.7
+    },
+    {
+     "type": "descent",
+     "start_km": 1.53,
+     "end_km": 1.82,
+     "length_m": 290,
+     "gain_m": 0,
+     "loss_m": 4,
+     "avg_grade_pct": -1.2,
+     "steepest_100m_pct": -2.6
+    },
+    {
+     "type": "flat",
+     "start_km": 1.82,
+     "end_km": 7.45,
+     "length_m": 5630,
+     "gain_m": 14,
+     "loss_m": 10,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 1.8
+    },
+    {
+     "type": "climb",
+     "start_km": 7.45,
+     "end_km": 7.74,
+     "length_m": 290,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 2.4,
+     "steepest_100m_pct": 4.3
+    },
+    {
+     "type": "descent",
+     "start_km": 7.74,
+     "end_km": 7.97,
+     "length_m": 230,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -2.6,
+     "steepest_100m_pct": -4.3
+    },
+    {
+     "type": "flat",
+     "start_km": 7.97,
+     "end_km": 13.72,
+     "length_m": 5750,
+     "gain_m": 15,
+     "loss_m": 2,
+     "avg_grade_pct": 0.2,
+     "steepest_100m_pct": 1.0
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 13.72,
+     "end_km": 14.08,
+     "length_m": 360,
+     "gain_m": 16,
+     "loss_m": 0,
+     "avg_grade_pct": 4.3,
+     "steepest_100m_pct": 6.7
+    },
+    {
+     "type": "descent",
+     "start_km": 14.08,
+     "end_km": 14.45,
+     "length_m": 370,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -3.1,
+     "steepest_100m_pct": -4.9
+    },
+    {
+     "type": "flat",
+     "start_km": 14.45,
+     "end_km": 15.1,
+     "length_m": 650,
+     "gain_m": 4,
+     "loss_m": 1,
+     "avg_grade_pct": 0.5,
+     "steepest_100m_pct": 1.7
+    },
+    {
+     "type": "climb",
+     "start_km": 15.1,
+     "end_km": 15.4,
+     "length_m": 300,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 2.1,
+     "steepest_100m_pct": 3.5
+    },
+    {
+     "type": "descent",
+     "start_km": 15.4,
+     "end_km": 16.0,
+     "length_m": 600,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -3.9
+    },
+    {
+     "type": "flat",
+     "start_km": 16.0,
+     "end_km": 23.89,
+     "length_m": 7890,
+     "gain_m": 17,
+     "loss_m": 27,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -2.0
+    },
+    {
+     "type": "climb",
+     "start_km": 23.89,
+     "end_km": 24.37,
+     "length_m": 480,
+     "gain_m": 8,
+     "loss_m": 0,
+     "avg_grade_pct": 1.6,
+     "steepest_100m_pct": 2.7
+    },
+    {
+     "type": "flat",
+     "start_km": 24.37,
+     "end_km": 25.86,
+     "length_m": 1490,
+     "gain_m": 4,
+     "loss_m": 4,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 1.0
+    },
+    {
+     "type": "climb",
+     "start_km": 25.86,
+     "end_km": 26.67,
+     "length_m": 810,
+     "gain_m": 11,
+     "loss_m": 0,
+     "avg_grade_pct": 1.4,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "descent",
+     "start_km": 26.67,
+     "end_km": 27.57,
+     "length_m": 900,
+     "gain_m": 0,
+     "loss_m": 14,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -2.2
+    },
+    {
+     "type": "flat",
+     "start_km": 27.57,
+     "end_km": 27.97,
+     "length_m": 400,
+     "gain_m": 2,
+     "loss_m": 0,
+     "avg_grade_pct": 0.4,
+     "steepest_100m_pct": 0.9
+    },
+    {
+     "type": "descent",
+     "start_km": 27.97,
+     "end_km": 28.45,
+     "length_m": 480,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.1,
+     "steepest_100m_pct": -1.5
+    },
+    {
+     "type": "flat",
+     "start_km": 28.45,
+     "end_km": 30.02,
+     "length_m": 1570,
+     "gain_m": 2,
+     "loss_m": 2,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -0.6
+    },
+    {
+     "type": "climb",
+     "start_km": 30.02,
+     "end_km": 30.54,
+     "length_m": 520,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.0,
+     "steepest_100m_pct": 1.6
+    },
+    {
+     "type": "flat",
+     "start_km": 30.54,
+     "end_km": 30.91,
+     "length_m": 370,
+     "gain_m": 0,
+     "loss_m": 2,
+     "avg_grade_pct": -0.4,
+     "steepest_100m_pct": -0.9
+    },
+    {
+     "type": "climb",
+     "start_km": 30.91,
+     "end_km": 31.82,
+     "length_m": 910,
+     "gain_m": 14,
+     "loss_m": 0,
+     "avg_grade_pct": 1.6,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "descent",
+     "start_km": 31.82,
+     "end_km": 32.61,
+     "length_m": 790,
+     "gain_m": 0,
+     "loss_m": 17,
+     "avg_grade_pct": -2.1,
+     "steepest_100m_pct": -3.3
+    },
+    {
+     "type": "flat",
+     "start_km": 32.61,
+     "end_km": 40.34,
+     "length_m": 7730,
+     "gain_m": 9,
+     "loss_m": 16,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "climb",
+     "start_km": 40.34,
+     "end_km": 40.7,
+     "length_m": 360,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.4,
+     "steepest_100m_pct": 2.0
+    },
+    {
+     "type": "descent",
+     "start_km": 40.7,
+     "end_km": 41.3,
+     "length_m": 600,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -1.1,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "flat",
+     "start_km": 41.3,
+     "end_km": 41.57,
+     "length_m": 270,
+     "gain_m": 2,
+     "loss_m": 0,
+     "avg_grade_pct": 0.9,
+     "steepest_100m_pct": 1.4
+    },
+    {
+     "type": "climb",
+     "start_km": 41.57,
+     "end_km": 41.91,
+     "length_m": 340,
+     "gain_m": 13,
+     "loss_m": 0,
+     "avg_grade_pct": 3.8,
+     "steepest_100m_pct": 5.4
+    },
+    {
+     "type": "descent",
+     "start_km": 41.91,
+     "end_km": 42.36,
+     "length_m": 450,
+     "gain_m": 0,
+     "loss_m": 10,
+     "avg_grade_pct": -2.3,
+     "steepest_100m_pct": -3.1
+    }
+   ]
+  },
+  {
+   "profile": "yorkshire_route",
+   "settings": {
+    "algorithm": "bottom_up",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "descent",
+     "start_km": 0.0,
+     "end_km": 0.44,
+     "length_m": 440,
+     "gain_m": 0,
+     "loss_m": 14,
+     "avg_grade_pct": -3.2,
+     "steepest_100m_pct": -5.1
+    },
+    {
+     "type": "flat",
+     "start_km": 0.44,
+     "end_km": 7.5,
+     "length_m": 7060,
+     "gain_m": 15,
+     "loss_m": 17,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -2.6
+    },
+    {
+     "type": "climb",
+     "start_km": 7.5,
+     "end_km": 7.8,
+     "length_m": 300,
+     "gain_m": 7,
+     "loss_m": 1,
+     "avg_grade_pct": 2.1,
+     "steepest_100m_pct": 4.3
+    },
+    {
+     "type": "descent",
+     "start_km": 7.8,
+     "end_km": 7.96,
+     "length_m": 160,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -3.3,
+     "steepest_100m_pct": -4.3
+    },
+    {
+     "type": "flat",
+     "start_km": 7.96,
+     "end_km": 13.8,
+     "length_m": 5840,
+     "gain_m": 17,
+     "loss_m": 2,
+     "avg_grade_pct": 0.3,
+     "steepest_100m_pct": 1.8
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 13.8,
+     "end_km": 14.02,
+     "length_m": 220,
+     "gain_m": 13,
+     "loss_m": 0,
+     "avg_grade_pct": 5.7,
+     "steepest_100m_pct": 6.7
+    },
+    {
+     "type": "descent",
+     "start_km": 14.02,
+     "end_km": 14.4,
+     "length_m": 380,
+     "gain_m": 1,
+     "loss_m": 11,
+     "avg_grade_pct": -2.5,
+     "steepest_100m_pct": -4.9
+    },
+    {
+     "type": "flat",
+     "start_km": 14.4,
+     "end_km": 15.06,
+     "length_m": 660,
+     "gain_m": 4,
+     "loss_m": 2,
+     "avg_grade_pct": 0.3,
+     "steepest_100m_pct": 1.7
+    },
+    {
+     "type": "climb",
+     "start_km": 15.06,
+     "end_km": 15.42,
+     "length_m": 360,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 1.8,
+     "steepest_100m_pct": 3.5
+    },
+    {
+     "type": "descent",
+     "start_km": 15.42,
+     "end_km": 15.88,
+     "length_m": 460,
+     "gain_m": 0,
+     "loss_m": 11,
+     "avg_grade_pct": -2.3,
+     "steepest_100m_pct": -3.9
+    },
+    {
+     "type": "flat",
+     "start_km": 15.88,
+     "end_km": 23.9,
+     "length_m": 8020,
+     "gain_m": 17,
+     "loss_m": 28,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -2.0
+    },
+    {
+     "type": "climb",
+     "start_km": 23.9,
+     "end_km": 24.8,
+     "length_m": 900,
+     "gain_m": 10,
+     "loss_m": 0,
+     "avg_grade_pct": 1.1,
+     "steepest_100m_pct": 2.7
+    },
+    {
+     "type": "flat",
+     "start_km": 24.8,
+     "end_km": 25.76,
+     "length_m": 960,
+     "gain_m": 1,
+     "loss_m": 4,
+     "avg_grade_pct": -0.3,
+     "steepest_100m_pct": -0.8
+    },
+    {
+     "type": "climb",
+     "start_km": 25.76,
+     "end_km": 26.72,
+     "length_m": 960,
+     "gain_m": 12,
+     "loss_m": 0,
+     "avg_grade_pct": 1.2,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "descent",
+     "start_km": 26.72,
+     "end_km": 27.6,
+     "length_m": 880,
+     "gain_m": 0,
+     "loss_m": 14,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -2.2
+    },
+    {
+     "type": "flat",
+     "start_km": 27.6,
+     "end_km": 30.88,
+     "length_m": 3280,
+     "gain_m": 9,
+     "loss_m": 9,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 1.6
+    },
+    {
+     "type": "climb",
+     "start_km": 30.88,
+     "end_km": 31.82,
+     "length_m": 940,
+     "gain_m": 14,
+     "loss_m": 0,
+     "avg_grade_pct": 1.5,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "descent",
+     "start_km": 31.82,
+     "end_km": 32.64,
+     "length_m": 820,
+     "gain_m": 0,
+     "loss_m": 17,
+     "avg_grade_pct": -2.1,
+     "steepest_100m_pct": -3.3
+    },
+    {
+     "type": "flat",
+     "start_km": 32.64,
+     "end_km": 40.34,
+     "length_m": 7700,
+     "gain_m": 9,
+     "loss_m": 15,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "climb",
+     "start_km": 40.34,
+     "end_km": 40.68,
+     "length_m": 340,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.5,
+     "steepest_100m_pct": 2.0
+    },
+    {
+     "type": "descent",
+     "start_km": 40.68,
+     "end_km": 41.16,
+     "length_m": 480,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -1.2,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "flat",
+     "start_km": 41.16,
+     "end_km": 41.58,
+     "length_m": 420,
+     "gain_m": 3,
+     "loss_m": 1,
+     "avg_grade_pct": 0.5,
+     "steepest_100m_pct": 1.5
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 41.58,
+     "end_km": 41.82,
+     "length_m": 240,
+     "gain_m": 11,
+     "loss_m": 0,
+     "avg_grade_pct": 4.5,
+     "steepest_100m_pct": 5.4
+    },
+    {
+     "type": "descent",
+     "start_km": 41.82,
+     "end_km": 42.36,
+     "length_m": 540,
+     "gain_m": 2,
+     "loss_m": 10,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -3.1
+    }
+   ]
+  },
+  {
+   "profile": "brighton",
+   "settings": {
+    "algorithm": "douglas_peucker",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "flat",
+     "start_km": 0.0,
+     "end_km": 0.47,
+     "length_m": 470,
+     "gain_m": 2,
+     "loss_m": 2,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 1.4
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 0.47,
+     "end_km": 0.83,
+     "length_m": 360,
+     "gain_m": 16,
+     "loss_m": 0,
+     "avg_grade_pct": 4.5,
+     "steepest_100m_pct": 5.7
+    },
+    {
+     "type": "climb",
+     "start_km": 0.83,
+     "end_km": 1.15,
+     "length_m": 320,
+     "gain_m": 9,
+     "loss_m": 0,
+     "avg_grade_pct": 3.0,
+     "steepest_100m_pct": 3.2
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 1.15,
+     "end_km": 1.62,
+     "length_m": 470,
+     "gain_m": 0,
+     "loss_m": 22,
+     "avg_grade_pct": -4.7,
+     "steepest_100m_pct": -5.9
+    },
+    {
+     "type": "flat",
+     "start_km": 1.62,
+     "end_km": 7.36,
+     "length_m": 5740,
+     "gain_m": 14,
+     "loss_m": 28,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "descent",
+     "start_km": 7.36,
+     "end_km": 7.74,
+     "length_m": 380,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.2,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "flat",
+     "start_km": 7.74,
+     "end_km": 10.7,
+     "length_m": 2960,
+     "gain_m": 10,
+     "loss_m": 9,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "climb",
+     "start_km": 10.7,
+     "end_km": 11.15,
+     "length_m": 450,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 3.3,
+     "steepest_100m_pct": 5.1
+    },
+    {
+     "type": "flat",
+     "start_km": 11.15,
+     "end_km": 13.08,
+     "length_m": 1930,
+     "gain_m": 5,
+     "loss_m": 8,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -3.0
+    },
+    {
+     "type": "climb",
+     "start_km": 13.08,
+     "end_km": 13.41,
+     "length_m": 330,
+     "gain_m": 9,
+     "loss_m": 0,
+     "avg_grade_pct": 2.8,
+     "steepest_100m_pct": 4.1
+    },
+    {
+     "type": "flat",
+     "start_km": 13.41,
+     "end_km": 14.39,
+     "length_m": 980,
+     "gain_m": 1,
+     "loss_m": 6,
+     "avg_grade_pct": -0.5,
+     "steepest_100m_pct": -1.5
+    },
+    {
+     "type": "climb",
+     "start_km": 14.39,
+     "end_km": 14.72,
+     "length_m": 330,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.6,
+     "steepest_100m_pct": 2.4
+    },
+    {
+     "type": "descent",
+     "start_km": 14.72,
+     "end_km": 15.01,
+     "length_m": 290,
+     "gain_m": 0,
+     "loss_m": 7,
+     "avg_grade_pct": -2.4,
+     "steepest_100m_pct": -3.1
+    },
+    {
+     "type": "flat",
+     "start_km": 15.01,
+     "end_km": 15.47,
+     "length_m": 460,
+     "gain_m": 3,
+     "loss_m": 1,
+     "avg_grade_pct": 0.3,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 15.47,
+     "end_km": 15.88,
+     "length_m": 410,
+     "gain_m": 0,
+     "loss_m": 13,
+     "avg_grade_pct": -3.3,
+     "steepest_100m_pct": -4.6
+    },
+    {
+     "type": "climb",
+     "start_km": 15.88,
+     "end_km": 16.7,
+     "length_m": 820,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 1.8,
+     "steepest_100m_pct": 2.3
+    },
+    {
+     "type": "descent",
+     "start_km": 16.7,
+     "end_km": 17.56,
+     "length_m": 860,
+     "gain_m": 0,
+     "loss_m": 11,
+     "avg_grade_pct": -1.3,
+     "steepest_100m_pct": -2.0
+    },
+    {
+     "type": "climb",
+     "start_km": 17.56,
+     "end_km": 17.94,
+     "length_m": 380,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 3.9,
+     "steepest_100m_pct": 4.5
+    },
+    {
+     "type": "flat",
+     "start_km": 17.94,
+     "end_km": 18.5,
+     "length_m": 560,
+     "gain_m": 2,
+     "loss_m": 2,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -1.0
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 18.5,
+     "end_km": 18.89,
+     "length_m": 390,
+     "gain_m": 0,
+     "loss_m": 16,
+     "avg_grade_pct": -4.0,
+     "steepest_100m_pct": -5.7
+    },
+    {
+     "type": "climb",
+     "start_km": 18.89,
+     "end_km": 19.23,
+     "length_m": 340,
+     "gain_m": 10,
+     "loss_m": 0,
+     "avg_grade_pct": 2.8,
+     "steepest_100m_pct": 4.2
+    },
+    {
+     "type": "flat",
+     "start_km": 19.23,
+     "end_km": 19.67,
+     "length_m": 440,
+     "gain_m": 0,
+     "loss_m": 4,
+     "avg_grade_pct": -0.8,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "climb",
+     "start_km": 19.67,
+     "end_km": 20.0,
+     "length_m": 330,
+     "gain_m": 4,
+     "loss_m": 0,
+     "avg_grade_pct": 1.2,
+     "steepest_100m_pct": 1.8
+    },
+    {
+     "type": "descent",
+     "start_km": 20.0,
+     "end_km": 20.27,
+     "length_m": 270,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -2.1,
+     "steepest_100m_pct": -2.5
+    },
+    {
+     "type": "flat",
+     "start_km": 20.27,
+     "end_km": 20.96,
+     "length_m": 690,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 0.6,
+     "steepest_100m_pct": 1.3
+    },
+    {
+     "type": "descent",
+     "start_km": 20.96,
+     "end_km": 21.57,
+     "length_m": 610,
+     "gain_m": 0,
+     "loss_m": 13,
+     "avg_grade_pct": -2.1,
+     "steepest_100m_pct": -4.3
+    },
+    {
+     "type": "flat",
+     "start_km": 21.57,
+     "end_km": 23.19,
+     "length_m": 1620,
+     "gain_m": 6,
+     "loss_m": 3,
+     "avg_grade_pct": 0.2,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "descent",
+     "start_km": 23.19,
+     "end_km": 23.8,
+     "length_m": 610,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -1.9,
+     "steepest_100m_pct": -3.2
+    },
+    {
+     "type": "flat",
+     "start_km": 23.8,
+     "end_km": 30.08,
+     "length_m": 6280,
+     "gain_m": 20,
+     "loss_m": 13,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "climb",
+     "start_km": 30.08,
+     "end_km": 30.43,
+     "length_m": 350,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 1.7,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "flat",
+     "start_km": 30.43,
+     "end_km": 37.17,
+     "length_m": 6740,
+     "gain_m": 18,
+     "loss_m": 19,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -1.5
+    },
+    {
+     "type": "descent",
+     "start_km": 37.17,
+     "end_km": 37.53,
+     "length_m": 360,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -2.3
+    },
+    {
+     "type": "flat",
+     "start_km": 37.53,
+     "end_km": 38.02,
+     "length_m": 490,
+     "gain_m": 3,
+     "loss_m": 0,
+     "avg_grade_pct": 0.6,
+     "steepest_100m_pct": 1.3
+    },
+    {
+     "type": "descent",
+     "start_km": 38.02,
+     "end_km": 38.36,
+     "length_m": 340,
+     "gain_m": 0,
+     "loss_m": 4,
+     "avg_grade_pct": -1.2,
+     "steepest_100m_pct": -2.7
+    },
+    {
+     "type": "flat",
+     "start_km": 38.36,
+     "end_km": 39.71,
+     "length_m": 1350,
+     "gain_m": 1,
+     "loss_m": 5,
+     "avg_grade_pct": -0.3,
+     "steepest_100m_pct": -1.5
+    },
+    {
+     "type": "climb",
+     "start_km": 39.71,
+     "end_km": 39.99,
+     "length_m": 280,
+     "gain_m": 4,
+     "loss_m": 0,
+     "avg_grade_pct": 1.5,
+     "steepest_100m_pct": 2.3
+    },
+    {
+     "type": "flat",
+     "start_km": 39.99,
+     "end_km": 42.47,
+     "length_m": 2480,
+     "gain_m": 6,
+     "loss_m": 8,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -1.1
+    }
+   ]
+  },
+  {
+   "profile": "brighton",
+   "settings": {
+    "algorithm": "bottom_up",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "flat",
+     "start_km": 0.0,
+     "end_km": 0.3,
+     "length_m": 300,
+     "gain_m": 0,
+     "loss_m": 2,
+     "avg_grade_pct": -0.5,
+     "steepest_100m_pct": -0.8
+    },
+    {
+     "type": "climb",
+     "start_km": 0.3,
+     "end_km": 1.14,
+     "length_m": 840,
+     "gain_m": 27,
+     "loss_m": 0,
+     "avg_grade_pct": 3.3,
+     "steepest_100m_pct": 5.7
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 1.14,
+     "end_km": 1.64,
+     "length_m": 500,
+     "gain_m": 0,
+     "loss_m": 22,
+     "avg_grade_pct": -4.4,
+     "steepest_100m_pct": -5.9
+    },
+    {
+     "type": "flat",
+     "start_km": 1.64,
+     "end_km": 10.74,
+     "length_m": 9100,
+     "gain_m": 24,
+     "loss_m": 42,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "climb",
+     "start_km": 10.74,
+     "end_km": 11.14,
+     "length_m": 400,
+     "gain_m": 14,
+     "loss_m": 0,
+     "avg_grade_pct": 3.6,
+     "steepest_100m_pct": 5.1
+    },
+    {
+     "type": "flat",
+     "start_km": 11.14,
+     "end_km": 13.08,
+     "length_m": 1940,
+     "gain_m": 5,
+     "loss_m": 8,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -3.0
+    },
+    {
+     "type": "climb",
+     "start_km": 13.08,
+     "end_km": 13.42,
+     "length_m": 340,
+     "gain_m": 9,
+     "loss_m": 0,
+     "avg_grade_pct": 2.8,
+     "steepest_100m_pct": 4.1
+    },
+    {
+     "type": "flat",
+     "start_km": 13.42,
+     "end_km": 14.44,
+     "length_m": 1020,
+     "gain_m": 1,
+     "loss_m": 6,
+     "avg_grade_pct": -0.5,
+     "steepest_100m_pct": -1.5
+    },
+    {
+     "type": "climb",
+     "start_km": 14.44,
+     "end_km": 14.72,
+     "length_m": 280,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.8,
+     "steepest_100m_pct": 2.4
+    },
+    {
+     "type": "descent",
+     "start_km": 14.72,
+     "end_km": 15.04,
+     "length_m": 320,
+     "gain_m": 0,
+     "loss_m": 7,
+     "avg_grade_pct": -2.2,
+     "steepest_100m_pct": -3.1
+    },
+    {
+     "type": "flat",
+     "start_km": 15.04,
+     "end_km": 15.5,
+     "length_m": 460,
+     "gain_m": 3,
+     "loss_m": 2,
+     "avg_grade_pct": 0.2,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 15.5,
+     "end_km": 15.86,
+     "length_m": 360,
+     "gain_m": 0,
+     "loss_m": 13,
+     "avg_grade_pct": -3.6,
+     "steepest_100m_pct": -4.6
+    },
+    {
+     "type": "climb",
+     "start_km": 15.86,
+     "end_km": 16.7,
+     "length_m": 840,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 1.8,
+     "steepest_100m_pct": 2.3
+    },
+    {
+     "type": "descent",
+     "start_km": 16.7,
+     "end_km": 17.58,
+     "length_m": 880,
+     "gain_m": 0,
+     "loss_m": 11,
+     "avg_grade_pct": -1.2,
+     "steepest_100m_pct": -2.0
+    },
+    {
+     "type": "climb",
+     "start_km": 17.58,
+     "end_km": 17.96,
+     "length_m": 380,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 3.9,
+     "steepest_100m_pct": 4.5
+    },
+    {
+     "type": "flat",
+     "start_km": 17.96,
+     "end_km": 18.5,
+     "length_m": 540,
+     "gain_m": 1,
+     "loss_m": 2,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -1.0
+    },
+    {
+     "type": "descent",
+     "start_km": 18.5,
+     "end_km": 18.92,
+     "length_m": 420,
+     "gain_m": 0,
+     "loss_m": 16,
+     "avg_grade_pct": -3.7,
+     "steepest_100m_pct": -5.7
+    },
+    {
+     "type": "climb",
+     "start_km": 18.92,
+     "end_km": 19.2,
+     "length_m": 280,
+     "gain_m": 9,
+     "loss_m": 0,
+     "avg_grade_pct": 3.3,
+     "steepest_100m_pct": 4.2
+    },
+    {
+     "type": "flat",
+     "start_km": 19.2,
+     "end_km": 19.66,
+     "length_m": 460,
+     "gain_m": 1,
+     "loss_m": 4,
+     "avg_grade_pct": -0.7,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "climb",
+     "start_km": 19.66,
+     "end_km": 19.98,
+     "length_m": 320,
+     "gain_m": 4,
+     "loss_m": 0,
+     "avg_grade_pct": 1.3,
+     "steepest_100m_pct": 1.8
+    },
+    {
+     "type": "descent",
+     "start_km": 19.98,
+     "end_km": 20.26,
+     "length_m": 280,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -2.5
+    },
+    {
+     "type": "flat",
+     "start_km": 20.26,
+     "end_km": 21.1,
+     "length_m": 840,
+     "gain_m": 5,
+     "loss_m": 1,
+     "avg_grade_pct": 0.4,
+     "steepest_100m_pct": 1.3
+    },
+    {
+     "type": "descent",
+     "start_km": 21.1,
+     "end_km": 21.6,
+     "length_m": 500,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -2.5,
+     "steepest_100m_pct": -4.3
+    },
+    {
+     "type": "flat",
+     "start_km": 21.6,
+     "end_km": 23.34,
+     "length_m": 1740,
+     "gain_m": 6,
+     "loss_m": 4,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "descent",
+     "start_km": 23.34,
+     "end_km": 23.86,
+     "length_m": 520,
+     "gain_m": 0,
+     "loss_m": 11,
+     "avg_grade_pct": -2.1,
+     "steepest_100m_pct": -3.2
+    },
+    {
+     "type": "flat",
+     "start_km": 23.86,
+     "end_km": 27.88,
+     "length_m": 4020,
+     "gain_m": 13,
+     "loss_m": 7,
+     "avg_grade_pct": 0.2,
+     "steepest_100m_pct": 1.1
+    },
+    {
+     "type": "climb",
+     "start_km": 27.88,
+     "end_km": 28.14,
+     "length_m": 260,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.9,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "flat",
+     "start_km": 28.14,
+     "end_km": 30.12,
+     "length_m": 1980,
+     "gain_m": 3,
+     "loss_m": 6,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -1.0
+    },
+    {
+     "type": "climb",
+     "start_km": 30.12,
+     "end_km": 30.4,
+     "length_m": 280,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 2.0,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "flat",
+     "start_km": 30.4,
+     "end_km": 37.2,
+     "length_m": 6800,
+     "gain_m": 18,
+     "loss_m": 19,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -1.5
+    },
+    {
+     "type": "descent",
+     "start_km": 37.2,
+     "end_km": 37.5,
+     "length_m": 300,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -2.3
+    },
+    {
+     "type": "flat",
+     "start_km": 37.5,
+     "end_km": 42.47,
+     "length_m": 4970,
+     "gain_m": 14,
+     "loss_m": 18,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -2.7
+    }
+   ]
+  },
+  {
+   "profile": "chicago",
+   "settings": {
+    "algorithm": "douglas_peucker",
+    "flat_max_pct": 0.5,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "climb",
+     "start_km": 0.0,
+     "end_km": 0.99,
+     "length_m": 990,
+     "gain_m": 6,
+     "loss_m": 1,
+     "avg_grade_pct": 0.5,
+     "steepest_100m_pct": 2.4
+    },
+    {
+     "type": "descent",
+     "start_km": 0.99,
+     "end_km": 1.26,
+     "length_m": 270,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -2.3,
+     "steepest_100m_pct": -3.8
+    },
+    {
+     "type": "flat",
+     "start_km": 1.26,
+     "end_km": 1.64,
+     "length_m": 380,
+     "gain_m": 1,
+     "loss_m": 1,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 0.6
+    },
+    {
+     "type": "climb",
+     "start_km": 1.64,
+     "end_km": 2.37,
+     "length_m": 730,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 1.0,
+     "steepest_100m_pct": 2.5
+    },
+    {
+     "type": "descent",
+     "start_km": 2.37,
+     "end_km": 2.68,
+     "length_m": 310,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.5,
+     "steepest_100m_pct": -2.4
+    },
+    {
+     "type": "flat",
+     "start_km": 2.68,
+     "end_km": 3.85,
+     "length_m": 1170,
+     "gain_m": 2,
+     "loss_m": 0,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 0.6
+    },
+    {
+     "type": "climb",
+     "start_km": 3.85,
+     "end_km": 4.9,
+     "length_m": 1050,
+     "gain_m": 9,
+     "loss_m": 0,
+     "avg_grade_pct": 0.9,
+     "steepest_100m_pct": 2.4
+    },
+    {
+     "type": "flat",
+     "start_km": 4.9,
+     "end_km": 22.18,
+     "length_m": 17280,
+     "gain_m": 23,
+     "loss_m": 28,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -1.6
+    },
+    {
+     "type": "descent",
+     "start_km": 22.18,
+     "end_km": 22.43,
+     "length_m": 250,
+     "gain_m": 0,
+     "loss_m": 4,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -2.4
+    },
+    {
+     "type": "flat",
+     "start_km": 22.43,
+     "end_km": 34.23,
+     "length_m": 11800,
+     "gain_m": 15,
+     "loss_m": 14,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "descent",
+     "start_km": 34.23,
+     "end_km": 34.48,
+     "length_m": 250,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -2.1,
+     "steepest_100m_pct": -3.2
+    },
+    {
+     "type": "flat",
+     "start_km": 34.48,
+     "end_km": 42.24,
+     "length_m": 7760,
+     "gain_m": 15,
+     "loss_m": 7,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "climb",
+     "start_km": 42.24,
+     "end_km": 42.52,
+     "length_m": 280,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 2.4,
+     "steepest_100m_pct": 3.3
+    },
+    {
+     "type": "descent",
+     "start_km": 42.52,
+     "end_km": 42.79,
+     "length_m": 270,
+     "gain_m": 0,
+     "loss_m": 3,
+     "avg_grade_pct": -1.1,
+     "steepest_100m_pct": -1.5
+    }
+   ]
+  },
+  {
+   "profile": "leeds",
+   "settings": {
+    "algorithm": "bottom_up",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 3.0,
+    "min_section_m": 400.0,
+    "keep_min_rise_m": 8.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "descent",
+     "start_km": 0.0,
+     "end_km": 0.54,
+     "length_m": 540,
+     "gain_m": 1,
+     "loss_m": 14,
+     "avg_grade_pct": -2.4,
+     "steepest_100m_pct": -4.1
+    },
+    {
+     "type": "climb",
+     "start_km": 0.54,
+     "end_km": 1.46,
+     "length_m": 920,
+     "gain_m": 20,
+     "loss_m": 0,
+     "avg_grade_pct": 2.1,
+     "steepest_100m_pct": 4.0
+    },
+    {
+     "type": "flat",
+     "start_km": 1.46,
+     "end_km": 2.82,
+     "length_m": 1360,
+     "gain_m": 14,
+     "loss_m": 7,
+     "avg_grade_pct": 0.5,
+     "steepest_100m_pct": 2.5
+    },
+    {
+     "type": "descent",
+     "start_km": 2.82,
+     "end_km": 3.74,
+     "length_m": 920,
+     "gain_m": 1,
+     "loss_m": 19,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -4.6
+    },
+    {
+     "type": "climb",
+     "start_km": 3.74,
+     "end_km": 4.52,
+     "length_m": 780,
+     "gain_m": 18,
+     "loss_m": 0,
+     "avg_grade_pct": 2.3,
+     "steepest_100m_pct": 4.1
+    },
+    {
+     "type": "flat",
+     "start_km": 4.52,
+     "end_km": 5.2,
+     "length_m": 680,
+     "gain_m": 2,
+     "loss_m": 7,
+     "avg_grade_pct": -0.7,
+     "steepest_100m_pct": -2.3
+    },
+    {
+     "type": "climb",
+     "start_km": 5.2,
+     "end_km": 5.62,
+     "length_m": 420,
+     "gain_m": 13,
+     "loss_m": 0,
+     "avg_grade_pct": 3.1,
+     "steepest_100m_pct": 4.2
+    },
+    {
+     "type": "descent",
+     "start_km": 5.62,
+     "end_km": 6.7,
+     "length_m": 1080,
+     "gain_m": 0,
+     "loss_m": 20,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -4.0
+    },
+    {
+     "type": "climb",
+     "start_km": 6.7,
+     "end_km": 8.82,
+     "length_m": 2120,
+     "gain_m": 56,
+     "loss_m": 0,
+     "avg_grade_pct": 2.6,
+     "steepest_100m_pct": 4.7
+    },
+    {
+     "type": "flat",
+     "start_km": 8.82,
+     "end_km": 10.16,
+     "length_m": 1340,
+     "gain_m": 10,
+     "loss_m": 0,
+     "avg_grade_pct": 0.8,
+     "steepest_100m_pct": 1.6
+    },
+    {
+     "type": "descent",
+     "start_km": 10.16,
+     "end_km": 11.6,
+     "length_m": 1440,
+     "gain_m": 1,
+     "loss_m": 29,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -6.6
+    },
+    {
+     "type": "climb",
+     "start_km": 11.6,
+     "end_km": 12.68,
+     "length_m": 1080,
+     "gain_m": 32,
+     "loss_m": 0,
+     "avg_grade_pct": 3.0,
+     "steepest_100m_pct": 4.9
+    },
+    {
+     "type": "descent",
+     "start_km": 12.68,
+     "end_km": 13.18,
+     "length_m": 500,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -2.4,
+     "steepest_100m_pct": -4.0
+    },
+    {
+     "type": "climb",
+     "start_km": 13.18,
+     "end_km": 14.12,
+     "length_m": 940,
+     "gain_m": 25,
+     "loss_m": 0,
+     "avg_grade_pct": 2.7,
+     "steepest_100m_pct": 4.4
+    },
+    {
+     "type": "flat",
+     "start_km": 14.12,
+     "end_km": 14.72,
+     "length_m": 600,
+     "gain_m": 4,
+     "loss_m": 4,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 14.72,
+     "end_km": 15.28,
+     "length_m": 560,
+     "gain_m": 0,
+     "loss_m": 26,
+     "avg_grade_pct": -4.7,
+     "steepest_100m_pct": -5.9
+    },
+    {
+     "type": "flat",
+     "start_km": 15.28,
+     "end_km": 15.96,
+     "length_m": 680,
+     "gain_m": 6,
+     "loss_m": 1,
+     "avg_grade_pct": 0.9,
+     "steepest_100m_pct": 1.4
+    },
+    {
+     "type": "climb",
+     "start_km": 15.96,
+     "end_km": 16.52,
+     "length_m": 560,
+     "gain_m": 13,
+     "loss_m": 2,
+     "avg_grade_pct": 1.9,
+     "steepest_100m_pct": 4.1
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 16.52,
+     "end_km": 17.98,
+     "length_m": 1460,
+     "gain_m": 0,
+     "loss_m": 85,
+     "avg_grade_pct": -5.8,
+     "steepest_100m_pct": -8.1
+    },
+    {
+     "type": "descent",
+     "start_km": 17.98,
+     "end_km": 19.24,
+     "length_m": 1260,
+     "gain_m": 0,
+     "loss_m": 22,
+     "avg_grade_pct": -1.7,
+     "steepest_100m_pct": -4.1
+    },
+    {
+     "type": "flat",
+     "start_km": 19.24,
+     "end_km": 28.08,
+     "length_m": 8840,
+     "gain_m": 54,
+     "loss_m": 28,
+     "avg_grade_pct": 0.3,
+     "steepest_100m_pct": 2.3
+    },
+    {
+     "type": "climb",
+     "start_km": 28.08,
+     "end_km": 31.42,
+     "length_m": 3340,
+     "gain_m": 102,
+     "loss_m": 0,
+     "avg_grade_pct": 3.1,
+     "steepest_100m_pct": 4.4
+    },
+    {
+     "type": "flat",
+     "start_km": 31.42,
+     "end_km": 32.68,
+     "length_m": 1260,
+     "gain_m": 3,
+     "loss_m": 6,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 32.68,
+     "end_km": 34.84,
+     "length_m": 2160,
+     "gain_m": 0,
+     "loss_m": 39,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -3.4
+    },
+    {
+     "type": "flat",
+     "start_km": 34.84,
+     "end_km": 35.52,
+     "length_m": 680,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -0.8,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "climb",
+     "start_km": 35.52,
+     "end_km": 36.06,
+     "length_m": 540,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 1.4,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "flat",
+     "start_km": 36.06,
+     "end_km": 36.6,
+     "length_m": 540,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.0,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "climb",
+     "start_km": 36.6,
+     "end_km": 37.52,
+     "length_m": 920,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 1.6,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "flat",
+     "start_km": 37.52,
+     "end_km": 38.98,
+     "length_m": 1460,
+     "gain_m": 0,
+     "loss_m": 11,
+     "avg_grade_pct": -0.7,
+     "steepest_100m_pct": -1.8
+    },
+    {
+     "type": "descent",
+     "start_km": 38.98,
+     "end_km": 41.0,
+     "length_m": 2020,
+     "gain_m": 0,
+     "loss_m": 55,
+     "avg_grade_pct": -2.7,
+     "steepest_100m_pct": -4.7
+    },
+    {
+     "type": "climb",
+     "start_km": 41.0,
+     "end_km": 41.58,
+     "length_m": 580,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 1.1,
+     "steepest_100m_pct": 1.9
+    },
+    {
+     "type": "descent",
+     "start_km": 41.58,
+     "end_km": 42.61,
+     "length_m": 1030,
+     "gain_m": 1,
+     "loss_m": 14,
+     "avg_grade_pct": -1.3,
+     "steepest_100m_pct": -3.2
+    }
+   ]
+  },
+  {
+   "profile": "brighton",
+   "settings": {
+    "algorithm": "douglas_peucker",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 4.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 0.0,
+    "smoothing_window_m": 200.0,
+    "resample_step_m": 20.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "flat",
+     "start_km": 0.0,
+     "end_km": 0.46,
+     "length_m": 460,
+     "gain_m": 2,
+     "loss_m": 1,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 1.4
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 0.46,
+     "end_km": 0.86,
+     "length_m": 400,
+     "gain_m": 17,
+     "loss_m": 0,
+     "avg_grade_pct": 4.3,
+     "steepest_100m_pct": 5.2
+    },
+    {
+     "type": "climb",
+     "start_km": 0.86,
+     "end_km": 1.14,
+     "length_m": 280,
+     "gain_m": 8,
+     "loss_m": 0,
+     "avg_grade_pct": 2.7,
+     "steepest_100m_pct": 3.3
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 1.14,
+     "end_km": 1.54,
+     "length_m": 400,
+     "gain_m": 0,
+     "loss_m": 18,
+     "avg_grade_pct": -4.6,
+     "steepest_100m_pct": -5.8
+    },
+    {
+     "type": "flat",
+     "start_km": 1.54,
+     "end_km": 7.4,
+     "length_m": 5860,
+     "gain_m": 10,
+     "loss_m": 27,
+     "avg_grade_pct": -0.3,
+     "steepest_100m_pct": -2.3
+    },
+    {
+     "type": "descent",
+     "start_km": 7.4,
+     "end_km": 7.76,
+     "length_m": 360,
+     "gain_m": 0,
+     "loss_m": 4,
+     "avg_grade_pct": -1.1,
+     "steepest_100m_pct": -1.5
+    },
+    {
+     "type": "flat",
+     "start_km": 7.76,
+     "end_km": 10.7,
+     "length_m": 2940,
+     "gain_m": 10,
+     "loss_m": 9,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 1.4
+    },
+    {
+     "type": "climb",
+     "start_km": 10.7,
+     "end_km": 11.12,
+     "length_m": 420,
+     "gain_m": 13,
+     "loss_m": 0,
+     "avg_grade_pct": 3.2,
+     "steepest_100m_pct": 4.5
+    },
+    {
+     "type": "flat",
+     "start_km": 11.12,
+     "end_km": 13.08,
+     "length_m": 1960,
+     "gain_m": 4,
+     "loss_m": 6,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "climb",
+     "start_km": 13.08,
+     "end_km": 13.44,
+     "length_m": 360,
+     "gain_m": 9,
+     "loss_m": 0,
+     "avg_grade_pct": 2.5,
+     "steepest_100m_pct": 3.6
+    },
+    {
+     "type": "flat",
+     "start_km": 13.44,
+     "end_km": 14.38,
+     "length_m": 940,
+     "gain_m": 1,
+     "loss_m": 6,
+     "avg_grade_pct": -0.5,
+     "steepest_100m_pct": -1.2
+    },
+    {
+     "type": "climb",
+     "start_km": 14.38,
+     "end_km": 14.7,
+     "length_m": 320,
+     "gain_m": 4,
+     "loss_m": 0,
+     "avg_grade_pct": 1.3,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "descent",
+     "start_km": 14.7,
+     "end_km": 15.02,
+     "length_m": 320,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -1.8,
+     "steepest_100m_pct": -2.9
+    },
+    {
+     "type": "flat",
+     "start_km": 15.02,
+     "end_km": 15.4,
+     "length_m": 380,
+     "gain_m": 2,
+     "loss_m": 1,
+     "avg_grade_pct": 0.4,
+     "steepest_100m_pct": 1.2
+    },
+    {
+     "type": "descent",
+     "start_km": 15.4,
+     "end_km": 15.88,
+     "length_m": 480,
+     "gain_m": 0,
+     "loss_m": 13,
+     "avg_grade_pct": -2.7,
+     "steepest_100m_pct": -4.2
+    },
+    {
+     "type": "climb",
+     "start_km": 15.88,
+     "end_km": 16.72,
+     "length_m": 840,
+     "gain_m": 14,
+     "loss_m": 0,
+     "avg_grade_pct": 1.7,
+     "steepest_100m_pct": 2.2
+    },
+    {
+     "type": "descent",
+     "start_km": 16.72,
+     "end_km": 17.54,
+     "length_m": 820,
+     "gain_m": 0,
+     "loss_m": 10,
+     "avg_grade_pct": -1.2,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "climb",
+     "start_km": 17.54,
+     "end_km": 18.08,
+     "length_m": 540,
+     "gain_m": 15,
+     "loss_m": 0,
+     "avg_grade_pct": 2.8,
+     "steepest_100m_pct": 4.3
+    },
+    {
+     "type": "flat",
+     "start_km": 18.08,
+     "end_km": 18.5,
+     "length_m": 420,
+     "gain_m": 0,
+     "loss_m": 2,
+     "avg_grade_pct": -0.5,
+     "steepest_100m_pct": -1.2
+    },
+    {
+     "type": "descent",
+     "start_km": 18.5,
+     "end_km": 18.88,
+     "length_m": 380,
+     "gain_m": 0,
+     "loss_m": 14,
+     "avg_grade_pct": -3.8,
+     "steepest_100m_pct": -4.9
+    },
+    {
+     "type": "climb",
+     "start_km": 18.88,
+     "end_km": 19.3,
+     "length_m": 420,
+     "gain_m": 9,
+     "loss_m": 0,
+     "avg_grade_pct": 2.1,
+     "steepest_100m_pct": 3.6
+    },
+    {
+     "type": "flat",
+     "start_km": 19.3,
+     "end_km": 20.0,
+     "length_m": 700,
+     "gain_m": 3,
+     "loss_m": 3,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -1.6
+    },
+    {
+     "type": "descent",
+     "start_km": 20.0,
+     "end_km": 20.34,
+     "length_m": 340,
+     "gain_m": 0,
+     "loss_m": 4,
+     "avg_grade_pct": -1.3,
+     "steepest_100m_pct": -2.3
+    },
+    {
+     "type": "flat",
+     "start_km": 20.34,
+     "end_km": 21.02,
+     "length_m": 680,
+     "gain_m": 3,
+     "loss_m": 0,
+     "avg_grade_pct": 0.5,
+     "steepest_100m_pct": 0.9
+    },
+    {
+     "type": "descent",
+     "start_km": 21.02,
+     "end_km": 21.56,
+     "length_m": 540,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -2.2,
+     "steepest_100m_pct": -3.7
+    },
+    {
+     "type": "flat",
+     "start_km": 21.56,
+     "end_km": 23.24,
+     "length_m": 1680,
+     "gain_m": 4,
+     "loss_m": 3,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 1.2
+    },
+    {
+     "type": "descent",
+     "start_km": 23.24,
+     "end_km": 23.76,
+     "length_m": 520,
+     "gain_m": 0,
+     "loss_m": 10,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -2.7
+    },
+    {
+     "type": "flat",
+     "start_km": 23.76,
+     "end_km": 27.88,
+     "length_m": 4120,
+     "gain_m": 10,
+     "loss_m": 5,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 0.9
+    },
+    {
+     "type": "climb",
+     "start_km": 27.88,
+     "end_km": 28.18,
+     "length_m": 300,
+     "gain_m": 4,
+     "loss_m": 0,
+     "avg_grade_pct": 1.4,
+     "steepest_100m_pct": 2.2
+    },
+    {
+     "type": "flat",
+     "start_km": 28.18,
+     "end_km": 30.08,
+     "length_m": 1900,
+     "gain_m": 1,
+     "loss_m": 5,
+     "avg_grade_pct": -0.2,
+     "steepest_100m_pct": -0.7
+    },
+    {
+     "type": "climb",
+     "start_km": 30.08,
+     "end_km": 30.46,
+     "length_m": 380,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 1.5,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "flat",
+     "start_km": 30.46,
+     "end_km": 37.14,
+     "length_m": 6680,
+     "gain_m": 16,
+     "loss_m": 17,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -1.3
+    },
+    {
+     "type": "descent",
+     "start_km": 37.14,
+     "end_km": 37.54,
+     "length_m": 400,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.3,
+     "steepest_100m_pct": -1.9
+    },
+    {
+     "type": "flat",
+     "start_km": 37.54,
+     "end_km": 38.1,
+     "length_m": 560,
+     "gain_m": 2,
+     "loss_m": 0,
+     "avg_grade_pct": 0.4,
+     "steepest_100m_pct": 0.7
+    },
+    {
+     "type": "descent",
+     "start_km": 38.1,
+     "end_km": 38.4,
+     "length_m": 300,
+     "gain_m": 0,
+     "loss_m": 4,
+     "avg_grade_pct": -1.3,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "flat",
+     "start_km": 38.4,
+     "end_km": 42.46,
+     "length_m": 4060,
+     "gain_m": 8,
+     "loss_m": 10,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -1.4
+    }
+   ]
+  },
+  {
+   "profile": "yorkshire_route",
+   "settings": {
+    "algorithm": "douglas_peucker",
+    "flat_max_pct": 1.0,
+    "steep_min_pct": 3.0,
+    "fit_tolerance_m": 2.0,
+    "min_section_m": 250.0,
+    "keep_min_rise_m": 5.0,
+    "spike_window_m": 30.0,
+    "smoothing_window_m": 100.0,
+    "resample_step_m": 10.0
+   },
+   "elevation_quality": "ok",
+   "sections": [
+    {
+     "type": "steep_descent",
+     "start_km": 0.0,
+     "end_km": 0.45,
+     "length_m": 450,
+     "gain_m": 0,
+     "loss_m": 14,
+     "avg_grade_pct": -3.1,
+     "steepest_100m_pct": -5.1
+    },
+    {
+     "type": "flat",
+     "start_km": 0.45,
+     "end_km": 1.53,
+     "length_m": 1080,
+     "gain_m": 1,
+     "loss_m": 3,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -0.7
+    },
+    {
+     "type": "descent",
+     "start_km": 1.53,
+     "end_km": 1.82,
+     "length_m": 290,
+     "gain_m": 0,
+     "loss_m": 4,
+     "avg_grade_pct": -1.2,
+     "steepest_100m_pct": -2.6
+    },
+    {
+     "type": "flat",
+     "start_km": 1.82,
+     "end_km": 7.45,
+     "length_m": 5630,
+     "gain_m": 14,
+     "loss_m": 10,
+     "avg_grade_pct": 0.1,
+     "steepest_100m_pct": 1.8
+    },
+    {
+     "type": "climb",
+     "start_km": 7.45,
+     "end_km": 7.74,
+     "length_m": 290,
+     "gain_m": 7,
+     "loss_m": 0,
+     "avg_grade_pct": 2.4,
+     "steepest_100m_pct": 4.3
+    },
+    {
+     "type": "descent",
+     "start_km": 7.74,
+     "end_km": 7.97,
+     "length_m": 230,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -2.6,
+     "steepest_100m_pct": -4.3
+    },
+    {
+     "type": "flat",
+     "start_km": 7.97,
+     "end_km": 13.72,
+     "length_m": 5750,
+     "gain_m": 15,
+     "loss_m": 2,
+     "avg_grade_pct": 0.2,
+     "steepest_100m_pct": 1.0
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 13.72,
+     "end_km": 14.08,
+     "length_m": 360,
+     "gain_m": 16,
+     "loss_m": 0,
+     "avg_grade_pct": 4.3,
+     "steepest_100m_pct": 6.7
+    },
+    {
+     "type": "steep_descent",
+     "start_km": 14.08,
+     "end_km": 14.45,
+     "length_m": 370,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -3.1,
+     "steepest_100m_pct": -4.9
+    },
+    {
+     "type": "flat",
+     "start_km": 14.45,
+     "end_km": 15.1,
+     "length_m": 650,
+     "gain_m": 4,
+     "loss_m": 1,
+     "avg_grade_pct": 0.5,
+     "steepest_100m_pct": 1.7
+    },
+    {
+     "type": "climb",
+     "start_km": 15.1,
+     "end_km": 15.4,
+     "length_m": 300,
+     "gain_m": 6,
+     "loss_m": 0,
+     "avg_grade_pct": 2.1,
+     "steepest_100m_pct": 3.5
+    },
+    {
+     "type": "descent",
+     "start_km": 15.4,
+     "end_km": 16.0,
+     "length_m": 600,
+     "gain_m": 0,
+     "loss_m": 12,
+     "avg_grade_pct": -2.0,
+     "steepest_100m_pct": -3.9
+    },
+    {
+     "type": "flat",
+     "start_km": 16.0,
+     "end_km": 23.89,
+     "length_m": 7890,
+     "gain_m": 17,
+     "loss_m": 27,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -2.0
+    },
+    {
+     "type": "climb",
+     "start_km": 23.89,
+     "end_km": 24.37,
+     "length_m": 480,
+     "gain_m": 8,
+     "loss_m": 0,
+     "avg_grade_pct": 1.6,
+     "steepest_100m_pct": 2.7
+    },
+    {
+     "type": "flat",
+     "start_km": 24.37,
+     "end_km": 25.86,
+     "length_m": 1490,
+     "gain_m": 4,
+     "loss_m": 4,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": 1.0
+    },
+    {
+     "type": "climb",
+     "start_km": 25.86,
+     "end_km": 26.67,
+     "length_m": 810,
+     "gain_m": 11,
+     "loss_m": 0,
+     "avg_grade_pct": 1.4,
+     "steepest_100m_pct": 2.6
+    },
+    {
+     "type": "descent",
+     "start_km": 26.67,
+     "end_km": 27.57,
+     "length_m": 900,
+     "gain_m": 0,
+     "loss_m": 14,
+     "avg_grade_pct": -1.6,
+     "steepest_100m_pct": -2.2
+    },
+    {
+     "type": "flat",
+     "start_km": 27.57,
+     "end_km": 27.97,
+     "length_m": 400,
+     "gain_m": 2,
+     "loss_m": 0,
+     "avg_grade_pct": 0.4,
+     "steepest_100m_pct": 0.9
+    },
+    {
+     "type": "descent",
+     "start_km": 27.97,
+     "end_km": 28.45,
+     "length_m": 480,
+     "gain_m": 0,
+     "loss_m": 5,
+     "avg_grade_pct": -1.1,
+     "steepest_100m_pct": -1.5
+    },
+    {
+     "type": "flat",
+     "start_km": 28.45,
+     "end_km": 30.02,
+     "length_m": 1570,
+     "gain_m": 2,
+     "loss_m": 2,
+     "avg_grade_pct": 0.0,
+     "steepest_100m_pct": -0.6
+    },
+    {
+     "type": "climb",
+     "start_km": 30.02,
+     "end_km": 30.54,
+     "length_m": 520,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.0,
+     "steepest_100m_pct": 1.6
+    },
+    {
+     "type": "flat",
+     "start_km": 30.54,
+     "end_km": 30.91,
+     "length_m": 370,
+     "gain_m": 0,
+     "loss_m": 2,
+     "avg_grade_pct": -0.4,
+     "steepest_100m_pct": -0.9
+    },
+    {
+     "type": "climb",
+     "start_km": 30.91,
+     "end_km": 31.82,
+     "length_m": 910,
+     "gain_m": 14,
+     "loss_m": 0,
+     "avg_grade_pct": 1.6,
+     "steepest_100m_pct": 2.1
+    },
+    {
+     "type": "descent",
+     "start_km": 31.82,
+     "end_km": 32.61,
+     "length_m": 790,
+     "gain_m": 0,
+     "loss_m": 17,
+     "avg_grade_pct": -2.1,
+     "steepest_100m_pct": -3.3
+    },
+    {
+     "type": "flat",
+     "start_km": 32.61,
+     "end_km": 40.34,
+     "length_m": 7730,
+     "gain_m": 9,
+     "loss_m": 16,
+     "avg_grade_pct": -0.1,
+     "steepest_100m_pct": -2.1
+    },
+    {
+     "type": "climb",
+     "start_km": 40.34,
+     "end_km": 40.7,
+     "length_m": 360,
+     "gain_m": 5,
+     "loss_m": 0,
+     "avg_grade_pct": 1.4,
+     "steepest_100m_pct": 2.0
+    },
+    {
+     "type": "descent",
+     "start_km": 40.7,
+     "end_km": 41.3,
+     "length_m": 600,
+     "gain_m": 0,
+     "loss_m": 6,
+     "avg_grade_pct": -1.1,
+     "steepest_100m_pct": -1.7
+    },
+    {
+     "type": "flat",
+     "start_km": 41.3,
+     "end_km": 41.57,
+     "length_m": 270,
+     "gain_m": 2,
+     "loss_m": 0,
+     "avg_grade_pct": 0.9,
+     "steepest_100m_pct": 1.4
+    },
+    {
+     "type": "steep_climb",
+     "start_km": 41.57,
+     "end_km": 41.91,
+     "length_m": 340,
+     "gain_m": 13,
+     "loss_m": 0,
+     "avg_grade_pct": 3.8,
+     "steepest_100m_pct": 5.4
+    },
+    {
+     "type": "descent",
+     "start_km": 41.91,
+     "end_km": 42.36,
+     "length_m": 450,
+     "gain_m": 0,
+     "loss_m": 10,
+     "avg_grade_pct": -2.3,
+     "steepest_100m_pct": -3.1
+    }
+   ]
+  }
+ ]
+}
