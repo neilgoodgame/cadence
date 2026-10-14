@@ -71,4 +71,10 @@
   --zone-4: #f0a02e;
   --zone-5: #e0442e;
   --role-coach: #c084fc;
+  /* Course sections by grade (backend courses/sections.py): blues down, grey flat, amber/red up. */
+  --grade-steep-descent: #3d7fd6;
+  --grade-descent: #7fb0ea;
+  --grade-flat: #8b95a1;
+  --grade-climb: #f0a02e;
+  --grade-steep-climb: #e0442e;
 }

@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import { ProfileTab } from "./preferences/ProfileTab";
 import { WorkoutsTab } from "./preferences/WorkoutsTab";
 import { RacesTab } from "./preferences/RacesTab";
+import { CoursesTab } from "./preferences/CoursesTab";
 import { SharingTab } from "./preferences/SharingTab";
 import { TokensTab } from "./preferences/TokensTab";
 import { ZoneEditorTab } from "./preferences/ZoneEditorTab";
@@ -11,7 +12,7 @@ import { ExportTab } from "./preferences/ExportTab";
 import { TagsTab } from "./preferences/TagsTab";
 import type { ZoneType } from "../api/types";
 
-type TabKey = "profile" | "workouts" | ZoneType | "best_efforts" | "tags" | "races" | "sharing" | "tokens" | "export";
+type TabKey = "profile" | "workouts" | ZoneType | "best_efforts" | "tags" | "races" | "courses" | "sharing" | "tokens" | "export";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "profile", label: "Profile" },
@@ -23,6 +24,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "best_efforts", label: "Best efforts" },
   { key: "tags", label: "Tags" },
   { key: "races", label: "Races" },
+  { key: "courses", label: "Courses" },
   { key: "sharing", label: "Sharing" },
   { key: "tokens", label: "API tokens" },
   { key: "export", label: "Export data" },
@@ -68,6 +70,7 @@ export function PreferencesScreen() {
         {tab === "best_efforts" && <BestEffortsTab />}
         {tab === "tags" && <TagsTab />}
         {tab === "races" && <RacesTab />}
+        {tab === "courses" && <CoursesTab />}
         {tab === "sharing" && <SharingTab />}
         {tab === "tokens" && <TokensTab />}
         {tab === "export" && <ExportTab />}
