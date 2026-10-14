@@ -2,6 +2,22 @@
 set -eu
 
 dnf install -y docker jq >/dev/null
+
+# 1GB swap file on the root volume. A t4g.micro has 1GB RAM and AL2023 ships
+# with no swap, so when memory ran out the kernel kept evicting and
+# re-reading program code from disk instead of making progress. Seen live on
+# 2026-10-14: about 118GB of EBS reads in 15 minutes, CPU pinned at about
+# 80%, the app silent and CloudFront returning 504 until a manual reboot.
+# This is a buffer for the OS, Docker and the SSM agent only: the container
+# is kept out of swap by --memory-swap in run.sh below.
+if [ ! -f /swapfile ]; then
+	dd if=/dev/zero of=/swapfile bs=1M count=1024 status=none
+	chmod 600 /swapfile
+	mkswap /swapfile >/dev/null
+	echo '/swapfile none swap defaults 0 0' >> /etc/fstab
+fi
+swapon /swapfile 2>/dev/null || true
+
 systemctl enable --now docker
 
 if ! command -v aws >/dev/null 2>&1; then
@@ -70,7 +86,15 @@ ENV_FILE=/opt/cadence/env
 
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "${ecr_registry}"
 
+# --memory caps the container below the instance's 1GB, so running out of
+# memory kills just the container (exit 137) and Restart=always brings it
+# back, instead of starving the whole host. --memory-swap equal to --memory
+# keeps the JVM out of swap, where GC would be slow enough to make
+# things worse. The JVM sizes its heap from this limit
+# (MaxRAMPercentage=60 in the Dockerfile, about 480MB).
 exec docker run --rm --name cadence-backend \
+	--memory=800m \
+	--memory-swap=800m \
 	-p 8080:8080 \
 	-v /opt/cadence/media:/app/media \
 	-v /opt/cadence/keys:/app/keys \
