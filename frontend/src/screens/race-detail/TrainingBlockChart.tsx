@@ -17,6 +17,8 @@ const TOP_PAD = 16;
 const PHASE_H = 22;
 /** Room below the baseline for the week-number labels. */
 const LABEL_H = 18;
+/** Width reserved on the left for the y-axis tick labels. */
+const AXIS_W = 32;
 
 /** Tracks an element's rendered width, so the SVG can draw at its real pixel size rather than
  * scale a fixed viewBox - a scaled viewBox grows taller with the card's width and spills out of
@@ -79,12 +81,15 @@ export function TrainingBlockChart({
 
   function renderChart() {
     const W = width;
+    const axisW = compact ? 0 : AXIS_W;
+    const plotW = W - axisW;
     const x = scaleBand<number>()
       .domain(weeks.map((_, i) => i))
-      .range([0, W])
+      .range([0, plotW])
       .padding(0.25);
     const y = scaleLinear().domain([0, chart.yMax]).range([height, 0]);
     const yCtl = scaleLinear().domain([0, chart.ctlMax]).range([height, 0]);
+    const yTicks = compact ? [] : y.ticks(4);
 
     const lineGen = line<BlockChartPoint>()
       .x((p) => (x(p.index) ?? 0) + x.bandwidth() / 2)
@@ -110,7 +115,17 @@ export function TrainingBlockChart({
           </pattern>
         </defs>
 
-        {phaseH > 0 &&
+        <g transform={`translate(${axisW},0)`}>
+          {yTicks.map((tick) => (
+            <g key={tick}>
+              <line x1={0} x2={plotW} y1={y(tick)} y2={y(tick)} stroke="var(--line)" strokeDasharray="3,3" />
+              <text x={-8} y={y(tick)} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="var(--ink3)" className="mono">
+                {tick}
+              </text>
+            </g>
+          ))}
+
+          {phaseH > 0 &&
           phases.map((phase) => {
             // Weeks are 1-based; span from the first week's band start to the last week's band end.
             const px0 = x(phase.start_week - 1) ?? 0;
@@ -198,7 +213,7 @@ export function TrainingBlockChart({
 
         {!compact && (
           <>
-            <line x1={0} x2={W} y1={height} y2={height} stroke="var(--ink3)" strokeWidth={1.5} />
+            <line x1={0} x2={plotW} y1={height} y2={height} stroke="var(--ink3)" strokeWidth={1.5} />
             {chart.bars.map((bar) => {
               const isCurrent = bar.index === currentIndex;
               const isSelected = selectedIndex === bar.index;
@@ -223,6 +238,7 @@ export function TrainingBlockChart({
         <path d={actualPath} fill="none" stroke="var(--ink)" strokeWidth={2} />
         <path d={projectedPath} fill="none" stroke="var(--ink)" strokeWidth={2} strokeDasharray="4 3" />
         {comparisonPath && <path d={comparisonPath} fill="none" stroke="var(--ink3)" strokeWidth={1.5} strokeDasharray="4 3" />}
+        </g>
       </svg>
     );
   }
