@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from datetime import date
 from typing import Any
 
@@ -7,6 +8,8 @@ from .models import PersonalAccessToken, User, UserRelationship
 
 
 class UserSerializer(serializers.ModelSerializer):
+    course_section_settings = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
@@ -47,7 +50,11 @@ class UserSerializer(serializers.ModelSerializer):
             "email_verified",
             "race_block_weeks",
             "race_key_session_cap",
+            "course_section_settings",
         ]
+
+    def get_course_section_settings(self, user: User) -> dict:
+        return asdict(user.section_settings())
 
 
 class VerifyEmailSerializer(serializers.Serializer):

@@ -136,4 +136,52 @@ class CourseSectionsTest {
 				d.minSectionM(), d.keepMinRiseM(), d.spikeWindowM(), d.smoothingWindowM(), d.resampleStepM()).validate())
 				.hasMessageContaining("steep_min_pct");
 	}
+
+	@Test
+	void sectionsFromTheStoredSeriesMatchDetectingFromTheTrack() throws IOException {
+		Profile p = profile("leeds");
+		CourseSections.ElevationSeries series = CourseSections.buildElevationSeries(p.distancesKm(), p.elevationsM());
+		assertThat(series.elevationQuality()).isEqualTo(CourseSections.ELEVATION_QUALITY_OK);
+		assertThat(series.series().get(0)).isEqualTo(p.elevationsM().get(0));
+		CourseSections.Settings d = CourseSections.Settings.DEFAULTS;
+		CourseSections.Settings coarse = new CourseSections.Settings(CourseSections.ALGORITHM_BOTTOM_UP, d.flatMaxPct(),
+				d.steepMinPct(), d.fitToleranceM(), d.minSectionM(), d.keepMinRiseM(), d.spikeWindowM(), d.smoothingWindowM(), 20.0);
+		for (CourseSections.Settings settings : List.of(d, coarse)) {
+			assertThat(CourseSections.sectionsFromSeries(series.series(), settings))
+					.isEqualTo(CourseSections.detect(p.distancesKm(), p.elevationsM(), settings).sections());
+		}
+	}
+
+	@Test
+	void missingElevationStoresNoSeriesAndAShortSeriesHasNoSections() {
+		List<Double> distances = new ArrayList<>();
+		for (int i = 0; i < 500; i++) distances.add(i * 0.01);
+		CourseSections.ElevationSeries none = CourseSections.buildElevationSeries(distances, Collections.nCopies(500, null));
+		assertThat(none.elevationQuality()).isEqualTo(CourseSections.ELEVATION_QUALITY_MISSING);
+		assertThat(none.series()).isEmpty();
+		assertThat(CourseSections.sectionsFromSeries(List.of(), CourseSections.Settings.DEFAULTS)).isEmpty();
+		assertThat(CourseSections.sectionsFromSeries(List.of(100.0), CourseSections.Settings.DEFAULTS)).isEmpty();
+	}
+
+	@Test
+	void climbsAreTheClimbAndSteepClimbSections() throws IOException {
+		Profile p = profile("yorkshire_route");
+		List<CourseSections.Section> sections = CourseSections.detect(p.distancesKm(), p.elevationsM(),
+				CourseSections.Settings.DEFAULTS.withAlgorithm(CourseSections.ALGORITHM_BOTTOM_UP)).sections();
+		List<Climb> climbs = CourseSections.climbsFromSections(sections);
+		List<CourseSections.Section> expected = sections.stream()
+				.filter(s -> s.type().equals(CourseSections.CLIMB) || s.type().equals(CourseSections.STEEP_CLIMB)).toList();
+		assertThat(climbs).hasSize(expected.size());
+		assertThat(climbs.get(climbs.size() - 1).startKm()).isEqualTo(expected.get(expected.size() - 1).startKm());
+		assertThat(climbs.get(climbs.size() - 1).gainM()).isEqualTo(expected.get(expected.size() - 1).gainM());
+	}
+
+	@Test
+	void validationErrorReportsWithoutThrowing() {
+		CourseSections.Settings d = CourseSections.Settings.DEFAULTS;
+		assertThat(d.validationError()).isNull();
+		assertThat(new CourseSections.Settings(d.algorithm(), d.flatMaxPct(), d.steepMinPct(), 0.1, d.minSectionM(),
+				d.keepMinRiseM(), d.spikeWindowM(), d.smoothingWindowM(), d.resampleStepM()).validationError())
+				.isEqualTo("fit_tolerance_m must be between 0.5 and 10.");
+	}
 }

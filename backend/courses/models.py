@@ -38,8 +38,14 @@ class Course(PrefixedIDModel):
     route_polyline = models.JSONField(default=list)
     # [[km, elevation_m], ...], ~200 points evenly spaced by distance.
     elevation_profile = models.JSONField(default=list)
-    # [{start_km, end_km, gain_m, avg_grade_pct}, ...]
-    climbs = models.JSONField(default=list)
+    # "ok", "missing" (no or flat elevation) or "sparse" (points too far apart to see hills
+    # between them) - see courses/sections.py. Blank until the elevation series has been built
+    # (a course created before sections existed); courses/elevation.py fills it on first read.
+    elevation_quality = models.CharField(max_length=10, blank=True, default="")
+    # The raw elevation resampled every 10m from the start (courses.sections.SERIES_STEP_M);
+    # empty unless elevation_quality is "ok". Sections and climbs are calculated from this on
+    # every read, with the athlete's current settings, and never stored.
+    elevation_series = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

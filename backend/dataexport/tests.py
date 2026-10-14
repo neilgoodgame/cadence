@@ -742,7 +742,8 @@ class CourseAndRaceCommentExportImportTests(TestCase):
             is_loop=False,
             route_polyline=[[39.47, -0.38], [39.48, -0.37]],
             elevation_profile=[[0, 10], [42.2, 12]],
-            climbs=[],
+            elevation_quality="ok",
+            elevation_series=[10.0 + 0.25 * i for i in range(60)],
         )
         self.course.gpx_filename = "valencia.gpx"
         self.course.gpx_file = default_storage.save(
@@ -781,6 +782,8 @@ class CourseAndRaceCommentExportImportTests(TestCase):
         self.assertEqual(imported_course.name, "Valencia Marathon")
         self.assertEqual(imported_course.distance_km, 42.2)
         self.assertNotEqual(imported_course.id, self.course.id)
+        self.assertEqual(imported_course.elevation_quality, "ok")
+        self.assertEqual(imported_course.elevation_series, self.course.elevation_series)
 
         with default_storage.open(imported_course.gpx_file, "rb") as f:
             self.assertEqual(f.read(), b"<gpx>fixture</gpx>")

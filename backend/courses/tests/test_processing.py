@@ -5,7 +5,6 @@ from django.test import SimpleTestCase
 from courses.processing import (
     GpxProcessingError,
     TrackPoint,
-    _detect_climbs,
     _gain_loss,
     _is_loop,
     _simplify_route,
@@ -13,6 +12,7 @@ from courses.processing import (
     parse_gpx_track,
     process_track_points,
 )
+from courses.sections import climbs_from_sections, sections_from_series
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
@@ -60,21 +60,21 @@ class GainLossTests(SimpleTestCase):
         self.assertEqual(loss, 10)
 
 
-class ClimbDetectionTests(SimpleTestCase):
-    def test_detects_one_climb_above_thresholds(self):
-        points = _flat_then_hill_then_flat(n=300, hill_gain_m=50.0)
-        smoothed = _smoothed_elevations(points)
-        climbs = _detect_climbs(points, smoothed)
+class ElevationSeriesFieldTests(SimpleTestCase):
+    def test_processing_stores_the_series_sections_are_calculated_from(self):
+        fields = process_track_points(_flat_then_hill_then_flat())
+        self.assertEqual(fields["elevation_quality"], "ok")
+        self.assertEqual(len(fields["elevation_series"]), 300)
+        self.assertNotIn("climbs", fields)
+        climbs = climbs_from_sections(sections_from_series(fields["elevation_series"]))
         self.assertEqual(len(climbs), 1)
-        climb = climbs[0]
-        self.assertGreaterEqual(climb["gain_m"], 45)
-        self.assertGreaterEqual(climb["avg_grade_pct"], 1.5)
+        self.assertGreaterEqual(climbs[0]["gain_m"], 45)
 
-    def test_sub_threshold_bump_is_not_a_climb(self):
-        points = _flat_then_hill_then_flat(n=300, hill_gain_m=5.0)  # below the 12m gain floor
-        smoothed = _smoothed_elevations(points)
-        climbs = _detect_climbs(points, smoothed)
-        self.assertEqual(climbs, [])
+    def test_a_track_without_elevation_stores_no_series(self):
+        points = [TrackPoint(lat=51.5 + i * 0.0001, lng=-0.1, elevation=None, distance_km=i * 0.01) for i in range(300)]
+        fields = process_track_points(points)
+        self.assertEqual(fields["elevation_quality"], "missing")
+        self.assertEqual(fields["elevation_series"], [])
 
 
 class SimplifyRouteTests(SimpleTestCase):
@@ -121,7 +121,9 @@ class ParseGpxTrackTests(SimpleTestCase):
         self.assertTrue(fields["is_loop"])
         self.assertGreater(fields["distance_km"], 0)
         self.assertGreater(fields["elevation_gain_m"], 0)
-        self.assertEqual(len(fields["climbs"]), 1)
+        self.assertEqual(fields["elevation_quality"], "ok")
+        climbs = climbs_from_sections(sections_from_series(fields["elevation_series"]))
+        self.assertEqual([c["gain_m"] for c in climbs], [25])
         self.assertLessEqual(len(fields["route_polyline"]), 500)
         self.assertLessEqual(len(fields["elevation_profile"]), 201)
 

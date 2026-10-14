@@ -1,14 +1,48 @@
+from dataclasses import replace
+from typing import Any
+
 from rest_framework import serializers
 
 from accounts.models import User
+from courses.sections import ALGORITHMS, SectionSettings
 
 from .models import BestEffortRecomputeJob, ZoneSet
 from .zones import reference_for
 
 
+class SectionSettingsSerializer(serializers.Serializer):
+    """Partial: any subset of the settings, merged into the athlete's current ones. Ranges are
+    checked on the merged result by SectionSettings.validate, so a pair like flat/steep is
+    checked together."""
+
+    algorithm = serializers.ChoiceField(choices=list(ALGORITHMS), required=False)
+    flat_max_pct = serializers.FloatField(required=False)
+    steep_min_pct = serializers.FloatField(required=False)
+    fit_tolerance_m = serializers.FloatField(required=False)
+    min_section_m = serializers.FloatField(required=False)
+    keep_min_rise_m = serializers.FloatField(required=False)
+    spike_window_m = serializers.FloatField(required=False)
+    smoothing_window_m = serializers.FloatField(required=False)
+    resample_step_m = serializers.FloatField(required=False)
+
+
 class AthleteUpdateSerializer(serializers.ModelSerializer):
     best_effort_top_n = serializers.IntegerField(required=False, min_value=0, max_value=50)
     default_shoe_limit_km = serializers.IntegerField(required=False, min_value=0, max_value=5000)
+    course_section_settings = SectionSettingsSerializer(required=False)
+
+    def validate_course_section_settings(self, value: dict[str, Any]) -> SectionSettings:
+        merged = replace(self.instance.section_settings(), **value)
+        error = merged.validation_error()
+        if error is not None:
+            raise serializers.ValidationError(error)
+        return merged
+
+    def update(self, instance: User, validated_data: dict[str, Any]) -> User:
+        settings = validated_data.pop("course_section_settings", None)
+        if settings is not None:
+            instance.set_section_settings(settings)
+        return super().update(instance, validated_data)
 
     class Meta:
         model = User
@@ -41,6 +75,7 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "decoupling_warm_skin_temp",
             "decoupling_hot_air_temp",
             "decoupling_hot_skin_temp",
+            "course_section_settings",
         ]
         extra_kwargs = {
             field: {"required": False}

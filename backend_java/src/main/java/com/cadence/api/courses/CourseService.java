@@ -15,11 +15,14 @@ import com.cadence.api.export.dto.CourseExportEntry;
 import com.cadence.api.races.Race;
 import com.cadence.api.races.RaceRepository;
 import com.cadence.api.users.User;
+import com.cadence.api.users.UserRepository;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,16 +37,18 @@ public class CourseService {
 	private final RaceRepository raceRepository;
 	private final CourseGeocodingService geocodingService;
 	private final CadenceProperties properties;
+	private final UserRepository userRepository;
 
 	public CourseService(CourseRepository courseRepository, ActivityRepository activityRepository,
 			RecordRepository recordRepository, RaceRepository raceRepository, CourseGeocodingService geocodingService,
-			CadenceProperties properties) {
+			CadenceProperties properties, UserRepository userRepository) {
 		this.courseRepository = courseRepository;
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.raceRepository = raceRepository;
 		this.geocodingService = geocodingService;
 		this.properties = properties;
+		this.userRepository = userRepository;
 	}
 
 	@Transactional(readOnly = true)
@@ -118,7 +123,8 @@ public class CourseService {
 		course.setLoop(track.isLoop());
 		course.setRoutePolyline(track.routePolyline());
 		course.setElevationProfile(track.elevationProfile());
-		course.setClimbs(track.climbs());
+		course.setElevationQuality(track.elevationQuality());
+		course.setElevationSeries(track.elevationSeries());
 		return course;
 	}
 
@@ -158,7 +164,10 @@ public class CourseService {
 		course.setGpxFilename(entry.gpxFilename() != null ? entry.gpxFilename() : "");
 		course.setRoutePolyline(entry.routePolyline() != null ? entry.routePolyline() : List.of());
 		course.setElevationProfile(entry.elevationProfile() != null ? entry.elevationProfile() : List.of());
-		course.setClimbs(entry.climbs() != null ? entry.climbs() : List.of());
+		// An export from before sections existed has neither - the course then builds its series
+		// from the imported GPX or activity on first read (ensureElevationSeries).
+		course.setElevationQuality(entry.elevationQuality() != null ? entry.elevationQuality() : "");
+		course.setElevationSeries(entry.elevationSeries() != null ? entry.elevationSeries() : List.of());
 		course = courseRepository.save(course);
 
 		if (entry.gpxBase64() != null) {
@@ -176,7 +185,11 @@ public class CourseService {
 				course.getStartLng(), course.getDistanceKm(), course.getElevationGainM(), course.getElevationLossM(),
 				course.getElevationMaxM(), course.getElevationMinM(), course.isLoop(), course.getSource().wireValue(),
 				course.getSourceActivity() != null ? course.getSourceActivity().getId() : null, course.getGpxFilename(),
-				gpxBase64, course.getRoutePolyline(), course.getElevationProfile(), course.getClimbs(), course.getCreatedAt());
+				gpxBase64, course.getRoutePolyline(), course.getElevationProfile(),
+				// Calculated with the athlete's settings at export time - kept for readers of older
+				// exports; an import rebuilds climbs from elevationSeries instead.
+				CourseSections.climbsFromSections(sectionsFor(course, null)), course.getCreatedAt(),
+				course.getElevationQuality(), course.getElevationSeries());
 	}
 
 	public CourseSummaryResponse toSummaryResponse(Course course) {
@@ -187,6 +200,14 @@ public class CourseService {
 
 	@Transactional(readOnly = true)
 	public CourseResponse toResponse(Course course) {
+		return toResponse(course, null);
+	}
+
+	/** settings: a preview's overrides (see settingsWithOverrides), or null for the owning
+	 * athlete's own settings. Sections and climbs are calculated here, never stored. */
+	@Transactional(readOnly = true)
+	public CourseResponse toResponse(Course course, CourseSections.Settings settings) {
+		List<CourseSections.Section> sections = sectionsFor(course, settings);
 		List<Race> races = raceRepository.findByCourseIdOrderByDateDesc(course.getId());
 		List<CourseResponse.RaceSummary> raceSummaries = races.stream()
 				.map(r -> new CourseResponse.RaceSummary(r.getId(), r.getName(), r.getDate(), r.getPriority().wireValue(), r.getResultTime()))
@@ -195,8 +216,134 @@ public class CourseService {
 				course.getStartLat(), course.getStartLng(), course.getDistanceKm(), course.getElevationGainM(),
 				course.getElevationLossM(), course.getElevationMaxM(), course.getElevationMinM(), course.isLoop(),
 				course.getSource().wireValue(), course.getSourceActivity() != null ? course.getSourceActivity().getId() : null,
-				course.getGpxFilename(), course.getRoutePolyline(), course.getElevationProfile(), course.getClimbs(),
-				course.getCreatedAt(), races.size(), raceSummaries);
+				course.getGpxFilename(), course.getRoutePolyline(), course.getElevationProfile(),
+				CourseSections.climbsFromSections(sections), course.getCreatedAt(), races.size(), raceSummaries,
+				course.getElevationQuality(), sections);
+	}
+
+	/** Sections calculated now from the stored series, with the given settings or else the owning
+	 * athlete's. The owner is re-read by id: the course is usually detached by now, so walking its
+	 * lazy athlete association would throw (see backend_java/CLAUDE.md). */
+	@Transactional(readOnly = true)
+	public List<CourseSections.Section> sectionsFor(Course course, CourseSections.Settings settings) {
+		if (!CourseSections.ELEVATION_QUALITY_OK.equals(course.getElevationQuality())) return List.of();
+		CourseSections.Settings effective = settings != null ? settings : ownerSettings(course);
+		return CourseSections.sectionsFromSeries(course.getElevationSeries(), effective);
+	}
+
+	private CourseSections.Settings ownerSettings(Course course) {
+		return userRepository.findById(course.getAthlete().getId())
+				.map(User::getCourseSectionSettings)
+				.orElse(CourseSections.Settings.DEFAULTS);
+	}
+
+	/** The owner's settings with any overrides from the query string (the same snake_case names as
+	 * course_section_settings, e.g. ?algorithm=bottom_up&fit_tolerance_m=3) - a live preview that
+	 * saves nothing. Null when there are none. */
+	@Transactional(readOnly = true)
+	public CourseSections.Settings settingsWithOverrides(Course course, Map<String, String> query) {
+		String algorithm = query.get("algorithm");
+		Double[] values = new Double[8];
+		String[] names = {"flat_max_pct", "steep_min_pct", "fit_tolerance_m", "min_section_m", "keep_min_rise_m",
+				"spike_window_m", "smoothing_window_m", "resample_step_m"};
+		boolean any = algorithm != null;
+		for (int i = 0; i < names.length; i++) {
+			String raw = query.get(names[i]);
+			if (raw == null) continue;
+			any = true;
+			try {
+				values[i] = Double.parseDouble(raw);
+			}
+			catch (NumberFormatException e) {
+				throw new ValidationException("Must be a number.", names[i]);
+			}
+		}
+		if (!any) return null;
+		CourseSections.Settings base = ownerSettings(course);
+		CourseSections.Settings merged = new CourseSections.Settings(
+				algorithm != null ? algorithm : base.algorithm(),
+				values[0] != null ? values[0] : base.flatMaxPct(),
+				values[1] != null ? values[1] : base.steepMinPct(),
+				values[2] != null ? values[2] : base.fitToleranceM(),
+				values[3] != null ? values[3] : base.minSectionM(),
+				values[4] != null ? values[4] : base.keepMinRiseM(),
+				values[5] != null ? values[5] : base.spikeWindowM(),
+				values[6] != null ? values[6] : base.smoothingWindowM(),
+				values[7] != null ? values[7] : base.resampleStepM());
+		String error = merged.validationError();
+		if (error != null) throw new ValidationException(error, "course_section_settings");
+		return merged;
+	}
+
+	/** The course's original track - its uploaded GPX if the file still exists, else its source
+	 * activity's GPS track - or null when neither is available any more. */
+	private List<CourseProcessing.TrackPoint> sourceTrack(Course course) {
+		byte[] gpx = originalGpxFileBytes(course);
+		if (gpx != null) return CourseProcessing.parseGpxTrack(gpx);
+		if (course.getSourceActivity() != null) {
+			return CourseProcessing.trackPointsFromActivity(
+					recordRepository.findByActivityIdOrderByT(course.getSourceActivity().getId()));
+		}
+		return null;
+	}
+
+	/** Rebuilds elevationSeries/elevationQuality from the course's source data and saves them.
+	 * False (nothing changed) when the source GPX file and activity are both gone, or the source
+	 * no longer parses. */
+	@Transactional
+	public boolean rebuildElevationSeries(Course course) {
+		List<CourseProcessing.TrackPoint> points;
+		try {
+			points = sourceTrack(course);
+		}
+		catch (CourseProcessing.GpxProcessingException e) {
+			return false;
+		}
+		if (points == null) return false;
+		List<Double> distances = new ArrayList<>(points.size());
+		List<Double> elevations = new ArrayList<>(points.size());
+		for (CourseProcessing.TrackPoint p : points) {
+			distances.add(p.distanceKm());
+			elevations.add(p.elevation());
+		}
+		CourseSections.ElevationSeries series = CourseSections.buildElevationSeries(distances, elevations);
+		course.setElevationQuality(series.elevationQuality());
+		course.setElevationSeries(series.series());
+		courseRepository.save(course);
+		return true;
+	}
+
+	/** Fills in the series on first read for a course created before sections existed
+	 * (elevationQuality still blank). One with no source data left is marked missing, so this isn't
+	 * retried on every read - the recompute endpoints can still try again later. */
+	@Transactional
+	public Course ensureElevationSeries(Course course) {
+		if (course.getElevationQuality() != null && !course.getElevationQuality().isBlank()) return course;
+		if (!rebuildElevationSeries(course)) {
+			course.setElevationQuality(CourseSections.ELEVATION_QUALITY_MISSING);
+			course.setElevationSeries(List.of());
+			courseRepository.save(course);
+		}
+		return course;
+	}
+
+	public record RecomputeCounts(int updated, int skipped) {}
+
+	/** rebuildElevationSeries for every one of an athlete's courses, one at a time. Synchronous: an
+	 * athlete has tens of courses at most and each takes milliseconds. */
+	@Transactional
+	public RecomputeCounts recomputeElevationForAthlete(String athleteId) {
+		int updated = 0;
+		int skipped = 0;
+		for (Course course : courseRepository.findByAthleteId(athleteId)) {
+			if (rebuildElevationSeries(course)) {
+				updated++;
+			}
+			else {
+				skipped++;
+			}
+		}
+		return new RecomputeCounts(updated, skipped);
 	}
 
 	/** The original uploaded GPX's bytes, or null if there isn't one (a course created from an

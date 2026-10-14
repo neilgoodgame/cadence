@@ -81,9 +81,18 @@ public class Course extends PrefixedIdEntity {
 	@Column(name = "elevation_profile", nullable = false)
 	private List<List<Double>> elevationProfile = new ArrayList<>();
 
+	/** "ok", "missing" (no or flat elevation) or "sparse" (points too far apart to see hills between
+	 * them) - see CourseSections. Blank until the series has been built (a course from before
+	 * V75); CourseService.ensureElevationSeries fills it on first read. */
+	@Column(name = "elevation_quality", nullable = false)
+	private String elevationQuality = "";
+
+	/** The raw elevation resampled every 10m from the start (CourseSections.SERIES_STEP_M); empty
+	 * unless elevationQuality is "ok". Sections and climbs are calculated from this on every read,
+	 * with the athlete's current settings, and never stored. */
 	@JdbcTypeCode(SqlTypes.JSON)
-	@Column(nullable = false)
-	private List<Climb> climbs = new ArrayList<>();
+	@Column(name = "elevation_series", nullable = false)
+	private List<Double> elevationSeries = new ArrayList<>();
 
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
@@ -151,8 +160,11 @@ public class Course extends PrefixedIdEntity {
 	public List<List<Double>> getElevationProfile() { return elevationProfile; }
 	public void setElevationProfile(List<List<Double>> elevationProfile) { this.elevationProfile = elevationProfile; }
 
-	public List<Climb> getClimbs() { return climbs; }
-	public void setClimbs(List<Climb> climbs) { this.climbs = climbs; }
+	public String getElevationQuality() { return elevationQuality; }
+	public void setElevationQuality(String elevationQuality) { this.elevationQuality = elevationQuality; }
+
+	public List<Double> getElevationSeries() { return elevationSeries; }
+	public void setElevationSeries(List<Double> elevationSeries) { this.elevationSeries = elevationSeries; }
 
 	public Instant getCreatedAt() { return createdAt; }
 }

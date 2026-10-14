@@ -5,6 +5,7 @@ from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 
 from core.models import PrefixedIDModel
+from courses.sections import SectionSettings
 
 
 class UserManager(BaseUserManager["User"]):
@@ -112,6 +113,18 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     race_block_weeks = models.PositiveSmallIntegerField(choices=RACE_BLOCK_WEEKS_CHOICES, default=16)
     RACE_KEY_SESSION_CAP_CHOICES = [(n, str(n)) for n in (6, 8, 10, 12, 15, 20)]
     race_key_session_cap = models.PositiveSmallIntegerField(choices=RACE_KEY_SESSION_CAP_CHOICES, default=10)
+    # Course-section preferences - every setting courses.sections.SectionSettings takes, with
+    # the same defaults. Sections are calculated on every course read, so a change here applies
+    # the next time a course is viewed; nothing is recomputed.
+    section_algorithm = models.CharField(max_length=20, default="douglas_peucker")
+    section_flat_max_pct = models.FloatField(default=1.0)
+    section_steep_min_pct = models.FloatField(default=4.0)
+    section_fit_tolerance_m = models.FloatField(default=2.0)
+    section_min_length_m = models.FloatField(default=250.0)
+    section_keep_min_rise_m = models.FloatField(default=5.0)
+    section_spike_window_m = models.FloatField(default=30.0)
+    section_smoothing_window_m = models.FloatField(default=100.0)
+    section_resample_step_m = models.FloatField(default=10.0)
     # Which running-power reading to trust when a FIT file carries both: a watch's own
     # accelerometer-based estimate (e.g. Garmin Running Power) and a third-party footpod's
     # (e.g. Stryd). The two commonly disagree substantially - native running-power algorithms
@@ -181,6 +194,30 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return self.email
+
+    def section_settings(self) -> SectionSettings:
+        return SectionSettings(
+            algorithm=self.section_algorithm,
+            flat_max_pct=self.section_flat_max_pct,
+            steep_min_pct=self.section_steep_min_pct,
+            fit_tolerance_m=self.section_fit_tolerance_m,
+            min_section_m=self.section_min_length_m,
+            keep_min_rise_m=self.section_keep_min_rise_m,
+            spike_window_m=self.section_spike_window_m,
+            smoothing_window_m=self.section_smoothing_window_m,
+            resample_step_m=self.section_resample_step_m,
+        )
+
+    def set_section_settings(self, settings: SectionSettings) -> None:
+        self.section_algorithm = settings.algorithm
+        self.section_flat_max_pct = settings.flat_max_pct
+        self.section_steep_min_pct = settings.steep_min_pct
+        self.section_fit_tolerance_m = settings.fit_tolerance_m
+        self.section_min_length_m = settings.min_section_m
+        self.section_keep_min_rise_m = settings.keep_min_rise_m
+        self.section_spike_window_m = settings.spike_window_m
+        self.section_smoothing_window_m = settings.smoothing_window_m
+        self.section_resample_step_m = settings.resample_step_m
 
 
 class PersonalAccessToken(PrefixedIDModel):

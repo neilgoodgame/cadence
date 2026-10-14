@@ -9,10 +9,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * GPX/track processing for Course: distance, elevation smoothing, climb detection, route
- * simplification and elevation-profile resampling. Mirrors the Python backend's
- * courses/processing.py function-for-function - a parity test (ported fixtures) checks the two
- * backends agree on distance/gain/loss/climbs within 0.5%, per README §3.6.
+ * GPX/track processing for Course: distance, elevation smoothing, the stored elevation series
+ * sections are calculated from, route simplification and elevation-profile resampling. Mirrors
+ * the Python backend's courses/processing.py function-for-function - a parity test (ported
+ * fixtures) checks the two backends agree on distance/gain/loss within 0.5%, per README §3.6.
  */
 public final class CourseProcessing {
 
@@ -22,10 +22,6 @@ public final class CourseProcessing {
 	private static final double EARTH_RADIUS_KM = 6371.0088;
 	private static final double ELEVATION_SMOOTH_WINDOW_M = 50.0;
 	private static final double ELEVATION_NOISE_THRESHOLD_M = 2.0;
-	private static final double CLIMB_MIN_LENGTH_M = 400.0;
-	private static final double CLIMB_MIN_GRADE_PCT = 1.5;
-	private static final double CLIMB_MIN_GAIN_M = 12.0;
-	private static final double CLIMB_MERGE_GAP_M = 200.0;
 	private static final int ROUTE_SIMPLIFY_MAX_POINTS = 500;
 	private static final int ELEVATION_PROFILE_POINTS = 200;
 	private static final double LOOP_THRESHOLD_M = 200.0;
@@ -41,7 +37,7 @@ public final class CourseProcessing {
 	public record ProcessedTrack(
 			double startLat, double startLng, double distanceKm, int elevationGainM, int elevationLossM,
 			Integer elevationMaxM, Integer elevationMinM, boolean isLoop, List<List<Double>> routePolyline,
-			List<List<Double>> elevationProfile, List<Climb> climbs) {}
+			List<List<Double>> elevationProfile, String elevationQuality, List<Double> elevationSeries) {}
 
 	private CourseProcessing() {
 	}
@@ -156,95 +152,6 @@ public final class CourseProcessing {
 		return new int[] {Math.round((float) gain), Math.round((float) loss)};
 	}
 
-	/** Indices of local min/max in the smoothed series (a zigzag filter using the same 2m
-	 * noise threshold as gainLoss), alternating starting with the first point. Feeds climb
-	 * detection below. */
-	static List<Integer> pivotIndices(Double[] smoothed) {
-		List<Integer> idxs = new ArrayList<>();
-		for (int i = 0; i < smoothed.length; i++) if (smoothed[i] != null) idxs.add(i);
-		if (idxs.size() < 2) return idxs;
-
-		List<Integer> pivots = new ArrayList<>();
-		pivots.add(idxs.get(0));
-		int direction = 0; // 0 undetermined, 1 up, -1 down
-		int extremeIdx = idxs.get(0);
-		for (int i = 1; i < idxs.size(); i++) {
-			int idx = idxs.get(i);
-			double v = smoothed[idx];
-			double extremeV = smoothed[extremeIdx];
-			if (direction >= 0 && v >= extremeV) {
-				extremeIdx = idx;
-				direction = 1;
-			}
-			else if (direction <= 0 && v <= extremeV) {
-				extremeIdx = idx;
-				direction = -1;
-			}
-			else if ((direction == 1 && extremeV - v >= ELEVATION_NOISE_THRESHOLD_M)
-					|| (direction == -1 && v - extremeV >= ELEVATION_NOISE_THRESHOLD_M)) {
-				pivots.add(extremeIdx);
-				direction = -direction;
-				extremeIdx = idx;
-			}
-		}
-		if (!pivots.get(pivots.size() - 1).equals(extremeIdx)) {
-			pivots.add(extremeIdx);
-		}
-		return pivots;
-	}
-
-	private record Leg(int startIdx, int endIdx, boolean uphill) {}
-
-	static List<Climb> detectClimbs(List<TrackPoint> points, Double[] smoothed) {
-		List<Integer> pivots = pivotIndices(smoothed);
-		if (pivots.size() < 2) return List.of();
-
-		List<Leg> legs = new ArrayList<>();
-		for (int i = 0; i < pivots.size() - 1; i++) {
-			int a = pivots.get(i);
-			int b = pivots.get(i + 1);
-			legs.add(new Leg(a, b, smoothed[b] > smoothed[a]));
-		}
-
-		List<double[]> merged = new ArrayList<>(); // {startIdx, endIdx, gainM}
-		int i = 0;
-		while (i < legs.size()) {
-			Leg leg = legs.get(i);
-			if (!leg.uphill()) {
-				i++;
-				continue;
-			}
-			int startIdx = leg.startIdx();
-			int endIdx = leg.endIdx();
-			double gainM = smoothed[endIdx] - smoothed[startIdx];
-			int j = i + 1;
-			while (j + 1 < legs.size() && !legs.get(j).uphill()) {
-				Leg dip = legs.get(j);
-				double dipKm = points.get(dip.endIdx()).distanceKm() - points.get(dip.startIdx()).distanceKm();
-				if (dipKm * 1000.0 >= CLIMB_MERGE_GAP_M) break;
-				Leg nextUp = legs.get(j + 1);
-				endIdx = nextUp.endIdx();
-				gainM += smoothed[nextUp.endIdx()] - smoothed[nextUp.startIdx()];
-				j += 2;
-			}
-			merged.add(new double[] {startIdx, endIdx, gainM});
-			i = j;
-		}
-
-		List<Climb> climbs = new ArrayList<>();
-		for (double[] m : merged) {
-			double startKm = points.get((int) m[0]).distanceKm();
-			double endKm = points.get((int) m[1]).distanceKm();
-			double lengthM = (endKm - startKm) * 1000.0;
-			double gainM = m[2];
-			if (lengthM < CLIMB_MIN_LENGTH_M || gainM < CLIMB_MIN_GAIN_M) continue;
-			double gradePct = lengthM > 0 ? (gainM / lengthM) * 100.0 : 0.0;
-			if (gradePct < CLIMB_MIN_GRADE_PCT) continue;
-			climbs.add(new Climb(round2(startKm), round2(endKm), Math.round((float) gainM), round1(gradePct)));
-		}
-		return climbs;
-	}
-
 	private static double perpendicularDistance(double[] point, double[] start, double[] end) {
 		double x = point[0];
 		double y = point[1];
@@ -327,8 +234,17 @@ public final class CourseProcessing {
 		return haversineKm(start.lat(), start.lng(), end.lat(), end.lng()) * 1000.0 <= LOOP_THRESHOLD_M;
 	}
 
+	/** Every derived Course field. Sections and climbs aren't among them - they're calculated on
+	 * read from elevationSeries with the athlete's current settings (see CourseSections). */
 	public static ProcessedTrack processTrackPoints(List<TrackPoint> points) {
 		Double[] smoothed = smoothedElevations(points);
+		List<Double> rawDistances = new ArrayList<>(points.size());
+		List<Double> rawElevations = new ArrayList<>(points.size());
+		for (TrackPoint p : points) {
+			rawDistances.add(p.distanceKm());
+			rawElevations.add(p.elevation());
+		}
+		CourseSections.ElevationSeries series = CourseSections.buildElevationSeries(rawDistances, rawElevations);
 		int[] gainLoss = gainLoss(smoothed);
 		List<Double> elevations = new ArrayList<>();
 		for (Double v : smoothed) if (v != null) elevations.add(v);
@@ -338,7 +254,8 @@ public final class CourseProcessing {
 				gainLoss[0], gainLoss[1],
 				elevations.isEmpty() ? null : (int) Math.round(elevations.stream().mapToDouble(Double::doubleValue).max().orElse(0)),
 				elevations.isEmpty() ? null : (int) Math.round(elevations.stream().mapToDouble(Double::doubleValue).min().orElse(0)),
-				isLoop(points), simplifyRoute(points), elevationProfile(points, smoothed), detectClimbs(points, smoothed));
+				isLoop(points), simplifyRoute(points), elevationProfile(points, smoothed), series.elevationQuality(),
+				series.series());
 	}
 
 	private static double haversineKm(double lat1, double lng1, double lat2, double lng2) {

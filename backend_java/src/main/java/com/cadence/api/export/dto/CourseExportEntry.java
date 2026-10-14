@@ -11,5 +11,6 @@ public record CourseExportEntry(
 		String id, String name, String locationName, Double startLat, Double startLng, Double distanceKm,
 		Integer elevationGainM, Integer elevationLossM, Integer elevationMaxM, Integer elevationMinM, boolean isLoop,
 		String source, String sourceActivityId, String gpxFilename, String gpxBase64, List<List<Double>> routePolyline,
-		List<List<Double>> elevationProfile, List<Climb> climbs, Instant createdAt) {
+		List<List<Double>> elevationProfile, List<Climb> climbs, Instant createdAt, String elevationQuality,
+		List<Double> elevationSeries) {
 }

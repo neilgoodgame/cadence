@@ -44,6 +44,10 @@ public final class CourseSections {
 	 * straight-line resampling - a route-planner export with points only at turns. */
 	static final double SPARSE_MEDIAN_SPACING_M = 100.0;
 	static final double STEEPEST_WINDOW_M = 100.0;
+	/** Spacing of the stored elevation series (Course.elevationSeries). Sections are always
+	 * calculated from that series, so a coarser resampleStepM resamples it again; finer isn't
+	 * allowed (Settings.validate). */
+	public static final double SERIES_STEP_M = 10.0;
 
 	public record Settings(
 			String algorithm, double flatMaxPct, double steepMinPct, double fitToleranceM, double minSectionM,
@@ -57,30 +61,34 @@ public final class CourseSections {
 					spikeWindowM, smoothingWindowM, resampleStepM);
 		}
 
-		/** Throws IllegalArgumentException naming the first out-of-range setting. The ranges keep a
-		 * marathon from being cut into thousands of sections. */
-		public void validate() {
+		/** A message naming the first out-of-range setting, or null when all are valid. The ranges
+		 * keep a marathon from being cut into thousands of sections. API callers report this message
+		 * directly rather than catching validate()'s exception, so no exception text ever reaches a
+		 * response. */
+		public String validationError() {
 			if (!ALGORITHM_DOUGLAS_PEUCKER.equals(algorithm) && !ALGORITHM_BOTTOM_UP.equals(algorithm)) {
-				throw new IllegalArgumentException(
-						"algorithm must be one of " + ALGORITHM_DOUGLAS_PEUCKER + ", " + ALGORITHM_BOTTOM_UP + ".");
+				return "algorithm must be one of " + ALGORITHM_DOUGLAS_PEUCKER + ", " + ALGORITHM_BOTTOM_UP + ".";
 			}
-			checkRange("flat_max_pct", flatMaxPct, 0.5, 3.0);
-			checkRange("steep_min_pct", steepMinPct, 2.0, 10.0);
-			checkRange("fit_tolerance_m", fitToleranceM, 0.5, 10.0);
-			checkRange("min_section_m", minSectionM, 50.0, 1000.0);
-			checkRange("keep_min_rise_m", keepMinRiseM, 1.0, 20.0);
-			checkRange("spike_window_m", spikeWindowM, 0.0, 100.0);
-			checkRange("smoothing_window_m", smoothingWindowM, 20.0, 300.0);
-			checkRange("resample_step_m", resampleStepM, 10.0, 50.0);
-			if (steepMinPct <= flatMaxPct) {
-				throw new IllegalArgumentException("steep_min_pct must be greater than flat_max_pct.");
+			String[] names = {"flat_max_pct", "steep_min_pct", "fit_tolerance_m", "min_section_m", "keep_min_rise_m",
+					"spike_window_m", "smoothing_window_m", "resample_step_m"};
+			double[] values = {flatMaxPct, steepMinPct, fitToleranceM, minSectionM, keepMinRiseM, spikeWindowM,
+					smoothingWindowM, resampleStepM};
+			double[][] ranges = {{0.5, 3.0}, {2.0, 10.0}, {0.5, 10.0}, {50.0, 1000.0}, {1.0, 20.0}, {0.0, 100.0},
+					{20.0, 300.0}, {10.0, 50.0}};
+			for (int i = 0; i < names.length; i++) {
+				if (!(ranges[i][0] <= values[i] && values[i] <= ranges[i][1])) {
+					return names[i] + " must be between " + fmt(ranges[i][0]) + " and " + fmt(ranges[i][1]) + ".";
+				}
 			}
+			if (steepMinPct <= flatMaxPct) return "steep_min_pct must be greater than flat_max_pct.";
+			return null;
 		}
 
-		private static void checkRange(String name, double value, double lo, double hi) {
-			if (!(lo <= value && value <= hi)) {
-				throw new IllegalArgumentException(name + " must be between " + fmt(lo) + " and " + fmt(hi) + ".");
-			}
+		/** Throws IllegalArgumentException with validationError()'s message when a setting is out of
+		 * range. */
+		public void validate() {
+			String error = validationError();
+			if (error != null) throw new IllegalArgumentException(error);
 		}
 
 		private static String fmt(double v) {
@@ -96,6 +104,9 @@ public final class CourseSections {
 
 	public record Result(String elevationQuality, List<Section> sections) {}
 
+	/** What a Course stores: the elevation quality, plus the series when it's ok. */
+	public record ElevationSeries(String elevationQuality, List<Double> series) {}
+
 	private record Seg(int i, int j) {}
 
 	private record Track(double[] xs, double[] ys) {}
@@ -105,17 +116,48 @@ public final class CourseSections {
 
 	/** Sections covering the whole track, or none (with the reason as elevationQuality) when the
 	 * elevation is missing or too sparse to trust. distancesKm must be cumulative; elevations may
-	 * contain nulls (a point with no altitude). */
+	 * contain nulls (a point with no altitude). Equivalent to buildElevationSeries then
+	 * sectionsFromSeries. */
 	public static Result detect(List<Double> distancesKm, List<Double> elevationsM, Settings settings) {
 		settings.validate();
+		ElevationSeries series = buildElevationSeries(distancesKm, elevationsM);
+		if (!ELEVATION_QUALITY_OK.equals(series.elevationQuality())) return new Result(series.elevationQuality(), List.of());
+		return new Result(series.elevationQuality(), sectionsFromSeries(series.series(), settings));
+	}
+
+	/** The elevation quality plus, when it's ok, the raw (unsmoothed) elevation resampled to
+	 * SERIES_STEP_M from the track's start. Unsmoothed so every setting, smoothing included, still
+	 * applies at read time; full precision because rounding even to the centimetre shifts
+	 * bottom-up's near-tied merges. */
+	public static ElevationSeries buildElevationSeries(List<Double> distancesKm, List<Double> elevationsM) {
 		String quality = elevationQuality(distancesKm, elevationsM);
-		if (!ELEVATION_QUALITY_OK.equals(quality)) return new Result(quality, List.of());
+		if (!ELEVATION_QUALITY_OK.equals(quality)) return new ElevationSeries(quality, List.of());
 		Track raw = clean(distancesKm, elevationsM);
-		Track grid = resample(raw.xs(), raw.ys(), settings.resampleStepM());
-		double[] xs = grid.xs();
-		if (xs.length < 2) return new Result(quality, List.of());
+		double[] ys = resample(raw.xs(), raw.ys(), SERIES_STEP_M).ys();
+		List<Double> series = new ArrayList<>(ys.length);
+		for (double y : ys) series.add(y);
+		return new ElevationSeries(quality, series);
+	}
+
+	/** Sections for a stored elevation series (see buildElevationSeries), positioned in km from the
+	 * track's start. */
+	public static List<Section> sectionsFromSeries(List<Double> series, Settings settings) {
+		settings.validate();
+		if (series.size() < 2) return List.of();
+		double[] xs = new double[series.size()];
+		double[] ys = new double[series.size()];
+		for (int k = 0; k < xs.length; k++) {
+			xs[k] = k * SERIES_STEP_M;
+			ys[k] = series.get(k);
+		}
 		double step = settings.resampleStepM();
-		double[] ys = runningMedian(grid.ys(), halfWindow(settings.spikeWindowM(), step));
+		if (step != SERIES_STEP_M) {
+			Track grid = resample(xs, ys, step);
+			xs = grid.xs();
+			ys = grid.ys();
+			if (xs.length < 2) return List.of();
+		}
+		ys = runningMedian(ys, halfWindow(settings.spikeWindowM(), step));
 		ys = runningMean(ys, halfWindow(settings.smoothingWindowM(), step));
 		List<Seg> segs = ALGORITHM_BOTTOM_UP.equals(settings.algorithm())
 				? bottomUp(xs, ys, settings.fitToleranceM())
@@ -123,7 +165,18 @@ public final class CourseSections {
 		segs = tidy(xs, ys, segs, settings);
 		List<Section> sections = new ArrayList<>(segs.size());
 		for (Seg seg : segs) sections.add(describe(xs, ys, seg, settings));
-		return new Result(quality, sections);
+		return sections;
+	}
+
+	/** The climb and steep-climb sections in the shape the API's `climbs` has always had. */
+	public static List<Climb> climbsFromSections(List<Section> sections) {
+		List<Climb> climbs = new ArrayList<>();
+		for (Section s : sections) {
+			if (CLIMB.equals(s.type()) || STEEP_CLIMB.equals(s.type())) {
+				climbs.add(new Climb(s.startKm(), s.endKm(), s.gainM(), s.avgGradePct()));
+			}
+		}
+		return climbs;
 	}
 
 	public static String elevationQuality(List<Double> distancesKm, List<Double> elevationsM) {
