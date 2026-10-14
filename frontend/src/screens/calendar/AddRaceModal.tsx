@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { listTags } from "../../api/activities";
 import { listCourses } from "../../api/courses";
 import { createRace } from "../../api/races";
 import type { RacePriority } from "../../api/types";
@@ -53,12 +54,14 @@ export function AddRaceModal({
   const [sport, setSport] = useState(initialSport);
   const [priority, setPriority] = useState<RacePriority>("A");
   const [courseId, setCourseId] = useState("");
+  const [keySessionTagId, setKeySessionTagId] = useState("");
   const [distanceKm, setDistanceKm] = useState("");
   const [goalTime, setGoalTime] = useState("");
   const [url, setUrl] = useState("");
   const [notes, setNotes] = useState("");
 
   const { data: coursesData } = useQuery({ queryKey: ["courses", ""], queryFn: () => listCourses() });
+  const { data: tagsData } = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -72,6 +75,7 @@ export function AddRaceModal({
         goal_time: goalTime || null,
         url: url || null,
         notes,
+        key_session_tag_id: keySessionTagId || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["races"] });
@@ -143,6 +147,14 @@ export function AddRaceModal({
           <select value={courseId} onChange={(e) => setCourseId(e.target.value)} style={fieldStyle}>
             <option value="">—</option>
             {(coursesData?.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Key session tag (optional)</div>
+          <select value={keySessionTagId} onChange={(e) => setKeySessionTagId(e.target.value)} style={fieldStyle}>
+            <option value="">— Use "Key session" tag —</option>
+            {(tagsData?.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </label>
 

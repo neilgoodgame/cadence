@@ -2454,6 +2454,9 @@ paths:
                 url: { type: [string, "null"], format: uri }
                 results_url: { type: [string, "null"], format: uri }
                 notes: { type: string }
+                key_session_tag_id:
+                  type: [string, "null"]
+                  description: Overrides the athlete-wide "Key session" tag lookup for this race's key_sessions "tagged" category. Null uses that default.
       responses:
         "201":
           description: Race created.
@@ -2504,6 +2507,7 @@ paths:
                 url: { type: [string, "null"], format: uri }
                 results_url: { type: [string, "null"], format: uri }
                 notes: { type: string }
+                key_session_tag_id: { type: [string, "null"] }
       responses:
         "200":
           description: Updated race.
@@ -4206,6 +4210,9 @@ components:
         url: { type: [string, "null"], format: uri }
         results_url: { type: [string, "null"], format: uri, description: Link to the athlete's own results page on the race organiser's site. }
         notes: { type: string }
+        key_session_tag_id:
+          type: [string, "null"]
+          description: Overrides the athlete-wide "Key session" tag lookup for this race's key_sessions "tagged" category. Null uses that default.
         parent_race_id:
           type: [string, "null"]
           description: B/C races only - the first A race on/after this one whose block contains this race's week. Null for an A race, or a standalone tune-up.

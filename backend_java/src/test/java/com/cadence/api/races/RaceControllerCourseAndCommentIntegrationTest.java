@@ -77,7 +77,7 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 		authAsSelf(athlete.getId());
 
 		RaceResponse response = raceController.createRace(
-				new RaceCreateRequest("Spring Marathon", "2026-04-12", "run", null, null, null, null, null, null, null, null, null));
+				new RaceCreateRequest("Spring Marathon", "2026-04-12", "run", null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(response.priority()).isEqualTo("A");
 	}
@@ -94,7 +94,7 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 		authAsSelf(athlete.getId());
 
 		RaceResponse response = raceController.createRace(new RaceCreateRequest(
-				"Valencia Marathon", "2026-12-06", "run", null, null, null, null, null, null, null, "B", course.getId()));
+				"Valencia Marathon", "2026-12-06", "run", null, null, null, null, null, null, null, "B", course.getId(), null));
 
 		assertThat(response.priority()).isEqualTo("B");
 		assertThat(response.courseId()).isEqualTo(course.getId());

@@ -499,12 +499,14 @@ def key_sessions(race: Race, window_start: date, window_end: date) -> dict[str, 
         primary_activity__isnull=True,
     ).exclude(pk__in=seen_activity_ids)
 
-    tag = Tag.objects.filter(athlete_id=athlete_id, name="Key session").first()
+    # A race can opt into its own tag for this category (Race.key_session_tag) instead of the
+    # athlete-wide "Key session" tag - lets different goal races use different tags.
+    tag = race.key_session_tag or Tag.objects.filter(athlete_id=athlete_id, name="Key session").first()
     if tag:
         for a in base_qs.filter(activity_tags__tag=tag):
             if a.id in seen_activity_ids:
                 continue
-            candidates.append(_activity_candidate(a, "tagged", "Key session"))
+            candidates.append(_activity_candidate(a, "tagged", tag.name))
             seen_activity_ids.add(a.id)
 
     long_sport = "bike" if race.sport == "bike" else "run"

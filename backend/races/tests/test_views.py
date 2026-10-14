@@ -3,6 +3,7 @@ from datetime import date
 from django.test import TestCase
 
 from accounts.models import User, UserRelationship
+from activities.models import Tag
 from activities.tests.helpers import _bearer_client, _delegated_client
 from courses.models import Course
 from races.models import Race, RaceComment
@@ -36,6 +37,23 @@ class RaceCrudTests(TestCase):
         data = response.json()
         self.assertEqual(data["priority"], "B")
         self.assertEqual(data["course_id"], course.id)
+
+    def test_create_and_update_race_key_session_tag_id_round_trips(self):
+        tag = Tag.objects.create(athlete=self.athlete, name="Marathon key")
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {"name": "Goal Marathon", "date": "2026-10-12", "sport": "run", "key_session_tag_id": tag.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["key_session_tag_id"], tag.id)
+
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/races/{data['id']}", {"key_session_tag_id": None}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["key_session_tag_id"])
 
     def test_list_includes_computed_block_fields_for_a_race(self):
         Race.objects.create(

@@ -1,6 +1,7 @@
 package com.cadence.api.races;
 
 import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.Tag;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import com.cadence.api.courses.Course;
@@ -64,6 +65,13 @@ public class Race extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private String notes = "";
 
+	/** Overrides the athlete-wide "Key session" tag lookup for this race's key_sessions.items
+	 * "tagged" category (RaceBlockService.keySessions) - lets different goal races use different
+	 * tags instead of sharing the one global tag name. Null falls back to that default. */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "key_session_tag_id")
+	private Tag keySessionTag;
+
 	@Override
 	protected String idPrefix() {
 		return "race";
@@ -107,4 +115,7 @@ public class Race extends PrefixedIdEntity {
 
 	public String getNotes() { return notes; }
 	public void setNotes(String notes) { this.notes = notes; }
+
+	public Tag getKeySessionTag() { return keySessionTag; }
+	public void setKeySessionTag(Tag keySessionTag) { this.keySessionTag = keySessionTag; }
 }

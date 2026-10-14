@@ -40,6 +40,12 @@ class Race(PrefixedIDModel):
     url = models.URLField(null=True, blank=True)  # noqa: DJ001 -- API contract uses null, not ""
     results_url = models.URLField(null=True, blank=True)  # noqa: DJ001 -- link to athlete's result page
     notes = models.CharField(max_length=500, blank=True, default="")
+    # Overrides the athlete-wide "Key session" tag lookup for this race's key_sessions "tagged"
+    # category (races.blocks.key_sessions) - lets different goal races use different tags instead
+    # of sharing the one global tag name. Null falls back to that default.
+    key_session_tag = models.ForeignKey(
+        "activities.Tag", null=True, blank=True, on_delete=models.SET_NULL, related_name="key_session_races"
+    )
 
     class Meta:
         ordering = ["date"]

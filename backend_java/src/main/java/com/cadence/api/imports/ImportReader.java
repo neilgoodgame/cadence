@@ -771,10 +771,13 @@ public class ImportReader {
 				String newActivityId = rr.activityId() != null ? activityIdMap.get(rr.activityId()) : null;
 				String newCourseId = rr.courseId() != null ? courseIdMap.get(rr.courseId()) : null;
 				transactionTemplate.executeWithoutResult(status -> {
+					// keySessionTagId is deliberately left null: tags aren't part of this export/import
+					// pipeline (no id-remapping map for them like courseIdMap/activityIdMap), so the old
+					// tag id wouldn't resolve to anything in the destination athlete's own tags.
 					Race created = raceService.createRace(athlete,
 							new RaceCreateRequest(rr.name(), rr.date(), rr.sport() == null || rr.sport().isBlank() ? null : rr.sport(),
 									rr.distanceKm(), rr.goalTime(), rr.resultTime(), newActivityId, rr.url(), rr.resultsUrl(),
-									rr.notes(), rr.priority(), newCourseId));
+									rr.notes(), rr.priority(), newCourseId, null));
 					raceIdMap.put(rr.id(), created.getId());
 				});
 				counts.races++;

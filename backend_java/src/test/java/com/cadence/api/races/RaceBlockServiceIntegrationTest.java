@@ -274,6 +274,68 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 		assertThat(byActivityId.get(runTagged.getId()).sport()).isEqualTo(Sport.RUN);
 	}
 
+	/** A race with its own key_session_tag set pulls "tagged" candidates from that tag instead of
+	 * the athlete-wide tag literally named "Key session" - lets different goal races use
+	 * different tags rather than sharing one global name. */
+	@Test
+	void raceWithItsOwnKeySessionTagIgnoresTheDefaultTag() {
+		User athlete = newAthlete("block-key-sessions-own-tag@example.cc");
+
+		Tag defaultTag = new Tag();
+		defaultTag.setAthlete(athlete);
+		defaultTag.setName("Key session");
+		defaultTag = tagRepository.save(defaultTag);
+
+		Tag marathonTag = new Tag();
+		marathonTag.setAthlete(athlete);
+		marathonTag.setName("Marathon key");
+		marathonTag = tagRepository.save(marathonTag);
+
+		Race race = newRace(athlete, "Goal Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
+		race.setSport(Sport.RUN);
+		race.setDistanceKm(42.2);
+		race.setKeySessionTag(marathonTag);
+		raceRepository.save(race);
+
+		Activity taggedWithDefault = new Activity();
+		taggedWithDefault.setAthlete(athlete);
+		taggedWithDefault.setSport(Sport.RUN);
+		taggedWithDefault.setName("Tagged with default");
+		taggedWithDefault.setStartDate(Instant.parse("2026-09-05T07:00:00Z"));
+		taggedWithDefault.setDistanceKm(10.0);
+		taggedWithDefault.setMovingTime(2400);
+		taggedWithDefault = activityRepository.save(taggedWithDefault);
+		ActivityTag defaultLink = new ActivityTag();
+		defaultLink.setActivity(taggedWithDefault);
+		defaultLink.setTag(defaultTag);
+		activityTagRepository.save(defaultLink);
+
+		Activity taggedWithMarathon = new Activity();
+		taggedWithMarathon.setAthlete(athlete);
+		taggedWithMarathon.setSport(Sport.RUN);
+		taggedWithMarathon.setName("Tagged with marathon key");
+		taggedWithMarathon.setStartDate(Instant.parse("2026-09-06T07:00:00Z"));
+		taggedWithMarathon.setDistanceKm(11.0);
+		taggedWithMarathon.setMovingTime(2500);
+		taggedWithMarathon = activityRepository.save(taggedWithMarathon);
+		ActivityTag marathonLink = new ActivityTag();
+		marathonLink.setActivity(taggedWithMarathon);
+		marathonLink.setTag(marathonTag);
+		activityTagRepository.save(marathonLink);
+
+		RaceBlockResponse result = raceBlockService.getRaceBlock(race);
+		Map<String, String> reasonByActivityId = result.keySessions().items().stream()
+				.filter(i -> i.activityId() != null)
+				.collect(Collectors.toMap(RaceBlockResponse.KeySessionItem::activityId, RaceBlockResponse.KeySessionItem::reason));
+		Map<String, String> labelByActivityId = result.keySessions().items().stream()
+				.filter(i -> i.activityId() != null)
+				.collect(Collectors.toMap(RaceBlockResponse.KeySessionItem::activityId, RaceBlockResponse.KeySessionItem::label));
+
+		assertThat(reasonByActivityId).doesNotContainEntry(taggedWithDefault.getId(), "tagged");
+		assertThat(reasonByActivityId).containsEntry(taggedWithMarathon.getId(), "tagged");
+		assertThat(labelByActivityId.get(taggedWithMarathon.getId())).isEqualTo("Marathon key");
+	}
+
 	/** A run below the intensity threshold still counts as a "quality" key session if its
 	 * recorded stream shows >= 20 continuous minutes at or faster than the race's goal pace -
 	 * the scan that reads each run's (t, distance_km) stream. */

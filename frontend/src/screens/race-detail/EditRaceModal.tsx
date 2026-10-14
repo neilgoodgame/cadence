@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { listTags } from "../../api/activities";
 import { listCourses } from "../../api/courses";
 import { updateRace } from "../../api/races";
 import type { Race, RacePriority } from "../../api/types";
@@ -31,6 +32,7 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
   const [sport, setSport] = useState(race.sport);
   const [priority, setPriority] = useState<RacePriority>(race.priority);
   const [courseId, setCourseId] = useState(race.course_id ?? "");
+  const [keySessionTagId, setKeySessionTagId] = useState(race.key_session_tag_id ?? "");
   const [distanceKm, setDistanceKm] = useState(race.distance_km?.toString() ?? "");
   const [goalTime, setGoalTime] = useState(race.goal_time ?? "");
   const [resultTime, setResultTime] = useState(race.result_time ?? "");
@@ -39,6 +41,7 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
   const [notes, setNotes] = useState(race.notes);
 
   const { data: coursesData } = useQuery({ queryKey: ["courses", ""], queryFn: () => listCourses() });
+  const { data: tagsData } = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -54,6 +57,7 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
         url: url || null,
         results_url: resultsUrl || null,
         notes,
+        key_session_tag_id: keySessionTagId || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["race", race.id] });
@@ -120,6 +124,16 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
             <option value="">—</option>
             {(coursesData?.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+        </label>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Key session tag (optional)</div>
+          <select value={keySessionTagId} onChange={(e) => setKeySessionTagId(e.target.value)} style={fieldStyle}>
+            <option value="">— Use "Key session" tag —</option>
+            {(tagsData?.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 4 }}>
+            Which tag this race's "Key sessions" card pulls from, if you'd rather not share the account-wide "Key session" tag with other races.
+          </div>
         </label>
         <label>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Distance km</div>

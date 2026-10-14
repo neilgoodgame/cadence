@@ -19,5 +19,6 @@ public record RaceResponse(
 		String notes,
 		String parentRaceId,
 		LocalDate blockStart,
-		Integer blockWeeks
+		Integer blockWeeks,
+		String keySessionTagId
 ) {}
