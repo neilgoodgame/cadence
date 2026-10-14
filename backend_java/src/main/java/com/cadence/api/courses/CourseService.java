@@ -270,12 +270,8 @@ public class CourseService {
 				values[5] != null ? values[5] : base.spikeWindowM(),
 				values[6] != null ? values[6] : base.smoothingWindowM(),
 				values[7] != null ? values[7] : base.resampleStepM());
-		try {
-			merged.validate();
-		}
-		catch (IllegalArgumentException e) {
-			throw new ValidationException(e.getMessage(), "course_section_settings");
-		}
+		String error = merged.validationError();
+		if (error != null) throw new ValidationException(error, "course_section_settings");
 		return merged;
 	}
 

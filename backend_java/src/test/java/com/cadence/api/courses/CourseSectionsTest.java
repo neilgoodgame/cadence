@@ -175,4 +175,13 @@ class CourseSectionsTest {
 		assertThat(climbs.get(climbs.size() - 1).startKm()).isEqualTo(expected.get(expected.size() - 1).startKm());
 		assertThat(climbs.get(climbs.size() - 1).gainM()).isEqualTo(expected.get(expected.size() - 1).gainM());
 	}
+
+	@Test
+	void validationErrorReportsWithoutThrowing() {
+		CourseSections.Settings d = CourseSections.Settings.DEFAULTS;
+		assertThat(d.validationError()).isNull();
+		assertThat(new CourseSections.Settings(d.algorithm(), d.flatMaxPct(), d.steepMinPct(), 0.1, d.minSectionM(),
+				d.keepMinRiseM(), d.spikeWindowM(), d.smoothingWindowM(), d.resampleStepM()).validationError())
+				.isEqualTo("fit_tolerance_m must be between 0.5 and 10.");
+	}
 }

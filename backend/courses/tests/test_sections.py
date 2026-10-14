@@ -156,6 +156,12 @@ class SettingsValidationTests(SimpleTestCase):
     def test_defaults_are_valid(self):
         DEFAULT_SETTINGS.validate()
 
+    def test_validation_error_reports_without_raising(self):
+        self.assertIsNone(DEFAULT_SETTINGS.validation_error())
+        self.assertEqual(
+            SectionSettings(fit_tolerance_m=0.1).validation_error(), "fit_tolerance_m must be between 0.5 and 10."
+        )
+
     def test_unknown_algorithm_is_rejected(self):
         with self.assertRaisesMessage(ValueError, "algorithm"):
             SectionSettings(algorithm="kmeans").validate()

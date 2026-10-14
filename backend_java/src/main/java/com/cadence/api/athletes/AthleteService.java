@@ -189,12 +189,8 @@ public class AthleteService {
 		}
 		if (request.courseSectionSettings() != null) {
 			CourseSections.Settings merged = request.courseSectionSettings().mergeInto(athlete.getCourseSectionSettings());
-			try {
-				merged.validate();
-			}
-			catch (IllegalArgumentException e) {
-				throw new ValidationException(e.getMessage(), "courseSectionSettings");
-			}
+			String error = merged.validationError();
+			if (error != null) throw new ValidationException(error, "courseSectionSettings");
 			athlete.setCourseSectionSettings(merged);
 		}
 		userRepository.save(athlete);

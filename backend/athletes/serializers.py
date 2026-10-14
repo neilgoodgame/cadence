@@ -33,10 +33,9 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
 
     def validate_course_section_settings(self, value: dict[str, Any]) -> SectionSettings:
         merged = replace(self.instance.section_settings(), **value)
-        try:
-            merged.validate()
-        except ValueError as exc:
-            raise serializers.ValidationError(str(exc)) from exc
+        error = merged.validation_error()
+        if error is not None:
+            raise serializers.ValidationError(error)
         return merged
 
     def update(self, instance: User, validated_data: dict[str, Any]) -> User:

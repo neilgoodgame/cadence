@@ -61,30 +61,34 @@ public final class CourseSections {
 					spikeWindowM, smoothingWindowM, resampleStepM);
 		}
 
-		/** Throws IllegalArgumentException naming the first out-of-range setting. The ranges keep a
-		 * marathon from being cut into thousands of sections. */
-		public void validate() {
+		/** A message naming the first out-of-range setting, or null when all are valid. The ranges
+		 * keep a marathon from being cut into thousands of sections. API callers report this message
+		 * directly rather than catching validate()'s exception, so no exception text ever reaches a
+		 * response. */
+		public String validationError() {
 			if (!ALGORITHM_DOUGLAS_PEUCKER.equals(algorithm) && !ALGORITHM_BOTTOM_UP.equals(algorithm)) {
-				throw new IllegalArgumentException(
-						"algorithm must be one of " + ALGORITHM_DOUGLAS_PEUCKER + ", " + ALGORITHM_BOTTOM_UP + ".");
+				return "algorithm must be one of " + ALGORITHM_DOUGLAS_PEUCKER + ", " + ALGORITHM_BOTTOM_UP + ".";
 			}
-			checkRange("flat_max_pct", flatMaxPct, 0.5, 3.0);
-			checkRange("steep_min_pct", steepMinPct, 2.0, 10.0);
-			checkRange("fit_tolerance_m", fitToleranceM, 0.5, 10.0);
-			checkRange("min_section_m", minSectionM, 50.0, 1000.0);
-			checkRange("keep_min_rise_m", keepMinRiseM, 1.0, 20.0);
-			checkRange("spike_window_m", spikeWindowM, 0.0, 100.0);
-			checkRange("smoothing_window_m", smoothingWindowM, 20.0, 300.0);
-			checkRange("resample_step_m", resampleStepM, 10.0, 50.0);
-			if (steepMinPct <= flatMaxPct) {
-				throw new IllegalArgumentException("steep_min_pct must be greater than flat_max_pct.");
+			String[] names = {"flat_max_pct", "steep_min_pct", "fit_tolerance_m", "min_section_m", "keep_min_rise_m",
+					"spike_window_m", "smoothing_window_m", "resample_step_m"};
+			double[] values = {flatMaxPct, steepMinPct, fitToleranceM, minSectionM, keepMinRiseM, spikeWindowM,
+					smoothingWindowM, resampleStepM};
+			double[][] ranges = {{0.5, 3.0}, {2.0, 10.0}, {0.5, 10.0}, {50.0, 1000.0}, {1.0, 20.0}, {0.0, 100.0},
+					{20.0, 300.0}, {10.0, 50.0}};
+			for (int i = 0; i < names.length; i++) {
+				if (!(ranges[i][0] <= values[i] && values[i] <= ranges[i][1])) {
+					return names[i] + " must be between " + fmt(ranges[i][0]) + " and " + fmt(ranges[i][1]) + ".";
+				}
 			}
+			if (steepMinPct <= flatMaxPct) return "steep_min_pct must be greater than flat_max_pct.";
+			return null;
 		}
 
-		private static void checkRange(String name, double value, double lo, double hi) {
-			if (!(lo <= value && value <= hi)) {
-				throw new IllegalArgumentException(name + " must be between " + fmt(lo) + " and " + fmt(hi) + ".");
-			}
+		/** Throws IllegalArgumentException with validationError()'s message when a setting is out of
+		 * range. */
+		public void validate() {
+			String error = validationError();
+			if (error != null) throw new IllegalArgumentException(error);
 		}
 
 		private static String fmt(double v) {

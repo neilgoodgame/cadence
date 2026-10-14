@@ -61,10 +61,9 @@ def _preview_settings(request: Request, course: Course) -> SectionSettings | Non
     if not overrides:
         return None
     settings = replace(course.athlete.section_settings(), **overrides)
-    try:
-        settings.validate()
-    except ValueError as exc:
-        raise ValidationError({"course_section_settings": str(exc)}) from exc
+    error = settings.validation_error()
+    if error is not None:
+        raise ValidationError({"course_section_settings": error})
     return settings
 
 

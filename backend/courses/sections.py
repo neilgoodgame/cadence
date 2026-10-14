@@ -58,11 +58,13 @@ class SectionSettings:
     smoothing_window_m: float = 100.0
     resample_step_m: float = 10.0
 
-    def validate(self) -> None:
-        """Raises ValueError naming the first out-of-range setting. The ranges keep a
-        marathon from being cut into thousands of sections."""
+    def validation_error(self) -> str | None:
+        """A message naming the first out-of-range setting, or None when all are valid. The
+        ranges keep a marathon from being cut into thousands of sections. API callers report
+        this message directly rather than catching validate()'s exception, so no exception
+        text ever reaches a response."""
         if self.algorithm not in ALGORITHMS:
-            raise ValueError(f"algorithm must be one of {', '.join(ALGORITHMS)}.")
+            return f"algorithm must be one of {', '.join(ALGORITHMS)}."
         for name, lo, hi in (
             ("flat_max_pct", 0.5, 3.0),
             ("steep_min_pct", 2.0, 10.0),
@@ -75,9 +77,16 @@ class SectionSettings:
         ):
             value = getattr(self, name)
             if not lo <= value <= hi:
-                raise ValueError(f"{name} must be between {lo:g} and {hi:g}.")
+                return f"{name} must be between {lo:g} and {hi:g}."
         if self.steep_min_pct <= self.flat_max_pct:
-            raise ValueError("steep_min_pct must be greater than flat_max_pct.")
+            return "steep_min_pct must be greater than flat_max_pct."
+        return None
+
+    def validate(self) -> None:
+        """Raises ValueError with validation_error()'s message when a setting is out of range."""
+        error = self.validation_error()
+        if error is not None:
+            raise ValueError(error)
 
 
 DEFAULT_SETTINGS = SectionSettings()
