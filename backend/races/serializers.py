@@ -27,6 +27,7 @@ class RaceSerializer(serializers.ModelSerializer):
             "url",
             "results_url",
             "notes",
+            "key_session_tag_id",
             "parent_race_id",
             "block_start",
             "block_weeks",
@@ -75,6 +76,7 @@ class RaceCreateSerializer(serializers.ModelSerializer):
     # .create(**validated_data) accepts the plain _id kwarg directly, same as the model itself.
     activity_id = serializers.CharField(required=False, allow_null=True)
     course_id = serializers.CharField(required=False, allow_null=True)
+    key_session_tag_id = serializers.CharField(required=False, allow_null=True)
 
     class Meta:
         model = Race
@@ -91,6 +93,7 @@ class RaceCreateSerializer(serializers.ModelSerializer):
             "url",
             "results_url",
             "notes",
+            "key_session_tag_id",
         ]
         extra_kwargs = {field: {"required": False} for field in fields if field not in ("name", "date")}
 
@@ -100,6 +103,7 @@ class RaceUpdateSerializer(serializers.ModelSerializer):
     result_time = serializers.DurationField(allow_null=True, required=False)
     activity_id = serializers.CharField(required=False, allow_null=True)
     course_id = serializers.CharField(required=False, allow_null=True)
+    key_session_tag_id = serializers.CharField(required=False, allow_null=True)
 
     class Meta:
         model = Race
@@ -116,6 +120,7 @@ class RaceUpdateSerializer(serializers.ModelSerializer):
             "url",
             "results_url",
             "notes",
+            "key_session_tag_id",
         ]
         extra_kwargs = {field: {"required": False} for field in fields}
 

@@ -494,12 +494,22 @@ public class RaceBlockService {
 		List<Activity> windowActivities = activityRepository.findForWeekRange(
 				athleteId, windowStart.atStartOfDay(ZoneOffset.UTC).toInstant(), windowEnd.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant());
 
-		Tag keySessionTag = tagRepository.findByAthleteIdAndName(athleteId, "Key session").orElse(null);
+		// A race can opt into its own tag for this category (Race.keySessionTag) instead of the
+		// athlete-wide "Key session" tag - lets different goal races use different tags. Re-fetched
+		// by id rather than dereferenced off `race` directly: `race` may have been loaded by a
+		// plain, already-closed-session repository call in the controller before reaching this
+		// @Transactional method, so only `.getId()` off its lazy proxy is safe (see backend_java's
+		// own CLAUDE.md "JPA entity's lazy association" gotcha; same pattern as toResponse's own
+		// athlete re-fetch).
+		String overrideTagId = race.getKeySessionTag() != null ? race.getKeySessionTag().getId() : null;
+		Tag keySessionTag = overrideTagId != null
+				? tagRepository.findById(overrideTagId).orElse(null)
+				: tagRepository.findByAthleteIdAndName(athleteId, "Key session").orElse(null);
 		if (keySessionTag != null) {
 			Set<String> taggedIds = activityTagRepository.findActivityIdsByTag(keySessionTag);
 			for (Activity a : windowActivities) {
 				if (seenActivityIds.contains(a.getId()) || !taggedIds.contains(a.getId())) continue;
-				candidates.add(activityCandidate(a, "tagged", "Key session"));
+				candidates.add(activityCandidate(a, "tagged", keySessionTag.getName()));
 				seenActivityIds.add(a.getId());
 			}
 		}

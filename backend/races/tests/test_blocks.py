@@ -240,6 +240,45 @@ class KeySessionsTests(TestCase):
         self.assertEqual(by_id[bike_tagged.id]["sport"], "bike")
         self.assertEqual(by_id[run_tagged.id]["sport"], "run")
 
+    def test_races_own_key_session_tag_overrides_the_default_tag(self):
+        """A race with its own key_session_tag set pulls "tagged" candidates from that tag
+        instead of the athlete-wide tag literally named "Key session" - lets different goal
+        races use different tags rather than sharing one global name."""
+        default_tag = Tag.objects.create(athlete=self.athlete, name="Key session")
+        marathon_tag = Tag.objects.create(athlete=self.athlete, name="Marathon key")
+        race = Race.objects.create(
+            athlete=self.athlete,
+            name="Goal Marathon",
+            date=date(2026, 10, 12),
+            priority="A",
+            sport="run",
+            distance_km=42.2,
+            key_session_tag=marathon_tag,
+        )
+        tagged_with_default = _make_activity(
+            self.athlete,
+            name="Tagged with default",
+            start_date=datetime(2026, 9, 5, 7, 0, tzinfo=UTC),
+            distance_km=10.0,
+            sport="run",
+        )
+        ActivityTag.objects.create(activity=tagged_with_default, tag=default_tag)
+        tagged_with_marathon = _make_activity(
+            self.athlete,
+            name="Tagged with marathon key",
+            start_date=datetime(2026, 9, 6, 7, 0, tzinfo=UTC),
+            distance_km=11.0,
+            sport="run",
+        )
+        ActivityTag.objects.create(activity=tagged_with_marathon, tag=marathon_tag)
+
+        result = key_sessions(race, date(2026, 9, 1), date(2026, 10, 11))
+        by_id = {item["activity_id"]: item for item in result["items"] if item["activity_id"]}
+
+        self.assertNotEqual(by_id[tagged_with_default.id]["reason"], "tagged")
+        self.assertEqual(by_id[tagged_with_marathon.id]["reason"], "tagged")
+        self.assertEqual(by_id[tagged_with_marathon.id]["label"], "Marathon key")
+
 
 class GetRaceBlockSmokeTests(TestCase):
     """End-to-end smoke test of the top-level assembler - mostly checking it doesn't

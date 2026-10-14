@@ -1008,6 +1008,9 @@ export interface Race {
   url: string | null;
   results_url: string | null;
   notes: string;
+  /** Overrides the athlete-wide "Key session" tag lookup for this race's key_sessions "tagged"
+   * category. Null uses that default. */
+  key_session_tag_id: string | null;
   /** B/C races only - the first A race on/after this one whose block contains this race's
    * week. Null for an A race, or a standalone tune-up. */
   parent_race_id: string | null;
@@ -1030,6 +1033,7 @@ export interface RaceCreate {
   url?: string | null;
   results_url?: string | null;
   notes?: string;
+  key_session_tag_id?: string | null;
 }
 
 export interface RaceBlockPhase {

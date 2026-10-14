@@ -2,6 +2,8 @@ package com.cadence.api.races;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.Tag;
+import com.cadence.api.activities.TagRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.courses.Course;
@@ -24,14 +26,17 @@ public class RaceService {
 	private final CourseRepository courseRepository;
 	private final RaceBlockService raceBlockService;
 	private final UserRepository userRepository;
+	private final TagRepository tagRepository;
 
 	public RaceService(RaceRepository raceRepository, ActivityRepository activityRepository,
-			CourseRepository courseRepository, RaceBlockService raceBlockService, UserRepository userRepository) {
+			CourseRepository courseRepository, RaceBlockService raceBlockService, UserRepository userRepository,
+			TagRepository tagRepository) {
 		this.raceRepository = raceRepository;
 		this.activityRepository = activityRepository;
 		this.courseRepository = courseRepository;
 		this.userRepository = userRepository;
 		this.raceBlockService = raceBlockService;
+		this.tagRepository = tagRepository;
 	}
 
 	public List<Race> listRaces(String athleteId) {
@@ -58,6 +63,7 @@ public class RaceService {
 		race.setUrl(req.url());
 		race.setResultsUrl(req.resultsUrl());
 		race.setNotes(req.notes() != null ? req.notes() : "");
+		race.setKeySessionTag(resolveTag(req.keySessionTagId()));
 		return raceRepository.save(race);
 	}
 
@@ -75,6 +81,7 @@ public class RaceService {
 		if (req.url() != null) race.setUrl(req.url().isEmpty() ? null : req.url());
 		if (req.resultsUrl() != null) race.setResultsUrl(req.resultsUrl().isEmpty() ? null : req.resultsUrl());
 		if (req.notes() != null) race.setNotes(req.notes());
+		if (req.keySessionTagId() != null) race.setKeySessionTag(req.keySessionTagId().isEmpty() ? null : resolveTag(req.keySessionTagId()));
 		return raceRepository.save(race);
 	}
 
@@ -131,13 +138,19 @@ public class RaceService {
 				race.getNotes(),
 				parentRaceId,
 				blockStart,
-				blockWeeks
+				blockWeeks,
+				race.getKeySessionTag() != null ? race.getKeySessionTag().getId() : null
 		);
 	}
 
 	private Course resolveCourse(String courseId) {
 		if (courseId == null || courseId.isBlank()) return null;
 		return courseRepository.findById(courseId).orElseThrow(() -> new NotFoundException("No such course."));
+	}
+
+	private Tag resolveTag(String tagId) {
+		if (tagId == null || tagId.isBlank()) return null;
+		return tagRepository.findById(tagId).orElseThrow(() -> new NotFoundException("No such tag."));
 	}
 
 	// "H:MM:SS" or "HH:MM:SS" → total seconds; null/blank → null
