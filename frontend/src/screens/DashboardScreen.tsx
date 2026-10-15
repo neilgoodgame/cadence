@@ -110,8 +110,6 @@ export function DashboardScreen() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>Welcome back, {user.name}.</h1>
-
       <Card>
         <WeekCalendar activities={activities} athleteId={user.id} recentActivityIds={recentActivityIds} />
       </Card>
