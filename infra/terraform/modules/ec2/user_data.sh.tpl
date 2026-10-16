@@ -91,10 +91,25 @@ aws ecr get-login-password --region "$REGION" | docker login --username AWS --pa
 # back, instead of starving the whole host. --memory-swap equal to --memory
 # keeps the JVM out of swap, where GC would be slow enough to make
 # things worse. The JVM sizes its heap from this limit
-# (MaxRAMPercentage=60 in the Dockerfile, about 480MB).
+# (MaxRAMPercentage=60 in the Dockerfile, about 360MB).
+#
+# 800m (the value here until 2026-10-16) was too close to the instance's
+# ~930MB usable RAM: ps/free showed ~140MB steady overhead for the OS,
+# Docker and the SSM agent outside this cgroup, so a container sitting near
+# its own 800MB cap left the *host* with almost no free memory of its own.
+# Seen live that day - the container's anon-rss reached ~796MB (just under
+# the 800MB cap, so this cgroup's own limit never tripped) right as the
+# host's last few free pages ran out; the kernel's OOM killer fired
+# globally (CONSTRAINT_NONE, picked `java` as the single biggest RSS
+# holder) instead of scoping the kill to this container's cgroup, which
+# left nothing for Restart=always to react to - the service sat dead for
+# ~10 hours until a manual EC2 stop/start. 600m leaves roughly 190MB of
+# real headroom for the rest of the host, so the same growth pattern hits
+# this cgroup's own memory.max first and gets a clean, scoped, Restart=
+# always-recoverable kill instead of taking the whole instance down.
 exec docker run --rm --name cadence-backend \
-	--memory=800m \
-	--memory-swap=800m \
+	--memory=600m \
+	--memory-swap=600m \
 	-p 8080:8080 \
 	-v /opt/cadence/media:/app/media \
 	-v /opt/cadence/keys:/app/keys \
