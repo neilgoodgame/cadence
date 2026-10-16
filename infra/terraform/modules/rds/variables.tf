@@ -63,6 +63,11 @@ variable "engine_version" {
   default     = "16.14"
 }
 
+variable "log_retention_days" {
+  type    = number
+  default = 30
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
