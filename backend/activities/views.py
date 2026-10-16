@@ -63,6 +63,15 @@ SCALAR_STREAM_FIELDS = {
 }
 STREAM_CHANNELS = set(SCALAR_STREAM_FIELDS) | {"latlng"}
 STREAM_RESOLUTION_STEP = {"high": 1, "medium": 5, "low": 15}
+# StreamsView.generate() emits these by looking a validated value up in one of these dicts
+# rather than json.dumps()-ing the request-derived string directly, even though it's already
+# been checked against STREAM_CHANNELS/STREAM_RESOLUTION_STEP - CodeQL's reflected-XSS query
+# flags a request value reaching a streamed response regardless of validation elsewhere, since
+# it doesn't trace that check. Both dicts are built once, here, from nothing but this module's
+# own fixed string literals, so every value CodeQL can see originates from source code, not a
+# request - the lookup key being request-derived doesn't matter, only the value's own origin.
+STREAM_CHANNEL_JSON = {c: json.dumps(c) for c in STREAM_CHANNELS}
+STREAM_RESOLUTION_JSON = {r: json.dumps(r) for r in STREAM_RESOLUTION_STEP}
 
 ACTIVITY_FIELD_MAP = {
     "date": "start_date",
@@ -609,11 +618,11 @@ class StreamsView(APIView):
                     # than a shorter array.
                     buffers["latlng"].append([row["lat"], row["lng"]])
 
-            yield f'{{"object": "streams", "resolution": {json.dumps(resolution)}, "fields": {{'
+            yield f'{{"object": "streams", "resolution": {STREAM_RESOLUTION_JSON[resolution]}, "fields": {{'
             for i, (name, values) in enumerate(buffers.items()):
                 if i > 0:
                     yield ","
-                yield f"{json.dumps(name)}:{json.dumps(values)}"
+                yield f"{STREAM_CHANNEL_JSON[name]}:{json.dumps(values)}"
             yield "}}"
 
         return StreamingHttpResponse(generate(), content_type="application/json")
