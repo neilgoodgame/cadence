@@ -1,8 +1,16 @@
 ########################################################################
-# RDS PostgreSQL - plain Postgres 16, no custom parameter group. The app
-# uses native table partitioning (activities_record), not TimescaleDB, so
-# nothing here needs shared_preload_libraries or any other non-default
-# server config - see AWS_MIGRATION_PLAN.md §4 for why.
+# RDS PostgreSQL 16. The app uses native table partitioning
+# (activities_record), not TimescaleDB, so nothing here needs a custom
+# engine extension for the app's own sake - see AWS_MIGRATION_PLAN.md §4.
+#
+# The parameter group below exists purely for query observability:
+# pg_stat_statements (already preloaded by RDS's own default parameter
+# group, just needed `CREATE EXTENSION` to expose it - no Terraform change
+# for that part) plus auto_explain, which isn't preloaded by default and
+# needs this custom group. Loading a new shared library is a *static*
+# parameter, so attaching this group requires one DB reboot to take
+# effect - do that deliberately, not as a surprise side effect of an
+# unrelated apply.
 ########################################################################
 
 resource "aws_db_subnet_group" "this" {
@@ -35,6 +43,61 @@ resource "aws_security_group" "rds" {
   }
 }
 
+# Family must track engine_version's major version (16.x -> "postgres16"), not the
+# full version string - RDS parameter group families are major-version-scoped.
+resource "aws_db_parameter_group" "this" {
+  name   = "cadence-${var.environment}-postgres16"
+  family = "postgres16"
+
+  # Static: only takes effect after a reboot (see the module header comment).
+  # pg_stat_statements,pg_tle match RDS's own default-parameter-group preload
+  # list exactly - only auto_explain is actually new here. Dropping
+  # pg_stat_statements/pg_tle instead of carrying them forward would silently
+  # unload them on reboot.
+  parameter {
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements,pg_tle,auto_explain"
+    apply_method = "pending-reboot"
+  }
+
+  # Dynamic - only logs plans for genuinely slow outliers (500ms+), not every
+  # query, to keep this cheap enough for a db.t4g.micro. log_analyze/log_buffers
+  # add real overhead per logged statement, but that's fine when it's gated by
+  # log_min_duration to just the slow tail.
+  parameter {
+    name  = "auto_explain.log_min_duration"
+    value = "500"
+  }
+
+  parameter {
+    name  = "auto_explain.log_analyze"
+    value = "1"
+  }
+
+  parameter {
+    name  = "auto_explain.log_buffers"
+    value = "1"
+  }
+
+  parameter {
+    name  = "auto_explain.log_nested_statements"
+    value = "1"
+  }
+
+  tags = var.tags
+}
+
+# Auto-created by RDS once enabled_cloudwatch_logs_exports includes "postgresql"
+# below, but managed here too so retention isn't left at the CloudWatch default
+# of "Never expire" - same reasoning as the backend's own log group in the ec2
+# module.
+resource "aws_cloudwatch_log_group" "postgresql" {
+  name              = "/aws/rds/instance/cadence-${var.environment}/postgresql"
+  retention_in_days = var.log_retention_days
+
+  tags = var.tags
+}
+
 resource "aws_db_instance" "this" {
   identifier     = "cadence-${var.environment}"
   engine         = "postgres"
@@ -54,6 +117,12 @@ resource "aws_db_instance" "this" {
   db_subnet_group_name   = aws_db_subnet_group.this.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   multi_az               = var.multi_az
+  parameter_group_name   = aws_db_parameter_group.this.name
+
+  # Ships auto_explain's captured slow-query plans (and anything else Postgres
+  # logs) to the CloudWatch log group above instead of only RDS's own
+  # describe-db-log-files API.
+  enabled_cloudwatch_logs_exports = ["postgresql"]
 
   backup_retention_period = var.backup_retention_period
   skip_final_snapshot     = var.skip_final_snapshot
@@ -67,4 +136,6 @@ resource "aws_db_instance" "this" {
   deletion_protection        = !var.skip_final_snapshot # matches: production (final snapshot required) also gets deletion protection.
 
   tags = merge(var.tags, { Name = "cadence-${var.environment}-db" })
+
+  depends_on = [aws_cloudwatch_log_group.postgresql]
 }
