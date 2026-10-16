@@ -3,6 +3,8 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 keys/
 media/
+# Full staging DB dumps (real data) pulled by infra/scripts/sync-staging-db.sh.
+.pgdumps/
 .idea/
 *.iml
 out/
