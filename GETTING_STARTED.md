@@ -56,6 +56,16 @@ curl http://localhost:8080/healthz
 
 Swagger UI: `http://localhost:8080/schema/docs`.
 
+**Profiling under staging's memory cap**: `docker compose up -d` runs the backend with
+no memory limit, which doesn't reproduce the squeeze that caused a real OOM on staging
+(see `backend_java/CLAUDE.md`'s "Memory-constrained profiling" note). For that, use the
+`memcapped` Compose profile instead, which caps the container at the same 600MB staging
+uses and runs on port **8081** instead of 8080 so it doesn't collide with `backend`:
+
+```bash
+docker compose --profile memcapped up -d backend-memcapped
+```
+
 ### Django (alternative)
 
 ```bash
