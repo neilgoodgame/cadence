@@ -1,7 +1,9 @@
+import json
 from typing import Any
 
 from django.db.models import Count, Exists, F, FloatField, Min, OuterRef, Q, Value
 from django.db.models.functions import Coalesce, Mod
+from django.http import HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
@@ -530,7 +532,7 @@ class ActivityRecomputeElevationView(APIView):
 
 
 class StreamsView(APIView):
-    def get(self, request: Request, id: str) -> Response:
+    def get(self, request: Request, id: str) -> HttpResponse:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_read(sub, activity.athlete_id):
@@ -549,7 +551,18 @@ class StreamsView(APIView):
         else:
             channels = list(SCALAR_STREAM_FIELDS) + (["latlng"] if activity.has_gps else [])
 
+        wants_latlng = "latlng" in channels and activity.has_gps
+        scalar_channels = [c for c in channels if c != "latlng" and c in SCALAR_STREAM_FIELDS]
+
         step = STREAM_RESOLUTION_STEP[resolution]
+        # Only the columns actually requested, as plain dicts via .values() rather than full
+        # Record model instances - same idea as the Java backend's RecordRepository.StreamRow
+        # projection (see its docstring): per-instance ORM overhead across a multi-hour
+        # activity's full 1Hz record set was the dominant cost of a real OOM reproduced locally
+        # (infra/scripts/stress-test-backend.sh) hammering this endpoint at full resolution.
+        value_fields = {SCALAR_STREAM_FIELDS[c] for c in scalar_channels}
+        if wants_latlng:
+            value_fields |= {"lat", "lng"}
         if step > 1:
             # Decimated in the query itself, not by loading every 1Hz record and slicing in
             # Python - a multi-hour activity's full record set is large enough to matter, and
@@ -558,22 +571,52 @@ class StreamsView(APIView):
             # pattern to the activity's own first sample (t may not start at 0), matching what
             # records[::step] used to pick when it operated on the full ordered list.
             offset = activity.records.aggregate(first_t=Min("t"))["first_t"]
-            records = (
-                list(activity.records.annotate(mod_val=Mod(F("t") - offset, step)).filter(mod_val=0).order_by("t"))
+            queryset = (
+                activity.records.annotate(mod_val=Mod(F("t") - offset, step)).filter(mod_val=0).order_by("t")
                 if offset is not None
-                else []
+                else activity.records.none()
             )
         else:
-            records = list(activity.records.order_by("t"))
+            queryset = activity.records.order_by("t")
 
-        fields_payload: dict[str, list[Any]] = {}
-        for channel in channels:
-            if channel == "latlng":
-                fields_payload["latlng"] = [[r.lat, r.lng] for r in records if r.lat is not None and r.lng is not None]
-            else:
-                fields_payload[channel] = [getattr(r, SCALAR_STREAM_FIELDS[channel]) for r in records]
+        # .iterator(): a server-side cursor that fetches in chunks instead of Django's normal
+        # QuerySet evaluation, which materializes and caches the *entire* result set in memory
+        # before returning the first row - the direct equivalent of the Java side's JPA
+        # Stream<> + fetchSize hint, and necessary for .values() alone to actually bound memory
+        # here rather than just avoiding model-instance overhead.
+        rows = queryset.values(*value_fields).iterator(chunk_size=500)
 
-        return Response({"object": "streams", "resolution": resolution, "fields": fields_payload})
+        def generate():
+            # Still assembled one field at a time before any of it is written out - a parallel-
+            # arrays response can't interleave multiple open arrays in one JSON document, so
+            # every requested channel's full array has to exist before the first byte of it can
+            # be written (see the PR description for the fuller tradeoff). What this does avoid:
+            # per-row Record model instantiation, unrequested columns, Django caching the whole
+            # queryset, and - by yielding chunks instead of returning a DRF Response - the second
+            # full in-memory JSON string DRF's renderer would otherwise build on top of this.
+            # dict comprehension over `channels`, not scalar_channels/wants_latlng, so key order
+            # matches the request (fields=latlng,power puts latlng first in the response too,
+            # same as the original implementation).
+            buffers: dict[str, list[Any]] = {
+                c: [] for c in channels if c in scalar_channels or (c == "latlng" and wants_latlng)
+            }
+            for row in rows:
+                for channel in scalar_channels:
+                    buffers[channel].append(row[SCALAR_STREAM_FIELDS[channel]])
+                if wants_latlng and row["lat"] is not None and row["lng"] is not None:
+                    # Drop points with no position fix entirely (a brief GPS dropout mid-activity
+                    # is common) rather than a [null, null] entry - a worse contract surprise
+                    # than a shorter array.
+                    buffers["latlng"].append([row["lat"], row["lng"]])
+
+            yield f'{{"object": "streams", "resolution": {json.dumps(resolution)}, "fields": {{'
+            for i, (name, values) in enumerate(buffers.items()):
+                if i > 0:
+                    yield ","
+                yield f"{json.dumps(name)}:{json.dumps(values)}"
+            yield "}}"
+
+        return StreamingHttpResponse(generate(), content_type="application/json")
 
 
 class CurvesView(APIView):

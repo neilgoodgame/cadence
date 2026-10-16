@@ -2,16 +2,23 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.activities.dto.StreamsResponse;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-/** Parallel-array 1 Hz streams, downsampled by resolution and filtered to the requested channels. */
+/** Parallel-array 1 Hz streams, downsampled by resolution and filtered to the requested channels.
+ * Built in a single pass over a streaming, lean-projection query (RecordRepository.StreamRow)
+ * rather than loading full Record entities and re-traversing them once per requested field - see
+ * StreamRow's Javadoc for why that mattered for a real OOM. */
 @Service
 public class StreamService {
 
@@ -27,46 +34,67 @@ public class StreamService {
 		this.userRepository = userRepository;
 	}
 
+	// readOnly: the underlying Stream<StreamRow> is a live DB cursor (RecordRepository.StreamRow),
+	// not a pre-fetched collection, and needs a session open for as long as it's being consumed
+	// below - unlike the old List<Record>-returning queries, which Spring Data JPA's own default
+	// per-repository-method transaction already fully materialized before returning, needing
+	// nothing from the caller. Scoped to this method only, not the controller: by the time this
+	// returns, every row's been read and the cursor's closed, so the subsequent HTTP write
+	// doesn't hold a DB connection open for the duration of (possibly slow) client I/O.
+	@Transactional(readOnly = true)
 	public StreamsResponse getStreams(Activity activity, String fieldsParam, String resolution) {
 		int step = switch (resolution) {
 			case "medium" -> 5;
 			case "low" -> 15;
 			default -> 1;
 		};
-		List<Record> sampled;
-		if (step > 1) {
-			Integer offset = recordRepository.findMinTByActivityId(activity.getId());
-			sampled = offset == null
-					? List.of()
-					: recordRepository.findByActivityIdDecimated(activity.getId(), offset, step);
-		} else {
-			sampled = recordRepository.findByActivityIdOrderByT(activity.getId());
-		}
 
 		Set<String> requestedFields = (fieldsParam == null || fieldsParam.isBlank())
 				? defaultFields(activity.isHasGps())
 				: new LinkedHashSet<>(List.of(fieldsParam.split(",")));
 
-		Map<String, Object> fields = new LinkedHashMap<>();
-		for (String field : requestedFields) {
-			if ("latlng".equals(field)) {
-				if (activity.isHasGps()) {
-					// Drop points with no position fix entirely (a brief GPS dropout mid-activity is
-					// common) rather than including a null pair - List.of() throws on a null element,
-					// and a [null, null] entry would be a worse contract surprise than a shorter array.
-					fields.put("latlng", sampled.stream()
-							.filter(r -> r.getLat() != null && r.getLng() != null)
-							.map(r -> List.of(r.getLat(), r.getLng()))
-							.toList());
-				}
-				continue;
-			}
-			if (!SCALAR_FIELDS.contains(field)) {
-				continue;
-			}
-			fields.put(field, extractValues(sampled, field, activity));
+		// Drop points with no position fix entirely (a brief GPS dropout mid-activity is common)
+		// rather than including a null pair - List.of() throws on a null element, and a
+		// [null, null] entry would be a worse contract surprise than a shorter array. If GPS
+		// wasn't requested, or the activity has none, the "latlng" key is absent from the
+		// response entirely rather than present-but-empty.
+		boolean wantsLatlng = requestedFields.contains("latlng") && activity.isHasGps();
+		boolean wantsPower = requestedFields.contains("power");
+		int maxRunningPowerWatts = wantsPower ? maxRunningPowerWattsFor(activity) : 0;
+		Sport sport = activity.getSport();
+
+		Map<String, List<Object>> buffers = new LinkedHashMap<>();
+		if (wantsLatlng) {
+			buffers.put("latlng", new ArrayList<>());
 		}
-		return new StreamsResponse(resolution, fields);
+		for (String field : requestedFields) {
+			if (SCALAR_FIELDS.contains(field)) {
+				buffers.put(field, new ArrayList<>());
+			}
+		}
+
+		try (Stream<RecordRepository.StreamRow> rows = openStream(activity.getId(), step)) {
+			rows.forEach(row -> {
+				for (Map.Entry<String, List<Object>> entry : buffers.entrySet()) {
+					entry.getValue().add(extractOne(entry.getKey(), row, sport, maxRunningPowerWatts));
+				}
+			});
+		}
+		// latlng skips rows with no fix rather than adding a value per row above, so it needs its
+		// own pass-through - every other field adds exactly one value per row by construction.
+		if (wantsLatlng) {
+			buffers.put("latlng", buffers.get("latlng").stream().filter(v -> v != null).toList());
+		}
+
+		return new StreamsResponse(resolution, new LinkedHashMap<>(buffers));
+	}
+
+	private Stream<RecordRepository.StreamRow> openStream(String activityId, int step) {
+		if (step <= 1) {
+			return recordRepository.streamByActivityIdOrderByT(activityId);
+		}
+		Integer offset = recordRepository.findMinTByActivityId(activityId);
+		return offset == null ? Stream.empty() : recordRepository.streamByActivityIdDecimated(activityId, offset, step);
 	}
 
 	private Set<String> defaultFields(boolean hasGps) {
@@ -77,28 +105,27 @@ public class StreamService {
 		return fields;
 	}
 
-	private List<?> extractValues(List<Record> records, String field, Activity activity) {
+	/** One field's value for one row - null for "latlng" on a row with no fix, filtered out by
+	 * the caller afterwards rather than skipped here, so every buffer gets exactly one entry per
+	 * row during the single pass (simpler than conditionally skipping mid-iteration). */
+	private Object extractOne(String field, RecordRepository.StreamRow row, Sport sport, int maxRunningPowerWatts) {
 		return switch (field) {
-			case "time" -> records.stream().map(Record::getT).toList();
-			// activity.getAthlete() is a lazy proxy and this method runs outside any open
-			// Hibernate session (StreamController isn't @Transactional) - touching it directly
-			// throws LazyInitializationException. Re-fetching by id (itself safe on a lazy proxy,
-			// unlike the full entity) is the same pattern BestEffortRecomputeService and friends
-			// already use instead of trusting a passed-in Activity's association to still be
-			// initialized.
-			case "power" -> RunningPowerSanitizer.sanitize(records.stream().map(Record::getPower).toList(),
-					activity.getSport(), maxRunningPowerWattsFor(activity));
-			case "heartrate" -> records.stream().map(Record::getHeartrate).toList();
-			case "cadence" -> records.stream().map(Record::getCadence).toList();
-			case "altitude" -> records.stream().map(Record::getAltitude).toList();
-			case "distance" -> records.stream().map(Record::getDistanceKm).toList();
-			case "speed" -> records.stream().map(Record::getSpeed).toList();
-			case "air_temp" -> records.stream().map(Record::getAirTemp).toList();
-			case "humidity" -> records.stream().map(Record::getHumidity).toList();
-			case "core_temp" -> records.stream().map(Record::getCoreTemp).toList();
-			case "skin_temp" -> records.stream().map(Record::getSkinTemp).toList();
-			case "heat_strain" -> records.stream().map(Record::getHeatStrain).toList();
-			default -> List.of();
+			case "latlng" -> row.getLat() != null && row.getLng() != null
+					? List.of(row.getLat(), row.getLng())
+					: null;
+			case "time" -> row.getT();
+			case "power" -> RunningPowerSanitizer.sanitizeOne(row.getPower(), sport, maxRunningPowerWatts);
+			case "heartrate" -> row.getHeartrate();
+			case "cadence" -> row.getCadence();
+			case "altitude" -> row.getAltitude();
+			case "distance" -> row.getDistanceKm();
+			case "speed" -> row.getSpeed();
+			case "air_temp" -> row.getAirTemp();
+			case "humidity" -> row.getHumidity();
+			case "core_temp" -> row.getCoreTemp();
+			case "skin_temp" -> row.getSkinTemp();
+			case "heat_strain" -> row.getHeatStrain();
+			default -> null;
 		};
 	}
 

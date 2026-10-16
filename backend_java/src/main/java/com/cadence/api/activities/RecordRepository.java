@@ -1,9 +1,12 @@
 package com.cadence.api.activities;
 
+import jakarta.persistence.QueryHint;
 import java.util.List;
+import java.util.stream.Stream;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 public interface RecordRepository extends JpaRepository<Record, RecordId> {
@@ -59,6 +62,67 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 	@Query("select r from Record r where r.id.activityId = :activityId and mod(r.t - :offset, :step) = 0 "
 			+ "order by r.t")
 	List<Record> findByActivityIdDecimated(
+			@Param("activityId") String activityId, @Param("offset") int offset, @Param("step") int step);
+
+	/** Every scalar stream channel, as a lean projection rather than managed Record entities -
+	 * StreamService builds its parallel-array response from this instead of
+	 * findByActivityIdOrderByT/findByActivityIdDecimated. A full Record entity carries Hibernate's
+	 * per-entity overhead (identity-map registration, a dirty-check snapshot of every field kept
+	 * alongside the loaded instance) that a read-only projection skips entirely - for a multi-hour
+	 * activity's full 1 Hz record set, at every column whether or not it's actually requested,
+	 * that overhead was the dominant cost of a real OOM reproduced locally (see
+	 * infra/scripts/stress-test-backend.sh) hammering this endpoint at full resolution. The
+	 * fetchSize hint plus a Stream<> return type keeps the JDBC driver pulling rows from Postgres
+	 * incrementally too, rather than buffering the full result set before Hibernate sees any of
+	 * it - both matter together, since Stream<> alone doesn't change the driver's own buffering.
+	 * Must be called inside a transaction that stays open for as long as the Stream is consumed
+	 * (StreamController is @Transactional for exactly this). */
+	interface StreamRow {
+		int getT();
+
+		Integer getPower();
+
+		Integer getHeartrate();
+
+		Integer getCadence();
+
+		Double getAltitude();
+
+		Double getLat();
+
+		Double getLng();
+
+		Double getSpeed();
+
+		Double getDistanceKm();
+
+		Double getAirTemp();
+
+		Integer getHumidity();
+
+		Double getCoreTemp();
+
+		Double getSkinTemp();
+
+		Double getHeatStrain();
+	}
+
+	@QueryHints(@QueryHint(name = "org.hibernate.fetchSize", value = "200"))
+	@Query("select r.t as t, r.power as power, r.heartrate as heartrate, r.cadence as cadence, "
+			+ "r.altitude as altitude, r.lat as lat, r.lng as lng, r.speed as speed, "
+			+ "r.distanceKm as distanceKm, r.airTemp as airTemp, r.humidity as humidity, "
+			+ "r.coreTemp as coreTemp, r.skinTemp as skinTemp, r.heatStrain as heatStrain "
+			+ "from Record r where r.id.activityId = :activityId order by r.t")
+	Stream<StreamRow> streamByActivityIdOrderByT(@Param("activityId") String activityId);
+
+	@QueryHints(@QueryHint(name = "org.hibernate.fetchSize", value = "200"))
+	@Query("select r.t as t, r.power as power, r.heartrate as heartrate, r.cadence as cadence, "
+			+ "r.altitude as altitude, r.lat as lat, r.lng as lng, r.speed as speed, "
+			+ "r.distanceKm as distanceKm, r.airTemp as airTemp, r.humidity as humidity, "
+			+ "r.coreTemp as coreTemp, r.skinTemp as skinTemp, r.heatStrain as heatStrain "
+			+ "from Record r where r.id.activityId = :activityId and mod(r.t - :offset, :step) = 0 "
+			+ "order by r.t")
+	Stream<StreamRow> streamByActivityIdDecimated(
 			@Param("activityId") String activityId, @Param("offset") int offset, @Param("step") int step);
 
 	long countByIdActivityId(String activityId);

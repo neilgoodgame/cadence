@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 from rest_framework.test import APIClient
@@ -6,6 +7,15 @@ from authn.jwt_utils import mint_jwt
 from authn.oauth_utils import issue_token_pair
 
 from ..models import Activity
+
+
+def _json(response):
+    """response.json() for a StreamingHttpResponse (e.g. StreamsView) - Django's test client
+    deliberately has no .content/.text for one, since reading it forces full consumption of a
+    response that's meant to represent a true streaming scenario."""
+    if response.streaming:
+        return json.loads(b"".join(response.streaming_content))
+    return response.json()
 
 
 def _bearer_client(user, scope="activities:read activities:write coach"):
