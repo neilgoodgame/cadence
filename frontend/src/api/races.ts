@@ -9,6 +9,7 @@ import type {
   RaceCreate,
   RaceSplits,
   RaceUpdate,
+  RaceWeather,
   SplitsMode,
 } from "./types";
 
@@ -38,6 +39,10 @@ export function getRaceBlock(id: string): Promise<RaceBlock> {
 
 export function getRaceSplits(id: string, mode: SplitsMode): Promise<RaceSplits> {
   return apiFetch<RaceSplits>(`/v1/races/${id}/splits${toQueryString({ mode })}`);
+}
+
+export function getRaceWeather(id: string): Promise<RaceWeather> {
+  return apiFetch<RaceWeather>(`/v1/races/${id}/weather`);
 }
 
 export function listRaceComments(id: string): Promise<DataList<RaceComment>> {

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { updateAthlete } from "../../api/athletes";
-import { getCourse, listCourses, recomputeAthleteCourseElevation } from "../../api/courses";
+import { deleteCourse, getCourse, listCourses, recomputeAthleteCourseElevation, updateCourse } from "../../api/courses";
 import { useAuth } from "../../auth/AuthContext";
-import type { CourseSectionSettings, SectionAlgorithm } from "../../api/types";
+import type { CourseSectionSettings, CourseSummary, SectionAlgorithm } from "../../api/types";
 import { CourseSectionsProfile } from "../../components/CourseSectionsProfile";
 import { DEFAULT_SECTION_SETTINGS, SETTING_FIELDS, settingsError, type SettingField } from "../../lib/courseSections";
 
@@ -62,6 +62,80 @@ function NumberField({
         <span style={{ fontSize: 12, color: "var(--ink3)" }}>{field.unit}</span>
       </span>
     </label>
+  );
+}
+
+/** One row in the "My courses" list - lets the user rename a course (e.g. to free up a name for
+ * a fresh re-upload) or delete it. Only name/location_name are writable - distance, elevation
+ * etc. are derived from the source GPX/activity and can't be edited directly. */
+function CourseRow({ course }: { course: CourseSummary }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(course.name);
+  const trimmed = name.trim();
+  const dirty = trimmed !== "" && trimmed !== course.name;
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["courses"] });
+    void queryClient.invalidateQueries({ queryKey: ["course", course.id] });
+  };
+
+  const rename = useMutation({
+    mutationFn: () => updateCourse(course.id, { name: trimmed }),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteCourse(course.id),
+    onSuccess: invalidate,
+  });
+
+  if (remove.isSuccess) {
+    return null;
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <input
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value);
+          rename.reset();
+        }}
+        style={{ ...inputStyle, flex: 1 }}
+      />
+      <button
+        type="button"
+        onClick={() => rename.mutate()}
+        disabled={!dirty || rename.isPending}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "1px solid var(--line)",
+          background: "none",
+          color: "var(--ink2)",
+          fontSize: 12.5,
+          fontWeight: 600,
+          opacity: dirty ? 1 : 0.5,
+          cursor: dirty ? "pointer" : "default",
+        }}
+      >
+        {rename.isPending ? "Renaming…" : "Rename"}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (window.confirm(`Delete "${course.name}"? Any races linked to it will lose their course.`)) {
+            remove.mutate();
+          }
+        }}
+        disabled={remove.isPending}
+        style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "none", color: "#e0442e", fontSize: 12.5, fontWeight: 600 }}
+      >
+        {remove.isPending ? "Deleting…" : "Delete"}
+      </button>
+      {!dirty && rename.isSuccess && <span style={{ fontSize: 12, color: "#2fa66a" }}>Saved</span>}
+      {rename.isError && <span style={{ fontSize: 12, color: "#e0442e" }}>{(rename.error as Error).message}</span>}
+      {remove.isError && <span style={{ fontSize: 12, color: "#e0442e" }}>{(remove.error as Error).message}</span>}
+    </div>
   );
 }
 
@@ -153,6 +227,19 @@ export function CoursesTab() {
           SETTING_FIELDS.filter((f) => f.advanced).map((f) => (
             <NumberField key={f.key} field={f} value={form[f.key]} onChange={(v) => set({ [f.key]: v })} />
           ))}
+      </div>
+
+      <div style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>My courses</h3>
+        <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 8 }}>
+          Rename a course, or delete one you no longer need.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {courses.data?.data.map((c) => <CourseRow key={c.id} course={c} />)}
+          {courses.data?.data.length === 0 && (
+            <div style={{ fontSize: 12.5, color: "var(--ink3)" }}>No courses yet.</div>
+          )}
+        </div>
       </div>
 
       <div>

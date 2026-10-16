@@ -6,6 +6,7 @@ import { getCourse } from "../api/courses";
 import { getRace, getRaceBlock, getRaceSplits, listRaces } from "../api/races";
 import { useAuth } from "../auth/AuthContext";
 import type { Sport } from "../api/types";
+import { daysUntil } from "../lib/dates";
 import { CommentsCard } from "./race-detail/CommentsCard";
 import { ContextCard } from "./race-detail/ContextCard";
 import { CourseCard } from "./race-detail/CourseCard";
@@ -20,6 +21,7 @@ import { historyAtDistance, personalBestSeconds } from "./race-detail/raceHistor
 import { RaceDayFormCard } from "./race-detail/RaceDayFormCard";
 import { SplitsCard } from "./race-detail/SplitsCard";
 import { TrainingBlockCard } from "./race-detail/TrainingBlockCard";
+import { WeatherCard } from "./race-detail/WeatherCard";
 
 export function RaceDetailScreen() {
   const { raceId } = useParams<{ raceId: string }>();
@@ -67,6 +69,9 @@ export function RaceDetailScreen() {
   const showSplits = !!race.result_time && race.sport === "run";
   const showDurability = race.priority === "A" && (race.sport === "run" || race.sport === "bike") && block.weeks.length >= 3 && !!block.durability;
   const showComments = !race.result_time;
+  // Matches WeatherService's FORECAST_HORIZON_DAYS (both backends) - no point mounting the
+  // query for a race the endpoint will just report as unavailable anyway.
+  const showWeather = !!race.course_id && daysUntil(race.date) >= 0 && daysUntil(race.date) <= 10;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -75,6 +80,7 @@ export function RaceDetailScreen() {
       <ContextCard race={race} tuneUps={tuneUps} parent={parent} parentPrediction={parentBlock?.prediction ?? null} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 16 }}>
+        {showWeather && <WeatherCard raceId={race.id} />}
         <GoalResultCard race={race} pbS={pbS} predictionS={predictionS} halves={splits?.halves ?? null} activity={activity ?? null} />
         <RaceDayFormCard form={block.race_day_form} />
         <HistoryAtDistanceCard races={history} pbS={pbS} />

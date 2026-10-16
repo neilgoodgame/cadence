@@ -1175,6 +1175,18 @@ export interface RaceSplits {
   splits: RaceSplit[];
 }
 
+/** GET /v1/races/{id}/weather. `available` is false (every other field null) when the race has
+ * no course, the course has no resolved start point, the race is outside the ~10-day forecast
+ * window, or the upstream call failed. */
+export interface RaceWeather {
+  available: boolean;
+  date: string | null;
+  temperature_max_c: number | null;
+  temperature_min_c: number | null;
+  precipitation_probability_pct: number | null;
+  wind_speed_max_kmh: number | null;
+}
+
 export type RaceCommentRole = "athlete" | "coach";
 
 export interface RaceComment {
