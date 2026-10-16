@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CourseSection } from "../api/types";
-import { DEFAULT_SECTION_SETTINGS, formatGrade, profileSlice, settingsError, summarizeSections } from "./courseSections";
+import { DEFAULT_SECTION_SETTINGS, formatGrade, profileSlice, rollingStretches, settingsError, summarizeSections } from "./courseSections";
 
 function section(type: CourseSection["type"], length_m: number): CourseSection {
   return { type, start_km: 0, end_km: length_m / 1000, length_m, gain_m: 0, loss_m: 0, avg_grade_pct: 0, steepest_100m_pct: 0 };
@@ -64,5 +64,38 @@ describe("formatGrade", () => {
     expect(formatGrade(2.84)).toBe("+2.8%");
     expect(formatGrade(-4.7)).toBe("−4.7%");
     expect(formatGrade(0)).toBe("0.0%");
+  });
+});
+
+describe("rollingStretches", () => {
+  /** Back-to-back sections from km 0, each (type, length_m, rise or drop in m). */
+  function course(...parts: [CourseSection["type"], number, number][]): CourseSection[] {
+    let km = 0;
+    return parts.map(([type, length_m, change]) => {
+      const up = type === "climb" || type === "steep_climb";
+      const s: CourseSection = {
+        type, start_km: km, end_km: km + length_m / 1000, length_m,
+        gain_m: up ? change : 0, loss_m: up || type === "flat" ? 0 : change,
+        avg_grade_pct: 0, steepest_100m_pct: 0,
+      };
+      km += length_m / 1000;
+      return s;
+    });
+  }
+
+  it("joins small hills across short flats", () => {
+    const stretches = rollingStretches(
+      course(["flat", 2000, 0], ["climb", 400, 8], ["descent", 400, 9], ["flat", 1500, 0], ["climb", 400, 7], ["descent", 500, 10], ["flat", 3000, 0]),
+    );
+    expect(stretches).toEqual([{ start_km: 2, end_km: 5.2, climbs: 2, descents: 2, gain_m: 15, loss_m: 19 }]);
+  });
+
+  it("is broken by a long flat or a big hill", () => {
+    expect(rollingStretches(course(["climb", 400, 8], ["descent", 400, 9], ["flat", 2000, 0], ["climb", 400, 7], ["descent", 500, 10]))).toEqual([]);
+    expect(rollingStretches(course(["climb", 400, 8], ["descent", 400, 9], ["climb", 900, 25], ["descent", 400, 7], ["climb", 500, 10]))).toEqual([]);
+  });
+
+  it("needs two climbs and two descents", () => {
+    expect(rollingStretches(course(["climb", 600, 8], ["descent", 600, 9], ["climb", 600, 7]))).toEqual([]);
   });
 });

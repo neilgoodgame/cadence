@@ -24,6 +24,8 @@ export const SECTION_COLORS: Record<SectionType, string> = {
  * for anything else). */
 export const SECTION_SPORTS: Activity["sport"][] = ["run", "walk", "bike"];
 
+export const ROLLING_COLOR = "var(--grade-rolling)";
+
 export const DEFAULT_SECTION_SETTINGS: CourseSectionSettings = {
   algorithm: "douglas_peucker",
   flat_max_pct: 1.0,
@@ -120,6 +122,68 @@ export function profileSlice(profile: [number, number][], startKm: number, endKm
   };
   const inside = profile.filter(([km]) => km > startKm && km < endKm);
   return [[startKm, at(startKm)], ...inside, [endKm, at(endKm)]];
+}
+
+export interface RollingStretch {
+  start_km: number;
+  end_km: number;
+  climbs: number;
+  descents: number;
+  gain_m: number;
+  loss_m: number;
+}
+
+const UP: SectionType[] = ["climb", "steep_climb"];
+const DOWN: SectionType[] = ["descent", "steep_descent"];
+
+/** Runs of small back-to-back hills: climb or descent sections that rise or drop at most
+ * maxRiseM, joined across flats of up to maxFlatM, kept when they have at least two climbs and
+ * two descents and span at least minLengthM. Tuned on Brighton, Leeds, Yorkshire and Chicago -
+ * Chicago, which is flat, has none until maxFlatM reaches 2 km. */
+export function rollingStretches(
+  sections: CourseSection[],
+  { maxRiseM = 20, maxFlatM = 1600, minLengthM = 1500 } = {},
+): RollingStretch[] {
+  const small = (s: CourseSection | undefined) =>
+    s !== undefined && (UP.includes(s.type) || DOWN.includes(s.type)) && Math.max(s.gain_m, s.loss_m) <= maxRiseM;
+  const out: RollingStretch[] = [];
+  let i = 0;
+  while (i < sections.length) {
+    if (!small(sections[i])) {
+      i += 1;
+      continue;
+    }
+    let last = i;
+    let j = i;
+    while (j + 1 < sections.length) {
+      const next = sections[j + 1];
+      if (small(next)) {
+        j += 1;
+        last = j;
+      } else if (next.type === "flat" && next.length_m <= maxFlatM && small(sections[j + 2])) {
+        j += 1;
+      } else {
+        break;
+      }
+    }
+    const run = sections.slice(i, last + 1);
+    const climbs = run.filter((s) => UP.includes(s.type)).length;
+    const descents = run.filter((s) => DOWN.includes(s.type)).length;
+    const startKm = run[0].start_km;
+    const endKm = run[run.length - 1].end_km;
+    if (climbs >= 2 && descents >= 2 && (endKm - startKm) * 1000 >= minLengthM) {
+      out.push({
+        start_km: startKm,
+        end_km: endKm,
+        climbs,
+        descents,
+        gain_m: run.reduce((t, s) => t + s.gain_m, 0),
+        loss_m: run.reduce((t, s) => t + s.loss_m, 0),
+      });
+    }
+    i = last + 1;
+  }
+  return out;
 }
 
 export function formatGrade(pct: number): string {

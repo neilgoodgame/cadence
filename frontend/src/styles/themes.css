@@ -77,4 +77,6 @@
   --grade-flat: #8b95a1;
   --grade-climb: #f0a02e;
   --grade-steep-climb: #e0442e;
+  /* A stretch of small back-to-back hills (lib/courseSections.ts rollingStretches). */
+  --grade-rolling: #9b6cf0;
 }

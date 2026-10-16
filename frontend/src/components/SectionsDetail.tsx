@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import type { CourseSection } from "../api/types";
-import { SECTION_COLORS, SECTION_LABELS, formatGrade } from "../lib/courseSections";
+import { ROLLING_COLOR, SECTION_COLORS, SECTION_LABELS, formatGrade, rollingStretches } from "../lib/courseSections";
 import { CourseSectionsProfile } from "./CourseSectionsProfile";
 
 function SectionTable({ sections }: { sections: CourseSection[] }) {
@@ -46,13 +46,21 @@ function SectionTable({ sections }: { sections: CourseSection[] }) {
 export function SectionsDetail({ profile, sections }: { profile: [number, number][]; sections: CourseSection[] }) {
   const [showSections, setShowSections] = useState(false);
   const climbs = sections.filter((s) => s.type === "climb" || s.type === "steep_climb");
+  const rolling = rollingStretches(sections);
+  const chip: CSSProperties = { fontSize: 11, color: "var(--ink2)", background: "var(--canvas)", borderRadius: 20, padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: 5 };
   return (
     <div>
-      <CourseSectionsProfile profile={profile} sections={sections} />
-      {climbs.length > 0 && (
+      <CourseSectionsProfile profile={profile} sections={sections} rolling={rolling} />
+      {(climbs.length > 0 || rolling.length > 0) && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          {rolling.map((r, i) => (
+            <span key={`r${i}`} style={chip}>
+              <span style={{ width: 7, height: 7, borderRadius: 2, background: ROLLING_COLOR }} />
+              Rolling · km {r.start_km.toFixed(1)}–{r.end_km.toFixed(1)} · {r.climbs + r.descents} hills · +{r.gain_m} / −{r.loss_m} m
+            </span>
+          ))}
           {climbs.map((c, i) => (
-            <span key={i} style={{ fontSize: 11, color: "var(--ink2)", background: "var(--canvas)", borderRadius: 20, padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span key={i} style={chip}>
               <span style={{ width: 7, height: 7, borderRadius: 2, background: SECTION_COLORS[c.type] }} />
               C{i + 1} · km {c.start_km.toFixed(1)}–{c.end_km.toFixed(1)} · +{c.gain_m} m · {c.avg_grade_pct.toFixed(1)}%
               {c.type === "steep_climb" && " · steep"}
