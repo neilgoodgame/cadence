@@ -5,7 +5,7 @@ from django.test import TestCase
 from accounts.models import User
 
 from ..models import Record
-from .helpers import _bearer_client, _delegated_client, _make_activity
+from .helpers import _bearer_client, _delegated_client, _json, _make_activity
 
 
 class StreamsViewTests(TestCase):
@@ -27,7 +27,7 @@ class StreamsViewTests(TestCase):
     def test_default_fields_include_latlng_when_gps(self):
         response = _bearer_client(self.athlete).get(f"/v1/activities/{self.activity.id}/streams")
         self.assertEqual(response.status_code, 200)
-        body = response.json()
+        body = _json(response)
         self.assertEqual(body["object"], "streams")
         self.assertEqual(body["resolution"], "high")
         self.assertEqual(body["fields"]["time"], [0, 1, 2, 3, 4])
@@ -39,11 +39,11 @@ class StreamsViewTests(TestCase):
         Record.objects.create(activity=indoor, t=0, ts=indoor.start_date, power=200)
 
         response = _bearer_client(self.athlete).get(f"/v1/activities/{indoor.id}/streams")
-        self.assertNotIn("latlng", response.json()["fields"])
+        self.assertNotIn("latlng", _json(response)["fields"])
 
     def test_fields_param_limits_channels(self):
         response = _bearer_client(self.athlete).get(f"/v1/activities/{self.activity.id}/streams?fields=power")
-        self.assertEqual(set(response.json()["fields"]), {"power"})
+        self.assertEqual(set(_json(response)["fields"]), {"power"})
 
     def test_unknown_field_400(self):
         response = _bearer_client(self.athlete).get(f"/v1/activities/{self.activity.id}/streams?fields=bogus")
@@ -57,7 +57,7 @@ class StreamsViewTests(TestCase):
         response = _bearer_client(self.athlete).get(
             f"/v1/activities/{self.activity.id}/streams?resolution=medium&fields=time"
         )
-        self.assertEqual(response.json()["fields"]["time"], [0])
+        self.assertEqual(_json(response)["fields"]["time"], [0])
 
     def test_decimation_keeps_every_nth_sample_relative_to_the_first(self):
         # Regression test: decimation moved from Python-slicing a fully-materialized record list
@@ -74,7 +74,7 @@ class StreamsViewTests(TestCase):
         response = _bearer_client(self.athlete).get(
             f"/v1/activities/{activity.id}/streams?resolution=medium&fields=time"
         )
-        self.assertEqual(response.json()["fields"]["time"], [100, 105, 110, 115])
+        self.assertEqual(_json(response)["fields"]["time"], [100, 105, 110, 115])
 
     def test_outsider_forbidden(self):
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
@@ -86,7 +86,7 @@ class StreamsViewTests(TestCase):
             air_temp=20.0, humidity=55, core_temp=37.5, skin_temp=33.0, heat_strain=0.1
         )
         response = _bearer_client(self.athlete).get(f"/v1/activities/{self.activity.id}/streams")
-        body = response.json()["fields"]
+        body = _json(response)["fields"]
         self.assertEqual(body["air_temp"], [20.0] * 5)
         self.assertEqual(body["humidity"], [55] * 5)
         self.assertEqual(body["core_temp"], [37.5] * 5)
@@ -97,4 +97,4 @@ class StreamsViewTests(TestCase):
         response = _bearer_client(self.athlete).get(
             f"/v1/activities/{self.activity.id}/streams?fields=air_temp,humidity"
         )
-        self.assertEqual(set(response.json()["fields"]), {"air_temp", "humidity"})
+        self.assertEqual(set(_json(response)["fields"]), {"air_temp", "humidity"})

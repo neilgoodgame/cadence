@@ -27,8 +27,18 @@ public final class RunningPowerSanitizer {
 			return powerSeries;
 		}
 		return powerSeries.stream()
-				.map(p -> p != null && p > maxRunningPowerWatts ? null : p)
+				.map(p -> sanitizeOne(p, sport, maxRunningPowerWatts))
 				.toList();
+	}
+
+	/** Same rule as {@link #sanitize}, one sample at a time - for a caller building its result
+	 * incrementally (e.g. StreamService's single-pass streaming build) rather than holding the
+	 * whole series as a List first. */
+	public static Integer sanitizeOne(Integer power, Sport sport, int maxRunningPowerWatts) {
+		if (sport != Sport.RUN) {
+			return power;
+		}
+		return power != null && power > maxRunningPowerWatts ? null : power;
 	}
 
 	private RunningPowerSanitizer() {
