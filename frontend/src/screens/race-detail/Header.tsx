@@ -3,18 +3,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { deleteRace } from "../../api/races";
 import type { Race, RacePriority } from "../../api/types";
+import { daysUntil } from "../../lib/dates";
 
 const PRIORITY_STYLE: Record<RacePriority, React.CSSProperties> = {
   A: { border: "1px solid var(--ember)", color: "var(--ember)" },
   B: { border: "1px solid var(--ink2)", color: "var(--ink2)" },
   C: { border: "1px dashed var(--ink3)", color: "var(--ink3)" },
 };
-
-function daysUntil(dateStr: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.round((new Date(dateStr + "T00:00:00").getTime() - today.getTime()) / 86_400_000);
-}
 
 function statusLabel(race: Race): string {
   if (race.result_time) return "Completed";
@@ -111,6 +106,11 @@ export function Header({ race, onEdit }: { race: Race; onEdit: () => void }) {
           <a href={race.results_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ember)" }}>
             Results ↗
           </a>
+        )}
+        {race.activity_id && (
+          <Link to={`/activities/${race.activity_id}`} style={{ color: "var(--ember)" }}>
+            Activity
+          </Link>
         )}
       </div>
       {race.notes && <div style={{ fontSize: 13, color: "var(--ink2)", marginTop: 8 }}>{race.notes}</div>}

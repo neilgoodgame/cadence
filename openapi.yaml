@@ -2788,6 +2788,37 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/races/{id}/weather:
+    parameters:
+      - $ref: "#/components/parameters/RaceId"
+    get:
+      tags: [Races]
+      summary: Race-day weather forecast
+      operationId: getRaceWeather
+      description: >
+        From Open-Meteo, resolved via the race's course start point. `available` is false (every
+        other field null) when the race has no course, the course has no resolved start point,
+        the race is more than 10 days out (or in the past), or the upstream call failed - this is
+        a normal 200, never an error, since weather is a nice-to-have on the race page.
+      responses:
+        "200":
+          description: Forecast, or an unavailable response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: { type: boolean }
+                  date: { type: [string, "null"], format: date }
+                  temperature_max_c: { type: [number, "null"] }
+                  temperature_min_c: { type: [number, "null"] }
+                  precipitation_probability_pct: { type: [integer, "null"] }
+                  wind_speed_max_kmh: { type: [number, "null"] }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/races/{id}/comments:
     parameters:
       - $ref: "#/components/parameters/RaceId"

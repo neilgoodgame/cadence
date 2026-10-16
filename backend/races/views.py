@@ -20,6 +20,7 @@ from .serializers import (
     RaceSerializer,
     RaceUpdateSerializer,
 )
+from .weather import forecast_for
 
 SPLITS_MODES = ("laps", "1", "5")
 
@@ -103,6 +104,15 @@ class RaceSplitsView(APIView):
         if mode not in SPLITS_MODES:
             raise ValidationError({"mode": f"Must be one of {', '.join(SPLITS_MODES)}."})
         return Response(splits_module.get_splits(race, mode))
+
+
+class RaceWeatherView(APIView):
+    def get(self, request: Request, id: str) -> Response:
+        race = get_object_or_404(Race, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, race.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        return Response(forecast_for(race))
 
 
 class RaceCommentListView(APIView):

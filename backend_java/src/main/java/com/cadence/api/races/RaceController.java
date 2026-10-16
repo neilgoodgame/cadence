@@ -9,6 +9,7 @@ import com.cadence.api.races.dto.RaceCommentResponse;
 import com.cadence.api.races.dto.RaceCreateRequest;
 import com.cadence.api.races.dto.RaceResponse;
 import com.cadence.api.races.dto.RaceUpdateRequest;
+import com.cadence.api.races.dto.RaceWeatherResponse;
 import com.cadence.api.races.dto.SplitsResponse;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
@@ -38,10 +39,11 @@ public class RaceController {
 	private final UserService userService;
 	private final AccessGuard accessGuard;
 	private final ThresholdSuggestionService thresholdSuggestionService;
+	private final WeatherService weatherService;
 
 	public RaceController(RaceService raceService, RaceBlockService raceBlockService, RaceSplitsService raceSplitsService,
 			RaceCommentService raceCommentService, UserService userService, AccessGuard accessGuard,
-			ThresholdSuggestionService thresholdSuggestionService) {
+			ThresholdSuggestionService thresholdSuggestionService, WeatherService weatherService) {
 		this.raceService = raceService;
 		this.raceBlockService = raceBlockService;
 		this.raceSplitsService = raceSplitsService;
@@ -49,6 +51,7 @@ public class RaceController {
 		this.userService = userService;
 		this.accessGuard = accessGuard;
 		this.thresholdSuggestionService = thresholdSuggestionService;
+		this.weatherService = weatherService;
 	}
 
 	@GetMapping("/v1/races")
@@ -114,6 +117,13 @@ public class RaceController {
 
 	/** Unlike activity comments (read-gated), races comments use the same self-or-coach-with-
 	 * grant permission as the rest of this resource - see RaceCommentService's Javadoc. */
+	@GetMapping("/v1/races/{id}/weather")
+	public RaceWeatherResponse getRaceWeather(@PathVariable String id) {
+		Race race = raceService.getRace(id);
+		accessGuard.requireRead(race.getAthlete().getId());
+		return weatherService.forecastFor(race);
+	}
+
 	@GetMapping("/v1/races/{id}/comments")
 	public DataListResponse<RaceCommentResponse> listRaceComments(@PathVariable String id) {
 		Race race = raceService.getRace(id);
