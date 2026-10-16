@@ -66,6 +66,27 @@ checking the other side of a parity change.
   own session before touching anything beyond an id (see
   `ActivityService.updateActivity`'s own comment for a worked example).
 
+## Memory-constrained profiling
+
+Staging's container runs with a 600MB memory cap and NMT enabled
+(`-XX:NativeMemoryTracking=summary`) after an OOM on 2026-10-16 - the app's RSS grew
+past its own heap cap, starving the whole EC2 host before the container's cgroup limit
+could trip. A plain local `docker compose up` has no memory limit, so it won't
+reproduce that squeeze. Use the `memcapped` Compose profile instead to mirror staging's
+cap for local profiling (JFR, detail-mode NMT, etc.):
+
+```bash
+docker compose --profile memcapped up -d backend-memcapped  # port 8081, not 8080
+```
+
+Read NMT data via a one-off companion container sharing its PID namespace (the runtime
+image is JRE-only, no `jcmd`):
+
+```bash
+docker run --rm --pid=container:backend_java-backend-memcapped-1 eclipse-temurin:25-jdk-noble \
+  jcmd 1 VM.native_memory summary
+```
+
 ## Conventions
 
 - Packages map roughly 1:1 to API resource groups, mirroring `backend/`'s

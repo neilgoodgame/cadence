@@ -156,6 +156,24 @@ curl http://localhost:8080/healthz
 Browse the API docs at `http://localhost:8080/schema/docs` (Swagger UI) or the raw
 OpenAPI 3.1 schema at `http://localhost:8080/schema`.
 
+### Profiling under staging's memory cap
+
+`backend` above runs with no memory limit — fine for everyday dev, but it won't
+reproduce the heap/off-heap squeeze that caused a real OOM on staging on 2026-10-16
+(see this directory's `CLAUDE.md`). For that, use the `memcapped` Compose profile, which
+builds the same image but caps the container at staging's 600MB
+(`--memory`/`--memory-swap`, matching
+`infra/terraform/modules/ec2/user_data.sh.tpl`) and runs on port **8081** instead of
+8080 so it can run alongside `backend` if needed:
+
+```bash
+docker compose --profile memcapped up -d backend-memcapped
+```
+
+Naming the service explicitly matters here — a bare `docker compose --profile
+memcapped up` would also start the profile-less `backend` service, since Compose starts
+every profile-less service regardless of which profile you request.
+
 ### Native (non-Docker) development
 
 With the `db` service running (so `localhost:5433` is reachable):
