@@ -43,7 +43,7 @@ public class ExportService {
 	}
 
 	@Async
-	public void runExport(String jobId, Sport sportFilter) {
+	public void runExport(String jobId, Sport sportFilter, boolean includeProfile) {
 		ExportJob job = exportJobRepository.findById(jobId).orElseThrow();
 		job.setStatus(ExportStatus.PROCESSING);
 		exportJobRepository.save(job);
@@ -55,8 +55,9 @@ public class ExportService {
 			Files.createDirectories(exportsDir);
 			try (JsonGenerator generator = jsonMapper.createGenerator(
 					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(target))), JsonEncoding.UTF8)) {
-				exportWriter.write(athleteId, sportFilter, generator, step -> progressUpdater.updateStep(jobId, step),
-						total -> progressUpdater.updateTotal(jobId, total), processed -> progressUpdater.updateProgress(jobId, processed));
+				exportWriter.write(athleteId, sportFilter, includeProfile, generator,
+						step -> progressUpdater.updateStep(jobId, step), total -> progressUpdater.updateTotal(jobId, total),
+						processed -> progressUpdater.updateProgress(jobId, processed));
 			}
 			job.setStatus(ExportStatus.READY);
 			job.setFilePath(Path.of(athleteId, "exports", jobId + ".json.gz").toString());

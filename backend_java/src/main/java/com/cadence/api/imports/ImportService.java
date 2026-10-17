@@ -60,6 +60,7 @@ public class ImportService {
 			job.setWorkoutsImported(counts.workoutsImported());
 			job.setScheduledWorkoutsImported(counts.scheduledWorkoutsImported());
 			job.setThresholdHistoryImported(counts.thresholdHistoryImported());
+			job.setBestEffortsImported(counts.bestEffortsImported());
 			job.setBikesImported(counts.bikesImported());
 			job.setShoesImported(counts.shoesImported());
 			job.setComponentsImported(counts.componentsImported());

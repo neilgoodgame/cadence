@@ -2,6 +2,8 @@ package com.cadence.api.imports;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.BestEffort;
+import com.cadence.api.activities.BestEffortRepository;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.TagService;
@@ -11,10 +13,15 @@ import com.cadence.api.activities.dto.StreamsResponse;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
+import com.cadence.api.athletes.ZoneSet;
+import com.cadence.api.athletes.ZoneSetRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.export.dto.ActivityExportEntry;
+import com.cadence.api.export.dto.BestEffortExportEntry;
 import com.cadence.api.export.dto.ExportCounts;
+import com.cadence.api.export.dto.ProfileExportEntry;
 import com.cadence.api.export.dto.ThresholdHistoryExportEntry;
+import com.cadence.api.export.dto.ZoneSetExportEntry;
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.GearService;
 import com.cadence.api.gear.Shoe;
@@ -113,12 +120,14 @@ public class ImportReader {
 	private final SchedulingService schedulingService;
 	private final TagService tagService;
 	private final ActivityRepository activityRepository;
+	private final BestEffortRepository bestEffortRepository;
 	private final LapRepository lapRepository;
 	private final com.cadence.api.activities.ActivityDurabilityRepository activityDurabilityRepository;
 	private final JdbcBatchItemWriter<RecordRow> recordItemWriter;
 	private final JsonMapper jsonMapper;
 	private final UserRepository userRepository;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
+	private final ZoneSetRepository zoneSetRepository;
 	private final com.cadence.api.athletes.ThresholdSuggestionService thresholdSuggestionService;
 	private final TransactionTemplate transactionTemplate;
 
@@ -126,10 +135,11 @@ public class ImportReader {
 			ShoeModelVersionRepository shoeModelVersionRepository, WorkoutService workoutService,
 			com.cadence.api.courses.CourseService courseService, RaceService raceService,
 			RaceCommentRepository raceCommentRepository, SchedulingService schedulingService, TagService tagService,
-			ActivityRepository activityRepository,
+			ActivityRepository activityRepository, BestEffortRepository bestEffortRepository,
 			LapRepository lapRepository, com.cadence.api.activities.ActivityDurabilityRepository activityDurabilityRepository,
 			JdbcBatchItemWriter<RecordRow> recordItemWriter, JsonMapper jsonMapper,
 			UserRepository userRepository, ThresholdHistoryRepository thresholdHistoryRepository,
+			ZoneSetRepository zoneSetRepository,
 			com.cadence.api.athletes.ThresholdSuggestionService thresholdSuggestionService,
 			PlatformTransactionManager transactionManager) {
 		this.gearService = gearService;
@@ -143,12 +153,14 @@ public class ImportReader {
 		this.schedulingService = schedulingService;
 		this.tagService = tagService;
 		this.activityRepository = activityRepository;
+		this.bestEffortRepository = bestEffortRepository;
 		this.lapRepository = lapRepository;
 		this.activityDurabilityRepository = activityDurabilityRepository;
 		this.recordItemWriter = recordItemWriter;
 		this.jsonMapper = jsonMapper;
 		this.userRepository = userRepository;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
+		this.zoneSetRepository = zoneSetRepository;
 		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 	}
@@ -180,6 +192,7 @@ public class ImportReader {
 		int workouts;
 		int scheduledWorkouts;
 		int thresholdHistory;
+		int bestEfforts;
 		int bikes;
 		int shoes;
 		int components;
@@ -314,6 +327,18 @@ public class ImportReader {
 						progress.flush();
 						thresholdSuggestionService.invalidate(athlete.getId());
 					}
+					case "best_efforts" -> {
+						Progress progress = startSection(onStep, onTotal, onProgress, "best_efforts",
+								fileCounts == null ? null : (int) fileCounts.bestEfforts());
+						importBestEfforts(parser, athlete, activityIdMap, counts, progress);
+						progress.flush();
+					}
+					// No onStep/progress of its own - at most 8 scalar fields + 4 zone-set rows,
+					// not worth a progress bar. Present only for a file exported with
+					// includeProfile=true (see ExportWriter.write) - absent (not just empty)
+					// otherwise, so this is a no-op for every export taken before this feature.
+					case "profile" -> importProfile(parser, athlete);
+					case "zones" -> importZones(parser, athlete);
 					default -> parser.skipChildren(); // generated_at, athlete_id - scalars, nothing to walk
 				}
 			}
@@ -322,7 +347,8 @@ public class ImportReader {
 		resolveDeferredLinks(deferredLinks, activityIdMap);
 
 		return new ImportCounts(counts.activities, counts.courses, counts.races, counts.raceComments, counts.workouts,
-				counts.scheduledWorkouts, counts.thresholdHistory, counts.bikes, counts.shoes, counts.components, counts.skipped);
+				counts.scheduledWorkouts, counts.thresholdHistory, counts.bestEfforts, counts.bikes, counts.shoes,
+				counts.components, counts.skipped);
 	}
 
 	private static Progress startSection(
@@ -871,6 +897,92 @@ public class ImportReader {
 				log.warn("Skipped threshold history import", e);
 			}
 			progress.tick();
+		}
+	}
+
+	/** Carries over the source athlete's own already-computed, already-capped best-effort rows
+	 * verbatim (re-linked to the newly-created activity ids) - the only way an import gives a
+	 * populated Best Efforts / Top Efforts screen without a post-import recompute (see
+	 * ExportWriter.writeBestEfforts). A row whose activity wasn't part of this import (not
+	 * included in a sport-filtered export, or its own import failed) is skipped - unlike
+	 * threshold history, every BestEffort row always has a source activity, so there's no
+	 * "manually entered" case to special-case here. Per-row save (not a bulk insert) so a
+	 * (athlete, kind, window, activity) uniqueness collision - re-importing the same athlete's
+	 * own already-existing data, where activityIdMap points at an existing, deduped activity -
+	 * is caught and skipped like any other per-row failure, not aborted. */
+	private void importBestEfforts(
+			JsonParser parser, User athlete, Map<String, String> activityIdMap, Counts counts, Progress progress) {
+		while (parser.nextToken() != JsonToken.END_ARRAY) {
+			BestEffortExportEntry entry = parser.readValueAs(BestEffortExportEntry.class);
+			String newActivityId = activityIdMap.get(entry.activityId());
+			if (newActivityId == null) {
+				counts.skipped++;
+				progress.tick();
+				continue;
+			}
+			try {
+				transactionTemplate.executeWithoutResult(status -> {
+					BestEffort row = new BestEffort();
+					row.setAthlete(athlete);
+					row.setKind(entry.kind());
+					row.setWindow(entry.window());
+					row.setValue(entry.value());
+					row.setUnit(entry.unit());
+					row.setDate(entry.date());
+					row.setActivity(activityRepository.getReferenceById(newActivityId));
+					bestEffortRepository.save(row);
+				});
+				counts.bestEfforts++;
+			}
+			catch (Exception e) {
+				counts.skipped++;
+				log.warn("Skipped best effort import", e);
+			}
+			progress.tick();
+		}
+	}
+
+	/** Applies the file's "profile" section (see ExportWriter.writeProfile-equivalent block in
+	 * write()) onto the *importing* athlete's own live profile fields - present only for a file
+	 * exported with includeProfile=true. Deliberately overwrites whatever the importing athlete
+	 * already had set: the file only has this section at all because the exporting athlete
+	 * explicitly opted in, so applying it is the whole point, not a surprise side effect of
+	 * importing their training data (contrast importThresholdHistory, which never touches these
+	 * same fields precisely because it isn't opt-in). */
+	private void importProfile(JsonParser parser, User athlete) {
+		ProfileExportEntry entry = parser.readValueAs(ProfileExportEntry.class);
+		transactionTemplate.executeWithoutResult(status -> {
+			User managed = userRepository.getReferenceById(athlete.getId());
+			managed.setAge(entry.age());
+			managed.setWeightKg(entry.weightKg());
+			managed.setFtp(entry.ftp());
+			managed.setCriticalRunPower(entry.criticalRunPower());
+			managed.setThresholdPace(entry.thresholdPace() != null ? entry.thresholdPace() : "");
+			managed.setLthr(entry.lthr());
+			managed.setMaxHr(entry.maxHr());
+			managed.setRestingHr(entry.restingHr());
+			userRepository.save(managed);
+		});
+	}
+
+	/** Applies the file's "zones" section - replaces (not merges) the importing athlete's own
+	 * ZoneSet row for each type present in the file, same overwrite-on-purpose reasoning as
+	 * importProfile. A type missing from the file (the exporting athlete never opened the Zones
+	 * editor for it) leaves that type's existing row, if any, untouched. */
+	private void importZones(JsonParser parser, User athlete) {
+		while (parser.nextToken() != JsonToken.END_ARRAY) {
+			ZoneSetExportEntry entry = parser.readValueAs(ZoneSetExportEntry.class);
+			transactionTemplate.executeWithoutResult(status -> {
+				ZoneSet zoneSet = zoneSetRepository.findByAthleteIdAndType(athlete.getId(), entry.type())
+						.orElseGet(() -> {
+							ZoneSet created = new ZoneSet();
+							created.setAthlete(userRepository.getReferenceById(athlete.getId()));
+							created.setType(entry.type());
+							return created;
+						});
+				zoneSet.setZones(entry.zones());
+				zoneSetRepository.save(zoneSet);
+			});
 		}
 	}
 }

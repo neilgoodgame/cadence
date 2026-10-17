@@ -7,8 +7,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from activities.models import Activity, Lap, Record
-from athletes.models import ThresholdHistory
+from activities.models import Activity, BestEffort, Lap, Record
+from athletes.models import ThresholdHistory, ZoneSet
 from authn.oauth_utils import issue_token_pair
 from courses.models import Course
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
@@ -89,7 +89,24 @@ def _seed_full_account(athlete: User) -> dict:
         current_from=date(2026, 1, 1),
     )
 
-    return {"bike": bike, "workout": workout, "parent": parent, "child": child, "threshold_entry": threshold_entry}
+    best_effort = BestEffort.objects.create(
+        athlete=athlete,
+        kind="cycling_power",
+        window="5min",
+        value=320.0,
+        unit="watts",
+        date=date(2026, 1, 1),
+        activity=child,
+    )
+
+    return {
+        "bike": bike,
+        "workout": workout,
+        "parent": parent,
+        "child": child,
+        "threshold_entry": threshold_entry,
+        "best_effort": best_effort,
+    }
 
 
 class ExportImportRoundTripTests(TestCase):
@@ -128,6 +145,7 @@ class ExportImportRoundTripTests(TestCase):
         self.assertEqual(counts["shoes_imported"], 1)
         self.assertEqual(counts["components_imported"], 1)
         self.assertEqual(counts["threshold_history_imported"], 1)
+        self.assertEqual(counts["best_efforts_imported"], 1)
         self.assertEqual(counts["items_skipped"], 0)
 
         imported_child = Activity.objects.get(athlete=self.target, name="Triathlon Bike Leg")
@@ -143,6 +161,12 @@ class ExportImportRoundTripTests(TestCase):
         self.assertEqual(imported_threshold_entry.value_numeric, 250)
         self.assertEqual(imported_threshold_entry.source_activity_id, imported_child.id)
         self.assertEqual(imported_threshold_entry.effective_from, date(2026, 1, 1))
+
+        imported_best_effort = BestEffort.objects.get(athlete=self.target)
+        self.assertEqual(imported_best_effort.kind, "cycling_power")
+        self.assertEqual(imported_best_effort.window, "5min")
+        self.assertEqual(imported_best_effort.value, 320.0)
+        self.assertEqual(imported_best_effort.activity_id, imported_child.id)
 
         imported_race = Race.objects.get(athlete=self.target)
         self.assertEqual(imported_race.activity_id, imported_child.id)
@@ -432,6 +456,87 @@ class ImportThresholdHistoryTests(TestCase):
         default_storage.delete(relative_path)
 
 
+# Regression coverage for the "export from Java, import into Python (or vice versa), everything
+# matches with no post-import recompute" goal: best_efforts carries over the source athlete's
+# own already-capped rows verbatim instead of needing BestEffortRecomputeView re-run afterward.
+class BestEffortExportImportTests(TestCase):
+    def test_a_dangling_activity_reference_is_skipped(self):
+        # A hand-crafted file whose best_efforts row points at an activity_id that isn't
+        # anywhere in this same file (the real-world case: that specific activity failed to
+        # import) - genuinely unmappable, must be skipped rather than imported with a bogus
+        # activity_id or crashing the whole import.
+        import os
+
+        from django.core.files.storage import default_storage
+
+        target = _verified_user(email="best-effort-dangling-target@example.cc", password="x", name="Target")
+        relative_path = "exports/test/best-effort-dangling.json.gz"
+        full_path = default_storage.path(relative_path)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with gzip.GzipFile(full_path, mode="wb") as gz:
+            gz.write(
+                json.dumps(
+                    {
+                        "generated_at": "2026-01-01T00:00:00Z",
+                        "athlete_id": "someone",
+                        "equipment": {"bikes": [], "shoes": [], "components": []},
+                        "workouts": [],
+                        "activities": [],
+                        "races": [],
+                        "scheduled_workouts": [],
+                        "threshold_history": [],
+                        "best_efforts": [
+                            {
+                                "kind": "cycling_power",
+                                "window": "5min",
+                                "value": 300.0,
+                                "unit": "watts",
+                                "date": "2026-01-01",
+                                "activity_id": "act_doesnotexist",
+                            }
+                        ],
+                    }
+                ).encode("utf-8")
+            )
+
+        counts = read_import(target.id, relative_path)
+
+        self.assertEqual(counts["best_efforts_imported"], 0)
+        self.assertEqual(counts["items_skipped"], 1)
+        self.assertEqual(BestEffort.objects.filter(athlete=target).count(), 0)
+
+        default_storage.delete(relative_path)
+
+    def test_reimporting_the_same_athletes_own_export_does_not_duplicate_or_crash(self):
+        # The deduped activity (ImportActivityDedupTests' pattern) means activity_id_map can
+        # point a second import's best-effort row at an *existing* activity, colliding with the
+        # (athlete, kind, window, activity) row already created the first time around -
+        # ignore_conflicts=True must swallow that, not raise IntegrityError.
+        source = _verified_user(email="best-effort-reimport-source@example.cc", password="x", name="Source")
+        activity = _make_activity(source, sport="run", name="Tempo run")
+        BestEffort.objects.create(
+            athlete=source,
+            kind="running_power",
+            window="20min",
+            value=280.0,
+            unit="watts",
+            date=date(2026, 1, 1),
+            activity=activity,
+        )
+
+        relative_path = "exports/test/best-effort-reimport.json.gz"
+        write_export(source.id, None, relative_path)
+        read_import(source.id, relative_path)
+        counts = read_import(source.id, relative_path)
+
+        self.assertEqual(counts["best_efforts_imported"], 1)
+        self.assertEqual(BestEffort.objects.filter(athlete=source, kind="running_power", window="20min").count(), 1)
+
+        from django.core.files.storage import default_storage
+
+        default_storage.delete(relative_path)
+
+
 class SportFilterTests(TestCase):
     def setUp(self):
         self.athlete = _verified_user(email="sport-filter@example.cc", password="x", name="Athlete")
@@ -550,8 +655,8 @@ class ProgressItemsTests(TestCase):
         self.athlete = _verified_user(email="progress-items@example.cc", password="x", name="Athlete")
         _seed_full_account(self.athlete)
         # _seed_full_account: 2 activities, 1 race, 1 workout, 1 scheduled_workout, 1 bike,
-        # 1 shoe, 1 component, 1 threshold_history entry. Equipment is one section
-        # (bikes+shoes+components combined) = 3.
+        # 1 shoe, 1 component, 1 threshold_history entry, 1 best_effort. Equipment is one
+        # section (bikes+shoes+components combined) = 3.
         self.expected_totals_by_step = {
             "equipment": 3,
             "workouts": 1,
@@ -559,6 +664,7 @@ class ProgressItemsTests(TestCase):
             "races": 1,
             "scheduled_workouts": 1,
             "threshold_history": 1,
+            "best_efforts": 1,
         }
 
     def test_write_export_calls_on_total_and_on_progress_per_section(self):
@@ -673,6 +779,7 @@ class ExportCountsTests(TestCase):
                 "workouts": 1,
                 "scheduled_workouts": 1,
                 "threshold_history": 1,
+                "best_efforts": 1,
                 "bikes": 1,
                 "shoes": 1,
                 "components": 1,
@@ -685,6 +792,7 @@ class ExportCountsTests(TestCase):
         self.assertEqual(doc["counts"]["workouts"], len(doc["workouts"]))
         self.assertEqual(doc["counts"]["scheduled_workouts"], len(doc["scheduled_workouts"]))
         self.assertEqual(doc["counts"]["threshold_history"], len(doc["threshold_history"]))
+        self.assertEqual(doc["counts"]["best_efforts"], len(doc["best_efforts"]))
         self.assertEqual(doc["counts"]["bikes"], len(doc["equipment"]["bikes"]))
         self.assertEqual(doc["counts"]["shoes"], len(doc["equipment"]["shoes"]))
         self.assertEqual(doc["counts"]["components"], len(doc["equipment"]["components"]))
@@ -702,7 +810,8 @@ class ExportCountsTests(TestCase):
 
         # Multisport parent excluded (own sport is "multisport"), workout/scheduled_workout are
         # sport=run so drop to 0 - the ftp threshold_history entry maps to sport=bike so it
-        # stays 1 - equipment stays full regardless of the filter.
+        # stays 1, same for the cycling_power best effort (its activity is sport=bike) -
+        # equipment stays full regardless of the filter.
         self.assertEqual(
             doc["counts"],
             {
@@ -712,6 +821,7 @@ class ExportCountsTests(TestCase):
                 "workouts": 0,
                 "scheduled_workouts": 0,
                 "threshold_history": 1,
+                "best_efforts": 1,
                 "bikes": 1,
                 "shoes": 1,
                 "components": 1,
@@ -823,3 +933,76 @@ class ExportImportGateTests(TestCase):
             "/v1/import", {"file": SimpleUploadedFile("export.json.gz", b"")}, format="multipart"
         )
         self.assertEqual(response.status_code, 403)
+
+
+# Covers the opt-in "profile"/"zones" sections added alongside the Heart Rate Zones dashboard
+# card going silently blank for a freshly-imported account (lthr/max_hr/etc. have no automatic
+# source - see athletes/zones.py's reference_for - and export/import never carried them before
+# this). Deliberately overwrites the importing athlete's own values when present (unlike every
+# other section in this file) - see _import_profile/_import_zones for why that's the point.
+class ProfileAndZonesExportImportTests(TestCase):
+    def setUp(self):
+        self.source = _verified_user(
+            email="profile-export-source@example.cc",
+            password="x",
+            name="Source",
+            age=34,
+            weight_kg=70.5,
+            ftp=260,
+            critical_run_power=280,
+            threshold_pace="4:35",
+            lthr=165,
+            max_hr=185,
+            resting_hr=48,
+        )
+        ZoneSet.objects.create(
+            athlete=self.source,
+            type="heart_rate",
+            zones=[{"name": "Z1", "low_pct": 0, "high_pct": 60}, {"name": "Z2", "low_pct": 61, "high_pct": 100}],
+        )
+        # Target already has its own real values - the test for include_profile=False below
+        # needs something that would visibly change if the gate didn't actually gate.
+        self.target = _verified_user(
+            email="profile-export-target@example.cc",
+            password="x",
+            name="Target",
+            lthr=150,
+        )
+
+    def test_include_profile_false_by_default_omits_profile_and_zones(self):
+        relative_path = "exports/test/profile-omitted.json.gz"
+        write_export(self.source.id, None, relative_path)
+        read_import(self.target.id, relative_path)
+
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.lthr, 150)
+        self.assertFalse(ZoneSet.objects.filter(athlete=self.target).exists())
+
+        from django.core.files.storage import default_storage
+
+        default_storage.delete(relative_path)
+
+    def test_include_profile_true_carries_profile_and_zones_onto_the_importing_athlete(self):
+        relative_path = "exports/test/profile-included.json.gz"
+        write_export(self.source.id, None, relative_path, include_profile=True)
+        read_import(self.target.id, relative_path)
+
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.age, 34)
+        self.assertEqual(self.target.weight_kg, 70.5)
+        self.assertEqual(self.target.ftp, 260)
+        self.assertEqual(self.target.critical_run_power, 280)
+        self.assertEqual(self.target.threshold_pace, "4:35")
+        self.assertEqual(self.target.lthr, 165)
+        self.assertEqual(self.target.max_hr, 185)
+        self.assertEqual(self.target.resting_hr, 48)
+
+        zone_set = ZoneSet.objects.get(athlete=self.target, type="heart_rate")
+        self.assertEqual(
+            zone_set.zones,
+            [{"name": "Z1", "low_pct": 0, "high_pct": 60}, {"name": "Z2", "low_pct": 61, "high_pct": 100}],
+        )
+
+        from django.core.files.storage import default_storage
+
+        default_storage.delete(relative_path)

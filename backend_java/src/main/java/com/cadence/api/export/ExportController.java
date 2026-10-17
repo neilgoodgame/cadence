@@ -43,7 +43,8 @@ public class ExportController {
 	}
 
 	@PostMapping("/v1/export")
-	public ResponseEntity<ExportJobResponse> startExport(@RequestParam(required = false) Sport sport) {
+	public ResponseEntity<ExportJobResponse> startExport(@RequestParam(required = false) Sport sport,
+			@RequestParam(name = "include_profile", defaultValue = "false") boolean includeProfile) {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		User athlete = userService.getById(athleteId);
@@ -60,7 +61,7 @@ public class ExportController {
 		job.setAthlete(athlete);
 		job = exportJobRepository.save(job);
 
-		exportService.runExport(job.getId(), sport);
+		exportService.runExport(job.getId(), sport, includeProfile);
 
 		return ResponseEntity.status(HttpStatus.ACCEPTED)
 				.header(HttpHeaders.LOCATION, "/v1/export/" + job.getId())

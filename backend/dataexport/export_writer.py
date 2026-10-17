@@ -24,8 +24,10 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Q
 from django.utils import timezone
 
-from activities.models import Activity, Lap, Record
+from accounts.models import User
+from activities.models import Activity, BestEffort, Lap, Record
 from activities.serializers import ActivitySerializer, LapSerializer
+from athletes.models import ZoneSet
 from courses.elevation import climbs_for
 from courses.models import Course
 from gear.models import Bike, Component, Shoe
@@ -198,6 +200,7 @@ def _counts(athlete_id: str, sport: str | None) -> dict:
         "workouts": _workouts_qs(athlete_id, sport).count(),
         "scheduled_workouts": _scheduled_workouts_qs(athlete_id, sport).count(),
         "threshold_history": _threshold_history_qs(athlete_id, sport).count(),
+        "best_efforts": _best_efforts_qs(athlete_id, sport).count(),
         # Equipment is always exported in full, regardless of the sport filter - it's small,
         # and shoes have no sport of their own to filter by.
         "bikes": _bikes_qs(athlete_id).count(),
@@ -267,6 +270,16 @@ def _threshold_history_qs(athlete_id: str, sport: str | None):
     return qs
 
 
+def _best_efforts_qs(athlete_id: str, sport: str | None):
+    # Filtered on the linked activity's own sport, not the kind's cycling_*/running_* prefix -
+    # keeps this exactly in sync with which activities a sport-scoped export actually includes,
+    # so a filtered export never references an activity_id that isn't also in this same file.
+    qs = BestEffort.objects.filter(athlete_id=athlete_id).order_by("kind", "window", "-value")
+    if sport:
+        qs = qs.filter(activity__sport=sport)
+    return qs
+
+
 def _write_threshold_history(
     gz: gzip.GzipFile, athlete_id: str, sport: str | None, progress: "_Progress | None" = None
 ) -> None:
@@ -282,6 +295,59 @@ def _write_threshold_history(
         for entry in _threshold_history_qs(athlete_id, sport)
     )
     _write_array(gz, entries, progress)
+
+
+def _write_best_efforts(
+    gz: gzip.GzipFile, athlete_id: str, sport: str | None, progress: "_Progress | None" = None
+) -> None:
+    # Carries over the athlete's own already-computed, already-capped (per best_effort_top_n)
+    # best-effort rows verbatim - an import_reader.py reader just bulk_creates these with the
+    # activity_id remapped, same as _import_threshold_history, so a straight export/import round
+    # trip needs no post-import recompute to show a populated Best Efforts / Top Efforts screen.
+    entries = (
+        {
+            "kind": be.kind,
+            "window": be.window,
+            "value": be.value,
+            "unit": be.unit,
+            "date": be.date,
+            "activity_id": be.activity_id,
+        }
+        for be in _best_efforts_qs(athlete_id, sport)
+    )
+    _write_array(gz, entries, progress)
+
+
+def _write_profile(gz: gzip.GzipFile, athlete) -> None:
+    # Plain profile settings, not training data - opt-in only (see write_export's
+    # include_profile param), since importing this into an athlete who already has their own
+    # real profile values set would silently clobber them. threshold_pace is "" (never null)
+    # on the model - normalized to None here so an athlete with no value set round-trips the
+    # same way every other unset field here does.
+    gz.write(
+        _dump(
+            {
+                "age": athlete.age,
+                "weight_kg": athlete.weight_kg,
+                "ftp": athlete.ftp,
+                "critical_run_power": athlete.critical_run_power,
+                "threshold_pace": athlete.threshold_pace or None,
+                "lthr": athlete.lthr,
+                "max_hr": athlete.max_hr,
+                "resting_hr": athlete.resting_hr,
+            }
+        )
+    )
+
+
+def _write_zones(gz: gzip.GzipFile, athlete_id: str) -> None:
+    # Only whatever ZoneSet rows actually exist - a type the athlete never opened the Zones
+    # editor for simply isn't in the file, same graceful-gap handling as every other optional
+    # section here. No progress section of its own - at most 4 rows, not worth a progress bar.
+    _write_array(
+        gz,
+        ({"type": zs.type, "zones": zs.zones} for zs in ZoneSet.objects.filter(athlete_id=athlete_id).order_by("type")),
+    )
 
 
 def _course_export_dict(course: Course) -> dict[str, Any]:
@@ -363,6 +429,7 @@ def write_export(
     athlete_id: str,
     sport: str | None,
     relative_path: str,
+    include_profile: bool = False,
     on_step: OnStep | None = None,
     on_total: OnTotal | None = None,
     on_progress: OnProgress | None = None,
@@ -370,6 +437,14 @@ def write_export(
     """Writes the gzip file to local disk (via default_storage's path resolution - this
     project's MEDIA_ROOT is local disk, which is what makes true incremental streaming
     writes possible; see the module docstring). Returns the file size in bytes.
+
+    `include_profile` adds two more top-level sections - "profile" (age/weight/ftp/
+    critical_run_power/threshold_pace/lthr/max_hr/resting_hr, the athlete's own live profile
+    settings) and "zones" (whatever ZoneSet rows exist) - both omitted entirely (not written
+    as null) when False, the default. Opt-in because, unlike every other section here, these
+    are the *importing* athlete's own account settings, not portable training-history data -
+    silently overwriting an existing athlete's real profile on import would be a correctness
+    bug, not a feature (see import_reader.py's _import_profile/_import_zones).
 
     Field order matches Java's ExportWriter.write for every section Java has implemented so
     far: generated_at/athlete_id/counts first (counts is a handful of cheap .count() queries,
@@ -446,6 +521,18 @@ def write_export(
         gz.write(b',"threshold_history":')
         _write_threshold_history(gz, athlete_id, sport, progress)
         progress.flush()
+
+        progress = start_section("best_efforts", counts["best_efforts"])
+        gz.write(b',"best_efforts":')
+        _write_best_efforts(gz, athlete_id, sport, progress)
+        progress.flush()
+
+        if include_profile:
+            athlete = User.objects.get(pk=athlete_id)
+            gz.write(b',"profile":')
+            _write_profile(gz, athlete)
+            gz.write(b',"zones":')
+            _write_zones(gz, athlete_id)
 
         gz.write(b"}")
     return os.path.getsize(full_path)

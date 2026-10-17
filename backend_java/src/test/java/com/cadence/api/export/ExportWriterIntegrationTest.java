@@ -323,8 +323,8 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 			exportWriter.write(athlete.getId(), null, generator, seen::add);
 		}
 
-		assertThat(seen).containsExactly(
-				"equipment", "workouts", "activities", "courses", "races", "scheduled_workouts", "threshold_history");
+		assertThat(seen).containsExactly("equipment", "workouts", "activities", "courses", "races",
+				"scheduled_workouts", "threshold_history", "best_efforts");
 	}
 
 	@Test
@@ -629,7 +629,8 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 				"step:courses", "total:0", "progress:0",
 				"step:races", "total:1", "progress:1",
 				"step:scheduled_workouts", "total:1", "progress:1",
-				"step:threshold_history", "total:0", "progress:0");
+				"step:threshold_history", "total:0", "progress:0",
+				"step:best_efforts", "total:0", "progress:0");
 	}
 
 	@Test

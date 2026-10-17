@@ -59,6 +59,9 @@ public class ImportJob extends PrefixedIdEntity {
 	@Column(name = "threshold_history_imported", nullable = false)
 	private int thresholdHistoryImported;
 
+	@Column(name = "best_efforts_imported", nullable = false)
+	private int bestEffortsImported;
+
 	@Column(name = "bikes_imported", nullable = false)
 	private int bikesImported;
 
@@ -186,6 +189,14 @@ public class ImportJob extends PrefixedIdEntity {
 
 	public void setThresholdHistoryImported(int thresholdHistoryImported) {
 		this.thresholdHistoryImported = thresholdHistoryImported;
+	}
+
+	public int getBestEffortsImported() {
+		return bestEffortsImported;
+	}
+
+	public void setBestEffortsImported(int bestEffortsImported) {
+		this.bestEffortsImported = bestEffortsImported;
 	}
 
 	public int getBikesImported() {

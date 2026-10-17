@@ -62,7 +62,7 @@ class ExportControllerIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("export-start@example.cc");
 		authAs(athlete.getId());
 
-		ResponseEntity<ExportJobResponse> response = exportController.startExport(null);
+		ResponseEntity<ExportJobResponse> response = exportController.startExport(null, false);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
 		assertThat(response.getHeaders().getFirst(HttpHeaders.LOCATION)).isEqualTo("/v1/export/" + response.getBody().id());
@@ -77,7 +77,7 @@ class ExportControllerIntegrationTest extends IntegrationTest {
 		userRepository.save(athlete);
 		authAs(athlete.getId());
 
-		assertThatThrownBy(() -> exportController.startExport(null)).isInstanceOf(ForbiddenException.class);
+		assertThatThrownBy(() -> exportController.startExport(null, false)).isInstanceOf(ForbiddenException.class);
 	}
 
 	@Test
@@ -85,7 +85,7 @@ class ExportControllerIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("export-sport@example.cc");
 		authAs(athlete.getId());
 
-		ResponseEntity<ExportJobResponse> response = exportController.startExport(Sport.BIKE);
+		ResponseEntity<ExportJobResponse> response = exportController.startExport(Sport.BIKE, false);
 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
 	}
@@ -96,7 +96,7 @@ class ExportControllerIntegrationTest extends IntegrationTest {
 		ExportJob previous = newJob(athlete, ExportStatus.READY);
 		authAs(athlete.getId());
 
-		ResponseEntity<ExportJobResponse> response = exportController.startExport(null);
+		ResponseEntity<ExportJobResponse> response = exportController.startExport(null, false);
 
 		assertThat(response.getBody().id()).isNotEqualTo(previous.getId());
 		assertThat(exportJobRepository.findById(previous.getId())).isEmpty();

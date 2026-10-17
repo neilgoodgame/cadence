@@ -1,9 +1,13 @@
+import { toQueryString } from "./activities";
 import { apiFetchStream, apiFetchWithHeaders } from "./client";
 import type { ExportJob, Sport } from "./types";
 
-export function startExport(sport?: Sport): Promise<{ data: ExportJob; retryAfterSeconds: number | null }> {
-  const path = sport ? `/v1/export?sport=${sport}` : "/v1/export";
-  return apiFetchWithHeaders<ExportJob>(path, { method: "POST" });
+export function startExport(
+  sport?: Sport,
+  includeProfile?: boolean,
+): Promise<{ data: ExportJob; retryAfterSeconds: number | null }> {
+  const query = toQueryString({ sport, include_profile: includeProfile || undefined });
+  return apiFetchWithHeaders<ExportJob>(`/v1/export${query}`, { method: "POST" });
 }
 
 export function getExportJob(id: string): Promise<{ data: ExportJob; retryAfterSeconds: number | null }> {
