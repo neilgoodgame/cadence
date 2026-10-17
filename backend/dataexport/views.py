@@ -49,6 +49,7 @@ class ExportView(APIView):
         sport = request.query_params.get("sport") or None
         if sport and sport not in dict(Activity.SPORT_CHOICES):
             raise ValidationError({"sport": "Unrecognized sport."})
+        include_profile = request.query_params.get("include_profile") in ("1", "true")
 
         # Only one export on record per athlete - replace any previous job and file
         # outright rather than keeping a history nobody asked for.
@@ -62,7 +63,7 @@ class ExportView(APIView):
             existing.delete()
 
         job = ExportJob.objects.create(athlete_id=athlete_id)
-        run_export_task.delay(job.id, sport)
+        run_export_task.delay(job.id, sport, include_profile)
 
         response = Response(ExportJobSerializer(job).data, status=202)
         response["Location"] = f"/v1/export/{job.id}"

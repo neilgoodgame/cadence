@@ -15,6 +15,16 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 	 * re-capped via BestEffortController#capPerWindow against the race block's own date range. */
 	List<BestEffort> findByAthleteId(String athleteId);
 
+	/** Used by ExportWriter#writeBestEfforts for a sport-filtered export - filtered on the
+	 * linked activity's own sport (not the kind's cycling/running prefix) so a filtered
+	 * export never references an activity_id that isn't also in that same file. */
+	List<BestEffort> findByAthleteIdAndActivitySportOrderByKindAscWindowAscValueDesc(
+			String athleteId, com.cadence.api.common.domain.Sport sport);
+
+	long countByAthleteId(String athleteId);
+
+	long countByAthleteIdAndActivitySport(String athleteId, com.cadence.api.common.domain.Sport sport);
+
 	/** All records for a window, best-first (for higher-is-better kinds: power, HR). */
 	List<BestEffort> findByAthleteIdAndKindAndWindowOrderByValueDesc(
 			String athleteId, BestEffortKind kind, String window);

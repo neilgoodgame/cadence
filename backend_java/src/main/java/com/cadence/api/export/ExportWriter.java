@@ -3,6 +3,8 @@ package com.cadence.api.export;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.BestEffort;
+import com.cadence.api.activities.BestEffortRepository;
 import com.cadence.api.activities.LapMapper;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.StreamService;
@@ -10,13 +12,17 @@ import com.cadence.api.activities.dto.LapResponse;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
+import com.cadence.api.athletes.ZoneSetRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.courses.Course;
 import com.cadence.api.courses.CourseRepository;
 import com.cadence.api.courses.CourseService;
 import com.cadence.api.export.dto.ActivityExportEntry;
+import com.cadence.api.export.dto.BestEffortExportEntry;
 import com.cadence.api.export.dto.ExportCounts;
+import com.cadence.api.export.dto.ProfileExportEntry;
 import com.cadence.api.export.dto.ThresholdHistoryExportEntry;
+import com.cadence.api.export.dto.ZoneSetExportEntry;
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.BikeRepository;
 import com.cadence.api.gear.ComponentRepository;
@@ -32,6 +38,8 @@ import com.cadence.api.races.RaceRepository;
 import com.cadence.api.races.RaceService;
 import com.cadence.api.scheduling.ScheduledWorkoutRepository;
 import com.cadence.api.scheduling.SchedulingMapper;
+import com.cadence.api.users.User;
+import com.cadence.api.users.UserRepository;
 import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutMapper;
 import com.cadence.api.workouts.WorkoutRepository;
@@ -118,6 +126,9 @@ public class ExportWriter {
 	private final ComponentRepository componentRepository;
 	private final GearMapper gearMapper;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
+	private final BestEffortRepository bestEffortRepository;
+	private final UserRepository userRepository;
+	private final ZoneSetRepository zoneSetRepository;
 	private final EntityManager entityManager;
 
 	// A field maps to exactly one sport - ftp -> bike, the other two -> run - same mapping
@@ -135,7 +146,8 @@ public class ExportWriter {
 			ScheduledWorkoutRepository scheduledWorkoutRepository, SchedulingMapper schedulingMapper,
 			GearService gearService, ShoeService shoeService, BikeRepository bikeRepository, ShoeRepository shoeRepository,
 			ComponentRepository componentRepository, GearMapper gearMapper,
-			ThresholdHistoryRepository thresholdHistoryRepository, EntityManager entityManager) {
+			ThresholdHistoryRepository thresholdHistoryRepository, BestEffortRepository bestEffortRepository,
+			UserRepository userRepository, ZoneSetRepository zoneSetRepository, EntityManager entityManager) {
 		this.activityRepository = activityRepository;
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
@@ -157,6 +169,9 @@ public class ExportWriter {
 		this.componentRepository = componentRepository;
 		this.gearMapper = gearMapper;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
+		this.bestEffortRepository = bestEffortRepository;
+		this.userRepository = userRepository;
+		this.zoneSetRepository = zoneSetRepository;
 		this.entityManager = entityManager;
 	}
 
@@ -179,7 +194,7 @@ public class ExportWriter {
 	 * was missed. */
 	@Transactional(readOnly = true)
 	public void write(String athleteId, Sport sportFilter, JsonGenerator generator) {
-		write(athleteId, sportFilter, generator, step -> { });
+		write(athleteId, sportFilter, false, generator, step -> { });
 	}
 
 	/** As {@link #write(String, Sport, JsonGenerator)}, but calls {@code onStep} with one of
@@ -189,12 +204,29 @@ public class ExportWriter {
 	 * must not be assumed to see the writes this transaction hasn't committed yet, or vice versa. */
 	@Transactional(readOnly = true)
 	public void write(String athleteId, Sport sportFilter, JsonGenerator generator, Consumer<String> onStep) {
-		write(athleteId, sportFilter, generator, onStep, total -> { }, processed -> { });
+		write(athleteId, sportFilter, false, generator, onStep);
 	}
 
 	/** As {@link #write(String, Sport, JsonGenerator, Consumer)}, but also turns onStep's coarse
 	 * per-section signal into a fine-grained item-level progress bar *scoped to the current
-	 * section* - e.g. while onStep is "activities", onTotal/onProgress report activities
+	 * section* (see the includeProfile overload below for what onTotal/onProgress mean). */
+	@Transactional(readOnly = true)
+	public void write(String athleteId, Sport sportFilter, JsonGenerator generator, Consumer<String> onStep,
+			IntConsumer onTotal, IntConsumer onProgress) {
+		write(athleteId, sportFilter, false, generator, onStep, onTotal, onProgress);
+	}
+
+	/** As {@link #write(String, Sport, JsonGenerator)}, but with {@code includeProfile} - see the
+	 * 7-arg overload below for what it adds. */
+	@Transactional(readOnly = true)
+	public void write(String athleteId, Sport sportFilter, boolean includeProfile, JsonGenerator generator,
+			Consumer<String> onStep) {
+		write(athleteId, sportFilter, includeProfile, generator, onStep, total -> { }, processed -> { });
+	}
+
+	/** As {@link #write(String, Sport, boolean, JsonGenerator, Consumer)}, but also turns onStep's
+	 * coarse per-section signal into a fine-grained item-level progress bar *scoped to the
+	 * current section* - e.g. while onStep is "activities", onTotal/onProgress report activities
 	 * specifically, not a blend across every kind of data. {@code onTotal} fires once per
 	 * section, right after onStep, with that section's own count from computeCounts (the same
 	 * cheap count queries the "counts" file field already computes - so this is free, no second
@@ -202,10 +234,19 @@ public class ExportWriter {
 	 * section* as each item in it is written, throttled (see Progress) so a multi-thousand-row
 	 * export doesn't turn into a DB write per row. "equipment" covers bikes+shoes+components
 	 * combined (one section/one onStep call), so its total is the sum of those three. Same
-	 * persist-independently contract as onStep. */
+	 * persist-independently contract as onStep.
+	 *
+	 * <p>{@code includeProfile} adds two more top-level sections - "profile" (the athlete's own
+	 * live age/weight/ftp/criticalRunPower/thresholdPace/lthr/maxHr/restingHr) and "zones"
+	 * (whatever ZoneSet rows exist) - omitted entirely (not written as null) when false, the
+	 * default. Opt-in because, unlike every other section here, these are the *importing*
+	 * athlete's own account settings, not portable training-history data - see ImportReader's
+	 * importProfile/importZones for why silently overwriting them on every import would be
+	 * wrong. No onStep/progress of its own - at most 8 scalar fields + 4 zone-set rows, not
+	 * worth a progress bar. */
 	@Transactional(readOnly = true)
-	public void write(String athleteId, Sport sportFilter, JsonGenerator generator, Consumer<String> onStep,
-			IntConsumer onTotal, IntConsumer onProgress) {
+	public void write(String athleteId, Sport sportFilter, boolean includeProfile, JsonGenerator generator,
+			Consumer<String> onStep, IntConsumer onTotal, IntConsumer onProgress) {
 		generator.writeStartObject();
 		generator.writeStringProperty("generated_at", Instant.now().toString());
 		generator.writeStringProperty("athlete_id", athleteId);
@@ -246,6 +287,26 @@ public class ExportWriter {
 		writeThresholdHistory(athleteId, sportFilter, generator, progress);
 		progress.flush();
 
+		progress = startSection(onStep, onTotal, onProgress, "best_efforts", (int) counts.bestEfforts());
+		writeBestEfforts(athleteId, sportFilter, generator, progress);
+		progress.flush();
+
+		if (includeProfile) {
+			User athlete = userRepository.findById(athleteId).orElseThrow();
+			// thresholdPace defaults to "" (never null) on the entity, same as Django's model -
+			// normalized to null here so an athlete with no value set round-trips the same way
+			// every other unset field in this section does (and matches export_writer.py's
+			// _write_profile exactly, so a file this backend writes imports identically either way).
+			String thresholdPace = athlete.getThresholdPace() == null || athlete.getThresholdPace().isBlank()
+					? null : athlete.getThresholdPace();
+			generator.writePOJOProperty("profile", new ProfileExportEntry(athlete.getAge(), athlete.getWeightKg(),
+					athlete.getFtp(), athlete.getCriticalRunPower(), thresholdPace, athlete.getLthr(),
+					athlete.getMaxHr(), athlete.getRestingHr()));
+			generator.writePOJOProperty("zones", zoneSetRepository.findByAthleteId(athleteId).stream()
+					.map(zs -> new ZoneSetExportEntry(zs.getType(), zs.getZones()))
+					.toList());
+		}
+
 		generator.writeEndObject();
 	}
 
@@ -270,13 +331,16 @@ public class ExportWriter {
 		long thresholdHistory = sportFilter == null
 				? thresholdHistoryRepository.countByAthleteId(athleteId)
 				: thresholdHistoryRepository.countByAthleteIdAndFieldIn(athleteId, thresholdFieldsFor(sportFilter));
+		long bestEfforts = sportFilter == null
+				? bestEffortRepository.countByAthleteId(athleteId)
+				: bestEffortRepository.countByAthleteIdAndActivitySport(athleteId, sportFilter);
 		// Courses and equipment are always exported in full, regardless of the sport filter -
 		// courses have no sport of their own (a course could in principle be raced by more than
 		// one sport), equipment is small and shoes have no sport of their own either.
 		long courses = courseRepository.countByAthleteId(athleteId);
 		long raceComments = raceCommentRepository.countByRaceAthleteId(athleteId);
 		return new ExportCounts(activities, courses, races, raceComments, workouts, scheduledWorkouts, thresholdHistory,
-				bikeRepository.countByAthleteId(athleteId), shoeRepository.countByAthleteIdAndRetiredFalse(athleteId),
+				bestEfforts, bikeRepository.countByAthleteId(athleteId), shoeRepository.countByAthleteIdAndRetiredFalse(athleteId),
 				componentRepository.countByBikeAthleteId(athleteId));
 	}
 
@@ -381,6 +445,24 @@ public class ExportWriter {
 			String sourceActivityId = entry.getSourceActivity() != null ? entry.getSourceActivity().getId() : null;
 			generator.writePOJO(new ThresholdHistoryExportEntry(entry.getField(), entry.getValueNumeric(),
 					entry.getValuePace(), sourceActivityId, entry.getEffectiveFrom(), entry.getCurrentFrom()));
+			progress.tick();
+		}
+		generator.writeEndArray();
+	}
+
+	// Carries over the athlete's own already-computed, already-capped (per bestEffortTopN)
+	// best-effort rows verbatim - ImportReader#importBestEfforts bulk-inserts these with the
+	// activityId remapped, same as writeThresholdHistory/importThresholdHistory, so a straight
+	// export/import round trip needs no post-import recompute to show a populated Best Efforts /
+	// Top Efforts screen.
+	private void writeBestEfforts(String athleteId, Sport sportFilter, JsonGenerator generator, Progress progress) {
+		List<BestEffort> entries = sportFilter == null
+				? bestEffortRepository.findByAthleteId(athleteId)
+				: bestEffortRepository.findByAthleteIdAndActivitySportOrderByKindAscWindowAscValueDesc(athleteId, sportFilter);
+		generator.writeArrayPropertyStart("best_efforts");
+		for (BestEffort entry : entries) {
+			generator.writePOJO(new BestEffortExportEntry(entry.getKind(), entry.getWindow(), entry.getValue(),
+					entry.getUnit(), entry.getDate(), entry.getActivity().getId()));
 			progress.tick();
 		}
 		generator.writeEndArray();

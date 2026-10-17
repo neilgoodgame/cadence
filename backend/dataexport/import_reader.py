@@ -47,9 +47,9 @@ from django.core.files.storage import default_storage
 from django.utils.dateparse import parse_date, parse_datetime, parse_duration
 
 from accounts.models import User
-from activities.models import Activity, ActivityDurability, ActivityTag, Lap, Record, Tag
+from activities.models import Activity, ActivityDurability, ActivityTag, BestEffort, Lap, Record, Tag
 from athletes import threshold_suggestions
-from athletes.models import ThresholdHistory
+from athletes.models import ZONE_TYPE_CHOICES, ThresholdHistory, ZoneSet
 from athletes.zones import reference_for
 from courses.models import Course
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
@@ -99,6 +99,7 @@ COUNT_KEYS = [
     "shoes_imported",
     "components_imported",
     "threshold_history_imported",
+    "best_efforts_imported",
     "items_skipped",
 ]
 
@@ -697,6 +698,84 @@ def _import_threshold_history(
     ThresholdHistory.objects.bulk_create(entries, batch_size=500)
 
 
+def _import_best_efforts(
+    athlete_id: str, stored_path: str, activity_id_map: dict[str, str], counts: dict, progress: _Progress
+) -> None:
+    """Carries over the source athlete's own already-computed, already-capped best-effort rows
+    verbatim (re-linked to the newly-created activity ids) - the only way an import gives a
+    populated Best Efforts / Top Efforts screen without a post-import recompute (see
+    export_writer.py's _write_best_efforts). A row whose activity wasn't part of this import
+    (not included in a sport-filtered export, or its own import failed) is skipped - unlike
+    threshold_history, there's no "manually entered, no source activity" case here, every
+    BestEffort row always has one. ignore_conflicts=True so re-importing the same athlete's own
+    already-existing data (activity_id_map pointing at an existing, deduped activity) doesn't
+    violate the (athlete, kind, window, activity) uniqueness constraint."""
+    entries: list[BestEffort] = []
+    with _stream(stored_path) as gz:
+        for row in ijson.items(gz, "best_efforts.item", use_float=True):
+            new_activity_id = activity_id_map.get(row.get("activity_id"))
+            date = parse_date(row["date"]) if row.get("date") else None
+            if new_activity_id is None or date is None:
+                counts["items_skipped"] += 1
+                progress.tick()
+                continue
+            entries.append(
+                BestEffort(
+                    athlete_id=athlete_id,
+                    kind=row["kind"],
+                    window=row["window"],
+                    value=row["value"],
+                    unit=row["unit"],
+                    date=date,
+                    activity_id=new_activity_id,
+                )
+            )
+            counts["best_efforts_imported"] += 1
+            progress.tick()
+    BestEffort.objects.bulk_create(entries, batch_size=500, ignore_conflicts=True)
+
+
+def _import_profile(athlete_id: str, stored_path: str) -> None:
+    """Applies the file's "profile" section (see export_writer.py's _write_profile) onto the
+    *importing* athlete's own live profile fields - present only for a file exported with
+    include_profile=True, absent (not null) otherwise, same optional-section handling as
+    every other schema-evolution gap in this reader. Deliberately overwrites whatever the
+    importing athlete already had set: the file only has this section at all because the
+    exporting athlete explicitly opted in, so applying it is the whole point, not a surprise
+    side effect of importing their training data (contrast _import_threshold_history, which
+    never touches these same fields precisely because it *isn't* opt-in)."""
+    with _stream(stored_path) as gz:
+        profile = next(ijson.items(gz, "profile", use_float=True), None)
+    if profile is None:
+        return
+    User.objects.filter(pk=athlete_id).update(
+        age=profile.get("age"),
+        weight_kg=profile.get("weight_kg"),
+        ftp=profile.get("ftp"),
+        critical_run_power=profile.get("critical_run_power"),
+        threshold_pace=profile.get("threshold_pace") or "",
+        lthr=profile.get("lthr"),
+        max_hr=profile.get("max_hr"),
+        resting_hr=profile.get("resting_hr"),
+    )
+
+
+def _import_zones(athlete_id: str, stored_path: str) -> None:
+    """Applies the file's "zones" section (see export_writer.py's _write_zones) - replaces
+    (not merges) the importing athlete's own ZoneSet row for each type present in the file,
+    same overwrite-on-purpose reasoning as _import_profile. A type missing from the file (the
+    exporting athlete never opened the Zones editor for it) leaves that type's existing row,
+    if any, untouched."""
+    with _stream(stored_path) as gz:
+        for entry in ijson.items(gz, "zones.item", use_float=True):
+            zone_type = entry.get("type")
+            if zone_type not in dict(ZONE_TYPE_CHOICES):
+                continue
+            ZoneSet.objects.update_or_create(
+                athlete_id=athlete_id, type=zone_type, defaults={"zones": entry.get("zones") or []}
+            )
+
+
 def read_import(
     athlete_id: str,
     stored_path: str,
@@ -779,5 +858,15 @@ def read_import(
     _import_threshold_history(athlete_id, stored_path, activity_id_map, counts, progress)
     progress.flush()
     threshold_suggestions.invalidate(athlete_id)
+
+    progress = start_section("best_efforts", "best_efforts")
+    _import_best_efforts(athlete_id, stored_path, activity_id_map, counts, progress)
+    progress.flush()
+
+    # No on_step/progress of its own - at most 9 scalar fields + 4 zone-set rows, not worth a
+    # progress bar, and absent entirely (not just empty) from a file exported without
+    # include_profile=True, so this is a no-op for every export taken before this feature.
+    _import_profile(athlete_id, stored_path)
+    _import_zones(athlete_id, stored_path)
 
     return counts

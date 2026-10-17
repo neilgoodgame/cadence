@@ -15,6 +15,10 @@ import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
+import com.cadence.api.athletes.Zone;
+import com.cadence.api.athletes.ZoneSet;
+import com.cadence.api.athletes.ZoneSetRepository;
+import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.export.ExportWriter;
 import com.cadence.api.gear.Bike;
@@ -98,6 +102,8 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 	private TagService tagService;
 	@Autowired
 	private ThresholdHistoryRepository thresholdHistoryRepository;
+	@Autowired
+	private ZoneSetRepository zoneSetRepository;
 
 	private User newUser(String email) {
 		User user = new User();
@@ -372,8 +378,8 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			List<String> seen = new ArrayList<>();
 			importReader.read(target.getId(), file, seen::add);
 
-			assertThat(seen).containsExactly(
-					"equipment", "workouts", "activities", "courses", "races", "scheduled_workouts", "threshold_history");
+			assertThat(seen).containsExactly("equipment", "workouts", "activities", "courses", "races",
+					"scheduled_workouts", "threshold_history", "best_efforts");
 		}
 		finally {
 			Files.deleteIfExists(file);
@@ -459,7 +465,8 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 					"step:courses", "total:0", "progress:0",
 					"step:races", "total:1", "progress:1",
 					"step:scheduled_workouts", "total:1", "progress:1",
-					"step:threshold_history", "total:0", "progress:0");
+					"step:threshold_history", "total:0", "progress:0",
+					"step:best_efforts", "total:0", "progress:0");
 		}
 		finally {
 			Files.deleteIfExists(file);
@@ -681,6 +688,85 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 
 			ImportCounts counts = importReader.read(target.getId(), file);
 			assertThat(counts.thresholdHistoryImported()).isZero();
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
+
+	@Test
+	void includeProfileFalseByDefaultOmitsProfileAndZones() throws IOException {
+		User source = newUser("profile-import-source@example.cc");
+		source.setLthr(165);
+		source = userRepository.save(source);
+		ZoneSet heartRateZones = new ZoneSet();
+		heartRateZones.setAthlete(source);
+		heartRateZones.setType(ZoneType.HEART_RATE);
+		heartRateZones.setZones(List.of(new Zone("Z1", 0, 60), new Zone("Z2", 61, 100)));
+		zoneSetRepository.save(heartRateZones);
+
+		// Already has its own real value - would visibly change if the gate didn't actually gate.
+		User target = newUser("profile-import-target@example.cc");
+		target.setLthr(150);
+		target = userRepository.save(target);
+
+		Path file = Files.createTempFile("import-profile-omitted-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				exportWriter.write(source.getId(), null, generator);
+			}
+			importReader.read(target.getId(), file);
+
+			User reloaded = userRepository.findById(target.getId()).orElseThrow();
+			assertThat(reloaded.getLthr()).isEqualTo(150);
+			assertThat(zoneSetRepository.findByAthleteId(target.getId())).isEmpty();
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
+
+	@Test
+	void includeProfileTrueCarriesProfileAndZonesOntoTheImportingAthlete() throws IOException {
+		User source = newUser("profile-import-source-2@example.cc");
+		source.setAge(34);
+		source.setWeightKg(70.5);
+		source.setFtp(260);
+		source.setCriticalRunPower(280);
+		source.setThresholdPace("4:35");
+		source.setLthr(165);
+		source.setMaxHr(185);
+		source.setRestingHr(48);
+		source = userRepository.save(source);
+		ZoneSet heartRateZones = new ZoneSet();
+		heartRateZones.setAthlete(source);
+		heartRateZones.setType(ZoneType.HEART_RATE);
+		heartRateZones.setZones(List.of(new Zone("Z1", 0, 60), new Zone("Z2", 61, 100)));
+		zoneSetRepository.save(heartRateZones);
+
+		User target = newUser("profile-import-target-2@example.cc");
+
+		Path file = Files.createTempFile("import-profile-included-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				exportWriter.write(source.getId(), null, true, generator, step -> { });
+			}
+			importReader.read(target.getId(), file);
+
+			User reloaded = userRepository.findById(target.getId()).orElseThrow();
+			assertThat(reloaded.getAge()).isEqualTo(34);
+			assertThat(reloaded.getWeightKg()).isEqualTo(70.5);
+			assertThat(reloaded.getFtp()).isEqualTo(260);
+			assertThat(reloaded.getCriticalRunPower()).isEqualTo(280);
+			assertThat(reloaded.getThresholdPace()).isEqualTo("4:35");
+			assertThat(reloaded.getLthr()).isEqualTo(165);
+			assertThat(reloaded.getMaxHr()).isEqualTo(185);
+			assertThat(reloaded.getRestingHr()).isEqualTo(48);
+
+			ZoneSet importedZoneSet = zoneSetRepository.findByAthleteIdAndType(target.getId(), ZoneType.HEART_RATE).orElseThrow();
+			assertThat(importedZoneSet.getZones()).containsExactly(new Zone("Z1", 0, 60), new Zone("Z2", 61, 100));
 		}
 		finally {
 			Files.deleteIfExists(file);

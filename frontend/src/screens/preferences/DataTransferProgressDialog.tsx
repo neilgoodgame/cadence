@@ -16,6 +16,7 @@ const STEP_LABELS: Record<DataTransferStep, string> = {
   races: "Races",
   scheduled_workouts: "Scheduled workouts",
   threshold_history: "Threshold history",
+  best_efforts: "Best efforts",
 };
 
 function ProgressBar({ fraction }: { fraction: number }) {

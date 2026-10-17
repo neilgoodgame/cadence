@@ -7,5 +7,5 @@ package com.cadence.api.export.dto;
  * without having to fully parse it. */
 public record ExportCounts(
 		long activities, long courses, long races, long raceComments, long workouts, long scheduledWorkouts,
-		long thresholdHistory, long bikes, long shoes, long components) {
+		long thresholdHistory, long bestEfforts, long bikes, long shoes, long components) {
 }

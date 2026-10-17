@@ -10,7 +10,7 @@ from .models import ExportJob, ImportJob
 
 
 @shared_task(bind=True, max_retries=0)  # type: ignore[untyped-decorator]
-def run_export_task(self: Any, export_job_id: str, sport: str | None) -> None:
+def run_export_task(self: Any, export_job_id: str, sport: str | None, include_profile: bool = False) -> None:
     job = ExportJob.objects.select_related("athlete").get(pk=export_job_id)
     job.status = "processing"
     job.save(update_fields=["status"])
@@ -27,7 +27,13 @@ def run_export_task(self: Any, export_job_id: str, sport: str | None) -> None:
     relative_path = f"exports/{job.athlete_id}/{job.id}.json.gz"
     try:
         size = write_export(
-            job.athlete_id, sport, relative_path, on_step=on_step, on_total=on_total, on_progress=on_progress
+            job.athlete_id,
+            sport,
+            relative_path,
+            include_profile=include_profile,
+            on_step=on_step,
+            on_total=on_total,
+            on_progress=on_progress,
         )
     except Exception as exc:
         job.status = "failed"

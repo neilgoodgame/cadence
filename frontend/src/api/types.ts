@@ -698,7 +698,8 @@ export type DataTransferStep =
   | "activities"
   | "races"
   | "scheduled_workouts"
-  | "threshold_history";
+  | "threshold_history"
+  | "best_efforts";
 
 export interface ExportJob {
   id: string;
@@ -724,6 +725,7 @@ export interface ImportCounts {
   workouts_imported: number;
   scheduled_workouts_imported: number;
   threshold_history_imported: number;
+  best_efforts_imported: number;
   bikes_imported: number;
   shoes_imported: number;
   components_imported: number;

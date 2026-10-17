@@ -108,6 +108,7 @@ function ImportCountsSummary({ job }: { job: ImportJob }) {
     [counts.workouts_imported, "workouts"],
     [counts.scheduled_workouts_imported, "scheduled workouts"],
     [counts.threshold_history_imported, "threshold history entries"],
+    [counts.best_efforts_imported, "best efforts"],
     [counts.bikes_imported + counts.shoes_imported + counts.components_imported, "equipment items"],
   ] as const;
   return (
@@ -201,6 +202,7 @@ function ImportSection() {
 export function ExportTab() {
   const [job, setJob] = useState<{ data: ExportJob; retryAfterSeconds: number | null } | null>(null);
   const [sport, setSport] = useState<Sport | "">("");
+  const [includeProfile, setIncludeProfile] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -231,7 +233,7 @@ export function ExportTab() {
             disabled={!!job}
             onClick={() => {
               setError(null);
-              startExport(sport || undefined)
+              startExport(sport || undefined, includeProfile)
                 .then(setJob)
                 .catch((err) => setError(errorMessage(err)));
             }}
@@ -240,6 +242,20 @@ export function ExportTab() {
             Generate export
           </button>
         </div>
+
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "var(--ink2)", cursor: job ? "default" : "pointer" }}>
+          <input
+            type="checkbox"
+            checked={includeProfile}
+            disabled={!!job}
+            onChange={(e) => setIncludeProfile(e.target.checked)}
+            style={{ marginTop: 2 }}
+          />
+          <span>
+            Include profile &amp; zone settings (age, weight, FTP, LTHR, max/resting HR, and your zone percentages).
+            Importing this file elsewhere will overwrite that account's own values with these.
+          </span>
+        </label>
         {error && <div style={{ fontSize: 13, color: "var(--danger, #c0392b)" }}>{error}</div>}
 
         {job && <ExportProgressDialog initial={job} onClose={() => setJob(null)} />}
