@@ -86,12 +86,16 @@ ENV_FILE=/opt/cadence/env
 
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "${ecr_registry}"
 
-# --memory caps the container below the instance's 1GB, so running out of
+# --memory caps the container below the instance's 2GB, so running out of
 # memory kills just the container (exit 137) and Restart=always brings it
 # back, instead of starving the whole host. --memory-swap equal to --memory
 # keeps the JVM out of swap, where GC would be slow enough to make
 # things worse. The JVM sizes its heap from this limit
-# (MaxRAMPercentage=60 in the Dockerfile, about 360MB).
+# (MaxRAMPercentage=60 in the Dockerfile, about 840MB).
+#
+# Sized for a t4g.small (2GB, ~1.9GB usable): ~140MB of host overhead plus
+# 1400m leaves ~350MB of headroom, a larger margin than the 600m cap had
+# on the old 1GB t4g.micro. History of that smaller instance follows.
 #
 # 800m (the value here until 2026-10-16) was too close to the instance's
 # ~930MB usable RAM: ps/free showed ~140MB steady overhead for the OS,
@@ -108,8 +112,8 @@ aws ecr get-login-password --region "$REGION" | docker login --username AWS --pa
 # this cgroup's own memory.max first and gets a clean, scoped, Restart=
 # always-recoverable kill instead of taking the whole instance down.
 exec docker run --rm --name cadence-backend \
-	--memory=600m \
-	--memory-swap=600m \
+	--memory=1400m \
+	--memory-swap=1400m \
 	-p 8080:8080 \
 	-v /opt/cadence/media:/app/media \
 	-v /opt/cadence/keys:/app/keys \

@@ -13,7 +13,7 @@ variable "subnet_id" {
 
 variable "instance_type" {
   type    = string
-  default = "t4g.micro" # ARM/Graviton, matches the ECR image. Cheaper per-hour than the Fargate task it replaces even running 24/7 - see infra/EC2_BACKEND_SKETCH.md.
+  default = "t4g.small" # ARM/Graviton, matches the ECR image. 2GB RAM; bumped from t4g.micro (1GB) after repeated OOMs - see user_data.sh.tpl.
 }
 
 variable "ecr_registry" {
