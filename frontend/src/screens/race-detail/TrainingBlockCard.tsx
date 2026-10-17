@@ -162,17 +162,16 @@ export function TrainingBlockCard({
   const sportLongKm = (week: RaceBlockWeek) => (raceSport === "ride" ? week.ride_long_km : week.run_long_km);
   const sportSessions = (week: RaceBlockWeek) => (raceSport === "ride" ? week.ride_count : week.run_count);
 
-  // Peak week and longest session include race weeks/race-day efforts. sportKm already counts
-  // race activities (the API sums every run/ride in the week regardless of race status), but
-  // sportLongKm excludes them (it backs the weekly table's "Long" training-run column), so the
-  // race's own distance is folded in separately for the week it falls in.
+  // Peak week includes race weeks (sportKm sums every run/ride in the week regardless of race
+  // status). Longest session is training-only: sportLongKm already excludes race activities
+  // (it backs the weekly table's "Long" column), so the race itself never shows up as the
+  // block's longest session.
   const peakWeek = actualWeeks.reduce<{ km: number; index: number } | null>((best, { week, index }) => {
     const km = sportKm(week) ?? 0;
     return best == null || km > best.km ? { km, index } : best;
   }, null);
   const longest = actualWeeks.reduce<{ km: number; index: number } | null>((best, { week, index }) => {
-    let km = sportLongKm(week) ?? 0;
-    if (index === raceWeekIndex && race.distance_km != null) km = Math.max(km, race.distance_km);
+    const km = sportLongKm(week) ?? 0;
     return best == null || km > best.km ? { km, index } : best;
   }, null);
   const totalKm = actualWeeks.reduce((sum, { week }) => sum + (sportKm(week) ?? 0), 0);
@@ -183,6 +182,7 @@ export function TrainingBlockCard({
   const ctlChange = week1Ctl != null && latestCtl != null ? latestCtl - week1Ctl : null;
   const plannedWeeks = block.weeks.filter((w) => w.planned && !isUnscheduled(w));
   const span = inProgress ? "so far" : "over the block";
+  const averages = weeklyAverages(actualWeeks.filter(({ index }) => index !== currentIndex).map(({ week }) => week));
 
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
@@ -440,8 +440,65 @@ export function TrainingBlockCard({
               </div>
             );
           })}
+          {averages && (
+            <div
+              className="mono"
+              title={`Weekly average over ${averages.weeks} completed weeks`}
+              style={{ display: "grid", gridTemplateColumns: TABLE_COLS, gap: 10, padding: "8px 14px", alignItems: "center", borderTop: "2px solid var(--line)", fontSize: 12.5, fontWeight: 600, color: "var(--ink2)" }}
+            >
+              <div style={{ gridColumn: "1 / 4", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)" }}>
+                Avg / week
+              </div>
+              {[
+                averages.tss != null ? Math.round(averages.tss) : null,
+                averages.runKm?.toFixed(1),
+                averages.runMovingS != null ? hm(averages.runMovingS) : null,
+                averages.runCount?.toFixed(1),
+                averages.runPace != null ? formatPace(averages.runPace).replace(" /km", "") : null,
+                averages.runLongKm?.toFixed(1),
+                averages.rideMovingS ? hm(averages.rideMovingS) : null,
+                averages.rideCount ? averages.rideCount.toFixed(1) : null,
+                averages.ridePowerW != null ? `${Math.round(averages.ridePowerW)} W` : null,
+                averages.ctl != null ? Math.round(averages.ctl) : null,
+              ].map((v, i) => (
+                <div key={i} style={{ textAlign: "right" }}>{v ?? "—"}</div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+function mean(values: (number | null)[]): number | null {
+  const present = values.filter((v): v is number => v != null);
+  return present.length > 0 ? present.reduce((a, b) => a + b, 0) / present.length : null;
+}
+
+/** Per-week averages for the weekly table's footer row, over completed weeks only (planned and
+ * the in-progress week would drag them down). Volume columns treat a missing value as zero -
+ * a week with no runs is a 0 km week - while pace and power are time-weighted across the weeks
+ * that have them, and "Long" averages only the weeks that had a long session. */
+function weeklyAverages(weeks: RaceBlockWeek[]) {
+  if (weeks.length < 2) return null;
+  const sum = (f: (w: RaceBlockWeek) => number | null) => weeks.reduce((acc, w) => acc + (f(w) ?? 0), 0);
+  const avg = (f: (w: RaceBlockWeek) => number | null) => sum(f) / weeks.length;
+  const pacedWeeks = weeks.filter((w) => w.run_avg_pace_s_per_km != null && w.run_km);
+  const pacedKm = pacedWeeks.reduce((acc, w) => acc + w.run_km!, 0);
+  const poweredWeeks = weeks.filter((w) => w.ride_avg_power_w != null && w.ride_moving_s);
+  const poweredS = poweredWeeks.reduce((acc, w) => acc + w.ride_moving_s!, 0);
+  return {
+    weeks: weeks.length,
+    tss: avg((w) => w.tss),
+    runKm: avg((w) => w.run_km),
+    runMovingS: avg((w) => w.run_moving_s),
+    runCount: avg((w) => w.run_count),
+    runPace: pacedKm > 0 ? pacedWeeks.reduce((acc, w) => acc + w.run_avg_pace_s_per_km! * w.run_km!, 0) / pacedKm : null,
+    runLongKm: mean(weeks.map((w) => w.run_long_km)),
+    rideMovingS: avg((w) => w.ride_moving_s),
+    rideCount: avg((w) => w.ride_count),
+    ridePowerW: poweredS > 0 ? poweredWeeks.reduce((acc, w) => acc + w.ride_avg_power_w! * w.ride_moving_s!, 0) / poweredS : null,
+    ctl: mean(weeks.map((w) => w.ctl)),
+  };
 }
