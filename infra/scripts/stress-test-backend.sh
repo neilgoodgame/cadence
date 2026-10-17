@@ -105,7 +105,12 @@ worker() {
 	ERRORS=0
 	END=$(($(date +%s) + DURATION))
 	while [ "$(date +%s)" -lt "$END" ]; do
-		STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/healthz")
+		# `|| STATUS=000`: curl itself exits nonzero on a transport failure (connection
+		# refused, timeout) even without -f - without this fallback, set -e would kill
+		# this whole worker on the first transient blip and it'd never run again for the
+		# rest of the test. 000 isn't a real HTTP status, so it always falls into the
+		# error branch below and gets logged/counted like any other failure.
+		STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/healthz") || STATUS=000
 		case "$STATUS" in
 		2*) ;;
 		*)
@@ -115,7 +120,7 @@ worker() {
 		esac
 		COUNT=$((COUNT + 1))
 		for ep in $ENDPOINTS; do
-			STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$BASE_URL$ep")
+			STATUS=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$BASE_URL$ep") || STATUS=000
 			case "$STATUS" in
 			2*) ;;
 			*)
@@ -128,7 +133,7 @@ worker() {
 		# 422 here just means the linked activity isn't a run/walk/ride - expected
 		# for some real accounts, not counted as a real error.
 		for ep in $POST_ENDPOINTS; do
-			STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" "$BASE_URL$ep")
+			STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" "$BASE_URL$ep") || STATUS=000
 			case "$STATUS" in
 			2* | 422) ;;
 			*)
@@ -156,6 +161,7 @@ ELAPSED=$(($(date +%s) - START))
 TOTAL=0
 ERR_TOTAL=0
 for f in "$WORKDIR"/worker-*; do
+	[ -f "$f" ] || continue
 	read -r c e <"$f"
 	TOTAL=$((TOTAL + c))
 	ERR_TOTAL=$((ERR_TOTAL + e))
