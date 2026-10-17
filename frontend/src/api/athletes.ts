@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchStream } from "./client";
+import { apiFetch, apiFetchStream, apiFetchWithHeaders } from "./client";
 import { toQueryString } from "./activities";
 import type {
   Athlete,
@@ -7,6 +7,7 @@ import type {
   BestEffort,
   BestEffortKind,
   BestEffortPeriod,
+  BestEffortRecomputeJob,
   DataList,
   DurabilityResponse,
   FitnessPoint,
@@ -114,11 +115,39 @@ export type RecomputeBestEffortsEvent =
   | { type: "progress"; current: number; total: number }
   | { type: "done"; processed: number };
 
-// SSE, same as recomputeStatsStream/recomputeThresholdHistoryStream below - the endpoint
-// (BestEffortController#recompute) only ever streamed progress, never returned a pollable
-// job. An earlier version of this client assumed a Celery-style job+polling contract that
-// this backend never actually implemented (no GET .../recompute/{jobId} exists) - every call
-// silently hung waiting for the whole stream to buffer, then failed parsing it as JSON.
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Django's BestEffortRecomputeView dispatches a Celery job + polls it (job.status
+// queued/processing/ready/failed) instead of streaming SSE like Java's BestEffortController -
+// a deliberate divergence (see its own code comment) to avoid holding a gunicorn sync worker
+// open for as long as a full-account recompute can take. See issue #436. Polls on the
+// response's own Retry-After header, same cadence as ExportTab.tsx's usePolling.
+async function* pollBestEffortsJob(
+  athleteId: string,
+  initial: BestEffortRecomputeJob,
+  initialRetryAfterSeconds: number,
+): AsyncGenerator<RecomputeBestEffortsEvent> {
+  let job = initial;
+  let retryAfterSeconds = initialRetryAfterSeconds;
+  while (job.status === "queued" || job.status === "processing") {
+    yield { type: "progress", current: job.processed_items, total: job.total_items ?? 0 };
+    await sleep(retryAfterSeconds * 1000);
+    const next = await apiFetchWithHeaders<BestEffortRecomputeJob>(
+      `/v1/athletes/${athleteId}/best-efforts/recompute/${job.id}`,
+    );
+    job = next.data;
+    retryAfterSeconds = next.retryAfterSeconds ?? 5;
+  }
+  if (job.status === "failed") throw new Error(job.error_message || "Recompute failed.");
+  yield { type: "done", processed: job.processed_items };
+}
+
+// SSE for Java (BestEffortController#recompute) - Django instead returns a pollable job (see
+// pollBestEffortsJob above). An earlier version of this client assumed every backend used one
+// contract or the other and hung against whichever one it didn't expect - detect the actual
+// shape from the initial response instead of assuming.
 export async function* recomputeBestEffortsStream(
   athleteId: string,
   kind?: BestEffortKind,
@@ -127,6 +156,14 @@ export async function* recomputeBestEffortsStream(
     `/v1/athletes/${athleteId}/best-efforts/recompute${toQueryString({ kind })}`,
     { method: "POST" },
   );
+
+  if (!(response.headers.get("Content-Type") ?? "").includes("text/event-stream")) {
+    const job = (await response.json()) as BestEffortRecomputeJob;
+    const retryAfterHeader = response.headers.get("Retry-After");
+    yield* pollBestEffortsJob(athleteId, job, retryAfterHeader ? Number(retryAfterHeader) : 5);
+    return;
+  }
+
   for await (const { event, data } of withStallTimeout(sseBlocks(response), STALL_TIMEOUT_MS)) {
     // Unrelated to real progress - just proves the connection is still alive between
     // progress events, since one item's real processing time has no upper bound (see

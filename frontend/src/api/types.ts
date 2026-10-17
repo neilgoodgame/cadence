@@ -746,6 +746,23 @@ export interface ImportJob {
   completed_at: string | null;
 }
 
+export type BestEffortRecomputeJobStatus = "queued" | "processing" | "ready" | "failed";
+
+// Django's /best-efforts/recompute responds with this (a pollable job) instead of Java's
+// SSE stream - see recomputeBestEffortsStream in api/athletes.ts for why the frontend has to
+// handle both shapes.
+export interface BestEffortRecomputeJob {
+  id: string;
+  object: "best_effort_recompute_job";
+  status: BestEffortRecomputeJobStatus;
+  kind: string;
+  total_items: number | null;
+  processed_items: number;
+  error_message: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
 export interface Upload {
   id: string;
   object: "upload";
