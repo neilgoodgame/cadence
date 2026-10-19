@@ -16,5 +16,6 @@ public record RaceCreateRequest(
 		String notes,
 		String priority,
 		String courseId,
-		String keySessionTagId
+		String keySessionTagId,
+		Integer targetPower
 ) {}

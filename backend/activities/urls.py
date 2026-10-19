@@ -9,6 +9,7 @@ from .views import (
     ActivityListView,
     ActivityRecomputeElevationView,
     ActivitySectionsView,
+    ActivitySplitsView,
     ActivityTagView,
     ActivityUntagView,
     ActivityWorkoutMatchCandidatesView,
@@ -46,6 +47,7 @@ urlpatterns = [
         name="activity-workout-match-candidates",
     ),
     path("v1/activities/<str:id>/sections", ActivitySectionsView.as_view(), name="activity-sections"),
+    path("v1/activities/<str:id>/splits", ActivitySplitsView.as_view(), name="activity-splits"),
     path(
         "v1/activities/<str:id>/recompute-elevation",
         ActivityRecomputeElevationView.as_view(),

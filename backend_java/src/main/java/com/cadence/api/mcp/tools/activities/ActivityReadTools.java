@@ -2,18 +2,22 @@ package com.cadence.api.mcp.tools.activities;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.ActivitySplitsService;
 import com.cadence.api.activities.LapMapper;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.TagService;
+import com.cadence.api.activities.dto.ActivitySplitsResponse;
 import com.cadence.api.activities.dto.LapResponse;
 import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
+import com.cadence.api.mcp.McpCustomSplits;
 import com.cadence.api.mcp.dispatch.McpScopes;
 import com.cadence.api.mcp.dispatch.McpToolAuthorizer;
 import com.cadence.api.mcp.dto.McpActivityDetail;
 import com.cadence.api.mcp.dto.McpActivityPage;
 import com.cadence.api.mcp.dto.McpActivitySummary;
+import com.cadence.api.mcp.dto.McpCustomSplitStepInput;
 import com.cadence.api.security.AccessGuard;
 import java.time.LocalDate;
 import java.util.List;
@@ -34,15 +38,18 @@ public class ActivityReadTools {
 	private final LapRepository lapRepository;
 	private final LapMapper lapMapper;
 	private final TagService tagService;
+	private final ActivitySplitsService splitsService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityReadTools(ActivityService activityService, LapRepository lapRepository, LapMapper lapMapper,
-			TagService tagService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			TagService tagService, ActivitySplitsService splitsService, AccessGuard accessGuard,
+			McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
 		this.lapMapper = lapMapper;
 		this.tagService = tagService;
+		this.splitsService = splitsService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -125,6 +132,28 @@ public class ActivityReadTools {
 		// fix.
 		return lapRepository.findByActivityIdOrderByIndexFetchWorkoutStep(activityId).stream().map(lapMapper::toResponse)
 				.toList();
+	}
+
+	@McpTool(name = "get_activity_custom_splits", description = "Get splits for an activity from "
+			+ "your own list of steps instead of a fixed distance - e.g. \"the first mile, then "
+			+ "every 2km after that\", or steps that mirror a workout's own structure. Each step "
+			+ "is either end_type=time (duration_s seconds) or end_type=distance (distance a "
+			+ "number with a unit, e.g. \"1mi\"/\"2km\"/\"800m\") - add a label to name one (e.g. "
+			+ "\"Mile 1\"). Steps are consumed in order from the start of the recording, each "
+			+ "picking up where the previous one left off, so they can never overlap or be out of "
+			+ "order - a step with no recording left to consume (the activity ended early) is "
+			+ "just dropped, and any recording left over after the last step becomes one "
+			+ "unlabeled trailing split. No goal/target to compare against here - see "
+			+ "get_race_custom_splits for a goal race's own delta.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public ActivitySplitsResponse getActivityCustomSplits(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
+			@McpToolParam(description = "The list of steps", required = true) List<McpCustomSplitStepInput> steps) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return splitsService.customSplits(activity, McpCustomSplits.convert(steps));
 	}
 
 	@McpTool(name = "list_tags", description = "List the authenticated athlete's tags with how "

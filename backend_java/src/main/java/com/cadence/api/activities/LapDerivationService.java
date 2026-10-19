@@ -77,107 +77,39 @@ public class LapDerivationService {
 			return null;
 		}
 
-		int n = records.size();
-		// A synthetic "active time" clock, running alongside the real per-record t: it advances
-		// exactly like t (and is identical to it) except that any single inter-sample gap - a
-		// pause/resume leaves one, since the device stops recording rather than freezing its
-		// clock - contributes at most one second, matching how a device's own laps track
-		// totalTimerTime (excluding paused duration) rather than totalElapsedTime. Using this in
-		// place of raw t for time-based boundaries stops a pause from being silently donated in
-		// full to whichever step's boundary walk happens to cross it, which would otherwise push
-		// that step's real end (and every later step's) later than the true transition and sweep
-		// in samples from the wrong phase. It has to be a single running clock carried forward
-		// across steps, the same way offsetT/boundary already worked - resetting it fresh at
-		// each step's own start would make every step (not just the ones actually touching a
-		// gap) end one sample later than its target, since adjacent segments share their
-		// boundary sample.
-		int[] activeT = new int[n];
-		activeT[0] = records.get(0).getT();
-		for (int i = 1; i < n; i++) {
-			activeT[i] = activeT[i - 1] + Math.min(records.get(i).getT() - records.get(i - 1).getT(), 1);
-		}
+		List<RecordStepWalker.Step> stepSpecs = flattened.stream().map(f -> {
+			WorkoutStep step = f.step();
+			if (step.getEndType() == StepEndType.TIME) {
+				return new RecordStepWalker.Step(RecordStepWalker.StepType.TIME, step.getDuration(), null);
+			}
+			return new RecordStepWalker.Step(RecordStepWalker.StepType.DISTANCE, null, (double) step.getDistance());
+		}).toList();
+		RecordStepWalker.Result result = RecordStepWalker.walk(records, stepSpecs);
 
-		int recordIdx = 0;
-		int offsetT = activeT[0];
-		double offsetDistance = records.get(0).getDistanceKm() != null ? records.get(0).getDistanceKm() : 0.0;
 		List<Lap> laps = new ArrayList<>();
 		int index = 1;
-
-		for (Flattened f : flattened) {
-			if (recordIdx >= n) {
-				break;
-			}
-			WorkoutStep step = f.step();
-			int endIdx = recordIdx;
-			boolean reached;
-			if (step.getEndType() == StepEndType.TIME) {
-				int boundary = offsetT + step.getDuration();
-				while (endIdx < n - 1 && activeT[endIdx] < boundary) {
-					endIdx++;
-				}
-				reached = activeT[endIdx] >= boundary;
-			}
-			else {
-				double boundary = offsetDistance + step.getDistance() / 1000.0;
-				while (endIdx < n - 1
-						&& (records.get(endIdx).getDistanceKm() == null || records.get(endIdx).getDistanceKm() < boundary)) {
-					endIdx++;
-				}
-				Double d = records.get(endIdx).getDistanceKm();
-				reached = d != null && d >= boundary;
-			}
-
-			List<Record> segment = records.subList(recordIdx, endIdx + 1);
-			// The governing dimension (the one endType targets) uses the *planned* value once
-			// the boundary is genuinely reached, not the observed sample delta - two adjacent
-			// segments share their boundary sample (it closes one segment and opens the next),
-			// so diffing each segment's own first/last sample independently would undercount
-			// every interior segment by one unit. The non-governing dimension has no such plan
-			// to fall back on and always reflects what was actually recorded, same as an
-			// un-reached (activity ended early) boundary on either dimension.
-			int duration;
-			double distanceKm;
-			if (step.getEndType() == StepEndType.TIME) {
-				duration = reached ? step.getDuration() : observedDuration(segment);
-				distanceKm = observedDistanceKm(segment);
-			}
-			else {
-				distanceKm = reached ? step.getDistance() / 1000.0 : observedDistanceKm(segment);
-				duration = observedDuration(segment);
-			}
-
-			Lap lap = new Lap();
-			lap.setActivity(activity);
-			lap.setIndex(index);
-			lap.setWorkoutStep(step);
-			lap.setRepeatIndex(f.repeatIndex());
-			lap.setDuration(duration);
-			lap.setDistanceKm(distanceKm);
-			applyAvgs(lap, segment);
-			laps.add(lap);
-
-			index++;
-			recordIdx = endIdx + 1;
-			offsetT = activeT[endIdx];
-			if (records.get(endIdx).getDistanceKm() != null) {
-				offsetDistance = records.get(endIdx).getDistanceKm();
-			}
+		for (int i = 0; i < result.segments().size(); i++) {
+			Flattened f = flattened.get(i);
+			laps.add(lapFromSegment(activity, index++, f.step(), f.repeatIndex(), result.segments().get(i)));
 		}
-
-		if (recordIdx < n) {
-			List<Record> trailing = records.subList(recordIdx, n);
-			Lap lap = new Lap();
-			lap.setActivity(activity);
-			lap.setIndex(index);
-			lap.setWorkoutStep(null);
-			lap.setRepeatIndex(null);
-			lap.setDuration(observedDuration(trailing));
-			lap.setDistanceKm(observedDistanceKm(trailing));
-			applyAvgs(lap, trailing);
-			laps.add(lap);
+		if (result.trailing() != null) {
+			laps.add(lapFromSegment(activity, index, null, null, result.trailing()));
 		}
 
 		return laps;
+	}
+
+	private static Lap lapFromSegment(
+			Activity activity, int index, WorkoutStep step, Integer repeatIndex, RecordStepWalker.Segment segment) {
+		Lap lap = new Lap();
+		lap.setActivity(activity);
+		lap.setIndex(index);
+		lap.setWorkoutStep(step);
+		lap.setRepeatIndex(repeatIndex);
+		lap.setDuration(segment.timeS());
+		lap.setDistanceKm(segment.distanceKm());
+		applyAvgs(lap, segment.rows());
+		return lap;
 	}
 
 	/**
@@ -194,27 +126,6 @@ public class LapDerivationService {
 		lapRepository.deleteAll(lapRepository.findByActivityIdOrderByIndex(activity.getId()));
 		lapRepository.saveAll(laps);
 		return true;
-	}
-
-	private static int observedDuration(List<Record> records) {
-		return records.get(records.size() - 1).getT() - records.get(0).getT();
-	}
-
-	private static double observedDistanceKm(List<Record> records) {
-		Double first = null;
-		Double last = null;
-		int count = 0;
-		for (Record r : records) {
-			Double d = r.getDistanceKm();
-			if (d != null) {
-				if (first == null) {
-					first = d;
-				}
-				last = d;
-				count++;
-			}
-		}
-		return count >= 2 ? last - first : 0.0;
 	}
 
 	private static void applyAvgs(Lap lap, List<Record> records) {

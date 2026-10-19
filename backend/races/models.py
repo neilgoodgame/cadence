@@ -30,6 +30,9 @@ class Race(PrefixedIDModel):
     distance_km = models.FloatField(null=True, blank=True)
     goal_time = models.DurationField(null=True, blank=True)
     result_time = models.DurationField(null=True, blank=True)
+    # Watts. Used as the splits delta reference (in place of GAP) when the linked activity has
+    # power data - falls back to the activity's own average power when unset.
+    target_power = models.PositiveIntegerField(null=True, blank=True)
     activity = models.OneToOneField(
         Activity,
         on_delete=models.SET_NULL,

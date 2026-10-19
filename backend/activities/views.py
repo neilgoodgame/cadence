@@ -45,6 +45,7 @@ from .serializers import (
     TagNameSerializer,
     TagSerializer,
 )
+from .splits import SPLITS_MODES, get_activity_splits, get_custom_activity_splits
 from .tag_management import rename_tag
 
 SCALAR_STREAM_FIELDS = {
@@ -527,6 +528,30 @@ class ActivitySectionsView(APIView):
         _require_section_sport(activity)
         settings = preview_settings(request, activity.athlete.section_settings())
         return Response(sections_payload(activity, ensure_elevation(activity), settings))
+
+
+class ActivitySplitsView(APIView):
+    def get(self, request: Request, id: str) -> Response:
+        """Laps, fixed 1km/5km splits, or (elevation) one split per section of the activity's own
+        recorded elevation - no race reference/delta, unlike GET /v1/races/{id}/splits."""
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        mode = request.query_params.get("mode", "laps")
+        if mode not in SPLITS_MODES:
+            raise ValidationError({"mode": f"Must be one of {', '.join(SPLITS_MODES)}."})
+        return Response(get_activity_splits(activity, mode))
+
+    def post(self, request: Request, id: str) -> Response:
+        """Custom splits from a client-supplied list of steps - see
+        activities.splits.get_custom_activity_splits."""
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        steps = request.data.get("steps") if isinstance(request.data, dict) else None
+        return Response(get_custom_activity_splits(activity, steps))
 
 
 class ActivityRecomputeElevationView(APIView):

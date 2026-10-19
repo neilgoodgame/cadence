@@ -803,7 +803,7 @@ public class ImportReader {
 					Race created = raceService.createRace(athlete,
 							new RaceCreateRequest(rr.name(), rr.date(), rr.sport() == null || rr.sport().isBlank() ? null : rr.sport(),
 									rr.distanceKm(), rr.goalTime(), rr.resultTime(), newActivityId, rr.url(), rr.resultsUrl(),
-									rr.notes(), rr.priority(), newCourseId, null));
+									rr.notes(), rr.priority(), newCourseId, null, rr.targetPower()));
 					raceIdMap.put(rr.id(), created.getId());
 				});
 				counts.races++;

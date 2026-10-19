@@ -53,6 +53,11 @@ public class Race extends PrefixedIdEntity {
 	@Column(name = "result_time")
 	private Integer resultTime;
 
+	/** Watts. Used as the splits delta reference (in place of GAP) when the linked activity has
+	 * power data - falls back to the activity's own average power when unset. */
+	@Column(name = "target_power")
+	private Integer targetPower;
+
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "activity_id")
 	private Activity activity;
@@ -103,6 +108,9 @@ public class Race extends PrefixedIdEntity {
 
 	public Integer getResultTime() { return resultTime; }
 	public void setResultTime(Integer resultTime) { this.resultTime = resultTime; }
+
+	public Integer getTargetPower() { return targetPower; }
+	public void setTargetPower(Integer targetPower) { this.targetPower = targetPower; }
 
 	public Activity getActivity() { return activity; }
 	public void setActivity(Activity activity) { this.activity = activity; }

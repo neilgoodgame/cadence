@@ -869,6 +869,7 @@ class CourseAndRaceCommentExportImportTests(TestCase):
             priority="A",
             course=self.course,
             distance_km=42.2,
+            target_power=250,
         )
         top_level = RaceComment.objects.create(
             race=self.race, author=self.source, role="athlete", text="Feeling ready for this one."
@@ -901,6 +902,7 @@ class CourseAndRaceCommentExportImportTests(TestCase):
         imported_race = Race.objects.get(athlete=self.target)
         self.assertEqual(imported_race.priority, "A")
         self.assertEqual(imported_race.course_id, imported_course.id)
+        self.assertEqual(imported_race.target_power, 250)
 
         comments = list(RaceComment.objects.filter(race=imported_race).order_by("created_at"))
         self.assertEqual(len(comments), 2)

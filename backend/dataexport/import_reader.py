@@ -567,6 +567,7 @@ def _import_races(
                     # output, but DurationField's DB adapter expects an actual timedelta.
                     goal_time=parse_duration(race["goal_time"]) if race.get("goal_time") else None,
                     result_time=parse_duration(race["result_time"]) if race.get("result_time") else None,
+                    target_power=race.get("target_power"),
                     activity_id=activity_id_map.get(race.get("activity_id")),
                     url=race.get("url"),
                     results_url=race.get("results_url"),

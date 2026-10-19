@@ -20,5 +20,6 @@ public record RaceResponse(
 		String parentRaceId,
 		LocalDate blockStart,
 		Integer blockWeeks,
-		String keySessionTagId
+		String keySessionTagId,
+		Integer targetPower
 ) {}

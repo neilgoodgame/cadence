@@ -79,6 +79,7 @@ class CourseAndRaceCommentExportImportIntegrationTest extends IntegrationTest {
 		race.setPriority(RacePriority.A);
 		race.setCourse(course);
 		race.setDistanceKm(42.2);
+		race.setTargetPower(250);
 		race = raceRepository.save(race);
 
 		RaceComment topLevel = new RaceComment();
@@ -118,6 +119,7 @@ class CourseAndRaceCommentExportImportIntegrationTest extends IntegrationTest {
 			Race importedRace = raceRepository.findByAthleteIdOrderByDateAsc(target.getId()).get(0);
 			assertThat(importedRace.getPriority()).isEqualTo(RacePriority.A);
 			assertThat(importedRace.getCourse().getId()).isEqualTo(importedCourse.getId());
+			assertThat(importedRace.getTargetPower()).isEqualTo(250);
 
 			List<RaceComment> comments = raceCommentRepository.findByRaceIdOrderByCreatedAt(importedRace.getId());
 			assertThat(comments).hasSize(2);

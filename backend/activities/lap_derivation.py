@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from workouts.calculations import flatten_persisted_steps
 
 from .models import Activity, Lap
+from .record_walk import Segment, StepSpec, walk_steps
 
 if TYPE_CHECKING:
     from workouts.models import Workout
@@ -26,13 +27,16 @@ def _segment_avgs(records: list[tuple[int, float | None, int | None, int | None]
     }
 
 
-def _observed_duration(records: list[tuple[int, float | None, int | None, int | None]]) -> int:
-    return records[-1][0] - records[0][0]
-
-
-def _observed_distance_km(records: list[tuple[int, float | None, int | None, int | None]]) -> float:
-    dist_values = [r[1] for r in records if r[1] is not None]
-    return (dist_values[-1] - dist_values[0]) if len(dist_values) >= 2 else 0.0
+def _lap_from_segment(activity: Activity, index: int, step: Any, repeat_index: int | None, segment: Segment) -> Lap:
+    return Lap(
+        activity=activity,
+        index=index,
+        workout_step=step,
+        repeat_index=repeat_index,
+        duration=segment["time_s"],
+        distance_km=segment["distance_km"],
+        **_segment_avgs(segment["rows"]),
+    )
 
 
 def derive_laps_from_workout(activity: Activity, workout: "Workout") -> list[Lap] | None:
@@ -62,89 +66,17 @@ def derive_laps_from_workout(activity: Activity, workout: "Workout") -> list[Lap
     if not records:
         return None
 
-    n = len(records)
-    # A synthetic "active time" clock, running alongside the real per-record t: it advances
-    # exactly like t (and is identical to it) except that any single inter-sample gap - a
-    # pause/resume leaves one, since the device stops recording rather than freezing its clock
-    # - contributes at most one second, matching how a device's own laps track
-    # total_timer_time (excluding paused duration) rather than total_elapsed_time. Using this
-    # in place of raw t for time-based boundaries stops a pause from being silently donated in
-    # full to whichever step's boundary walk happens to cross it, which would otherwise push
-    # that step's real end (and every later step's) later than the true transition and sweep in
-    # samples from the wrong phase. It has to be a single running clock carried forward across
-    # steps, the same way offset_t/boundary already worked - resetting it fresh at each step's
-    # own start would make every step (not just the ones actually touching a gap) end one
-    # sample later than its target, since adjacent segments share their boundary sample.
-    active_t = [records[0][0]] * n
-    for i in range(1, n):
-        active_t[i] = active_t[i - 1] + min(records[i][0] - records[i - 1][0], 1)
+    step_specs: list[StepSpec] = [
+        {"end_type": step.end_type, "duration": step.duration, "distance": step.distance} for step, _ in flattened
+    ]
+    segments, trailing = walk_steps(records, step_specs)
 
-    record_idx = 0
-    offset_t = active_t[0]
-    offset_distance = records[0][1] or 0.0
-    laps: list[Lap] = []
-    index = 1
-
-    for step, repeat_index in flattened:
-        if record_idx >= n:
-            break
-        if step.end_type == "time":
-            boundary = offset_t + step.duration
-            end_idx = record_idx
-            while end_idx < n - 1 and active_t[end_idx] < boundary:
-                end_idx += 1
-            reached = active_t[end_idx] >= boundary
-        else:  # "distance"
-            boundary = offset_distance + step.distance / 1000
-            end_idx = record_idx
-            while end_idx < n - 1 and (records[end_idx][1] is None or records[end_idx][1] < boundary):
-                end_idx += 1
-            reached = records[end_idx][1] is not None and records[end_idx][1] >= boundary
-
-        segment = records[record_idx : end_idx + 1]
-        # The governing dimension (the one `end_type` targets) uses the *planned* value once the
-        # boundary is genuinely reached, not the observed sample delta - two adjacent segments
-        # share their boundary sample (it closes one segment and opens the next), so diffing
-        # each segment's own first/last sample independently would undercount every interior
-        # segment by one unit. The non-governing dimension has no such plan to fall back on and
-        # always reflects what was actually recorded, same as an un-reached (activity ended
-        # early) boundary on either dimension.
-        if step.end_type == "time":
-            duration = step.duration if reached else _observed_duration(segment)
-            distance_km = _observed_distance_km(segment)
-        else:
-            distance_km = (step.distance / 1000) if reached else _observed_distance_km(segment)
-            duration = _observed_duration(segment)
-        laps.append(
-            Lap(
-                activity=activity,
-                index=index,
-                workout_step=step,
-                repeat_index=repeat_index,
-                duration=duration,
-                distance_km=distance_km,
-                **_segment_avgs(segment),
-            )
-        )
-        index += 1
-        record_idx = end_idx + 1
-        offset_t = active_t[end_idx]
-        if records[end_idx][1] is not None:
-            offset_distance = records[end_idx][1]
-
-    if record_idx < n:
-        trailing = records[record_idx:]
-        laps.append(
-            Lap(
-                activity=activity,
-                index=index,
-                workout_step=None,
-                repeat_index=None,
-                duration=_observed_duration(trailing),
-                distance_km=_observed_distance_km(trailing),
-                **_segment_avgs(trailing),
-            )
-        )
+    laps: list[Lap] = [
+        _lap_from_segment(activity, index, step, repeat_index, segment)
+        for index, ((step, repeat_index), segment) in enumerate(zip(flattened, segments, strict=False), start=1)
+    ]
+    if trailing is not None:
+        laps.append(_lap_from_segment(activity, len(laps) + 1, None, None, trailing))
 
     return laps
 

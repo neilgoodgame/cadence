@@ -3,12 +3,14 @@ import type {
   Activity,
   ActivityComment,
   ActivitySections,
+  ActivitySplits,
   ActivityUpdate,
   CourseSectionSettings,
   DataList,
   DurationCurve,
   Lap,
   List,
+  SplitsMode,
   StreamsResponse,
   Tag,
   WorkoutSport,
@@ -73,6 +75,12 @@ export function getActivitySections(id: string, preview?: Partial<CourseSectionS
 /** Rebuilds the stored elevation series from the activity's records. */
 export function recomputeActivityElevation(id: string): Promise<ActivitySections> {
   return apiFetch<ActivitySections>(`/v1/activities/${id}/recompute-elevation`, { method: "POST" });
+}
+
+/** Laps, fixed 1km/5km splits, or (elevation) one split per section of the activity's own
+ * recorded elevation - like getRaceSplits, but with no goal/target reference or delta. */
+export function getActivitySplits(id: string, mode: SplitsMode): Promise<ActivitySplits> {
+  return apiFetch<ActivitySplits>(`/v1/activities/${id}/splits${toQueryString({ mode })}`);
 }
 
 export function updateActivity(id: string, patch: ActivityUpdate): Promise<Activity> {

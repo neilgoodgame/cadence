@@ -4,7 +4,7 @@ from django.test import TestCase
 
 from accounts.models import User, UserRelationship
 from activities.models import Tag
-from activities.tests.helpers import _bearer_client, _delegated_client
+from activities.tests.helpers import _bearer_client, _delegated_client, _make_activity
 from courses.models import Course
 from races.models import Race, RaceComment
 
@@ -54,6 +54,20 @@ class RaceCrudTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["key_session_tag_id"])
+
+    def test_create_and_update_race_target_power_round_trips(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {"name": "Goal Marathon", "date": "2026-10-12", "sport": "run", "target_power": 250},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["target_power"], 250)
+
+        response = _bearer_client(self.athlete).patch(f"/v1/races/{data['id']}", {"target_power": 275}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["target_power"], 275)
 
     def test_list_includes_computed_block_fields_for_a_race(self):
         Race.objects.create(
@@ -106,6 +120,23 @@ class RaceBlockAndSplitsViewTests(TestCase):
         response = _bearer_client(self.athlete).get(f"/v1/races/{self.race.id}/splits")
         self.assertEqual(response.status_code, 200)
         self.assertIn("has_laps", response.json())
+
+    def test_custom_splits_endpoint_rejects_malformed_steps(self):
+        activity = _make_activity(self.athlete, distance_km=10.0, moving_time=3000)
+        race = Race.objects.create(athlete=self.athlete, name="Linked race", date=self.race.date, activity=activity)
+        response = _bearer_client(self.athlete).post(
+            f"/v1/races/{race.id}/splits", {"steps": [{"end_type": "time"}]}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_custom_splits_endpoint_denies_outsider(self):
+        client = _delegated_client(self.outsider, self.athlete, ["activities:read"])
+        response = client.post(
+            f"/v1/races/{self.race.id}/splits",
+            {"steps": [{"end_type": "distance", "distance_km": 1.0}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
 
 
 class RaceCommentTests(TestCase):
