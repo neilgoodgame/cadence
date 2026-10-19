@@ -5,16 +5,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.Record;
+import com.cadence.api.activities.RecordId;
+import com.cadence.api.activities.RecordRepository;
+import com.cadence.api.activities.dto.ActivitySplitsResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.mcp.dto.McpAthleteProfile;
+import com.cadence.api.mcp.dto.McpCustomSplitStepInput;
 import com.cadence.api.mcp.dto.McpWorkoutLeafStep;
 import com.cadence.api.mcp.dto.McpWorkoutStepInput;
+import com.cadence.api.mcp.tools.activities.ActivityReadTools;
 import com.cadence.api.mcp.tools.athletes.AthleteProfileTools;
+import com.cadence.api.mcp.tools.races.RaceTools;
 import com.cadence.api.mcp.tools.scheduling.ScheduledWorkoutWriteTools;
 import com.cadence.api.mcp.tools.workouts.WorkoutReadTools;
 import com.cadence.api.mcp.tools.workouts.WorkoutWriteTools;
+import com.cadence.api.races.Race;
+import com.cadence.api.races.RaceRepository;
+import com.cadence.api.races.dto.SplitsResponse;
 import com.cadence.api.scheduling.dto.ScheduledWorkoutResponse;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
@@ -64,6 +74,18 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private ActivityRepository activityRepository;
+
+	@Autowired
+	private ActivityReadTools activityReadTools;
+
+	@Autowired
+	private RaceTools raceTools;
+
+	@Autowired
+	private RecordRepository recordRepository;
+
+	@Autowired
+	private RaceRepository raceRepository;
 
 	@Autowired
 	private UserRepository userRepository;
@@ -340,5 +362,78 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 		assertThat(profile.id()).isEqualTo(athlete.getId());
 		assertThat(profile.ftp()).isEqualTo(250);
+	}
+
+	@Test
+	void getActivityCustomSplitsParsesAMileStepAndRejectsOtherAthletesActivity() {
+		User athlete = saveAthlete("mcp-act-custom-splits@example.cc");
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("Easy run");
+		activity.setStartDate(Instant.parse("2026-10-12T08:00:00Z"));
+		activity.setDistanceKm(5.0);
+		activity.setMovingTime(1500);
+		activityRepository.save(activity);
+		for (int t = 0; t <= 1500; t += 10) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setDistanceKm(Math.round(t / 300.0 * 10000) / 10000.0);
+			recordRepository.save(record);
+		}
+		authAs(athlete.getId(), "activities:read");
+
+		ActivitySplitsResponse result = activityReadTools.getActivityCustomSplits(
+				activity.getId(), List.of(new McpCustomSplitStepInput("distance", null, "1mi", "Mile 1")));
+
+		assertThat(result.splits().get(0).label()).isEqualTo("Mile 1");
+		assertThat(result.splits().get(0).endKm()).isCloseTo(1.609, org.assertj.core.api.Assertions.within(0.01));
+
+		User outsider = saveAthlete("mcp-act-custom-splits-outsider@example.cc");
+		authAs(outsider.getId(), "activities:read");
+		assertThatThrownBy(() -> activityReadTools.getActivityCustomSplits(
+				activity.getId(), List.of(new McpCustomSplitStepInput("time", 60, null, null))))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void getRaceCustomSplitsUsesTheRacesOwnGoalPace() {
+		User athlete = saveAthlete("mcp-race-custom-splits@example.cc");
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("5k time trial");
+		activity.setStartDate(Instant.parse("2026-10-12T08:00:00Z"));
+		activity.setDistanceKm(5.0);
+		activity.setMovingTime(1500);
+		activityRepository.save(activity);
+		for (int t = 0; t <= 1500; t += 10) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setDistanceKm(Math.round(t / 300.0 * 10000) / 10000.0);
+			recordRepository.save(record);
+		}
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("5k");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		race.setActivity(activity);
+		race.setDistanceKm(5.0);
+		race.setGoalTime(25 * 60); // exactly 300s/km goal pace
+		raceRepository.save(race);
+		authAs(athlete.getId(), "activities:read");
+
+		Object result = raceTools.getRaceCustomSplits(
+				race.getId(), List.of(new McpCustomSplitStepInput("distance", null, "1km", null)));
+
+		assertThat(result).isInstanceOf(SplitsResponse.class);
+		SplitsResponse response = (SplitsResponse) result;
+		assertThat(response.ref()).isEqualTo("goal");
+		assertThat(response.splits().get(0).deltaVsRefSPerKm())
+				.isCloseTo(0.0, org.assertj.core.api.Assertions.within(0.5));
 	}
 }
