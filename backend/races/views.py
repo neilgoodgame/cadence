@@ -22,7 +22,7 @@ from .serializers import (
 )
 from .weather import forecast_for
 
-SPLITS_MODES = ("laps", "1", "5")
+SPLITS_MODES = ("laps", "1", "5", "elevation")
 
 
 def _require_read(request: Request, athlete_id: str) -> None:

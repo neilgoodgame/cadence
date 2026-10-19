@@ -5,25 +5,31 @@ import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordRepository;
+import com.cadence.api.courses.Course;
+import com.cadence.api.courses.CourseSections;
+import com.cadence.api.courses.CourseService;
 import com.cadence.api.races.dto.SplitsResponse;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Race splits - laps, 1km and 5km fixed-distance splits from a race's linked activity. */
+/** Race splits - laps, 1km/5km fixed-distance splits, or (mode=elevation) one split per section
+ * of the race's linked course - from a race's linked activity. */
 @Service
 public class RaceSplitsService {
 
 	private final LapRepository lapRepository;
 	private final RecordRepository recordRepository;
 	private final com.cadence.api.activities.ActivityRepository activityRepository;
+	private final CourseService courseService;
 
 	public RaceSplitsService(LapRepository lapRepository, RecordRepository recordRepository,
-			com.cadence.api.activities.ActivityRepository activityRepository) {
+			com.cadence.api.activities.ActivityRepository activityRepository, CourseService courseService) {
 		this.lapRepository = lapRepository;
 		this.recordRepository = recordRepository;
 		this.activityRepository = activityRepository;
+		this.courseService = courseService;
 	}
 
 	private record Ref(String ref, Double pace) {}
@@ -38,6 +44,18 @@ public class RaceSplitsService {
 		return new Ref("average", null);
 	}
 
+	private record RefPower(String ref, Integer power) {}
+
+	/** Mirrors referencePace, but for Stryd-style power - preferred over GAP as the splits delta
+	 * reference whenever the activity has power data, since power already accounts for grade
+	 * mechanically rather than estimating it from a cost model. */
+	private RefPower referencePower(Activity activity, Race race) {
+		if (race.getTargetPower() != null) {
+			return new RefPower("target", race.getTargetPower());
+		}
+		return new RefPower("average", activity.getAvgPower());
+	}
+
 	private Double pace(double timeS, double distanceKm) {
 		return distanceKm > 0 ? timeS / distanceKm : null;
 	}
@@ -45,6 +63,43 @@ public class RaceSplitsService {
 	private Double deltaVsRef(Double paceSPerKm, Double refPaceSPerKm) {
 		if (paceSPerKm == null || refPaceSPerKm == null) return null;
 		return round1(paceSPerKm - refPaceSPerKm);
+	}
+
+	private Integer deltaPowerW(Integer avgPower, Integer refPowerW) {
+		if (avgPower == null || refPowerW == null) return null;
+		return avgPower - refPowerW;
+	}
+
+	/** Net grade over a split, from its first/last recorded altitude - same formula as a course
+	 * section's own avgGradePct (CourseSections._grade): end-minus-start elevation over distance,
+	 * not an average of per-sample grades. Null if either end has no altitude. */
+	private Double avgGradePct(Double startAltitude, Double endAltitude, double distKm) {
+		if (startAltitude == null || endAltitude == null || distKm <= 0) return null;
+		return round1((endAltitude - startAltitude) / (distKm * 1000) * 100);
+	}
+
+	// Minetti et al. 2002 ("Energy cost of walking and running at extreme uphill and downhill
+	// slopes") metabolic cost of running on a grade, J/kg/m - the standard model behind GAP
+	// (grade-adjusted pace). Mirrors backend/races/splits.py's _metabolic_cost/_gap_pace_s_per_km
+	// exactly, including the +/-45% clamp (a whole split's *average* grade shouldn't realistically
+	// exceed that, and the polynomial isn't meant to extrapolate past it).
+	private static final double GAP_FLAT_COST = 3.6;
+	private static final double GAP_MAX_GRADE_FRACTION = 0.45;
+
+	private static double metabolicCost(double gradeFraction) {
+		double g = gradeFraction;
+		return 155.4 * Math.pow(g, 5) - 30.4 * Math.pow(g, 4) - 43.3 * Math.pow(g, 3) + 46.3 * Math.pow(g, 2) + 19.5 * g + GAP_FLAT_COST;
+	}
+
+	/** Grade-adjusted pace - the flat-equivalent pace for the same effort, from the Minetti
+	 * cost-of-running model: GAP = actual pace / (cost at this grade / cost on flat ground).
+	 * Package-private (not private) so RaceSplitsServiceTest can exercise it directly, same as
+	 * backend/races/splits.py's _gap_pace_s_per_km gets its own SimpleTestCase. */
+	static Double gapPaceSPerKm(Double paceSPerKm, Double avgGradePct) {
+		if (paceSPerKm == null || avgGradePct == null) return null;
+		double gradeFraction = Math.max(-GAP_MAX_GRADE_FRACTION, Math.min(GAP_MAX_GRADE_FRACTION, avgGradePct / 100));
+		double gapFactor = metabolicCost(gradeFraction) / GAP_FLAT_COST;
+		return round1(paceSPerKm / gapFactor);
 	}
 
 	private SplitsResponse.Halves halves(List<SplitsResponse.Split> splits) {
@@ -55,20 +110,43 @@ public class RaceSplitsService {
 		return new SplitsResponse.Halves(firstS, secondS);
 	}
 
-	private SplitsResponse lapSplits(Activity activity, String ref, Double refPace) {
+	private SplitsResponse lapSplits(Activity activity, String ref, Double refPace, String refPower, Integer refPowerW) {
 		List<Lap> laps = lapRepository.findByActivityIdOrderByIndex(activity.getId());
+		// Laps don't store their own altitude, so this is the one split mode that needs the
+		// activity's records just for grade - laps already have their own duration/avgHr/avgPower.
+		List<Record> rows = recordRepository.findByActivityIdOrderByT(activity.getId());
 		List<SplitsResponse.Split> splits = new ArrayList<>();
 		double cumulativeKm = 0.0;
+		int cursor = 0;
 		for (Lap lap : laps) {
 			Double pace = pace(lap.getDuration(), lap.getDistanceKm());
-			splits.add(new SplitsResponse.Split("Lap " + lap.getIndex(), round2(cumulativeKm), round2(cumulativeKm + lap.getDistanceKm()),
-					lap.getDuration(), pace != null ? round1(pace) : null, lap.getAvgHr(), deltaVsRef(pace, refPace)));
-			cumulativeKm += lap.getDistanceKm();
+			double startKm = cumulativeKm;
+			double endKm = cumulativeKm + lap.getDistanceKm();
+			while (cursor < rows.size() && orZero(rows.get(cursor).getDistanceKm()) < startKm) {
+				cursor++;
+			}
+			Double startAltitude = null;
+			Double endAltitude = null;
+			int scan = cursor;
+			while (scan < rows.size() && orZero(rows.get(scan).getDistanceKm()) <= endKm + 1e-6) {
+				Double altitude = rows.get(scan).getAltitude();
+				if (altitude != null) {
+					if (startAltitude == null) startAltitude = altitude;
+					endAltitude = altitude;
+				}
+				scan++;
+			}
+			Double avgGradePct = avgGradePct(startAltitude, endAltitude, lap.getDistanceKm());
+			Double gap = gapPaceSPerKm(pace, avgGradePct);
+			splits.add(new SplitsResponse.Split("Lap " + lap.getIndex(), round2(startKm), round2(endKm),
+					lap.getDuration(), pace != null ? round1(pace) : null, lap.getAvgHr(), deltaVsRef(gap != null ? gap : pace, refPace),
+					null, null, null, avgGradePct, lap.getAvgPower(), gap, deltaPowerW(lap.getAvgPower(), refPowerW)));
+			cumulativeKm = endKm;
 		}
-		return new SplitsResponse(laps.size() > 1, ref, refPace, halves(splits), splits);
+		return new SplitsResponse(laps.size() > 1, ref, refPace, halves(splits), splits, refPower, refPowerW);
 	}
 
-	private SplitsResponse fixedDistanceSplits(Activity activity, double stepKm, String ref, Double refPace) {
+	private SplitsResponse fixedDistanceSplits(Activity activity, double stepKm, String ref, Double refPace, String refPower, Integer refPowerW) {
 		List<Record> rows = recordRepository.findByActivityIdOrderByT(activity.getId());
 		List<SplitsResponse.Split> splits = new ArrayList<>();
 		double totalKm = rows.isEmpty() ? 0.0 : orZero(rows.get(rows.size() - 1).getDistanceKm());
@@ -85,11 +163,20 @@ public class RaceSplitsService {
 				Integer startT = null;
 				Integer endT = null;
 				List<Integer> hrSamples = new ArrayList<>();
+				List<Integer> powerSamples = new ArrayList<>();
+				Double startAltitude = null;
+				Double endAltitude = null;
 				int scan = cursor;
 				while (scan < rows.size() && orZero(rows.get(scan).getDistanceKm()) <= endKm + 1e-6) {
-					if (startT == null) startT = rows.get(scan).getT();
-					endT = rows.get(scan).getT();
-					if (rows.get(scan).getHeartrate() != null) hrSamples.add(rows.get(scan).getHeartrate());
+					Record row = rows.get(scan);
+					if (startT == null) startT = row.getT();
+					endT = row.getT();
+					if (row.getHeartrate() != null) hrSamples.add(row.getHeartrate());
+					if (row.getPower() != null) powerSamples.add(row.getPower());
+					if (row.getAltitude() != null) {
+						if (startAltitude == null) startAltitude = row.getAltitude();
+						endAltitude = row.getAltitude();
+					}
 					scan++;
 				}
 				if (startT == null || endT == null) continue;
@@ -98,33 +185,101 @@ public class RaceSplitsService {
 				Double pace = pace(timeS, distKm);
 				String label = (i == nSplits - 1 && distKm < stepKm - 0.01) ? "Finish" : null;
 				Integer avgHr = hrSamples.isEmpty() ? null : (int) Math.round(hrSamples.stream().mapToInt(Integer::intValue).average().orElse(0));
+				Integer avgPower = powerSamples.isEmpty() ? null : (int) Math.round(powerSamples.stream().mapToInt(Integer::intValue).average().orElse(0));
+				Double avgGradePct = avgGradePct(startAltitude, endAltitude, distKm);
+				Double gap = gapPaceSPerKm(pace, avgGradePct);
 				splits.add(new SplitsResponse.Split(label, round2(startKm), round2(endKm), timeS,
-						pace != null ? round1(pace) : null, avgHr, deltaVsRef(pace, refPace)));
+						pace != null ? round1(pace) : null, avgHr, deltaVsRef(gap != null ? gap : pace, refPace),
+						null, null, null, avgGradePct, avgPower, gap, deltaPowerW(avgPower, refPowerW)));
 			}
 		}
 
-		return new SplitsResponse(false, ref, refPace, halves(splits), splits);
+		return new SplitsResponse(false, ref, refPace, halves(splits), splits, refPower, refPowerW);
 	}
 
 	private static double orZero(Double v) {
 		return v != null ? v : 0.0;
 	}
 
-	@Transactional(readOnly = true)
+	private SplitsResponse elevationSplits(Race race, Activity activity, String ref, Double refPace, String refPower, Integer refPowerW) {
+		SplitsResponse empty = new SplitsResponse(false, ref, refPace, null, List.of(), refPower, refPowerW);
+		if (race.getCourse() == null) {
+			return empty;
+		}
+		// Re-fetched fresh by id, not race.getCourse() directly - same cross-session
+		// lazy-association gotcha as the activity re-fetch above / WeatherService.forecastFor.
+		Course course = courseService.getCourse(race.getCourse().getId());
+		course = courseService.ensureElevationSeries(course);
+		List<CourseSections.Section> sections = courseService.sectionsFor(course, null);
+		if (sections.isEmpty()) {
+			return empty;
+		}
+
+		List<Record> rows = recordRepository.findByActivityIdOrderByT(activity.getId());
+		double totalKm = rows.isEmpty() ? 0.0 : orZero(rows.get(rows.size() - 1).getDistanceKm());
+		if (rows.isEmpty() || totalKm <= 0) {
+			return empty;
+		}
+
+		List<SplitsResponse.Split> splits = new ArrayList<>();
+		int cursor = 0;
+		for (CourseSections.Section section : sections) {
+			double startKm = section.startKm();
+			if (startKm >= totalKm) {
+				break;
+			}
+			double endKm = Math.min(section.endKm(), totalKm);
+			while (cursor < rows.size() && orZero(rows.get(cursor).getDistanceKm()) < startKm) {
+				cursor++;
+			}
+			Integer startT = null;
+			Integer endT = null;
+			List<Integer> hrSamples = new ArrayList<>();
+			List<Integer> powerSamples = new ArrayList<>();
+			int scan = cursor;
+			while (scan < rows.size() && orZero(rows.get(scan).getDistanceKm()) <= endKm + 1e-6) {
+				Record row = rows.get(scan);
+				if (startT == null) startT = row.getT();
+				endT = row.getT();
+				if (row.getHeartrate() != null) hrSamples.add(row.getHeartrate());
+				if (row.getPower() != null) powerSamples.add(row.getPower());
+				scan++;
+			}
+			if (startT == null || endT == null) continue;
+			int timeS = endT - startT;
+			double distKm = endKm - startKm;
+			Double pace = pace(timeS, distKm);
+			Integer avgHr = hrSamples.isEmpty() ? null : (int) Math.round(hrSamples.stream().mapToInt(Integer::intValue).average().orElse(0));
+			Integer avgPower = powerSamples.isEmpty() ? null : (int) Math.round(powerSamples.stream().mapToInt(Integer::intValue).average().orElse(0));
+			Double gap = gapPaceSPerKm(pace, section.avgGradePct());
+			splits.add(new SplitsResponse.Split(null, round2(startKm), round2(endKm), timeS,
+					pace != null ? round1(pace) : null, avgHr, deltaVsRef(gap != null ? gap : pace, refPace),
+					section.type(), section.gainM(), section.lossM(), section.avgGradePct(), avgPower, gap, deltaPowerW(avgPower, refPowerW)));
+		}
+
+		return new SplitsResponse(false, ref, refPace, halves(splits), splits, refPower, refPowerW);
+	}
+
+	// Writable (not readOnly) because mode=elevation can trigger a course's first-read
+	// elevation-series build (courseService.ensureElevationSeries), which writes - a readOnly
+	// transaction's JDBC connection would reject that write.
+	@Transactional
 	public SplitsResponse getSplits(Race race, String mode) {
 		if (race.getActivity() == null) {
-			return new SplitsResponse(false, "average", null, null, List.of());
+			return new SplitsResponse(false, "average", null, null, List.of(), "average", null);
 		}
 		// Re-fetched fresh by id, not race.getActivity() directly - see RaceBlockService
 		// .getRaceBlock's identical comment (same cross-session lazy-association gotcha).
 		Activity activity = activityRepository.findById(race.getActivity().getId()).orElseThrow();
 
 		Ref ref = referencePace(activity, race);
+		RefPower refPower = referencePower(activity, race);
 
 		return switch (mode) {
-			case "laps" -> lapSplits(activity, ref.ref(), ref.pace());
-			case "1" -> fixedDistanceSplits(activity, 1.0, ref.ref(), ref.pace());
-			case "5" -> fixedDistanceSplits(activity, 5.0, ref.ref(), ref.pace());
+			case "laps" -> lapSplits(activity, ref.ref(), ref.pace(), refPower.ref(), refPower.power());
+			case "1" -> fixedDistanceSplits(activity, 1.0, ref.ref(), ref.pace(), refPower.ref(), refPower.power());
+			case "5" -> fixedDistanceSplits(activity, 5.0, ref.ref(), ref.pace(), refPower.ref(), refPower.power());
+			case "elevation" -> elevationSplits(race, activity, ref.ref(), ref.pace(), refPower.ref(), refPower.power());
 			default -> throw new IllegalArgumentException("Unknown splits mode '" + mode + "'");
 		};
 	}

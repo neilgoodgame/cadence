@@ -1023,6 +1023,9 @@ export interface Race {
   distance_km: number | null;
   goal_time: string | null;
   result_time: string | null;
+  /** Watts. When set, used as the splits delta reference (in place of GAP) instead of the
+   * linked activity's own average power. */
+  target_power: number | null;
   activity_id: string | null;
   url: string | null;
   results_url: string | null;
@@ -1048,6 +1051,7 @@ export interface RaceCreate {
   distance_km?: number | null;
   goal_time?: string | null;
   result_time?: string | null;
+  target_power?: number | null;
   activity_id?: string | null;
   url?: string | null;
   results_url?: string | null;
@@ -1167,7 +1171,7 @@ export interface RaceBlock {
   sweat_rate_source: "measured" | "default";
 }
 
-export type SplitsMode = "laps" | "1" | "5";
+export type SplitsMode = "laps" | "1" | "5" | "elevation";
 
 export interface RaceSplit {
   /** e.g. "Lap 2" or "Finish" for the last partial split. */
@@ -1176,8 +1180,24 @@ export interface RaceSplit {
   end_km: number;
   time_s: number;
   pace_s_per_km: number | null;
+  /** Grade-adjusted pace (Minetti et al. 2002) - the flat-equivalent pace for the same effort.
+   * Null when avg_grade_pct is null. */
+  gap_pace_s_per_km: number | null;
   avg_hr: number | null;
+  /** Null if the activity has no power meter. */
+  avg_power: number | null;
+  /** gap_pace_s_per_km vs the reference pace when GAP is available, else pace_s_per_km vs it. */
   delta_vs_ref_s_per_km: number | null;
+  /** avg_power vs ref_power_w - preferred over delta_vs_ref_s_per_km/GAP whenever the activity
+   * has power data. Null unless both avg_power and ref_power_w are set. */
+  delta_power_w: number | null;
+  /** Set only for mode=elevation - null for laps/1/5. */
+  section_type: SectionType | null;
+  gain_m: number | null;
+  loss_m: number | null;
+  /** The course section's own grade for mode=elevation, else computed from the activity's own
+   * recorded altitude (null if that's missing). */
+  avg_grade_pct: number | null;
 }
 
 export interface RaceSplitsHalves {
@@ -1190,6 +1210,8 @@ export interface RaceSplits {
   has_laps: boolean;
   ref: "goal" | "average";
   ref_pace_s_per_km: number | null;
+  ref_power: "target" | "average";
+  ref_power_w: number | null;
   halves: RaceSplitsHalves | null;
   splits: RaceSplit[];
 }

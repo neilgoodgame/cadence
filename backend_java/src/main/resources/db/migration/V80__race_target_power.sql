@@ -1,0 +1,1 @@
+ALTER TABLE race ADD COLUMN target_power INTEGER NULL;

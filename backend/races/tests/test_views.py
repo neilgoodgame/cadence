@@ -55,6 +55,20 @@ class RaceCrudTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["key_session_tag_id"])
 
+    def test_create_and_update_race_target_power_round_trips(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {"name": "Goal Marathon", "date": "2026-10-12", "sport": "run", "target_power": 250},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["target_power"], 250)
+
+        response = _bearer_client(self.athlete).patch(f"/v1/races/{data['id']}", {"target_power": 275}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["target_power"], 275)
+
     def test_list_includes_computed_block_fields_for_a_race(self):
         Race.objects.create(
             athlete=self.athlete, name="Goal Marathon", date=date(2026, 10, 12), priority="A", sport="run"

@@ -10,6 +10,7 @@ import com.cadence.api.courses.CourseRepository;
 import com.cadence.api.races.dto.RaceCommentCreateRequest;
 import com.cadence.api.races.dto.RaceCreateRequest;
 import com.cadence.api.races.dto.RaceResponse;
+import com.cadence.api.races.dto.RaceUpdateRequest;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.sharing.ShareRole;
@@ -77,7 +78,7 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 		authAsSelf(athlete.getId());
 
 		RaceResponse response = raceController.createRace(
-				new RaceCreateRequest("Spring Marathon", "2026-04-12", "run", null, null, null, null, null, null, null, null, null, null));
+				new RaceCreateRequest("Spring Marathon", "2026-04-12", "run", null, null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(response.priority()).isEqualTo("A");
 	}
@@ -94,10 +95,24 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 		authAsSelf(athlete.getId());
 
 		RaceResponse response = raceController.createRace(new RaceCreateRequest(
-				"Valencia Marathon", "2026-12-06", "run", null, null, null, null, null, null, null, "B", course.getId(), null));
+				"Valencia Marathon", "2026-12-06", "run", null, null, null, null, null, null, null, "B", course.getId(), null, null));
 
 		assertThat(response.priority()).isEqualTo("B");
 		assertThat(response.courseId()).isEqualTo(course.getId());
+	}
+
+	@Test
+	void createAndUpdateRaceTargetPowerRoundTrips() {
+		User athlete = newUser("races-crud-target-power@example.cc");
+		authAsSelf(athlete.getId());
+
+		RaceResponse created = raceController.createRace(new RaceCreateRequest(
+				"Goal Marathon", "2026-10-12", "run", null, null, null, null, null, null, null, null, null, null, 250));
+		assertThat(created.targetPower()).isEqualTo(250);
+
+		RaceResponse updated = raceController.updateRace(created.id(), new RaceUpdateRequest(
+				null, null, null, null, null, null, null, null, null, null, null, null, null, 275));
+		assertThat(updated.targetPower()).isEqualTo(275);
 	}
 
 	@Test

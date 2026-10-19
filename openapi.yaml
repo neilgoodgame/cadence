@@ -2516,6 +2516,7 @@ paths:
                 distance_km: { type: number }
                 goal_time: { type: [string, "null"], description: "H:MM:SS, optional and editable later." }
                 result_time: { type: [string, "null"], description: "H:MM:SS, set once the race has happened." }
+                target_power: { type: [integer, "null"], description: "Watts, optional and editable later." }
                 activity_id: { type: [string, "null"], description: The matching recorded activity, if any. }
                 url: { type: [string, "null"], format: uri }
                 results_url: { type: [string, "null"], format: uri }
@@ -2569,6 +2570,7 @@ paths:
                 distance_km: { type: number }
                 goal_time: { type: [string, "null"], description: "H:MM:SS, or null to remove the goal." }
                 result_time: { type: [string, "null"] }
+                target_power: { type: [integer, "null"] }
                 activity_id: { type: [string, "null"] }
                 url: { type: [string, "null"], format: uri }
                 results_url: { type: [string, "null"], format: uri }
@@ -2751,8 +2753,12 @@ paths:
       parameters:
         - name: mode
           in: query
-          schema: { type: string, enum: [laps, "1", "5"], default: laps }
-          description: Manual laps, or fixed 1km/5km splits.
+          schema: { type: string, enum: [laps, "1", "5", elevation], default: laps }
+          description: >
+            Manual laps, fixed 1km/5km splits, or (elevation) one split per flat/climb/descent
+            section of the race's linked course. elevation falls back to the normal empty shape
+            (splits: [], has_laps: false) when the race has no course, or the course's elevation
+            isn't ok - the frontend only offers this mode when the course already has sections.
       responses:
         "200":
           description: Splits against the goal pace (or average pace, if there's no goal).
@@ -2764,6 +2770,8 @@ paths:
                   has_laps: { type: boolean, description: False when mode=laps and the activity has one lap or none. }
                   ref: { type: string, enum: [goal, average] }
                   ref_pace_s_per_km: { type: [number, "null"] }
+                  ref_power: { type: string, enum: [target, average], description: Mirrors ref/ref_pace_s_per_km - "target" when the race has target_power set, else "average" (the activity's own average power). }
+                  ref_power_w: { type: [integer, "null"], description: Null if the activity has no power meter and no target_power is set. }
                   halves:
                     type: [object, "null"]
                     properties:
@@ -2779,8 +2787,36 @@ paths:
                         end_km: { type: number }
                         time_s: { type: integer }
                         pace_s_per_km: { type: [number, "null"] }
+                        gap_pace_s_per_km:
+                          type: [number, "null"]
+                          description: >
+                            Grade-adjusted pace - the flat-equivalent pace for the same effort,
+                            from the Minetti et al. (2002) cost-of-running-on-a-gradient model.
+                            Null when avg_grade_pct is null (no reliable altitude).
                         avg_hr: { type: [integer, "null"] }
-                        delta_vs_ref_s_per_km: { type: [number, "null"] }
+                        avg_power: { type: [integer, "null"], description: Null if the activity has no power meter. }
+                        delta_vs_ref_s_per_km:
+                          type: [number, "null"]
+                          description: gap_pace_s_per_km vs the reference pace when GAP is available, else pace_s_per_km vs it.
+                        delta_power_w:
+                          type: [integer, "null"]
+                          description: >
+                            avg_power vs ref_power_w - the frontend prefers this over
+                            delta_vs_ref_s_per_km/GAP whenever the activity has power data, since
+                            power already accounts for grade mechanically rather than estimating
+                            it from a cost model. Null unless both avg_power and ref_power_w are set.
+                        section_type:
+                          type: [string, "null"]
+                          enum: [steep_descent, descent, flat, climb, steep_climb, null]
+                          description: The course section type for a mode=elevation split; null for laps/1/5.
+                        gain_m: { type: [integer, "null"], description: Set only for mode=elevation. }
+                        loss_m: { type: [integer, "null"], description: Set only for mode=elevation. }
+                        avg_grade_pct:
+                          type: [number, "null"]
+                          description: >
+                            Net grade over the split. For mode=elevation this is the course
+                            section's own grade; for laps/1/5 it's computed from the activity's
+                            own recorded altitude (null if that's missing).
         "400":
           $ref: "#/components/responses/BadRequest"
         "403":
@@ -4372,6 +4408,12 @@ components:
         distance_km: { type: [number, "null"] }
         goal_time: { type: [string, "null"], description: "H:MM:SS. Optional and editable even once the race has a result." }
         result_time: { type: [string, "null"], description: "H:MM:SS, once raced." }
+        target_power:
+          type: [integer, "null"]
+          description: >
+            Target average power in watts. When set, this (rather than the linked activity's own
+            average power) is the reference GET /v1/races/{id}/splits uses for delta_power_w.
+            Optional and editable even once the race has a result, like goal_time.
         activity_id: { type: [string, "null"], description: The matching recorded activity, if linked. }
         url: { type: [string, "null"], format: uri }
         results_url: { type: [string, "null"], format: uri, description: Link to the athlete's own results page on the race organiser's site. }

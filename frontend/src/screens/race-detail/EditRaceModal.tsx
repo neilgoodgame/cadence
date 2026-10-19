@@ -36,6 +36,7 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
   const [distanceKm, setDistanceKm] = useState(race.distance_km?.toString() ?? "");
   const [goalTime, setGoalTime] = useState(race.goal_time ?? "");
   const [resultTime, setResultTime] = useState(race.result_time ?? "");
+  const [targetPower, setTargetPower] = useState(race.target_power?.toString() ?? "");
   const [url, setUrl] = useState(race.url ?? "");
   const [resultsUrl, setResultsUrl] = useState(race.results_url ?? "");
   const [notes, setNotes] = useState(race.notes);
@@ -54,6 +55,7 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
         distance_km: distanceKm ? parseFloat(distanceKm) : null,
         goal_time: goalTime || null,
         result_time: resultTime || null,
+        target_power: targetPower ? parseInt(targetPower, 10) : null,
         url: url || null,
         results_url: resultsUrl || null,
         notes,
@@ -146,6 +148,13 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
         <label>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Result time (optional)</div>
           <input value={resultTime} onChange={(e) => setResultTime(e.target.value)} placeholder="H:MM:SS" style={fieldStyle} />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Target power, watts (optional)</div>
+          <input type="number" step="1" value={targetPower} onChange={(e) => setTargetPower(e.target.value)} placeholder="e.g. 250" style={fieldStyle} />
+          <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 4 }}>
+            Used as the Splits card's effort reference instead of grade-adjusted pace, for a race run with a power meter. Falls back to the activity's own average power when unset.
+          </div>
         </label>
         <label>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Race website (optional)</div>

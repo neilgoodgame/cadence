@@ -59,6 +59,7 @@ public class RaceService {
 		race.setDistanceKm(req.distanceKm());
 		race.setGoalTime(parseDuration(req.goalTime()));
 		race.setResultTime(parseDuration(req.resultTime()));
+		race.setTargetPower(req.targetPower());
 		race.setActivity(resolveActivity(req.activityId()));
 		race.setUrl(req.url());
 		race.setResultsUrl(req.resultsUrl());
@@ -77,6 +78,7 @@ public class RaceService {
 		if (req.distanceKm() != null) race.setDistanceKm(req.distanceKm());
 		if (req.goalTime() != null) race.setGoalTime(parseDuration(req.goalTime()));
 		if (req.resultTime() != null) race.setResultTime(parseDuration(req.resultTime()));
+		if (req.targetPower() != null) race.setTargetPower(req.targetPower());
 		if (req.activityId() != null) race.setActivity(resolveActivity(req.activityId()));
 		if (req.url() != null) race.setUrl(req.url().isEmpty() ? null : req.url());
 		if (req.resultsUrl() != null) race.setResultsUrl(req.resultsUrl().isEmpty() ? null : req.resultsUrl());
@@ -139,7 +141,8 @@ public class RaceService {
 				parentRaceId,
 				blockStart,
 				blockWeeks,
-				race.getKeySessionTag() != null ? race.getKeySessionTag().getId() : null
+				race.getKeySessionTag() != null ? race.getKeySessionTag().getId() : null,
+				race.getTargetPower()
 		);
 	}
 

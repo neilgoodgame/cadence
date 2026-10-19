@@ -13,5 +13,6 @@ public record RaceUpdateRequest(
 		String notes,
 		String priority,
 		String courseId,
-		String keySessionTagId
+		String keySessionTagId,
+		Integer targetPower
 ) {}

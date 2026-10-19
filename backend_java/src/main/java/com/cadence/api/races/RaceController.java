@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class RaceController {
 
-	private static final Set<String> SPLITS_MODES = Set.of("laps", "1", "5");
+	private static final Set<String> SPLITS_MODES = Set.of("laps", "1", "5", "elevation");
 
 	private final RaceService raceService;
 	private final RaceBlockService raceBlockService;
@@ -110,7 +110,7 @@ public class RaceController {
 		Race race = raceService.getRace(id);
 		accessGuard.requireRead(race.getAthlete().getId());
 		if (!SPLITS_MODES.contains(mode)) {
-			throw new ValidationException("Must be one of laps, 1, 5.", "mode");
+			throw new ValidationException("Must be one of laps, 1, 5, elevation.", "mode");
 		}
 		return raceSplitsService.getSplits(race, mode);
 	}
