@@ -4,7 +4,7 @@ from django.test import TestCase
 
 from accounts.models import User, UserRelationship
 from activities.models import Tag
-from activities.tests.helpers import _bearer_client, _delegated_client
+from activities.tests.helpers import _bearer_client, _delegated_client, _make_activity
 from courses.models import Course
 from races.models import Race, RaceComment
 
@@ -120,6 +120,23 @@ class RaceBlockAndSplitsViewTests(TestCase):
         response = _bearer_client(self.athlete).get(f"/v1/races/{self.race.id}/splits")
         self.assertEqual(response.status_code, 200)
         self.assertIn("has_laps", response.json())
+
+    def test_custom_splits_endpoint_rejects_malformed_steps(self):
+        activity = _make_activity(self.athlete, distance_km=10.0, moving_time=3000)
+        race = Race.objects.create(athlete=self.athlete, name="Linked race", date=self.race.date, activity=activity)
+        response = _bearer_client(self.athlete).post(
+            f"/v1/races/{race.id}/splits", {"steps": [{"end_type": "time"}]}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_custom_splits_endpoint_denies_outsider(self):
+        client = _delegated_client(self.outsider, self.athlete, ["activities:read"])
+        response = client.post(
+            f"/v1/races/{self.race.id}/splits",
+            {"steps": [{"end_type": "distance", "distance_km": 1.0}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
 
 
 class RaceCommentTests(TestCase):

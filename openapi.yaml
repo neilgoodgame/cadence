@@ -995,6 +995,60 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Activities]
+      summary: Custom splits for an activity, from your own list of steps
+      operationId: getActivityCustomSplits
+      description: >
+        Like GET on this same path, but splits come from `steps` instead of a fixed mode - e.g.
+        "the first mile, then every 2km after that". See CustomSplitStep for how steps are
+        consumed. No goal/target reference here either - see POST /v1/races/{id}/splits for a
+        goal race's own delta.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomSplitsRequest" }
+      responses:
+        "200":
+          description: The activity's custom splits - same response shape as GET on this path.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_laps: { type: boolean, description: Always false - custom splits have no laps mode. }
+                  halves:
+                    type: [object, "null"]
+                    properties:
+                      first_s: { type: integer }
+                      second_s: { type: integer }
+                  splits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        label: { type: [string, "null"] }
+                        start_km: { type: number }
+                        end_km: { type: number }
+                        time_s: { type: integer }
+                        pace_s_per_km: { type: [number, "null"] }
+                        gap_pace_s_per_km: { type: [number, "null"] }
+                        avg_hr: { type: [integer, "null"] }
+                        avg_power: { type: [integer, "null"] }
+                        section_type:
+                          type: [string, "null"]
+                          enum: [steep_descent, descent, flat, climb, steep_climb, null]
+                          description: Always null - no course/elevation section here.
+                        gain_m: { type: [integer, "null"], description: Always null. }
+                        loss_m: { type: [integer, "null"], description: Always null. }
+                        avg_grade_pct: { type: [number, "null"] }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /v1/activities/{id}/streams:
     parameters:
@@ -2892,6 +2946,66 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Races]
+      summary: Custom splits for a race's linked activity, from your own list of steps
+      operationId: getRaceCustomSplits
+      description: >
+        Like GET on this same path, but splits come from `steps` instead of a fixed mode - e.g.
+        "the first mile, then every 2km after that". See CustomSplitStep for how steps are
+        consumed. Each split's delta is against the race's own goal pace/target power (or its
+        activity's average, if there's no goal/target), same as every other mode.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomSplitsRequest" }
+      responses:
+        "200":
+          description: Splits against the goal pace (or average pace, if there's no goal) - same response shape as GET on this path.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_laps: { type: boolean, description: Always false - custom splits have no laps mode. }
+                  ref: { type: string, enum: [goal, average] }
+                  ref_pace_s_per_km: { type: [number, "null"] }
+                  ref_power: { type: string, enum: [target, average] }
+                  ref_power_w: { type: [integer, "null"] }
+                  halves:
+                    type: [object, "null"]
+                    properties:
+                      first_s: { type: integer }
+                      second_s: { type: integer }
+                  splits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        label: { type: [string, "null"] }
+                        start_km: { type: number }
+                        end_km: { type: number }
+                        time_s: { type: integer }
+                        pace_s_per_km: { type: [number, "null"] }
+                        gap_pace_s_per_km: { type: [number, "null"] }
+                        avg_hr: { type: [integer, "null"] }
+                        avg_power: { type: [integer, "null"] }
+                        delta_vs_ref_s_per_km: { type: [number, "null"] }
+                        delta_power_w: { type: [integer, "null"] }
+                        section_type:
+                          type: [string, "null"]
+                          enum: [steep_descent, descent, flat, climb, steep_climb, null]
+                          description: Always null - no course/elevation section here.
+                        gain_m: { type: [integer, "null"], description: Always null. }
+                        loss_m: { type: [integer, "null"], description: Always null. }
+                        avg_grade_pct: { type: [number, "null"] }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /v1/races/{id}/weather:
     parameters:
@@ -3371,6 +3485,31 @@ components:
     TimeOfDay:
       type: string
       enum: [AM, MID, PM]
+
+    CustomSplitStep:
+      type: object
+      required: [end_type]
+      properties:
+        end_type: { type: string, enum: [time, distance] }
+        duration_s: { type: integer, description: Seconds - required for end_type=time. }
+        distance_km: { type: number, description: Kilometres - required for end_type=distance. }
+        label: { type: [string, "null"], description: "e.g. \"Mile 1\" - shown as this split's label instead of the default." }
+      description: >
+        One step of a custom splits request (POST /v1/activities/{id}/splits or
+        /v1/races/{id}/splits). Steps are consumed in order from the start of the recording, each
+        picking up where the previous one left off, so they can never overlap or be out of order
+        by construction - a step with no recording left to consume (the recording ended early) is
+        just dropped, and any recording left over after the last step becomes one unlabeled
+        trailing split.
+
+    CustomSplitsRequest:
+      type: object
+      required: [steps]
+      properties:
+        steps:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/CustomSplitStep" }
 
     List:
       type: object

@@ -2,6 +2,7 @@ package com.cadence.api.mcp.tools.workouts;
 
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
+import com.cadence.api.mcp.McpUnits;
 import com.cadence.api.mcp.dispatch.McpScopes;
 import com.cadence.api.mcp.dispatch.McpToolAuthorizer;
 import com.cadence.api.mcp.dto.McpWorkoutLeafStep;
@@ -24,8 +25,6 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
@@ -107,7 +106,7 @@ public class WorkoutWriteTools {
 				"power, hr, pace, cadence, or open");
 		requireTargetScale(input.targetLow(), "target_low");
 		requireTargetScale(input.targetHigh(), "target_high");
-		Integer distanceMeters = parseDistanceMeters(input.distance(), "distance");
+		Integer distanceMeters = McpUnits.parseDistanceMeters(input.distance(), "distance");
 		// MCP-authored power steps are always %-of-threshold - see requireTargetScale's contract.
 		return new WorkoutStepDto(kind, endType, input.duration(), distanceMeters, targetType,
 				input.targetLow(), input.targetHigh(), PowerUnit.PCT_FTP, Target2Type.NONE, null, null, 1,
@@ -124,7 +123,7 @@ public class WorkoutWriteTools {
 				"power, hr, pace, cadence, or open");
 		requireTargetScale(leaf.targetLow(), "target_low");
 		requireTargetScale(leaf.targetHigh(), "target_high");
-		Integer distanceMeters = parseDistanceMeters(leaf.distance(), "distance");
+		Integer distanceMeters = McpUnits.parseDistanceMeters(leaf.distance(), "distance");
 		return new WorkoutStepDto(kind, endType, leaf.duration(), distanceMeters, targetType,
 				leaf.targetLow(), leaf.targetHigh(), PowerUnit.PCT_FTP, Target2Type.NONE, null, null, 1,
 				noteOrEmpty(leaf.note()), List.of());
@@ -145,40 +144,6 @@ public class WorkoutWriteTools {
 		}
 	}
 
-	private static final Pattern DISTANCE_PATTERN =
-			Pattern.compile("(?i)^\\s*(\\d+(?:\\.\\d+)?)\\s*(m|km|mi|meters?|kilometers?|miles?)\\s*$");
-	private static final double METERS_PER_KM = 1000.0;
-	private static final double METERS_PER_MILE = 1609.344;
-
-	/**
-	 * Requires an explicit unit rather than defaulting a bare number to metres - the whole point
-	 * is to close off the "which unit did the caller mean" ambiguity that {@link
-	 * #requireTargetScale} has to catch after the fact for target_low/target_high; here there's
-	 * no valid interpretation of a bare number to silently accept.
-	 */
-	private static Integer parseDistanceMeters(String distance, String field) {
-		if (distance == null || distance.isBlank()) {
-			return null;
-		}
-		Matcher matcher = DISTANCE_PATTERN.matcher(distance);
-		if (!matcher.matches()) {
-			throw new ValidationException(
-					field + " must be a number with a unit, e.g. \"400m\", \"5km\", or \"3.1mi\".", field);
-		}
-		double magnitude = Double.parseDouble(matcher.group(1));
-		String unit = matcher.group(2).toLowerCase();
-		double meters;
-		if (unit.equals("m") || unit.startsWith("meter")) {
-			meters = magnitude;
-		}
-		else if (unit.equals("km") || unit.startsWith("kilomet")) {
-			meters = magnitude * METERS_PER_KM;
-		}
-		else {
-			meters = magnitude * METERS_PER_MILE;
-		}
-		return (int) Math.round(meters);
-	}
 
 	private static String noteOrEmpty(String note) {
 		return note != null ? note : "";

@@ -23,10 +23,12 @@ from authn.mcp_toolset import ScopedMCPToolset
 from core.auth_context import get_effective_athlete_id
 from core.cql.compiler import compile_ast_to_q
 from core.cql.parser import parse
+from core.units import parse_distance_meters
 
 from .comments import resolve_parent_comment
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Tag
 from .serializers import ActivityCommentSerializer
+from .splits import get_custom_activity_splits
 from .tag_management import rename_tag as tag_rename
 
 ACTIVITY_FIELD_MAP = {
@@ -111,6 +113,28 @@ def _decode_cursor(cursor: str) -> tuple[str, str]:
     raw = base64.urlsafe_b64decode(cursor.encode()).decode()
     start_date, activity_id = raw.split("|", 1)
     return start_date, activity_id
+
+
+def convert_custom_steps_input(steps: Any) -> list[dict[str, Any]]:
+    """Converts the MCP tool's own step shape (`duration_s` seconds; `distance` a unit string
+    like "1mi"/"2km"/"400m") into get_custom_activity_splits's (`duration_s`; `distance_km` a
+    plain float) - mirrors workouts/mcp.py's _convert_step_distances, but splits.py already
+    speaks km everywhere else, so this converts meters back down to km rather than leaving it in
+    meters like a WorkoutStep."""
+    if not isinstance(steps, list):
+        raise ValidationError({"steps": "steps must be a list."})
+    converted = []
+    for i, step in enumerate(steps):
+        if not isinstance(step, dict):
+            raise ValidationError({"steps": f"steps[{i}] must be an object."})
+        out = {"end_type": step.get("end_type"), "label": step.get("label")}
+        if "duration_s" in step:
+            out["duration_s"] = step["duration_s"]
+        if "distance" in step:
+            meters = parse_distance_meters(step["distance"], f"steps[{i}].distance")
+            out["distance_km"] = meters / 1000 if meters is not None else None
+        converted.append(out)
+    return converted
 
 
 class ActivityMCPTools(ScopedMCPToolset):
@@ -284,6 +308,25 @@ class ActivityMCPTools(ScopedMCPToolset):
                 stats[channel] = {"min": min(numeric), "max": max(numeric), "avg": sum(numeric) / len(numeric)}
 
         return {"resolution": "low", "sample_count": len(records), "stats": stats, "series": series}
+
+    def get_activity_custom_splits(self, activity_id: str, steps: list[dict[str, Any]]) -> dict[str, Any]:
+        """Get splits for an activity from your own list of steps instead of a fixed distance -
+        e.g. "the first mile, then every 2km after that", or steps that mirror a workout's own
+        structure. Each step is either `{"end_type": "time", "duration_s": N}` (N seconds) or
+        `{"end_type": "distance", "distance": "1mi"|"2km"|"800m"}` (a number with a unit) - add
+        a "label" to name one (e.g. "Mile 1"). Steps are consumed in order from the start of the
+        recording, each picking up where the previous one left off, so they can never overlap or
+        be out of order - a step with no recording left to consume (the activity ended early) is
+        just dropped, and any recording left over after the last step becomes one unlabeled
+        trailing split. No goal/target to compare against here - see get_race_custom_splits for
+        a goal race's own delta."""
+        self._require_scope(ACTIVITIES_READ)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_read(activity.athlete_id)
+        try:
+            return get_custom_activity_splits(activity, convert_custom_steps_input(steps))
+        except ValueError as exc:
+            raise ValidationError({"steps": str(exc)}) from exc
 
     def get_activity_power_curve(self, activity_id: str, metric: str = "power") -> dict[str, Any]:
         """Get an activity's best-sustained power or heart rate at fixed durations (5s/1min/

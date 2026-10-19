@@ -1,9 +1,12 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.ActivitySplitsResponse;
+import com.cadence.api.activities.dto.CustomSplitStepRequest;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.courses.CourseSections;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -191,5 +194,69 @@ public class ActivitySplitsService {
 			case "elevation" -> elevationSplits(activity);
 			default -> throw new IllegalArgumentException("Unknown splits mode '" + mode + "'");
 		};
+	}
+
+	/** Splits from an ad-hoc, client-supplied list of steps, consumed sequentially from the
+	 * start of the recording - the same step shape and walk LapDerivationService uses for a
+	 * matched workout's own steps, just not persisted and not tied to a Workout. Throws
+	 * ValidationException on malformed input. */
+	public ActivitySplitsResponse customSplits(Activity activity, List<CustomSplitStepRequest> steps) {
+		validateCustomSteps(steps);
+		List<Record> rows = recordRepository.findByActivityIdOrderByT(activity.getId());
+		List<RecordStepWalker.Step> stepSpecs = steps.stream()
+				.map(s -> "time".equals(s.endType())
+						? new RecordStepWalker.Step(RecordStepWalker.StepType.TIME, s.durationS(), null)
+						: new RecordStepWalker.Step(RecordStepWalker.StepType.DISTANCE, null, s.distanceKm() * 1000.0))
+				.toList();
+		RecordStepWalker.Result result = RecordStepWalker.walk(rows, stepSpecs);
+
+		List<ActivitySplitsResponse.Split> splits = new ArrayList<>();
+		for (int i = 0; i < result.segments().size(); i++) {
+			splits.add(splitFromSegment(steps.get(i).label(), result.segments().get(i)));
+		}
+		if (result.trailing() != null) {
+			splits.add(splitFromSegment(null, result.trailing()));
+		}
+		return new ActivitySplitsResponse(false, halves(splits), splits);
+	}
+
+	private ActivitySplitsResponse.Split splitFromSegment(String label, RecordStepWalker.Segment segment) {
+		List<Record> rows = segment.rows();
+		int timeS = segment.timeS();
+		double distanceKm = segment.distanceKm();
+		List<Integer> hrSamples = rows.stream().map(Record::getHeartrate).filter(Objects::nonNull).toList();
+		List<Integer> powerSamples = rows.stream().map(Record::getPower).filter(Objects::nonNull).toList();
+		List<Double> altitudes = rows.stream().map(Record::getAltitude).filter(Objects::nonNull).toList();
+		Double startAltitude = altitudes.isEmpty() ? null : altitudes.get(0);
+		Double endAltitude = altitudes.isEmpty() ? null : altitudes.get(altitudes.size() - 1);
+		Double pace = SplitsMath.paceSPerKm(timeS, distanceKm);
+		Double avgGradePct = SplitsMath.avgGradePct(startAltitude, endAltitude, distanceKm);
+		Double gap = SplitsMath.gapPaceSPerKm(pace, avgGradePct);
+		double startKm = orZero(rows.get(0).getDistanceKm());
+		Integer avgHr = hrSamples.isEmpty() ? null : (int) Math.round(hrSamples.stream().mapToInt(Integer::intValue).average().orElse(0));
+		Integer avgPower = powerSamples.isEmpty() ? null : (int) Math.round(powerSamples.stream().mapToInt(Integer::intValue).average().orElse(0));
+		return new ActivitySplitsResponse.Split(label, SplitsMath.round2(startKm), SplitsMath.round2(startKm + distanceKm), timeS,
+				pace != null ? SplitsMath.round1(pace) : null, gap, avgHr, avgPower, null, null, null, avgGradePct);
+	}
+
+	static void validateCustomSteps(List<CustomSplitStepRequest> steps) {
+		if (steps == null || steps.isEmpty()) {
+			throw new ValidationException("steps must be a non-empty list.", "steps");
+		}
+		for (int i = 0; i < steps.size(); i++) {
+			CustomSplitStepRequest step = steps.get(i);
+			String endType = step.endType();
+			if (!"time".equals(endType) && !"distance".equals(endType)) {
+				throw new ValidationException("steps[" + i + "].end_type must be 'time' or 'distance'.", "steps");
+			}
+			if ("time".equals(endType)) {
+				if (step.durationS() == null || step.durationS() <= 0) {
+					throw new ValidationException("steps[" + i + "].duration_s must be a positive number of seconds.", "steps");
+				}
+			}
+			else if (step.distanceKm() == null || step.distanceKm() <= 0) {
+				throw new ValidationException("steps[" + i + "].distance_km must be a positive number of kilometres.", "steps");
+			}
+		}
 	}
 }

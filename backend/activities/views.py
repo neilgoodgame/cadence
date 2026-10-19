@@ -45,7 +45,7 @@ from .serializers import (
     TagNameSerializer,
     TagSerializer,
 )
-from .splits import SPLITS_MODES, get_activity_splits
+from .splits import SPLITS_MODES, get_activity_splits, get_custom_activity_splits
 from .tag_management import rename_tag
 
 SCALAR_STREAM_FIELDS = {
@@ -542,6 +542,19 @@ class ActivitySplitsView(APIView):
         if mode not in SPLITS_MODES:
             raise ValidationError({"mode": f"Must be one of {', '.join(SPLITS_MODES)}."})
         return Response(get_activity_splits(activity, mode))
+
+    def post(self, request: Request, id: str) -> Response:
+        """Custom splits from a client-supplied list of steps - see
+        activities.splits.get_custom_activity_splits."""
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        steps = request.data.get("steps") if isinstance(request.data, dict) else None
+        try:
+            return Response(get_custom_activity_splits(activity, steps))
+        except ValueError as exc:
+            raise ValidationError({"steps": str(exc)}) from exc
 
 
 class ActivityRecomputeElevationView(APIView):

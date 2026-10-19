@@ -1,5 +1,6 @@
 package com.cadence.api.races;
 
+import com.cadence.api.activities.dto.CustomSplitsRequest;
 import com.cadence.api.athletes.ThresholdSuggestionService;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.DataListResponse;
@@ -113,6 +114,14 @@ public class RaceController {
 			throw new ValidationException("Must be one of laps, 1, 5, elevation.", "mode");
 		}
 		return raceSplitsService.getSplits(race, mode);
+	}
+
+	/** Custom splits from a client-supplied list of steps - see RaceSplitsService.customSplits. */
+	@PostMapping("/v1/races/{id}/splits")
+	public SplitsResponse postRaceCustomSplits(@PathVariable String id, @RequestBody CustomSplitsRequest request) {
+		Race race = raceService.getRace(id);
+		accessGuard.requireRead(race.getAthlete().getId());
+		return raceSplitsService.customSplits(race, request.steps());
 	}
 
 	/** Unlike activity comments (read-gated), races comments use the same self-or-coach-with-

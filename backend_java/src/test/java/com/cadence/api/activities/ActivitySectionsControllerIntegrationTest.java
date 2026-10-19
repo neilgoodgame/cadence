@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.activities.dto.ActivitySectionsResponse;
 import com.cadence.api.activities.dto.ActivitySplitsResponse;
+import com.cadence.api.activities.dto.CustomSplitStepRequest;
+import com.cadence.api.activities.dto.CustomSplitsRequest;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.UnprocessableEntityException;
@@ -193,5 +195,32 @@ class ActivitySectionsControllerIntegrationTest extends IntegrationTest {
 		authAs(outsider.getId());
 
 		assertThatThrownBy(() -> controller.getSplits(run.getId(), "laps")).isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void postCustomSplitsBuildsSplitsFromStepsAndRejectsMalformedOnes() {
+		User athlete = newAthlete("actsplits-custompost@example.cc");
+		Activity run = activity(athlete, Sport.RUN, ActivitySectionsControllerIntegrationTest::hill);
+		authAs(athlete.getId());
+
+		ActivitySplitsResponse result = controller.postCustomSplits(
+				run.getId(), new CustomSplitsRequest(List.of(new CustomSplitStepRequest("distance", null, 1.0, null))));
+		assertThat(result.splits()).hasSizeGreaterThanOrEqualTo(1);
+
+		assertThatThrownBy(() -> controller.postCustomSplits(
+				run.getId(), new CustomSplitsRequest(List.of(new CustomSplitStepRequest("time", null, null, null)))))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void postCustomSplitsRequiresReadAccess() {
+		User athlete = newAthlete("actsplits-custompost-out@example.cc");
+		User outsider = newAthlete("actsplits-custompost-out2@example.cc");
+		Activity run = activity(athlete, Sport.RUN, ActivitySectionsControllerIntegrationTest::hill);
+		authAs(outsider.getId());
+
+		assertThatThrownBy(() -> controller.postCustomSplits(
+				run.getId(), new CustomSplitsRequest(List.of(new CustomSplitStepRequest("distance", null, 1.0, null)))))
+				.isInstanceOf(ForbiddenException.class);
 	}
 }

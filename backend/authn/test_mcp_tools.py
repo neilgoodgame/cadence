@@ -492,6 +492,67 @@ class ActivityToolsTests(TestCase):
         with self.assertRaises(PermissionDenied):
             tools.list_activities()
 
+    def test_get_activity_custom_splits_parses_a_mile_step(self) -> None:
+        athlete = User.objects.create_user(email="mcp-custom-splits@example.cc", password="x", name="Athlete")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Easy run",
+            start_date=timezone.now(),
+            moving_time=1500,
+            distance_km=5.0,
+        )
+        for t in range(0, 1501, 10):
+            Record.objects.create(
+                activity=activity,
+                t=t,
+                ts=activity.start_date + timedelta(seconds=t),
+                distance_km=round(t / 300, 4),
+            )
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.get_activity_custom_splits(
+            activity_id=activity.id, steps=[{"end_type": "distance", "distance": "1mi", "label": "Mile 1"}]
+        )
+
+        self.assertEqual(result["splits"][0]["label"], "Mile 1")
+        self.assertAlmostEqual(result["splits"][0]["end_km"], 1.609, places=2)
+        self.assertNotIn("delta_vs_ref_s_per_km", result["splits"][0])
+
+    def test_get_activity_custom_splits_rejects_a_distance_with_no_unit(self) -> None:
+        athlete = User.objects.create_user(email="mcp-custom-splits-badunit@example.cc", password="x", name="Athlete")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Run",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+        )
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        with self.assertRaises(ValidationError):
+            tools.get_activity_custom_splits(activity_id=activity.id, steps=[{"end_type": "distance", "distance": "1"}])
+
+    def test_get_activity_custom_splits_requires_read_access(self) -> None:
+        owner = User.objects.create_user(email="mcp-custom-splits-owner@example.cc", password="x", name="Owner")
+        outsider = User.objects.create_user(email="mcp-custom-splits-out@example.cc", password="x", name="Outsider")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=owner,
+            sport="run",
+            name="Run",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+        )
+
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read"))
+        with self.assertRaises(PermissionDenied):
+            tools.get_activity_custom_splits(activity_id=activity.id, steps=[{"end_type": "time", "duration_s": 60}])
+
     def test_list_activities_returns_only_the_callers_own_activities(self) -> None:
         athlete = User.objects.create_user(email="mcp-list-activities@example.cc", password="x", name="Athlete")
         other = User.objects.create_user(email="mcp-list-activities-other@example.cc", password="x", name="Other")
@@ -890,3 +951,66 @@ class GearAndRaceToolsTests(TestCase):
 
         with self.assertRaises(PermissionDenied):
             tools.list_races()
+
+    def test_get_race_custom_splits_uses_the_races_own_goal_pace(self) -> None:
+        from races.models import Race
+
+        athlete = User.objects.create_user(email="mcp-race-custom-splits@example.cc", password="x", name="Athlete")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="5k time trial",
+            start_date=timezone.now(),
+            moving_time=1500,
+            distance_km=5.0,
+        )
+        for t in range(0, 1501, 10):
+            Record.objects.create(
+                activity=activity,
+                t=t,
+                ts=activity.start_date + timedelta(seconds=t),
+                distance_km=round(t / 300, 4),
+            )
+        race = Race.objects.create(
+            athlete=athlete,
+            name="5k",
+            date=activity.start_date.date(),
+            activity=activity,
+            distance_km=5.0,
+            goal_time=timedelta(minutes=25),  # exactly 300s/km goal pace
+        )
+
+        tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.get_race_custom_splits(race_id=race.id, steps=[{"end_type": "distance", "distance": "1km"}])
+
+        self.assertEqual(result["ref"], "goal")
+        self.assertAlmostEqual(result["splits"][0]["delta_vs_ref_s_per_km"], 0.0, delta=0.5)
+
+    def test_get_race_custom_splits_rejects_malformed_steps(self) -> None:
+        from races.models import Race
+
+        athlete = User.objects.create_user(email="mcp-race-custom-splits-bad@example.cc", password="x", name="Athlete")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Run",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+        )
+        race = Race.objects.create(athlete=athlete, name="Race", date=activity.start_date.date(), activity=activity)
+
+        tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read"))
+        with self.assertRaises(ValidationError):
+            tools.get_race_custom_splits(race_id=race.id, steps=[{"end_type": "time"}])
+
+    def test_get_race_custom_splits_unknown_race_returns_not_found_error(self) -> None:
+        athlete = User.objects.create_user(email="mcp-race-custom-splits-404@example.cc", password="x", name="Athlete")
+        tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.get_race_custom_splits(
+            race_id="race_doesnotexist", steps=[{"end_type": "time", "duration_s": 60}]
+        )
+        self.assertEqual(result, {"error": "not_found"})

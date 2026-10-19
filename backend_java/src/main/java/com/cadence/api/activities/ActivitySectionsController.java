@@ -2,6 +2,7 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.ActivitySectionsResponse;
 import com.cadence.api.activities.dto.ActivitySplitsResponse;
+import com.cadence.api.activities.dto.CustomSplitsRequest;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.courses.CourseSections;
 import com.cadence.api.courses.CourseService;
@@ -10,6 +11,7 @@ import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -41,6 +43,15 @@ public class ActivitySectionsController {
 			throw new ValidationException("Must be one of laps, 1, 5, elevation.", "mode");
 		}
 		return splitsService.getSplits(activity, mode);
+	}
+
+	/** Custom splits from a client-supplied list of steps - see
+	 * ActivitySplitsService.customSplits. */
+	@PostMapping("/v1/activities/{id}/splits")
+	public ActivitySplitsResponse postCustomSplits(@PathVariable String id, @RequestBody CustomSplitsRequest request) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return splitsService.customSplits(activity, request.steps());
 	}
 
 	/** Flat / climb / descent sections of a run, walk or ride, calculated on each read with the

@@ -8,7 +8,7 @@ from activities.tests.helpers import _make_activity
 from courses.models import Course
 from courses.sections import build_elevation_series
 from races.models import Race
-from races.splits import _gap_pace_s_per_km, get_splits
+from races.splits import _gap_pace_s_per_km, get_custom_splits, get_splits
 
 
 class GradeAdjustedPaceTests(SimpleTestCase):
@@ -305,3 +305,44 @@ class ElevationSplitsTests(TestCase):
         )
         result = get_splits(race, "elevation")
         self.assertEqual(result["splits"], [])
+
+
+class CustomSplitsTests(TestCase):
+    """get_custom_splits layers ref/delta on top of activities.splits.get_custom_activity_splits,
+    the same way every other mode does."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="athlete-custom@example.cc", password="x", name="Athlete")
+        self.activity = _make_activity(
+            self.athlete,
+            start_date=datetime(2026, 10, 12, 8, 0, tzinfo=UTC),
+            distance_km=5.5,
+            moving_time=1650,
+            avg_power=250,
+        )
+        _add_constant_pace_records(self.activity, distance_km=5.5, pace_s_per_km=300, power=260)
+        self.race = Race.objects.create(
+            athlete=self.athlete,
+            name="5.5k time trial",
+            date=self.activity.start_date.date(),
+            activity=self.activity,
+            distance_km=5.5,
+            goal_time=timedelta(minutes=27, seconds=30),  # exactly 300s/km goal pace
+        )
+
+    def test_custom_steps_get_the_races_own_delta(self):
+        result = get_custom_splits(self.race, [{"end_type": "distance", "distance_km": 1.0}])
+        self.assertEqual(result["ref"], "goal")
+        self.assertEqual(result["ref_power"], "average")
+        self.assertEqual(result["ref_power_w"], 250)
+        self.assertEqual(result["splits"][0]["delta_power_w"], 10)
+        self.assertAlmostEqual(result["splits"][0]["delta_vs_ref_s_per_km"], 0.0, delta=0.5)
+
+    def test_no_activity_returns_empty_splits_without_validating_steps(self):
+        race = Race.objects.create(athlete=self.athlete, name="No activity", date=self.race.date)
+        result = get_custom_splits(race, "not even a list")
+        self.assertEqual(result["splits"], [])
+
+    def test_malformed_steps_raises(self):
+        with self.assertRaises(ValueError):
+            get_custom_splits(self.race, [{"end_type": "distance", "distance_km": -1}])

@@ -1,6 +1,7 @@
 package com.cadence.api.races;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import com.cadence.api.activities.Activity;
@@ -9,7 +10,9 @@ import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
+import com.cadence.api.activities.dto.CustomSplitStepRequest;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.courses.Course;
 import com.cadence.api.courses.CourseRepository;
 import com.cadence.api.courses.CourseSections;
@@ -429,5 +432,57 @@ class RaceSplitsServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(result.splits()).hasSize(2);
 		assertThat(result.splits().get(0).endKm()).isCloseTo(5.0, within(0.02));
+	}
+
+	@Test
+	void customSplitsGetTheRacesOwnGoalDelta() {
+		User athlete = newAthlete("splits-custom-goal@example.cc");
+		Activity activity = newActivity(athlete, Instant.parse("2026-10-12T08:00:00Z"), 5.5, 1650);
+		addConstantPaceRecords(activity, 5.5, 300, 10, 260, null);
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("5.5k time trial");
+		race.setDate(java.time.LocalDate.of(2026, 10, 12));
+		race.setActivity(activity);
+		race.setDistanceKm(5.5);
+		race.setGoalTime(27 * 60 + 30); // exactly 300s/km goal pace
+		race = raceRepository.save(race);
+
+		SplitsResponse result = raceSplitsService.customSplits(
+				race, List.of(new CustomSplitStepRequest("distance", null, 1.0, null)));
+
+		assertThat(result.ref()).isEqualTo("goal");
+		assertThat(result.splits().get(0).deltaVsRefSPerKm()).isCloseTo(0.0, within(0.5));
+	}
+
+	@Test
+	void customSplitsWithNoActivityReturnEmptySplitsWithoutValidatingSteps() {
+		User athlete = newAthlete("splits-custom-noactivity@example.cc");
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("No activity");
+		race.setDate(java.time.LocalDate.of(2026, 10, 12));
+		race = raceRepository.save(race);
+
+		SplitsResponse result = raceSplitsService.customSplits(race, null);
+
+		assertThat(result.splits()).isEmpty();
+	}
+
+	@Test
+	void customSplitsRejectsMalformedSteps() {
+		User athlete = newAthlete("splits-custom-badsteps@example.cc");
+		Activity activity = newActivity(athlete, Instant.parse("2026-10-12T08:00:00Z"), 5.5, 1650);
+		addConstantPaceRecords(activity, 5.5, 300, 10);
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("5.5k time trial");
+		race.setDate(java.time.LocalDate.of(2026, 10, 12));
+		race.setActivity(activity);
+		Race savedRace = raceRepository.save(race);
+
+		assertThatThrownBy(() -> raceSplitsService.customSplits(
+				savedRace, List.of(new CustomSplitStepRequest("time", null, null, null))))
+				.isInstanceOf(ValidationException.class);
 	}
 }

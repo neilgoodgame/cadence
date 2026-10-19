@@ -105,6 +105,19 @@ class RaceSplitsView(APIView):
             raise ValidationError({"mode": f"Must be one of {', '.join(SPLITS_MODES)}."})
         return Response(splits_module.get_splits(race, mode))
 
+    def post(self, request: Request, id: str) -> Response:
+        """Custom splits from a client-supplied list of steps - see
+        races.splits.get_custom_splits."""
+        race = get_object_or_404(Race, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, race.athlete_id):
+            raise PermissionDenied("You do not have access to that athlete's data.")
+        steps = request.data.get("steps") if isinstance(request.data, dict) else None
+        try:
+            return Response(splits_module.get_custom_splits(race, steps))
+        except ValueError as exc:
+            raise ValidationError({"steps": str(exc)}) from exc
+
 
 class RaceWeatherView(APIView):
     def get(self, request: Request, id: str) -> Response:

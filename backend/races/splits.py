@@ -12,6 +12,9 @@ from activities.splits import (
     gap_pace_s_per_km as _gap_pace_s_per_km,
 )
 from activities.splits import (
+    get_custom_activity_splits,
+)
+from activities.splits import (
     pace_s_per_km as _pace_s_per_km,
 )
 from courses.elevation import ensure_elevation_series, sections_for
@@ -296,3 +299,47 @@ def get_splits(race: Race, mode: str) -> dict[str, Any]:
     if mode == "elevation":
         return _elevation_splits(race, activity, ref, ref_pace, ref_power, ref_power_w)
     raise ValueError(f"Unknown splits mode '{mode}'")
+
+
+def get_custom_splits(race: Race, steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Custom splits (see activities.splits.get_custom_activity_splits) against `race`'s own
+    goal/target reference - layers ref/delta on top of the same step-walk every other mode
+    shares, same as _lap_splits/_fixed_distance_splits/_elevation_splits do."""
+    activity = race.activity
+    if activity is None:
+        return {
+            "has_laps": False,
+            "ref": "average",
+            "ref_pace_s_per_km": None,
+            "ref_power": "average",
+            "ref_power_w": None,
+            "halves": None,
+            "splits": [],
+        }
+
+    ref, ref_pace = _reference_pace(activity, race)
+    ref_power, ref_power_w = _reference_power(activity, race)
+
+    base = get_custom_activity_splits(activity, steps)  # raises ValueError on malformed steps
+    splits = []
+    for split in base["splits"]:
+        pace_for_delta = (
+            split["gap_pace_s_per_km"] if split["gap_pace_s_per_km"] is not None else split["pace_s_per_km"]
+        )
+        splits.append(
+            {
+                **split,
+                "delta_vs_ref_s_per_km": _delta_vs_ref(pace_for_delta, ref_pace),
+                "delta_power_w": _delta_power_w(split["avg_power"], ref_power_w),
+            }
+        )
+
+    return {
+        "has_laps": False,
+        "ref": ref,
+        "ref_pace_s_per_km": ref_pace,
+        "ref_power": ref_power,
+        "ref_power_w": ref_power_w,
+        "halves": base["halves"],
+        "splits": splits,
+    }

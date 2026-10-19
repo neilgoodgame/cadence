@@ -10,6 +10,7 @@ from courses.sections import ELEVATION_QUALITY_OK, sections_from_series
 
 from .elevation import ensure_elevation
 from .models import Activity
+from .record_walk import Segment, StepSpec, walk_steps
 
 SPLITS_MODES = ("laps", "1", "5", "elevation")
 
@@ -243,3 +244,79 @@ def get_activity_splits(activity: Activity, mode: str) -> dict[str, Any]:
     if mode == "elevation":
         return _elevation_splits(activity)
     raise ValueError(f"Unknown splits mode '{mode}'")
+
+
+def validate_custom_steps(steps: list[dict[str, Any]]) -> None:
+    """Raises ValueError (callers translate to a 400) if `steps` isn't a non-empty list of
+    well-formed step dicts. Each step is consumed sequentially from wherever the previous one
+    left off - see record_walk.walk_steps - so unlike an absolute start_km/end_km boundary list,
+    there's no separate "ordered and non-overlapping" check: that's true by construction."""
+    if not isinstance(steps, list) or not steps:
+        raise ValueError("steps must be a non-empty list.")
+    for i, step in enumerate(steps):
+        if not isinstance(step, dict):
+            raise ValueError(f"steps[{i}] must be an object.")
+        end_type = step.get("end_type")
+        if end_type not in ("time", "distance"):
+            raise ValueError(f"steps[{i}].end_type must be 'time' or 'distance'.")
+        if end_type == "time":
+            duration_s = step.get("duration_s")
+            if not isinstance(duration_s, int | float) or duration_s <= 0:
+                raise ValueError(f"steps[{i}].duration_s must be a positive number of seconds.")
+        else:
+            distance_km = step.get("distance_km")
+            if not isinstance(distance_km, int | float) or distance_km <= 0:
+                raise ValueError(f"steps[{i}].distance_km must be a positive number of kilometres.")
+
+
+def _split_from_segment(label: str | None, segment: Segment) -> dict[str, Any]:
+    rows = segment["rows"]
+    time_s = segment["time_s"]
+    distance_km = segment["distance_km"]
+    hr_samples = [r[2] for r in rows if r[2] is not None]
+    power_samples = [r[3] for r in rows if r[3] is not None]
+    altitudes = [r[4] for r in rows if r[4] is not None]
+    pace = pace_s_per_km(time_s, distance_km)
+    grade = avg_grade_pct(altitudes[0] if altitudes else None, altitudes[-1] if altitudes else None, distance_km)
+    gap = gap_pace_s_per_km(pace, grade)
+    start_km = rows[0][1] or 0.0
+    return {
+        "label": label,
+        "start_km": round(start_km, 2),
+        "end_km": round(start_km + distance_km, 2),
+        "time_s": time_s,
+        "pace_s_per_km": round(pace, 1) if pace else None,
+        "gap_pace_s_per_km": gap,
+        "avg_hr": round(sum(hr_samples) / len(hr_samples)) if hr_samples else None,
+        "avg_power": round(sum(power_samples) / len(power_samples)) if power_samples else None,
+        "section_type": None,
+        "gain_m": None,
+        "loss_m": None,
+        "avg_grade_pct": grade,
+    }
+
+
+def get_custom_activity_splits(activity: Activity, steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Splits built from an ad-hoc, client-supplied list of steps (each either `{"end_type":
+    "time", "duration_s": N}` or `{"end_type": "distance", "distance_km": N}`, plus an optional
+    "label"), consumed sequentially from the start of the recording - the same step shape and
+    walk `derive_laps_from_workout` uses for a matched workout's own steps, just not persisted
+    and not tied to a Workout. Raises ValueError (via validate_custom_steps) on malformed input.
+    """
+    validate_custom_steps(steps)
+    rows = list(activity.records.order_by("t").values_list("t", "distance_km", "heartrate", "power", "altitude"))
+    step_specs: list[StepSpec] = [
+        {
+            "end_type": step["end_type"],
+            "duration": step.get("duration_s"),
+            "distance": (step.get("distance_km") or 0) * 1000,
+        }
+        for step in steps
+    ]
+    segments, trailing = walk_steps(rows, step_specs)
+
+    splits = [_split_from_segment(step.get("label"), segment) for step, segment in zip(steps, segments, strict=False)]
+    if trailing is not None:
+        splits.append(_split_from_segment(None, trailing))
+
+    return {"has_laps": False, "halves": _halves(splits), "splits": splits}

@@ -1,11 +1,14 @@
 package com.cadence.api.races;
 
 import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivitySplitsService;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.SplitsMath;
+import com.cadence.api.activities.dto.ActivitySplitsResponse;
+import com.cadence.api.activities.dto.CustomSplitStepRequest;
 import com.cadence.api.courses.Course;
 import com.cadence.api.courses.CourseSections;
 import com.cadence.api.courses.CourseService;
@@ -24,13 +27,16 @@ public class RaceSplitsService {
 	private final RecordRepository recordRepository;
 	private final com.cadence.api.activities.ActivityRepository activityRepository;
 	private final CourseService courseService;
+	private final ActivitySplitsService activitySplitsService;
 
 	public RaceSplitsService(LapRepository lapRepository, RecordRepository recordRepository,
-			com.cadence.api.activities.ActivityRepository activityRepository, CourseService courseService) {
+			com.cadence.api.activities.ActivityRepository activityRepository, CourseService courseService,
+			ActivitySplitsService activitySplitsService) {
 		this.lapRepository = lapRepository;
 		this.recordRepository = recordRepository;
 		this.activityRepository = activityRepository;
 		this.courseService = courseService;
+		this.activitySplitsService = activitySplitsService;
 	}
 
 	private record Ref(String ref, Double pace) {}
@@ -262,6 +268,30 @@ public class RaceSplitsService {
 			case "elevation" -> elevationSplits(race, activity, ref.ref(), ref.pace(), refPower.ref(), refPower.power());
 			default -> throw new IllegalArgumentException("Unknown splits mode '" + mode + "'");
 		};
+	}
+
+	/** Custom splits (see ActivitySplitsService.customSplits) against race's own goal/target
+	 * reference - layers ref/delta on top of the same step-walk every other mode shares, same as
+	 * lapSplits/fixedDistanceSplits/elevationSplits do. */
+	@Transactional
+	public SplitsResponse customSplits(Race race, List<CustomSplitStepRequest> steps) {
+		if (race.getActivity() == null) {
+			return new SplitsResponse(false, "average", null, null, List.of(), "average", null);
+		}
+		Activity activity = activityRepository.findById(race.getActivity().getId()).orElseThrow();
+		Ref ref = referencePace(activity, race);
+		RefPower refPower = referencePower(activity, race);
+
+		ActivitySplitsResponse base = activitySplitsService.customSplits(activity, steps); // throws on malformed steps
+
+		List<SplitsResponse.Split> splits = base.splits().stream().map(s -> {
+			Double paceForDelta = s.gapPaceSPerKm() != null ? s.gapPaceSPerKm() : s.paceSPerKm();
+			return new SplitsResponse.Split(s.label(), s.startKm(), s.endKm(), s.timeS(), s.paceSPerKm(), s.avgHr(),
+					deltaVsRef(paceForDelta, ref.pace()), s.sectionType(), s.gainM(), s.lossM(), s.avgGradePct(),
+					s.avgPower(), s.gapPaceSPerKm(), deltaPowerW(s.avgPower(), refPower.power()));
+		}).toList();
+
+		return new SplitsResponse(false, ref.ref(), ref.pace(), halves(splits), splits, refPower.ref(), refPower.power());
 	}
 
 	private static double round1(double v) {

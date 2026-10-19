@@ -5,7 +5,7 @@ from django.test import TestCase
 from accounts.models import User
 
 from ..models import Lap, Record
-from ..splits import get_activity_splits
+from ..splits import get_activity_splits, get_custom_activity_splits
 from .helpers import _bearer_client, _make_activity
 
 
@@ -104,6 +104,74 @@ class ActivitySplitsUnitTests(TestCase):
             get_activity_splits(self.activity, "weird")
 
 
+class CustomActivitySplitsTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="actcustomsplits@example.cc", password="x", name="Athlete")
+        self.activity = _make_activity(self.athlete, distance_km=10.0, moving_time=3000)
+
+    def test_mixed_time_and_distance_steps_are_consumed_sequentially(self):
+        # 1s sampling, not the usual 10s step: a "time" step walks the activity's active_t clock,
+        # which treats any inter-sample gap over 1s as a pause - a 10s step would make every
+        # sample look paused, collapsing active_t to 1/10th of real elapsed time.
+        _add_pace_records(self.activity, distance_km=5.0, pace_s_per_km=300, step_s=1, power=250)
+        # 1st: exactly 1km by distance. 2nd: exactly 5 minutes (=1km at this pace) by time.
+        # 3rd (no length given): the rest of the recording.
+        result = get_custom_activity_splits(
+            self.activity,
+            [
+                {"end_type": "distance", "distance_km": 1.0, "label": "Mile-ish"},
+                {"end_type": "time", "duration_s": 300},
+            ],
+        )
+        self.assertEqual(len(result["splits"]), 3)  # 2 requested steps + 1 trailing remainder
+        self.assertEqual(result["splits"][0]["label"], "Mile-ish")
+        self.assertAlmostEqual(result["splits"][0]["end_km"], 1.0, places=2)
+        self.assertAlmostEqual(result["splits"][1]["start_km"], 1.0, places=2)
+        self.assertAlmostEqual(result["splits"][1]["end_km"], 2.0, places=2)
+        self.assertEqual(result["splits"][1]["time_s"], 300)
+        self.assertIsNone(result["splits"][2]["label"])
+        self.assertAlmostEqual(result["splits"][2]["start_km"], 2.0, places=2)
+        self.assertNotIn("delta_vs_ref_s_per_km", result["splits"][0])
+
+    def test_a_mile_split_can_be_expressed_as_1_609_km(self):
+        _add_pace_records(self.activity, distance_km=3.0, pace_s_per_km=300)
+        result = get_custom_activity_splits(self.activity, [{"end_type": "distance", "distance_km": 1.609}])
+        self.assertAlmostEqual(result["splits"][0]["end_km"], 1.609, places=2)
+
+    def test_steps_shorter_than_the_recording_dont_need_to_cover_all_of_it(self):
+        _add_pace_records(self.activity, distance_km=5.0, pace_s_per_km=300)
+        result = get_custom_activity_splits(self.activity, [{"end_type": "distance", "distance_km": 2.0}])
+        self.assertEqual(len(result["splits"]), 2)  # the requested step + the trailing remainder
+
+    def test_steps_longer_than_the_recording_stop_producing_splits(self):
+        _add_pace_records(self.activity, distance_km=1.0, pace_s_per_km=300)
+        result = get_custom_activity_splits(
+            self.activity,
+            [{"end_type": "distance", "distance_km": 1.0}, {"end_type": "distance", "distance_km": 5.0}],
+        )
+        self.assertEqual(len(result["splits"]), 1)  # the 2nd step has no recording left to consume
+
+    def test_empty_steps_list_is_rejected(self):
+        with self.assertRaises(ValueError):
+            get_custom_activity_splits(self.activity, [])
+
+    def test_non_list_steps_is_rejected(self):
+        with self.assertRaises(ValueError):
+            get_custom_activity_splits(self.activity, None)
+
+    def test_missing_duration_for_a_time_step_is_rejected(self):
+        with self.assertRaises(ValueError):
+            get_custom_activity_splits(self.activity, [{"end_type": "time"}])
+
+    def test_zero_distance_for_a_distance_step_is_rejected(self):
+        with self.assertRaises(ValueError):
+            get_custom_activity_splits(self.activity, [{"end_type": "distance", "distance_km": 0}])
+
+    def test_unknown_end_type_is_rejected(self):
+        with self.assertRaises(ValueError):
+            get_custom_activity_splits(self.activity, [{"end_type": "laps", "duration_s": 60}])
+
+
 class ActivitySplitsViewTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="actsplitsview@example.cc", password="x", name="Athlete")
@@ -121,4 +189,28 @@ class ActivitySplitsViewTests(TestCase):
 
     def test_outsider_cannot_read(self):
         response = _bearer_client(self.outsider).get(f"/v1/activities/{self.activity.id}/splits")
+        self.assertEqual(response.status_code, 403)
+
+    def test_custom_splits_post_builds_splits_from_steps(self):
+        _add_pace_records(self.activity, distance_km=3.0, pace_s_per_km=300)
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{self.activity.id}/splits",
+            {"steps": [{"end_type": "distance", "distance_km": 1.0}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["splits"]), 2)
+
+    def test_custom_splits_post_rejects_malformed_steps(self):
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{self.activity.id}/splits", {"steps": [{"end_type": "time"}]}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_custom_splits_post_requires_read_access(self):
+        response = _bearer_client(self.outsider).post(
+            f"/v1/activities/{self.activity.id}/splits",
+            {"steps": [{"end_type": "distance", "distance_km": 1.0}]},
+            format="json",
+        )
         self.assertEqual(response.status_code, 403)

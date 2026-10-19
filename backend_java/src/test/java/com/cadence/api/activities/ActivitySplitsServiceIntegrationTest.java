@@ -1,14 +1,18 @@
 package com.cadence.api.activities;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import com.cadence.api.activities.dto.ActivitySplitsResponse;
+import com.cadence.api.activities.dto.CustomSplitStepRequest;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -184,5 +188,58 @@ class ActivitySplitsServiceIntegrationTest extends IntegrationTest {
 		assertThat(result.splits()).isEmpty();
 		assertThat(result.hasLaps()).isFalse();
 		assertThat(result.halves()).isNull();
+	}
+
+	@Test
+	void customSplitsConsumeMixedTimeAndDistanceStepsSequentially() {
+		User athlete = newAthlete("act-custom-splits-mixed@example.cc");
+		Activity activity = newActivity(athlete, Instant.parse("2026-10-12T08:00:00Z"), 5.0, 1500);
+		// 1s sampling: a "time" step walks the active-time clock, which treats any inter-sample
+		// gap over 1s as a pause - see RecordStepWalker's own comment.
+		addPaceRecords(activity, 5.0, 300, 1, 250);
+
+		ActivitySplitsResponse result = activitySplitsService.customSplits(activity, List.of(
+				new CustomSplitStepRequest("distance", null, 1.0, "Mile-ish"),
+				new CustomSplitStepRequest("time", 300, null, null)));
+
+		assertThat(result.splits()).hasSize(3); // 2 requested steps + 1 trailing remainder
+		assertThat(result.splits().get(0).label()).isEqualTo("Mile-ish");
+		assertThat(result.splits().get(0).endKm()).isCloseTo(1.0, within(0.02));
+		assertThat(result.splits().get(1).startKm()).isCloseTo(1.0, within(0.02));
+		assertThat(result.splits().get(1).endKm()).isCloseTo(2.0, within(0.02));
+		assertThat(result.splits().get(1).timeS()).isEqualTo(300);
+		assertThat(result.splits().get(2).label()).isNull();
+	}
+
+	@Test
+	void customSplitsStepsLongerThanTheRecordingStopProducingSplits() {
+		User athlete = newAthlete("act-custom-splits-long@example.cc");
+		Activity activity = newActivity(athlete, Instant.parse("2026-10-12T08:00:00Z"), 1.0, 300);
+		addPaceRecords(activity, 1.0, 300, 10, null);
+
+		ActivitySplitsResponse result = activitySplitsService.customSplits(activity, List.of(
+				new CustomSplitStepRequest("distance", null, 1.0, null),
+				new CustomSplitStepRequest("distance", null, 5.0, null)));
+
+		assertThat(result.splits()).hasSize(1); // the 2nd step has no recording left to consume
+	}
+
+	@Test
+	void customSplitsRejectsAnEmptyStepList() {
+		User athlete = newAthlete("act-custom-splits-empty@example.cc");
+		Activity activity = newActivity(athlete, Instant.parse("2026-10-12T08:00:00Z"), 1.0, 300);
+
+		assertThatThrownBy(() -> activitySplitsService.customSplits(activity, List.of()))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void customSplitsRejectsAMissingDurationForATimeStep() {
+		User athlete = newAthlete("act-custom-splits-badtype@example.cc");
+		Activity activity = newActivity(athlete, Instant.parse("2026-10-12T08:00:00Z"), 1.0, 300);
+
+		assertThatThrownBy(() -> activitySplitsService.customSplits(
+				activity, List.of(new CustomSplitStepRequest("time", null, null, null))))
+				.isInstanceOf(ValidationException.class);
 	}
 }
