@@ -323,10 +323,7 @@ class ActivityMCPTools(ScopedMCPToolset):
         self._require_scope(ACTIVITIES_READ)
         activity = get_object_or_404(Activity, pk=activity_id)
         self._require_read(activity.athlete_id)
-        try:
-            return get_custom_activity_splits(activity, convert_custom_steps_input(steps))
-        except ValueError as exc:
-            raise ValidationError({"steps": str(exc)}) from exc
+        return get_custom_activity_splits(activity, convert_custom_steps_input(steps))
 
     def get_activity_power_curve(self, activity_id: str, metric: str = "power") -> dict[str, Any]:
         """Get an activity's best-sustained power or heart rate at fixed durations (5s/1min/

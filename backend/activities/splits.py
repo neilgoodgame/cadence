@@ -6,6 +6,8 @@ grade math below (pace_s_per_km/gap_pace_s_per_km/avg_grade_pct) so the two can'
 
 from typing import Any
 
+from rest_framework.exceptions import ValidationError
+
 from courses.sections import ELEVATION_QUALITY_OK, sections_from_series
 
 from .elevation import ensure_elevation
@@ -247,26 +249,29 @@ def get_activity_splits(activity: Activity, mode: str) -> dict[str, Any]:
 
 
 def validate_custom_steps(steps: list[dict[str, Any]]) -> None:
-    """Raises ValueError (callers translate to a 400) if `steps` isn't a non-empty list of
-    well-formed step dicts. Each step is consumed sequentially from wherever the previous one
-    left off - see record_walk.walk_steps - so unlike an absolute start_km/end_km boundary list,
-    there's no separate "ordered and non-overlapping" check: that's true by construction."""
+    """Raises a DRF ValidationError (not a plain ValueError - so callers can let it propagate
+    straight to the client without an except-and-restringify step, which CodeQL flags as
+    information exposure even though every message here is a static literal we wrote ourselves)
+    if `steps` isn't a non-empty list of well-formed step dicts. Each step is consumed
+    sequentially from wherever the previous one left off - see record_walk.walk_steps - so
+    unlike an absolute start_km/end_km boundary list, there's no separate "ordered and
+    non-overlapping" check: that's true by construction."""
     if not isinstance(steps, list) or not steps:
-        raise ValueError("steps must be a non-empty list.")
+        raise ValidationError({"steps": "steps must be a non-empty list."})
     for i, step in enumerate(steps):
         if not isinstance(step, dict):
-            raise ValueError(f"steps[{i}] must be an object.")
+            raise ValidationError({"steps": f"steps[{i}] must be an object."})
         end_type = step.get("end_type")
         if end_type not in ("time", "distance"):
-            raise ValueError(f"steps[{i}].end_type must be 'time' or 'distance'.")
+            raise ValidationError({"steps": f"steps[{i}].end_type must be 'time' or 'distance'."})
         if end_type == "time":
             duration_s = step.get("duration_s")
             if not isinstance(duration_s, int | float) or duration_s <= 0:
-                raise ValueError(f"steps[{i}].duration_s must be a positive number of seconds.")
+                raise ValidationError({"steps": f"steps[{i}].duration_s must be a positive number of seconds."})
         else:
             distance_km = step.get("distance_km")
             if not isinstance(distance_km, int | float) or distance_km <= 0:
-                raise ValueError(f"steps[{i}].distance_km must be a positive number of kilometres.")
+                raise ValidationError({"steps": f"steps[{i}].distance_km must be a positive number of kilometres."})
 
 
 def _split_from_segment(label: str | None, segment: Segment) -> dict[str, Any]:
@@ -301,7 +306,8 @@ def get_custom_activity_splits(activity: Activity, steps: list[dict[str, Any]]) 
     "time", "duration_s": N}` or `{"end_type": "distance", "distance_km": N}`, plus an optional
     "label"), consumed sequentially from the start of the recording - the same step shape and
     walk `derive_laps_from_workout` uses for a matched workout's own steps, just not persisted
-    and not tied to a Workout. Raises ValueError (via validate_custom_steps) on malformed input.
+    and not tied to a Workout. Raises ValidationError (via validate_custom_steps) on malformed
+    input.
     """
     validate_custom_steps(steps)
     rows = list(activity.records.order_by("t").values_list("t", "distance_km", "heartrate", "power", "altitude"))

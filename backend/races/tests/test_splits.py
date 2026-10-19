@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from django.test import SimpleTestCase, TestCase
+from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
 from activities.models import Lap, Record
@@ -344,5 +345,5 @@ class CustomSplitsTests(TestCase):
         self.assertEqual(result["splits"], [])
 
     def test_malformed_steps_raises(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             get_custom_splits(self.race, [{"end_type": "distance", "distance_km": -1}])

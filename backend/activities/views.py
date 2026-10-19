@@ -551,10 +551,7 @@ class ActivitySplitsView(APIView):
         if not user_may_read(sub, activity.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
         steps = request.data.get("steps") if isinstance(request.data, dict) else None
-        try:
-            return Response(get_custom_activity_splits(activity, steps))
-        except ValueError as exc:
-            raise ValidationError({"steps": str(exc)}) from exc
+        return Response(get_custom_activity_splits(activity, steps))
 
 
 class ActivityRecomputeElevationView(APIView):

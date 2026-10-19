@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.test import TestCase
+from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
 
@@ -152,23 +153,23 @@ class CustomActivitySplitsTests(TestCase):
         self.assertEqual(len(result["splits"]), 1)  # the 2nd step has no recording left to consume
 
     def test_empty_steps_list_is_rejected(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             get_custom_activity_splits(self.activity, [])
 
     def test_non_list_steps_is_rejected(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             get_custom_activity_splits(self.activity, None)
 
     def test_missing_duration_for_a_time_step_is_rejected(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             get_custom_activity_splits(self.activity, [{"end_type": "time"}])
 
     def test_zero_distance_for_a_distance_step_is_rejected(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             get_custom_activity_splits(self.activity, [{"end_type": "distance", "distance_km": 0}])
 
     def test_unknown_end_type_is_rejected(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             get_custom_activity_splits(self.activity, [{"end_type": "laps", "duration_s": 60}])
 
 

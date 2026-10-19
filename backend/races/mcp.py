@@ -5,8 +5,6 @@ races/views.py's existing queryset logic directly.
 from datetime import timedelta
 from typing import Any
 
-from rest_framework.exceptions import ValidationError
-
 from activities.mcp import convert_custom_steps_input
 from authn.mcp_scopes import ACTIVITIES_READ
 from authn.mcp_toolset import ScopedMCPToolset
@@ -89,7 +87,4 @@ class RaceMCPTools(ScopedMCPToolset):
         race = Race.objects.filter(pk=race_id, athlete_id=athlete_id).first()
         if race is None:
             return {"error": "not_found"}
-        try:
-            return splits_module.get_custom_splits(race, convert_custom_steps_input(steps))
-        except ValueError as exc:
-            raise ValidationError({"steps": str(exc)}) from exc
+        return splits_module.get_custom_splits(race, convert_custom_steps_input(steps))

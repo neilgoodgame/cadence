@@ -113,10 +113,7 @@ class RaceSplitsView(APIView):
         if not user_may_read(sub, race.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
         steps = request.data.get("steps") if isinstance(request.data, dict) else None
-        try:
-            return Response(splits_module.get_custom_splits(race, steps))
-        except ValueError as exc:
-            raise ValidationError({"steps": str(exc)}) from exc
+        return Response(splits_module.get_custom_splits(race, steps))
 
 
 class RaceWeatherView(APIView):

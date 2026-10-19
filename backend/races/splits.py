@@ -320,7 +320,7 @@ def get_custom_splits(race: Race, steps: list[dict[str, Any]]) -> dict[str, Any]
     ref, ref_pace = _reference_pace(activity, race)
     ref_power, ref_power_w = _reference_power(activity, race)
 
-    base = get_custom_activity_splits(activity, steps)  # raises ValueError on malformed steps
+    base = get_custom_activity_splits(activity, steps)  # raises ValidationError on malformed steps
     splits = []
     for split in base["splits"]:
         pace_for_delta = (
