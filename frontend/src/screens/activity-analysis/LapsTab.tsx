@@ -155,7 +155,7 @@ function RepeatGroupRow({
         </td>
         <td className="mono">{totalDistance.toFixed(2)} km</td>
         <td className="mono">{formatDuration(totalDuration)}</td>
-        <td className="mono">{((totalDistance / (totalDuration / 3600)) || 0).toFixed(1)} km/h</td>
+        <td className="mono">{totalDistance > 0 ? formatPace(totalDuration / totalDistance) : "–"}</td>
         <td>
           {avgPower != null ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -186,7 +186,7 @@ function RepeatGroupRow({
             </td>
             <td className="mono">{lap.distance_km.toFixed(2)} km</td>
             <td className="mono">{formatDuration(lap.duration)}</td>
-            <td className="mono">{((lap.distance_km / (lap.duration / 3600)) || 0).toFixed(1)} km/h</td>
+            <td className="mono">{lap.distance_km > 0 ? formatPace(lap.duration / lap.distance_km) : "–"}</td>
             <td>
               {lap.avg_power != null ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -232,7 +232,7 @@ function SingleLapRow({
       </td>
       <td className="mono">{lap.distance_km.toFixed(2)} km</td>
       <td className="mono">{formatDuration(lap.duration)}</td>
-      <td className="mono">{((lap.distance_km / (lap.duration / 3600)) || 0).toFixed(1)} km/h</td>
+      <td className="mono">{lap.distance_km > 0 ? formatPace(lap.duration / lap.distance_km) : "–"}</td>
       <td>
         {lap.avg_power != null ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -458,7 +458,7 @@ export function LapsTab({
                 <th style={{ paddingBottom: 8 }}>Step</th>
                 <th style={{ paddingBottom: 8 }}>Distance</th>
                 <th style={{ paddingBottom: 8 }}>Time</th>
-                <th style={{ paddingBottom: 8 }}>Speed</th>
+                <th style={{ paddingBottom: 8 }}>Pace</th>
                 <th style={{ paddingBottom: 8 }}>Avg Power</th>
                 <th style={{ paddingBottom: 8 }}>Avg HR</th>
               </tr>
