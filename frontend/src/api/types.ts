@@ -1216,6 +1216,29 @@ export interface RaceSplits {
   splits: RaceSplit[];
 }
 
+/** Like RaceSplit, but for GET /v1/activities/{id}/splits - no goal/target reference, so no
+ * delta_vs_ref_s_per_km/delta_power_w. */
+export interface ActivitySplit {
+  label: string | null;
+  start_km: number;
+  end_km: number;
+  time_s: number;
+  pace_s_per_km: number | null;
+  gap_pace_s_per_km: number | null;
+  avg_hr: number | null;
+  avg_power: number | null;
+  section_type: SectionType | null;
+  gain_m: number | null;
+  loss_m: number | null;
+  avg_grade_pct: number | null;
+}
+
+export interface ActivitySplits {
+  has_laps: boolean;
+  halves: RaceSplitsHalves | null;
+  splits: ActivitySplit[];
+}
+
 /** GET /v1/races/{id}/weather. `available` is false (every other field null) when the race has
  * no course, the course has no resolved start point, the race is outside the ~10-day forecast
  * window, or the upstream call failed. */

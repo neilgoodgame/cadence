@@ -1,6 +1,8 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.ActivitySectionsResponse;
+import com.cadence.api.activities.dto.ActivitySplitsResponse;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.courses.CourseSections;
 import com.cadence.api.courses.CourseService;
 import com.cadence.api.security.AccessGuard;
@@ -16,15 +18,29 @@ public class ActivitySectionsController {
 
 	private final ActivityService activityService;
 	private final ActivitySectionsService sectionsService;
+	private final ActivitySplitsService splitsService;
 	private final CourseService courseService;
 	private final AccessGuard accessGuard;
 
 	public ActivitySectionsController(ActivityService activityService, ActivitySectionsService sectionsService,
-			CourseService courseService, AccessGuard accessGuard) {
+			ActivitySplitsService splitsService, CourseService courseService, AccessGuard accessGuard) {
 		this.activityService = activityService;
 		this.sectionsService = sectionsService;
+		this.splitsService = splitsService;
 		this.courseService = courseService;
 		this.accessGuard = accessGuard;
+	}
+
+	/** Laps, fixed 1km/5km splits, or (elevation) one split per section of the activity's own
+	 * recorded elevation - no race reference/delta, unlike GET /v1/races/{id}/splits. */
+	@GetMapping("/v1/activities/{id}/splits")
+	public ActivitySplitsResponse getSplits(@PathVariable String id, @RequestParam(defaultValue = "laps") String mode) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		if (!ActivitySplitsService.SPLITS_MODES.contains(mode)) {
+			throw new ValidationException("Must be one of laps, 1, 5, elevation.", "mode");
+		}
+		return splitsService.getSplits(activity, mode);
 	}
 
 	/** Flat / climb / descent sections of a run, walk or ride, calculated on each read with the

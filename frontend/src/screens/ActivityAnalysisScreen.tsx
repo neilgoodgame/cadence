@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { SECTION_SPORTS } from "../lib/courseSections";
 import { ActivityBestEffortsCard } from "./activity-analysis/ActivityBestEffortsCard";
 import { ActivitySectionsCard } from "./activity-analysis/ActivitySectionsCard";
+import { ActivitySplitsCard } from "./activity-analysis/ActivitySplitsCard";
 import { CommentsSection } from "./activity-analysis/CommentsSection";
 import { CurvesTab } from "./activity-analysis/CurvesTab";
 import { DuplicateBanner, DuplicatesCard } from "./activity-analysis/DuplicatesCard";
@@ -83,7 +84,12 @@ export function ActivityAnalysisScreen() {
         <ActivityRouteMap activity={activity} />
       </div>
 
-      {SECTION_SPORTS.includes(activity.sport) && <ActivitySectionsCard activity={activity} />}
+      {SECTION_SPORTS.includes(activity.sport) && (
+        <>
+          <ActivitySplitsCard activity={activity} />
+          <ActivitySectionsCard activity={activity} />
+        </>
+      )}
 
       <HydrationBlock activity={activity} />
 

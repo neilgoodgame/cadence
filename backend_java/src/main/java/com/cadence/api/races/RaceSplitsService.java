@@ -5,6 +5,7 @@ import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordRepository;
+import com.cadence.api.activities.SplitsMath;
 import com.cadence.api.courses.Course;
 import com.cadence.api.courses.CourseSections;
 import com.cadence.api.courses.CourseService;
@@ -57,7 +58,11 @@ public class RaceSplitsService {
 	}
 
 	private Double pace(double timeS, double distanceKm) {
-		return distanceKm > 0 ? timeS / distanceKm : null;
+		return SplitsMath.paceSPerKm(timeS, distanceKm);
+	}
+
+	private Double avgGradePct(Double startAltitude, Double endAltitude, double distKm) {
+		return SplitsMath.avgGradePct(startAltitude, endAltitude, distKm);
 	}
 
 	private Double deltaVsRef(Double paceSPerKm, Double refPaceSPerKm) {
@@ -70,36 +75,11 @@ public class RaceSplitsService {
 		return avgPower - refPowerW;
 	}
 
-	/** Net grade over a split, from its first/last recorded altitude - same formula as a course
-	 * section's own avgGradePct (CourseSections._grade): end-minus-start elevation over distance,
-	 * not an average of per-sample grades. Null if either end has no altitude. */
-	private Double avgGradePct(Double startAltitude, Double endAltitude, double distKm) {
-		if (startAltitude == null || endAltitude == null || distKm <= 0) return null;
-		return round1((endAltitude - startAltitude) / (distKm * 1000) * 100);
-	}
-
-	// Minetti et al. 2002 ("Energy cost of walking and running at extreme uphill and downhill
-	// slopes") metabolic cost of running on a grade, J/kg/m - the standard model behind GAP
-	// (grade-adjusted pace). Mirrors backend/races/splits.py's _metabolic_cost/_gap_pace_s_per_km
-	// exactly, including the +/-45% clamp (a whole split's *average* grade shouldn't realistically
-	// exceed that, and the polynomial isn't meant to extrapolate past it).
-	private static final double GAP_FLAT_COST = 3.6;
-	private static final double GAP_MAX_GRADE_FRACTION = 0.45;
-
-	private static double metabolicCost(double gradeFraction) {
-		double g = gradeFraction;
-		return 155.4 * Math.pow(g, 5) - 30.4 * Math.pow(g, 4) - 43.3 * Math.pow(g, 3) + 46.3 * Math.pow(g, 2) + 19.5 * g + GAP_FLAT_COST;
-	}
-
-	/** Grade-adjusted pace - the flat-equivalent pace for the same effort, from the Minetti
-	 * cost-of-running model: GAP = actual pace / (cost at this grade / cost on flat ground).
-	 * Package-private (not private) so RaceSplitsServiceTest can exercise it directly, same as
-	 * backend/races/splits.py's _gap_pace_s_per_km gets its own SimpleTestCase. */
+	/** Package-private (not private) so RaceSplitsServiceTest can exercise it directly, same as
+	 * backend/races/splits.py's _gap_pace_s_per_km gets its own SimpleTestCase. Delegates to
+	 * SplitsMath, shared with ActivitySplitsService so the two can't drift apart. */
 	static Double gapPaceSPerKm(Double paceSPerKm, Double avgGradePct) {
-		if (paceSPerKm == null || avgGradePct == null) return null;
-		double gradeFraction = Math.max(-GAP_MAX_GRADE_FRACTION, Math.min(GAP_MAX_GRADE_FRACTION, avgGradePct / 100));
-		double gapFactor = metabolicCost(gradeFraction) / GAP_FLAT_COST;
-		return round1(paceSPerKm / gapFactor);
+		return SplitsMath.gapPaceSPerKm(paceSPerKm, avgGradePct);
 	}
 
 	private SplitsResponse.Halves halves(List<SplitsResponse.Split> splits) {
@@ -285,10 +265,10 @@ public class RaceSplitsService {
 	}
 
 	private static double round1(double v) {
-		return Math.round(v * 10) / 10.0;
+		return SplitsMath.round1(v);
 	}
 
 	private static double round2(double v) {
-		return Math.round(v * 100) / 100.0;
+		return SplitsMath.round2(v);
 	}
 }

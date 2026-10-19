@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultSplitsMode } from "./splitsMode";
+import { defaultSplitsMode } from "./splits";
 
 describe("defaultSplitsMode", () => {
   it("prefers laps when the activity has them", () => {

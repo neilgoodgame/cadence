@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.activities.dto.ActivitySectionsResponse;
+import com.cadence.api.activities.dto.ActivitySplitsResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.UnprocessableEntityException;
@@ -170,5 +171,27 @@ class ActivitySectionsControllerIntegrationTest extends IntegrationTest {
 		authAs(outsider.getId());
 		assertThatThrownBy(() -> controller.getSections(run.getId(), Map.of())).isInstanceOf(ForbiddenException.class);
 		assertThatThrownBy(() -> controller.recomputeElevation(run.getId())).isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void splitsDefaultToLapsModeAndRejectAnUnknownMode() {
+		User athlete = newAthlete("actsplits-defaultmode@example.cc");
+		Activity run = activity(athlete, Sport.RUN, ActivitySectionsControllerIntegrationTest::hill);
+		authAs(athlete.getId());
+
+		ActivitySplitsResponse defaulted = controller.getSplits(run.getId(), "laps");
+		assertThat(defaulted.hasLaps()).isFalse();
+
+		assertThatThrownBy(() -> controller.getSplits(run.getId(), "weird")).isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void splitsRequireReadAccess() {
+		User athlete = newAthlete("actsplits-outsider2@example.cc");
+		User outsider = newAthlete("actsplits-outsider2-out@example.cc");
+		Activity run = activity(athlete, Sport.RUN, ActivitySectionsControllerIntegrationTest::hill);
+		authAs(outsider.getId());
+
+		assertThatThrownBy(() -> controller.getSplits(run.getId(), "laps")).isInstanceOf(ForbiddenException.class);
 	}
 }

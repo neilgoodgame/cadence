@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getRaceSplits } from "../../api/races";
-import type { Course, RaceSplit, SplitsMode } from "../../api/types";
+import type { Course, SplitsMode } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
-import { SECTION_COLORS, SECTION_LABELS, formatGrade } from "../../lib/courseSections";
-import { defaultSplitsMode } from "./splitsMode";
+import { SECTION_COLORS, formatGrade } from "../../lib/courseSections";
+import { defaultSplitsMode, splitRowLabel } from "../../lib/splits";
 
 const MAX_DELTA = 12;
 const MAX_POWER_DELTA = 40;
@@ -30,15 +30,6 @@ function DeltaBar({ delta, maxDelta = MAX_DELTA }: { delta: number | null; maxDe
       />
     </div>
   );
-}
-
-function rowLabel(split: RaceSplit, index: number, mode: SplitsMode): string {
-  if (mode === "elevation" && split.section_type) {
-    return `${SECTION_LABELS[split.section_type]} · ${split.start_km.toFixed(1)}–${split.end_km.toFixed(1)}`;
-  }
-  if (split.label) return split.label;
-  if (mode === "laps") return `Lap ${index + 1} · ${split.start_km.toFixed(1)}–${split.end_km.toFixed(1)}`;
-  return `${split.end_km.toFixed(mode === "1" ? 0 : 0)} km`;
 }
 
 /** README §4.2.6 "Splits" card - shown for a past run race with a result. `course` is the
@@ -143,7 +134,7 @@ export function SplitsCard({ raceId, distanceKm, course }: { raceId: string; dis
                     {split.section_type && (
                       <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, marginRight: 6, background: SECTION_COLORS[split.section_type] }} />
                     )}
-                    {rowLabel(split, i, activeMode)}
+                    {splitRowLabel(split, i, activeMode)}
                   </td>
                   <td className="mono" style={{ padding: "6px 8px" }}>{(split.end_km - split.start_km).toFixed(2)} km</td>
                   <td className="mono" style={{ padding: "6px 8px" }}>{formatDuration(split.time_s)}</td>

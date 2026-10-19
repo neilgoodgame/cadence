@@ -927,6 +927,75 @@ paths:
         "422":
           description: The activity isn't a run, walk or ride.
 
+  /v1/activities/{id}/splits:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Activities]
+      summary: Splits for an activity
+      operationId: getActivitySplits
+      description: >
+        Manual laps, fixed 1km/5km splits, or (elevation) one split per flat/climb/descent
+        section of the activity's own recorded elevation (the same calculation as GET
+        /v1/activities/{id}/sections). Unlike GET /v1/races/{id}/splits, there's no goal/target
+        reference and so no delta_vs_ref_s_per_km/delta_power_w - a plain activity has nothing to
+        compare against. elevation falls back to the normal empty shape (splits: [],
+        has_laps: false) when the activity's elevation isn't ok.
+      parameters:
+        - name: mode
+          in: query
+          schema: { type: string, enum: [laps, "1", "5", elevation], default: laps }
+      responses:
+        "200":
+          description: The activity's splits.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_laps: { type: boolean, description: False when mode=laps and the activity has one lap or none. }
+                  halves:
+                    type: [object, "null"]
+                    properties:
+                      first_s: { type: integer }
+                      second_s: { type: integer }
+                  splits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        label: { type: [string, "null"], description: "e.g. \"Lap 2\" or \"Finish\" for the last partial split." }
+                        start_km: { type: number }
+                        end_km: { type: number }
+                        time_s: { type: integer }
+                        pace_s_per_km: { type: [number, "null"] }
+                        gap_pace_s_per_km:
+                          type: [number, "null"]
+                          description: >
+                            Grade-adjusted pace - the flat-equivalent pace for the same effort,
+                            from the Minetti et al. (2002) cost-of-running-on-a-gradient model.
+                            Null when avg_grade_pct is null (no reliable altitude).
+                        avg_hr: { type: [integer, "null"] }
+                        avg_power: { type: [integer, "null"], description: Null if the activity has no power meter. }
+                        section_type:
+                          type: [string, "null"]
+                          enum: [steep_descent, descent, flat, climb, steep_climb, null]
+                          description: Set only for mode=elevation; null for laps/1/5.
+                        gain_m: { type: [integer, "null"], description: Set only for mode=elevation. }
+                        loss_m: { type: [integer, "null"], description: Set only for mode=elevation. }
+                        avg_grade_pct:
+                          type: [number, "null"]
+                          description: >
+                            Net grade over the split. For mode=elevation this is the section's own
+                            grade; for laps/1/5 it's computed from the activity's own recorded
+                            altitude (null if that's missing).
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/activities/{id}/streams:
     parameters:
       - $ref: "#/components/parameters/ActivityId"

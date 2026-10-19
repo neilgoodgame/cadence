@@ -5,43 +5,24 @@ the race's linked course - from a race's linked activity. README §3.2/§4.2.6.
 from typing import Any
 
 from activities.models import Activity
+from activities.splits import (
+    avg_grade_pct as _avg_grade_pct,
+)
+from activities.splits import (
+    gap_pace_s_per_km as _gap_pace_s_per_km,
+)
+from activities.splits import (
+    pace_s_per_km as _pace_s_per_km,
+)
 from courses.elevation import ensure_elevation_series, sections_for
 
 from .models import Race
-
-
-def _pace_s_per_km(time_s: float, distance_km: float) -> float | None:
-    return time_s / distance_km if distance_km else None
 
 
 def _delta_vs_ref(pace_s_per_km: float | None, ref_pace_s_per_km: float | None) -> float | None:
     if pace_s_per_km is None or ref_pace_s_per_km is None:
         return None
     return round(pace_s_per_km - ref_pace_s_per_km, 1)
-
-
-# Minetti et al. 2002 ("Energy cost of walking and running at extreme uphill and downhill
-# slopes") metabolic cost of running on a grade, J/kg/m - the standard model behind GAP
-# (grade-adjusted pace). Valid for gradients within +/-45%; clamped there since a whole
-# split's *average* grade shouldn't realistically exceed that, and the polynomial isn't
-# meant to extrapolate past it.
-_GAP_FLAT_COST = 3.6
-_GAP_MAX_GRADE_FRACTION = 0.45
-
-
-def _metabolic_cost(grade_fraction: float) -> float:
-    g = grade_fraction
-    return 155.4 * g**5 - 30.4 * g**4 - 43.3 * g**3 + 46.3 * g**2 + 19.5 * g + _GAP_FLAT_COST
-
-
-def _gap_pace_s_per_km(pace_s_per_km: float | None, avg_grade_pct: float | None) -> float | None:
-    """Grade-adjusted pace - the flat-equivalent pace for the same effort, from the Minetti
-    cost-of-running model: GAP = actual pace / (cost at this grade / cost on flat ground)."""
-    if pace_s_per_km is None or avg_grade_pct is None:
-        return None
-    grade_fraction = max(-_GAP_MAX_GRADE_FRACTION, min(_GAP_MAX_GRADE_FRACTION, avg_grade_pct / 100))
-    gap_factor = _metabolic_cost(grade_fraction) / _GAP_FLAT_COST
-    return round(pace_s_per_km / gap_factor, 1)
 
 
 def _reference_pace(activity: Activity, race: Race) -> tuple[str, float | None]:
@@ -65,15 +46,6 @@ def _delta_power_w(avg_power: int | None, ref_power_w: int | None) -> int | None
     if avg_power is None or ref_power_w is None:
         return None
     return round(avg_power - ref_power_w)
-
-
-def _avg_grade_pct(start_altitude: float | None, end_altitude: float | None, dist_km: float) -> float | None:
-    """Net grade over a split, from its first/last recorded altitude - same formula as a course
-    section's own avg_grade_pct (courses.sections._grade): end-minus-start elevation over
-    distance, not an average of per-sample grades. None if either end has no altitude."""
-    if start_altitude is None or end_altitude is None or not dist_km:
-        return None
-    return round((end_altitude - start_altitude) / (dist_km * 1000) * 100, 1)
 
 
 def _halves(splits: list[dict[str, Any]]) -> dict[str, int] | None:

@@ -65,6 +65,16 @@ public class ActivitySectionsService {
 		return elevationRepository.findById(activity.getId()).orElseGet(() -> rebuildElevation(activity));
 	}
 
+	/** Sections calculated now from the activity's own stored elevation series, with the owning
+	 * athlete's section settings - never stored. Mirrors CourseService.sectionsFor. */
+	public List<CourseSections.Section> sectionsFor(Activity activity) {
+		ActivityElevation elevation = ensureElevation(activity);
+		if (!CourseSections.ELEVATION_QUALITY_OK.equals(elevation.getElevationQuality())) {
+			return List.of();
+		}
+		return CourseSections.sectionsFromSeries(elevation.getElevationSeries(), courseService.settingsFor(activity.getAthlete().getId()));
+	}
+
 	/** settings: a preview's overrides, or null for the owner's saved settings. */
 	public ActivitySectionsResponse toResponse(Activity activity, ActivityElevation elevation, CourseSections.Settings settings) {
 		CourseSections.Settings effective = settings != null ? settings : courseService.settingsFor(activity.getAthlete().getId());
