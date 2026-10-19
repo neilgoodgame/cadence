@@ -1,5 +1,6 @@
 package com.cadence.api.mcp.tools.races;
 
+import com.cadence.api.athletes.ThresholdSuggestionService;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.mcp.McpCustomSplits;
@@ -11,6 +12,7 @@ import com.cadence.api.races.RaceBlockService;
 import com.cadence.api.races.RaceComment;
 import com.cadence.api.races.RaceCommentService;
 import com.cadence.api.races.RaceController;
+import com.cadence.api.races.RaceRepository;
 import com.cadence.api.races.RaceService;
 import com.cadence.api.races.RaceSplitsService;
 import com.cadence.api.races.WeatherService;
@@ -29,22 +31,27 @@ import org.springframework.stereotype.Component;
 public class RaceTools {
 
 	private final RaceService raceService;
+	private final RaceRepository raceRepository;
 	private final RaceBlockService raceBlockService;
 	private final RaceSplitsService raceSplitsService;
 	private final WeatherService weatherService;
 	private final RaceCommentService raceCommentService;
+	private final ThresholdSuggestionService thresholdSuggestionService;
 	private final UserService userService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
-	public RaceTools(RaceService raceService, RaceBlockService raceBlockService, RaceSplitsService raceSplitsService,
-			WeatherService weatherService, RaceCommentService raceCommentService, UserService userService,
-			AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+	public RaceTools(RaceService raceService, RaceRepository raceRepository, RaceBlockService raceBlockService,
+			RaceSplitsService raceSplitsService, WeatherService weatherService, RaceCommentService raceCommentService,
+			ThresholdSuggestionService thresholdSuggestionService, UserService userService, AccessGuard accessGuard,
+			McpToolAuthorizer authorizer) {
 		this.raceService = raceService;
+		this.raceRepository = raceRepository;
 		this.raceBlockService = raceBlockService;
 		this.raceSplitsService = raceSplitsService;
 		this.weatherService = weatherService;
 		this.raceCommentService = raceCommentService;
+		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
@@ -208,5 +215,66 @@ public class RaceTools {
 		User author = userService.getById(sub);
 		RaceComment comment = raceCommentService.create(race, author, text, week, parentCommentId);
 		return raceCommentService.toResponse(comment);
+	}
+
+	@McpTool(name = "delete_race_comment", description = "Deletes a comment on a goal race (from "
+			+ "list_race_comments) - you can only delete your own comments.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = true, idempotentHint = false, openWorldHint = false))
+	public Object deleteRaceComment(
+			@McpToolParam(description = "The race id", required = true) String raceId,
+			@McpToolParam(description = "The comment id", required = true) String commentId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		String athleteId = accessGuard.effectiveAthleteId();
+		String sub = accessGuard.requireWrite(athleteId);
+
+		Race race = findOwnedRace(raceId, athleteId);
+		if (race == null) {
+			return Map.of("error", "not_found");
+		}
+		try {
+			raceCommentService.delete(raceId, commentId, sub);
+		}
+		catch (NotFoundException e) {
+			return Map.of("error", "not_found");
+		}
+		return Map.of("deleted", true);
+	}
+
+	@McpTool(name = "update_race_goal", description = "Set a goal race's (from list_races) goal "
+			+ "time (goal_time_s, total race time in seconds - combine with the race's own "
+			+ "distance_km for goal pace) and/or target power (watts) - the reference GET "
+			+ "/v1/races/{id}/splits and get_race_splits/get_race_custom_splits use for their "
+			+ "delta instead of the linked activity's own average pace/power. Only touches the "
+			+ "field(s) you pass - omit one to leave it as it is. Other fields (name, date, "
+			+ "course, priority, notes) require the web app.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
+	public Object updateRaceGoal(
+			@McpToolParam(description = "The race id", required = true) String raceId,
+			@McpToolParam(description = "Total goal race time, in seconds", required = false) Integer goalTimeS,
+			@McpToolParam(description = "Target average power, in watts", required = false) Integer targetPower) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+
+		Race race = findOwnedRace(raceId, athleteId);
+		if (race == null) {
+			return Map.of("error", "not_found");
+		}
+		boolean changed = false;
+		if (goalTimeS != null) {
+			race.setGoalTime(goalTimeS);
+			changed = true;
+		}
+		if (targetPower != null) {
+			race.setTargetPower(targetPower);
+			changed = true;
+		}
+		if (changed) {
+			raceRepository.save(race);
+			thresholdSuggestionService.invalidate(athleteId);
+		}
+		return raceService.toResponse(race);
 	}
 }

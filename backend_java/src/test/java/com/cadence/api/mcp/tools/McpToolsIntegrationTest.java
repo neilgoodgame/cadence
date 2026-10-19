@@ -25,6 +25,7 @@ import com.cadence.api.mcp.tools.workouts.WorkoutWriteTools;
 import com.cadence.api.races.Race;
 import com.cadence.api.races.RaceRepository;
 import com.cadence.api.races.dto.RaceCommentResponse;
+import com.cadence.api.races.dto.RaceResponse;
 import com.cadence.api.races.dto.RaceWeatherResponse;
 import com.cadence.api.races.dto.SplitsResponse;
 import com.cadence.api.scheduling.dto.ScheduledWorkoutResponse;
@@ -519,5 +520,88 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 		assertThat(raceTools.listRaceComments(race.getId())).isEqualTo(Map.of("error", "not_found"));
 		assertThat(raceTools.postRaceComment(race.getId(), "Uninvited.", null, null)).isEqualTo(Map.of("error", "not_found"));
+	}
+
+	@Test
+	void updateRaceGoalSetsOnlyTheFieldsPassed() {
+		User athlete = saveAthlete("mcp-race-update-goal@example.cc");
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Race");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		race.setDistanceKm(10.0);
+		raceRepository.save(race);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		Object result = raceTools.updateRaceGoal(race.getId(), 3600, null);
+		assertThat(result).isInstanceOf(RaceResponse.class);
+		assertThat(((RaceResponse) result).goalTime()).isEqualTo("1:00:00");
+		assertThat(((RaceResponse) result).targetPower()).isNull();
+
+		result = raceTools.updateRaceGoal(race.getId(), null, 280);
+		assertThat(((RaceResponse) result).goalTime()).isEqualTo("1:00:00"); // untouched by the 2nd call
+		assertThat(((RaceResponse) result).targetPower()).isEqualTo(280);
+	}
+
+	@Test
+	void updateRaceGoalUnknownRaceReturnsNotFound() {
+		User athlete = saveAthlete("mcp-race-update-goal-404@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThat(raceTools.updateRaceGoal("race_doesnotexist", 3600, null)).isEqualTo(Map.of("error", "not_found"));
+	}
+
+	@Test
+	void deleteRaceCommentRequiresAuthorship() {
+		User athlete = saveAthlete("mcp-race-delete-comment@example.cc");
+		User other = saveAthlete("mcp-race-delete-comment-other@example.cc");
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Race");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		raceRepository.save(race);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		Object posted = raceTools.postRaceComment(race.getId(), "Delete me.", null, null);
+		String commentId = ((RaceCommentResponse) posted).id();
+
+		// A true outsider (no relationship to the race's athlete) gets the same not_found every
+		// other race MCP tool gives for a race outside the caller's own effective athlete scope.
+		authAs(other.getId(), "activities:read", "activities:write");
+		assertThat(raceTools.deleteRaceComment(race.getId(), commentId)).isEqualTo(Map.of("error", "not_found"));
+
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		assertThat(raceTools.deleteRaceComment(race.getId(), commentId)).isEqualTo(Map.of("deleted", true));
+		assertThat((List<?>) raceTools.listRaceComments(race.getId())).isEmpty();
+	}
+
+	@Test
+	void deleteRaceCommentRejectsANonAuthorWithRaceAccess() {
+		// A coach's delegated token resolves effective athlete id to the athlete (same race
+		// access), but the comment it posts is attributed to the coach's own sub - so the
+		// athlete, despite having full access to their own race, still can't delete it.
+		User athlete = saveAthlete("mcp-race-delete-comment-athlete2@example.cc");
+		User coach = saveAthlete("mcp-race-delete-comment-coach@example.cc");
+		UserRelationship relationship = new UserRelationship();
+		relationship.setOwner(athlete);
+		relationship.setGrantee(coach);
+		relationship.setRole(ShareRole.COACH);
+		relationship.setStatus(ShareStatus.ACTIVE);
+		userRelationshipRepository.save(relationship);
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Race");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		raceRepository.save(race);
+
+		AuthContextHolder.set(new AuthContext(coach.getId(), athlete.getId(), Set.of("activities:read", "activities:write"),
+				AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
+		Object posted = raceTools.postRaceComment(race.getId(), "From your coach.", null, null);
+		assertThat(((RaceCommentResponse) posted).role()).isEqualTo("coach");
+		assertThat(((RaceCommentResponse) posted).authorId()).isEqualTo(coach.getId());
+
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		assertThatThrownBy(() -> raceTools.deleteRaceComment(race.getId(), ((RaceCommentResponse) posted).id()))
+				.isInstanceOf(ForbiddenException.class);
 	}
 }

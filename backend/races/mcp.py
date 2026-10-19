@@ -5,9 +5,10 @@ races/views.py's existing queryset logic directly.
 from datetime import timedelta
 from typing import Any
 
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from activities.mcp import convert_custom_steps_input
+from athletes import threshold_suggestions
 from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
 from core.auth_context import get_effective_athlete_id
@@ -30,10 +31,31 @@ def _format_duration(value: timedelta | None) -> str | None:
     return f"{hours}:{minutes:02d}:{seconds:02d}"
 
 
+def _race_summary(r: Race) -> dict[str, Any]:
+    return {
+        "id": r.id,
+        "athlete_id": r.athlete_id,
+        "name": r.name,
+        "date": r.date.isoformat(),
+        "sport": r.sport,
+        "priority": r.priority,
+        "course_id": r.course_id,
+        "distance_km": r.distance_km,
+        "goal_time": _format_duration(r.goal_time),
+        "target_power": r.target_power,
+        "result_time": _format_duration(r.result_time),
+        "activity_id": r.activity_id,
+        "url": r.url,
+        "results_url": r.results_url,
+        "notes": r.notes,
+    }
+
+
 class RaceMCPTools(ScopedMCPToolset):
     def list_races(self) -> dict[str, Any]:
-        """List the authenticated athlete's goal races - name, date, sport, distance, goal/
-        result time, and any notes. Useful for planning training around an upcoming event."""
+        """List the authenticated athlete's goal races - name, date, sport, distance, goal time/
+        target power, result time, and any notes. Useful for planning training around an
+        upcoming event."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
@@ -41,27 +63,7 @@ class RaceMCPTools(ScopedMCPToolset):
         races = Race.objects.filter(athlete_id=athlete_id)
         # Wrapped in {"data": [...]} rather than returned as a bare list - see
         # activities/mcp.py::get_activity_laps's comment for why.
-        return {
-            "data": [
-                {
-                    "id": r.id,
-                    "athlete_id": r.athlete_id,
-                    "name": r.name,
-                    "date": r.date.isoformat(),
-                    "sport": r.sport,
-                    "priority": r.priority,
-                    "course_id": r.course_id,
-                    "distance_km": r.distance_km,
-                    "goal_time": _format_duration(r.goal_time),
-                    "result_time": _format_duration(r.result_time),
-                    "activity_id": r.activity_id,
-                    "url": r.url,
-                    "results_url": r.results_url,
-                    "notes": r.notes,
-                }
-                for r in races
-            ]
-        }
+        return {"data": [_race_summary(r) for r in races]}
 
     def get_race_block(self, race_id: str) -> dict[str, Any]:
         """Get an A race's training block (weekly load/distance, race-day form,
@@ -173,3 +175,52 @@ class RaceMCPTools(ScopedMCPToolset):
             week=serializer.validated_data.get("week"),
         )
         return RaceCommentSerializer(comment).data
+
+    def delete_race_comment(self, race_id: str, comment_id: str) -> dict[str, Any]:
+        """Deletes a comment on a goal race (from list_race_comments) - you can only delete your
+        own comments."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        self._require_write(athlete_id)
+
+        race = Race.objects.filter(pk=race_id, athlete_id=athlete_id).first()
+        if race is None:
+            return {"error": "not_found"}
+        comment = RaceComment.objects.filter(pk=comment_id, race=race).first()
+        if comment is None:
+            return {"error": "not_found"}
+
+        sub, _ = get_effective_athlete_id(self.request)
+        if comment.author_id != sub:
+            raise PermissionDenied("You can only delete your own comments.")
+        comment.delete()
+        return {"deleted": True}
+
+    def update_race_goal(
+        self, race_id: str, goal_time_s: int | None = None, target_power: int | None = None
+    ) -> dict[str, Any]:
+        """Set a goal race's (from list_races) goal time (goal_time_s, total race time in
+        seconds - combine with the race's own distance_km for goal pace) and/or target power
+        (watts) - the reference GET /v1/races/{id}/splits and get_race_splits/
+        get_race_custom_splits use for their delta instead of the linked activity's own average
+        pace/power. Only touches the field(s) you pass - omit one to leave it as it is. Other
+        fields (name, date, course, priority, notes) require the web app."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        self._require_write(athlete_id)
+
+        race = Race.objects.filter(pk=race_id, athlete_id=athlete_id).first()
+        if race is None:
+            return {"error": "not_found"}
+
+        update_fields = []
+        if goal_time_s is not None:
+            race.goal_time = timedelta(seconds=goal_time_s)
+            update_fields.append("goal_time")
+        if target_power is not None:
+            race.target_power = target_power
+            update_fields.append("target_power")
+        if update_fields:
+            race.save(update_fields=update_fields)
+            threshold_suggestions.invalidate(athlete_id)
+        return _race_summary(race)

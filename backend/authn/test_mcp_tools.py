@@ -1082,3 +1082,84 @@ class GearAndRaceToolsTests(TestCase):
         tools = RaceMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
         self.assertEqual(tools.list_race_comments(race_id=race.id), {"error": "not_found"})
         self.assertEqual(tools.post_race_comment(race_id=race.id, text="Uninvited."), {"error": "not_found"})
+
+    def test_update_race_goal_sets_only_the_fields_passed(self) -> None:
+        from races.models import Race
+
+        athlete = User.objects.create_user(email="mcp-race-update-goal@example.cc", password="x", name="Athlete")
+        race = Race.objects.create(athlete=athlete, name="Race", date=timezone.now().date(), distance_km=10.0)
+
+        tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        updated = tools.update_race_goal(race_id=race.id, goal_time_s=3600)
+        self.assertEqual(updated["goal_time"], "1:00:00")
+        self.assertIsNone(updated["target_power"])
+
+        updated = tools.update_race_goal(race_id=race.id, target_power=280)
+        self.assertEqual(updated["goal_time"], "1:00:00")  # untouched by the 2nd call
+        self.assertEqual(updated["target_power"], 280)
+
+        read_only_tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read"))
+        with self.assertRaises(PermissionDenied):
+            read_only_tools.update_race_goal(race_id=race.id, goal_time_s=1800)
+
+    def test_update_race_goal_unknown_race_returns_not_found(self) -> None:
+        athlete = User.objects.create_user(email="mcp-race-update-goal-404@example.cc", password="x", name="Athlete")
+        tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.update_race_goal(race_id="race_doesnotexist", goal_time_s=3600)
+        self.assertEqual(result, {"error": "not_found"})
+
+    def test_delete_race_comment_requires_authorship(self) -> None:
+        from races.models import Race
+
+        athlete = User.objects.create_user(email="mcp-race-delete-comment@example.cc", password="x", name="Athlete")
+        other = User.objects.create_user(email="mcp-race-delete-comment-other@example.cc", password="x", name="Other")
+        race = Race.objects.create(athlete=athlete, name="Race", date=timezone.now().date())
+
+        tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        posted = tools.post_race_comment(race_id=race.id, text="Delete me.")
+
+        # A true outsider (no relationship to the race's athlete) gets the same not_found every
+        # other race MCP tool gives for a race outside the caller's own effective athlete scope -
+        # this never reaches the authorship check at all.
+        other_tools = RaceMCPTools(request=_mcp_request(other, "activities:read activities:write"))
+        self.assertEqual(
+            other_tools.delete_race_comment(race_id=race.id, comment_id=posted["id"]), {"error": "not_found"}
+        )
+
+        result = tools.delete_race_comment(race_id=race.id, comment_id=posted["id"])
+        self.assertEqual(result, {"deleted": True})
+        self.assertEqual(tools.list_race_comments(race_id=race.id)["data"], [])
+
+    def test_delete_race_comment_rejects_a_non_author_with_race_access(self) -> None:
+        # A coach's delegated PAT resolves effective athlete id to the athlete (same race
+        # access), but the comment it posts is attributed to the coach's own sub - so the
+        # athlete, despite having full access to their own race, still can't delete it.
+        from races.models import Race
+
+        athlete = User.objects.create_user(
+            email="mcp-race-delete-comment-athlete2@example.cc", password="x", name="Athlete"
+        )
+        coach = User.objects.create_user(email="mcp-race-delete-comment-coach@example.cc", password="x", name="Coach")
+        UserRelationship.objects.create(
+            owner=athlete, grantee=coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+        )
+        secret = generate_secret()
+        pat = PersonalAccessToken.objects.create(
+            user=coach,
+            name="Delegated",
+            prefix=visible_prefix(secret),
+            hashed_secret=hash_secret(secret),
+            scopes=["activities:read", "activities:write"],
+            delegated_athlete=athlete,
+        )
+        race = Race.objects.create(athlete=athlete, name="Race", date=timezone.now().date())
+
+        coach_tools = RaceMCPTools(request=SimpleNamespace(user=coach, auth=pat))
+        posted = coach_tools.post_race_comment(race_id=race.id, text="From your coach.")
+        self.assertEqual(posted["role"], "coach")
+        self.assertEqual(posted["author_id"], coach.id)
+
+        athlete_tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        with self.assertRaises(PermissionDenied):
+            athlete_tools.delete_race_comment(race_id=race.id, comment_id=posted["id"])
