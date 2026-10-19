@@ -3,8 +3,7 @@ import { SECTION_LABELS } from "./courseSections";
 
 /** README §4.2.6 - "Laps if there are laps; otherwise 1 km for races of 10 km or less, else
  * 5 km." Pulled out as a pure function so SplitsCard's fallback-when-no-laps behavior (the
- * laps segment is disabled when `has_laps:false`) is independently testable. Reused by
- * ActivitySplitsCard too - the rule has nothing race-specific about it. */
+ * laps segment is disabled when `has_laps:false`) is independently testable. */
 export function defaultSplitsMode(hasLaps: boolean, distanceKm: number | null): SplitsMode {
   if (hasLaps) return "laps";
   if (distanceKm != null && distanceKm <= 10) return "1";
@@ -12,7 +11,8 @@ export function defaultSplitsMode(hasLaps: boolean, distanceKm: number | null): 
 }
 
 /** The subset of RaceSplit/ActivitySplit's fields a row's label is derived from - both satisfy
- * this structurally, so SplitsCard and ActivitySplitsCard can share one implementation. */
+ * this structurally, so SplitsCard and LapsTab's DistanceSplitsTable can share one
+ * implementation. */
 export interface SplitLabelFields {
   label: string | null;
   section_type: SectionType | null;

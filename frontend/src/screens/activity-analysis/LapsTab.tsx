@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { getLaps, inferWorkout, regenerateActivityLaps } from "../../api/activities";
+import { getActivitySections, getActivitySplits, getLaps, inferWorkout, regenerateActivityLaps } from "../../api/activities";
 import { listZones } from "../../api/athletes";
-import { ApiError, type Athlete, type Lap, type Sport } from "../../api/types";
-import { formatDuration } from "../../lib/format";
+import { ApiError, type Athlete, type Lap, type Sport, type SplitsMode } from "../../api/types";
+import { SECTION_COLORS, formatGrade } from "../../lib/courseSections";
+import { formatDuration, formatPace } from "../../lib/format";
+import { splitRowLabel } from "../../lib/splits";
 import { powerZoneType } from "../../lib/zones";
 import { kindLabel, zoneColor } from "../workouts/workoutTree";
 import {
@@ -285,6 +287,59 @@ function RegenerateLapsButton({ activityId }: { activityId: string }) {
   );
 }
 
+/** 1km/5km/elevation splits - no workout-step compliance here (a plain fixed-distance/elevation
+ * cut has nothing to match against a workout's steps), unlike mode="laps" below. */
+function DistanceSplitsTable({ activityId, mode }: { activityId: string; mode: SplitsMode }) {
+  const { data } = useQuery({ queryKey: ["activity-splits", activityId, mode], queryFn: () => getActivitySplits(activityId, mode) });
+  if (!data) return null;
+
+  const hasPower = data.splits.some((s) => s.avg_power != null);
+  const hasGrade = data.splits.some((s) => s.avg_grade_pct != null);
+  const headers = [
+    "Split",
+    "Dist",
+    "Time",
+    "Pace",
+    ...(hasGrade ? ["GAP"] : []),
+    "Avg HR",
+    ...(hasPower ? ["Avg Power"] : []),
+    ...(hasGrade ? ["Grade"] : []),
+  ];
+
+  return (
+    <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+      <thead>
+        <tr style={{ textAlign: "left", color: "var(--ink3)", fontSize: 11 }}>
+          {headers.map((h) => (
+            <th key={h} title={h === "GAP" ? "Grade-adjusted pace" : undefined} style={{ paddingBottom: 8 }}>
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {data.splits.map((split, i) => (
+          <tr key={i} style={{ borderTop: "1px solid var(--line)" }}>
+            <td className="mono" style={{ padding: "8px 0", fontWeight: i === data.splits.length - 1 ? 700 : 400 }}>
+              {split.section_type && (
+                <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, marginRight: 6, background: SECTION_COLORS[split.section_type] }} />
+              )}
+              {splitRowLabel(split, i, mode)}
+            </td>
+            <td className="mono">{(split.end_km - split.start_km).toFixed(2)} km</td>
+            <td className="mono">{formatDuration(split.time_s)}</td>
+            <td className="mono">{split.pace_s_per_km != null ? formatPace(split.pace_s_per_km) : "–"}</td>
+            {hasGrade && <td className="mono">{split.gap_pace_s_per_km != null ? formatPace(split.gap_pace_s_per_km) : "–"}</td>}
+            <td className="mono">{split.avg_hr ?? "–"}</td>
+            {hasPower && <td className="mono">{split.avg_power != null ? `${split.avg_power}W` : "–"}</td>}
+            {hasGrade && <td className="mono">{split.avg_grade_pct != null ? formatGrade(split.avg_grade_pct) : "–"}</td>}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function LapsTab({
   activityId,
   sport,
@@ -297,6 +352,13 @@ export function LapsTab({
   athlete: Athlete;
 }) {
   const navigate = useNavigate();
+  const [mode, setMode] = useState<SplitsMode>("laps");
+  // Same queryKey ActivitySectionsCard uses - react-query dedupes this to one request when
+  // both are visited, so this doesn't cost an extra round trip.
+  const sectionsQuery = useQuery({ queryKey: ["activity-sections", activityId], queryFn: () => getActivitySections(activityId) });
+  const elevationAvailable = sectionsQuery.data?.elevation_quality === "ok" && sectionsQuery.data.sections.length > 0;
+  const modes: SplitsMode[] = elevationAvailable ? ["laps", "1", "5", "elevation"] : ["laps", "1", "5"];
+
   const { data } = useQuery({ queryKey: ["activity-laps", activityId], queryFn: () => getLaps(activityId) });
   const laps = useMemo(() => data?.data ?? [], [data]);
   const maxPower = Math.max(1, ...laps.map((l) => l.avg_power ?? 0));
@@ -323,91 +385,114 @@ export function LapsTab({
       : "Couldn't infer a workout from these laps. Try again."
     : null;
 
-  if (laps.length === 0) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {workoutId && <RegenerateLapsButton activityId={activityId} />}
-        <div style={{ color: "var(--ink3)", fontSize: 13 }}>No laps recorded.</div>
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        {(sport === "bike" || sport === "run") && (
-          <>
-            <button
-              onClick={() => inferMutation.mutate()}
-              disabled={inferMutation.isPending}
-              style={{
-                border: "1px solid var(--line)",
-                borderRadius: 8,
-                background: "var(--card)",
-                color: "var(--ink2)",
-                fontSize: 12.5,
-                fontWeight: 700,
-                padding: "7px 14px",
-                cursor: "pointer",
-                opacity: inferMutation.isPending ? 0.6 : 1,
-              }}
-            >
-              {inferMutation.isPending ? "Building…" : "Create workout from laps"}
-            </button>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink3)" }}>
-              <input type="checkbox" checked={autoDetectRepeats} onChange={(e) => setAutoDetectRepeats(e.target.checked)} />
-              Auto-detect repeat groups
-            </label>
-            {inferError && <span style={{ fontSize: 12.5, color: "#e0442e" }}>{inferError}</span>}
-          </>
-        )}
-        {workoutId && <RegenerateLapsButton activityId={activityId} />}
+      <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3, width: "fit-content" }}>
+        {modes.map((m) => (
+          <div
+            key={m}
+            onClick={() => setMode(m)}
+            style={{
+              padding: "5px 11px",
+              fontSize: 11.5,
+              fontWeight: 600,
+              borderRadius: 7,
+              cursor: "pointer",
+              color: mode === m ? "var(--ink)" : "var(--ink3)",
+              background: mode === m ? "var(--card)" : "transparent",
+              boxShadow: mode === m ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
+            }}
+          >
+            {m === "laps" ? "Laps" : m === "1" ? "1 km" : m === "5" ? "5 km" : "Elevation"}
+          </div>
+        ))}
       </div>
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink3)" }}>
-        <input type="checkbox" checked={collapseByTarget} onChange={(e) => setCollapseByTarget(e.target.checked)} />
-        Collapse by target (ignore duration)
-      </label>
-      <StepSummaryCards laps={laps} athlete={athlete} powerReference={powerReference} collapseByTarget={collapseByTarget} />
-      <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ textAlign: "left", color: "var(--ink3)", fontSize: 11 }}>
-            <th style={{ paddingBottom: 8 }}>Lap</th>
-            <th style={{ paddingBottom: 8 }}>Step</th>
-            <th style={{ paddingBottom: 8 }}>Distance</th>
-            <th style={{ paddingBottom: 8 }}>Time</th>
-            <th style={{ paddingBottom: 8 }}>Speed</th>
-            <th style={{ paddingBottom: 8 }}>Avg Power</th>
-            <th style={{ paddingBottom: 8 }}>Avg HR</th>
-          </tr>
-        </thead>
-        <tbody>
-          {groups.map((group) =>
-            group.type === "single" ? (
-              <SingleLapRow key={group.lap.index} lap={group.lap} maxPower={maxPower} athlete={athlete} powerReference={powerReference} />
-            ) : (
-              <RepeatGroupRow
-                key={group.key}
-                group={group}
-                expanded={expanded.has(group.key)}
-                onToggle={() =>
-                  setExpanded((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(group.key)) {
-                      next.delete(group.key);
-                    } else {
-                      next.add(group.key);
+
+      {mode !== "laps" ? (
+        <DistanceSplitsTable activityId={activityId} mode={mode} />
+      ) : laps.length === 0 ? (
+        <>
+          {workoutId && <RegenerateLapsButton activityId={activityId} />}
+          <div style={{ color: "var(--ink3)", fontSize: 13 }}>No laps recorded.</div>
+        </>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            {(sport === "bike" || sport === "run") && (
+              <>
+                <button
+                  onClick={() => inferMutation.mutate()}
+                  disabled={inferMutation.isPending}
+                  style={{
+                    border: "1px solid var(--line)",
+                    borderRadius: 8,
+                    background: "var(--card)",
+                    color: "var(--ink2)",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    padding: "7px 14px",
+                    cursor: "pointer",
+                    opacity: inferMutation.isPending ? 0.6 : 1,
+                  }}
+                >
+                  {inferMutation.isPending ? "Building…" : "Create workout from laps"}
+                </button>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink3)" }}>
+                  <input type="checkbox" checked={autoDetectRepeats} onChange={(e) => setAutoDetectRepeats(e.target.checked)} />
+                  Auto-detect repeat groups
+                </label>
+                {inferError && <span style={{ fontSize: 12.5, color: "#e0442e" }}>{inferError}</span>}
+              </>
+            )}
+            {workoutId && <RegenerateLapsButton activityId={activityId} />}
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink3)" }}>
+            <input type="checkbox" checked={collapseByTarget} onChange={(e) => setCollapseByTarget(e.target.checked)} />
+            Collapse by target (ignore duration)
+          </label>
+          <StepSummaryCards laps={laps} athlete={athlete} powerReference={powerReference} collapseByTarget={collapseByTarget} />
+          <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "var(--ink3)", fontSize: 11 }}>
+                <th style={{ paddingBottom: 8 }}>Lap</th>
+                <th style={{ paddingBottom: 8 }}>Step</th>
+                <th style={{ paddingBottom: 8 }}>Distance</th>
+                <th style={{ paddingBottom: 8 }}>Time</th>
+                <th style={{ paddingBottom: 8 }}>Speed</th>
+                <th style={{ paddingBottom: 8 }}>Avg Power</th>
+                <th style={{ paddingBottom: 8 }}>Avg HR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((group) =>
+                group.type === "single" ? (
+                  <SingleLapRow key={group.lap.index} lap={group.lap} maxPower={maxPower} athlete={athlete} powerReference={powerReference} />
+                ) : (
+                  <RepeatGroupRow
+                    key={group.key}
+                    group={group}
+                    expanded={expanded.has(group.key)}
+                    onToggle={() =>
+                      setExpanded((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(group.key)) {
+                          next.delete(group.key);
+                        } else {
+                          next.add(group.key);
+                        }
+                        return next;
+                      })
                     }
-                    return next;
-                  })
-                }
-                maxPower={maxPower}
-                athlete={athlete}
-                powerReference={powerReference}
-              />
-            ),
-          )}
-        </tbody>
-      </table>
+                    maxPower={maxPower}
+                    athlete={athlete}
+                    powerReference={powerReference}
+                  />
+                ),
+              )}
+            </tbody>
+          </table>
+        </>
+      )}
     </div>
   );
 }
