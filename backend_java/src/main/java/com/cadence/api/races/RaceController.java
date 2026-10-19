@@ -31,7 +31,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class RaceController {
 
-	private static final Set<String> SPLITS_MODES = Set.of("laps", "1", "5", "elevation");
+	/** Package-visible-via-public (not just here) so RaceTools' get_race_splits MCP tool can
+	 * validate against the same set rather than duplicating it. */
+	public static final Set<String> SPLITS_MODES = Set.of("laps", "1", "5", "elevation");
 
 	private final RaceService raceService;
 	private final RaceBlockService raceBlockService;

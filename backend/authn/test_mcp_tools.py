@@ -1014,3 +1014,71 @@ class GearAndRaceToolsTests(TestCase):
             race_id="race_doesnotexist", steps=[{"end_type": "time", "duration_s": 60}]
         )
         self.assertEqual(result, {"error": "not_found"})
+
+    def test_get_race_splits_defaults_to_laps_and_rejects_an_unknown_mode(self) -> None:
+        from races.models import Race
+
+        athlete = User.objects.create_user(email="mcp-race-splits@example.cc", password="x", name="Athlete")
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Run",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+        )
+        race = Race.objects.create(athlete=athlete, name="Race", date=activity.start_date.date(), activity=activity)
+
+        tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.get_race_splits(race_id=race.id)
+        self.assertIn("has_laps", result)
+
+        with self.assertRaises(ValidationError):
+            tools.get_race_splits(race_id=race.id, mode="weird")
+
+    def test_get_race_weather_is_unavailable_with_no_course(self) -> None:
+        from races.models import Race
+
+        athlete = User.objects.create_user(email="mcp-race-weather@example.cc", password="x", name="Athlete")
+        race = Race.objects.create(athlete=athlete, name="Race", date=timezone.now().date())
+
+        tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.get_race_weather(race_id=race.id)
+
+        self.assertFalse(result["available"])
+
+    def test_post_and_list_race_comments_round_trip_and_require_write_for_posting(self) -> None:
+        from races.models import Race
+
+        athlete = User.objects.create_user(email="mcp-race-comments@example.cc", password="x", name="Athlete")
+        race = Race.objects.create(athlete=athlete, name="Race", date=timezone.now().date())
+
+        tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        posted = tools.post_race_comment(race_id=race.id, text="Feeling strong this week.", week=3)
+        self.assertEqual(posted["role"], "athlete")
+        self.assertEqual(posted["week"], 3)
+
+        listing = tools.list_race_comments(race_id=race.id)
+        self.assertEqual(len(listing["data"]), 1)
+
+        read_only_tools = RaceMCPTools(request=_mcp_request(athlete, "activities:read"))
+        with self.assertRaises(PermissionDenied):
+            read_only_tools.post_race_comment(race_id=race.id, text="No write scope.")
+
+    def test_outsider_gets_not_found_for_another_athletes_race_comments(self) -> None:
+        # Mirrors get_race_block/get_race_custom_splits's own convention: every race MCP tool
+        # looks a race up scoped to the caller's own effective athlete id, so a true outsider
+        # (no coach delegation) just finds no matching race rather than a distinguishable 403 -
+        # same privacy-preserving shape as those two, not a new gap introduced here.
+        from races.models import Race
+
+        athlete = User.objects.create_user(email="mcp-race-comments-outsider@example.cc", password="x", name="Athlete")
+        outsider = User.objects.create_user(
+            email="mcp-race-comments-outsider2@example.cc", password="x", name="Outsider"
+        )
+        race = Race.objects.create(athlete=athlete, name="Race", date=timezone.now().date())
+
+        tools = RaceMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
+        self.assertEqual(tools.list_race_comments(race_id=race.id), {"error": "not_found"})
+        self.assertEqual(tools.post_race_comment(race_id=race.id, text="Uninvited."), {"error": "not_found"})

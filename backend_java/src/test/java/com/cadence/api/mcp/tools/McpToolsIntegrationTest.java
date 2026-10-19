@@ -24,6 +24,8 @@ import com.cadence.api.mcp.tools.workouts.WorkoutReadTools;
 import com.cadence.api.mcp.tools.workouts.WorkoutWriteTools;
 import com.cadence.api.races.Race;
 import com.cadence.api.races.RaceRepository;
+import com.cadence.api.races.dto.RaceCommentResponse;
+import com.cadence.api.races.dto.RaceWeatherResponse;
 import com.cadence.api.races.dto.SplitsResponse;
 import com.cadence.api.scheduling.dto.ScheduledWorkoutResponse;
 import com.cadence.api.security.AuthContext;
@@ -42,6 +44,7 @@ import com.cadence.api.workouts.dto.WorkoutResponse;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -435,5 +438,86 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		assertThat(response.ref()).isEqualTo("goal");
 		assertThat(response.splits().get(0).deltaVsRefSPerKm())
 				.isCloseTo(0.0, org.assertj.core.api.Assertions.within(0.5));
+	}
+
+	@Test
+	void getRaceSplitsDefaultsToLapsAndRejectsAnUnknownMode() {
+		User athlete = saveAthlete("mcp-race-splits@example.cc");
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("Run");
+		activity.setStartDate(Instant.parse("2026-10-12T08:00:00Z"));
+		activity.setDistanceKm(1.0);
+		activity.setMovingTime(300);
+		activityRepository.save(activity);
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Race");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		race.setActivity(activity);
+		raceRepository.save(race);
+		authAs(athlete.getId(), "activities:read");
+
+		Object result = raceTools.getRaceSplits(race.getId(), null);
+		assertThat(result).isInstanceOf(SplitsResponse.class);
+
+		assertThatThrownBy(() -> raceTools.getRaceSplits(race.getId(), "weird")).isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void getRaceWeatherIsUnavailableWithNoCourse() {
+		User athlete = saveAthlete("mcp-race-weather@example.cc");
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Race");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		raceRepository.save(race);
+		authAs(athlete.getId(), "activities:read");
+
+		Object result = raceTools.getRaceWeather(race.getId());
+		assertThat(result).isInstanceOf(RaceWeatherResponse.class);
+		assertThat(((RaceWeatherResponse) result).available()).isFalse();
+	}
+
+	@Test
+	void postAndListRaceCommentsRoundTripAndRequireWriteForPosting() {
+		User athlete = saveAthlete("mcp-race-comments@example.cc");
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Race");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		raceRepository.save(race);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		Object posted = raceTools.postRaceComment(race.getId(), "Feeling strong this week.", 3, null);
+		assertThat(posted).isInstanceOf(RaceCommentResponse.class);
+		assertThat(((RaceCommentResponse) posted).role()).isEqualTo("athlete");
+		assertThat(((RaceCommentResponse) posted).week()).isEqualTo(3);
+
+		Object listing = raceTools.listRaceComments(race.getId());
+		assertThat((List<?>) listing).hasSize(1);
+
+		authAs(athlete.getId(), "activities:read");
+		assertThatThrownBy(() -> raceTools.postRaceComment(race.getId(), "No write scope.", null, null))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void outsiderGetsNotFoundForAnotherAthletesRaceComments() {
+		// Mirrors getRaceBlock/getRaceCustomSplits's own convention: every race MCP tool looks a
+		// race up scoped to the caller's own effective athlete id, so a true outsider (no coach
+		// delegation) just finds no matching race rather than a distinguishable 403.
+		User athlete = saveAthlete("mcp-race-comments-outsider@example.cc");
+		User outsider = saveAthlete("mcp-race-comments-outsider2@example.cc");
+		Race race = new Race();
+		race.setAthlete(athlete);
+		race.setName("Race");
+		race.setDate(LocalDate.of(2026, 10, 12));
+		raceRepository.save(race);
+		authAs(outsider.getId(), "activities:read", "activities:write");
+
+		assertThat(raceTools.listRaceComments(race.getId())).isEqualTo(Map.of("error", "not_found"));
+		assertThat(raceTools.postRaceComment(race.getId(), "Uninvited.", null, null)).isEqualTo(Map.of("error", "not_found"));
 	}
 }

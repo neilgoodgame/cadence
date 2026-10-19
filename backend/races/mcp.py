@@ -5,13 +5,20 @@ races/views.py's existing queryset logic directly.
 from datetime import timedelta
 from typing import Any
 
+from rest_framework.exceptions import ValidationError
+
 from activities.mcp import convert_custom_steps_input
-from authn.mcp_scopes import ACTIVITIES_READ
+from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
+from core.auth_context import get_effective_athlete_id
 
 from . import splits as splits_module
 from .blocks import get_race_block
-from .models import Race
+from .comments import resolve_parent_comment, snapshot_role
+from .models import Race, RaceComment
+from .serializers import RaceCommentCreateSerializer, RaceCommentSerializer
+from .views import SPLITS_MODES
+from .weather import forecast_for
 
 
 def _format_duration(value: timedelta | None) -> str | None:
@@ -88,3 +95,81 @@ class RaceMCPTools(ScopedMCPToolset):
         if race is None:
             return {"error": "not_found"}
         return splits_module.get_custom_splits(race, convert_custom_steps_input(steps))
+
+    def get_race_splits(self, race_id: str, mode: str = "laps") -> dict[str, Any]:
+        """Get splits for a goal race's linked activity - manual laps, fixed 1km/5km splits, or
+        (elevation) one split per flat/climb/descent section of the race's linked course. Each
+        split's delta is against the race's own goal pace/target power (or its activity's
+        average, if there's no goal/target). mode defaults to "laps"; use get_race_custom_splits
+        instead for an arbitrary list of steps (e.g. "the first mile, then every 2km")."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+
+        race = Race.objects.filter(pk=race_id, athlete_id=athlete_id).first()
+        if race is None:
+            return {"error": "not_found"}
+        if mode not in SPLITS_MODES:
+            raise ValidationError({"mode": f"Must be one of {', '.join(SPLITS_MODES)}."})
+        return splits_module.get_splits(race, mode)
+
+    def get_race_weather(self, race_id: str) -> dict[str, Any]:
+        """Get the race-day weather forecast, resolved via the race's linked course's start
+        point. available is false (every other field null) if the race has no course, the
+        course has no resolved start point, or the race is more than 10 days away."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+
+        race = Race.objects.filter(pk=race_id, athlete_id=athlete_id).first()
+        if race is None:
+            return {"error": "not_found"}
+        return forecast_for(race)
+
+    def list_race_comments(self, race_id: str) -> dict[str, Any]:
+        """List the coach/athlete plan comments on a goal race (from list_races), oldest first -
+        who wrote each one, their role (athlete/coach), and which training week they're about,
+        if any."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+
+        race = Race.objects.filter(pk=race_id, athlete_id=athlete_id).first()
+        if race is None:
+            return {"error": "not_found"}
+        comments = race.comments.select_related("author").order_by("created_at")
+        return {"data": RaceCommentSerializer(comments, many=True).data}
+
+    def post_race_comment(
+        self, race_id: str, text: str, week: int | None = None, parent_comment_id: str | None = None
+    ) -> dict[str, Any]:
+        """Post a plan comment on a goal race (from list_races) - visible to the athlete and
+        their coach. Optionally tag it to a training week (1-based). Omit parent_comment_id for
+        a top-level comment, or pass an existing top-level comment's id (from
+        list_race_comments) to reply to it - single-level threading only, replying to a reply is
+        rejected."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        self._require_write(athlete_id)
+
+        race = Race.objects.filter(pk=race_id, athlete_id=athlete_id).first()
+        if race is None:
+            return {"error": "not_found"}
+
+        serializer = RaceCommentCreateSerializer(data={"text": text, "week": week, "parent_id": parent_comment_id})
+        serializer.is_valid(raise_exception=True)
+        parent = resolve_parent_comment(race, serializer.validated_data.get("parent_id"))
+
+        # The comment's author is always the calling credential's own sub - a coach's delegated
+        # token resolves athlete_id to the athlete being coached (used above for the ownership
+        # check), but the comment itself is attributed to the coach, same as post_activity_comment.
+        author_id, _ = get_effective_athlete_id(self.request)
+        comment = RaceComment.objects.create(
+            race=race,
+            author_id=author_id,
+            role=snapshot_role(race, author_id),
+            parent=parent,
+            text=serializer.validated_data["text"],
+            week=serializer.validated_data.get("week"),
+        )
+        return RaceCommentSerializer(comment).data
