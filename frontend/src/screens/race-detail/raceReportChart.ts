@@ -1,15 +1,23 @@
 import type { RaceBlockWeek } from "../../api/types";
-import { buildBlockChart, type BlockChartMetric } from "./raceBlockChart";
+import { buildBlockChart, type BlockChartMetric, type BlockChartSport } from "./raceBlockChart";
 
 export const CHART_METRICS: BlockChartMetric[] = ["tss", "distance", "time"];
+export const CHART_SPORTS: BlockChartSport[] = ["all", "run", "ride"];
 
 export const CHART_METRIC_LABEL: Record<BlockChartMetric, string> = { tss: "TSS", distance: "Distance", time: "Time" };
+export const CHART_SPORT_LABEL: Record<BlockChartSport, string> = { all: "All", run: "Run", ride: "Ride" };
 
 const CHART_TITLE: Record<BlockChartMetric, string> = {
   tss: "Weekly training load (TSS)",
   distance: "Weekly distance (km)",
   time: "Weekly time (hours)",
 };
+
+/** Stable key for looking a (metric, sport) chart image up out of a flat map - used by both
+ * buildRaceReportWorkbook and downloadRaceReport so the two stay in sync. */
+export function chartKey(metric: BlockChartMetric, sport: BlockChartSport): string {
+  return `${metric}:${sport}`;
+}
 
 export interface ChartColors {
   run: string;
@@ -57,11 +65,12 @@ export function buildTrainingLoadChartSvg(
   comparisonWeeks: RaceBlockWeek[] | null,
   comparisonLabel: string | null,
   metric: BlockChartMetric = "tss",
+  sport: BlockChartSport = "all",
   colors: ChartColors = CHART_COLORS,
   width = CHART_WIDTH,
   height = CHART_HEIGHT,
 ): string {
-  const chart = buildBlockChart(weeks, comparisonWeeks, metric, "all");
+  const chart = buildBlockChart(weeks, comparisonWeeks, metric, sport);
   const plotW = width - AXIS_W;
   const plotH = height - TOP_PAD - BOTTOM_PAD;
   const n = Math.max(weeks.length, 1);
@@ -74,13 +83,17 @@ export function buildTrainingLoadChartSvg(
   const parts: string[] = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Arial, sans-serif">`);
   parts.push(`<rect x="0" y="0" width="${width}" height="${height}" fill="${colors.background}" />`);
-  parts.push(`<text x="${AXIS_W}" y="14" font-size="12" font-weight="700" fill="${colors.ink}">${esc(CHART_TITLE[metric])}</text>`);
+  const title = sport === "all" ? CHART_TITLE[metric] : `${CHART_TITLE[metric]} · ${CHART_SPORT_LABEL[sport]} only`;
+  parts.push(`<text x="${AXIS_W}" y="14" font-size="12" font-weight="700" fill="${colors.ink}">${esc(title)}</text>`);
 
-  const legendItems: { label: string; color: string; dashed?: boolean }[] = [
-    { label: "Run", color: colors.run },
-    { label: "Ride", color: colors.ride },
-    { label: "Other", color: colors.other },
-  ];
+  const legendItems: { label: string; color: string; dashed?: boolean }[] =
+    sport === "all"
+      ? [
+          { label: "Run", color: colors.run },
+          { label: "Ride", color: colors.ride },
+          { label: "Other", color: colors.other },
+        ]
+      : [{ label: CHART_SPORT_LABEL[sport], color: sport === "run" ? colors.run : colors.ride }];
   const hasComparison = !!comparisonWeeks && comparisonWeeks.length > 0;
   if (hasComparison) legendItems.push({ label: comparisonLabel ?? "Comparison", color: colors.ink3, dashed: true });
 

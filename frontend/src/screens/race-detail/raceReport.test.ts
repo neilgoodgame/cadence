@@ -209,26 +209,31 @@ describe("buildRaceReportWorkbook", () => {
     expect(row).toContain("Yes");
   });
 
-  it("includes a Chart sheet per metric with the embedded image when charts were rendered", async () => {
-    const wb = buildRaceReportWorkbook(
-      ExcelJS,
-      ctx(),
-      resolved({ chartImages: { tss: new ArrayBuffer(16), distance: new ArrayBuffer(16), time: new ArrayBuffer(16) } }),
+  it("includes a Chart sheet per metric/sport combination with the embedded image when charts were rendered", async () => {
+    const chartImages = Object.fromEntries(
+      ["tss:all", "tss:run", "tss:ride", "distance:all", "distance:run", "distance:ride", "time:all", "time:run", "time:ride"].map(
+        (k) => [k, new ArrayBuffer(16)],
+      ),
     );
+    const wb = buildRaceReportWorkbook(ExcelJS, ctx(), resolved({ chartImages }));
     const loaded = await roundTrip(wb);
-    for (const name of ["Chart - TSS", "Chart - Distance", "Chart - Time"]) {
+    for (const name of [
+      "Chart - TSS", "Chart - TSS (Run)", "Chart - TSS (Ride)",
+      "Chart - Distance", "Chart - Distance (Run)", "Chart - Distance (Ride)",
+      "Chart - Time", "Chart - Time (Run)", "Chart - Time (Ride)",
+    ]) {
       const sheet = loaded.getWorksheet(name)!;
       expect(sheet).toBeDefined();
       expect(sheet.getImages()).toHaveLength(1);
     }
   });
 
-  it("only adds a Chart sheet for metrics that have a rendered image", async () => {
-    const wb = buildRaceReportWorkbook(ExcelJS, ctx(), resolved({ chartImages: { tss: new ArrayBuffer(16) } }));
+  it("only adds a Chart sheet for metric/sport combinations that have a rendered image", async () => {
+    const wb = buildRaceReportWorkbook(ExcelJS, ctx(), resolved({ chartImages: { "tss:all": new ArrayBuffer(16) } }));
     const loaded = await roundTrip(wb);
     expect(loaded.getWorksheet("Chart - TSS")).toBeDefined();
+    expect(loaded.getWorksheet("Chart - TSS (Run)")).toBeUndefined();
     expect(loaded.getWorksheet("Chart - Distance")).toBeUndefined();
-    expect(loaded.getWorksheet("Chart - Time")).toBeUndefined();
   });
 
   it("omits all Chart sheets when no charts were rendered", async () => {

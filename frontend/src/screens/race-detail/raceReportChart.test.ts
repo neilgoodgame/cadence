@@ -64,4 +64,24 @@ describe("buildTrainingLoadChartSvg", () => {
     const svg = buildTrainingLoadChartSvg([week()], null, null);
     expect(svg).toContain("Weekly training load (TSS)");
   });
+
+  it("titles the chart and narrows the legend when filtered to a single sport", () => {
+    const mixedWeek = week({ ride_km: 40, ride_moving_s: 5400, ride_count: 1, ride_tss: 90, tss: 390 });
+    const runOnly = buildTrainingLoadChartSvg([mixedWeek], null, null, "tss", "run");
+    expect(runOnly).toContain("Run only");
+    expect(runOnly).not.toContain("Ride");
+    expect(runOnly).not.toContain("Other");
+
+    const rideOnly = buildTrainingLoadChartSvg([mixedWeek], null, null, "tss", "ride");
+    expect(rideOnly).toContain("Ride only");
+    expect(rideOnly).not.toContain(">Run<");
+  });
+
+  it("shows the full Run/Ride/Other legend for the default 'all' sport", () => {
+    const svg = buildTrainingLoadChartSvg([week()], null, null, "tss", "all");
+    expect(svg).toContain(">Run<");
+    expect(svg).toContain(">Ride<");
+    expect(svg).toContain(">Other<");
+    expect(svg).not.toContain("only");
+  });
 });

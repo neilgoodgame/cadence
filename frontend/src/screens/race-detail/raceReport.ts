@@ -14,8 +14,19 @@ import type {
 import { formatDuration, formatPace, parseDuration } from "../../lib/format";
 import { formatGrade, SECTION_LABELS } from "../../lib/courseSections";
 import { splitRowLabel } from "../../lib/splits";
-import type { BlockChartMetric } from "./raceBlockChart";
-import { buildTrainingLoadChartSvg, CHART_COLORS, CHART_HEIGHT, CHART_METRIC_LABEL, CHART_METRICS, CHART_WIDTH, renderChartPng } from "./raceReportChart";
+import type { BlockChartMetric, BlockChartSport } from "./raceBlockChart";
+import {
+  buildTrainingLoadChartSvg,
+  chartKey,
+  CHART_COLORS,
+  CHART_HEIGHT,
+  CHART_METRIC_LABEL,
+  CHART_METRICS,
+  CHART_SPORT_LABEL,
+  CHART_SPORTS,
+  CHART_WIDTH,
+  renderChartPng,
+} from "./raceReportChart";
 
 const MODE_LABEL: Record<SplitsMode, string> = { laps: "Laps", "1": "1 km", "5": "5 km", elevation: "Elevation" };
 
@@ -139,9 +150,10 @@ function addTrainingBlockSheet(wb: ExcelJSType.Workbook, block: RaceBlock) {
   addTable(sheet, WEEK_HEADERS, block.weeks.map((w, i) => weekRow(w, i)), summary.length + 2);
 }
 
-function addTrainingLoadChartSheet(wb: ExcelJSType.Workbook, metric: BlockChartMetric, chartImage: ArrayBuffer | null) {
+function addTrainingLoadChartSheet(wb: ExcelJSType.Workbook, metric: BlockChartMetric, sport: BlockChartSport, chartImage: ArrayBuffer | null) {
   if (!chartImage) return;
-  const sheet = wb.addWorksheet(`Chart - ${CHART_METRIC_LABEL[metric]}`);
+  const name = sport === "all" ? `Chart - ${CHART_METRIC_LABEL[metric]}` : `Chart - ${CHART_METRIC_LABEL[metric]} (${CHART_SPORT_LABEL[sport]})`;
+  const sheet = wb.addWorksheet(name);
   const imageId = wb.addImage({ extension: "png", buffer: chartImage });
   sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: CHART_WIDTH, height: CHART_HEIGHT } });
 }
@@ -255,10 +267,10 @@ export interface ResolvedRaceReportData {
   splitsByMode: Partial<Record<SplitsMode, RaceSplits>>;
   comments: { author_name: string; role: string; week: number | null; text: string; created_at: string }[];
   weather: RaceWeather | null;
-  /** Rasterized weekly bar chart (PNG) per metric - a metric missing from this map (or the
-   * whole map empty) omits that chart sheet entirely. Built by downloadRaceReport since it
-   * needs the DOM/canvas, not buildRaceReportWorkbook. */
-  chartImages: Partial<Record<BlockChartMetric, ArrayBuffer>>;
+  /** Rasterized weekly bar chart (PNG) per (metric, sport) combination, keyed by chartKey() - a
+   * combination missing from this map (or the whole map empty) omits that chart sheet entirely.
+   * Built by downloadRaceReport since it needs the DOM/canvas, not buildRaceReportWorkbook. */
+  chartImages: Partial<Record<string, ArrayBuffer>>;
 }
 
 function sanitizeFilename(name: string): string {
@@ -282,7 +294,9 @@ export function buildRaceReportWorkbook(
     if (data) addSplitsSheet(wb, m, data);
   });
   addTrainingBlockSheet(wb, ctx.block);
-  CHART_METRICS.forEach((m) => addTrainingLoadChartSheet(wb, m, resolved.chartImages[m] ?? null));
+  CHART_METRICS.forEach((m) =>
+    CHART_SPORTS.forEach((s) => addTrainingLoadChartSheet(wb, m, s, resolved.chartImages[chartKey(m, s)] ?? null)),
+  );
   addKeySessionsSheet(wb, ctx.block);
   addHistorySheet(wb, ctx.history, ctx.pbS);
   addCommentsSheet(wb, resolved.comments);
@@ -300,15 +314,16 @@ export async function downloadRaceReport(ctx: RaceReportContext): Promise<void> 
   const splitModes: SplitsMode[] = showSplits ? ["laps", "1", "5", ...(elevationAvailable ? (["elevation"] as const) : [])] : [];
   const missingModes = splitModes.filter((m) => !ctx.splitsByMode[m]);
   const comparisonWeeks = ctx.block.comparison?.weeks ?? null;
+  const chartCombos = CHART_METRICS.flatMap((m) => CHART_SPORTS.map((s) => [m, s] as const));
   const [fetchedSplits, commentsResult, weather, chartImagesList] = await Promise.all([
     Promise.all(missingModes.map((m) => getRaceSplits(race.id, m))),
     listRaceComments(race.id),
     showWeather ? getRaceWeather(race.id) : Promise.resolve(null),
     ctx.block.weeks.length > 0
       ? Promise.all(
-          CHART_METRICS.map((m) =>
+          chartCombos.map(([m, s]) =>
             renderChartPng(
-              buildTrainingLoadChartSvg(ctx.block.weeks, comparisonWeeks, ctx.comparisonLabel, m, CHART_COLORS, CHART_WIDTH, CHART_HEIGHT),
+              buildTrainingLoadChartSvg(ctx.block.weeks, comparisonWeeks, ctx.comparisonLabel, m, s, CHART_COLORS, CHART_WIDTH, CHART_HEIGHT),
               CHART_WIDTH,
               CHART_HEIGHT,
               CHART_COLORS.background,
@@ -319,8 +334,8 @@ export async function downloadRaceReport(ctx: RaceReportContext): Promise<void> 
   ]);
   const splitsByMode: Partial<Record<SplitsMode, RaceSplits>> = { ...ctx.splitsByMode };
   missingModes.forEach((m, i) => (splitsByMode[m] = fetchedSplits[i]));
-  const chartImages: Partial<Record<BlockChartMetric, ArrayBuffer>> = {};
-  chartImagesList.forEach((img, i) => (chartImages[CHART_METRICS[i]] = img));
+  const chartImages: Partial<Record<string, ArrayBuffer>> = {};
+  chartImagesList.forEach((img, i) => (chartImages[chartKey(...chartCombos[i])] = img));
 
   const wb = buildRaceReportWorkbook(ExcelJS, ctx, { splitModes, splitsByMode, comments: commentsResult.data, weather, chartImages });
 
