@@ -20,7 +20,17 @@ function statusLabel(race: Race): string {
 }
 
 /** Race detail page header - README §4.2.1. */
-export function Header({ race, onEdit }: { race: Race; onEdit: () => void }) {
+export function Header({
+  race,
+  onEdit,
+  onDownloadReport,
+  downloadingReport,
+}: {
+  race: Race;
+  onEdit: () => void;
+  onDownloadReport: () => void;
+  downloadingReport: boolean;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -59,6 +69,13 @@ export function Header({ race, onEdit }: { race: Race; onEdit: () => void }) {
           {race.priority}
         </span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            onClick={onDownloadReport}
+            disabled={downloadingReport}
+            style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, fontWeight: 600, padding: "6px 14px", cursor: "pointer", color: "var(--ink)", opacity: downloadingReport ? 0.6 : 1 }}
+          >
+            {downloadingReport ? "Preparing…" : "Download report"}
+          </button>
           <button
             onClick={onEdit}
             style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, fontWeight: 600, padding: "6px 14px", cursor: "pointer", color: "var(--ink)" }}
