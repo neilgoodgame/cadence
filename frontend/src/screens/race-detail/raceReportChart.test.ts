@@ -31,7 +31,7 @@ function week(overrides: Partial<RaceBlockWeek> = {}): RaceBlockWeek {
 
 describe("buildTrainingLoadChartSvg", () => {
   it("renders an SVG with one bar segment per week and no CTL line", () => {
-    const svg = buildTrainingLoadChartSvg([week(), week({ week_start: "2026-01-26", tss: 280 })], null, null);
+    const svg = buildTrainingLoadChartSvg([week(), week({ week_start: "2026-01-26", tss: 280 })], null, null, "tss");
     expect(svg).toContain("<svg");
     expect(svg).toContain("Weekly training load (TSS)");
     // No CTL polyline/path is drawn - this chart intentionally drops it.
@@ -40,14 +40,28 @@ describe("buildTrainingLoadChartSvg", () => {
   });
 
   it("includes a dashed comparison legend and ghost bars when a comparison block is given", () => {
-    const svg = buildTrainingLoadChartSvg([week()], [week({ tss: 250 })], "Tunbridge Wells Half 2025");
+    const svg = buildTrainingLoadChartSvg([week()], [week({ tss: 250 })], "Tunbridge Wells Half 2025", "tss");
     expect(svg).toContain("Tunbridge Wells Half 2025");
     expect(svg).toContain('stroke-dasharray="2,2"'); // comparison legend swatch
     expect(svg).toContain('stroke-dasharray="3,3"'); // comparison ghost bar outline
   });
 
   it("omits the comparison legend entirely when there is no comparison block", () => {
-    const svg = buildTrainingLoadChartSvg([week()], null, null);
+    const svg = buildTrainingLoadChartSvg([week()], null, null, "tss");
     expect(svg).not.toContain("Comparison");
+  });
+
+  it("titles the chart by metric for distance and time", () => {
+    const distanceSvg = buildTrainingLoadChartSvg([week()], null, null, "distance");
+    expect(distanceSvg).toContain("Weekly distance (km)");
+    expect(distanceSvg).not.toContain("Weekly training load (TSS)");
+
+    const timeSvg = buildTrainingLoadChartSvg([week()], null, null, "time");
+    expect(timeSvg).toContain("Weekly time (hours)");
+  });
+
+  it("defaults to the TSS metric when none is given", () => {
+    const svg = buildTrainingLoadChartSvg([week()], null, null);
+    expect(svg).toContain("Weekly training load (TSS)");
   });
 });

@@ -125,7 +125,7 @@ function resolved(overrides: Partial<ResolvedRaceReportData> = {}): ResolvedRace
     splitsByMode: { laps: splits(), "1": splits(), "5": splits() },
     comments: [{ author_name: "Coach K", role: "coach", week: 3, text: "Great long run this week.", created_at: "2026-02-10T09:00:00Z" }],
     weather: null,
-    chartImage: null,
+    chartImages: {},
     ...overrides,
   };
 }
@@ -209,17 +209,33 @@ describe("buildRaceReportWorkbook", () => {
     expect(row).toContain("Yes");
   });
 
-  it("includes a Training load chart sheet with the embedded image when a chart was rendered", async () => {
-    const wb = buildRaceReportWorkbook(ExcelJS, ctx(), resolved({ chartImage: new ArrayBuffer(16) }));
+  it("includes a Chart sheet per metric with the embedded image when charts were rendered", async () => {
+    const wb = buildRaceReportWorkbook(
+      ExcelJS,
+      ctx(),
+      resolved({ chartImages: { tss: new ArrayBuffer(16), distance: new ArrayBuffer(16), time: new ArrayBuffer(16) } }),
+    );
     const loaded = await roundTrip(wb);
-    const sheet = loaded.getWorksheet("Training load chart")!;
-    expect(sheet).toBeDefined();
-    expect(sheet.getImages()).toHaveLength(1);
+    for (const name of ["Chart - TSS", "Chart - Distance", "Chart - Time"]) {
+      const sheet = loaded.getWorksheet(name)!;
+      expect(sheet).toBeDefined();
+      expect(sheet.getImages()).toHaveLength(1);
+    }
   });
 
-  it("omits the Training load chart sheet when no chart was rendered", async () => {
-    const wb = buildRaceReportWorkbook(ExcelJS, ctx(), resolved({ chartImage: null }));
+  it("only adds a Chart sheet for metrics that have a rendered image", async () => {
+    const wb = buildRaceReportWorkbook(ExcelJS, ctx(), resolved({ chartImages: { tss: new ArrayBuffer(16) } }));
     const loaded = await roundTrip(wb);
-    expect(loaded.getWorksheet("Training load chart")).toBeUndefined();
+    expect(loaded.getWorksheet("Chart - TSS")).toBeDefined();
+    expect(loaded.getWorksheet("Chart - Distance")).toBeUndefined();
+    expect(loaded.getWorksheet("Chart - Time")).toBeUndefined();
+  });
+
+  it("omits all Chart sheets when no charts were rendered", async () => {
+    const wb = buildRaceReportWorkbook(ExcelJS, ctx(), resolved({ chartImages: {} }));
+    const loaded = await roundTrip(wb);
+    expect(loaded.getWorksheet("Chart - TSS")).toBeUndefined();
+    expect(loaded.getWorksheet("Chart - Distance")).toBeUndefined();
+    expect(loaded.getWorksheet("Chart - Time")).toBeUndefined();
   });
 });

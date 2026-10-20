@@ -1,5 +1,15 @@
 import type { RaceBlockWeek } from "../../api/types";
-import { buildBlockChart } from "./raceBlockChart";
+import { buildBlockChart, type BlockChartMetric } from "./raceBlockChart";
+
+export const CHART_METRICS: BlockChartMetric[] = ["tss", "distance", "time"];
+
+export const CHART_METRIC_LABEL: Record<BlockChartMetric, string> = { tss: "TSS", distance: "Distance", time: "Time" };
+
+const CHART_TITLE: Record<BlockChartMetric, string> = {
+  tss: "Weekly training load (TSS)",
+  distance: "Weekly distance (km)",
+  time: "Weekly time (hours)",
+};
 
 export interface ChartColors {
   run: string;
@@ -37,20 +47,21 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** A static (non-interactive) weekly training-load bar chart for the race report's Excel export -
- * reuses the same bar-stacking data (raceBlockChart.ts's buildBlockChart, metric "tss", sport
- * "all") as the on-screen TrainingBlockChart, rendered as a plain SVG string. Deliberately drops
- * the CTL line (per the user's request) and any hover/selection/phase-strip state, since this is
- * a one-shot snapshot rather than an interactive card. */
+/** A static (non-interactive) weekly bar chart for the race report's Excel export - reuses the
+ * same bar-stacking data (raceBlockChart.ts's buildBlockChart, sport "all") as the on-screen
+ * TrainingBlockChart's TSS/Distance/Time metric toggle, rendered as a plain SVG string.
+ * Deliberately drops the CTL line (per the user's request) and any hover/selection/phase-strip
+ * state, since this is a one-shot snapshot rather than an interactive card. */
 export function buildTrainingLoadChartSvg(
   weeks: RaceBlockWeek[],
   comparisonWeeks: RaceBlockWeek[] | null,
   comparisonLabel: string | null,
+  metric: BlockChartMetric = "tss",
   colors: ChartColors = CHART_COLORS,
   width = CHART_WIDTH,
   height = CHART_HEIGHT,
 ): string {
-  const chart = buildBlockChart(weeks, comparisonWeeks, "tss", "all");
+  const chart = buildBlockChart(weeks, comparisonWeeks, metric, "all");
   const plotW = width - AXIS_W;
   const plotH = height - TOP_PAD - BOTTOM_PAD;
   const n = Math.max(weeks.length, 1);
@@ -63,7 +74,7 @@ export function buildTrainingLoadChartSvg(
   const parts: string[] = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Arial, sans-serif">`);
   parts.push(`<rect x="0" y="0" width="${width}" height="${height}" fill="${colors.background}" />`);
-  parts.push(`<text x="${AXIS_W}" y="14" font-size="12" font-weight="700" fill="${colors.ink}">Weekly training load (TSS)</text>`);
+  parts.push(`<text x="${AXIS_W}" y="14" font-size="12" font-weight="700" fill="${colors.ink}">${esc(CHART_TITLE[metric])}</text>`);
 
   const legendItems: { label: string; color: string; dashed?: boolean }[] = [
     { label: "Run", color: colors.run },
@@ -93,7 +104,8 @@ export function buildTrainingLoadChartSvg(
     const v = (yMax / tickCount) * i;
     const ty = y(v);
     parts.push(`<line x1="0" x2="${plotW}" y1="${ty}" y2="${ty}" stroke="${colors.line}" stroke-dasharray="3,3" />`);
-    parts.push(`<text x="-8" y="${ty}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="${colors.ink3}">${Math.round(v)}</text>`);
+    const tickLabel = metric === "tss" ? String(Math.round(v)) : v.toFixed(1);
+    parts.push(`<text x="-8" y="${ty}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="${colors.ink3}">${tickLabel}</text>`);
   }
 
   chart.bars.forEach((bar, i) => {
