@@ -114,6 +114,7 @@ function ctx(overrides: Partial<RaceReportContext> = {}): RaceReportContext {
     showSplits: true,
     showWeather: false,
     elevationAvailable: false,
+    comparisonLabel: null,
     ...overrides,
   };
 }
@@ -124,6 +125,7 @@ function resolved(overrides: Partial<ResolvedRaceReportData> = {}): ResolvedRace
     splitsByMode: { laps: splits(), "1": splits(), "5": splits() },
     comments: [{ author_name: "Coach K", role: "coach", week: 3, text: "Great long run this week.", created_at: "2026-02-10T09:00:00Z" }],
     weather: null,
+    chartImage: null,
     ...overrides,
   };
 }
@@ -205,5 +207,19 @@ describe("buildRaceReportWorkbook", () => {
     const row = sheet.getRow(2).values as unknown[];
     expect(row).toContain("1:34:00");
     expect(row).toContain("Yes");
+  });
+
+  it("includes a Training load chart sheet with the embedded image when a chart was rendered", async () => {
+    const wb = buildRaceReportWorkbook(ExcelJS, ctx(), resolved({ chartImage: new ArrayBuffer(16) }));
+    const loaded = await roundTrip(wb);
+    const sheet = loaded.getWorksheet("Training load chart")!;
+    expect(sheet).toBeDefined();
+    expect(sheet.getImages()).toHaveLength(1);
+  });
+
+  it("omits the Training load chart sheet when no chart was rendered", async () => {
+    const wb = buildRaceReportWorkbook(ExcelJS, ctx(), resolved({ chartImage: null }));
+    const loaded = await roundTrip(wb);
+    expect(loaded.getWorksheet("Training load chart")).toBeUndefined();
   });
 });

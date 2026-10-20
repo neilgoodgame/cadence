@@ -76,6 +76,11 @@ export function RaceDetailScreen() {
   const showWeather = !!race.course_id && daysUntil(race.date) >= 0 && daysUntil(race.date) <= 10;
   const elevationAvailable = !!course && course.elevation_quality === "ok" && course.sections.length > 0;
 
+  // Matches TrainingBlockCard's own "Compare: {name} {year}" label, for the report chart's legend.
+  const comparisonRace = block.comparison ? allRaces.find((r) => r.id === block.comparison!.race_id) ?? null : null;
+  const comparisonYear = block.comparison?.weeks[0] ? new Date(block.comparison.weeks[0].week_start + "T00:00:00").getFullYear() : null;
+  const comparisonLabel = block.comparison ? `${comparisonRace?.name ?? "Comparison"}${comparisonYear ? ` ${comparisonYear}` : ""}` : null;
+
   // Narrowed (non-undefined) copies for handleDownloadReport's closure below - TS doesn't
   // carry the `if (!race || !block...)` guard's narrowing into a nested function body.
   const narrowedRace: Race = race;
@@ -95,6 +100,7 @@ export function RaceDetailScreen() {
         showSplits,
         showWeather,
         elevationAvailable,
+        comparisonLabel,
       });
     } finally {
       setDownloadingReport(false);

@@ -14,6 +14,7 @@ import type {
 import { formatDuration, formatPace, parseDuration } from "../../lib/format";
 import { formatGrade, SECTION_LABELS } from "../../lib/courseSections";
 import { splitRowLabel } from "../../lib/splits";
+import { buildTrainingLoadChartSvg, CHART_COLORS, CHART_HEIGHT, CHART_WIDTH, renderChartPng } from "./raceReportChart";
 
 const MODE_LABEL: Record<SplitsMode, string> = { laps: "Laps", "1": "1 km", "5": "5 km", elevation: "Elevation" };
 
@@ -137,6 +138,13 @@ function addTrainingBlockSheet(wb: ExcelJSType.Workbook, block: RaceBlock) {
   addTable(sheet, WEEK_HEADERS, block.weeks.map((w, i) => weekRow(w, i)), summary.length + 2);
 }
 
+function addTrainingLoadChartSheet(wb: ExcelJSType.Workbook, chartImage: ArrayBuffer | null) {
+  if (!chartImage) return;
+  const sheet = wb.addWorksheet("Training load chart");
+  const imageId = wb.addImage({ extension: "png", buffer: chartImage });
+  sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: CHART_WIDTH, height: CHART_HEIGHT } });
+}
+
 function addKeySessionsSheet(wb: ExcelJSType.Workbook, block: RaceBlock) {
   if (block.key_sessions.items.length === 0) return;
   const sheet = wb.addWorksheet("Key sessions");
@@ -236,6 +244,9 @@ export interface RaceReportContext {
   showSplits: boolean;
   showWeather: boolean;
   elevationAvailable: boolean;
+  /** "{race name} {year}" (or null) for the block's comparison overlay, matching
+   * TrainingBlockCard's own label - used as the chart sheet's legend text. */
+  comparisonLabel: string | null;
 }
 
 export interface ResolvedRaceReportData {
@@ -243,6 +254,9 @@ export interface ResolvedRaceReportData {
   splitsByMode: Partial<Record<SplitsMode, RaceSplits>>;
   comments: { author_name: string; role: string; week: number | null; text: string; created_at: string }[];
   weather: RaceWeather | null;
+  /** Rasterized training-load bar chart (PNG), or null to omit the chart sheet entirely -
+   * built by downloadRaceReport since it needs the DOM/canvas, not buildRaceReportWorkbook. */
+  chartImage: ArrayBuffer | null;
 }
 
 function sanitizeFilename(name: string): string {
@@ -266,6 +280,7 @@ export function buildRaceReportWorkbook(
     if (data) addSplitsSheet(wb, m, data);
   });
   addTrainingBlockSheet(wb, ctx.block);
+  addTrainingLoadChartSheet(wb, resolved.chartImage);
   addKeySessionsSheet(wb, ctx.block);
   addHistorySheet(wb, ctx.history, ctx.pbS);
   addCommentsSheet(wb, resolved.comments);
@@ -282,15 +297,24 @@ export async function downloadRaceReport(ctx: RaceReportContext): Promise<void> 
 
   const splitModes: SplitsMode[] = showSplits ? ["laps", "1", "5", ...(elevationAvailable ? (["elevation"] as const) : [])] : [];
   const missingModes = splitModes.filter((m) => !ctx.splitsByMode[m]);
-  const [fetchedSplits, commentsResult, weather] = await Promise.all([
+  const comparisonWeeks = ctx.block.comparison?.weeks ?? null;
+  const [fetchedSplits, commentsResult, weather, chartImage] = await Promise.all([
     Promise.all(missingModes.map((m) => getRaceSplits(race.id, m))),
     listRaceComments(race.id),
     showWeather ? getRaceWeather(race.id) : Promise.resolve(null),
+    ctx.block.weeks.length > 0
+      ? renderChartPng(
+          buildTrainingLoadChartSvg(ctx.block.weeks, comparisonWeeks, ctx.comparisonLabel, CHART_COLORS, CHART_WIDTH, CHART_HEIGHT),
+          CHART_WIDTH,
+          CHART_HEIGHT,
+          CHART_COLORS.background,
+        )
+      : Promise.resolve(null),
   ]);
   const splitsByMode: Partial<Record<SplitsMode, RaceSplits>> = { ...ctx.splitsByMode };
   missingModes.forEach((m, i) => (splitsByMode[m] = fetchedSplits[i]));
 
-  const wb = buildRaceReportWorkbook(ExcelJS, ctx, { splitModes, splitsByMode, comments: commentsResult.data, weather });
+  const wb = buildRaceReportWorkbook(ExcelJS, ctx, { splitModes, splitsByMode, comments: commentsResult.data, weather, chartImage });
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
