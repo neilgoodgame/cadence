@@ -50,8 +50,10 @@ function segStyle(active: boolean): React.CSSProperties {
   };
 }
 
-/** For a B/C race's own 5-week block there's no backend phase list (block.phases is empty) -
- * the table instead shows a position relative to the race itself ("-2 wk" / "Race" / "+1 wk"). */
+/** For a B/C race's own block there's no backend phase list (block.phases is empty) - the
+ * table instead shows a position relative to the race itself ("-2 wk" / "Race" / "+1 wk").
+ * A parent-linked B/C's block always ends at the race itself, so only negative offsets (and
+ * "Race" at the last row) ever show. */
 function relativeWeekLabel(weeks: RaceBlockWeek[], raceDate: string, index: number): string {
   const raceIndex = currentWeekIndex(weeks, new Date(raceDate + "T00:00:00"));
   if (raceIndex === -1) return "";
@@ -189,7 +191,11 @@ export function TrainingBlockCard({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
         <div>
           <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>
-            {race.priority === "A" ? `Training block · ${block.weeks.length} weeks` : "Around the race · 5 weeks"}
+            {race.priority === "A"
+              ? `Training block · ${block.weeks.length} weeks`
+              : block.parent
+                ? `Leading into the race · ${block.weeks.length} weeks`
+                : `Around the race · ${block.weeks.length} weeks`}
           </h2>
           <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>
             {block.start} – {block.end}

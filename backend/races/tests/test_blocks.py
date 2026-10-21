@@ -319,6 +319,25 @@ class GetRaceBlockSmokeTests(TestCase):
         self.assertEqual(result["phases"], [])
         self.assertIn("parent", result)
 
+    def test_b_race_with_parent_block_starts_with_parent_and_ends_at_race(self):
+        a_race = Race.objects.create(
+            athlete=self.athlete, name="Leeds Marathon", date=date(2026, 5, 10), priority="A", sport="run"
+        )
+        b_race = Race.objects.create(
+            athlete=self.athlete, name="Brighton Marathon", date=date(2026, 4, 12), priority="B", sport="run"
+        )
+
+        result = get_race_block(b_race)
+        parent_block = a_race_block_range(a_race, block_weeks=16)
+
+        self.assertEqual(result["start"], parent_block["start_week"].isoformat())
+        self.assertEqual(result["end"], _monday(b_race.date).isoformat())
+        self.assertEqual(result["phases"], [])
+        self.assertEqual(result["parent"]["race_id"], a_race.id)
+        self.assertEqual(result["parent"]["week"], len(result["weeks"]))
+        self.assertEqual(result["parent"]["of"], 16)
+        self.assertEqual(result["weeks_requested"], len(result["weeks"]))
+
     def test_week_tss_is_split_by_sport(self):
         race = Race.objects.create(
             athlete=self.athlete, name="Spring Marathon", date=date(2026, 3, 1), priority="A", sport="run"

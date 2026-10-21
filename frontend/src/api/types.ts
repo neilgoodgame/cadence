@@ -83,8 +83,9 @@ export interface Athlete {
   /** Applied as a new shoe's limit_km whenever one isn't given explicitly - both the single
    * "Add shoe" form and the gear CSV import. */
   default_shoe_limit_km: number;
-  /** Training-block length for an A race - 12/16/20/24. The B/C "around the race" window is
-   * a fixed 5 weeks regardless of this setting. */
+  /** Training-block length for an A race - 12/16/20/24. A standalone B/C race (no resolved
+   * parent) gets a fixed 5-week window regardless of this setting; a B/C race inside an
+   * upcoming A race's block inherits that A block's start, which this setting does govern. */
   race_block_weeks: number;
   /** Maximum key sessions returned per race block. */
   race_key_session_cap: number;
@@ -1183,8 +1184,10 @@ export interface RaceBlockDurability {
 }
 
 /** GET /v1/races/{id}/block - A races get the full training block (weeks_requested weeks,
- * truncated if an earlier A race's block would overlap); B/C races get a fixed 5-week window
- * (phases is empty, parent replaces comparison/prediction/durability). */
+ * truncated if an earlier A race's block would overlap); B/C races get a window (phases is
+ * empty, parent replaces comparison/prediction/durability) - one inside an upcoming A race's
+ * block starts where that block starts and ends at the race itself (its own final week);
+ * otherwise a fixed 5-week window centred on the race. */
 export interface RaceBlock {
   start: string;
   end: string;

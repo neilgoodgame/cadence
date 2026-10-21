@@ -145,6 +145,25 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void bRaceWithParentBlockStartsWithParentAndEndsAtRace() {
+		User athlete = newAthlete("block-shape-b-parent@example.cc");
+		Race aRace = newRace(athlete, "Leeds Marathon Goal", LocalDate.of(2026, 5, 10), RacePriority.A);
+		Race bRace = newRace(athlete, "Brighton Marathon Tuneup", LocalDate.of(2026, 4, 12), RacePriority.B);
+
+		RaceBlockResponse result = raceBlockService.getRaceBlock(bRace);
+		RaceBlockService.BlockRange parentBlock = raceBlockService.aRaceBlockRange(aRace, 16);
+
+		assertThat(result.start()).isEqualTo(parentBlock.startWeek());
+		assertThat(result.end()).isEqualTo(monday(bRace.getDate()));
+		assertThat(result.phases()).isEmpty();
+		assertThat(result.parent()).isNotNull();
+		assertThat(result.parent().raceId()).isEqualTo(aRace.getId());
+		assertThat(result.parent().week()).isEqualTo(result.weeks().size());
+		assertThat(result.parent().of()).isEqualTo(16);
+		assertThat(result.weeksRequested()).isEqualTo(result.weeks().size());
+	}
+
+	@Test
 	void comparisonFindsMostRecentSameDistanceARace() {
 		User athlete = newAthlete("block-comparison@example.cc");
 		newRace(athlete, "Spring Marathon", LocalDate.of(2025, 10, 1), RacePriority.A);

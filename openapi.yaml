@@ -2735,9 +2735,13 @@ paths:
       description: >
         An A race's full training block, using the athlete's `race_block_weeks`
         preference, truncated if an earlier A race's block would otherwise
-        overlap it (`truncated_by_race_id`). A B/C race instead gets a fixed
-        5-week window centred on the race (`phases` is empty and `parent`
-        replaces `comparison`/`prediction`/`durability`).
+        overlap it (`truncated_by_race_id`). A B/C race instead gets a window
+        (`phases` is empty and `parent` replaces `comparison`/`prediction`/
+        `durability`): if it falls inside an upcoming A race's own block, its
+        window starts where that A block starts and ends at the race itself
+        (its own final week) - length varies with where in the parent block
+        the race falls. Otherwise it gets a fixed 5-week window centred on
+        the race.
       responses:
         "200":
           description: Weekly breakdown, race-day form, comparison, prediction, key sessions and durability.
@@ -3715,7 +3719,11 @@ components:
           type: integer
           enum: [12, 16, 20, 24]
           default: 16
-          description: Training-block length for an A race (see GET /v1/races/{id}/block). The B/C "around the race" window is a fixed 5 weeks regardless of this setting.
+          description: >
+            Training-block length for an A race (see GET /v1/races/{id}/block). A standalone
+            B/C race (no resolved parent) gets a fixed 5-week window regardless of this
+            setting; a B/C race inside an upcoming A race's block inherits that A block's
+            start, which this setting does govern.
           example: 16
         race_key_session_cap:
           type: integer
