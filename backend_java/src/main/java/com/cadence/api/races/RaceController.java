@@ -85,7 +85,7 @@ public class RaceController {
 	}
 
 	@PatchMapping("/v1/races/{id}")
-	public RaceResponse updateRace(@PathVariable String id, @RequestBody RaceUpdateRequest request) {
+	public RaceResponse updateRace(@PathVariable String id, @Valid @RequestBody RaceUpdateRequest request) {
 		Race race = raceService.getRace(id);
 		accessGuard.requireWrite(race.getAthlete().getId());
 		RaceResponse response = raceService.toResponse(raceService.updateRace(race, request));

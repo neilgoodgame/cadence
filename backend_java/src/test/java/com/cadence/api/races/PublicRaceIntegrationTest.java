@@ -2,6 +2,7 @@ package com.cadence.api.races;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,11 +17,14 @@ import com.cadence.api.courses.CourseRepository;
 import com.cadence.api.courses.CourseSource;
 import com.cadence.api.races.dto.RaceUpdateRequest;
 import com.cadence.api.support.IntegrationTest;
+import com.cadence.api.tokens.AccessTokenService;
+import com.cadence.api.tokens.dto.CreateAccessTokenRequest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -49,6 +53,8 @@ class PublicRaceIntegrationTest extends IntegrationTest {
 	private RaceRepository raceRepository;
 	@Autowired
 	private RaceService raceService;
+	@Autowired
+	private AccessTokenService accessTokenService;
 	@Autowired
 	private JsonMapper jsonMapper;
 
@@ -105,6 +111,12 @@ class PublicRaceIntegrationTest extends IntegrationTest {
 	private void setPublic(Race race, boolean value) {
 		raceService.updateRace(race, new RaceUpdateRequest(
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, value));
+	}
+
+	private String tokenFor(User athlete) {
+		AccessTokenService.CreatedToken token = accessTokenService.create(
+				athlete, new CreateAccessTokenRequest("Test token", List.of("activities:write"), null, null), Set.of());
+		return token.secret();
 	}
 
 	@Test
@@ -193,6 +205,32 @@ class PublicRaceIntegrationTest extends IntegrationTest {
 
 		mockMvc.perform(get("/v1/races/" + race.getId())).andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/v1/races/" + race.getId() + "/block")).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void rejectsANonHttpUrlOnARaceThatCouldBeMadePublic() throws Exception {
+		Race race = race("publicrace-url-validation@example.cc");
+		String bearer = tokenFor(race.getAthlete());
+
+		mockMvc.perform(patch("/v1/races/" + race.getId())
+						.header("Authorization", "Bearer " + bearer)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"url\": \"javascript:alert(1)\"}"))
+				.andExpect(status().isBadRequest());
+
+		// A blank string (clearing the field) and a real http(s) URL both still work.
+		mockMvc.perform(patch("/v1/races/" + race.getId())
+						.header("Authorization", "Bearer " + bearer)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"url\": \"https://example.com/results\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.url").value("https://example.com/results"));
+		mockMvc.perform(patch("/v1/races/" + race.getId())
+						.header("Authorization", "Bearer " + bearer)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"url\": \"\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.url").doesNotExist());
 	}
 
 	@Test
