@@ -50,6 +50,7 @@ class UserSerializer(serializers.ModelSerializer):
             "email_verified",
             "race_block_weeks",
             "race_key_session_cap",
+            "race_block_week_defaults",
             "course_section_settings",
         ]
 

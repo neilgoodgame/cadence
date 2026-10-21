@@ -41,7 +41,10 @@ public record AthleteUpdateRequest(
 		Boolean decouplingUseWorkoutWarmup,
 		Integer raceBlockWeeks,
 		Integer raceKeySessionCap,
-		SectionSettingsUpdate courseSectionSettings) {
+		SectionSettingsUpdate courseSectionSettings,
+		// Appended at the end for the same reason as decouplingWarmupMinutes above - avoids
+		// re-indexing every existing positional AthleteUpdateRequest(...) test call site.
+		java.util.Map<String, Integer> raceBlockWeekDefaults) {
 
 	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
 	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */

@@ -4,6 +4,7 @@ import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.courses.CourseSections;
+import java.util.Map;
 
 public record UserResponse(
 		String id,
@@ -44,5 +45,6 @@ public record UserResponse(
 		int defaultShoeLimitKm,
 		int raceBlockWeeks,
 		int raceKeySessionCap,
-		CourseSections.Settings courseSectionSettings) {
+		CourseSections.Settings courseSectionSettings,
+		Map<String, Integer> raceBlockWeekDefaults) {
 }

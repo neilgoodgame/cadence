@@ -21,5 +21,10 @@ public record RaceCreateRequest(
 		String priority,
 		String courseId,
 		String keySessionTagId,
-		Integer targetPower
+		Integer targetPower,
+		Integer blockWeeksRequested,
+		Integer baseWeeksRequested,
+		Integer buildWeeksRequested,
+		Integer peakWeeksRequested,
+		Integer taperWeeksRequested
 ) {}

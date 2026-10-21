@@ -24,6 +24,7 @@ import com.cadence.api.mcp.tools.workouts.WorkoutReadTools;
 import com.cadence.api.mcp.tools.workouts.WorkoutWriteTools;
 import com.cadence.api.races.Race;
 import com.cadence.api.races.RaceRepository;
+import com.cadence.api.races.dto.RaceResponse;
 import com.cadence.api.races.dto.SplitsResponse;
 import com.cadence.api.scheduling.dto.ScheduledWorkoutResponse;
 import com.cadence.api.security.AuthContext;
@@ -435,5 +436,63 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		assertThat(response.ref()).isEqualTo("goal");
 		assertThat(response.splits().get(0).deltaVsRefSPerKm())
 				.isCloseTo(0.0, org.assertj.core.api.Assertions.within(0.5));
+	}
+
+	@Test
+	void createRacePersistsWithNoBlockPlan() {
+		User athlete = saveAthlete("mcp-create-race@example.cc");
+		authAs(athlete.getId(), "calendar:write");
+
+		RaceResponse response = raceTools.createRace("Goal Marathon", "2026-10-12", "run", null, 42.195, null, null,
+				null, null, null, null, null, null, null, null, null);
+
+		assertThat(response.name()).isEqualTo("Goal Marathon");
+		assertThat(response.priority()).isEqualTo("A");
+		assertThat(response.blockWeeks()).isEqualTo(16);
+		assertThat(response.blockWeeksRequested()).isNull();
+	}
+
+	@Test
+	void createRaceExplicitBlockPlanRoundTrips() {
+		User athlete = saveAthlete("mcp-create-race-explicit@example.cc");
+		authAs(athlete.getId(), "calendar:write");
+
+		RaceResponse response = raceTools.createRace("Goal Marathon", "2026-10-12", "run", null, null, null, null,
+				null, null, null, null, 20, 8, 7, 2, 3);
+
+		assertThat(response.blockWeeksRequested()).isEqualTo(20);
+		assertThat(response.blockWeeks()).isEqualTo(20);
+		Race persisted = raceRepository.findById(response.id()).orElseThrow();
+		assertThat(persisted.getBaseWeeksRequested()).isEqualTo(8);
+	}
+
+	@Test
+	void createRacePhaseWeeksNotSummingToBlockWeeksAreRejected() {
+		User athlete = saveAthlete("mcp-create-race-sum@example.cc");
+		authAs(athlete.getId(), "calendar:write");
+
+		assertThatThrownBy(() -> raceTools.createRace("Goal Marathon", "2026-10-12", "run", null, null, null, null,
+				null, null, null, null, 20, 5, 5, 2, 3))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void createRaceBlockPlanFieldsAreRejectedOnABcRace() {
+		User athlete = saveAthlete("mcp-create-race-bc@example.cc");
+		authAs(athlete.getId(), "calendar:write");
+
+		assertThatThrownBy(() -> raceTools.createRace("Tune-up Half", "2026-09-14", "run", "B", null, null, null,
+				null, null, null, null, 10, null, null, null, null))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void createRaceRejectsWithoutTheWriteScope() {
+		User athlete = saveAthlete("mcp-create-race-scope@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> raceTools.createRace("Goal Marathon", "2026-10-12", "run", null, null, null, null,
+				null, null, null, null, null, null, null, null, null))
+				.isInstanceOf(ForbiddenException.class);
 	}
 }

@@ -6,12 +6,14 @@ from datetime import timedelta
 from typing import Any
 
 from activities.mcp import convert_custom_steps_input
-from authn.mcp_scopes import ACTIVITIES_READ
+from athletes import threshold_suggestions
+from authn.mcp_scopes import ACTIVITIES_READ, CALENDAR_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
 
 from . import splits as splits_module
 from .blocks import get_race_block
 from .models import Race
+from .serializers import RaceCreateSerializer, RaceSerializer
 
 
 def _format_duration(value: timedelta | None) -> str | None:
@@ -55,6 +57,61 @@ class RaceMCPTools(ScopedMCPToolset):
                 for r in races
             ]
         }
+
+    def create_race(
+        self,
+        name: str,
+        date: str,
+        sport: str | None = None,
+        priority: str = "A",
+        distance_km: float | None = None,
+        goal_time: str | None = None,
+        course_id: str | None = None,
+        key_session_tag_id: str | None = None,
+        notes: str = "",
+        url: str | None = None,
+        target_power: int | None = None,
+        block_weeks_requested: int | None = None,
+        base_weeks_requested: int | None = None,
+        build_weeks_requested: int | None = None,
+        peak_weeks_requested: int | None = None,
+        taper_weeks_requested: int | None = None,
+    ) -> dict[str, Any]:
+        """Create a goal race on the calendar. date is "YYYY-MM-DD", goal_time is "H:MM:SS".
+        priority is A (the goal race - gets its own training block), B or C (tune-ups, nested
+        inside whichever A race's block they fall in). For an A race only: block_weeks_requested
+        and base/build/peak/taper_weeks_requested override its training-block length and
+        phase split - the four phase fields must either all be set together (summing exactly to
+        block_weeks_requested) or all be left unset, in which case the block length falls back to
+        the athlete's distance-based default (or their flat preference), and the phase split to a
+        proportional Base/Build/Peak/Taper. These five fields are rejected on a B/C race."""
+        self._require_scope(CALENDAR_WRITE)
+        athlete_id = self._effective_athlete_id()
+        self._require_write(athlete_id)
+
+        payload = {
+            "name": name,
+            "date": date,
+            "priority": priority,
+            "notes": notes,
+            "sport": sport,
+            "distance_km": distance_km,
+            "goal_time": goal_time,
+            "course_id": course_id,
+            "key_session_tag_id": key_session_tag_id,
+            "url": url,
+            "target_power": target_power,
+            "block_weeks_requested": block_weeks_requested,
+            "base_weeks_requested": base_weeks_requested,
+            "build_weeks_requested": build_weeks_requested,
+            "peak_weeks_requested": peak_weeks_requested,
+            "taper_weeks_requested": taper_weeks_requested,
+        }
+        serializer = RaceCreateSerializer(data={k: v for k, v in payload.items() if v is not None})
+        serializer.is_valid(raise_exception=True)
+        race = Race.objects.create(athlete_id=athlete_id, **serializer.validated_data)
+        threshold_suggestions.invalidate(athlete_id)
+        return RaceSerializer(race).data
 
     def get_race_block(self, race_id: str) -> dict[str, Any]:
         """Get an A race's training block (weekly load/distance, race-day form,

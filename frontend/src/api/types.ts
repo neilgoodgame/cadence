@@ -83,10 +83,16 @@ export interface Athlete {
   /** Applied as a new shoe's limit_km whenever one isn't given explicitly - both the single
    * "Add shoe" form and the gear CSV import. */
   default_shoe_limit_km: number;
-  /** Training-block length for an A race - 12/16/20/24. A standalone B/C race (no resolved
-   * parent) gets a fixed 5-week window regardless of this setting; a B/C race inside an
-   * upcoming A race's block inherits that A block's start, which this setting does govern. */
+  /** The last-resort fallback for an A race's training-block length - 12/16/20/24, used only
+   * when that race has no explicit block_weeks_requested of its own and no matching entry in
+   * race_block_week_defaults. A standalone B/C race (no resolved parent) gets a fixed 5-week
+   * window regardless of this setting; a B/C race inside an upcoming A race's block inherits
+   * that A block's start, which this setting does govern. */
   race_block_weeks: number;
+  /** Per-distance-bucket training-block-length defaults, keyed by RACE_DISTANCE_BUCKETS' own
+   * keys ("5k"/"10k"/"10mi"/"half"/"marathon"/"ultra") - pre-fills a new A race's block length
+   * based on its own distance, ahead of the race_block_weeks fallback above. */
+  race_block_week_defaults: Record<string, number>;
   /** Maximum key sessions returned per race block. */
   race_key_session_cap: number;
   /** How courses are split into sections - see CourseSectionSettings. */
@@ -480,6 +486,9 @@ export interface AthleteUpdate {
   lap_source?: LapSource;
   default_shoe_limit_km?: number;
   race_block_weeks?: number;
+  /** Any subset of the per-distance-bucket keys, merged into the athlete's current
+   * race_block_week_defaults (never a full replace). */
+  race_block_week_defaults?: Record<string, number>;
   race_key_session_cap?: number;
   /** Any subset - merged into the athlete's current settings, and the merged result must be
    * within every range (400 otherwise, nothing saved). */
@@ -1041,6 +1050,16 @@ export interface Race {
    * for a standalone B/C race. */
   block_start: string | null;
   block_weeks: number | null;
+  /** A races only - an explicit override for block_weeks's own resolution (distance-bucket
+   * default, then race_block_weeks, if unset). Distinct from the read-only, always-present
+   * block_weeks above, which is the *resolved* length after that whole fallback chain. */
+  block_weeks_requested: number | null;
+  /** A races only - must all be set together (or all null), summing to block_weeks_requested
+   * exactly. Null falls back to the proportional Base/Build/Peak/Taper split. */
+  base_weeks_requested: number | null;
+  build_weeks_requested: number | null;
+  peak_weeks_requested: number | null;
+  taper_weeks_requested: number | null;
   /** Readable without logging in, at /public/races/{id}. Owner-toggled via PATCH. */
   is_public: boolean;
 }
@@ -1089,6 +1108,11 @@ export interface RaceCreate {
   results_url?: string | null;
   notes?: string;
   key_session_tag_id?: string | null;
+  block_weeks_requested?: number | null;
+  base_weeks_requested?: number | null;
+  build_weeks_requested?: number | null;
+  peak_weeks_requested?: number | null;
+  taper_weeks_requested?: number | null;
 }
 
 export interface RaceBlockPhase {

@@ -33,6 +33,18 @@ class Race(PrefixedIDModel):
     # Watts. Used as the splits delta reference (in place of GAP) when the linked activity has
     # power data - falls back to the activity's own average power when unset.
     target_power = models.PositiveIntegerField(null=True, blank=True)
+    # A races only - an explicit override for races.blocks.resolve_block_weeks (distance-bucket
+    # default, then athlete.race_block_weeks, if unset). Named "_requested" rather than
+    # "block_weeks" to avoid colliding with the read-only *computed* block_weeks the Race
+    # serializer already exposes (RaceSerializer._block_info).
+    block_weeks_requested = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Explicit Base/Build/Peak/Taper lengths - must sum to block_weeks_requested exactly (see
+    # RaceCreateSerializer/RaceUpdateSerializer.validate). Null falls back to the proportional
+    # phases() split, same as before this field existed.
+    base_weeks_requested = models.PositiveSmallIntegerField(null=True, blank=True)
+    build_weeks_requested = models.PositiveSmallIntegerField(null=True, blank=True)
+    peak_weeks_requested = models.PositiveSmallIntegerField(null=True, blank=True)
+    taper_weeks_requested = models.PositiveSmallIntegerField(null=True, blank=True)
     activity = models.OneToOneField(
         Activity,
         on_delete=models.SET_NULL,

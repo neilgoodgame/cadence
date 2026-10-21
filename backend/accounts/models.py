@@ -5,6 +5,7 @@ from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 
 from core.models import PrefixedIDModel
+from core.race_distances import default_race_block_week_defaults
 from courses.sections import SectionSettings
 
 
@@ -111,6 +112,11 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # the B/C "around the race" window is a fixed 5 weeks regardless of this setting.
     RACE_BLOCK_WEEKS_CHOICES = [(12, "12 weeks"), (16, "16 weeks"), (20, "20 weeks"), (24, "24 weeks")]
     race_block_weeks = models.PositiveSmallIntegerField(choices=RACE_BLOCK_WEEKS_CHOICES, default=16)
+    # Per-distance-bucket training-block-length defaults (races.blocks.resolve_block_weeks) -
+    # pre-fills a new A race's block length based on its distance, ahead of the flat
+    # race_block_weeks fallback above. Keys are core.race_distances.RACE_DISTANCE_BUCKETS' own
+    # keys; a missing/null key for a given bucket falls back to race_block_weeks.
+    race_block_week_defaults = models.JSONField(default=default_race_block_week_defaults)
     RACE_KEY_SESSION_CAP_CHOICES = [(n, str(n)) for n in (6, 8, 10, 12, 15, 20)]
     race_key_session_cap = models.PositiveSmallIntegerField(choices=RACE_KEY_SESSION_CAP_CHOICES, default=10)
     # Course-section preferences - every setting courses.sections.SectionSettings takes, with

@@ -22,6 +22,7 @@ from accounts.models import User
 from activities.models import Activity, BestEffort, Tag
 from athletes.views import _DURABILITY_WIRE_SPORT, LOWER_IS_BETTER_KINDS, _durability_section, cap_per_window
 from core.derived import ATL_DAYS, CTL_DAYS, _daily_tss
+from core.race_distances import RACE_DISTANCE_BUCKETS
 from scheduling.models import ScheduledWorkout
 
 from .models import Race
@@ -76,13 +77,46 @@ def a_race_block_range(race: Race, block_weeks: int) -> dict[str, Any]:
     }
 
 
-def find_parent_a_race(race: Race, block_weeks: int) -> Race | None:
+def find_parent_a_race(race: Race, athlete: User) -> Race | None:
     b_week = _week_start(race.date)
     for a in Race.objects.filter(athlete_id=race.athlete_id, priority="A", date__gte=race.date).order_by("date"):
-        block = a_race_block_range(a, block_weeks)
+        block = a_race_block_range(a, resolve_block_weeks(a, athlete))
         if block["start_week"] <= b_week <= block["end_week"]:
             return a
     return None
+
+
+def match_distance_bucket(distance_km: float | None) -> str | None:
+    """The nearest standard race distance (races.distance_km, within COMPARISON_DISTANCE_
+    TOLERANCE) this race's own distance matches, for resolve_block_weeks's per-distance
+    default lookup - "ultra" is the open-ended catch-all for anything past marathon distance.
+    None if there's no distance to match (e.g. not a run, or distance_km unset)."""
+    if not distance_km:
+        return None
+    for bucket in RACE_DISTANCE_BUCKETS:
+        if bucket.km is None:
+            marathon_km = next(b.km for b in RACE_DISTANCE_BUCKETS if b.key == "marathon")
+            if distance_km > marathon_km * (1 + COMPARISON_DISTANCE_TOLERANCE):
+                return bucket.key
+        elif abs(distance_km - bucket.km) <= bucket.km * COMPARISON_DISTANCE_TOLERANCE:
+            return bucket.key
+    return None
+
+
+def resolve_block_weeks(race: Race, athlete: User) -> int:
+    """The effective training-block length for an A race: an explicit per-race override,
+    else the athlete's per-distance-bucket default, else the athlete's flat race_block_weeks
+    preference (the only option that existed before block_weeks_requested/
+    race_block_week_defaults did - so an athlete who's never touched either of those sees no
+    behavior change)."""
+    if race.block_weeks_requested is not None:
+        return race.block_weeks_requested
+    bucket = match_distance_bucket(race.distance_km)
+    if bucket:
+        default = athlete.race_block_week_defaults.get(bucket)
+        if default is not None:
+            return default
+    return athlete.race_block_weeks
 
 
 def phases(n_weeks: int) -> list[dict[str, Any]]:
@@ -91,6 +125,19 @@ def phases(n_weeks: int) -> list[dict[str, Any]]:
     build = round(0.375 * n_weeks)
     peak = max(1, round(0.125 * n_weeks))
     taper = n_weeks - base - build - peak
+    return _phases_from_lengths(base, build, peak, taper)
+
+
+def phases_from_explicit(race: Race) -> list[dict[str, Any]]:
+    """Same shape as phases(), but from the race's own explicit *_weeks_requested fields
+    instead of the proportional split - only called once get_race_block has confirmed all
+    four are set and their sum still matches the (possibly-truncated) block length."""
+    return _phases_from_lengths(
+        race.base_weeks_requested, race.build_weeks_requested, race.peak_weeks_requested, race.taper_weeks_requested
+    )
+
+
+def _phases_from_lengths(base: int, build: int, peak: int, taper: int) -> list[dict[str, Any]]:
     result = []
     week_num = 1
     for name, length in (("Base", base), ("Build", build), ("Peak", peak), ("Taper", taper)):
@@ -607,26 +654,39 @@ def sweat_rate(athlete_id: str) -> tuple[float, str]:
 def get_race_block(race: Race) -> dict[str, Any]:
     athlete: User = race.athlete
     today = timezone.now().date()
-    block_weeks_pref = athlete.race_block_weeks
 
     if race.priority == "A":
-        block = a_race_block_range(race, block_weeks_pref)
+        effective_block_weeks = resolve_block_weeks(race, athlete)
+        block = a_race_block_range(race, effective_block_weeks)
         start_week, end_week, n_weeks = block["start_week"], block["end_week"], block["weeks"]
-        phase_list = phases(n_weeks)
-        weeks_requested = block_weeks_pref
+        has_explicit_phases = all(
+            w is not None
+            for w in (
+                race.base_weeks_requested,
+                race.build_weeks_requested,
+                race.peak_weeks_requested,
+                race.taper_weeks_requested,
+            )
+        )
+        # Only trust the explicit split while it still fits - an earlier A race can truncate
+        # n_weeks below what block_weeks_requested (and so the phase split) was sized for.
+        phase_list = (
+            phases_from_explicit(race) if has_explicit_phases and n_weeks == effective_block_weeks else phases(n_weeks)
+        )
+        weeks_requested = effective_block_weeks
         truncated_by_race_id = block["truncated_by_race_id"]
         parent = None
     else:
         race_week = _week_start(race.date)
         phase_list = []
-        parent_race = find_parent_a_race(race, block_weeks_pref)
+        parent_race = find_parent_a_race(race, athlete)
         parent = None
         if parent_race:
             # Leading into the race, not centred on it: a B/C race that falls inside an
             # upcoming A race's block is a step on the way there, so its own window starts
             # where that block starts and ends at the race itself (its final week) rather
             # than running 2 weeks past it into what's really the parent block's taper.
-            parent_block = a_race_block_range(parent_race, block_weeks_pref)
+            parent_block = a_race_block_range(parent_race, resolve_block_weeks(parent_race, athlete))
             start_week, end_week = parent_block["start_week"], race_week
             n_weeks = (race_week - start_week).days // 7 + 1
             weeks_requested = n_weeks
@@ -669,7 +729,7 @@ def get_race_block(race: Race) -> dict[str, Any]:
             current = _durability_section(athlete, internal_sport, start=start_week, end=end_week)
             comparison_section = None
             if comparison_race:
-                comp_block = a_race_block_range(comparison_race, block_weeks_pref)
+                comp_block = a_race_block_range(comparison_race, resolve_block_weeks(comparison_race, athlete))
                 comparison_section = _durability_section(
                     athlete, internal_sport, start=comp_block["start_week"], end=comp_block["end_week"]
                 )

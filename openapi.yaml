@@ -1768,6 +1768,13 @@ paths:
                     reference threshold, so changing it never appears in
                     zones_recomputed.
                 race_block_weeks: { type: integer, enum: [12, 16, 20, 24], description: See the User schema. }
+                race_block_week_defaults:
+                  type: object
+                  additionalProperties: { type: integer }
+                  description: >
+                    Any subset of the per-distance-bucket keys, merged into the athlete's
+                    current race_block_week_defaults (unlike most other fields here, this is
+                    never a full replace). See the User schema.
                 race_key_session_cap: { type: integer, enum: [6, 8, 10, 12, 15, 20], description: See the User schema. }
                 course_section_settings:
                   allOf:
@@ -2647,6 +2654,11 @@ paths:
                 key_session_tag_id:
                   type: [string, "null"]
                   description: Overrides the athlete-wide "Key session" tag lookup for this race's key_sessions "tagged" category. Null uses that default.
+                block_weeks_requested: { type: [integer, "null"], description: "A races only - see the Race schema's own field." }
+                base_weeks_requested: { type: [integer, "null"], description: "A races only - must be set together with build/peak/taper_weeks_requested, summing to block_weeks_requested." }
+                build_weeks_requested: { type: [integer, "null"], description: "A races only - see base_weeks_requested." }
+                peak_weeks_requested: { type: [integer, "null"], description: "A races only - see base_weeks_requested." }
+                taper_weeks_requested: { type: [integer, "null"], description: "A races only - see base_weeks_requested." }
       responses:
         "201":
           description: Race created.
@@ -2705,6 +2717,11 @@ paths:
                     Make the race readable without authentication via
                     GET /v1/public/races/{id} (and its splits and weather), or false to
                     revoke that.
+                block_weeks_requested: { type: [integer, "null"], description: "A races only - see the Race schema's own field." }
+                base_weeks_requested: { type: [integer, "null"], description: "A races only - must be set together with build/peak/taper_weeks_requested, summing to block_weeks_requested." }
+                build_weeks_requested: { type: [integer, "null"], description: "A races only - see base_weeks_requested." }
+                peak_weeks_requested: { type: [integer, "null"], description: "A races only - see base_weeks_requested." }
+                taper_weeks_requested: { type: [integer, "null"], description: "A races only - see base_weeks_requested." }
       responses:
         "200":
           description: Updated race.
@@ -3721,11 +3738,22 @@ components:
           enum: [12, 16, 20, 24]
           default: 16
           description: >
-            Training-block length for an A race (see GET /v1/races/{id}/block). A standalone
-            B/C race (no resolved parent) gets a fixed 5-week window regardless of this
-            setting; a B/C race inside an upcoming A race's block inherits that A block's
-            start, which this setting does govern.
+            The last-resort fallback for an A race's training-block length (see
+            GET /v1/races/{id}/block): used only when that race has no explicit
+            block_weeks_requested of its own and no matching entry in
+            race_block_week_defaults. A standalone B/C race (no resolved parent) gets a fixed
+            5-week window regardless of this setting; a B/C race inside an upcoming A race's
+            block inherits that A block's start, which this setting does govern.
           example: 16
+        race_block_week_defaults:
+          type: object
+          description: >
+            Per-distance-bucket training-block-length defaults, keyed by "5k", "10k", "10mi",
+            "half", "marathon" or "ultra" - pre-fills a new A race's block length based on its
+            own distance (matched within 2%), ahead of the flat race_block_weeks fallback
+            above. A missing key falls back to race_block_weeks.
+          additionalProperties: { type: integer }
+          example: { "5k": 8, "10k": 10, "10mi": 12, "half": 12, "marathon": 16, "ultra": 20 }
         race_key_session_cap:
           type: integer
           enum: [6, 8, 10, 12, 15, 20]
@@ -4730,6 +4758,24 @@ components:
         block_weeks:
           type: [integer, "null"]
           description: Length of the block named by block_start, possibly truncated by an earlier A race - see GET /v1/races/{id}/block.
+        block_weeks_requested:
+          type: [integer, "null"]
+          description: >
+            A races only. An explicit override for this race's own training-block length -
+            takes precedence over the athlete's per-distance-bucket default
+            (race_block_week_defaults) and flat race_block_weeks preference, in that order (see
+            GET /v1/races/{id}/block). Distinct from the read-only, always-present block_weeks
+            above, which is the *resolved* length after that whole fallback chain.
+        base_weeks_requested:
+          type: [integer, "null"]
+          description: >
+            A races only. Explicit Base-phase length in weeks - base_weeks_requested +
+            build_weeks_requested + peak_weeks_requested + taper_weeks_requested must equal
+            block_weeks_requested exactly when any of the four is set (all four are required
+            together). Null falls back to the proportional Base/Build/Peak/Taper split.
+        build_weeks_requested: { type: [integer, "null"], description: A races only - see base_weeks_requested. }
+        peak_weeks_requested: { type: [integer, "null"], description: A races only - see base_weeks_requested. }
+        taper_weeks_requested: { type: [integer, "null"], description: A races only - see base_weeks_requested. }
         is_public:
           type: boolean
           description: >

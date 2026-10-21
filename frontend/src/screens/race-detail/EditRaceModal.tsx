@@ -3,7 +3,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listTags } from "../../api/activities";
 import { listCourses } from "../../api/courses";
 import { updateRace } from "../../api/races";
-import type { Race, RacePriority } from "../../api/types";
+import { ApiError, type Race, type RacePriority } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
+import { defaultPhaseWeeks, matchDistanceBucket, weeksUntilRace } from "../../lib/raceDistanceBuckets";
+
+interface BlockPlan {
+  block: string;
+  base: string;
+  build: string;
+  peak: string;
+  taper: string;
+}
 
 const SPORTS = ["run", "bike", "swim", "multisport"];
 const PRIORITIES: { key: RacePriority; label: string; hint: string }[] = [
@@ -27,6 +37,7 @@ const fieldStyle: React.CSSProperties = {
  * the result/results-url fields that only make sense once a race has happened. */
 export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [name, setName] = useState(race.name);
   const [date, setDate] = useState(race.date);
   const [sport, setSport] = useState(race.sport);
@@ -40,6 +51,44 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
   const [url, setUrl] = useState(race.url ?? "");
   const [resultsUrl, setResultsUrl] = useState(race.results_url ?? "");
   const [notes, setNotes] = useState(race.notes);
+
+  // A races only - starts from the race's own already-saved plan if it has one (so an existing
+  // explicit plan is never silently overridden by a later distance edit); otherwise null, so
+  // the displayed values below stay derived from the athlete's per-distance-bucket defaults
+  // as distanceKm changes, with no effect/setState sync, until the athlete edits a field here.
+  const [manualPlan, setManualPlan] = useState<BlockPlan | null>(
+    race.block_weeks_requested != null
+      ? {
+          block: String(race.block_weeks_requested),
+          base: String(race.base_weeks_requested ?? ""),
+          build: String(race.build_weeks_requested ?? ""),
+          peak: String(race.peak_weeks_requested ?? ""),
+          taper: String(race.taper_weeks_requested ?? ""),
+        }
+      : null,
+  );
+
+  const bucket = matchDistanceBucket(distanceKm ? parseFloat(distanceKm) : null);
+  const fromBucket = bucket != null ? user?.race_block_week_defaults?.[bucket] : undefined;
+  const defaultBlockWeeks = fromBucket ?? user?.race_block_weeks ?? 16;
+  const defaultPhases = defaultPhaseWeeks(defaultBlockWeeks);
+
+  const blockWeeks = manualPlan?.block ?? String(defaultBlockWeeks);
+  const baseWeeks = manualPlan?.base ?? String(defaultPhases.base);
+  const buildWeeks = manualPlan?.build ?? String(defaultPhases.build);
+  const peakWeeks = manualPlan?.peak ?? String(defaultPhases.peak);
+  const taperWeeks = manualPlan?.taper ?? String(defaultPhases.taper);
+
+  const blockWeeksN = parseInt(blockWeeks, 10) || 0;
+  const phaseSum = [baseWeeks, buildWeeks, peakWeeks, taperWeeks].reduce((sum, w) => sum + (parseInt(w, 10) || 0), 0);
+  const phaseSumValid = priority !== "A" || blockWeeksN === phaseSum;
+  const weeksUntil = weeksUntilRace(date);
+  const weeksRemainValid = priority !== "A" || weeksUntil === null || blockWeeksN <= weeksUntil;
+  const blockPlanValid = phaseSumValid && weeksRemainValid;
+
+  function editPlan(field: keyof BlockPlan, value: string) {
+    setManualPlan({ block: blockWeeks, base: baseWeeks, build: buildWeeks, peak: peakWeeks, taper: taperWeeks, [field]: value });
+  }
 
   const { data: coursesData } = useQuery({ queryKey: ["courses", ""], queryFn: () => listCourses() });
   const { data: tagsData } = useQuery({ queryKey: ["tags"], queryFn: () => listTags() });
@@ -60,6 +109,15 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
         results_url: resultsUrl || null,
         notes,
         key_session_tag_id: keySessionTagId || null,
+        ...(priority === "A"
+          ? {
+              block_weeks_requested: blockWeeks ? parseInt(blockWeeks, 10) : null,
+              base_weeks_requested: baseWeeks ? parseInt(baseWeeks, 10) : null,
+              build_weeks_requested: buildWeeks ? parseInt(buildWeeks, 10) : null,
+              peak_weeks_requested: peakWeeks ? parseInt(peakWeeks, 10) : null,
+              taper_weeks_requested: taperWeeks ? parseInt(taperWeeks, 10) : null,
+            }
+          : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["race", race.id] });
@@ -120,6 +178,58 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
             ))}
           </div>
         </div>
+
+        {priority === "A" && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Training block</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 12.5, color: "var(--ink2)" }}>Block length</span>
+              <input
+                type="number"
+                min={1}
+                max={52}
+                value={blockWeeks}
+                onChange={(e) => editPlan("block", e.target.value)}
+                style={{ ...fieldStyle, width: 70 }}
+              />
+              <span style={{ fontSize: 12.5, color: "var(--ink3)" }}>weeks</span>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {(
+                [
+                  { label: "Base", field: "base" as const, value: baseWeeks },
+                  { label: "Build", field: "build" as const, value: buildWeeks },
+                  { label: "Peak", field: "peak" as const, value: peakWeeks },
+                  { label: "Taper", field: "taper" as const, value: taperWeeks },
+                ]
+              ).map((phase) => (
+                <label key={phase.label} style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10.5, color: "var(--ink3)", marginBottom: 3, textAlign: "center" }}>{phase.label}</div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={52}
+                    value={phase.value}
+                    onChange={(e) => editPlan(phase.field, e.target.value)}
+                    style={{ ...fieldStyle, textAlign: "center", padding: "6px 4px" }}
+                  />
+                </label>
+              ))}
+            </div>
+            {!phaseSumValid && (
+              <div style={{ fontSize: 11.5, color: "#e0442e", marginTop: 6 }}>
+                Base+Build+Peak+Taper ({phaseSum}) must equal the block length ({blockWeeksN}).
+              </div>
+            )}
+            {phaseSumValid && !weeksRemainValid && (
+              <div style={{ fontSize: 11.5, color: "#e0442e", marginTop: 6 }}>
+                Only {weeksUntil} week{weeksUntil === 1 ? "" : "s"} remain before this race - the block length must
+                be {weeksUntil} or fewer.
+              </div>
+            )}
+          </div>
+        )}
+
         <label>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Course (optional)</div>
           <select value={courseId} onChange={(e) => setCourseId(e.target.value)} style={fieldStyle}>
@@ -169,13 +279,19 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
           <input value={notes} onChange={(e) => setNotes(e.target.value)} style={fieldStyle} />
         </label>
 
+        {mutation.isError && (
+          <div style={{ fontSize: 12.5, color: "#e0442e" }}>
+            {mutation.error instanceof ApiError ? mutation.error.message : "Something went wrong. Try again."}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
           <button onClick={onClose} style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, padding: "8px 16px", cursor: "pointer" }}>
             Cancel
           </button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={!name || !date || mutation.isPending}
+            disabled={!name || !date || !blockPlanValid || mutation.isPending}
             style={{ border: "none", borderRadius: 8, background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px", cursor: "pointer" }}
           >
             {mutation.isPending ? "Saving…" : "Save"}

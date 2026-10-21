@@ -23,5 +23,14 @@ public record RaceResponse(
 		String keySessionTagId,
 		Integer targetPower,
 		// Readable without authentication via /v1/public/races/{id} when true.
-		boolean isPublic
+		boolean isPublic,
+		// A races only - see Race.java's own field comments. Appended at the end rather than
+		// placed near blockStart/blockWeeks (the existing, read-only *computed* fields these are
+		// easily confused with) to keep this a non-breaking addition to existing positional
+		// construction (see backend_java/CLAUDE.md's record-DTO gotcha).
+		Integer blockWeeksRequested,
+		Integer baseWeeksRequested,
+		Integer buildWeeksRequested,
+		Integer peakWeeksRequested,
+		Integer taperWeeksRequested
 ) {}

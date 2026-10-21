@@ -5,11 +5,15 @@ import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import com.cadence.api.courses.CourseSections;
+import com.cadence.api.races.RaceDistanceBuckets;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Map;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * The athlete profile. There is no separate "Athlete" table - a single user
@@ -87,6 +91,14 @@ public class User extends PrefixedIdEntity {
 	 * AthleteService.updateProfile, same as every other preference field here. */
 	@Column(name = "race_block_weeks", nullable = false)
 	private int raceBlockWeeks = 16;
+
+	/** Per-distance-bucket training-block-length defaults (see RaceBlockService.
+	 * resolveBlockWeeks) - pre-fills a new A race's block length based on its distance, ahead
+	 * of the flat raceBlockWeeks fallback above. Keys are RaceDistanceBuckets.BUCKETS' own
+	 * keys; a missing/null key for a given bucket falls back to raceBlockWeeks. */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "race_block_week_defaults", nullable = false)
+	private Map<String, Integer> raceBlockWeekDefaults = RaceDistanceBuckets.defaultRaceBlockWeekDefaults();
 
 	/** Maximum key sessions returned per race block - see RaceBlockService's key_sessions.total_candidates. */
 	@Column(name = "race_key_session_cap", nullable = false)
@@ -389,6 +401,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setRaceBlockWeeks(int raceBlockWeeks) {
 		this.raceBlockWeeks = raceBlockWeeks;
+	}
+
+	public Map<String, Integer> getRaceBlockWeekDefaults() {
+		return raceBlockWeekDefaults;
+	}
+
+	public void setRaceBlockWeekDefaults(Map<String, Integer> raceBlockWeekDefaults) {
+		this.raceBlockWeekDefaults = raceBlockWeekDefaults;
 	}
 
 	public int getRaceKeySessionCap() {

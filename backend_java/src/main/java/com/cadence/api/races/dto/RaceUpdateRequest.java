@@ -18,5 +18,10 @@ public record RaceUpdateRequest(
 		String courseId,
 		String keySessionTagId,
 		Integer targetPower,
-		Boolean isPublic
+		Boolean isPublic,
+		Integer blockWeeksRequested,
+		Integer baseWeeksRequested,
+		Integer buildWeeksRequested,
+		Integer peakWeeksRequested,
+		Integer taperWeeksRequested
 ) {}

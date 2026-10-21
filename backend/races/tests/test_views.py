@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from django.test import TestCase
 
@@ -87,6 +87,150 @@ class RaceCrudTests(TestCase):
         response = _bearer_client(self.athlete).get("/v1/races")
         by_name = {r["name"]: r for r in response.json()["data"]}
         self.assertEqual(by_name["Tune-up Half"]["parent_race_id"], a_race.id)
+
+    def test_distance_bucket_default_overrides_the_flat_preference_on_create(self):
+        self.athlete.race_block_week_defaults = {**self.athlete.race_block_week_defaults, "marathon": 20}
+        self.athlete.save()
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {"name": "Goal Marathon", "date": "2026-10-12", "sport": "run", "distance_km": 42.195},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["block_weeks"], 20)
+
+    def test_explicit_block_plan_round_trips_and_drives_the_computed_block(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {
+                "name": "Goal Marathon",
+                "date": "2026-10-12",
+                "sport": "run",
+                "block_weeks_requested": 20,
+                "base_weeks_requested": 8,
+                "build_weeks_requested": 7,
+                "peak_weeks_requested": 2,
+                "taper_weeks_requested": 3,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["block_weeks_requested"], 20)
+        self.assertEqual(data["block_weeks"], 20)
+
+        block = _bearer_client(self.athlete).get(f"/v1/races/{data['id']}/block").json()
+        self.assertEqual(block["weeks_requested"], 20)
+        self.assertEqual(
+            block["phases"],
+            [
+                {"name": "Base", "start_week": 1, "end_week": 8},
+                {"name": "Build", "start_week": 9, "end_week": 15},
+                {"name": "Peak", "start_week": 16, "end_week": 17},
+                {"name": "Taper", "start_week": 18, "end_week": 20},
+            ],
+        )
+
+    def test_partial_phase_weeks_are_rejected(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {"name": "Goal Marathon", "date": "2026-10-12", "sport": "run", "base_weeks_requested": 5},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_phase_weeks_not_summing_to_block_weeks_are_rejected(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {
+                "name": "Goal Marathon",
+                "date": "2026-10-12",
+                "sport": "run",
+                "block_weeks_requested": 20,
+                "base_weeks_requested": 5,
+                "build_weeks_requested": 5,
+                "peak_weeks_requested": 2,
+                "taper_weeks_requested": 3,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_block_plan_fields_are_rejected_on_a_bc_race(self):
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {
+                "name": "Tune-up Half",
+                "date": "2026-09-14",
+                "sport": "run",
+                "priority": "B",
+                "block_weeks_requested": 10,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_block_weeks_requested_exceeding_the_weeks_until_the_race_is_rejected(self):
+        race_date = date.today() + timedelta(weeks=3)
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {
+                "name": "Tight Race",
+                "date": race_date.isoformat(),
+                "sport": "run",
+                "block_weeks_requested": 6,
+                "base_weeks_requested": 2,
+                "build_weeks_requested": 2,
+                "peak_weeks_requested": 1,
+                "taper_weeks_requested": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_block_weeks_requested_that_fits_before_the_race_is_accepted(self):
+        race_date = date.today() + timedelta(weeks=10)
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {
+                "name": "Comfortable Race",
+                "date": race_date.isoformat(),
+                "sport": "run",
+                "block_weeks_requested": 6,
+                "base_weeks_requested": 2,
+                "build_weeks_requested": 2,
+                "peak_weeks_requested": 1,
+                "taper_weeks_requested": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+    def test_updating_an_unrelated_field_does_not_retrigger_the_weeks_check(self):
+        race_date = date.today() + timedelta(weeks=10)
+        created = (
+            _bearer_client(self.athlete)
+            .post(
+                "/v1/races",
+                {
+                    "name": "Comfortable Race",
+                    "date": race_date.isoformat(),
+                    "sport": "run",
+                    "block_weeks_requested": 6,
+                    "base_weeks_requested": 2,
+                    "build_weeks_requested": 2,
+                    "peak_weeks_requested": 1,
+                    "taper_weeks_requested": 1,
+                },
+                format="json",
+            )
+            .json()
+        )
+
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/races/{created['id']}", {"notes": "Just a note."}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
 
 
 class RaceBlockAndSplitsViewTests(TestCase):
