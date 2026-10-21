@@ -5,7 +5,7 @@ import { getActivity } from "../api/activities";
 import { getCourse } from "../api/courses";
 import { getRace, getRaceBlock, getRaceSplits, listRaces } from "../api/races";
 import { useAuth } from "../auth/AuthContext";
-import type { Sport } from "../api/types";
+import type { Race, RaceBlock, Sport } from "../api/types";
 import { daysUntil } from "../lib/dates";
 import { CommentsCard } from "./race-detail/CommentsCard";
 import { ContextCard } from "./race-detail/ContextCard";
@@ -19,6 +19,7 @@ import { KeySessionsCard } from "./race-detail/KeySessionsCard";
 import { PacingPlanCard } from "./race-detail/PacingPlanCard";
 import { historyAtDistance, personalBestSeconds } from "./race-detail/raceHistory";
 import { RaceDayFormCard } from "./race-detail/RaceDayFormCard";
+import { downloadRaceReport } from "./race-detail/raceReport";
 import { SplitsCard } from "./race-detail/SplitsCard";
 import { TrainingBlockCard } from "./race-detail/TrainingBlockCard";
 import { WeatherCard } from "./race-detail/WeatherCard";
@@ -28,6 +29,7 @@ export function RaceDetailScreen() {
   const { user } = useAuth();
   const [editing, setEditing] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   const { data: race } = useQuery({ queryKey: ["race", raceId], queryFn: () => getRace(raceId!), enabled: !!raceId });
   const { data: racesData } = useQuery({ queryKey: ["races"], queryFn: listRaces });
@@ -72,10 +74,42 @@ export function RaceDetailScreen() {
   // Matches WeatherService's FORECAST_HORIZON_DAYS (both backends) - no point mounting the
   // query for a race the endpoint will just report as unavailable anyway.
   const showWeather = !!race.course_id && daysUntil(race.date) >= 0 && daysUntil(race.date) <= 10;
+  const elevationAvailable = !!course && course.elevation_quality === "ok" && course.sections.length > 0;
+
+  // Matches TrainingBlockCard's own "Compare: {name} {year}" label, for the report chart's legend.
+  const comparisonRace = block.comparison ? allRaces.find((r) => r.id === block.comparison!.race_id) ?? null : null;
+  const comparisonYear = block.comparison?.weeks[0] ? new Date(block.comparison.weeks[0].week_start + "T00:00:00").getFullYear() : null;
+  const comparisonLabel = block.comparison ? `${comparisonRace?.name ?? "Comparison"}${comparisonYear ? ` ${comparisonYear}` : ""}` : null;
+
+  // Narrowed (non-undefined) copies for handleDownloadReport's closure below - TS doesn't
+  // carry the `if (!race || !block...)` guard's narrowing into a nested function body.
+  const narrowedRace: Race = race;
+  const narrowedBlock: RaceBlock = block;
+
+  async function handleDownloadReport() {
+    setDownloadingReport(true);
+    try {
+      await downloadRaceReport({
+        race: narrowedRace,
+        block: narrowedBlock,
+        course: course ?? null,
+        activity: activity ?? null,
+        pbS,
+        history,
+        splitsByMode: splits ? { "5": splits } : {},
+        showSplits,
+        showWeather,
+        elevationAvailable,
+        comparisonLabel,
+      });
+    } finally {
+      setDownloadingReport(false);
+    }
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <Header race={race} onEdit={() => setEditing(true)} />
+      <Header race={race} onEdit={() => setEditing(true)} onDownloadReport={handleDownloadReport} downloadingReport={downloadingReport} />
 
       <ContextCard race={race} tuneUps={tuneUps} parent={parent} parentPrediction={parentBlock?.prediction ?? null} />
 
