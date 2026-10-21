@@ -21,6 +21,7 @@ import com.cadence.api.workouts.WorkoutService;
 import com.cadence.api.workouts.dto.WorkoutCreateRequest;
 import com.cadence.api.workouts.dto.WorkoutResponse;
 import com.cadence.api.workouts.dto.WorkoutStepDto;
+import com.cadence.api.workouts.dto.WorkoutUpdateRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import java.util.List;
@@ -84,8 +85,48 @@ public class WorkoutWriteTools {
 		return workoutMapper.toResponse(workout);
 	}
 
-	private void validate(WorkoutCreateRequest request) {
-		Set<ConstraintViolation<WorkoutCreateRequest>> violations = validator.validate(request);
+	@McpTool(name = "update_workout", description = "Rename or re-author an existing saved workout. "
+			+ "Only the fields you pass are changed - omit a field to leave it as-is. Passing steps "
+			+ "replaces the entire step tree (same shape as create_workout's steps argument); duration "
+			+ "and TSS are recomputed from it. Pass folderId=\"\" to clear the folder (omit folderId "
+			+ "entirely to leave it untouched); tags, if passed, replaces the whole tag list (pass an "
+			+ "empty list to clear tags). The workout's sport cannot be changed after creation - delete "
+			+ "and recreate it instead. Edits do not affect already-completed activities matched to "
+			+ "this workout.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
+	public WorkoutResponse updateWorkout(
+			@McpToolParam(description = "The workout's id", required = true) String workoutId,
+			@McpToolParam(description = "New name, if changing it", required = false) String name,
+			@McpToolParam(description = "The full new step tree, if replacing it", required = false) List<McpWorkoutStepInput> steps,
+			@McpToolParam(description = "New folder id, \"\" to clear, omit to leave untouched", required = false) String folderId,
+			@McpToolParam(description = "New full tag list, if replacing it", required = false) List<String> tags) {
+		authorizer.requireScope(McpScopes.WORKOUTS_WRITE);
+		Workout workout = workoutService.getWorkout(workoutId);
+		accessGuard.requireWrite(workout.getCreatedBy().getId());
+
+		List<WorkoutStepDto> stepDtos = steps == null ? null : steps.stream().map(WorkoutWriteTools::toStepDto).toList();
+		WorkoutUpdateRequest request = new WorkoutUpdateRequest(name, stepDtos, folderId, tags);
+		validate(request);
+
+		Workout updated = workoutService.updateWorkout(workoutId, request);
+		return workoutMapper.toResponse(updated);
+	}
+
+	@McpTool(name = "delete_workout", description = "Permanently delete a workout from the library. "
+			+ "Any scheduled calendar instances of this workout are deleted too; completed activities "
+			+ "previously matched to it keep their history but lose the match link. This cannot be undone.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = true, idempotentHint = true, openWorldHint = false))
+	public void deleteWorkout(@McpToolParam(description = "The workout's id", required = true) String workoutId) {
+		authorizer.requireScope(McpScopes.WORKOUTS_WRITE);
+		Workout workout = workoutService.getWorkout(workoutId);
+		accessGuard.requireWrite(workout.getCreatedBy().getId());
+		workoutService.deleteWorkout(workoutId);
+	}
+
+	private <T> void validate(T request) {
+		Set<ConstraintViolation<T>> violations = validator.validate(request);
 		if (!violations.isEmpty()) {
 			String message = violations.stream().map(ConstraintViolation::getMessage).collect(Collectors.joining("; "));
 			throw new ValidationException(message);

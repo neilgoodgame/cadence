@@ -201,6 +201,122 @@ class McpToolsIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void updateWorkoutNameOnlyLeavesStepsAndTagsUntouched() {
+		User athlete = saveAthlete("mcp-update-workout@example.cc");
+		authAs(athlete.getId(), "workouts:write", "activities:read");
+
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Original Name", "bike", steps, List.of("a"));
+
+		WorkoutResponse updated = workoutWriteTools.updateWorkout(created.id(), "Renamed", null, null, null);
+
+		assertThat(updated.name()).isEqualTo("Renamed");
+		assertThat(updated.tags()).containsExactly("a");
+		assertThat(workoutReadTools.getWorkout(created.id()).steps()).hasSize(1);
+	}
+
+	@Test
+	void updateWorkoutStepsReplacesTreeAndRecomputesDuration() {
+		User athlete = saveAthlete("mcp-update-workout-steps@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+
+		List<McpWorkoutStepInput> originalSteps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("To Edit", "bike", originalSteps, null);
+
+		List<McpWorkoutStepInput> newSteps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 600, null, "power", 50.0, 50.0, null, null, null),
+				new McpWorkoutStepInput("cool", "time", 300, null, "power", 45.0, 45.0, null, null, null));
+		WorkoutResponse updated = workoutWriteTools.updateWorkout(created.id(), null, newSteps, null, null);
+
+		assertThat(updated.duration()).isEqualTo(900);
+	}
+
+	@Test
+	void updateWorkoutRejectsAFractionPassedInsteadOfAPercentage() {
+		User athlete = saveAthlete("mcp-update-workout-fraction@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("To Edit", "bike", steps, null);
+
+		List<McpWorkoutStepInput> badSteps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 600, null, "power", 0.65, 0.75, null, null, null));
+
+		assertThatThrownBy(() -> workoutWriteTools.updateWorkout(created.id(), null, badSteps, null, null))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void updateWorkoutRejectsWithoutTheWriteScope() {
+		User athlete = saveAthlete("mcp-update-workout-noscope@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("To Edit", "bike", steps, null);
+
+		authAs(athlete.getId()); // no scopes granted at all
+		assertThatThrownBy(() -> workoutWriteTools.updateWorkout(created.id(), "Renamed", null, null, null))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void updateWorkoutRejectsAnotherAthletesWorkout() {
+		User owner = saveAthlete("mcp-update-workout-owner@example.cc");
+		authAs(owner.getId(), "workouts:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Owner's workout", "bike", steps, null);
+
+		User outsider = saveAthlete("mcp-update-workout-outsider@example.cc");
+		authAs(outsider.getId(), "workouts:write");
+		assertThatThrownBy(() -> workoutWriteTools.updateWorkout(created.id(), "Hijacked", null, null, null))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void deleteWorkoutRemovesIt() {
+		User athlete = saveAthlete("mcp-delete-workout@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Doomed", "bike", steps, null);
+
+		workoutWriteTools.deleteWorkout(created.id());
+
+		assertThat(workoutRepository.findById(created.id())).isEmpty();
+	}
+
+	@Test
+	void deleteWorkoutRejectsWithoutTheWriteScope() {
+		User athlete = saveAthlete("mcp-delete-workout-noscope@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Should Survive", "bike", steps, null);
+
+		authAs(athlete.getId()); // no scopes granted at all
+		assertThatThrownBy(() -> workoutWriteTools.deleteWorkout(created.id())).isInstanceOf(ForbiddenException.class);
+		assertThat(workoutRepository.findById(created.id())).isPresent();
+	}
+
+	@Test
+	void deleteWorkoutRejectsAnotherAthletesWorkout() {
+		User owner = saveAthlete("mcp-delete-workout-owner@example.cc");
+		authAs(owner.getId(), "workouts:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Owner's workout", "bike", steps, null);
+
+		User outsider = saveAthlete("mcp-delete-workout-outsider@example.cc");
+		authAs(outsider.getId(), "workouts:write");
+		assertThatThrownBy(() -> workoutWriteTools.deleteWorkout(created.id())).isInstanceOf(ForbiddenException.class);
+		assertThat(workoutRepository.findById(created.id())).isPresent();
+	}
+
+	@Test
 	void scheduleWorkoutPersists() {
 		User athlete = saveAthlete("mcp-schedule@example.cc");
 		authAs(athlete.getId(), "workouts:write", "calendar:write");
