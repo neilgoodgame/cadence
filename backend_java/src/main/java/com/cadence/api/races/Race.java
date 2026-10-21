@@ -58,6 +58,28 @@ public class Race extends PrefixedIdEntity {
 	@Column(name = "target_power")
 	private Integer targetPower;
 
+	/** A races only - an explicit override for RaceBlockService.resolveBlockWeeks (distance-
+	 * bucket default, then athlete.raceBlockWeeks, if unset). Named "...Requested" rather than
+	 * "blockWeeks" to avoid colliding with the read-only *computed* block_weeks RaceService
+	 * already exposes on the plain Race resource. */
+	@Column(name = "block_weeks_requested")
+	private Integer blockWeeksRequested;
+
+	/** Explicit Base/Build/Peak/Taper lengths - must sum to blockWeeksRequested exactly (see
+	 * RaceService's validation). Null falls back to the proportional RaceBlockService.phases()
+	 * split, same as before these fields existed. */
+	@Column(name = "base_weeks_requested")
+	private Integer baseWeeksRequested;
+
+	@Column(name = "build_weeks_requested")
+	private Integer buildWeeksRequested;
+
+	@Column(name = "peak_weeks_requested")
+	private Integer peakWeeksRequested;
+
+	@Column(name = "taper_weeks_requested")
+	private Integer taperWeeksRequested;
+
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "activity_id")
 	private Activity activity;
@@ -116,6 +138,21 @@ public class Race extends PrefixedIdEntity {
 
 	public Integer getTargetPower() { return targetPower; }
 	public void setTargetPower(Integer targetPower) { this.targetPower = targetPower; }
+
+	public Integer getBlockWeeksRequested() { return blockWeeksRequested; }
+	public void setBlockWeeksRequested(Integer blockWeeksRequested) { this.blockWeeksRequested = blockWeeksRequested; }
+
+	public Integer getBaseWeeksRequested() { return baseWeeksRequested; }
+	public void setBaseWeeksRequested(Integer baseWeeksRequested) { this.baseWeeksRequested = baseWeeksRequested; }
+
+	public Integer getBuildWeeksRequested() { return buildWeeksRequested; }
+	public void setBuildWeeksRequested(Integer buildWeeksRequested) { this.buildWeeksRequested = buildWeeksRequested; }
+
+	public Integer getPeakWeeksRequested() { return peakWeeksRequested; }
+	public void setPeakWeeksRequested(Integer peakWeeksRequested) { this.peakWeeksRequested = peakWeeksRequested; }
+
+	public Integer getTaperWeeksRequested() { return taperWeeksRequested; }
+	public void setTaperWeeksRequested(Integer taperWeeksRequested) { this.taperWeeksRequested = taperWeeksRequested; }
 
 	public Activity getActivity() { return activity; }
 	public void setActivity(Activity activity) { this.activity = activity; }

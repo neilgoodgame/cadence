@@ -110,7 +110,7 @@ class PublicRaceIntegrationTest extends IntegrationTest {
 
 	private void setPublic(Race race, boolean value) {
 		raceService.updateRace(race, new RaceUpdateRequest(
-				null, null, null, null, null, null, null, null, null, null, null, null, null, null, value));
+				null, null, null, null, null, null, null, null, null, null, null, null, null, null, value, null, null, null, null, null));
 	}
 
 	private String tokenFor(User athlete) {

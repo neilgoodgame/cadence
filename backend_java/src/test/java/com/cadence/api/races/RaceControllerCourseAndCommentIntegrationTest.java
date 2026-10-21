@@ -7,6 +7,7 @@ import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.courses.Course;
 import com.cadence.api.courses.CourseRepository;
+import com.cadence.api.races.dto.RaceBlockResponse;
 import com.cadence.api.races.dto.RaceCommentCreateRequest;
 import com.cadence.api.races.dto.RaceCreateRequest;
 import com.cadence.api.races.dto.RaceResponse;
@@ -78,7 +79,7 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 		authAsSelf(athlete.getId());
 
 		RaceResponse response = raceController.createRace(
-				new RaceCreateRequest("Spring Marathon", "2026-04-12", "run", null, null, null, null, null, null, null, null, null, null, null));
+				new RaceCreateRequest("Spring Marathon", "2026-04-12", "run", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
 
 		assertThat(response.priority()).isEqualTo("A");
 	}
@@ -95,7 +96,7 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 		authAsSelf(athlete.getId());
 
 		RaceResponse response = raceController.createRace(new RaceCreateRequest(
-				"Valencia Marathon", "2026-12-06", "run", null, null, null, null, null, null, null, "B", course.getId(), null, null));
+				"Valencia Marathon", "2026-12-06", "run", null, null, null, null, null, null, null, "B", course.getId(), null, null, null, null, null, null, null));
 
 		assertThat(response.priority()).isEqualTo("B");
 		assertThat(response.courseId()).isEqualTo(course.getId());
@@ -107,11 +108,11 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 		authAsSelf(athlete.getId());
 
 		RaceResponse created = raceController.createRace(new RaceCreateRequest(
-				"Goal Marathon", "2026-10-12", "run", null, null, null, null, null, null, null, null, null, null, 250));
+				"Goal Marathon", "2026-10-12", "run", null, null, null, null, null, null, null, null, null, null, 250, null, null, null, null, null));
 		assertThat(created.targetPower()).isEqualTo(250);
 
 		RaceResponse updated = raceController.updateRace(created.id(), new RaceUpdateRequest(
-				null, null, null, null, null, null, null, null, null, null, null, null, null, 275, null));
+				null, null, null, null, null, null, null, null, null, null, null, null, null, 275, null, null, null, null, null, null));
 		assertThat(updated.targetPower()).isEqualTo(275);
 	}
 
@@ -155,6 +156,74 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 				.collect(java.util.stream.Collectors.toMap(RaceResponse::name, r -> r));
 
 		assertThat(byName.get("Tune-up Half").parentRaceId()).isEqualTo(aRace.getId());
+	}
+
+	@Test
+	void distanceBucketDefaultOverridesTheFlatPreferenceOnCreate() {
+		User athlete = newUser("races-block-plan-bucket@example.cc");
+		athlete.getRaceBlockWeekDefaults().put("marathon", 20);
+		userRepository.save(athlete);
+		authAsSelf(athlete.getId());
+
+		RaceResponse response = raceController.createRace(new RaceCreateRequest(
+				"Goal Marathon", "2026-10-12", "run", 42.195, null, null, null, null, null, null, null, null, null,
+				null, null, null, null, null, null));
+
+		assertThat(response.blockWeeks()).isEqualTo(20);
+	}
+
+	@Test
+	void explicitBlockPlanRoundTripsAndDrivesTheComputedBlock() {
+		User athlete = newUser("races-block-plan-explicit@example.cc");
+		authAsSelf(athlete.getId());
+
+		RaceResponse response = raceController.createRace(new RaceCreateRequest(
+				"Goal Marathon", "2026-10-12", "run", null, null, null, null, null, null, null, null, null, null,
+				null, 20, 8, 7, 2, 3));
+
+		assertThat(response.blockWeeksRequested()).isEqualTo(20);
+		assertThat(response.blockWeeks()).isEqualTo(20);
+
+		RaceBlockResponse block = raceController.getRaceBlock(response.id());
+		assertThat(block.weeksRequested()).isEqualTo(20);
+		assertThat(block.phases()).containsExactly(
+				new RaceBlockResponse.Phase("Base", 1, 8),
+				new RaceBlockResponse.Phase("Build", 9, 15),
+				new RaceBlockResponse.Phase("Peak", 16, 17),
+				new RaceBlockResponse.Phase("Taper", 18, 20));
+	}
+
+	@Test
+	void partialPhaseWeeksAreRejected() {
+		User athlete = newUser("races-block-plan-partial@example.cc");
+		authAsSelf(athlete.getId());
+
+		assertThatThrownBy(() -> raceController.createRace(new RaceCreateRequest(
+				"Goal Marathon", "2026-10-12", "run", null, null, null, null, null, null, null, null, null, null,
+				null, null, 5, null, null, null)))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void phaseWeeksNotSummingToBlockWeeksAreRejected() {
+		User athlete = newUser("races-block-plan-sum@example.cc");
+		authAsSelf(athlete.getId());
+
+		assertThatThrownBy(() -> raceController.createRace(new RaceCreateRequest(
+				"Goal Marathon", "2026-10-12", "run", null, null, null, null, null, null, null, null, null, null,
+				null, 20, 5, 5, 2, 3)))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void blockPlanFieldsAreRejectedOnABcRace() {
+		User athlete = newUser("races-block-plan-bc@example.cc");
+		authAsSelf(athlete.getId());
+
+		assertThatThrownBy(() -> raceController.createRace(new RaceCreateRequest(
+				"Tune-up Half", "2026-09-14", "run", null, null, null, null, null, null, null, "B", null, null,
+				null, 10, null, null, null, null)))
+				.isInstanceOf(ValidationException.class);
 	}
 
 	@Test

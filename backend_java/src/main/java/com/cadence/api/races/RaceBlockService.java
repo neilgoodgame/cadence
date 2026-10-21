@@ -113,12 +113,12 @@ public class RaceBlockService {
 		return new BlockRange(startWeek, raceWeek, weeks, truncated && prevA != null ? prevA.getId() : null);
 	}
 
-	public Race findParentARace(Race race, int blockWeeks) {
+	public Race findParentARace(Race race, User athlete) {
 		LocalDate bWeek = weekStart(race.getDate());
 		List<Race> candidates = raceRepository
 				.findByAthleteIdAndPriorityAndDateGreaterThanEqualOrderByDateAsc(race.getAthlete().getId(), RacePriority.A, race.getDate());
 		for (Race a : candidates) {
-			BlockRange block = aRaceBlockRange(a, blockWeeks);
+			BlockRange block = aRaceBlockRange(a, resolveBlockWeeks(a, athlete));
 			if (!bWeek.isBefore(block.startWeek()) && !bWeek.isAfter(block.endWeek())) {
 				return a;
 			}
@@ -126,11 +126,58 @@ public class RaceBlockService {
 		return null;
 	}
 
+	/** The nearest standard race distance (RaceDistanceBuckets.BUCKETS, within
+	 * COMPARISON_DISTANCE_TOLERANCE) this race's own distance matches, for resolveBlockWeeks's
+	 * per-distance default lookup - "ultra" is the open-ended catch-all for anything past
+	 * marathon distance. Null if there's no distance to match (e.g. not a run, or distanceKm
+	 * unset). */
+	public String matchDistanceBucket(Double distanceKm) {
+		if (distanceKm == null || distanceKm <= 0) return null;
+		double marathonKm = RaceDistanceBuckets.BUCKETS.stream()
+				.filter(b -> "marathon".equals(b.key())).findFirst().orElseThrow().km();
+		for (RaceDistanceBuckets.Bucket bucket : RaceDistanceBuckets.BUCKETS) {
+			if (bucket.km() == null) {
+				if (distanceKm > marathonKm * (1 + COMPARISON_DISTANCE_TOLERANCE)) return bucket.key();
+			}
+			else if (Math.abs(distanceKm - bucket.km()) <= bucket.km() * COMPARISON_DISTANCE_TOLERANCE) {
+				return bucket.key();
+			}
+		}
+		return null;
+	}
+
+	/** The effective training-block length for an A race: an explicit per-race override, else
+	 * the athlete's per-distance-bucket default, else the athlete's flat raceBlockWeeks
+	 * preference (the only option that existed before blockWeeksRequested/
+	 * raceBlockWeekDefaults did - so an athlete who's never touched either of those sees no
+	 * behavior change). */
+	public int resolveBlockWeeks(Race race, User athlete) {
+		if (race.getBlockWeeksRequested() != null) return race.getBlockWeeksRequested();
+		String bucket = matchDistanceBucket(race.getDistanceKm());
+		if (bucket != null) {
+			Integer fromBucket = athlete.getRaceBlockWeekDefaults().get(bucket);
+			if (fromBucket != null) return fromBucket;
+		}
+		return athlete.getRaceBlockWeeks();
+	}
+
 	private List<RaceBlockResponse.Phase> phases(int nWeeks) {
 		int base = Math.round(0.375f * nWeeks);
 		int build = Math.round(0.375f * nWeeks);
 		int peak = Math.max(1, Math.round(0.125f * nWeeks));
 		int taper = nWeeks - base - build - peak;
+		return phasesFromLengths(base, build, peak, taper);
+	}
+
+	/** Same shape as phases(), but from the race's own explicit *WeeksRequested fields instead
+	 * of the proportional split - only called once getRaceBlock has confirmed all four are set
+	 * and their sum still matches the (possibly-truncated) block length. */
+	private List<RaceBlockResponse.Phase> phasesFromExplicit(Race race) {
+		return phasesFromLengths(race.getBaseWeeksRequested(), race.getBuildWeeksRequested(),
+				race.getPeakWeeksRequested(), race.getTaperWeeksRequested());
+	}
+
+	private List<RaceBlockResponse.Phase> phasesFromLengths(int base, int build, int peak, int taper) {
 		List<RaceBlockResponse.Phase> result = new ArrayList<>();
 		int weekNum = 1;
 		for (var entry : List.of(Map.entry("Base", base), Map.entry("Build", build), Map.entry("Peak", peak), Map.entry("Taper", taper))) {
@@ -601,7 +648,6 @@ public class RaceBlockService {
 		// own CLAUDE.md "JPA entity's lazy association" gotcha.
 		User athlete = userRepository.findById(race.getAthlete().getId()).orElseThrow();
 		LocalDate today = LocalDate.now();
-		int blockWeeksPref = athlete.getRaceBlockWeeks();
 
 		LocalDate startWeek;
 		LocalDate endWeek;
@@ -612,24 +658,29 @@ public class RaceBlockService {
 		RaceBlockResponse.Parent parent = null;
 
 		if (race.getPriority() == RacePriority.A) {
-			BlockRange block = aRaceBlockRange(race, blockWeeksPref);
+			int effectiveBlockWeeks = resolveBlockWeeks(race, athlete);
+			BlockRange block = aRaceBlockRange(race, effectiveBlockWeeks);
 			startWeek = block.startWeek();
 			endWeek = block.endWeek();
 			nWeeks = block.weeks();
-			phaseList = phases(nWeeks);
-			weeksRequested = blockWeeksPref;
+			boolean hasExplicitPhases = race.getBaseWeeksRequested() != null && race.getBuildWeeksRequested() != null
+					&& race.getPeakWeeksRequested() != null && race.getTaperWeeksRequested() != null;
+			// Only trust the explicit split while it still fits - an earlier A race can truncate
+			// nWeeks below what blockWeeksRequested (and so the phase split) was sized for.
+			phaseList = hasExplicitPhases && nWeeks == effectiveBlockWeeks ? phasesFromExplicit(race) : phases(nWeeks);
+			weeksRequested = effectiveBlockWeeks;
 			truncatedByRaceId = block.truncatedByRaceId();
 		}
 		else {
 			LocalDate raceWeek = weekStart(race.getDate());
 			phaseList = List.of();
-			Race parentRace = findParentARace(race, blockWeeksPref);
+			Race parentRace = findParentARace(race, athlete);
 			if (parentRace != null) {
 				// Leading into the race, not centred on it: a B/C race that falls inside an
 				// upcoming A race's block is a step on the way there, so its own window starts
 				// where that block starts and ends at the race itself (its final week) rather
 				// than running 2 weeks past it into what's really the parent block's taper.
-				BlockRange parentBlock = aRaceBlockRange(parentRace, blockWeeksPref);
+				BlockRange parentBlock = aRaceBlockRange(parentRace, resolveBlockWeeks(parentRace, athlete));
 				startWeek = parentBlock.startWeek();
 				endWeek = raceWeek;
 				nWeeks = (int) (java.time.temporal.ChronoUnit.DAYS.between(startWeek, raceWeek) / 7) + 1;
@@ -666,7 +717,8 @@ public class RaceBlockService {
 				var current = durabilityQueryService.getSectionForRange(athlete, race.getSport(), startWeek, endWeek);
 				var comparisonSection = comparisonRace != null
 						? durabilityQueryService.getSectionForRange(athlete, race.getSport(),
-								aRaceBlockRange(comparisonRace, blockWeeksPref).startWeek(), aRaceBlockRange(comparisonRace, blockWeeksPref).endWeek())
+								aRaceBlockRange(comparisonRace, resolveBlockWeeks(comparisonRace, athlete)).startWeek(),
+								aRaceBlockRange(comparisonRace, resolveBlockWeeks(comparisonRace, athlete)).endWeek())
 						: null;
 				durability = new RaceBlockResponse.Durability(race.getSport() == Sport.BIKE ? "ride" : "run", current, comparisonSection);
 			}

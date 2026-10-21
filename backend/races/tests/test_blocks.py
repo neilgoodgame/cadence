@@ -11,7 +11,9 @@ from races.blocks import (
     find_parent_a_race,
     get_race_block,
     key_sessions,
+    match_distance_bucket,
     phases,
+    resolve_block_weeks,
     riegel_prediction,
 )
 from races.models import Race
@@ -51,14 +53,63 @@ class ParentARaceLookupTests(TestCase):
         a_race = Race.objects.create(athlete=self.athlete, name="Goal Marathon", date=date(2026, 10, 12), priority="A")
         b_race = Race.objects.create(athlete=self.athlete, name="Tune-up Half", date=date(2026, 9, 14), priority="B")
 
-        parent = find_parent_a_race(b_race, block_weeks=16)
+        parent = find_parent_a_race(b_race, self.athlete)
         self.assertEqual(parent.id, a_race.id)
 
     def test_b_race_outside_any_block_has_no_parent(self):
         Race.objects.create(athlete=self.athlete, name="Goal Marathon", date=date(2026, 10, 12), priority="A")
         standalone = Race.objects.create(athlete=self.athlete, name="Lone 10k", date=date(2026, 1, 5), priority="B")
 
-        self.assertIsNone(find_parent_a_race(standalone, block_weeks=16))
+        self.assertIsNone(find_parent_a_race(standalone, self.athlete))
+
+
+class MatchDistanceBucketTests(TestCase):
+    def test_matches_exact_standard_distances(self):
+        self.assertEqual(match_distance_bucket(5.0), "5k")
+        self.assertEqual(match_distance_bucket(10.0), "10k")
+        self.assertEqual(match_distance_bucket(21.0975), "half")
+        self.assertEqual(match_distance_bucket(42.195), "marathon")
+
+    def test_matches_within_tolerance(self):
+        self.assertEqual(match_distance_bucket(42.4), "marathon")
+
+    def test_falls_back_to_ultra_past_marathon_distance(self):
+        self.assertEqual(match_distance_bucket(50.0), "ultra")
+
+    def test_none_for_no_distance_or_no_match(self):
+        self.assertIsNone(match_distance_bucket(None))
+        self.assertIsNone(match_distance_bucket(0))
+        self.assertIsNone(match_distance_bucket(13.0))
+
+
+class ResolveBlockWeeksTests(TestCase):
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="athlete@example.cc", password="x", name="Athlete")
+
+    def test_explicit_override_wins_over_everything(self):
+        race = Race.objects.create(
+            athlete=self.athlete,
+            name="Goal Marathon",
+            date=date(2026, 10, 12),
+            priority="A",
+            distance_km=42.195,
+            block_weeks_requested=20,
+        )
+        self.assertEqual(resolve_block_weeks(race, self.athlete), 20)
+
+    def test_distance_bucket_default_wins_over_flat_preference(self):
+        self.athlete.race_block_week_defaults = {**self.athlete.race_block_week_defaults, "marathon": 20}
+        self.athlete.save()
+        race = Race.objects.create(
+            athlete=self.athlete, name="Goal Marathon", date=date(2026, 10, 12), priority="A", distance_km=42.195
+        )
+        self.assertEqual(resolve_block_weeks(race, self.athlete), 20)
+
+    def test_falls_back_to_flat_preference_with_no_distance(self):
+        self.athlete.race_block_weeks = 24
+        self.athlete.save()
+        race = Race.objects.create(athlete=self.athlete, name="Goal Marathon", date=date(2026, 10, 12), priority="A")
+        self.assertEqual(resolve_block_weeks(race, self.athlete), 24)
 
 
 class ComparisonBlockTests(TestCase):

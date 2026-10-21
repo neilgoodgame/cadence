@@ -158,6 +158,35 @@ class AthleteDetailViewTests(TestCase):
         response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}")
         self.assertEqual(response.json()["default_shoe_limit_km"], 800)
 
+    def test_self_can_update_race_block_weeks(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"race_block_weeks": 20}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["race_block_weeks"], 20)
+
+    def test_race_block_week_defaults_merges_rather_than_replaces(self):
+        client = _bearer_client(self.athlete)
+        response = client.patch(
+            f"/v1/athletes/{self.athlete.id}", {"race_block_week_defaults": {"5k": 9}}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        defaults = response.json()["race_block_week_defaults"]
+        self.assertEqual(defaults["5k"], 9)
+        self.assertEqual(defaults["marathon"], 16)  # untouched, not reset
+
+    def test_race_block_week_defaults_rejects_an_unknown_bucket(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"race_block_week_defaults": {"made_up": 9}}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_race_block_week_defaults_rejects_an_out_of_range_value(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"race_block_week_defaults": {"5k": 99}}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_viewer_cannot_write(self):
         UserRelationship.objects.create(
             owner=self.athlete,

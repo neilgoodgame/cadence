@@ -3,10 +3,13 @@ package com.cadence.api.athletes;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.courses.CourseSections;
+import com.cadence.api.races.RaceDistanceBuckets;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +19,7 @@ public class AthleteService {
 
 	private static final Set<Integer> RACE_BLOCK_WEEKS_CHOICES = Set.of(12, 16, 20, 24);
 	private static final Set<Integer> RACE_KEY_SESSION_CAP_CHOICES = Set.of(6, 8, 10, 12, 15, 20);
+	private static final int MAX_RACE_BLOCK_WEEK_DEFAULT = 52;
 
 	private final UserRepository userRepository;
 	private final ZoneService zoneService;
@@ -192,6 +196,24 @@ public class AthleteService {
 			String error = merged.validationError();
 			if (error != null) throw new ValidationException(error, "courseSectionSettings");
 			athlete.setCourseSectionSettings(merged);
+		}
+		if (request.raceBlockWeekDefaults() != null) {
+			Set<String> knownKeys = RaceDistanceBuckets.BUCKETS.stream().map(RaceDistanceBuckets.Bucket::key)
+					.collect(java.util.stream.Collectors.toSet());
+			for (var entry : request.raceBlockWeekDefaults().entrySet()) {
+				if (!knownKeys.contains(entry.getKey())) {
+					throw new ValidationException("Unknown race distance bucket \"" + entry.getKey() + "\".", "raceBlockWeekDefaults");
+				}
+				Integer weeks = entry.getValue();
+				if (weeks == null || weeks < 1 || weeks > MAX_RACE_BLOCK_WEEK_DEFAULT) {
+					throw new ValidationException(
+							"\"" + entry.getKey() + "\" must be an integer between 1 and " + MAX_RACE_BLOCK_WEEK_DEFAULT + ".",
+							"raceBlockWeekDefaults");
+				}
+			}
+			Map<String, Integer> merged = new HashMap<>(athlete.getRaceBlockWeekDefaults());
+			merged.putAll(request.raceBlockWeekDefaults());
+			athlete.setRaceBlockWeekDefaults(merged);
 		}
 		userRepository.save(athlete);
 		if (suggestionsAffected) {

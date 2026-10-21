@@ -98,7 +98,7 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 		Race aRace = newRace(athlete, "Goal Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
 		Race bRace = newRace(athlete, "Tune-up Half", LocalDate.of(2026, 9, 14), RacePriority.B);
 
-		Race parent = raceBlockService.findParentARace(bRace, 16);
+		Race parent = raceBlockService.findParentARace(bRace, athlete);
 
 		assertThat(parent).isNotNull();
 		assertThat(parent.getId()).isEqualTo(aRace.getId());
@@ -110,7 +110,59 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 		newRace(athlete, "Goal Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
 		Race standalone = newRace(athlete, "Lone 10k", LocalDate.of(2026, 1, 5), RacePriority.B);
 
-		assertThat(raceBlockService.findParentARace(standalone, 16)).isNull();
+		assertThat(raceBlockService.findParentARace(standalone, athlete)).isNull();
+	}
+
+	@Test
+	void matchDistanceBucketMatchesExactStandardDistances() {
+		assertThat(raceBlockService.matchDistanceBucket(5.0)).isEqualTo("5k");
+		assertThat(raceBlockService.matchDistanceBucket(10.0)).isEqualTo("10k");
+		assertThat(raceBlockService.matchDistanceBucket(21.0975)).isEqualTo("half");
+		assertThat(raceBlockService.matchDistanceBucket(42.195)).isEqualTo("marathon");
+	}
+
+	@Test
+	void matchDistanceBucketFallsBackToUltraPastMarathonDistance() {
+		assertThat(raceBlockService.matchDistanceBucket(50.0)).isEqualTo("ultra");
+	}
+
+	@Test
+	void matchDistanceBucketIsNullForNoDistanceOrNoMatch() {
+		assertThat(raceBlockService.matchDistanceBucket(null)).isNull();
+		assertThat(raceBlockService.matchDistanceBucket(13.0)).isNull();
+	}
+
+	@Test
+	void resolveBlockWeeksExplicitOverrideWinsOverEverything() {
+		User athlete = newAthlete("block-resolve-explicit@example.cc");
+		Race race = newRace(athlete, "Goal Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
+		race.setDistanceKm(42.195);
+		race.setBlockWeeksRequested(20);
+		raceRepository.save(race);
+
+		assertThat(raceBlockService.resolveBlockWeeks(race, athlete)).isEqualTo(20);
+	}
+
+	@Test
+	void resolveBlockWeeksDistanceBucketDefaultWinsOverFlatPreference() {
+		User athlete = newAthlete("block-resolve-bucket@example.cc");
+		athlete.getRaceBlockWeekDefaults().put("marathon", 20);
+		userRepository.save(athlete);
+		Race race = newRace(athlete, "Goal Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
+		race.setDistanceKm(42.195);
+		raceRepository.save(race);
+
+		assertThat(raceBlockService.resolveBlockWeeks(race, athlete)).isEqualTo(20);
+	}
+
+	@Test
+	void resolveBlockWeeksFallsBackToFlatPreferenceWithNoDistance() {
+		User athlete = newAthlete("block-resolve-fallback@example.cc");
+		athlete.setRaceBlockWeeks(24);
+		userRepository.save(athlete);
+		Race race = newRace(athlete, "Goal Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
+
+		assertThat(raceBlockService.resolveBlockWeeks(race, athlete)).isEqualTo(24);
 	}
 
 	@Test

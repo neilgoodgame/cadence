@@ -24,6 +24,11 @@ function race(overrides: Partial<Race> = {}): Race {
     parent_race_id: null,
     block_start: null,
     block_weeks: null,
+    block_weeks_requested: null,
+    base_weeks_requested: null,
+    build_weeks_requested: null,
+    peak_weeks_requested: null,
+    taper_weeks_requested: null,
     is_public: false,
     ...overrides,
   };

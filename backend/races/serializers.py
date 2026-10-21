@@ -5,6 +5,61 @@ from courses.serializers import CourseSerializer
 
 from .models import Race, RaceComment
 
+PHASE_WEEKS_FIELDS = ("base_weeks_requested", "build_weeks_requested", "peak_weeks_requested", "taper_weeks_requested")
+MAX_BLOCK_PLAN_WEEKS = 52
+
+
+def _validate_block_plan(attrs: dict, instance: Race | None) -> None:
+    """Shared by RaceCreateSerializer/RaceUpdateSerializer's validate() - block_weeks_requested
+    and the four phase-length fields (A races only) must either all be absent, or form one
+    internally-consistent plan: all four phase fields present together, each in a sane range,
+    and summing to exactly block_weeks_requested. `instance` is the race being updated (None on
+    create), so a partial PATCH is checked against its *resulting* state, not just the fields
+    this particular request happens to touch."""
+
+    def effective(field: str, default: int | str | None = None) -> int | str | None:
+        if field in attrs:
+            return attrs[field]
+        if instance is not None:
+            return getattr(instance, field)
+        return default
+
+    priority = effective("priority", "A")
+    block_weeks = effective("block_weeks_requested")
+    phase_values = {f: effective(f) for f in PHASE_WEEKS_FIELDS}
+    any_phase_set = any(v is not None for v in phase_values.values())
+    all_phases_set = all(v is not None for v in phase_values.values())
+
+    if any_phase_set and not all_phases_set:
+        raise serializers.ValidationError(
+            {
+                "base_weeks_requested": "base_weeks_requested/build_weeks_requested/peak_weeks_requested/"
+                "taper_weeks_requested must all be set together, or none of them."
+            }
+        )
+    if (block_weeks is not None or any_phase_set) and priority != "A":
+        raise serializers.ValidationError(
+            {"block_weeks_requested": "Training-block length and phase weeks are for A races only."}
+        )
+    for field in (*PHASE_WEEKS_FIELDS, "block_weeks_requested"):
+        value = effective(field)
+        if value is not None and not (1 <= value <= MAX_BLOCK_PLAN_WEEKS):
+            raise serializers.ValidationError({field: f"Must be between 1 and {MAX_BLOCK_PLAN_WEEKS}."})
+    if all_phases_set:
+        if block_weeks is None:
+            raise serializers.ValidationError(
+                {"block_weeks_requested": "Required when base/build/peak/taper weeks are set."}
+            )
+        total = sum(phase_values.values())
+        if total != block_weeks:
+            raise serializers.ValidationError(
+                {
+                    "base_weeks_requested": (
+                        f"base+build+peak+taper ({total}) must equal block_weeks_requested ({block_weeks})."
+                    )
+                }
+            )
+
 
 class RaceSerializer(serializers.ModelSerializer):
     goal_time = serializers.DurationField(allow_null=True, required=False)
@@ -35,23 +90,27 @@ class RaceSerializer(serializers.ModelSerializer):
             "parent_race_id",
             "block_start",
             "block_weeks",
+            "block_weeks_requested",
+            "base_weeks_requested",
+            "build_weeks_requested",
+            "peak_weeks_requested",
+            "taper_weeks_requested",
             "is_public",
         ]
         read_only_fields = ["id", "athlete_id"]
 
     def _block_info(self, race: Race) -> dict | None:
-        from .blocks import a_race_block_range, find_parent_a_race
+        from .blocks import a_race_block_range, find_parent_a_race, resolve_block_weeks
 
         cache = self.context.setdefault("_block_cache", {})
         if race.id in cache:
             return cache[race.id]
 
-        block_weeks_pref = race.athlete.race_block_weeks
         if race.priority == "A":
-            info = a_race_block_range(race, block_weeks_pref)
+            info = a_race_block_range(race, resolve_block_weeks(race, race.athlete))
         else:
-            parent = find_parent_a_race(race, block_weeks_pref)
-            info = a_race_block_range(parent, block_weeks_pref) if parent else None
+            parent = find_parent_a_race(race, race.athlete)
+            info = a_race_block_range(parent, resolve_block_weeks(parent, race.athlete)) if parent else None
         cache[race.id] = info
         return info
 
@@ -60,7 +119,7 @@ class RaceSerializer(serializers.ModelSerializer):
             return None
         from .blocks import find_parent_a_race
 
-        parent = find_parent_a_race(race, race.athlete.race_block_weeks)
+        parent = find_parent_a_race(race, race.athlete)
         return parent.id if parent else None
 
     def get_block_start(self, race: Race) -> str | None:
@@ -100,8 +159,17 @@ class RaceCreateSerializer(serializers.ModelSerializer):
             "results_url",
             "notes",
             "key_session_tag_id",
+            "block_weeks_requested",
+            "base_weeks_requested",
+            "build_weeks_requested",
+            "peak_weeks_requested",
+            "taper_weeks_requested",
         ]
         extra_kwargs = {field: {"required": False} for field in fields if field not in ("name", "date")}
+
+    def validate(self, attrs: dict) -> dict:
+        _validate_block_plan(attrs, self.instance)
+        return attrs
 
 
 class RaceUpdateSerializer(serializers.ModelSerializer):
@@ -128,9 +196,18 @@ class RaceUpdateSerializer(serializers.ModelSerializer):
             "results_url",
             "notes",
             "key_session_tag_id",
+            "block_weeks_requested",
+            "base_weeks_requested",
+            "build_weeks_requested",
+            "peak_weeks_requested",
+            "taper_weeks_requested",
             "is_public",
         ]
         extra_kwargs = {field: {"required": False} for field in fields}
+
+    def validate(self, attrs: dict) -> dict:
+        _validate_block_plan(attrs, self.instance)
+        return attrs
 
 
 # The course fields a public race exposes - the course's shape and elevation, nothing about who

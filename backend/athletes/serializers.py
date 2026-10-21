@@ -4,6 +4,7 @@ from typing import Any
 from rest_framework import serializers
 
 from accounts.models import User
+from core.race_distances import RACE_DISTANCE_BUCKETS
 from courses.sections import ALGORITHMS, SectionSettings
 
 from .models import BestEffortRecomputeJob, ZoneSet
@@ -37,6 +38,17 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
         if error is not None:
             raise serializers.ValidationError(error)
         return merged
+
+    def validate_race_block_week_defaults(self, value: dict[str, Any]) -> dict[str, Any]:
+        from races.serializers import MAX_BLOCK_PLAN_WEEKS
+
+        known_keys = {bucket.key for bucket in RACE_DISTANCE_BUCKETS}
+        for key, weeks in value.items():
+            if key not in known_keys:
+                raise serializers.ValidationError(f'Unknown race distance bucket "{key}".')
+            if not isinstance(weeks, int) or not (1 <= weeks <= MAX_BLOCK_PLAN_WEEKS):
+                raise serializers.ValidationError(f'"{key}" must be an integer between 1 and {MAX_BLOCK_PLAN_WEEKS}.')
+        return {**self.instance.race_block_week_defaults, **value}
 
     def update(self, instance: User, validated_data: dict[str, Any]) -> User:
         settings = validated_data.pop("course_section_settings", None)
@@ -76,6 +88,9 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "decoupling_hot_air_temp",
             "decoupling_hot_skin_temp",
             "course_section_settings",
+            "race_block_weeks",
+            "race_key_session_cap",
+            "race_block_week_defaults",
         ]
         extra_kwargs = {
             field: {"required": False}
@@ -106,6 +121,9 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
                 "decoupling_warm_skin_temp",
                 "decoupling_hot_air_temp",
                 "decoupling_hot_skin_temp",
+                "race_block_weeks",
+                "race_key_session_cap",
+                "race_block_week_defaults",
             ]
         }
 
