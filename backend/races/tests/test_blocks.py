@@ -351,3 +351,21 @@ class GetRaceBlockSmokeTests(TestCase):
         self.assertEqual(week["tss"], 230)
         self.assertEqual(week["run_tss"], 80)
         self.assertEqual(week["ride_tss"], 120)
+
+    def test_run_long_pace_is_the_longest_runs_own_pace(self):
+        race = Race.objects.create(
+            athlete=self.athlete, name="Spring Marathon", date=date(2026, 3, 1), priority="A", sport="run"
+        )
+        # Shorter run, faster pace - shouldn't win "long".
+        _make_activity(
+            self.athlete, distance_km=8.0, moving_time=2400, start_date=datetime(2026, 2, 17, 7, 0, tzinfo=UTC)
+        )
+        # The week's actual long run, at a slower pace.
+        _make_activity(
+            self.athlete, distance_km=20.0, moving_time=7200, start_date=datetime(2026, 2, 18, 7, 0, tzinfo=UTC)
+        )
+
+        result = get_race_block(race)
+        week = next(w for w in result["weeks"] if w["week_start"] == "2026-02-16")
+        self.assertEqual(week["run_long_km"], 20.0)
+        self.assertEqual(week["run_long_pace_s_per_km"], 360)  # 7200s / 20km

@@ -188,7 +188,11 @@ def _weekly_aggregate(athlete_id: str, week_start_d: date, week_end_d: date, tod
         run_count = len(runs)
         run_avg_pace_s_per_km = round(run_moving_s / run_km) if run_km > 0 else None
         non_race_runs = [a for a in runs if a.id not in race_activity_ids]
-        run_long_km = round(max(a.distance_km for a in non_race_runs), 2) if non_race_runs else None
+        long_run = max(non_race_runs, key=lambda a: a.distance_km, default=None)
+        run_long_km = round(long_run.distance_km, 2) if long_run else None
+        run_long_pace_s_per_km = (
+            round(long_run.moving_time / long_run.distance_km) if long_run and long_run.distance_km else None
+        )
         run_tss = sum(a.tss for a in runs)
 
         rides = [a for a in activities if a.sport == "bike"]
@@ -234,7 +238,7 @@ def _weekly_aggregate(athlete_id: str, week_start_d: date, week_end_d: date, tod
             sessions = len(scheduled)
         # No distance/power data on a planned-only week - ScheduledWorkout carries
         # duration/TSS, not distance or intensity.
-        run_km = run_avg_pace_s_per_km = run_long_km = None
+        run_km = run_avg_pace_s_per_km = run_long_km = run_long_pace_s_per_km = None
         ride_km = ride_avg_power_w = ride_long_km = None
 
     series = fitness_series_with_plan(athlete_id, week_end_d, week_end_d, today)
@@ -250,6 +254,7 @@ def _weekly_aggregate(athlete_id: str, week_start_d: date, week_end_d: date, tod
         "run_count": run_count,
         "run_avg_pace_s_per_km": run_avg_pace_s_per_km,
         "run_long_km": run_long_km,
+        "run_long_pace_s_per_km": run_long_pace_s_per_km,
         "run_tss": run_tss,
         "ride_km": ride_km,
         "ride_moving_s": ride_moving_s,

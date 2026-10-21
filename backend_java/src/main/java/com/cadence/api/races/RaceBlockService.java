@@ -226,6 +226,7 @@ public class RaceBlockService {
 		Integer runCount;
 		Double runAvgPace;
 		Double runLongKm;
+		Double runLongPaceSPerKm;
 		Integer runTss;
 		Double rideKm;
 		Integer rideMovingS;
@@ -251,7 +252,11 @@ public class RaceBlockService {
 			runCount = runs.size();
 			runAvgPace = runKm > 0 ? runMovingS / runKm : null;
 			List<Activity> nonRaceRuns = runs.stream().filter(a -> !raceActivityIds.contains(a.getId())).toList();
-			runLongKm = nonRaceRuns.isEmpty() ? null : nonRaceRuns.stream().mapToDouble(Activity::getDistanceKm).max().getAsDouble();
+			Activity longRun = nonRaceRuns.stream().max(Comparator.comparingDouble(Activity::getDistanceKm)).orElse(null);
+			runLongKm = longRun != null ? longRun.getDistanceKm() : null;
+			runLongPaceSPerKm = longRun != null && longRun.getDistanceKm() > 0
+					? longRun.getMovingTime() / longRun.getDistanceKm()
+					: null;
 			runTss = runs.stream().mapToInt(Activity::getTss).sum();
 
 			List<Activity> rides = activities.stream().filter(a -> a.getSport() == Sport.BIKE).toList();
@@ -301,6 +306,7 @@ public class RaceBlockService {
 			runKm = null;
 			runAvgPace = null;
 			runLongKm = null;
+			runLongPaceSPerKm = null;
 			rideKm = null;
 			rideAvgPowerW = null;
 			rideLongKm = null;
@@ -311,7 +317,8 @@ public class RaceBlockService {
 		Double atl = series.isEmpty() ? null : series.get(0).atl();
 
 		return new RaceBlockResponse.WeekAggregate(weekStartD, tss, tssRaces, runKm, runMovingS, runCount, runAvgPace, runLongKm,
-				runTss, rideKm, rideMovingS, rideCount, rideAvgPowerW, rideLongKm, rideTss, hours, sessions, ctl, atl, isPlanned, racesList);
+				runTss, rideKm, rideMovingS, rideCount, rideAvgPowerW, rideLongKm, rideTss, hours, sessions, ctl, atl, isPlanned, racesList,
+				runLongPaceSPerKm);
 	}
 
 	// --- race-day form ---------------------------------------------------------------------
