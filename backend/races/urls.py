@@ -1,6 +1,9 @@
 from django.urls import path
 
 from .views import (
+    PublicRaceDetailView,
+    PublicRaceSplitsView,
+    PublicRaceWeatherView,
     RaceBlockView,
     RaceCommentDetailView,
     RaceCommentListView,
@@ -18,4 +21,7 @@ urlpatterns = [
     path("v1/races/<str:id>/weather", RaceWeatherView.as_view(), name="race-weather"),
     path("v1/races/<str:id>/comments", RaceCommentListView.as_view(), name="race-comment-list"),
     path("v1/races/<str:id>/comments/<str:comment_id>", RaceCommentDetailView.as_view(), name="race-comment-detail"),
+    path("v1/public/races/<str:id>", PublicRaceDetailView.as_view(), name="public-race-detail"),
+    path("v1/public/races/<str:id>/splits", PublicRaceSplitsView.as_view(), name="public-race-splits"),
+    path("v1/public/races/<str:id>/weather", PublicRaceWeatherView.as_view(), name="public-race-weather"),
 ]

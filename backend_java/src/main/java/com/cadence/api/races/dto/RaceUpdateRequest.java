@@ -1,5 +1,7 @@
 package com.cadence.api.races.dto;
 
+import jakarta.validation.constraints.Pattern;
+
 public record RaceUpdateRequest(
 		String name,
 		String date,
@@ -8,11 +10,13 @@ public record RaceUpdateRequest(
 		String goalTime,
 		String resultTime,
 		String activityId,
-		String url,
-		String resultsUrl,
+		// http(s) only - see RaceCreateRequest's url field for why.
+		@Pattern(regexp = "^$|^https?://\\S+$", message = "Must be an http(s) URL.") String url,
+		@Pattern(regexp = "^$|^https?://\\S+$", message = "Must be an http(s) URL.") String resultsUrl,
 		String notes,
 		String priority,
 		String courseId,
 		String keySessionTagId,
-		Integer targetPower
+		Integer targetPower,
+		Boolean isPublic
 ) {}

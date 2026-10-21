@@ -2699,6 +2699,12 @@ paths:
                 results_url: { type: [string, "null"], format: uri }
                 notes: { type: string }
                 key_session_tag_id: { type: [string, "null"] }
+                is_public:
+                  type: boolean
+                  description: >
+                    Make the race readable without authentication via
+                    GET /v1/public/races/{id} (and its splits and weather), or false to
+                    revoke that.
       responses:
         "200":
           description: Updated race.
@@ -2888,58 +2894,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  has_laps: { type: boolean, description: False when mode=laps and the activity has one lap or none. }
-                  ref: { type: string, enum: [goal, average] }
-                  ref_pace_s_per_km: { type: [number, "null"] }
-                  ref_power: { type: string, enum: [target, average], description: Mirrors ref/ref_pace_s_per_km - "target" when the race has target_power set, else "average" (the activity's own average power). }
-                  ref_power_w: { type: [integer, "null"], description: Null if the activity has no power meter and no target_power is set. }
-                  halves:
-                    type: [object, "null"]
-                    properties:
-                      first_s: { type: integer }
-                      second_s: { type: integer }
-                  splits:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        label: { type: [string, "null"], description: "e.g. \"Lap 2\" or \"Finish\" for the last partial split." }
-                        start_km: { type: number }
-                        end_km: { type: number }
-                        time_s: { type: integer }
-                        pace_s_per_km: { type: [number, "null"] }
-                        gap_pace_s_per_km:
-                          type: [number, "null"]
-                          description: >
-                            Grade-adjusted pace - the flat-equivalent pace for the same effort,
-                            from the Minetti et al. (2002) cost-of-running-on-a-gradient model.
-                            Null when avg_grade_pct is null (no reliable altitude).
-                        avg_hr: { type: [integer, "null"] }
-                        avg_power: { type: [integer, "null"], description: Null if the activity has no power meter. }
-                        delta_vs_ref_s_per_km:
-                          type: [number, "null"]
-                          description: gap_pace_s_per_km vs the reference pace when GAP is available, else pace_s_per_km vs it.
-                        delta_power_w:
-                          type: [integer, "null"]
-                          description: >
-                            avg_power vs ref_power_w - the frontend prefers this over
-                            delta_vs_ref_s_per_km/GAP whenever the activity has power data, since
-                            power already accounts for grade mechanically rather than estimating
-                            it from a cost model. Null unless both avg_power and ref_power_w are set.
-                        section_type:
-                          type: [string, "null"]
-                          enum: [steep_descent, descent, flat, climb, steep_climb, null]
-                          description: The course section type for a mode=elevation split; null for laps/1/5.
-                        gain_m: { type: [integer, "null"], description: Set only for mode=elevation. }
-                        loss_m: { type: [integer, "null"], description: Set only for mode=elevation. }
-                        avg_grade_pct:
-                          type: [number, "null"]
-                          description: >
-                            Net grade over the split. For mode=elevation this is the course
-                            section's own grade; for laps/1/5 it's computed from the activity's
-                            own recorded altitude (null if that's missing).
+                $ref: "#/components/schemas/RaceSplits"
         "400":
           $ref: "#/components/responses/BadRequest"
         "403":
@@ -3025,16 +2980,77 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  available: { type: boolean }
-                  date: { type: [string, "null"], format: date }
-                  temperature_max_c: { type: [number, "null"] }
-                  temperature_min_c: { type: [number, "null"] }
-                  precipitation_probability_pct: { type: [integer, "null"] }
-                  wind_speed_max_kmh: { type: [number, "null"] }
+                $ref: "#/components/schemas/RaceWeather"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/public/races/{id}:
+    parameters:
+      - $ref: "#/components/parameters/RaceId"
+    get:
+      tags: [Races]
+      summary: Read a public race
+      operationId: getPublicRace
+      security: []
+      description: >
+        Unauthenticated, read-only view of a race whose owner has set `is_public`
+        (PATCH /v1/races/{id}). Returns 404 for a private race exactly as for a missing
+        one. Deliberately a narrow allowlist of fields - see PublicRace.
+      responses:
+        "200":
+          description: The public race.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicRace" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/public/races/{id}/splits:
+    parameters:
+      - $ref: "#/components/parameters/RaceId"
+    get:
+      tags: [Races]
+      summary: Splits for a public race
+      operationId: getPublicRaceSplits
+      security: []
+      description: >
+        Unauthenticated equivalent of GET /v1/races/{id}/splits for a race whose owner
+        has set `is_public` - same modes and response. Custom splits (POST) stay
+        authenticated-only. Returns 404 for a private race exactly as for a missing one.
+      parameters:
+        - name: mode
+          in: query
+          schema: { type: string, enum: [laps, "1", "5", elevation], default: laps }
+      responses:
+        "200":
+          description: Splits against the goal pace (or average pace, if there's no goal).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RaceSplits" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/public/races/{id}/weather:
+    parameters:
+      - $ref: "#/components/parameters/RaceId"
+    get:
+      tags: [Races]
+      summary: Race-day weather forecast for a public race
+      operationId: getPublicRaceWeather
+      security: []
+      description: >
+        Unauthenticated equivalent of GET /v1/races/{id}/weather for a race whose owner
+        has set `is_public`. Returns 404 for a private race exactly as for a missing one.
+      responses:
+        "200":
+          description: Forecast, or an unavailable response.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RaceWeather" }
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -3979,6 +3995,72 @@ components:
             order. Empty unless this activity is the primary of a duplicate group.
           example: []
 
+    RaceSplits:
+      description: GET /v1/races/{id}/splits, and its public equivalent.
+      type: object
+      properties:
+        has_laps: { type: boolean, description: False when mode=laps and the activity has one lap or none. }
+        ref: { type: string, enum: [goal, average] }
+        ref_pace_s_per_km: { type: [number, "null"] }
+        ref_power: { type: string, enum: [target, average], description: Mirrors ref/ref_pace_s_per_km - "target" when the race has target_power set, else "average" (the activity's own average power). }
+        ref_power_w: { type: [integer, "null"], description: Null if the activity has no power meter and no target_power is set. }
+        halves:
+          type: [object, "null"]
+          properties:
+            first_s: { type: integer }
+            second_s: { type: integer }
+        splits:
+          type: array
+          items:
+            type: object
+            properties:
+              label: { type: [string, "null"], description: "e.g. \"Lap 2\" or \"Finish\" for the last partial split." }
+              start_km: { type: number }
+              end_km: { type: number }
+              time_s: { type: integer }
+              pace_s_per_km: { type: [number, "null"] }
+              gap_pace_s_per_km:
+                type: [number, "null"]
+                description: >
+                  Grade-adjusted pace - the flat-equivalent pace for the same effort,
+                  from the Minetti et al. (2002) cost-of-running-on-a-gradient model.
+                  Null when avg_grade_pct is null (no reliable altitude).
+              avg_hr: { type: [integer, "null"] }
+              avg_power: { type: [integer, "null"], description: Null if the activity has no power meter. }
+              delta_vs_ref_s_per_km:
+                type: [number, "null"]
+                description: gap_pace_s_per_km vs the reference pace when GAP is available, else pace_s_per_km vs it.
+              delta_power_w:
+                type: [integer, "null"]
+                description: >
+                  avg_power vs ref_power_w - the frontend prefers this over
+                  delta_vs_ref_s_per_km/GAP whenever the activity has power data, since
+                  power already accounts for grade mechanically rather than estimating
+                  it from a cost model. Null unless both avg_power and ref_power_w are set.
+              section_type:
+                type: [string, "null"]
+                enum: [steep_descent, descent, flat, climb, steep_climb, null]
+                description: The course section type for a mode=elevation split; null for laps/1/5.
+              gain_m: { type: [integer, "null"], description: Set only for mode=elevation. }
+              loss_m: { type: [integer, "null"], description: Set only for mode=elevation. }
+              avg_grade_pct:
+                type: [number, "null"]
+                description: >
+                  Net grade over the split. For mode=elevation this is the course
+                  section's own grade; for laps/1/5 it's computed from the activity's
+                  own recorded altitude (null if that's missing).
+
+    RaceWeather:
+      description: GET /v1/races/{id}/weather, and its public equivalent.
+      type: object
+      properties:
+        available: { type: boolean }
+        date: { type: [string, "null"], format: date }
+        temperature_max_c: { type: [number, "null"] }
+        temperature_min_c: { type: [number, "null"] }
+        precipitation_probability_pct: { type: [integer, "null"] }
+        wind_speed_max_kmh: { type: [number, "null"] }
+
     UploadBatch:
       type: object
       description: >
@@ -4639,6 +4721,58 @@ components:
         block_weeks:
           type: [integer, "null"]
           description: Length of the block named by block_start, possibly truncated by an earlier A race - see GET /v1/races/{id}/block.
+        is_public:
+          type: boolean
+          description: >
+            Whether the race is readable without authentication via
+            GET /v1/public/races/{id}. False by default; set via PATCH /v1/races/{id}.
+          example: false
+
+    PublicRace:
+      type: object
+      description: >
+        The unauthenticated view of a public race, for sharing a result with friends
+        and family. A narrow allowlist - no notes, priority, training block, target
+        power or anything else from the athlete's training.
+      properties:
+        id: { type: string }
+        athlete_name: { type: string }
+        name: { type: string }
+        date: { type: string, format: date }
+        sport: { type: string }
+        distance_km: { type: [number, "null"] }
+        goal_time: { type: [string, "null"], description: "H:MM:SS" }
+        result_time: { type: [string, "null"], description: "H:MM:SS" }
+        url: { type: [string, "null"], format: uri }
+        results_url: { type: [string, "null"], format: uri }
+        activity:
+          type: [object, "null"]
+          description: >
+            The linked activity's headline numbers only - the activity itself stays
+            private unless separately shared. Null when no activity is linked.
+          properties:
+            avg_hr: { type: [integer, "null"] }
+            avg_power: { type: [integer, "null"] }
+            avg_air_temp: { type: [number, "null"] }
+            avg_humidity: { type: [integer, "null"] }
+        course:
+          type: [object, "null"]
+          description: >
+            The linked course's shape and elevation - nothing about who made it or their
+            other races on it. Null when no course is linked. Fields as on Course.
+          properties:
+            name: { type: string }
+            location_name: { type: string }
+            distance_km: { type: [number, "null"] }
+            elevation_gain_m: { type: [integer, "null"] }
+            elevation_loss_m: { type: [integer, "null"] }
+            elevation_max_m: { type: [integer, "null"] }
+            elevation_min_m: { type: [integer, "null"] }
+            is_loop: { type: boolean }
+            route_polyline: { type: array, items: { type: array, items: { type: number } } }
+            elevation_profile: { type: array, items: { type: array, items: { type: number } } }
+            elevation_quality: { type: string }
+            sections: { type: array, items: { type: object } }
 
     RaceComment:
       type: object

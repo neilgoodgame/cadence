@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getPublicRaceSplits } from "../../api/public";
 import { getRaceSplits } from "../../api/races";
 import type { Course, SplitsMode } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
@@ -35,19 +36,32 @@ function DeltaBar({ delta, maxDelta = MAX_DELTA }: { delta: number | null; maxDe
 /** README §4.2.6 "Splits" card - shown for a past run race with a result. `course` is the
  * same course RaceDetailScreen already fetches for CourseCard - reused here (no extra query)
  * to decide whether the course has elevation sections worth offering as a splits view. */
-export function SplitsCard({ raceId, distanceKm, course }: { raceId: string; distanceKm: number | null; course: Course | null }) {
+export function SplitsCard({
+  raceId,
+  distanceKm,
+  course,
+  publicView = false,
+}: {
+  raceId: string;
+  distanceKm: number | null;
+  course: Pick<Course, "elevation_quality" | "sections"> | null;
+  /** Reads the unauthenticated public-race splits endpoint instead (see PublicRaceScreen). */
+  publicView?: boolean;
+}) {
+  const fetchSplits = publicView ? getPublicRaceSplits : getRaceSplits;
+  const keyPrefix = publicView ? "public-race-splits" : "race-splits";
   // null until the athlete picks a mode themselves - until then the effective mode is derived
   // from the laps probe below (laps if available, else the distance-based fallback), with no
   // setState-in-effect needed to "apply" that default.
   const [userMode, setUserMode] = useState<SplitsMode | null>(null);
 
-  const lapsProbe = useQuery({ queryKey: ["race-splits", raceId, "laps"], queryFn: () => getRaceSplits(raceId, "laps") });
+  const lapsProbe = useQuery({ queryKey: [keyPrefix, raceId, "laps"], queryFn: () => fetchSplits(raceId, "laps") });
   const hasLaps = lapsProbe.data?.has_laps ?? true;
   const activeMode = userMode ?? (lapsProbe.data ? defaultSplitsMode(lapsProbe.data.has_laps, distanceKm) : "laps");
 
   const activeQuery = useQuery({
-    queryKey: ["race-splits", raceId, activeMode],
-    queryFn: () => getRaceSplits(raceId, activeMode),
+    queryKey: [keyPrefix, raceId, activeMode],
+    queryFn: () => fetchSplits(raceId, activeMode),
     enabled: !!lapsProbe.data,
   });
 

@@ -21,5 +21,7 @@ public record RaceResponse(
 		LocalDate blockStart,
 		Integer blockWeeks,
 		String keySessionTagId,
-		Integer targetPower
+		Integer targetPower,
+		// Readable without authentication via /v1/public/races/{id} when true.
+		boolean isPublic
 ) {}

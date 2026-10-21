@@ -43,6 +43,9 @@ class Race(PrefixedIDModel):
     url = models.URLField(null=True, blank=True)  # noqa: DJ001 -- API contract uses null, not ""
     results_url = models.URLField(null=True, blank=True)  # noqa: DJ001 -- link to athlete's result page
     notes = models.CharField(max_length=500, blank=True, default="")
+    # Opt-in by the owner: a public race's result, splits, course and weather are served
+    # unauthenticated under /v1/public/races/<id> (see races.views.PublicRace*View).
+    is_public = models.BooleanField(default=False)
     # Overrides the athlete-wide "Key session" tag lookup for this race's key_sessions "tagged"
     # category (races.blocks.key_sessions) - lets different goal races use different tags instead
     # of sharing the one global tag name. Null falls back to that default.

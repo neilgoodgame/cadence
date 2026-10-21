@@ -16,12 +16,15 @@ export function GoalResultCard({
   predictionS,
   halves,
   activity,
+  readOnly = false,
 }: {
-  race: Race;
+  race: Pick<Race, "id" | "distance_km" | "goal_time" | "result_time">;
   pbS: number | null;
   predictionS: number | null;
   halves: RaceSplitsHalves | null;
-  activity: Activity | null;
+  activity: Pick<Activity, "avg_hr" | "avg_power" | "avg_air_temp" | "avg_humidity"> | null;
+  /** Hides the goal-edit controls (public view). */
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -71,12 +74,14 @@ export function GoalResultCard({
             Predicted: <span className="mono" style={{ fontWeight: 700 }}>{formatDuration(predictionS)}</span>
           </div>
         )}
-        <button
-          onClick={() => setEditing(true)}
-          style={{ marginTop: 12, border: "1px solid var(--line)", background: "none", borderRadius: 8, fontSize: 12.5, fontWeight: 600, padding: "5px 12px", cursor: "pointer", color: "var(--ink2)" }}
-        >
-          {goalS != null ? "Edit" : "Set goal"}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => setEditing(true)}
+            style={{ marginTop: 12, border: "1px solid var(--line)", background: "none", borderRadius: 8, fontSize: 12.5, fontWeight: 600, padding: "5px 12px", cursor: "pointer", color: "var(--ink2)" }}
+          >
+            {goalS != null ? "Edit" : "Set goal"}
+          </button>
+        )}
       </div>
     );
   }
@@ -124,12 +129,14 @@ export function GoalResultCard({
 
       <div style={{ fontSize: 12.5, color: "var(--ink3)", marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
         Goal {goalS != null ? formatDuration(goalS) : "–"}
-        <button
-          onClick={() => setEditing(true)}
-          style={{ border: "none", background: "none", color: "var(--ember)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0 }}
-        >
-          Edit
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => setEditing(true)}
+            style={{ border: "none", background: "none", color: "var(--ember)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0 }}
+          >
+            Edit
+          </button>
+        )}
       </div>
 
       {predictionS != null && (

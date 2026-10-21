@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { deleteRace } from "../../api/races";
+import { publicRaceUrl } from "../../api/public";
+import { deleteRace, updateRace } from "../../api/races";
 import type { Race, RacePriority } from "../../api/types";
+import { ShareButtons } from "../../components/ShareButtons";
 import { daysUntil } from "../../lib/dates";
 
 const PRIORITY_STYLE: Record<RacePriority, React.CSSProperties> = {
@@ -34,6 +36,11 @@ export function Header({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+
+  const visibilityMutation = useMutation({
+    mutationFn: (isPublic: boolean) => updateRace(race.id, { is_public: isPublic }),
+    onSuccess: (updated) => queryClient.setQueryData(["race", race.id], updated),
+  });
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteRace(race.id),
@@ -69,6 +76,14 @@ export function Header({
           {race.priority}
         </span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <ShareButtons
+            noun="race"
+            isPublic={race.is_public}
+            publicUrl={publicRaceUrl(race.id)}
+            setPublic={visibilityMutation.mutateAsync}
+            pending={visibilityMutation.isPending}
+            failed={visibilityMutation.isError}
+          />
           <button
             onClick={onDownloadReport}
             disabled={downloadingReport}

@@ -3,11 +3,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RouteMap } from "../../components/RouteMap";
 import { downloadCourseGpxUrl, recomputeCourseElevation } from "../../api/courses";
 import { updateRace } from "../../api/races";
-import type { Course, Race } from "../../api/types";
+import type { Course, PublicRaceCourse, Race } from "../../api/types";
 import { SectionsDetail } from "../../components/SectionsDetail";
 import { LinkCourseDialog } from "./LinkCourseDialog";
 
-function statGrid(course: Course) {
+function statGrid(course: PublicRaceCourse) {
   const climbPerKm = course.distance_km && course.elevation_gain_m != null ? course.elevation_gain_m / course.distance_km : null;
   const cells: { label: string; value: string }[] = [
     { label: "Distance", value: course.distance_km != null ? `${course.distance_km.toFixed(1)} km` : "–" },
@@ -59,10 +59,38 @@ function ElevationNotice({ course }: { course: Course }) {
   );
 }
 
-function ElevationProfile({ course }: { course: Course }) {
+function ElevationProfile({ course }: { course: PublicRaceCourse }) {
   return (
     <div style={{ marginTop: 16 }}>
       <SectionsDetail profile={course.elevation_profile} sections={course.sections} />
+    </div>
+  );
+}
+
+function CourseRouteMap({ course }: { course: PublicRaceCourse }) {
+  if (course.route_polyline.length <= 1) return null;
+  return (
+    <div style={{ marginTop: 14 }}>
+      <RouteMap
+        coordinates={course.route_polyline.map(([lat, lng]) => [lng, lat])}
+        height={260}
+        startFinishLoop={course.is_loop}
+        kmMarkers
+      />
+    </div>
+  );
+}
+
+/** Read-only course overview for the public race page - the map, stats and elevation profile,
+ * without CourseCard's owner controls (GPX download, change/unlink, elevation rebuild). */
+export function PublicCourseCard({ course }: { course: PublicRaceCourse }) {
+  return (
+    <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
+      <div style={{ fontSize: 16, fontWeight: 700 }}>{course.name}</div>
+      {course.location_name && <div style={{ fontSize: 12.5, color: "var(--ink3)" }}>{course.location_name}</div>}
+      <CourseRouteMap course={course} />
+      {statGrid(course)}
+      {course.elevation_quality === "ok" && <ElevationProfile course={course} />}
     </div>
   );
 }
@@ -180,16 +208,7 @@ export function CourseCard({ race, course }: { race: Race; course: Course | null
         </div>
       )}
 
-      {course.route_polyline.length > 1 && (
-        <div style={{ marginTop: 14 }}>
-          <RouteMap
-            coordinates={course.route_polyline.map(([lat, lng]) => [lng, lat])}
-            height={260}
-            startFinishLoop={course.is_loop}
-            kmMarkers
-          />
-        </div>
-      )}
+      <CourseRouteMap course={course} />
 
       {statGrid(course)}
       <ElevationProfile course={course} />
