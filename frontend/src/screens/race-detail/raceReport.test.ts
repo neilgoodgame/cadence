@@ -47,6 +47,7 @@ function block(overrides: Partial<RaceBlock> = {}): RaceBlock {
         run_count: 5,
         run_avg_pace_s_per_km: 322,
         run_long_km: 16,
+        run_long_pace_s_per_km: 345,
         run_tss: 300,
         ride_km: null,
         ride_moving_s: null,

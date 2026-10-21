@@ -429,6 +429,26 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 		assertThat(week.rideTss()).isEqualTo(120);
 	}
 
+	@Test
+	void runLongPaceIsTheLongestRunsOwnPace() {
+		User athlete = newAthlete("block-long-run-pace@example.cc");
+		Race race = newRace(athlete, "Spring Marathon", LocalDate.of(2026, 3, 1), RacePriority.A);
+		race.setSport(Sport.RUN);
+		raceRepository.save(race);
+
+		// Shorter run, faster pace - shouldn't win "long".
+		saveRun(athlete, 8.0, 2400, "2026-02-17T07:00:00Z");
+		// The week's actual long run, at a slower pace.
+		saveRun(athlete, 20.0, 7200, "2026-02-18T07:00:00Z");
+
+		RaceBlockResponse result = raceBlockService.getRaceBlock(race);
+		RaceBlockResponse.WeekAggregate week = result.weeks().stream()
+				.filter(w -> w.weekStart().equals(LocalDate.of(2026, 2, 16))).findFirst().orElseThrow();
+
+		assertThat(week.runLongKm()).isEqualTo(20.0);
+		assertThat(week.runLongPaceSPerKm()).isEqualTo(360.0); // 7200s / 20km
+	}
+
 	private void saveActivity(User athlete, Sport sport, int tss, String startDate) {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
@@ -438,6 +458,18 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 		activity.setDistanceKm(10.0);
 		activity.setMovingTime(3600);
 		activity.setTss(tss);
+		activityRepository.save(activity);
+	}
+
+	private void saveRun(User athlete, double distanceKm, int movingTime, String startDate) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("Run");
+		activity.setStartDate(Instant.parse(startDate));
+		activity.setDistanceKm(distanceKm);
+		activity.setMovingTime(movingTime);
+		activity.setTss(0);
 		activityRepository.save(activity);
 	}
 }

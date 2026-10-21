@@ -30,7 +30,10 @@ public record RaceBlockResponse(
 			LocalDate weekStart, Integer tss, Integer tssRaces, Double runKm, Integer runMovingS, Integer runCount,
 			@JsonProperty("run_avg_pace_s_per_km") Double runAvgPaceSPerKm, Double runLongKm, Integer runTss, Double rideKm, Integer rideMovingS,
 			Integer rideCount, Integer rideAvgPowerW, Double rideLongKm, Integer rideTss, Double hours, Integer sessions, Double ctl, Double atl,
-			boolean planned, List<WeekRace> races) {}
+			boolean planned, List<WeekRace> races,
+			// Appended at the end rather than next to runLongKm (see backend_java/CLAUDE.md's
+			// record-DTO gotcha) - the longest non-race run's own pace, null if there wasn't one.
+			@JsonProperty("run_long_pace_s_per_km") Double runLongPaceSPerKm) {}
 
 	public record RaceDayForm(double ctl, Double atl, Double tsb, String band, boolean projected, boolean insufficientData) {}
 

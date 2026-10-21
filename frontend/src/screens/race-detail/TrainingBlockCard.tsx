@@ -421,7 +421,14 @@ export function TrainingBlockCard({
                 <div style={num()}>{week.run_moving_s != null && !none ? hm(week.run_moving_s) : dash}</div>
                 <div style={num()}>{week.run_count ?? dash}</div>
                 <div style={num()}>{week.run_avg_pace_s_per_km != null ? formatPace(week.run_avg_pace_s_per_km).replace(" /km", "") : dash}</div>
-                <div style={num()}>{week.run_long_km?.toFixed(1) ?? dash}</div>
+                <div style={num()}>
+                  {week.run_long_km?.toFixed(1) ?? dash}
+                  {week.run_long_pace_s_per_km != null && (
+                    <div style={{ fontSize: 10, color: "var(--ink3)", fontWeight: 500 }}>
+                      {formatPace(week.run_long_pace_s_per_km).replace(" /km", "")}
+                    </div>
+                  )}
+                </div>
                 <div style={num()}>{week.ride_moving_s ? hm(week.ride_moving_s) : dash}</div>
                 <div style={num()}>{week.ride_count || dash}</div>
                 <div style={num()}>{week.ride_avg_power_w != null ? `${week.ride_avg_power_w} W` : dash}</div>

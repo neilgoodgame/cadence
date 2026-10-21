@@ -12,6 +12,7 @@ function week(overrides: Partial<RaceBlockWeek> = {}): RaceBlockWeek {
     run_count: 4,
     run_avg_pace_s_per_km: 360,
     run_long_km: 20,
+    run_long_pace_s_per_km: 330,
     run_tss: 100,
     ride_km: null,
     ride_moving_s: null,

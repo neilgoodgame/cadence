@@ -1120,6 +1120,8 @@ export interface RaceBlockWeek {
   run_count: number | null;
   run_avg_pace_s_per_km: number | null;
   run_long_km: number | null;
+  /** That longest non-race run's own average pace. */
+  run_long_pace_s_per_km: number | null;
   run_tss: number | null;
   ride_km: number | null;
   ride_moving_s: number | null;

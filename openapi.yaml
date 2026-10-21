@@ -2783,6 +2783,7 @@ paths:
                         run_count: { type: [integer, "null"] }
                         run_avg_pace_s_per_km: { type: [number, "null"] }
                         run_long_km: { type: [number, "null"], description: Longest non-race run that week. }
+                        run_long_pace_s_per_km: { type: [number, "null"], description: That longest run's own average pace. }
                         run_tss: { type: [integer, "null"], description: TSS from runs only (part of tss). }
                         ride_km: { type: [number, "null"] }
                         ride_moving_s: { type: [integer, "null"] }
