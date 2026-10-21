@@ -227,6 +227,48 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void blockWeeksRequestedExceedingTheWeeksUntilTheRaceIsRejected() {
+		User athlete = newUser("races-block-plan-weeks-tight@example.cc");
+		authAsSelf(athlete.getId());
+		String raceDate = LocalDate.now().plusWeeks(3).toString();
+
+		assertThatThrownBy(() -> raceController.createRace(new RaceCreateRequest(
+				"Tight Race", raceDate, "run", null, null, null, null, null, null, null, null, null, null,
+				null, 6, 2, 2, 1, 1)))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void blockWeeksRequestedThatFitsBeforeTheRaceIsAccepted() {
+		User athlete = newUser("races-block-plan-weeks-fit@example.cc");
+		authAsSelf(athlete.getId());
+		String raceDate = LocalDate.now().plusWeeks(10).toString();
+
+		RaceResponse response = raceController.createRace(new RaceCreateRequest(
+				"Comfortable Race", raceDate, "run", null, null, null, null, null, null, null, null, null, null,
+				null, 6, 2, 2, 1, 1));
+
+		assertThat(response.blockWeeksRequested()).isEqualTo(6);
+	}
+
+	@Test
+	void updatingAnUnrelatedFieldDoesNotRetriggerTheWeeksCheck() {
+		User athlete = newUser("races-block-plan-weeks-norecheck@example.cc");
+		authAsSelf(athlete.getId());
+		String raceDate = LocalDate.now().plusWeeks(10).toString();
+
+		RaceResponse created = raceController.createRace(new RaceCreateRequest(
+				"Comfortable Race", raceDate, "run", null, null, null, null, null, null, null, null, null, null,
+				null, 6, 2, 2, 1, 1));
+
+		RaceResponse updated = raceController.updateRace(created.id(), new RaceUpdateRequest(
+				null, null, null, null, null, null, null, null, null, "Just a note.", null, null, null, null,
+				null, null, null, null, null, null));
+
+		assertThat(updated.notes()).isEqualTo("Just a note.");
+	}
+
+	@Test
 	void getRaceReturnsRaceForOwner() {
 		User athlete = newUser("races-get-owner@example.cc");
 		Race race = new Race();

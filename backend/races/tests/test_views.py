@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from django.test import TestCase
 
@@ -169,6 +169,68 @@ class RaceCrudTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_block_weeks_requested_exceeding_the_weeks_until_the_race_is_rejected(self):
+        race_date = date.today() + timedelta(weeks=3)
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {
+                "name": "Tight Race",
+                "date": race_date.isoformat(),
+                "sport": "run",
+                "block_weeks_requested": 6,
+                "base_weeks_requested": 2,
+                "build_weeks_requested": 2,
+                "peak_weeks_requested": 1,
+                "taper_weeks_requested": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_block_weeks_requested_that_fits_before_the_race_is_accepted(self):
+        race_date = date.today() + timedelta(weeks=10)
+        response = _bearer_client(self.athlete).post(
+            "/v1/races",
+            {
+                "name": "Comfortable Race",
+                "date": race_date.isoformat(),
+                "sport": "run",
+                "block_weeks_requested": 6,
+                "base_weeks_requested": 2,
+                "build_weeks_requested": 2,
+                "peak_weeks_requested": 1,
+                "taper_weeks_requested": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+    def test_updating_an_unrelated_field_does_not_retrigger_the_weeks_check(self):
+        race_date = date.today() + timedelta(weeks=10)
+        created = (
+            _bearer_client(self.athlete)
+            .post(
+                "/v1/races",
+                {
+                    "name": "Comfortable Race",
+                    "date": race_date.isoformat(),
+                    "sport": "run",
+                    "block_weeks_requested": 6,
+                    "base_weeks_requested": 2,
+                    "build_weeks_requested": 2,
+                    "peak_weeks_requested": 1,
+                    "taper_weeks_requested": 1,
+                },
+                format="json",
+            )
+            .json()
+        )
+
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/races/{created['id']}", {"notes": "Just a note."}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
 
 
 class RaceBlockAndSplitsViewTests(TestCase):

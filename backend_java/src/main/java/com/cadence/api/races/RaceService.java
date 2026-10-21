@@ -72,6 +72,7 @@ public class RaceService {
 		race.setPeakWeeksRequested(req.peakWeeksRequested());
 		race.setTaperWeeksRequested(req.taperWeeksRequested());
 		validateBlockPlan(race);
+		validateSufficientWeeksRemain(req.blockWeeksRequested(), race.getDate());
 		return raceRepository.save(race);
 	}
 
@@ -98,6 +99,7 @@ public class RaceService {
 		if (req.peakWeeksRequested() != null) race.setPeakWeeksRequested(req.peakWeeksRequested());
 		if (req.taperWeeksRequested() != null) race.setTaperWeeksRequested(req.taperWeeksRequested());
 		validateBlockPlan(race);
+		validateSufficientWeeksRemain(req.blockWeeksRequested(), race.getDate());
 		return raceRepository.save(race);
 	}
 
@@ -149,6 +151,33 @@ public class RaceService {
 						"baseWeeksRequested");
 			}
 		}
+	}
+
+	/** Only checked against the *raw* request value (not the race's post-merge state, unlike
+	 * validateBlockPlan above) - so it only fires when blockWeeksRequested is actually being
+	 * set/changed by *this* request, not on every subsequent unrelated edit to an older race
+	 * whose plan no longer fits as "today" marches forward. */
+	private void validateSufficientWeeksRemain(Integer requestedBlockWeeks, LocalDate raceDate) {
+		if (requestedBlockWeeks == null) return;
+		Integer weeksUntil = weeksUntil(raceDate);
+		if (weeksUntil != null && requestedBlockWeeks > weeksUntil) {
+			throw new ValidationException(
+					"Only " + weeksUntil + " week(s) remain before this race - blockWeeksRequested must be "
+							+ weeksUntil + " or fewer.",
+					"blockWeeksRequested");
+		}
+	}
+
+	/** Calendar weeks between this week (today's own Monday) and the race's week, inclusive -
+	 * null if the race is today or already in the past, where "how many weeks of runway are
+	 * left" isn't a meaningful question. Monday-aligned the same way RaceBlockService's own
+	 * weekStart is, so this lines up with what GET /v1/races/{id}/block will actually show. */
+	private static Integer weeksUntil(LocalDate raceDate) {
+		LocalDate today = LocalDate.now();
+		if (!raceDate.isAfter(today)) return null;
+		LocalDate raceWeek = raceDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		LocalDate thisWeek = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		return (int) (java.time.temporal.ChronoUnit.DAYS.between(thisWeek, raceWeek) / 7) + 1;
 	}
 
 	@Transactional

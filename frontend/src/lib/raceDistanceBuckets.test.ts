@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { defaultPhaseWeeks, matchDistanceBucket } from "./raceDistanceBuckets";
+import { defaultPhaseWeeks, matchDistanceBucket, weeksUntilRace } from "./raceDistanceBuckets";
+
+function isoDaysFromNow(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
 describe("matchDistanceBucket", () => {
   it("matches exact standard distances", () => {
@@ -43,5 +49,28 @@ describe("defaultPhaseWeeks", () => {
 
   it("always gives peak at least one week", () => {
     expect(defaultPhaseWeeks(4).peak).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("weeksUntilRace", () => {
+  it("returns null for a race today or in the past", () => {
+    expect(weeksUntilRace(isoDaysFromNow(0))).toBeNull();
+    expect(weeksUntilRace(isoDaysFromNow(-10))).toBeNull();
+  });
+
+  it("counts whole weeks between this week and the race's week, inclusive", () => {
+    // 10 weeks out should always read as (at least) 10 - the exact day-of-week offset within
+    // the current week can push it to 11 depending on what day "today" falls on, but never less.
+    const weeks = weeksUntilRace(isoDaysFromNow(70));
+    expect(weeks).not.toBeNull();
+    expect(weeks).toBeGreaterThanOrEqual(10);
+    expect(weeks).toBeLessThanOrEqual(11);
+  });
+
+  it("a race later this same week still counts as 1 week remaining", () => {
+    // Tomorrow is always in "this week or next" - never more than 1 week of calendar gap.
+    const weeks = weeksUntilRace(isoDaysFromNow(1));
+    expect(weeks).toBeGreaterThanOrEqual(1);
+    expect(weeks).toBeLessThanOrEqual(2);
   });
 });

@@ -3,9 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listTags } from "../../api/activities";
 import { listCourses } from "../../api/courses";
 import { updateRace } from "../../api/races";
-import type { Race, RacePriority } from "../../api/types";
+import { ApiError, type Race, type RacePriority } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
-import { defaultPhaseWeeks, matchDistanceBucket } from "../../lib/raceDistanceBuckets";
+import { defaultPhaseWeeks, matchDistanceBucket, weeksUntilRace } from "../../lib/raceDistanceBuckets";
 
 interface BlockPlan {
   block: string;
@@ -81,7 +81,10 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
 
   const blockWeeksN = parseInt(blockWeeks, 10) || 0;
   const phaseSum = [baseWeeks, buildWeeks, peakWeeks, taperWeeks].reduce((sum, w) => sum + (parseInt(w, 10) || 0), 0);
-  const blockPlanValid = priority !== "A" || blockWeeksN === phaseSum;
+  const phaseSumValid = priority !== "A" || blockWeeksN === phaseSum;
+  const weeksUntil = weeksUntilRace(date);
+  const weeksRemainValid = priority !== "A" || weeksUntil === null || blockWeeksN <= weeksUntil;
+  const blockPlanValid = phaseSumValid && weeksRemainValid;
 
   function editPlan(field: keyof BlockPlan, value: string) {
     setManualPlan({ block: blockWeeks, base: baseWeeks, build: buildWeeks, peak: peakWeeks, taper: taperWeeks, [field]: value });
@@ -213,9 +216,15 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
                 </label>
               ))}
             </div>
-            {!blockPlanValid && (
+            {!phaseSumValid && (
               <div style={{ fontSize: 11.5, color: "#e0442e", marginTop: 6 }}>
                 Base+Build+Peak+Taper ({phaseSum}) must equal the block length ({blockWeeksN}).
+              </div>
+            )}
+            {phaseSumValid && !weeksRemainValid && (
+              <div style={{ fontSize: 11.5, color: "#e0442e", marginTop: 6 }}>
+                Only {weeksUntil} week{weeksUntil === 1 ? "" : "s"} remain before this race - the block length must
+                be {weeksUntil} or fewer.
               </div>
             )}
           </div>
@@ -269,6 +278,12 @@ export function EditRaceModal({ race, onClose }: { race: Race; onClose: () => vo
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Notes (optional)</div>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} style={fieldStyle} />
         </label>
+
+        {mutation.isError && (
+          <div style={{ fontSize: 12.5, color: "#e0442e" }}>
+            {mutation.error instanceof ApiError ? mutation.error.message : "Something went wrong. Try again."}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
           <button onClick={onClose} style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, padding: "8px 16px", cursor: "pointer" }}>

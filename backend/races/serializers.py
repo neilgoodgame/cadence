@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from courses.elevation import ensure_elevation_series
@@ -7,6 +10,19 @@ from .models import Race, RaceComment
 
 PHASE_WEEKS_FIELDS = ("base_weeks_requested", "build_weeks_requested", "peak_weeks_requested", "taper_weeks_requested")
 MAX_BLOCK_PLAN_WEEKS = 52
+
+
+def _weeks_until(race_date: date) -> int | None:
+    """Calendar weeks between this week (today's own Monday) and the race's week, inclusive -
+    None if the race is today or already in the past, where "how many weeks of runway are
+    left" isn't a meaningful question. Monday-aligned the same way blocks.py's own
+    _week_start is, so this lines up with what GET /v1/races/{id}/block will actually show."""
+    today = timezone.now().date()
+    if race_date <= today:
+        return None
+    race_week = race_date - timedelta(days=race_date.weekday())
+    this_week = today - timedelta(days=today.weekday())
+    return (race_week - this_week).days // 7 + 1
 
 
 def _validate_block_plan(attrs: dict, instance: Race | None) -> None:
@@ -56,6 +72,23 @@ def _validate_block_plan(attrs: dict, instance: Race | None) -> None:
                 {
                     "base_weeks_requested": (
                         f"base+build+peak+taper ({total}) must equal block_weeks_requested ({block_weeks})."
+                    )
+                }
+            )
+
+    # Only checked when block_weeks_requested is actually being set/changed by *this* request,
+    # not on every subsequent unrelated edit to an older race whose plan no longer fits as
+    # "today" marches forward - re-flagging an edit to, say, the race's notes because the
+    # calendar got tighter since the plan was set would be a bad surprise.
+    if "block_weeks_requested" in attrs and attrs["block_weeks_requested"] is not None:
+        race_date = attrs.get("date", instance.date if instance is not None else None)
+        weeks_until = _weeks_until(race_date) if race_date is not None else None
+        if weeks_until is not None and attrs["block_weeks_requested"] > weeks_until:
+            raise serializers.ValidationError(
+                {
+                    "block_weeks_requested": (
+                        f"Only {weeks_until} week(s) remain before this race - block_weeks_requested "
+                        f"must be {weeks_until} or fewer."
                     )
                 }
             )

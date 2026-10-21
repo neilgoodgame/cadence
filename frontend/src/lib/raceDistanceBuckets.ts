@@ -57,3 +57,26 @@ export function defaultPhaseWeeks(blockWeeks: number): PhaseWeeks {
   const taper = blockWeeks - base - build - peak;
   return { base, build, peak, taper };
 }
+
+function mondayOf(d: Date): Date {
+  const copy = new Date(d);
+  const daysSinceMonday = (copy.getDay() + 6) % 7; // getDay(): 0=Sun..6=Sat
+  copy.setDate(copy.getDate() - daysSinceMonday);
+  return copy;
+}
+
+/** Calendar weeks between this week (today's own Monday) and the race's week, inclusive -
+ * null if the race is today or already in the past, where "how many weeks of runway are
+ * left" isn't a meaningful question. Mirrors the backend's own check (races/serializers.py's
+ * _weeks_until / RaceService.weeksUntil) so the form can flag an unreachable
+ * block_weeks_requested before the athlete ever submits it. */
+export function weeksUntilRace(raceDateIso: string): number | null {
+  const raceDate = new Date(raceDateIso + "T00:00:00");
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (raceDate <= today) return null;
+  const raceWeek = mondayOf(raceDate);
+  const thisWeek = mondayOf(today);
+  const days = Math.round((raceWeek.getTime() - thisWeek.getTime()) / 86_400_000);
+  return Math.floor(days / 7) + 1;
+}
