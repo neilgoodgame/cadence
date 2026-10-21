@@ -279,6 +279,48 @@ Approximate downtime: 10 to 30 minutes, dominated by the dump/restore.
    Route 53 zone if still in use. Remember the CloudFront ACM validation
    records and the SES DKIM records live in Route 53 and must survive.
 
+## Variant: keep the frontend on AWS (hybrid)
+
+Instead of serving the SPA from the VM, leave it on S3 + CloudFront and move
+only the API and Postgres. This is the lower-risk, incremental option, and it
+costs about $1 to 2 a month more (S3, CloudFront, Route 53 at light traffic,
+per `../EC2_BACKEND_SKETCH.md`).
+
+What stays unchanged:
+- `infra/scripts/deploy-frontend.sh` (S3 sync + CloudFront invalidation).
+- The `frontend`, `acm` and Route 53 Terraform modules.
+- `VITE_API_BASE_URL` and `CORS_ALLOWED_ORIGINS`; the app already uses
+  separate `cadence.` and `api.` hostnames.
+
+What changes versus the all-on-VM design above:
+- Drop the `cadence.bioinform.co.uk` block from the Caddyfile, the `./www`
+  mount and the `www/` directory, and the frontend rsync step.
+- Caddy serves only the API hostname. Keep its automatic Let's Encrypt
+  certificate: CloudFront needs a valid certificate on the origin.
+- Choose how `api.` reaches the VM:
+  1. **Keep CloudFront in front of the API** (today's shape). Repoint the
+     `api_cdn` module's origin from the EC2 host to the VM, using the
+     existing `backend_origin` record in Route 53 (an A record pointing at
+     the VM, on a hostname distinct from the public `api.` one). The VM's IP
+     stays out of public DNS and SSE streaming works as it does now
+     (`CachingDisabled`). Restrict the VM firewall's 80/443 to CloudFront's
+     managed prefix list if the provider supports it (Hetzner, Vultr and
+     Scaleway firewalls take IP lists; the list changes, so script the
+     update or skip the restriction).
+  2. **Skip CloudFront for the API.** Point the `api.` A record straight at
+     the VM. Simpler and cheaper, but the VM's IP is public and you lose the
+     CDN's connection buffering.
+- Migration step 7 changes: DNS cutover only touches `api.` (or the
+  CloudFront origin), and `cadence.` is left alone, so the frontend has no
+  downtime and no rollback step of its own.
+- Rollback is easier: the frontend never moves, so only the API origin has to
+  be pointed back at EC2.
+
+Trade-offs: AWS stays in the stack (Terraform state, a second bill, an
+account to keep secure); the SPA gets a global CDN; the frontend remains up
+during a VM outage, showing API errors rather than nothing. Net cost is
+about $1 to 2 a month on top of any provider total in `COMPARISON.md`.
+
 ## Not covered / open items
 
 - Terraform for the VM. Hetzner, Scaleway and Vultr have official providers

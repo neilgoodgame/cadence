@@ -93,6 +93,18 @@ The deciding questions, in order:
 2. Is Hetzner's cheap plan orderable today? If yes: choose it.
 3. Do you want Terraform-managed infrastructure? Rules out OVH.
 
+## Variant: frontend stays on AWS
+
+Any provider above can be combined with keeping the SPA on S3 + CloudFront
+(see "Variant: keep the frontend on AWS" in `COMMON.md`). Add about $1 to 2 a
+month: Hetzner roughly €7 to 9, OVH €11 to 12, Scaleway €16 to 20, Vultr
+about $21 to 22 (which breaks the $20 ceiling). It keeps `deploy-frontend.sh`
+and the frontend Terraform modules, gives a global CDN and keeps the site up
+during a VM outage, and makes rollback trivial. It costs you a permanent
+AWS footprint. It is the better first step if you want to migrate in two
+stages; the all-on-VM design is the better end state if you want a single
+provider and the lowest price.
+
 ## What these all share (and what none solve)
 
 - One host is one failure domain: a provider hardware fault or a reboot
