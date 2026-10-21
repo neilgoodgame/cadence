@@ -613,16 +613,24 @@ def get_race_block(race: Race) -> dict[str, Any]:
         parent = None
     else:
         race_week = _week_start(race.date)
-        start_week, end_week, n_weeks = race_week - timedelta(weeks=2), race_week + timedelta(weeks=2), 5
         phase_list = []
-        weeks_requested = 5
-        truncated_by_race_id = None
         parent_race = find_parent_a_race(race, block_weeks_pref)
         parent = None
         if parent_race:
+            # Leading into the race, not centred on it: a B/C race that falls inside an
+            # upcoming A race's block is a step on the way there, so its own window starts
+            # where that block starts and ends at the race itself (its final week) rather
+            # than running 2 weeks past it into what's really the parent block's taper.
             parent_block = a_race_block_range(parent_race, block_weeks_pref)
-            week_num = (race_week - parent_block["start_week"]).days // 7 + 1
-            parent = {"race_id": parent_race.id, "week": week_num, "of": parent_block["weeks"]}
+            start_week, end_week = parent_block["start_week"], race_week
+            n_weeks = (race_week - start_week).days // 7 + 1
+            weeks_requested = n_weeks
+            truncated_by_race_id = parent_block["truncated_by_race_id"]
+            parent = {"race_id": parent_race.id, "week": n_weeks, "of": parent_block["weeks"]}
+        else:
+            start_week, end_week, n_weeks = race_week - timedelta(weeks=2), race_week + timedelta(weeks=2), 5
+            weeks_requested = 5
+            truncated_by_race_id = None
 
     week_bounds = _week_bounds(start_week, n_weeks)
     weekly = [_weekly_aggregate(athlete.id, ws, we, today) for ws, we in week_bounds]

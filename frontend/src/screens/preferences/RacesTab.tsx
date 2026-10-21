@@ -51,8 +51,8 @@ export function RacesTab() {
       <div>
         <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>Training block length</h3>
         <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 10 }}>
-          How many weeks an A race's training block covers. B and C races always use a fixed 5-week window around the
-          race itself.
+          How many weeks an A race's training block covers. A standalone B or C race uses a fixed 5-week window
+          around itself; one leading into an upcoming A race's block shares that block's start instead.
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {BLOCK_WEEKS.map((n) => (

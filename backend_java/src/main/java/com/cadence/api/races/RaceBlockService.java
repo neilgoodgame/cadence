@@ -615,17 +615,27 @@ public class RaceBlockService {
 		}
 		else {
 			LocalDate raceWeek = weekStart(race.getDate());
-			startWeek = raceWeek.minusWeeks(2);
-			endWeek = raceWeek.plusWeeks(2);
-			nWeeks = 5;
 			phaseList = List.of();
-			weeksRequested = 5;
-			truncatedByRaceId = null;
 			Race parentRace = findParentARace(race, blockWeeksPref);
 			if (parentRace != null) {
+				// Leading into the race, not centred on it: a B/C race that falls inside an
+				// upcoming A race's block is a step on the way there, so its own window starts
+				// where that block starts and ends at the race itself (its final week) rather
+				// than running 2 weeks past it into what's really the parent block's taper.
 				BlockRange parentBlock = aRaceBlockRange(parentRace, blockWeeksPref);
-				int weekNum = (int) (java.time.temporal.ChronoUnit.DAYS.between(parentBlock.startWeek(), raceWeek) / 7) + 1;
-				parent = new RaceBlockResponse.Parent(parentRace.getId(), weekNum, parentBlock.weeks());
+				startWeek = parentBlock.startWeek();
+				endWeek = raceWeek;
+				nWeeks = (int) (java.time.temporal.ChronoUnit.DAYS.between(startWeek, raceWeek) / 7) + 1;
+				weeksRequested = nWeeks;
+				truncatedByRaceId = parentBlock.truncatedByRaceId();
+				parent = new RaceBlockResponse.Parent(parentRace.getId(), nWeeks, parentBlock.weeks());
+			}
+			else {
+				startWeek = raceWeek.minusWeeks(2);
+				endWeek = raceWeek.plusWeeks(2);
+				nWeeks = 5;
+				weeksRequested = 5;
+				truncatedByRaceId = null;
 			}
 		}
 
