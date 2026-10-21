@@ -89,14 +89,17 @@ function WorkoutEditorForm({
   const count = stepCount(steps);
   const selected = findStep(steps, selectedId);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["workouts"] });
+  const invalidate = (workoutId: string) => {
+    queryClient.invalidateQueries({ queryKey: ["workouts"] });
+    queryClient.invalidateQueries({ queryKey: ["workout", workoutId] });
+  };
   const saveMutation = useMutation({
     mutationFn: () => {
       const input: WorkoutInput = { name, sport, steps: stripIds(steps) };
       return effectiveIsNew ? createWorkout(input) : updateWorkout(currentId!, input);
     },
     onSuccess: (workout) => {
-      invalidate();
+      invalidate(workout.id);
       setCurrentId(workout.id);
       onDone();
     },
