@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+  input.cad,input.cadt{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
+  input.cad{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
+  input.cadt{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
+  input.cad:focus,input.cadt:focus{border-color:var(--ember,#ec4a26);}
+  input.cad::placeholder,input.cadt::placeholder{color:var(--ink3,#9a958d);font-weight:400;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+  <!-- ============ SIDEBAR (AppShell.tsx) ============ -->
+  <div style="width:228px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:24px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+      <div style="width:24px;height:24px;border-radius:7px;background:var(--ember,#ec4a26);"></div>
+      <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <a href="../Dashboard.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Dashboard</a>
+      <a href="../Activities.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Activities</a>
+      <a href="../Best Efforts.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Best efforts</a>
+      <a href="../Import.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Import</a>
+      <div style="padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink,#1b1a18);background:var(--elev,#faf9f7);">Calendar</div>
+      <a href="#" title="No Races mock yet" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);"><svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5V2"></path><path d="M3.5 2.5h8.5l-2 3 2 3H3.5"></path></svg>Races</a>
+      <a href="../Workout Library.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Workouts</a>
+      <a href="../Gear.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Gear</a>
+      <a href="../Preferences.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Preferences</a>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><a href="../Admin.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Admin</a></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+      <a href="../Login.dc.html" style="display:block;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
+
+  <div data-screen-label="calendar" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
+      </div>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="../Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <div aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink3,#9a958d);flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="../Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0;">
+      <div style="display:flex;flex-direction:column;gap:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">{{ monthLabel }}</h1>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <div onClick="{{ prev }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--ink,#1b1a18);">‹</div>
+          <div onClick="{{ goToday }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink,#1b1a18);">Today</div>
+          <div onClick="{{ next }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--ink,#1b1a18);">›</div>
+          <div onClick="{{ openRace }}" style="border:1px solid var(--ember,#ec4a26);border-radius:8px;color:var(--ember,#ec4a26);font-size:13px;font-weight:700;padding:8px 16px;margin-left:8px;cursor:pointer;">Add race</div>
+          <div onClick="{{ openSchedToday }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Schedule workout</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr)) minmax(110px,0.7fr);gap:1px;background:var(--line,#e6e2dc);border:1px solid var(--line,#e6e2dc);border-radius:10px;overflow:hidden;">
+        <sc-for list="{{ heads }}" as="h" hint-placeholder-count="8"><div style="background:var(--elev,#faf9f7);padding:8px 10px;font-size:11px;font-weight:600;color:var(--ink3,#9a958d);">{{ h }}</div></sc-for>
+        <sc-for list="{{ cells }}" as="c" hint-placeholder-count="40">
+          <sc-if value="{{ c.isDay }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ c.onClick }}" style="{{ c.style }}">
+              <div style="{{ c.numStyle }}">{{ c.num }}</div>
+              <sc-for list="{{ c.items }}" as="e" hint-placeholder-count="1">
+                <a href="{{ e.href }}" onClick="{{ e.stop }}" style="{{ e.style }}">
+                  <sc-if value="{{ e.hasTod }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:0.05em;color:var(--ink3,#9a958d);border:1px solid var(--line,#e6e2dc);border-radius:4px;padding:0 3px;margin-right:5px;vertical-align:1px;">{{ e.tod }}</span></sc-if>{{ e.name }}<sc-if value="{{ e.hasNote }}" hint-placeholder-val="{{ false }}"><span style="margin-left:4px;">📝</span></sc-if>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink3,#9a958d);margin-top:1px;">{{ e.stats }}</div>
+                </a>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ c.isWeek }}" hint-placeholder-val="{{ false }}">
+            <div style="background:var(--elev,#faf9f7);padding:8px;display:flex;flex-direction:column;gap:4px;">
+              <sc-if value="{{ c.none }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:var(--ink3,#9a958d);">—</div></sc-if>
+              <sc-for list="{{ c.blocks }}" as="b" hint-placeholder-count="2">
+                <div><div style="font-size:9px;font-weight:600;letter-spacing:0.06em;color:var(--ink3,#9a958d);">{{ b.label }}</div><div style="{{ b.style }}">{{ b.value }}</div></div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      </div>
+
+      <sc-if value="{{ schedOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeAll }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+          <div onClick="{{ stop }}" style="background:var(--card,#fff);backdrop-filter:blur(14px);border-radius:14px;padding:24px;width:420px;max-width:calc(100% - 32px);display:flex;flex-direction:column;gap:16px;">
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Schedule a workout</h2>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Workout</div><select style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"><option>Choose a workout…</option><sc-for list="{{ workoutOpts }}" as="o" hint-placeholder-count="4"><option>{{ o }}</option></sc-for></select></label>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Date</div><input type="date" value="{{ schedDate }}" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <div><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Time of day (optional)</div><div style="display:flex;gap:6px;"><sc-for list="{{ todOpts }}" as="t" hint-placeholder-count="3"><div onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</div></sc-for></div></div>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Notes (optional)</div><textarea rows="2" placeholder="e.g. swap if it rains" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;resize:vertical;"></textarea></label>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+              <div onClick="{{ closeAll }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;font-size:13px;padding:8px 16px;cursor:pointer;color:var(--ink,#1b1a18);">Cancel</div>
+              <div onClick="{{ closeAll }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add to calendar</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ raceOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeAll }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+          <div onClick="{{ stop }}" style="background:var(--card,#fff);backdrop-filter:blur(14px);border-radius:14px;padding:24px;width:420px;max-width:calc(100% - 32px);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:16px;">
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Add race</h2>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Name</div><input placeholder="e.g. London Marathon" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Date</div><input type="date" value="2026-09-26" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <div><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Sport (optional)</div><div style="display:flex;gap:6px;flex-wrap:wrap;"><sc-for list="{{ raceSports }}" as="s" hint-placeholder-count="5"><div onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.label }}</div></sc-for></div></div>
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Distance km (optional)</div>
+              <sc-if value="{{ isRunRace }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;"><sc-for list="{{ presets }}" as="p" hint-placeholder-count="7"><div onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</div></sc-for></div></sc-if>
+              <input type="number" value="{{ raceKm }}" placeholder="km" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/>
+            </div>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Goal time (optional)</div><input placeholder="H:MM:SS" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Race website (optional)</div><input placeholder="https://…" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <label><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Notes (optional)</div><input style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/></label>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+              <div onClick="{{ closeAll }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;font-size:13px;padding:8px 16px;cursor:pointer;color:var(--ink,#1b1a18);">Cancel</div>
+              <div onClick="{{ closeAll }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add race</div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;coachAccount&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', offset: 0, sched: null, race: false, tod: '', raceSport: '', raceKm: '' };
+
+  shellState = { theme: 'lab', ctxOpen: false, ctxAthlete: null, emailSent: false };
+  coached = ['Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'];
+  shellVals() {
+    const st = { ...this.shellState, ...this.state };
+    const t = st.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const on = { textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--elev,#f2f6f7)' };
+    const off = { ...on, color: 'var(--ink3,#9a958d)', background: 'transparent' };
+    return {
+      isAdmin: true,
+      themeVars: { '--sport-ride': '#3d7fd6', '--sport-run': '#ec4a26', '--sport-swim': '#2fa66a', '--sport-walk': '#8b95a1', '--sport-row': '#1b8fa8', '--sport-multisport': '#a86fd6', '--sport-transition': '#6b7683', '--role-coach': '#c084fc', ...({ lab, cockpit, day }[t] || lab) },
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: t === 'lab' ? on : off, cockpitBtn: t === 'cockpit' ? on : off, dayBtn: t === 'day' ? on : off,
+      pName: 'Neil Goodgame', chipMeta: 'FTP 260 \u00b7 LTHR 154', isCoach: !!this.props.coachAccount,
+      ctxOpen: st.ctxOpen, toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })), closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: st.ctxAthlete ? 'Coaching \u00b7 ' + st.ctxAthlete : 'My training',
+      ctxItems: [null, ...this.coached].map(id => { const act = (st.ctxAthlete || null) === id; return { name: id || 'My training', onClick: () => this.setState({ ctxOpen: false, ctxAthlete: id }), rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: act ? 700 : 500, color: 'var(--ink,#1b1a18)', background: act ? 'var(--elev,#faf9f7)' : 'transparent' } }; }),
+      showEmailBanner: false, emailNotSent: true, emailBannerText: '', resendEmail: () => {},
+    };
+  }
+
+  sc = { bike: '#3d7fd6', run: '#ec4a26', swim: '#2fa66a', row: '#1b8fa8', multisport: '#a86fd6' };
+  wk = { w1: ['Threshold 3\u00d710', 'run', 4320, 96], w2: ['Sweet Spot 3\u00d712', 'bike', 3600, 71], w3: ['Long run \u2014 easy', 'run', 6300, 88], w4: ['Recovery spin', 'bike', 2700, 28], w5: ['5\u00d75min Run VO2', 'run', 3000, 68] };
+  entries = [
+    ['2026-09-01', 'w2', 'completed', 'PM', '19.8 km \u00b7 74 TSS'], ['2026-09-03', 'w1', 'completed', 'AM', '15.1 km \u00b7 94 TSS'], ['2026-09-06', 'w3', 'completed', '', '24.2 km \u00b7 91 TSS'],
+    ['2026-09-08', 'w2', 'completed', '', '20.4 km \u00b7 72 TSS'], ['2026-09-10', 'w1', 'missed', 'AM', ''], ['2026-09-13', 'w3', 'completed', '', '26.0 km \u00b7 98 TSS'],
+    ['2026-09-15', 'w4', 'completed', 'PM', '12.2 km \u00b7 26 TSS'], ['2026-09-17', 'w5', 'completed', 'AM', '11.0 km \u00b7 71 TSS'], ['2026-09-20', 'w3', 'completed', '', '25.1 km \u00b7 93 TSS'],
+    ['2026-09-22', 'w2', 'completed', 'MID', '19.6 km \u00b7 70 TSS'], ['2026-09-24', 'w1', 'completed', 'AM', '15.2 km \u00b7 96 TSS'],
+    ['2026-09-27', 'w3', 'planned', 'AM', '', 'Hilly route if dry'], ['2026-09-29', 'w2', 'planned', 'PM', ''], ['2026-10-01', 'w5', 'planned', 'AM', ''], ['2026-10-03', 'w4', 'planned', '', ''],
+  ];
+  unplanned = [['2026-09-05', 'Saturday parkrun', 'run', '5.0 km \u00b7 38 TSS'], ['2026-09-12', 'RowErg 5k steady', 'row', '5.0 km \u00b7 31 TSS'], ['2026-09-19', 'Sprint triathlon', 'multisport', '25.8 km \u00b7 104 TSS'], ['2026-09-26', 'Saturday parkrun', 'run', '5.0 km \u00b7 39 TSS']];
+  races = [['2026-10-04', 'City Marathon', '42.195 km \u00b7 Goal: 3:15:00']];
+  key(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  renderVals() {
+    const st = this.state;
+    const today = new Date(2026, 8, 26);
+    const first = new Date(2026, 8 + st.offset, 1);
+    const month = first.getMonth();
+    const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
+    const last = new Date(first.getFullYear(), month + 1, 0);
+    const end = new Date(last); end.setDate(last.getDate() + (7 - ((last.getDay() + 6) % 7) - 1));
+    const days = []; for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) days.push(new Date(d));
+    const tk = this.key(today);
+    const stop = (e) => e.stopPropagation();
+    const cells = [];
+    for (let w = 0; w < days.length; w += 7) {
+      const t = { pt: 0, ps: 0, at: 0, as: 0, rk: 0 };
+      days.slice(w, w + 7).forEach(d => {
+        const k = this.key(d);
+        const items = [];
+        this.entries.filter(e => e[0] === k).sort((a, b) => ({ AM: 0, MID: 1, PM: 2 }[a[3]] ?? 3) - ({ AM: 0, MID: 1, PM: 2 }[b[3]] ?? 3)).forEach(([_, wid, status, tod, actual, note]) => {
+          const [name, sport, dur, tss] = this.wk[wid]; const c = this.sc[sport];
+          t.pt += tss; t.ps += dur;
+          const done = status === 'completed';
+          if (done) { t.at += tss; t.as += dur; if (sport === 'run') { t.rk += parseFloat(actual); } }
+          items.push({ name, tod, hasTod: !!tod, hasNote: !!note, href: done ? 'Activity Analysis.dc.html' : 'Scheduled Workout.dc.html', stop,
+            stats: done ? actual : (Math.floor(dur / 3600) ? Math.floor(dur / 3600) + ':' + String(Math.floor(dur % 3600 / 60)).padStart(2, '0') + ':00' : Math.floor(dur / 60) + ':00') + ' \u00b7 ' + tss + ' TSS',
+            style: done ? { fontSize: '11px', padding: '3px 6px', borderRadius: '6px', borderLeft: '3px solid ' + c, background: c + '22', color: 'var(--ink,#1b1a18)', textDecoration: 'none', display: 'block' }
+              : { fontSize: '11px', padding: '3px 6px', borderRadius: '6px', borderLeft: '3px solid ' + c, borderTop: '1px dashed ' + c + '88', borderRight: '1px dashed ' + c + '88', borderBottom: '1px dashed ' + c + '88', color: status === 'missed' ? '#e0442e' : 'var(--ink2,#6f6b65)', textDecoration: 'none', display: 'block' } });
+        });
+        this.unplanned.filter(u => u[0] === k).forEach(([_, name, sport, stats]) => { const c = this.sc[sport]; t.at += parseInt(stats.split('\u00b7 ')[1]); t.as += 3000; if (sport === 'run') t.rk += parseFloat(stats);
+          items.push({ name, stats, tod: '', hasTod: false, hasNote: false, href: 'Activity Analysis.dc.html', stop, style: { fontSize: '11px', padding: '3px 6px', borderRadius: '6px', borderLeft: '3px solid ' + c, background: c + '22', color: 'var(--ink,#1b1a18)', textDecoration: 'none', display: 'block' } }); });
+        this.races.filter(r => r[0] === k).forEach(([_, name, stats]) => items.push({ name: '\ud83c\udfc1 ' + name, stats, tod: '', hasTod: false, hasNote: false, href: 'Preferences.dc.html', stop, style: { fontSize: '11px', padding: '3px 6px', borderRadius: '6px', borderLeft: '3px solid var(--ember,#ec4a26)', background: 'var(--emberSoft,rgba(236,74,38,0.13))', color: 'var(--ink,#1b1a18)', textDecoration: 'none', display: 'block' } }));
+        cells.push({ isDay: true, isWeek: false, num: d.getDate(), items, onClick: () => this.setState({ sched: k }),
+          style: { background: 'var(--card,#fff)', padding: '8px', minHeight: '96px', opacity: d.getMonth() !== month ? 0.55 : 1, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 },
+          numStyle: { fontSize: '12px', fontWeight: k === tk ? 800 : 600, color: k === tk ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)' } });
+      });
+      const blocks = [];
+      const h = (s) => (s / 3600).toFixed(1) + 'h';
+      if (t.pt) blocks.push({ label: 'PLANNED', value: t.pt + ' TSS \u00b7 ' + h(t.ps), style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', color: 'var(--ink2,#6f6b65)' } });
+      if (t.at) blocks.push({ label: 'ACTUAL', value: t.at + ' TSS \u00b7 ' + h(t.as), style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', color: 'var(--ink,#1b1a18)' } });
+      if (t.rk) blocks.push({ label: 'RUN', value: t.rk.toFixed(1) + ' km \u00b7 5:12 /km', style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', color: 'var(--ink,#1b1a18)' } });
+      cells.push({ isDay: false, isWeek: true, none: blocks.length === 0, blocks });
+    }
+    const chip = (a) => ({ flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: '8px', border: '1px solid var(--line,#e6e2dc)', background: a ? 'var(--elev,#faf9f7)' : 'transparent', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink2,#6f6b65)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' });
+    const pill = (a) => ({ padding: '4px 10px', borderRadius: '20px', border: '1px solid ' + (a ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), background: a ? 'var(--emberSoft,rgba(236,74,38,0.13))' : 'transparent', color: a ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' });
+    const presets = [['5K', 5], ['10K', 10], ['10 Mile', 16.0934], ['Half', 21.0975], ['Marathon', 42.195], ['50K', 50], ['100K', 100]];
+    return {
+      ...this.shellVals(),
+      monthLabel: first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+      prev: () => this.setState(s => ({ offset: s.offset - 1 })), next: () => this.setState(s => ({ offset: s.offset + 1 })), goToday: () => this.setState({ offset: 0 }),
+      heads: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Week'], cells,
+      schedOpen: !!st.sched, schedDate: st.sched || tk, openSchedToday: () => this.setState({ sched: tk }),
+      raceOpen: st.race, openRace: () => this.setState({ race: true }), closeAll: () => this.setState({ sched: null, race: false }), stop,
+      workoutOpts: Object.values(this.wk).map(([n, , d, t]) => n + ' \u00b7 ' + Math.round(d / 60) + ' min \u00b7 ' + t + ' TSS'),
+      todOpts: [['AM', 'Morning'], ['MID', 'Midday'], ['PM', 'Evening']].map(([v, l]) => ({ label: l, style: chip(st.tod === v), onClick: () => this.setState(s => ({ tod: s.tod === v ? '' : v })) })),
+      raceSports: [['', '\u2014'], ['run', 'Run'], ['bike', 'Bike'], ['swim', 'Swim'], ['multisport', 'Multisport']].map(([v, l]) => ({ label: l, style: pill(st.raceSport === v), onClick: () => this.setState({ raceSport: v }) })),
+      isRunRace: st.raceSport === 'run', raceKm: st.raceKm,
+      presets: presets.map(([l, k]) => ({ label: l, style: pill(st.raceKm === String(k)), onClick: () => this.setState({ raceKm: String(k) }) })),
+    };
+  }
+}
+</script>
+</body>
+</html>
