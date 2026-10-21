@@ -70,6 +70,11 @@ public class Race extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private String notes = "";
 
+	// Opt-in by the owner: a public race's result, splits, course and weather are served
+	// unauthenticated under /v1/public/races/{id} (see PublicRaceService).
+	@Column(name = "is_public", nullable = false)
+	private boolean isPublic;
+
 	/** Overrides the athlete-wide "Key session" tag lookup for this race's key_sessions.items
 	 * "tagged" category (RaceBlockService.keySessions) - lets different goal races use different
 	 * tags instead of sharing the one global tag name. Null falls back to that default. */
@@ -126,4 +131,7 @@ public class Race extends PrefixedIdEntity {
 
 	public Tag getKeySessionTag() { return keySessionTag; }
 	public void setKeySessionTag(Tag keySessionTag) { this.keySessionTag = keySessionTag; }
+
+	public boolean isPublic() { return isPublic; }
+	public void setPublic(boolean isPublic) { this.isPublic = isPublic; }
 }

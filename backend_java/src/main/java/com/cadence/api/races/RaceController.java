@@ -4,6 +4,7 @@ import com.cadence.api.activities.dto.CustomSplitsRequest;
 import com.cadence.api.athletes.ThresholdSuggestionService;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.DataListResponse;
+import com.cadence.api.races.dto.PublicRaceResponse;
 import com.cadence.api.races.dto.RaceBlockResponse;
 import com.cadence.api.races.dto.RaceCommentCreateRequest;
 import com.cadence.api.races.dto.RaceCommentResponse;
@@ -41,10 +42,12 @@ public class RaceController {
 	private final AccessGuard accessGuard;
 	private final ThresholdSuggestionService thresholdSuggestionService;
 	private final WeatherService weatherService;
+	private final PublicRaceService publicRaceService;
 
 	public RaceController(RaceService raceService, RaceBlockService raceBlockService, RaceSplitsService raceSplitsService,
 			RaceCommentService raceCommentService, UserService userService, AccessGuard accessGuard,
-			ThresholdSuggestionService thresholdSuggestionService, WeatherService weatherService) {
+			ThresholdSuggestionService thresholdSuggestionService, WeatherService weatherService,
+			PublicRaceService publicRaceService) {
 		this.raceService = raceService;
 		this.raceBlockService = raceBlockService;
 		this.raceSplitsService = raceSplitsService;
@@ -53,6 +56,7 @@ public class RaceController {
 		this.accessGuard = accessGuard;
 		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.weatherService = weatherService;
+		this.publicRaceService = publicRaceService;
 	}
 
 	@GetMapping("/v1/races")
@@ -131,6 +135,29 @@ public class RaceController {
 		Race race = raceService.getRace(id);
 		accessGuard.requireRead(race.getAthlete().getId());
 		return weatherService.forecastFor(race);
+	}
+
+	// Unauthenticated (see SecurityConfig's permitAll list) - each 404s unless the owner has set
+	// is_public. Splits take the same modes as the authenticated GET; custom splits (its POST)
+	// stay authenticated-only.
+
+	@GetMapping("/v1/public/races/{id}")
+	public PublicRaceResponse getPublicRace(@PathVariable String id) {
+		return publicRaceService.toPublicResponse(id);
+	}
+
+	@GetMapping("/v1/public/races/{id}/splits")
+	public SplitsResponse getPublicRaceSplits(@PathVariable String id, @RequestParam(defaultValue = "laps") String mode) {
+		Race race = publicRaceService.getPublicRace(id);
+		if (!SPLITS_MODES.contains(mode)) {
+			throw new ValidationException("Must be one of laps, 1, 5, elevation.", "mode");
+		}
+		return raceSplitsService.getSplits(race, mode);
+	}
+
+	@GetMapping("/v1/public/races/{id}/weather")
+	public RaceWeatherResponse getPublicRaceWeather(@PathVariable String id) {
+		return weatherService.forecastFor(publicRaceService.getPublicRace(id));
 	}
 
 	@GetMapping("/v1/races/{id}/comments")

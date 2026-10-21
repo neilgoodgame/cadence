@@ -1040,6 +1040,37 @@ export interface Race {
    * for a standalone B/C race. */
   block_start: string | null;
   block_weeks: number | null;
+  /** Readable without logging in, at /public/races/{id}. Owner-toggled via PATCH. */
+  is_public: boolean;
+}
+
+/** The course fields a public race exposes - its shape and elevation, nothing about who made it
+ * or their other races on it. */
+export type PublicRaceCourse = Pick<
+  Course,
+  | "name"
+  | "location_name"
+  | "distance_km"
+  | "elevation_gain_m"
+  | "elevation_loss_m"
+  | "elevation_max_m"
+  | "elevation_min_m"
+  | "is_loop"
+  | "route_polyline"
+  | "elevation_profile"
+  | "elevation_quality"
+  | "sections"
+>;
+
+/** GET /v1/public/races/{id} - the unauthenticated, read-only view of a race whose owner has set
+ * is_public, for sharing a result with friends and family. A narrow allowlist: no notes,
+ * priority, training block, target power or anything else from the athlete's training. */
+export interface PublicRace
+  extends Pick<Race, "id" | "name" | "date" | "sport" | "distance_km" | "goal_time" | "result_time" | "url" | "results_url"> {
+  athlete_name: string;
+  /** Only the linked activity's headline numbers - the activity itself stays private. */
+  activity: Pick<Activity, "avg_hr" | "avg_power" | "avg_air_temp" | "avg_humidity"> | null;
+  course: PublicRaceCourse | null;
 }
 
 export interface RaceCreate {
@@ -1434,4 +1465,4 @@ export interface CatalogAuditLogEntry {
   created: string;
 }
 
-export type RaceUpdate = Partial<RaceCreate>;
+export type RaceUpdate = Partial<RaceCreate> & { is_public?: boolean };

@@ -14,6 +14,7 @@ from .blocks import get_race_block
 from .comments import resolve_parent_comment, snapshot_role
 from .models import Race, RaceComment
 from .serializers import (
+    PublicRaceSerializer,
     RaceCommentCreateSerializer,
     RaceCommentSerializer,
     RaceCreateSerializer,
@@ -123,6 +124,47 @@ class RaceWeatherView(APIView):
         if not user_may_read(sub, race.athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
         return Response(forecast_for(race))
+
+
+def _get_public_race(id: str) -> Race:
+    # A not-public race is indistinguishable from a missing one - no existence leak to an
+    # unauthenticated caller probing ids.
+    return get_object_or_404(Race.objects.select_related("athlete", "activity", "course"), pk=id, is_public=True)
+
+
+class PublicRaceDetailView(APIView):
+    """Unauthenticated - 404s unless the owner has set is_public."""
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, id: str) -> Response:
+        return Response(PublicRaceSerializer(_get_public_race(id)).data)
+
+
+class PublicRaceSplitsView(APIView):
+    """Unauthenticated - 404s unless the owner has set is_public. Same modes and response as
+    RaceSplitsView's GET; custom splits (its POST) stay authenticated-only."""
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, id: str) -> Response:
+        race = _get_public_race(id)
+        mode = request.query_params.get("mode", "laps")
+        if mode not in SPLITS_MODES:
+            raise ValidationError({"mode": f"Must be one of {', '.join(SPLITS_MODES)}."})
+        return Response(splits_module.get_splits(race, mode))
+
+
+class PublicRaceWeatherView(APIView):
+    """Unauthenticated - 404s unless the owner has set is_public."""
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request: Request, id: str) -> Response:
+        return Response(forecast_for(_get_public_race(id)))
 
 
 class RaceCommentListView(APIView):

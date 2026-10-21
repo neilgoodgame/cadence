@@ -13,6 +13,7 @@ import { GearScreen } from "./screens/GearScreen";
 import { ImportScreen } from "./screens/ImportScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { PreferencesScreen } from "./screens/PreferencesScreen";
+import { PublicRaceScreen } from "./screens/PublicRaceScreen";
 import { RaceDetailScreen } from "./screens/RaceDetailScreen";
 import { RacesScreen } from "./screens/RacesScreen";
 import { ScheduledWorkoutScreen } from "./screens/ScheduledWorkoutScreen";
@@ -32,6 +33,7 @@ export function App() {
           <Routes>
             <Route path="/login" element={<LoginScreen />} />
             <Route path="/verify-email" element={<VerifyEmailScreen />} />
+            <Route path="/public/races/:id" element={<PublicRaceScreen />} />
             <Route element={<RequireAuth />}>
               <Route element={<AppShell />}>
                 <Route path="/" element={<DashboardScreen />} />

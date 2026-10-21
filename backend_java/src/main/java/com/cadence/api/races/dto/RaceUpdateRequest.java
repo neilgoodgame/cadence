@@ -14,5 +14,6 @@ public record RaceUpdateRequest(
 		String priority,
 		String courseId,
 		String keySessionTagId,
-		Integer targetPower
+		Integer targetPower,
+		Boolean isPublic
 ) {}

@@ -83,6 +83,7 @@ public class RaceService {
 		if (req.url() != null) race.setUrl(req.url().isEmpty() ? null : req.url());
 		if (req.resultsUrl() != null) race.setResultsUrl(req.resultsUrl().isEmpty() ? null : req.resultsUrl());
 		if (req.notes() != null) race.setNotes(req.notes());
+		if (req.isPublic() != null) race.setPublic(req.isPublic());
 		if (req.keySessionTagId() != null) race.setKeySessionTag(req.keySessionTagId().isEmpty() ? null : resolveTag(req.keySessionTagId()));
 		return raceRepository.save(race);
 	}
@@ -142,7 +143,8 @@ public class RaceService {
 				blockStart,
 				blockWeeks,
 				race.getKeySessionTag() != null ? race.getKeySessionTag().getId() : null,
-				race.getTargetPower()
+				race.getTargetPower(),
+				race.isPublic()
 		);
 	}
 
@@ -168,7 +170,7 @@ public class RaceService {
 	}
 
 	// seconds → "H:MM:SS"; null → null
-	private static String formatDuration(Integer seconds) {
+	static String formatDuration(Integer seconds) {
 		if (seconds == null) return null;
 		int h = seconds / 3600;
 		int m = (seconds % 3600) / 60;

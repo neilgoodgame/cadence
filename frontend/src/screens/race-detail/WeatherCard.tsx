@@ -1,12 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
+import { getPublicRaceWeather } from "../../api/public";
 import { getRaceWeather } from "../../api/races";
 
 /** Race-detail grid card - race-day forecast from Open-Meteo. Only mounted by RaceDetailScreen
  * when the race has a course and is within the ~10-day forecast window; still handles
  * `available: false` gracefully (e.g. the course has no resolved start point, or the Open-Meteo
  * call failed) by rendering nothing rather than an error. */
-export function WeatherCard({ raceId }: { raceId: string }) {
-  const { data } = useQuery({ queryKey: ["race-weather", raceId], queryFn: () => getRaceWeather(raceId) });
+/** `publicView` reads the unauthenticated public-race weather endpoint instead (see
+ * PublicRaceScreen). */
+export function WeatherCard({ raceId, publicView = false }: { raceId: string; publicView?: boolean }) {
+  const { data } = useQuery({
+    queryKey: [publicView ? "public-race-weather" : "race-weather", raceId],
+    queryFn: () => (publicView ? getPublicRaceWeather : getRaceWeather)(raceId),
+  });
 
   if (!data?.available) {
     return null;

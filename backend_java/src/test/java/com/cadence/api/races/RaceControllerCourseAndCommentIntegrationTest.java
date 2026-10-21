@@ -111,7 +111,7 @@ class RaceControllerCourseAndCommentIntegrationTest extends IntegrationTest {
 		assertThat(created.targetPower()).isEqualTo(250);
 
 		RaceResponse updated = raceController.updateRace(created.id(), new RaceUpdateRequest(
-				null, null, null, null, null, null, null, null, null, null, null, null, null, 275));
+				null, null, null, null, null, null, null, null, null, null, null, null, null, 275, null));
 		assertThat(updated.targetPower()).isEqualTo(275);
 	}
 

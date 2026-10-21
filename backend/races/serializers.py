@@ -1,5 +1,8 @@
 from rest_framework import serializers
 
+from courses.elevation import ensure_elevation_series
+from courses.serializers import CourseSerializer
+
 from .models import Race, RaceComment
 
 
@@ -32,6 +35,7 @@ class RaceSerializer(serializers.ModelSerializer):
             "parent_race_id",
             "block_start",
             "block_weeks",
+            "is_public",
         ]
         read_only_fields = ["id", "athlete_id"]
 
@@ -124,8 +128,78 @@ class RaceUpdateSerializer(serializers.ModelSerializer):
             "results_url",
             "notes",
             "key_session_tag_id",
+            "is_public",
         ]
         extra_kwargs = {field: {"required": False} for field in fields}
+
+
+# The course fields a public race exposes - the course's shape and elevation, nothing about who
+# made it (athlete_id, source activity, GPX filename) or their other races on it.
+PUBLIC_COURSE_FIELDS = (
+    "name",
+    "location_name",
+    "distance_km",
+    "elevation_gain_m",
+    "elevation_loss_m",
+    "elevation_max_m",
+    "elevation_min_m",
+    "is_loop",
+    "route_polyline",
+    "elevation_profile",
+    "elevation_quality",
+    "sections",
+)
+
+
+class PublicRaceSerializer(serializers.ModelSerializer):
+    """GET /v1/public/races/<id> - the unauthenticated, read-only view of a race its owner has
+    marked public, for sharing a result with friends and family. Deliberately a narrow allowlist
+    rather than RaceSerializer minus a few fields: no notes, priority, training block, target
+    power or anything else from the athlete's training, so a field later added to RaceSerializer
+    never becomes public by accident."""
+
+    athlete_name = serializers.CharField(source="athlete.name", read_only=True)
+    goal_time = serializers.DurationField(read_only=True)
+    result_time = serializers.DurationField(read_only=True)
+    activity = serializers.SerializerMethodField()
+    course = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Race
+        fields = [
+            "id",
+            "athlete_name",
+            "name",
+            "date",
+            "sport",
+            "distance_km",
+            "goal_time",
+            "result_time",
+            "url",
+            "results_url",
+            "activity",
+            "course",
+        ]
+
+    def get_activity(self, race: Race) -> dict | None:
+        # Only what the result card shows alongside the time - the linked activity itself stays
+        # private unless it's separately shared.
+        activity = race.activity
+        if activity is None:
+            return None
+        return {
+            "avg_hr": activity.avg_hr,
+            "avg_power": activity.avg_power,
+            "avg_air_temp": activity.avg_air_temp,
+            "avg_humidity": activity.avg_humidity,
+        }
+
+    def get_course(self, race: Race) -> dict | None:
+        if race.course is None:
+            return None
+        ensure_elevation_series(race.course)
+        data = CourseSerializer(race.course).data
+        return {field: data[field] for field in PUBLIC_COURSE_FIELDS}
 
 
 class RaceCommentSerializer(serializers.ModelSerializer):

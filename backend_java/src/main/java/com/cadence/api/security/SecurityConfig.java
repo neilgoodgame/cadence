@@ -111,6 +111,8 @@ public class SecurityConfig {
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(
 								"/v1/auth/register", "/v1/auth/login", "/v1/auth/verify-email",
+								// Owner-opted-in public races - each handler 404s unless is_public.
+								"/v1/public/**",
 								"/.well-known/jwks.json", "/.well-known/oauth-protected-resource", "/healthz",
 								"/login", "/login/**",
 								"/schema/**", "/swagger-ui/**", "/swagger-ui.html")
