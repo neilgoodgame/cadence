@@ -104,6 +104,16 @@ class ActivitySplitsUnitTests(TestCase):
         with self.assertRaises(ValueError):
             get_activity_splits(self.activity, "weird")
 
+    def test_halves_split_by_distance_not_by_split_count(self):
+        # 12km at a constant pace in 5km-mode splits: [0-5, 5-10, 10-12] - 3 splits, an odd
+        # count whose naive by-count bisection (old bug) would compare 5km of running against
+        # 7km, instead of the true 6km/6km halves a constant pace should land dead even on.
+        _add_pace_records(self.activity, distance_km=12.0, pace_s_per_km=300)
+        result = get_activity_splits(self.activity, "5")
+        self.assertEqual(len(result["splits"]), 3)
+        self.assertAlmostEqual(result["halves"]["first_s"], 1800, delta=5)
+        self.assertAlmostEqual(result["halves"]["second_s"], 1800, delta=5)
+
 
 class CustomActivitySplitsTests(TestCase):
     def setUp(self):

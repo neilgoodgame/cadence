@@ -52,12 +52,34 @@ def _delta_power_w(avg_power: int | None, ref_power_w: int | None) -> int | None
 
 
 def _halves(splits: list[dict[str, Any]]) -> dict[str, int] | None:
+    """Time either side of the halfway point of the race's own total distance (the last
+    split's end_km) - not a naive bisection of the splits list by count, which skews badly
+    whenever the splits aren't all the same length (e.g. fixed-distance mode's shorter final
+    split, or laps/elevation splits of varying length): a 9-split 5km-mode marathon (eight
+    5km splits plus a 2.2km tail) would otherwise compare 20km of running against 22.2km."""
     if not splits:
         return None
-    mid = len(splits) // 2
-    first_s = sum(s["time_s"] for s in splits[:mid] if s["time_s"])
-    second_s = sum(s["time_s"] for s in splits[mid:] if s["time_s"])
-    return {"first_s": first_s, "second_s": second_s}
+    total_km = splits[-1]["end_km"]
+    if not total_km:
+        return None
+    half_km = total_km / 2
+    first_s = second_s = 0.0
+    for s in splits:
+        if not s["time_s"]:
+            continue
+        start_km, end_km = s["start_km"], s["end_km"]
+        dist_km = end_km - start_km
+        if dist_km <= 0:
+            continue
+        if end_km <= half_km:
+            first_s += s["time_s"]
+        elif start_km >= half_km:
+            second_s += s["time_s"]
+        else:
+            frac_first = (half_km - start_km) / dist_km
+            first_s += s["time_s"] * frac_first
+            second_s += s["time_s"] * (1 - frac_first)
+    return {"first_s": round(first_s), "second_s": round(second_s)}
 
 
 def _lap_splits(

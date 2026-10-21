@@ -88,12 +88,36 @@ public class RaceSplitsService {
 		return SplitsMath.gapPaceSPerKm(paceSPerKm, avgGradePct);
 	}
 
+	/** Time either side of the halfway point of the race's own total distance (the last split's
+	 * endKm) - not a naive bisection of the splits list by count, which skews badly whenever the
+	 * splits aren't all the same length (e.g. fixed-distance mode's shorter final split, or
+	 * laps/elevation splits of varying length): a 9-split 5km-mode marathon (eight 5km splits
+	 * plus a 2.2km tail) would otherwise compare 20km of running against 22.2km. */
 	private SplitsResponse.Halves halves(List<SplitsResponse.Split> splits) {
 		if (splits.isEmpty()) return null;
-		int mid = splits.size() / 2;
-		int firstS = splits.subList(0, mid).stream().mapToInt(SplitsResponse.Split::timeS).sum();
-		int secondS = splits.subList(mid, splits.size()).stream().mapToInt(SplitsResponse.Split::timeS).sum();
-		return new SplitsResponse.Halves(firstS, secondS);
+		double totalKm = splits.get(splits.size() - 1).endKm();
+		if (totalKm <= 0) return null;
+		double halfKm = totalKm / 2;
+		double firstS = 0;
+		double secondS = 0;
+		for (SplitsResponse.Split s : splits) {
+			double startKm = s.startKm();
+			double endKm = s.endKm();
+			double distKm = endKm - startKm;
+			if (distKm <= 0) continue;
+			if (endKm <= halfKm) {
+				firstS += s.timeS();
+			}
+			else if (startKm >= halfKm) {
+				secondS += s.timeS();
+			}
+			else {
+				double fracFirst = (halfKm - startKm) / distKm;
+				firstS += s.timeS() * fracFirst;
+				secondS += s.timeS() * (1 - fracFirst);
+			}
+		}
+		return new SplitsResponse.Halves((int) Math.round(firstS), (int) Math.round(secondS));
 	}
 
 	private SplitsResponse lapSplits(Activity activity, String ref, Double refPace, String refPower, Integer refPowerW) {

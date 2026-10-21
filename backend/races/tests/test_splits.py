@@ -167,6 +167,14 @@ class FixedDistanceSplitsTests(TestCase):
         self.assertEqual(len(result["splits"]), 2)
         self.assertAlmostEqual(result["splits"][0]["end_km"], 5.0, places=2)
 
+    def test_halves_split_by_distance_not_by_split_count(self):
+        # 5.5km at a constant pace in 5km-mode splits: [0-5, 5-5.5] - the old by-count
+        # bisection (mid=1) compared all 5km of the first split against only the final
+        # 0.5km, instead of the true 2.75km/2.75km halves a constant pace lands dead even on.
+        result = get_splits(self.race, "5")
+        self.assertAlmostEqual(result["halves"]["first_s"], 825, delta=2)
+        self.assertAlmostEqual(result["halves"]["second_s"], 825, delta=2)
+
     def test_no_linked_activity_returns_empty_splits(self):
         race = Race.objects.create(athlete=self.athlete, name="No activity race", date=self.activity.start_date.date())
         result = get_splits(race, "1")

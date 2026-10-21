@@ -165,6 +165,21 @@ class ActivitySplitsServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void halvesAreSplitByDistanceNotBySplitCount() {
+		// 5.5km at a constant pace in 5km-mode splits: [0-5, 5-5.5] - the old by-count
+		// bisection (mid=1) compared all 5km of the first split against only the final 0.5km,
+		// instead of the true 2.75km/2.75km halves a constant pace lands dead even on.
+		User athlete = newAthlete("act-splits-halves@example.cc");
+		Activity activity = newActivity(athlete, Instant.parse("2026-10-12T08:00:00Z"), 5.5, 1650);
+		addPaceRecords(activity, 5.5, 300, 10, null);
+
+		ActivitySplitsResponse result = activitySplitsService.getSplits(activity, "5");
+
+		assertThat(result.halves().firstS()).isCloseTo(825, within(2));
+		assertThat(result.halves().secondS()).isCloseTo(825, within(2));
+	}
+
+	@Test
 	void elevationSplitsFollowTheActivitysOwnSections() {
 		User athlete = newAthlete("act-splits-elevation@example.cc");
 		Activity activity = newActivity(athlete, Instant.parse("2026-10-12T08:00:00Z"), 3.0, 900);
