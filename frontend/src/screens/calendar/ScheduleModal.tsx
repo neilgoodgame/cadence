@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { scheduleWorkout } from "../../api/scheduling";
-import { listWorkouts } from "../../api/workouts";
+import { getWorkout, listWorkouts } from "../../api/workouts";
+import { ApiError } from "../../api/types";
+import { queueGarminWorkoutOp } from "../../api/garmin";
+import { GarminPushOption } from "../garmin/GarminPushOption";
+import { queueWorkoutPush, refreshGarminQueries } from "../garmin/garminWorkouts";
+import { useGarminWorkouts } from "../garmin/useGarminWorkouts";
+import { withIds } from "../workouts/workoutTree";
 import { useAuth } from "../../auth/AuthContext";
 import { formatDuration } from "../../lib/format";
 import type { TimeOfDay } from "../../api/types";
@@ -32,19 +38,47 @@ export function ScheduleModal({
   const [scheduleDate, setScheduleDate] = useState(date);
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | "">("");
   const [notes, setNotes] = useState("");
+  const garmin = useGarminWorkouts();
+  // null = untouched: the box follows whether the chosen workout is already on Garmin Connect.
+  const [pushDraft, setPushDraft] = useState<boolean | null>(null);
+  const [garminError, setGarminError] = useState<string | null>(null);
+  const addToGarmin = garmin.available && (pushDraft ?? garmin.isWorkoutOnGarmin(workoutId));
 
   const mutation = useMutation({
-    mutationFn: () =>
-      scheduleWorkout({
+    mutationFn: async () => {
+      const scheduled = await scheduleWorkout({
         workout_id: workoutId,
         athlete_id: user!.id,
         date: scheduleDate,
         time_of_day: timeOfDay || undefined,
         notes: notes.trim() || undefined,
-      }),
-    onSuccess: () => {
+      });
+      // The workout is on the calendar either way; a failure to queue the Garmin push is reported separately.
+      let queueError: string | null = null;
+      if (addToGarmin) {
+        try {
+          if (!garmin.isWorkoutOnGarmin(workoutId)) {
+            const detail = await getWorkout(workoutId);
+            await queueWorkoutPush(workoutId, detail.name, detail.sport, withIds(detail.steps), user);
+          }
+          await queueGarminWorkoutOp({
+            kind: "schedule",
+            workout_id: workoutId,
+            scheduled_workout_id: scheduled.id,
+            date: scheduleDate,
+          });
+        }
+        catch (err) {
+          queueError = err instanceof ApiError ? err.message : "Scheduled, but couldn't queue it for Garmin.";
+        }
+      }
+      return queueError;
+    },
+    onSuccess: (queueError) => {
       queryClient.invalidateQueries({ queryKey: ["calendar"] });
-      onClose();
+      refreshGarminQueries(queryClient);
+      setGarminError(queueError);
+      if (!queueError) onClose();
     },
   });
 
@@ -127,13 +161,23 @@ export function ScheduleModal({
           />
         </label>
 
+        {garmin.available && (
+          <GarminPushOption
+            checked={addToGarmin}
+            onChange={setPushDraft}
+            label="Also add to Garmin Connect"
+            hint="Queued for garmin-sync on your computer; the workout is pushed first if it isn't on Garmin yet."
+          />
+        )}
+        {garminError && <div style={{ fontSize: 13, color: "#e0442e" }}>{garminError}</div>}
+
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
           <button onClick={onClose} style={{ border: "1px solid var(--line)", background: "var(--card)", borderRadius: 8, fontSize: 13, padding: "8px 16px" }}>
             Cancel
           </button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={!workoutId || !scheduleDate || pastMax || mutation.isPending}
+            disabled={!workoutId || !scheduleDate || pastMax || mutation.isPending || mutation.isSuccess}
             style={{ border: "none", borderRadius: 8, background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px" }}
           >
             Add to calendar

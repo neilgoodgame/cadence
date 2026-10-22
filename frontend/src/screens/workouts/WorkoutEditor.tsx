@@ -3,6 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InferredWorkout } from "../../api/activities";
 import { createWorkout, getWorkout, updateWorkout, type WorkoutInput } from "../../api/workouts";
 import { useAuth } from "../../auth/AuthContext";
+import { GarminPushOption } from "../garmin/GarminPushOption";
+import { queueWorkoutPush, refreshGarminQueries } from "../garmin/garminWorkouts";
+import { useGarminWorkouts } from "../garmin/useGarminWorkouts";
 import { Card } from "../../components/Card";
 import { ApiError, type WorkoutSport } from "../../api/types";
 import { WorkoutChart } from "./WorkoutChart";
@@ -79,6 +82,10 @@ function WorkoutEditorForm({
   const [startFromOpen, setStartFromOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const garmin = useGarminWorkouts();
+  // null = untouched: the box follows whether the workout is already on Garmin Connect.
+  const [pushDraft, setPushDraft] = useState<boolean | null>(null);
+  const [garminError, setGarminError] = useState<string | null>(null);
 
   const effectiveIsNew = currentId === null;
   const powerReferenceWatts = sport === "bike" ? (user?.ftp ?? null) : (user?.critical_run_power ?? null);
@@ -93,15 +100,29 @@ function WorkoutEditorForm({
     queryClient.invalidateQueries({ queryKey: ["workouts"] });
     queryClient.invalidateQueries({ queryKey: ["workout", workoutId] });
   };
+  const pushToGarmin = garmin.available && (pushDraft ?? (currentId !== null && garmin.isWorkoutOnGarmin(currentId)));
   const saveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const input: WorkoutInput = { name, sport, steps: stripIds(steps) };
-      return effectiveIsNew ? createWorkout(input) : updateWorkout(currentId!, input);
+      const workout = effectiveIsNew ? await createWorkout(input) : await updateWorkout(currentId!, input);
+      // The workout is saved either way; a failure to queue the Garmin push is reported separately.
+      let queueError: string | null = null;
+      if (pushToGarmin) {
+        try {
+          await queueWorkoutPush(workout.id, name, sport, steps, user);
+        }
+        catch (err) {
+          queueError = err instanceof ApiError ? err.message : "Saved, but couldn't queue the Garmin push.";
+        }
+      }
+      return { workout, queueError };
     },
-    onSuccess: (workout) => {
+    onSuccess: ({ workout, queueError }) => {
       invalidate(workout.id);
+      refreshGarminQueries(queryClient);
       setCurrentId(workout.id);
-      onDone();
+      setGarminError(queueError);
+      if (!queueError) onDone();
     },
   });
   const saveError = saveMutation.isError
@@ -271,6 +292,17 @@ function WorkoutEditorForm({
         </div>
       </div>
 
+      {garmin.available && (
+        <div style={{ marginTop: 20 }}>
+          <GarminPushOption
+            checked={pushToGarmin}
+            onChange={setPushDraft}
+            label="Push to Garmin Connect"
+            hint="Queued for garmin-sync on your computer, which adds or updates it on Garmin Connect with your own login."
+          />
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
         <button
           onClick={() => saveMutation.mutate()}
@@ -291,6 +323,7 @@ function WorkoutEditorForm({
           Back to list
         </button>
         {saveError && <span style={{ alignSelf: "center", fontSize: 13, color: "#e0442e" }}>{saveError}</span>}
+        {garminError && <span style={{ alignSelf: "center", fontSize: 13, color: "#e0442e" }}>{garminError}</span>}
       </div>
 
       {templatesOpen && <TemplatesPanel sport={sport} onInsert={(newSteps) => setSteps([...steps, ...newSteps])} onClose={() => setTemplatesOpen(false)} />}

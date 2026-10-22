@@ -137,6 +137,39 @@ The latest synced activity is known from this table (`last_activity` on the conn
 `openapi.yaml` (tag Garmin) is canonical. Java: `com.cadence.api.garmin`, Flyway V84/V85.
 Django: `backend/garmin`, migrations 0001/0002. Prefixes `gcn`, `gsr`.
 
+## Workout push (local bridge)
+
+The Personal API key has **no workout routes** (tested 2026-10-22: 404 on `/workout-service/*` on the
+Personal gateway, and the Personal token is rejected by `connectapi.garmin.com`). The only way to push
+workouts today is the unofficial `garminconnect` login that the `garmin-sync` CLI uses. The Developer
+Program Agreement (section 15.8) forbids a licensee from obtaining end-user Garmin credentials or
+implementing an unapproved authorization system, so **Cadence never holds Garmin credentials**: the push
+runs on the athlete's own machine and Cadence only keeps a queue.
+
+- **Browser** (shown whenever there is a usable Garmin connection): "Push to Garmin Connect" when saving a
+  workout, "Also add to Garmin Connect" when scheduling, and "Apply to Garmin Connect" when rescheduling or
+  unscheduling something already on the Garmin calendar. The browser builds the `.tcx` (it needs the athlete's
+  thresholds, and the generator lives in `workoutExport.ts`) and posts operations to the outbox.
+- **Outbox** (`garmin_workout_op`, `/v1/garmin/workout-ops`): kinds `upsert_workout`, `schedule`, `reschedule`,
+  `unschedule`. A pending operation for the same workout or scheduled workout is updated in place instead of
+  queued twice; `schedule`/`reschedule` merge; cancelling something that never reached Garmin drops it.
+- **Links** (`garmin_workout_link`, `garmin_schedule_link`, `/v1/garmin/workout-links`): Cadence ids to Garmin
+  ids, filled from the bridge's results, so edits update in place and moves and cancels hit the right calendar
+  entry.
+- **Bridge** (`garmin-sync push-workouts`, in the separate garmin-sync repo): fetches pending operations,
+  applies them in order with the athlete's own login (upload or PUT the workout, `schedule_workout`,
+  `unschedule_workout`), and reports each result. A failure is shown in Preferences and the rest of the queue
+  still runs. A reschedule is unschedule plus schedule.
+- **Not done:** deleting a Cadence workout does not delete it on Garmin; the queue only moves when the bridge
+  is run (no daemon); coach-assigned workouts are only pushable once scheduled for the athlete.
+- **Staging:** nothing runs in AWS for this. The bridge points `GARMIN_SYNC_URL` at the staging API with a
+  Cadence personal access token. Deploying needs the Flyway V87 migration (applied on startup), a backend
+  restart and a manual frontend deploy; no new secrets or Terraform. To avoid running it by hand, schedule
+  `garmin-sync push-workouts` locally (cron or launchd); it does nothing when the queue is empty. Hosting it
+  in AWS would mean storing Garmin credentials, which is ruled out above.
+- **Verified** against a real Garmin account on localhost: push, schedule, reschedule (no duplicate), cancel
+  (template kept) and edit (same Garmin id, new content).
+
 ## Operations
 - **`GARMIN_ENCRYPTION_KEY` must be set** (`openssl rand -base64 32`). Staging gets it from
   Secrets Manager `cadence-staging-garmin-encryption-key` via Terraform/`user_data`
@@ -184,8 +217,8 @@ Not built. Revise once Starter access is granted and the portal docs can be read
 - **Terms vs sharing.** Commenters report a ban on passing data to downstream parties.
   Cadence has coach/viewer sharing, outbound webhooks and public pages; decide scope.
 - **Backfill** exists only on Enterprise (about 1 month, one day per request).
-- **Optional later:** Courses & Training API push from the Workout Designer, replacing the
-  `.tcx` export. Separate design, since it is outbound.
+- **Optional later:** the official Training API would replace the local bridge for workout push (the
+  agreement defines a Training API and a Courses API). Tier availability is unverified.
 
 ## Sources
 - https://developer.garmin.com/gc-developer-program/overview/ (verified)
