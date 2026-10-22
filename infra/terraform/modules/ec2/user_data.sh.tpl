@@ -62,6 +62,7 @@ DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id "${db_secret_arn}"
 JWT_JSON=$(aws secretsmanager get-secret-value --secret-id "${jwt_secret_arn}" --region "$REGION" --query SecretString --output text)
 OAUTH_SECRET=$(aws secretsmanager get-secret-value --secret-id "${oauth_secret_arn}" --region "$REGION" --query SecretString --output text)
 OAUTH_MCP_SECRET=$(aws secretsmanager get-secret-value --secret-id "${oauth_mcp_secret_arn}" --region "$REGION" --query SecretString --output text)
+GARMIN_ENCRYPTION_KEY=$(aws secretsmanager get-secret-value --secret-id "${garmin_secret_arn}" --region "$REGION" --query SecretString --output text)
 
 echo "$JWT_JSON" | jq -r '.jwt_private_key_pem' > /opt/cadence/keys/jwt_private.pem
 echo "$JWT_JSON" | jq -r '.jwt_public_key_pem' > /opt/cadence/keys/jwt_public.pem
@@ -82,6 +83,7 @@ ENV_FILE=/opt/cadence/env
 	printf 'POSTGRES_PASSWORD=%s\n' "$DB_PASSWORD"
 	printf 'OAUTH_FIRST_PARTY_CLIENT_SECRET=%s\n' "$OAUTH_SECRET"
 	printf 'OAUTH_MCP_CLIENT_SECRET=%s\n' "$OAUTH_MCP_SECRET"
+	printf 'GARMIN_ENCRYPTION_KEY=%s\n' "$GARMIN_ENCRYPTION_KEY"
 ) > "$ENV_FILE"
 
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "${ecr_registry}"

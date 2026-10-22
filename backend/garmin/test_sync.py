@@ -169,6 +169,17 @@ class GarminSyncTests(TestCase):
         self.assertIsNone(runs[0]["batch"])
         self.assertNotIn("WRONG-key", history.content.decode())
 
+    def test_a_worker_interrupt_mid_sync_closes_the_run_instead_of_leaving_it_in_flight(self):
+        _, client = self._connected("garmin-sync-interrupt@example.cc")
+        with patch("garmin.sync._do_sync", side_effect=SystemExit(1)):
+            with self.assertRaises(SystemExit):
+                client.post("/v1/garmin/sync", {}, format="json")
+
+        run = client.get("/v1/garmin/syncs").json()["data"][0]
+
+        self.assertIsNotNone(run["finished_at"])
+        self.assertIn("interrupted", run["error"])
+
     def test_only_the_most_recent_fifty_runs_are_kept(self):
         athlete, client = self._connected("garmin-sync-prune@example.cc")
         base = datetime(2026, 1, 1, tzinfo=UTC)

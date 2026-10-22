@@ -1163,6 +1163,37 @@ disabling rotation (a new HikariCP credentials provider, `rds_iam` grant on the 
 user, an `rds-db:connect` IAM policy scoped to the instance) - not done now, but re-enabling
 rotation should happen together with this, not before it.
 
+## Garmin encryption key (`cadence-staging-garmin-encryption-key`)
+
+The Garmin sync stores each athlete's Personal API key encrypted with AES-256-GCM.
+The backend reads the key from `GARMIN_ENCRYPTION_KEY`; with it unset, saving a
+Garmin key returns 503. Like the other secrets it is created by hand so the value
+never enters Terraform state, and `user_data.sh.tpl` writes it into
+`/opt/cadence/env` on every start.
+
+**Create it once, before applying the Terraform change** (the `data` lookup fails
+the plan if the secret does not exist). The value goes from `openssl` to a 600 temp
+file to Secrets Manager and is never printed:
+```
+umask 077; KEYFILE=$(mktemp)
+openssl rand -base64 32 | tr -d '\n' > "$KEYFILE"
+aws --profile cadence-terraform secretsmanager create-secret \
+  --name cadence-staging-garmin-encryption-key \
+  --description "AES-256-GCM key for stored Garmin Personal API keys" \
+  --secret-string "file://$KEYFILE"
+rm -f "$KEYFILE"
+```
+
+**Applying it replaces the instance.** `user_data` changed, and `modules/ec2` has
+`user_data_replace_on_change = true`, so `terraform apply` replaces the EC2 instance
+(see Step 10). Warn first, as for any backend restart.
+
+**Do not change or delete the secret casually.** There is no key versioning or
+re-encrypt path: a different value, or a deleted secret, makes every stored Garmin
+key undecryptable and each athlete must re-enter theirs. Deleting a secret has a
+recovery window (default 30 days); do not force-delete it. Treat rotation as a
+deliberate "everyone re-enters their key" event.
+
 ## Next: a CI/CD pipeline wiring `deploy-backend.sh`'s same mechanism into
 GitHub Actions (per `infra/CICD_DEPLOY_SKETCH.md`), the frontend's
 build+sync+invalidate steps (currently manual), and eventually a

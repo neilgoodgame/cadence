@@ -76,6 +76,13 @@ def sync(owner: User, limit: int | None, since: date | None) -> SyncResult:
         run.save()
         _prune(owner)
         raise
+    except BaseException:
+        # A worker timeout or shutdown (SystemExit) mid-sync. Close the run so the history
+        # doesn't show it in flight forever.
+        run.error = "The sync was interrupted before it finished. Sync again to continue."
+        run.finished_at = timezone.now()
+        run.save()
+        raise
 
 
 def _do_sync(
