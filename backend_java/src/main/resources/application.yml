@@ -112,6 +112,13 @@ cadence:
     # "ses" (real send, SesEmailService) or "log" (LoggingEmailService - logs the link instead
     # of sending; docker-compose.yml sets this for local dev, which has no AWS credentials).
     provider: ${EMAIL_PROVIDER:ses}
+  garmin:
+    # Base64 for 32 random bytes (e.g. `openssl rand -base64 32`). Deliberately no default:
+    # unset means saving a Garmin key returns 503 instead of silently using a known key.
+    encryption-key: ${GARMIN_ENCRYPTION_KEY:}
+    # Most activities one sync will pull. Garmin documents no rate limit; hard-capped at 100.
+    sync-max-activities: ${GARMIN_SYNC_MAX_ACTIVITIES:50}
+    api-base-url: ${GARMIN_API_BASE_URL:https://personal.connectapi.garmin.com}
 
 springdoc:
   swagger-ui:

@@ -1495,3 +1495,56 @@ export interface CatalogAuditLogEntry {
 }
 
 export type RaceUpdate = Partial<RaceCreate> & { is_public?: boolean };
+
+export interface GarminConnection {
+  connected: boolean;
+  email: string | null;
+  key_expires_on: string | null;
+  /** The sync window marker (where the next sync resumes) - not when a sync last ran. */
+  last_synced_at: string | null;
+  /** When a sync last ran, successful or not. */
+  last_run_at: string | null;
+  /** The newest Garmin activity ever pulled, by start time. */
+  last_activity: { garmin_activity_id: number; start_time: string } | null;
+}
+
+export interface GarminSyncResult {
+  object: "garmin_sync";
+  id: string;
+  found: number;
+  already_synced: number;
+  requested: number;
+  failed: number;
+  /** More remain in the window beyond this run - sync again. */
+  truncated: boolean;
+  /** Null when there was nothing new to import. */
+  batch: UploadBatch | null;
+}
+
+export interface GarminSyncRun {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  found: number;
+  already_synced: number;
+  requested: number;
+  failed: number;
+  truncated: boolean;
+  error: string | null;
+  batch: { id: string; status: UploadBatchStatus; counts: UploadBatch["counts"] } | null;
+  activities: {
+    garmin_activity_id: number;
+    start_time: string;
+    upload_status: string | null;
+    activity_id: string | null;
+    name: string | null;
+    sport: Sport | null;
+  }[];
+}
+
+/** `api_key` is write-only: required on first save, omit afterwards to keep the stored key. */
+export interface GarminConnectionUpdate {
+  api_key?: string;
+  email?: string;
+  key_expires_on?: string | null;
+}

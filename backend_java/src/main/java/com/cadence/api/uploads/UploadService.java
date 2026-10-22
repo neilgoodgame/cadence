@@ -64,12 +64,17 @@ public class UploadService {
 	}
 
 	public UploadBatch createBatchUpload(User athlete, MultipartFile zipFile, OnDuplicate onDuplicate) throws IOException {
-		List<UploadIngestService.StagedFile> entries = readZipEntries(zipFile);
+		return createBatchUpload(athlete, readZipEntries(zipFile), zipFile.getOriginalFilename(), onDuplicate);
+	}
+
+	/** For callers that already hold the files (e.g. the Garmin sync), skipping the zip round trip. */
+	public UploadBatch createBatchUpload(User athlete, List<UploadIngestService.StagedFile> entries, String filename,
+			OnDuplicate onDuplicate) {
 		if (entries.isEmpty()) {
 			throw new ValidationException("The archive contained no supported files.", "file");
 		}
 
-		UploadBatch batch = createBatch(athlete, zipFile.getOriginalFilename(), onDuplicate);
+		UploadBatch batch = createBatch(athlete, filename, onDuplicate);
 		List<Upload> children = new ArrayList<>();
 		for (UploadIngestService.StagedFile entry : entries) {
 			Upload upload = ingestService.stageUpload(athlete, batch, entry, null, null, null, null);

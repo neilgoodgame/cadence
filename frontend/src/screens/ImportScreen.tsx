@@ -5,6 +5,7 @@ import { clearUploadHistory, uploadActivity, uploadActivityBatch, type UploadHis
 import { ApiError } from "../api/types";
 import type { Upload, UploadBatch } from "../api/types";
 import { BatchStatus } from "./import/BatchStatus";
+import { GarminSyncCard } from "./import/GarminSyncCard";
 import { UploadStatus } from "./import/UploadStatus";
 
 const inputStyle: React.CSSProperties = {
@@ -95,6 +96,8 @@ export function ImportScreen() {
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
         {isZip ? "Import activities" : "Import an activity"}
       </h1>
+
+      <GarminSyncCard />
 
       <div
         onDragOver={(e) => {

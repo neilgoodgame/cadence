@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import overload
 
 from celery.schedules import crontab
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Imported eagerly (not referenced as a dotted-path string) because django-oauth-toolkit's
@@ -69,6 +70,7 @@ INSTALLED_APPS = [
     "courses",
     "dataexport",
     "webhooks",
+    "garmin",
     "core",
 ]
 
@@ -260,6 +262,15 @@ MAX_IMPORT_SIZE_BYTES = 2 * 1024 * 1024 * 1024
 # accounts/email_sender.py. EMAIL_PROVIDER "log" (this default) logs the verification link at
 # INFO instead of sending it - a local box has neither AWS credentials nor a verified SES
 # identity to actually deliver anything through; "ses" is what staging/prod set.
+# Base64 for 32 random bytes (e.g. `openssl rand -base64 32`). Deliberately no default: unset means
+# saving a Garmin key returns 503 instead of silently using a known key.
+GARMIN_ENCRYPTION_KEY = env("GARMIN_ENCRYPTION_KEY", "")
+# Most activities one Garmin sync will pull. Garmin documents no rate limit; hard-capped at 100.
+GARMIN_SYNC_MAX_ACTIVITIES = int(env("GARMIN_SYNC_MAX_ACTIVITIES", "50"))
+# The Personal API host (configurable only so tests can point at a stub).
+GARMIN_API_BASE_URL = env("GARMIN_API_BASE_URL", "https://personal.connectapi.garmin.com")
+if not 1 <= GARMIN_SYNC_MAX_ACTIVITIES <= 100:
+    raise ImproperlyConfigured("GARMIN_SYNC_MAX_ACTIVITIES must be between 1 and 100.")
 EMAIL_PROVIDER = env("EMAIL_PROVIDER", "log")
 EMAIL_FROM_ADDRESS = env("EMAIL_FROM_ADDRESS", "no-reply@cadence.cc")
 # Where the frontend's "verify your email" screen lives - the token is appended as ?token=...
