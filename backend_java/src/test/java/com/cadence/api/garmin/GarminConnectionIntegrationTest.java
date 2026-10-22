@@ -102,6 +102,39 @@ class GarminConnectionIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void syncLimitDefaultsToFiftyCanBeSetAndIsLeftAloneWhenOmitted() throws Exception {
+		User athlete = newAthlete("garmin-conn-synclimit@example.cc");
+		String auth = bearer(athlete);
+		mockMvc.perform(put("/v1/garmin/connection").header("Authorization", auth)
+						.contentType(MediaType.APPLICATION_JSON).content(body(KEY, null)))
+				.andExpect(jsonPath("$.sync_limit").value(50));
+
+		mockMvc.perform(put("/v1/garmin/connection").header("Authorization", auth)
+						.contentType(MediaType.APPLICATION_JSON).content("{\"sync_limit\":20}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.sync_limit").value(20));
+		mockMvc.perform(put("/v1/garmin/connection").header("Authorization", auth)
+						.contentType(MediaType.APPLICATION_JSON).content(body(null, "x@example.cc")))
+				.andExpect(jsonPath("$.sync_limit").value(20));
+		mockMvc.perform(get("/v1/garmin/connection").header("Authorization", auth))
+				.andExpect(jsonPath("$.sync_limit").value(20));
+	}
+
+	@Test
+	void aSyncLimitOutsideOneToOneHundredIsRejected() throws Exception {
+		User athlete = newAthlete("garmin-conn-badlimit@example.cc");
+		String auth = bearer(athlete);
+
+		for (int bad : new int[] {0, 101, -5}) {
+			mockMvc.perform(put("/v1/garmin/connection").header("Authorization", auth)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("{\"api_key\":\"" + KEY + "\",\"sync_limit\":" + bad + "}"))
+					.andExpect(status().isBadRequest());
+		}
+		assertThat(connectionRepository.findByOwnerId(athlete.getId())).isEmpty();
+	}
+
+	@Test
 	void firstSaveWithoutAKeyIsRejected() throws Exception {
 		User athlete = newAthlete("garmin-conn-nokey@example.cc");
 

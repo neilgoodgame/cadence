@@ -13,7 +13,8 @@ from rest_framework.test import APIClient
 from accounts.models import User
 from activities.models import Activity
 from authn.oauth_utils import issue_token_pair
-from uploads.models import UploadBatch
+from gear.models import Shoe, ShoeModel, ShoeModelVersion
+from uploads.models import Upload, UploadBatch
 
 from . import crypto
 from .models import GarminConnection, GarminSyncRun
@@ -46,8 +47,10 @@ class _StubGarmin(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/activitylist-service/activities/search/activities"):
+            # Newest first, like Garmin, which honours `limit`.
+            ids = list(ACTIVITIES)[:1] if "limit=1" in self.path else list(ACTIVITIES)
             page = (
-                [{"activityId": i, "startTimeGMT": ACTIVITIES[i][0], "activityName": "x"} for i in ACTIVITIES]
+                [{"activityId": i, "startTimeGMT": ACTIVITIES[i][0], "activityName": "x"} for i in ids]
                 if "start=0" in self.path
                 else []
             )
@@ -202,10 +205,62 @@ class GarminSyncTests(TestCase):
             GarminConnection.objects.get(owner=athlete).last_synced_at, datetime(2026, 10, 2, 10, 0, tzinfo=UTC)
         )
 
-    def test_a_limit_above_the_configured_cap_is_rejected(self):
+    def test_a_limit_above_the_hard_maximum_is_rejected(self):
         _, client = self._connected("garmin-sync-cap@example.cc")
-        self.assertEqual(client.post("/v1/garmin/sync", {"limit": 51}, format="json").status_code, 400)
+        self.assertEqual(client.post("/v1/garmin/sync", {"limit": 101}, format="json").status_code, 400)
         self.assertEqual(client.post("/v1/garmin/sync", {"limit": 0}, format="json").status_code, 400)
+
+    def test_the_athletes_saved_sync_limit_is_the_default_for_a_run(self):
+        athlete, client = self._connected("garmin-sync-savedlimit@example.cc")
+        GarminConnection.objects.filter(owner=athlete).update(sync_limit=2)
+
+        body = client.post("/v1/garmin/sync", {}, format="json").json()
+
+        self.assertEqual((body["requested"], body["truncated"]), (2, True))
+
+    def test_latest_syncs_only_the_newest_activity_with_its_session_details_and_leaves_the_window_alone(self):
+        athlete, client = self._connected("garmin-sync-latest@example.cc")
+        model = ShoeModel.objects.create(manufacturer="GarminSyncCo", model="Runner")
+        version = ShoeModelVersion.objects.create(shoe_model=model, version="v1")
+        shoe = Shoe.objects.create(athlete=athlete, shoe_model_version=version, name="Garmin sync trainer")
+
+        response = client.post(
+            "/v1/garmin/sync",
+            {
+                "latest": True,
+                "weight_before_kg": 72.4,
+                "weight_after_kg": 71.0,
+                "fluids_ml": 750,
+                "shoe_id": shoe.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 202)
+        body = response.json()
+        self.assertEqual((body["found"], body["requested"], body["truncated"]), (1, 1, False))
+        upload = UploadBatch.objects.get(pk=body["batch"]["id"]).uploads.get()
+        self.assertEqual(upload.filename, "103_ACTIVITY.fit")
+        self.assertEqual(self._batch_counts(client, response)["ready"], 1)
+        activity = Activity.objects.get(pk=Upload.objects.get(pk=upload.pk).activity_id)
+        self.assertEqual((activity.start_weight_kg, activity.end_weight_kg, activity.fluids_ml), (72.4, 71.0, 750))
+        self.assertIsNone(GarminConnection.objects.get(owner=athlete).last_synced_at)
+
+        # The same activity again is skipped; a normal sync then picks up only the two older ones.
+        again = client.post("/v1/garmin/sync", {"latest": True}, format="json").json()
+        self.assertEqual((again["already_synced"], again["requested"], again["batch"]), (1, 0, None))
+        rest = client.post("/v1/garmin/sync", {}, format="json").json()
+        self.assertEqual((rest["found"], rest["already_synced"], rest["requested"]), (3, 1, 2))
+
+    def test_session_details_without_latest_are_rejected(self):
+        _, client = self._connected("garmin-sync-detailsonly@example.cc")
+        self.assertEqual(client.post("/v1/garmin/sync", {"weight_before_kg": 72.4}, format="json").status_code, 400)
+
+    def test_an_unknown_shoe_is_rejected_before_any_run_is_recorded(self):
+        athlete, client = self._connected("garmin-sync-badshoe@example.cc")
+        response = client.post("/v1/garmin/sync", {"latest": True, "shoe_id": "shoe_nope"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(GarminSyncRun.objects.filter(owner=athlete).exists())
 
     def test_a_future_since_date_is_rejected(self):
         _, client = self._connected("garmin-sync-future@example.cc")

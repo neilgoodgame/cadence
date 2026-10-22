@@ -43,7 +43,8 @@ public class GarminConnectionController {
 	@PutMapping("/v1/garmin/connection")
 	public GarminConnectionResponse saveConnection(@Valid @RequestBody GarminConnectionRequest request) {
 		User owner = userService.getById(AuthContextHolder.get().sub());
-		return respond(service.save(owner, request.apiKey(), request.email(), request.keyExpiresOn()));
+		return respond(service.save(owner, request.apiKey(), request.email(), request.keyExpiresOn(),
+				request.syncLimit()));
 	}
 
 	@DeleteMapping("/v1/garmin/connection")

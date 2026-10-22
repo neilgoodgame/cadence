@@ -13,18 +13,18 @@ import zipfile
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from accounts.models import User
 from core.exceptions import ConflictError
+from gear.models import Shoe
 from uploads.models import UploadBatch
 from uploads.services import MAX_BATCH_BYTES, create_batch_from_files
 
 from . import client, crypto
-from .models import GarminConnection, GarminSyncedActivity, GarminSyncRun
+from .models import MAX_SYNC_LIMIT, GarminConnection, GarminSyncedActivity, GarminSyncRun
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,8 @@ FIRST_SYNC_DAYS = 30
 RUNS_KEPT = 50
 # Courtesy pause between downloads - Garmin documents no rate limit.
 DOWNLOAD_PAUSE_S = 0.25
+# Per-session details a latest-only sync may carry, as for a single-file import.
+SESSION_FIELDS = ("weight_before_kg", "weight_after_kg", "fluids_ml", "shoe_id")
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,13 @@ class SyncResult:
     batch: UploadBatch | None
 
 
-def sync(owner: User, limit: int | None, since: date | None) -> SyncResult:
+def sync(
+    owner: User,
+    limit: int | None,
+    since: date | None,
+    latest: bool = False,
+    session: dict | None = None,
+) -> SyncResult:
     connection = GarminConnection.objects.filter(owner=owner).first()
     if connection is None:
         raise NotFound("No Garmin connection is set up.")
@@ -53,10 +61,16 @@ def sync(owner: User, limit: int | None, since: date | None) -> SyncResult:
             "Create a new one in Garmin Connect and replace it in Preferences."
         )
 
-    cap = settings.GARMIN_SYNC_MAX_ACTIVITIES
-    limit = cap if limit is None else limit
-    if not 1 <= limit <= cap:
-        raise ValidationError({"limit": f"limit must be between 1 and {cap}."})
+    session = {k: v for k, v in (session or {}).items() if v not in (None, "")}
+    if session and not latest:
+        raise ValidationError({"latest": "Session details can only be given when syncing the latest activity."})
+    limit = connection.sync_limit if limit is None else limit
+    if not 1 <= limit <= MAX_SYNC_LIMIT:
+        raise ValidationError({"limit": f"limit must be between 1 and {MAX_SYNC_LIMIT}."})
+    # Checked before the run is recorded, so an unknown shoe is a plain 400 and leaves no run behind.
+    shoe_id = session.get("shoe_id")
+    if shoe_id and not Shoe.objects.filter(pk=shoe_id, athlete_id=owner.id).exists():
+        raise ValidationError({"shoe_id": f"Unknown shoe '{shoe_id}'."})
     if since is not None and since > today:
         raise ValidationError({"since": "since cannot be in the future."})
     if since is not None:
@@ -68,7 +82,7 @@ def sync(owner: User, limit: int | None, since: date | None) -> SyncResult:
 
     run = GarminSyncRun.objects.create(owner=owner, started_at=timezone.now())
     try:
-        return _do_sync(owner, connection, run, limit, window_start)
+        return _do_sync(owner, connection, run, limit, window_start, latest, session)
     except APIException as exc:
         # Record why it failed (a message we wrote - never the key), then let the caller see it too.
         run.error = str(exc.detail)
@@ -86,18 +100,26 @@ def sync(owner: User, limit: int | None, since: date | None) -> SyncResult:
 
 
 def _do_sync(
-    owner: User, connection: GarminConnection, run: GarminSyncRun, limit: int, window_start: date
+    owner: User,
+    connection: GarminConnection,
+    run: GarminSyncRun,
+    limit: int,
+    window_start: date,
+    latest: bool,
+    session: dict,
 ) -> SyncResult:
     token = client.exchange_key(crypto.decrypt(connection.api_key_encrypted, owner.id))
-    window = sorted(client.list_since(token, window_start), key=lambda a: a.start_time)
+    found = client.latest(token) if latest else client.list_since(token, window_start)
+    window = sorted(found, key=lambda a: a.start_time)
     seen = set(
         GarminSyncedActivity.objects.filter(
             owner=owner, garmin_activity_id__in=[a.activity_id for a in window]
         ).values_list("garmin_activity_id", flat=True)
     )
     candidates = [a for a in window if a.activity_id not in seen]
-    truncated = len(candidates) > limit
-    taken = candidates[:limit]
+    take = 1 if latest else limit
+    truncated = len(candidates) > take
+    taken = candidates[:take]
 
     staged: list[tuple[str, bytes]] = []
     staged_from: list[client.ActivitySummary] = []
@@ -116,7 +138,7 @@ def _do_sync(
     if taken and not staged:
         raise client.GarminUpstreamError(f"None of the {len(taken)} activities could be downloaded from Garmin.")
 
-    batch = create_batch_from_files(owner.id, "garmin-sync", "skip", staged) if staged else None
+    batch = create_batch_from_files(owner.id, "garmin-sync", "skip", staged, session) if staged else None
     for summary in staged_from:
         try:
             with transaction.atomic():
@@ -127,8 +149,9 @@ def _do_sync(
             pass  # a concurrent sync recorded the same id first; the batch pipeline already deduped the file
 
     # Only move the marker when nothing was lost: a failed download must be retried, and recorded
-    # ids plus the batch pipeline's duplicate handling make re-fetching the rest harmless.
-    if failed == 0:
+    # ids plus the batch pipeline's duplicate handling make re-fetching the rest harmless. A
+    # latest-only sync never moves it: older activities may still be waiting in the window.
+    if failed == 0 and not latest:
         connection.last_synced_at = taken[-1].start_time if truncated else timezone.now()
         connection.save(update_fields=["last_synced_at", "updated"])
 

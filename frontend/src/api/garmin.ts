@@ -1,5 +1,12 @@
 import { apiFetch } from "./client";
-import type { DataList, GarminConnection, GarminConnectionUpdate, GarminSyncResult, GarminSyncRun } from "./types";
+import type {
+  DataList,
+  GarminConnection,
+  GarminConnectionUpdate,
+  GarminSyncParams,
+  GarminSyncResult,
+  GarminSyncRun,
+} from "./types";
 
 export function getGarminConnection(): Promise<GarminConnection> {
   return apiFetch<GarminConnection>("/v1/garmin/connection");
@@ -13,7 +20,7 @@ export function deleteGarminConnection(): Promise<void> {
   return apiFetch<void>("/v1/garmin/connection", { method: "DELETE" });
 }
 
-export function syncGarmin(params: { limit?: number; since?: string } = {}): Promise<GarminSyncResult> {
+export function syncGarmin(params: GarminSyncParams = {}): Promise<GarminSyncResult> {
   return apiFetch<GarminSyncResult>("/v1/garmin/sync", { method: "POST", body: params });
 }
 

@@ -41,8 +41,8 @@ public class GarminSyncController {
 	@PostMapping("/v1/garmin/sync")
 	public ResponseEntity<GarminSyncResponse> sync(@RequestBody(required = false) GarminSyncRequest request) {
 		User owner = userService.getById(AuthContextHolder.get().sub());
-		GarminSyncRequest req = request != null ? request : new GarminSyncRequest(null, null);
-		GarminSyncService.Result result = syncService.sync(owner, req.limit(), req.since());
+		GarminSyncRequest req = request != null ? request : new GarminSyncRequest(null, null, null, null, null, null, null);
+		GarminSyncService.Result result = syncService.sync(owner, req);
 		GarminSyncRun run = result.run();
 
 		UploadBatchResponse batchBody = null;

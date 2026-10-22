@@ -6,10 +6,12 @@ import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.garmin.GarminApiClient.ActivitySummary;
+import com.cadence.api.garmin.dto.GarminSyncRequest;
 import com.cadence.api.uploads.OnDuplicate;
 import com.cadence.api.uploads.UploadBatch;
 import com.cadence.api.uploads.UploadIngestService.StagedFile;
 import com.cadence.api.uploads.UploadService;
+import com.cadence.api.uploads.UploadService.SessionDetails;
 import com.cadence.api.users.User;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -75,7 +77,7 @@ public class GarminSyncService {
 
 	// Deliberately not @Transactional: this makes slow network calls, and holding a DB
 	// transaction open across them would pin a pooled connection for the duration.
-	public Result sync(User owner, Integer requestedLimit, LocalDate since) {
+	public Result sync(User owner, GarminSyncRequest request) {
 		GarminConnection connection = repository.findByOwnerId(owner.getId())
 				.orElseThrow(() -> new NotFoundException("No Garmin connection is set up."));
 		LocalDate today = LocalDate.now(ZoneOffset.UTC);
@@ -84,14 +86,22 @@ public class GarminSyncService {
 					+ ". Create a new one in Garmin Connect and replace it in Preferences.");
 		}
 
-		int cap = properties.garmin().syncMaxActivities();
-		int limit = requestedLimit == null ? cap : requestedLimit;
-		if (limit < 1 || limit > cap) {
-			throw new ValidationException("limit must be between 1 and " + cap + ".", "limit");
+		boolean latestOnly = request.isLatest();
+		if (!latestOnly && request.hasSessionDetails()) {
+			throw new ValidationException("Session details can only be given when syncing the latest activity.", "latest");
 		}
+		int max = GarminConnection.MAX_SYNC_LIMIT;
+		int limit = request.limit() == null ? connection.getSyncLimit() : request.limit();
+		if (limit < 1 || limit > max) {
+			throw new ValidationException("limit must be between 1 and " + max + ".", "limit");
+		}
+		LocalDate since = request.since();
 		if (since != null && since.isAfter(today)) {
 			throw new ValidationException("since cannot be in the future.", "since");
 		}
+		// Resolved before the run is recorded, so an unknown shoe is a plain 400 and leaves no run behind.
+		SessionDetails details = latestOnly ? new SessionDetails(request.weightBeforeKg(), request.weightAfterKg(),
+				request.fluidsMl(), uploadService.resolveShoe(owner, request.shoeId())) : null;
 		LocalDate windowStart = since != null ? since
 				: connection.getLastSyncedAt() != null
 						? connection.getLastSyncedAt().atZone(ZoneOffset.UTC).toLocalDate().minusDays(1)
@@ -102,7 +112,7 @@ public class GarminSyncService {
 		run.setStartedAt(Instant.now());
 		run = runRepository.save(run);
 		try {
-			return doSync(owner, connection, run, limit, windowStart);
+			return doSync(owner, connection, run, limit, windowStart, latestOnly, details);
 		}
 		catch (ApiException e) {
 			// Record why it failed (a message we wrote - never the key), then let the caller see it too.
@@ -114,17 +124,20 @@ public class GarminSyncService {
 		}
 	}
 
-	private Result doSync(User owner, GarminConnection connection, GarminSyncRun run, int limit, LocalDate windowStart) {
+	private Result doSync(User owner, GarminConnection connection, GarminSyncRun run, int limit, LocalDate windowStart,
+			boolean latestOnly, SessionDetails details) {
 		String token = client.exchangeKey(cipher.decrypt(connection.getApiKeyEncrypted(), owner.getId()));
-		List<ActivitySummary> window = new ArrayList<>(client.listSince(token, windowStart));
+		List<ActivitySummary> window = new ArrayList<>(
+				latestOnly ? client.latest(token) : client.listSince(token, windowStart));
 		window.sort(Comparator.comparing(ActivitySummary::startTime));
 
 		Set<Long> seen = window.isEmpty() ? Set.of()
 				: syncedRepository.findSeenIds(owner.getId(),
 						window.stream().map(ActivitySummary::activityId).collect(Collectors.toList()));
 		List<ActivitySummary> candidates = window.stream().filter(a -> !seen.contains(a.activityId())).toList();
-		boolean truncated = candidates.size() > limit;
-		List<ActivitySummary> taken = truncated ? candidates.subList(0, limit) : candidates;
+		int take = latestOnly ? 1 : limit;
+		boolean truncated = candidates.size() > take;
+		List<ActivitySummary> taken = truncated ? candidates.subList(0, take) : candidates;
 
 		List<StagedFile> staged = new ArrayList<>();
 		List<ActivitySummary> stagedFrom = new ArrayList<>();
@@ -152,7 +165,7 @@ public class GarminSyncService {
 		}
 
 		UploadBatch batch = staged.isEmpty() ? null
-				: uploadService.createBatchUpload(owner, staged, "garmin-sync", OnDuplicate.SKIP);
+				: uploadService.createBatchUpload(owner, staged, "garmin-sync", OnDuplicate.SKIP, details);
 		for (ActivitySummary summary : stagedFrom) {
 			try {
 				syncedRepository.save(new GarminSyncedActivity(owner, summary.activityId(), summary.startTime(), run.getId()));
@@ -164,7 +177,8 @@ public class GarminSyncService {
 
 		// Only move the marker when nothing was lost: a failed download must be retried, and
 		// recorded ids plus the batch pipeline's duplicate handling make re-fetching the rest harmless.
-		if (failed == 0) {
+		// A latest-only sync never moves it: older activities may still be waiting in the window.
+		if (failed == 0 && !latestOnly) {
 			connection.setLastSyncedAt(truncated ? taken.get(taken.size() - 1).startTime() : Instant.now());
 			repository.save(connection);
 		}

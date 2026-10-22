@@ -4,6 +4,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { deleteGarminConnection, getGarminConnection, saveGarminConnection } from "../../api/garmin";
 
 const EXPIRY_WARNING_DAYS = 14;
+const DEFAULT_SYNC_LIMIT = 50;
+const MAX_SYNC_LIMIT = 100;
 
 const inputStyle = {
   padding: "8px 12px",
@@ -27,11 +29,15 @@ export function GarminTab() {
   const [apiKey, setApiKey] = useState("");
   const [emailDraft, setEmailDraft] = useState<string | undefined>(undefined);
   const [expiryDraft, setExpiryDraft] = useState<string | undefined>(undefined);
+  const [limitDraft, setLimitDraft] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   const connected = connection?.connected ?? false;
   const email = emailDraft ?? connection?.email ?? user?.email ?? "";
   const expiry = expiryDraft ?? connection?.key_expires_on ?? "";
+  const syncLimit = limitDraft ?? String(connection?.sync_limit ?? DEFAULT_SYNC_LIMIT);
+  const limitValue = Number(syncLimit);
+  const limitValid = Number.isInteger(limitValue) && limitValue >= 1 && limitValue <= MAX_SYNC_LIMIT;
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -39,11 +45,13 @@ export function GarminTab() {
         ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
         email: email.trim(),
         key_expires_on: expiry || null,
+        sync_limit: limitValue,
       }),
     onSuccess: () => {
       setApiKey("");
       setEmailDraft(undefined);
       setExpiryDraft(undefined);
+      setLimitDraft(undefined);
       setError(null);
       queryClient.invalidateQueries({ queryKey: ["garmin-connection"] });
     },
@@ -55,11 +63,12 @@ export function GarminTab() {
       setApiKey("");
       setEmailDraft(undefined);
       setExpiryDraft(undefined);
+      setLimitDraft(undefined);
       queryClient.invalidateQueries({ queryKey: ["garmin-connection"] });
     },
   });
 
-  const canSave = (connected || !!apiKey.trim()) && !!email.trim() && !saveMutation.isPending;
+  const canSave = (connected || !!apiKey.trim()) && !!email.trim() && limitValid && !saveMutation.isPending;
   const expiryDays = connection?.key_expires_on ? daysUntil(connection.key_expires_on) : null;
 
   return (
@@ -110,6 +119,23 @@ export function GarminTab() {
           Key expiry date (optional)
           <input type="date" value={expiry} onChange={(e) => setExpiryDraft(e.target.value)} style={inputStyle} />
           <span style={{ fontWeight: 400, color: "var(--ink3)" }}>Garmin keys last 30, 90, 180 or 365 days. We'll warn you before it lapses.</span>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, fontWeight: 600 }}>
+          Activities per sync
+          <input
+            type="number"
+            min={1}
+            max={MAX_SYNC_LIMIT}
+            step={1}
+            value={syncLimit}
+            onChange={(e) => setLimitDraft(e.target.value)}
+            style={{ ...inputStyle, width: 120 }}
+          />
+          <span style={{ fontWeight: 400, color: limitValid ? "var(--ink3)" : "#e0442e" }}>
+            {limitValid
+              ? `The most activities one sync downloads, oldest first (default ${DEFAULT_SYNC_LIMIT}, maximum ${MAX_SYNC_LIMIT}). Sync again to continue a longer backlog.`
+              : `Enter a whole number from 1 to ${MAX_SYNC_LIMIT}.`}
+          </span>
         </label>
         {error && <div style={{ fontSize: 13, color: "#e0442e" }}>{error}</div>}
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>

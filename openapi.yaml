@@ -3405,7 +3405,8 @@ paths:
         key. It is encrypted at rest (AES-256-GCM). `email` is the Garmin account's email and
         defaults to the caller's own login email. `key_expires_on` is the date the key expires
         (Garmin issues them for 30/90/180/365 days but does not expose it); only `api_key`
-        is preserved when omitted, so omitting `key_expires_on` clears it.
+        is preserved when omitted, so omitting `key_expires_on` clears it. `sync_limit` is how
+        many activities one sync pulls (1-100, default 50); it is left unchanged when omitted.
       requestBody:
         required: true
         content:
@@ -3416,6 +3417,7 @@ paths:
                 api_key: { type: string, minLength: 8, maxLength: 512, writeOnly: true }
                 email: { type: string, format: email, maxLength: 320 }
                 key_expires_on: { type: string, format: date, nullable: true }
+                sync_limit: { type: integer, minimum: 1, maximum: 100, description: Most activities one sync pulls. Defaults to 50. }
       responses:
         "200":
           description: Saved.
@@ -3473,9 +3475,19 @@ paths:
                   minimum: 1
                   maximum: 100
                   description: >
-                    Most activities to import this run. Defaults to, and may not exceed, the
-                    server's configured cap (50 unless overridden; never above 100).
+                    Most activities to import this run. Defaults to the caller's saved
+                    `sync_limit` (50 unless changed); never above 100.
                 since: { type: string, format: date, description: Start of the window; not in the future. }
+                latest:
+                  type: boolean
+                  description: >
+                    Sync only Garmin's single newest activity (ignores `limit` and `since`, and
+                    does not move the sync window, so older activities are still picked up by a
+                    normal sync). Skipped, like any sync, if that activity was already pulled.
+                weight_before_kg: { type: number, format: float, description: "Only with `latest`. As for a single-file upload." }
+                weight_after_kg: { type: number, format: float, description: "Only with `latest`." }
+                fluids_ml: { type: integer, description: "Only with `latest`." }
+                shoe_id: { type: string, description: "Only with `latest`. Shoe worn (run activities); an unknown id is a 400." }
       responses:
         "202":
           description: Sync accepted.
@@ -3500,7 +3512,7 @@ paths:
                     allOf:
                       - $ref: "#/components/schemas/UploadBatch"
         "400":
-          description: "`limit` outside 1..cap, or `since` in the future."
+          description: "`limit` outside 1..100, `since` in the future, session details without `latest`, or an unknown `shoe_id`."
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3692,6 +3704,7 @@ components:
         connected: { type: boolean }
         email: { type: string, format: email, nullable: true }
         key_expires_on: { type: string, format: date, nullable: true }
+        sync_limit: { type: integer, minimum: 1, maximum: 100, nullable: true, description: Most activities one sync pulls (null when not connected). }
         last_synced_at:
           type: string
           format: date-time

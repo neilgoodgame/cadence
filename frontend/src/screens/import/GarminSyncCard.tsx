@@ -2,9 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getGarminConnection, listGarminSyncs, syncGarmin } from "../../api/garmin";
-import type { GarminSyncResult, GarminSyncRun } from "../../api/types";
+import type { GarminSyncParams, GarminSyncResult, GarminSyncRun } from "../../api/types";
 import { formatDateTime } from "../../lib/format";
 import { BatchStatus } from "./BatchStatus";
+import { SessionDetailsFields } from "./SessionDetailsFields";
+import { emptySessionDetails, toUploadMetadata, type SessionDetailsDraft } from "./sessionDetails";
 
 function isExpired(date: string | null): boolean {
   return !!date && date < new Date().toISOString().slice(0, 10);
@@ -84,11 +86,19 @@ export function GarminSyncCard() {
   });
   const [result, setResult] = useState<GarminSyncResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [latestOpen, setLatestOpen] = useState(false);
+  const [details, setDetails] = useState<SessionDetailsDraft>(emptySessionDetails);
+  const [lastWasLatest, setLastWasLatest] = useState(false);
 
   const syncMutation = useMutation({
-    mutationFn: () => syncGarmin(),
-    onSuccess: (r) => {
+    mutationFn: (params: GarminSyncParams) => syncGarmin(params),
+    onSuccess: (r, params) => {
       setResult(r);
+      setLastWasLatest(params.latest === true);
+      if (params.latest) {
+        setLatestOpen(false);
+        setDetails(emptySessionDetails);
+      }
       setError(null);
       queryClient.invalidateQueries({ queryKey: ["garmin-connection"] });
       queryClient.invalidateQueries({ queryKey: ["garmin-syncs"] });
@@ -113,6 +123,17 @@ export function GarminSyncCard() {
   const lastRun = history?.data[0];
   const canSync = !expired && !syncMutation.isPending;
 
+  function syncLatest() {
+    const m = toUploadMetadata(details);
+    syncMutation.mutate({
+      latest: true,
+      weight_before_kg: m.weightBeforeKg,
+      weight_after_kg: m.weightAfterKg,
+      fluids_ml: m.fluidsMl,
+      shoe_id: m.shoeId,
+    });
+  }
+
   return (
     <div style={{ border: "1px solid var(--line)", borderRadius: 14, padding: 20, background: "var(--card)", display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
@@ -125,25 +146,71 @@ export function GarminSyncCard() {
             {connection.last_activity && ` · latest activity ${formatDateTime(connection.last_activity.start_time)}`}
           </div>
         </div>
-        <button
-          onClick={() => syncMutation.mutate()}
-          disabled={!canSync}
-          style={{
-            padding: "8px 16px",
-            borderRadius: 8,
-            border: "none",
-            background: "var(--ember)",
-            color: "#fff",
-            fontSize: 13,
-            fontWeight: 700,
-            whiteSpace: "nowrap",
-            opacity: canSync ? 1 : 0.4,
-            cursor: canSync ? "pointer" : "not-allowed",
-          }}
-        >
-          {syncMutation.isPending ? "Syncing…" : "Sync now"}
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={() => setLatestOpen((open) => !open)}
+            disabled={!canSync}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+              background: "var(--elev)",
+              color: "var(--ink)",
+              fontSize: 13,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              opacity: canSync ? 1 : 0.4,
+              cursor: canSync ? "pointer" : "not-allowed",
+            }}
+          >
+            Latest only…
+          </button>
+          <button
+            onClick={() => syncMutation.mutate({})}
+            disabled={!canSync}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "none",
+              background: "var(--ember)",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+              opacity: canSync ? 1 : 0.4,
+              cursor: canSync ? "pointer" : "not-allowed",
+            }}
+          >
+            {syncMutation.isPending ? "Syncing…" : "Sync now"}
+          </button>
+        </div>
       </div>
+
+      {latestOpen && !expired && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+          <div style={{ fontSize: 13, color: "var(--ink2)" }}>
+            Pull only your newest Garmin activity, and add the session details now (all optional).
+          </div>
+          <SessionDetailsFields value={details} onChange={setDetails} />
+          <button
+            onClick={syncLatest}
+            disabled={!canSync}
+            style={{
+              alignSelf: "flex-start",
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "none",
+              background: "var(--ember)",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              opacity: canSync ? 1 : 0.4,
+            }}
+          >
+            {syncMutation.isPending ? "Syncing…" : "Sync latest activity"}
+          </button>
+        </div>
+      )}
 
       {expired && (
         <div style={{ fontSize: 13, color: "#e0442e" }}>
@@ -155,9 +222,15 @@ export function GarminSyncCard() {
       {result && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 13, color: "var(--ink2)" }}>
-            {result.found === 0
-              ? "Nothing new on Garmin since the last sync."
-              : `Found ${result.found} on Garmin — ${summarise(result)}.`}
+            {lastWasLatest
+              ? result.found === 0
+                ? "There are no activities on Garmin."
+                : result.requested === 0
+                  ? "Your latest Garmin activity was already synced."
+                  : "Pulled your latest Garmin activity."
+              : result.found === 0
+                ? "Nothing new on Garmin since the last sync."
+                : `Found ${result.found} on Garmin — ${summarise(result)}.`}
             {result.truncated && " More activities remain — sync again to continue."}
           </div>
           {result.batch && <BatchStatus key={result.batch.id} initial={{ data: result.batch, retryAfterSeconds: 5 }} />}

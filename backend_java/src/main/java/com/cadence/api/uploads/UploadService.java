@@ -50,17 +50,26 @@ public class UploadService {
 
 	public Upload createSingleUpload(User athlete, MultipartFile file, Double weightBeforeKg, Double weightAfterKg,
 			Integer fluidsMl, String shoeId) throws IOException {
-		Shoe shoe = null;
-		if (shoeId != null && !shoeId.isBlank()) {
-			shoe = shoeRepository.findByIdAndAthleteId(shoeId, athlete.getId())
-					.orElseThrow(() -> new ValidationException("Unknown shoe '" + shoeId + "'.", "shoe_id"));
-		}
+		Shoe shoe = resolveShoe(athlete, shoeId);
 		var staged = ingestService.readAndValidate(file.getOriginalFilename(), file.getBytes());
 		Upload upload = ingestService.stageUpload(athlete, null, staged, weightBeforeKg, weightAfterKg, fluidsMl, shoe);
 		if (upload.getStatus() == UploadStatus.QUEUED) {
 			jobLauncher.launch(upload.getId());
 		}
 		return upload;
+	}
+
+	/** The athlete's own shoe for an optional id; unknown (or someone else's) is a 400. */
+	public Shoe resolveShoe(User athlete, String shoeId) {
+		if (shoeId == null || shoeId.isBlank()) {
+			return null;
+		}
+		return shoeRepository.findByIdAndAthleteId(shoeId, athlete.getId())
+				.orElseThrow(() -> new ValidationException("Unknown shoe '" + shoeId + "'.", "shoe_id"));
+	}
+
+	/** Per-session details applied to every file of a batch (used for a single-activity Garmin sync). */
+	public record SessionDetails(Double weightBeforeKg, Double weightAfterKg, Integer fluidsMl, Shoe shoe) {
 	}
 
 	public UploadBatch createBatchUpload(User athlete, MultipartFile zipFile, OnDuplicate onDuplicate) throws IOException {
@@ -70,6 +79,11 @@ public class UploadService {
 	/** For callers that already hold the files (e.g. the Garmin sync), skipping the zip round trip. */
 	public UploadBatch createBatchUpload(User athlete, List<UploadIngestService.StagedFile> entries, String filename,
 			OnDuplicate onDuplicate) {
+		return createBatchUpload(athlete, entries, filename, onDuplicate, null);
+	}
+
+	public UploadBatch createBatchUpload(User athlete, List<UploadIngestService.StagedFile> entries, String filename,
+			OnDuplicate onDuplicate, SessionDetails details) {
 		if (entries.isEmpty()) {
 			throw new ValidationException("The archive contained no supported files.", "file");
 		}
@@ -77,7 +91,10 @@ public class UploadService {
 		UploadBatch batch = createBatch(athlete, filename, onDuplicate);
 		List<Upload> children = new ArrayList<>();
 		for (UploadIngestService.StagedFile entry : entries) {
-			Upload upload = ingestService.stageUpload(athlete, batch, entry, null, null, null, null);
+			Upload upload = details == null
+					? ingestService.stageUpload(athlete, batch, entry, null, null, null, null)
+					: ingestService.stageUpload(athlete, batch, entry, details.weightBeforeKg(), details.weightAfterKg(),
+							details.fluidsMl(), details.shoe());
 			children.add(upload);
 		}
 		for (Upload upload : children) {

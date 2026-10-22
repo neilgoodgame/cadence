@@ -1506,6 +1506,8 @@ export interface GarminConnection {
   last_run_at: string | null;
   /** The newest Garmin activity ever pulled, by start time. */
   last_activity: { garmin_activity_id: number; start_time: string } | null;
+  /** Most activities one sync pulls (1-100, default 50); null when not connected. */
+  sync_limit: number | null;
 }
 
 export interface GarminSyncResult {
@@ -1547,4 +1549,17 @@ export interface GarminConnectionUpdate {
   api_key?: string;
   email?: string;
   key_expires_on?: string | null;
+  /** 1-100; omit to leave it unchanged. */
+  sync_limit?: number;
+}
+
+/** `latest` syncs only Garmin's newest activity; the session details are only valid with it. */
+export interface GarminSyncParams {
+  limit?: number;
+  since?: string;
+  latest?: boolean;
+  weight_before_kg?: number;
+  weight_after_kg?: number;
+  fluids_ml?: number;
+  shoe_id?: string;
 }

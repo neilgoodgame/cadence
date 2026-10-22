@@ -89,6 +89,16 @@ public class GarminApiClient {
 		return all;
 	}
 
+	/** Garmin's single newest activity, or empty when the account has none. */
+	public List<ActivitySummary> latest(String token) {
+		ActivitySummary[] page = call(() -> restClient.get()
+				.uri("/activitylist-service/activities/search/activities?start=0&limit=1")
+				.header("Authorization", "Bearer " + token)
+				.retrieve()
+				.body(ActivitySummary[].class));
+		return page == null || page.length == 0 ? List.of() : List.of(page[0]);
+	}
+
 	public byte[] downloadZip(String token, long activityId) {
 		byte[] body = call(() -> restClient.get()
 				.uri("/download-service/files/activity/{id}", activityId)

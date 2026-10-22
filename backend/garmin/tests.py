@@ -104,6 +104,17 @@ class GarminConnectionViewTests(TestCase):
         stored = GarminConnection.objects.get(owner=self.athlete)
         self.assertEqual(crypto.decrypt(stored.api_key_encrypted, self.athlete.id), API_KEY)
 
+    def test_sync_limit_defaults_to_fifty_can_be_set_and_is_left_alone_when_omitted(self):
+        self.assertEqual(self._put(api_key=API_KEY).json()["sync_limit"], 50)
+        self.assertEqual(self._put(sync_limit=20).json()["sync_limit"], 20)
+        self.assertEqual(self._put(email="x@example.cc").json()["sync_limit"], 20)
+        self.assertEqual(self.client_.get("/v1/garmin/connection").json()["sync_limit"], 20)
+
+    def test_a_sync_limit_outside_one_to_one_hundred_is_rejected(self):
+        for bad in (0, 101, -5):
+            self.assertEqual(self._put(api_key=API_KEY, sync_limit=bad).status_code, 400)
+        self.assertFalse(GarminConnection.objects.filter(owner=self.athlete).exists())
+
     def test_first_save_without_a_key_is_rejected(self):
         self.assertEqual(self._put().status_code, 400)
 

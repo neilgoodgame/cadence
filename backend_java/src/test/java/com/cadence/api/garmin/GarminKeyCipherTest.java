@@ -15,7 +15,7 @@ class GarminKeyCipherTest {
 
 	private static GarminKeyCipher cipher(String key) {
 		return new GarminKeyCipher(new CadenceProperties(null, null, null, null, null, null, null,
-				new CadenceProperties.Garmin(key, 50, "http://unused")));
+				new CadenceProperties.Garmin(key, "http://unused")));
 	}
 
 	@Test
@@ -75,12 +75,5 @@ class GarminKeyCipherTest {
 	void rejectsAKeyOfTheWrongLength() {
 		assertThatThrownBy(() -> cipher(Base64.getEncoder().encodeToString("too-short".getBytes())))
 				.isInstanceOf(IllegalStateException.class);
-	}
-
-	@Test
-	void syncCapIsHardLimitedToOneHundred() {
-		assertThat(new CadenceProperties.Garmin("", 100, "http://unused").syncMaxActivities()).isEqualTo(100);
-		assertThatThrownBy(() -> new CadenceProperties.Garmin("", 101, "http://unused")).isInstanceOf(IllegalArgumentException.class);
-		assertThatThrownBy(() -> new CadenceProperties.Garmin("", 0, "http://unused")).isInstanceOf(IllegalArgumentException.class);
 	}
 }

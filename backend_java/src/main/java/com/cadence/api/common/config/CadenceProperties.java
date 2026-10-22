@@ -38,19 +38,9 @@ public record CadenceProperties(
 
 	/**
 	 * {@code encryptionKey} is base64 for 32 bytes (AES-256); blank leaves Garmin key storage
-	 * disabled. {@code syncMaxActivities} caps how many activities one sync pulls - Garmin
-	 * documents no rate limit, so this is our own guard, hard-capped at {@link #SYNC_MAX_CEILING}.
-	 * {@code apiBaseUrl} is the Personal API host (configurable only so tests can point at a stub).
+	 * disabled. {@code apiBaseUrl} is the Personal API host (configurable only so tests can point
+	 * at a stub). How many activities a sync pulls is a per-athlete setting, not configuration.
 	 */
-	public record Garmin(String encryptionKey, int syncMaxActivities, String apiBaseUrl) {
-
-		public static final int SYNC_MAX_CEILING = 100;
-
-		public Garmin {
-			if (syncMaxActivities < 1 || syncMaxActivities > SYNC_MAX_CEILING) {
-				throw new IllegalArgumentException(
-						"cadence.garmin.sync-max-activities must be between 1 and " + SYNC_MAX_CEILING + ".");
-			}
-		}
+	public record Garmin(String encryptionKey, String apiBaseUrl) {
 	}
 }

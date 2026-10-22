@@ -17,6 +17,10 @@ import java.time.LocalDate;
 @Table(name = "garmin_connection")
 public class GarminConnection extends PrefixedIdEntity {
 
+	/** Activities one sync pulls unless the athlete changes it; {@link #MAX_SYNC_LIMIT} is our own ceiling. */
+	public static final int DEFAULT_SYNC_LIMIT = 50;
+	public static final int MAX_SYNC_LIMIT = 100;
+
 	@OneToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "owner_id", nullable = false, unique = true)
 	private User owner;
@@ -32,6 +36,9 @@ public class GarminConnection extends PrefixedIdEntity {
 
 	@Column(name = "last_synced_at")
 	private Instant lastSyncedAt;
+
+	@Column(name = "sync_limit", nullable = false)
+	private int syncLimit = DEFAULT_SYNC_LIMIT;
 
 	@Column(nullable = false)
 	private Instant created;
@@ -96,6 +103,14 @@ public class GarminConnection extends PrefixedIdEntity {
 
 	public void setLastSyncedAt(Instant lastSyncedAt) {
 		this.lastSyncedAt = lastSyncedAt;
+	}
+
+	public int getSyncLimit() {
+		return syncLimit;
+	}
+
+	public void setSyncLimit(int syncLimit) {
+		this.syncLimit = syncLimit;
 	}
 
 	public Instant getCreated() {

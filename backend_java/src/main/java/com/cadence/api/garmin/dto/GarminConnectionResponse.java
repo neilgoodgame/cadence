@@ -11,13 +11,13 @@ import java.time.LocalDate;
  */
 public record GarminConnectionResponse(
 		boolean connected, String email, LocalDate keyExpiresOn, Instant lastSyncedAt, Instant lastRunAt,
-		LastActivity lastActivity) {
+		LastActivity lastActivity, Integer syncLimit) {
 
 	public record LastActivity(long garminActivityId, Instant startTime) {
 	}
 
 	public static GarminConnectionResponse notConnected() {
-		return new GarminConnectionResponse(false, null, null, null, null, null);
+		return new GarminConnectionResponse(false, null, null, null, null, null, null);
 	}
 
 	public static GarminConnectionResponse from(GarminConnection connection, Instant lastRunAt,
@@ -25,6 +25,7 @@ public record GarminConnectionResponse(
 		return new GarminConnectionResponse(true, connection.getGarminEmail(), connection.getKeyExpiresOn(),
 				connection.getLastSyncedAt(), lastRunAt,
 				lastActivity == null ? null
-						: new LastActivity(lastActivity.getGarminActivityId(), lastActivity.getStartTime()));
+						: new LastActivity(lastActivity.getGarminActivityId(), lastActivity.getStartTime()),
+				connection.getSyncLimit());
 	}
 }

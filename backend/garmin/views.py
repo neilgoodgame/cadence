@@ -41,6 +41,8 @@ class GarminConnectionView(APIView):
             connection.api_key_encrypted = crypto.encrypt(api_key, owner.id)
         connection.garmin_email = email
         connection.key_expires_on = data.get("key_expires_on")
+        if data.get("sync_limit") is not None:
+            connection.sync_limit = data["sync_limit"]
         connection.save()
         return Response(GarminConnectionSerializer(GarminConnectionSerializer.from_connection(connection)).data)
 
@@ -55,7 +57,13 @@ class GarminSyncView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        result = sync.sync(authenticated_user(request), data.get("limit"), data.get("since"))
+        result = sync.sync(
+            authenticated_user(request),
+            data.get("limit"),
+            data.get("since"),
+            latest=data["latest"],
+            session={k: data.get(k) for k in sync.SESSION_FIELDS},
+        )
         run = result.run
         response = Response(
             {

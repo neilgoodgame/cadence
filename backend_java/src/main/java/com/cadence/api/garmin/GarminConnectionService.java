@@ -24,7 +24,8 @@ public class GarminConnectionService {
 	}
 
 	@Transactional
-	public GarminConnection save(User owner, String apiKey, String email, LocalDate keyExpiresOn) {
+	public GarminConnection save(User owner, String apiKey, String email, LocalDate keyExpiresOn,
+			Integer syncLimit) {
 		String key = apiKey == null || apiKey.isBlank() ? null : apiKey.trim();
 		GarminConnection connection = repository.findByOwnerId(owner.getId()).orElse(null);
 		if (connection == null && key == null) {
@@ -46,6 +47,13 @@ public class GarminConnectionService {
 		}
 		connection.setGarminEmail(garminEmail);
 		connection.setKeyExpiresOn(keyExpiresOn);
+		if (syncLimit != null) {
+			if (syncLimit < 1 || syncLimit > GarminConnection.MAX_SYNC_LIMIT) {
+				throw new ValidationException("sync_limit must be between 1 and " + GarminConnection.MAX_SYNC_LIMIT + ".",
+						"sync_limit");
+			}
+			connection.setSyncLimit(syncLimit);
+		}
 		return repository.save(connection);
 	}
 

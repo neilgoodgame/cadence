@@ -118,11 +118,17 @@ def create_activity_batch_upload(request: Request, athlete_id: str) -> tuple[Upl
 
 
 def create_batch_from_files(
-    athlete_id: str, filename: str, on_duplicate: str, files: Iterable[tuple[str, bytes]]
+    athlete_id: str,
+    filename: str,
+    on_duplicate: str,
+    files: Iterable[tuple[str, bytes]],
+    session: dict[str, Any] | None = None,
 ) -> UploadBatch:
     """Stage and queue each (name, content) as its own upload under one new batch. Takes an
     iterable so a caller unpacking a big archive can stay lazy. Also used by the Garmin sync,
-    which already holds the files and so skips the zip round trip."""
+    which already holds the files and so skips the zip round trip. ``session`` (weight_before_kg,
+    weight_after_kg, fluids_ml, shoe_id) is applied to every upload, as for a single-file upload."""
+    session = session or {}
     batch = UploadBatch.objects.create(
         athlete_id=athlete_id, filename=filename, on_duplicate=on_duplicate, status="processing"
     )
@@ -132,7 +138,16 @@ def create_batch_from_files(
         short_name = name.rsplit("/", 1)[-1]
         existing = _existing_ready_upload(athlete_id, file_hash)
 
-        upload = Upload.objects.create(athlete_id=athlete_id, batch=batch, filename=short_name, file_hash=file_hash)
+        upload = Upload.objects.create(
+            athlete_id=athlete_id,
+            batch=batch,
+            filename=short_name,
+            file_hash=file_hash,
+            weight_before_kg=session.get("weight_before_kg"),
+            weight_after_kg=session.get("weight_after_kg"),
+            fluids_ml=session.get("fluids_ml"),
+            shoe_id=session.get("shoe_id"),
+        )
 
         if existing and on_duplicate == "skip":
             upload.status = "duplicate"

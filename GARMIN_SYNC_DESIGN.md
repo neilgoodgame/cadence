@@ -61,18 +61,19 @@ pipeline. There is no second ingestion path.
   sync (409) with a message pointing at Preferences.
 - Java and Django ciphertext are interchangeable, proven by a shared fixture in both
   test suites.
-- Table `garmin_connection` (owner, email, encrypted key, expiry, `last_synced_at`).
+- `sync_limit` (1-100, default 50) is how many activities one sync pulls, set in Preferences
+  ("Activities per sync"). It is per athlete, not server config; 100 is a fixed ceiling.
+- Table `garmin_connection` (owner, email, encrypted key, expiry, `sync_limit`, `last_synced_at`).
 
-### Sync (`POST /v1/garmin/sync`, body `{limit?, since?}`)
+### Sync (`POST /v1/garmin/sync`, body `{limit?, since?, latest?, ...session details}`)
 Pull on request, from the Import screen. Returns 202 with the counts and the upload batch.
 
 1. Window start is `since`, else `last_synced_at - 1 day`, else 30 days back.
 2. Exchange the key for a bearer token, then list the window in pages of 50 (cap 1000
    summaries), oldest first.
 3. Drop Garmin activity ids already recorded for this athlete (**before** downloading).
-4. Take the first `limit` candidates. `limit` defaults to **50**
-   (`GARMIN_SYNC_MAX_ACTIVITIES`), hard max **100**; out-of-range config fails startup.
-   `truncated` is true when candidates remain.
+4. Take the first `limit` candidates. `limit` defaults to the athlete's saved `sync_limit`
+   (50 unless changed), hard max **100**. `truncated` is true when candidates remain.
 5. Download and unzip each (a short pause between downloads). A 502 from Garmin counts as
    `failed` and the sync continues; a 401/403 is a 422 "key rejected" and aborts.
 6. Hand the FIT files to the normal batch upload (`createBatchUpload` /
@@ -83,6 +84,16 @@ Pull on request, from the Import screen. Returns 202 with the counts and the upl
 8. `last_synced_at` is the next window marker: the last taken activity's start time when
    truncated, else now. It **only advances if no downloads failed**, so a failed activity
    is inside the next window.
+
+### Latest-only sync (`latest: true`)
+Syncs just Garmin's newest activity (`start=0&limit=1`), for when you want to add the session
+details right away. It accepts the same optional details as a single-file import
+(`weight_before_kg`, `weight_after_kg`, `fluids_ml`, `shoe_id`), applied to the imported
+activity; they are rejected without `latest`, and an unknown shoe is a 400 before any run is
+recorded. It goes through the same one-file batch, records the id like any sync (so a later
+normal sync skips it), and **does not move `last_synced_at`**, so older activities in the window
+are still picked up by the next normal sync. If the newest activity was already synced it is
+skipped, so edit that activity directly to add details.
 
 ### Activity-id tracking (why re-syncs behave)
 `garmin_synced_activity` holds (owner, Garmin activity id, start time, run) with a unique
@@ -117,7 +128,10 @@ The latest synced activity is known from this table (`last_activity` on the conn
   cleared, or Activity no longer in Cadence, and link to the activity. The history polls
   every 3s while a run is in flight. Not connected: a link to Preferences. Expired: the
   button is disabled.
-- Preferences > Garmin shows connection status, last sync and latest activity.
+- The card also has **Latest only...**, which opens the same Session details fields as the
+  single-file import (shared `SessionDetailsFields` component) and a Sync latest activity button.
+- Preferences > Garmin shows connection status, last sync and latest activity, and sets
+  **Activities per sync** (1-100).
 
 ### Contract and parity
 `openapi.yaml` (tag Garmin) is canonical. Java: `com.cadence.api.garmin`, Flyway V84/V85.

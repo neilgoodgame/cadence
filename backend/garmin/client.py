@@ -57,6 +57,27 @@ def exchange_key(api_key: str) -> str:
     return token
 
 
+def latest(token: str) -> list[ActivitySummary]:
+    """Garmin's single newest activity, or an empty list when the account has none."""
+    response = _request(
+        "GET",
+        "/activitylist-service/activities/search/activities",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"start": 0, "limit": 1},
+    )
+    try:
+        page = response.json()[:1]
+        return [
+            ActivitySummary(
+                int(item["activityId"]),
+                datetime.strptime(item["startTimeGMT"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC),
+            )
+            for item in page
+        ]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise GarminUpstreamError("Garmin returned an unreadable activity list.") from exc
+
+
 def list_since(token: str, start_date: date) -> list[ActivitySummary]:
     """Newest first, matching Garmin's own order."""
     found: list[ActivitySummary] = []

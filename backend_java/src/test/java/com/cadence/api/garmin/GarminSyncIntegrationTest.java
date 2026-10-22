@@ -73,6 +73,15 @@ class GarminSyncIntegrationTest extends IntegrationTest {
 	@Autowired
 	private com.cadence.api.uploads.UploadService uploadService;
 
+	@Autowired
+	private com.cadence.api.gear.ShoeRepository shoeRepository;
+
+	@Autowired
+	private com.cadence.api.gear.ShoeModelRepository shoeModelRepository;
+
+	@Autowired
+	private com.cadence.api.gear.ShoeModelVersionRepository shoeModelVersionRepository;
+
 	private static HttpServer startStubGarmin() {
 		try {
 			HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
@@ -82,8 +91,11 @@ class GarminSyncIntegrationTest extends IntegrationTest {
 			});
 			server.createContext("/activitylist-service/activities/search/activities", ex -> {
 				boolean firstPage = ex.getRequestURI().getQuery().contains("start=0");
-				// Newest first, like Garmin.
-				respond(ex, 200, "application/json", firstPage
+				// Newest first, like Garmin, which honours `limit`.
+				boolean one = ex.getRequestURI().getQuery().contains("limit=1");
+				respond(ex, 200, "application/json", firstPage && one
+						? "[{\"activityId\":103,\"startTimeGMT\":\"2026-10-03 10:00:00\",\"activityName\":\"c\"}]"
+						: firstPage
 						? "[{\"activityId\":103,\"startTimeGMT\":\"2026-10-03 10:00:00\",\"activityName\":\"c\"},"
 								+ "{\"activityId\":102,\"startTimeGMT\":\"2026-10-02 10:00:00\",\"activityName\":\"b\"},"
 								+ "{\"activityId\":101,\"startTimeGMT\":\"2026-10-01 10:00:00\",\"activityName\":\"a\"}]"
@@ -131,6 +143,22 @@ class GarminSyncIntegrationTest extends IntegrationTest {
 		return userRepository.save(user);
 	}
 
+	private com.cadence.api.gear.Shoe newShoe(User athlete) {
+		var model = new com.cadence.api.gear.ShoeModel();
+		model.setManufacturer("GarminSyncCo");
+		model.setModel("Runner");
+		model = shoeModelRepository.save(model);
+		var version = new com.cadence.api.gear.ShoeModelVersion();
+		version.setShoeModel(model);
+		version.setVersion("v1");
+		version = shoeModelVersionRepository.save(version);
+		var shoe = new com.cadence.api.gear.Shoe();
+		shoe.setAthlete(athlete);
+		shoe.setShoeModelVersion(version);
+		shoe.setName("Garmin sync trainer");
+		return shoe;
+	}
+
 	private String bearer(User user) {
 		return "Bearer " + accessTokenService
 				.create(user, new CreateAccessTokenRequest("garmin-sync-test", List.of("activities:read"), null, null), Set.of())
@@ -139,7 +167,7 @@ class GarminSyncIntegrationTest extends IntegrationTest {
 
 	private User connectedAthlete(String email, String key) {
 		User athlete = newAthlete(email);
-		connectionService.save(athlete, key, null, null);
+		connectionService.save(athlete, key, null, null, null);
 		return athlete;
 	}
 
@@ -285,11 +313,78 @@ class GarminSyncIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void aLimitAboveTheConfiguredCapIsRejected() throws Exception {
+	void aLimitAboveTheHardMaximumIsRejected() throws Exception {
 		User athlete = connectedAthlete("garmin-sync-cap@example.cc", GOOD_KEY);
 
-		assertThat(syncBody("{\"limit\":51}", athlete)).startsWith("400");
+		assertThat(syncBody("{\"limit\":101}", athlete)).startsWith("400");
 		assertThat(syncBody("{\"limit\":0}", athlete)).startsWith("400");
+	}
+
+	@Test
+	void theAthletesSavedSyncLimitIsTheDefaultForARun() throws Exception {
+		User athlete = connectedAthlete("garmin-sync-savedlimit@example.cc", GOOD_KEY);
+		connectionService.save(athlete, null, null, null, 2);
+
+		mockMvc.perform(post("/v1/garmin/sync").header("Authorization", bearer(athlete))
+						.contentType(MediaType.APPLICATION_JSON).content("{}"))
+				.andExpect(status().isAccepted())
+				.andExpect(jsonPath("$.requested").value(2))
+				.andExpect(jsonPath("$.truncated").value(true));
+	}
+
+	@Test
+	void latestSyncsOnlyTheNewestActivityWithItsSessionDetailsAndLeavesTheWindowAlone() throws Exception {
+		User athlete = connectedAthlete("garmin-sync-latest@example.cc", GOOD_KEY);
+		var shoe = shoeRepository.save(newShoe(athlete));
+
+		MvcResult result = mockMvc.perform(post("/v1/garmin/sync").header("Authorization", bearer(athlete))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"latest\":true,\"weight_before_kg\":72.4,\"weight_after_kg\":71.0,"
+								+ "\"fluids_ml\":750,\"shoe_id\":\"" + shoe.getId() + "\"}"))
+				.andExpect(status().isAccepted())
+				.andExpect(jsonPath("$.found").value(1))
+				.andExpect(jsonPath("$.requested").value(1))
+				.andExpect(jsonPath("$.truncated").value(false))
+				.andReturn();
+		String batchId = result.getResponse().getContentAsString()
+				.replaceAll("(?s).*\"batch\":\\{\"id\":\"([^\"]+)\".*", "$1");
+		awaitBatch(athlete, batchId);
+
+		var uploads = uploadService.getBatchChildren(batchId);
+		assertThat(uploads).hasSize(1);
+		assertThat(uploads.get(0).getFilename()).isEqualTo("103_ACTIVITY.fit");
+		var activity = activityRepository.findById(uploads.get(0).getActivity().getId()).orElseThrow();
+		assertThat(activity.getStartWeightKg()).isEqualTo(72.4);
+		assertThat(activity.getEndWeightKg()).isEqualTo(71.0);
+		assertThat(activity.getFluidsMl()).isEqualTo(750);
+		assertThat(connectionRepository.findByOwnerId(athlete.getId()).orElseThrow().getLastSyncedAt()).isNull();
+
+		// The same activity again is skipped; a normal sync then picks up only the two older ones.
+		mockMvc.perform(post("/v1/garmin/sync").header("Authorization", bearer(athlete))
+						.contentType(MediaType.APPLICATION_JSON).content("{\"latest\":true}"))
+				.andExpect(jsonPath("$.already_synced").value(1))
+				.andExpect(jsonPath("$.requested").value(0))
+				.andExpect(jsonPath("$.batch").value(nullValue()));
+		mockMvc.perform(post("/v1/garmin/sync").header("Authorization", bearer(athlete))
+						.contentType(MediaType.APPLICATION_JSON).content("{}"))
+				.andExpect(jsonPath("$.found").value(3))
+				.andExpect(jsonPath("$.already_synced").value(1))
+				.andExpect(jsonPath("$.requested").value(2));
+	}
+
+	@Test
+	void sessionDetailsWithoutLatestAreRejected() throws Exception {
+		User athlete = connectedAthlete("garmin-sync-detailsonly@example.cc", GOOD_KEY);
+
+		assertThat(syncBody("{\"weight_before_kg\":72.4}", athlete)).startsWith("400");
+	}
+
+	@Test
+	void anUnknownShoeIsRejectedBeforeAnyRunIsRecorded() throws Exception {
+		User athlete = connectedAthlete("garmin-sync-badshoe@example.cc", GOOD_KEY);
+
+		assertThat(syncBody("{\"latest\":true,\"shoe_id\":\"shoe_nope\"}", athlete)).startsWith("400");
+		assertThat(runRepository.findByOwnerIdOrderByStartedAtDesc(athlete.getId())).isEmpty();
 	}
 
 	@Test

@@ -4,6 +4,9 @@ from accounts.models import User
 from core.models import PrefixedIDModel
 from uploads.models import UploadBatch
 
+DEFAULT_SYNC_LIMIT = 50
+MAX_SYNC_LIMIT = 100
+
 
 class GarminConnection(PrefixedIDModel):
     """One Garmin Connect link per athlete. Today it holds a Personal API key (pull-on-request
@@ -19,8 +22,18 @@ class GarminConnection(PrefixedIDModel):
     # Personal keys are issued for 30/90/180/365 days; Garmin doesn't expose it, so the athlete enters it.
     key_expires_on = models.DateField(null=True, blank=True)
     last_synced_at = models.DateTimeField(null=True, blank=True)
+    # Most activities one sync pulls (set in Preferences). Garmin documents no rate limit; 100 is our own ceiling.
+    sync_limit = models.PositiveSmallIntegerField(default=DEFAULT_SYNC_LIMIT)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(sync_limit__gte=1) & models.Q(sync_limit__lte=MAX_SYNC_LIMIT),
+                name="garmin_connection_sync_limit_1_100",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.owner_id} -> {self.garmin_email}"
