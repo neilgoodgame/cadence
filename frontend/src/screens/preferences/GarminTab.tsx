@@ -78,7 +78,11 @@ export function GarminTab() {
         <a href="https://connect.garmin.com/app/settings/personalApiToken" target="_blank" rel="noreferrer noopener">
           connect.garmin.com
         </a>{" "}
-        — Garmin shows it only once. It is stored encrypted and never shown again.
+        — Garmin shows it only once. It is stored encrypted and never shown again. See{" "}
+        <a href="https://developer.garmin.com/gc-developer-program/personal/personal-api/" target="_blank" rel="noreferrer noopener">
+          Garmin's instructions
+        </a>{" "}
+        for how to set up a Personal API key.
       </p>
 
       {connected && (
