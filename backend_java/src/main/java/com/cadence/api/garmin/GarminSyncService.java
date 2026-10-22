@@ -209,22 +209,37 @@ public class GarminSyncService {
 		try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(zip))) {
 			ZipEntry entry;
 			while ((entry = in.getNextEntry()) != null) {
-				String name = entry.getName();
-				if (entry.isDirectory() || !name.toLowerCase(Locale.ROOT).endsWith(".fit")) {
+				String name = safeFileName(entry.getName());
+				if (entry.isDirectory() || name == null || !name.toLowerCase(Locale.ROOT).endsWith(".fit")) {
 					continue;
 				}
 				byte[] bytes = in.readNBytes((int) Math.min(maxBytes + 1, Integer.MAX_VALUE));
 				if (bytes.length > maxBytes) {
 					throw new ApiException(HttpStatus.BAD_GATEWAY, "A Garmin file exceeded the maximum upload size.");
 				}
-				int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
-				files.add(new StagedFile(slash < 0 ? name : name.substring(slash + 1), bytes));
+				files.add(new StagedFile(name, bytes));
 			}
 		}
 		catch (IOException e) {
 			throw new ApiException(HttpStatus.BAD_GATEWAY, "A file from Garmin could not be read.");
 		}
 		return files;
+	}
+
+	/**
+	 * A zip entry's name reduced to a plain file name: null for anything with a parent-directory
+	 * segment (we never write by this name, but an archive that tries it is not one to trust),
+	 * otherwise its last path segment with only letters, digits, dot, dash and underscore kept.
+	 * Garmin's own names ("123_ACTIVITY.fit") pass through unchanged, which the sync history
+	 * relies on to match a download to its activity.
+	 */
+	static String safeFileName(String entryName) {
+		if (entryName == null || entryName.contains("..")) {
+			return null;
+		}
+		int slash = Math.max(entryName.lastIndexOf('/'), entryName.lastIndexOf('\\'));
+		String base = (slash < 0 ? entryName : entryName.substring(slash + 1)).replaceAll("[^A-Za-z0-9._-]", "_");
+		return base.isEmpty() ? null : base;
 	}
 
 	private static void pause() {
