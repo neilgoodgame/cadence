@@ -6,9 +6,15 @@ from rest_framework.views import APIView
 from core.auth_context import authenticated_user
 from uploads.serializers import UploadBatchSerializer
 
-from . import crypto, sync
-from .models import GarminConnection, GarminSyncRun
-from .serializers import GarminConnectionSerializer, GarminConnectionWriteSerializer, GarminSyncRequestSerializer
+from . import crypto, sync, workout_push
+from .models import GarminConnection, GarminSyncRun, GarminWorkoutOp
+from .serializers import (
+    GarminConnectionSerializer,
+    GarminConnectionWriteSerializer,
+    GarminSyncRequestSerializer,
+    GarminWorkoutOpResultSerializer,
+    GarminWorkoutOpSerializer,
+)
 
 
 class GarminConnectionView(APIView):
@@ -140,3 +146,51 @@ def _run_body(run: GarminSyncRun) -> dict:
         "batch": batch_body,
         "activities": activities,
     }
+
+
+class GarminWorkoutOpsView(APIView):
+    """The outbox: the browser queues operations, the local bridge lists the pending ones."""
+
+    def post(self, request: Request) -> Response:
+        serializer = GarminWorkoutOpSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        owner = authenticated_user(request)
+        op = workout_push.enqueue(owner, serializer.validated_data)
+        if op is None:
+            return Response(status=204)
+        return Response(workout_push.op_body(owner, op), status=202)
+
+    def get(self, request: Request) -> Response:
+        """``status``: pending (default, oldest first, with the .tcx), failed, or all (most recent 50)."""
+        owner = authenticated_user(request)
+        status = request.query_params.get("status", "pending")
+        ops = GarminWorkoutOp.objects.filter(owner=owner)
+        if status == "pending":
+            ops = ops.filter(status="pending").order_by("created")
+        elif status == "failed":
+            ops = ops.filter(status="failed").order_by("created")
+        elif status == "all":
+            ops = ops.order_by("-created")[:50]
+        else:
+            raise ValidationError({"status": "status must be pending, failed or all."})
+        return Response({"data": [workout_push.op_body(owner, op) for op in ops]})
+
+
+class GarminWorkoutOpDetailView(APIView):
+    def delete(self, request: Request, op_id: str) -> Response:
+        workout_push.discard(authenticated_user(request), op_id)
+        return Response(status=204)
+
+
+class GarminWorkoutOpResultView(APIView):
+    def post(self, request: Request, op_id: str) -> Response:
+        serializer = GarminWorkoutOpResultSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        owner = authenticated_user(request)
+        op = workout_push.record_result(owner, op_id, serializer.validated_data)
+        return Response(workout_push.op_body(owner, op))
+
+
+class GarminWorkoutLinksView(APIView):
+    def get(self, request: Request) -> Response:
+        return Response(workout_push.links_body(authenticated_user(request)))

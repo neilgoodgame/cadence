@@ -84,3 +84,66 @@ class GarminSyncedActivity(models.Model):
 
     def __str__(self) -> str:
         return f"{self.owner_id}: {self.garmin_activity_id}"
+
+
+class GarminWorkoutOp(PrefixedIDModel):
+    """One thing to do on Garmin Connect, applied by the athlete's local bridge. The browser queues
+    these; the bridge (using the athlete's own Garmin login, which Cadence never sees) fetches the
+    pending ones, applies them in order and reports the Garmin ids back. Mirrors ``GarminWorkoutOp``
+    in backend_java."""
+
+    id_prefix = "gwo"
+
+    KINDS = ("upsert_workout", "schedule", "reschedule", "unschedule")
+
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="garmin_workout_ops")
+    kind = models.CharField(max_length=20)
+    status = models.CharField(max_length=10, default="pending")
+    # Plain columns, not foreign keys: an unschedule must outlive the scheduled workout it cancels.
+    workout_id = models.CharField(max_length=40)
+    scheduled_workout_id = models.CharField(max_length=40, blank=True, default="")
+    op_date = models.DateField(null=True, blank=True)
+    name = models.CharField(max_length=200, blank=True, default="")
+    # The workout as a Garmin .tcx, generated in the browser (it needs the athlete's thresholds).
+    tcx = models.TextField(blank=True, default="")
+    garmin_workout_id = models.BigIntegerField(null=True, blank=True)
+    garmin_schedule_id = models.BigIntegerField(null=True, blank=True)
+    error = models.TextField(blank=True, default="")
+    created = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["owner", "status", "created"], name="garmin_wop_owner_status_idx")]
+
+
+class GarminWorkoutLink(models.Model):
+    """Cadence workout -> the Garmin workout it was pushed as."""
+
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="garmin_workout_links")
+    workout_id = models.CharField(max_length=40)
+    garmin_workout_id = models.BigIntegerField()
+    pushed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["owner", "workout_id"], name="garmin_workout_link_unique")]
+
+    def __str__(self) -> str:
+        return f"{self.workout_id} -> {self.garmin_workout_id}"
+
+
+class GarminScheduleLink(models.Model):
+    """Cadence scheduled workout -> its entry on the Garmin calendar."""
+
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="garmin_schedule_links")
+    scheduled_workout_id = models.CharField(max_length=40)
+    garmin_schedule_id = models.BigIntegerField()
+    garmin_workout_id = models.BigIntegerField()
+    scheduled_for = models.DateField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "scheduled_workout_id"], name="garmin_schedule_link_unique")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.scheduled_workout_id} -> {self.garmin_schedule_id}"

@@ -67,6 +67,39 @@ class GarminConnectionWriteSerializer(serializers.Serializer):
         return value
 
 
+class GarminWorkoutOpSerializer(serializers.Serializer):
+    """What the browser asks the bridge to do. ``workout_id`` is always the Cadence workout.
+    upsert_workout carries the ``tcx``; schedule and reschedule carry ``scheduled_workout_id`` and
+    ``date``; unschedule carries ``scheduled_workout_id``."""
+
+    kind = serializers.ChoiceField(choices=["upsert_workout", "schedule", "reschedule", "unschedule"])
+    workout_id = serializers.CharField(max_length=40)
+    scheduled_workout_id = serializers.CharField(max_length=40, required=False, allow_blank=True)
+    date = serializers.DateField(required=False, allow_null=True)
+    name = serializers.CharField(max_length=200, required=False, allow_blank=True, allow_null=True)
+    tcx = serializers.CharField(max_length=500_000, required=False, allow_blank=True, allow_null=True)
+
+    def to_internal_value(self, data):
+        # The bridge and the Java backend use UPPER_CASE-insensitive kinds; accept either here too.
+        if isinstance(data, dict) and isinstance(data.get("kind"), str):
+            data = {**data, "kind": data["kind"].lower()}
+        return super().to_internal_value(data)
+
+
+class GarminWorkoutOpResultSerializer(serializers.Serializer):
+    """The bridge's report for an operation: ``status`` is done or failed."""
+
+    status = serializers.ChoiceField(choices=["done", "failed"])
+    garmin_workout_id = serializers.IntegerField(required=False, allow_null=True)
+    garmin_schedule_id = serializers.IntegerField(required=False, allow_null=True)
+    error = serializers.CharField(max_length=2000, required=False, allow_blank=True, allow_null=True)
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict) and isinstance(data.get("status"), str):
+            data = {**data, "status": data["status"].lower()}
+        return super().to_internal_value(data)
+
+
 class GarminSyncRequestSerializer(serializers.Serializer):
     """All optional. ``limit`` caps this run (1-100; defaults to the athlete's saved sync limit) and
     ``since`` overrides the default window (day after the last sync, or 30 days on the first).

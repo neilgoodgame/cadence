@@ -1563,3 +1563,40 @@ export interface GarminSyncParams {
   fluids_ml?: number;
   shoe_id?: string;
 }
+
+export type GarminWorkoutOpKind = "upsert_workout" | "schedule" | "reschedule" | "unschedule";
+
+/** One operation for the Garmin bridge (`garmin-sync push-workouts`). `tcx` is only present while pending. */
+export interface GarminWorkoutOp {
+  object: "garmin_workout_op";
+  id: string;
+  kind: GarminWorkoutOpKind;
+  status: "pending" | "done" | "failed";
+  workout_id: string;
+  scheduled_workout_id: string | null;
+  date: string | null;
+  name: string | null;
+  tcx: string | null;
+  garmin_workout_id: number | null;
+  garmin_schedule_id: number | null;
+  error: string | null;
+  created: string;
+  completed_at: string | null;
+}
+
+export interface GarminWorkoutOpInput {
+  kind: GarminWorkoutOpKind;
+  workout_id: string;
+  scheduled_workout_id?: string;
+  date?: string;
+  name?: string;
+  tcx?: string;
+}
+
+/** Which workouts and calendar entries are on Garmin Connect, and how much is still waiting. */
+export interface GarminWorkoutLinks {
+  workouts: { workout_id: string; garmin_workout_id: number; pushed_at: string }[];
+  schedules: { scheduled_workout_id: string; garmin_schedule_id: number; scheduled_for: string }[];
+  pending: number;
+  failed: number;
+}

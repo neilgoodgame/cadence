@@ -3562,6 +3562,167 @@ paths:
                     items:
                       $ref: "#/components/schemas/GarminSyncRun"
 
+  /v1/garmin/workout-ops:
+    post:
+      tags: [Garmin]
+      summary: Queue a Garmin Connect workout operation
+      operationId: queueGarminWorkoutOp
+      description: >
+        Records something to do on the caller's Garmin Connect: push or update a workout, put it on
+        the calendar, move it, or take it off. Cadence does not call Garmin itself (the Personal API
+        has no workout routes and Cadence never holds Garmin credentials): a bridge on the athlete's
+        own machine (`garmin-sync push-workouts`) fetches the pending operations, applies them in
+        order with the athlete's own Garmin login and reports the Garmin ids back.
+
+
+        `workout_id` is always the Cadence workout. `upsert_workout` needs `tcx` (the workout as a
+        Garmin .tcx, generated in the browser from the athlete's thresholds). `schedule` and
+        `reschedule` need `scheduled_workout_id` and `date`, and mean "this should be on Garmin on
+        this date" (they are merged with each other, and a reschedule of something not yet on Garmin
+        becomes a schedule). `unschedule` needs `scheduled_workout_id`; a schedule that never reached
+        Garmin is simply dropped (204). A pending operation for the same workout or scheduled workout
+        is updated in place instead of queued twice. Requires a Garmin connection (409 otherwise).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, workout_id]
+              properties:
+                kind: { type: string, enum: [upsert_workout, schedule, reschedule, unschedule] }
+                workout_id: { type: string }
+                scheduled_workout_id: { type: string }
+                date: { type: string, format: date }
+                name: { type: string, maxLength: 200 }
+                tcx: { type: string, maxLength: 500000 }
+      responses:
+        "202":
+          description: Queued (or merged into the pending operation).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GarminWorkoutOp" }
+        "204":
+          description: Nothing to do.
+        "404":
+          description: No such workout.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: No usable Garmin connection (none saved, or the key has expired).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [Garmin]
+      summary: List Garmin workout operations
+      operationId: listGarminWorkoutOps
+      description: >
+        `pending` (the default) is oldest first and carries the `tcx` - that is what the bridge
+        applies. `failed` lists operations the bridge reported as failed. `all` is the most recent 50.
+        `garmin_workout_id` and `garmin_schedule_id` are filled from earlier results where known.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, failed, all], default: pending }
+      responses:
+        "200":
+          description: Operations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/GarminWorkoutOp" }
+
+  /v1/garmin/workout-ops/{id}/result:
+    post:
+      tags: [Garmin]
+      summary: Report the outcome of an operation
+      operationId: reportGarminWorkoutOp
+      description: >
+        Called by the bridge. `done` needs the Garmin ids the operation produced
+        (`garmin_workout_id` for upsert_workout, `garmin_schedule_id` for schedule and reschedule);
+        they are stored so later operations can target them. `failed` stores `error`. An operation can
+        only be reported once (409).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [done, failed] }
+                garmin_workout_id: { type: integer, format: int64 }
+                garmin_schedule_id: { type: integer, format: int64 }
+                error: { type: string, maxLength: 2000 }
+      responses:
+        "200":
+          description: Recorded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GarminWorkoutOp" }
+
+  /v1/garmin/workout-ops/{id}:
+    delete:
+      tags: [Garmin]
+      summary: Discard a pending or failed operation
+      operationId: discardGarminWorkoutOp
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Discarded.
+        "409":
+          description: Already completed.
+
+  /v1/garmin/workout-links:
+    get:
+      tags: [Garmin]
+      summary: What is on Garmin Connect
+      operationId: getGarminWorkoutLinks
+      description: >
+        The Cadence workouts pushed to Garmin Connect, the scheduled workouts on its calendar, and
+        how many operations are still pending or failed.
+      responses:
+        "200":
+          description: Links.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workouts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        workout_id: { type: string }
+                        garmin_workout_id: { type: integer, format: int64 }
+                        pushed_at: { type: string, format: date-time }
+                  schedules:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        scheduled_workout_id: { type: string }
+                        garmin_schedule_id: { type: integer, format: int64 }
+                        scheduled_for: { type: string, format: date }
+                  pending: { type: integer }
+                  failed: { type: integer }
+
   /v1/webhooks:
     get:
       tags: [Webhooks]
@@ -3722,6 +3883,25 @@ components:
           properties:
             garmin_activity_id: { type: integer, format: int64 }
             start_time: { type: string, format: date-time }
+    GarminWorkoutOp:
+      type: object
+      description: >
+        One operation for the Garmin bridge. `tcx` is only present while `pending`.
+      properties:
+        object: { type: string, example: garmin_workout_op }
+        id: { type: string, example: gwo_8Zq2Lm }
+        kind: { type: string, enum: [upsert_workout, schedule, reschedule, unschedule] }
+        status: { type: string, enum: [pending, done, failed] }
+        workout_id: { type: string }
+        scheduled_workout_id: { type: string, nullable: true }
+        date: { type: string, format: date, nullable: true }
+        name: { type: string, nullable: true }
+        tcx: { type: string, nullable: true }
+        garmin_workout_id: { type: integer, format: int64, nullable: true }
+        garmin_schedule_id: { type: integer, format: int64, nullable: true }
+        error: { type: string, nullable: true }
+        created: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
     GarminSyncRun:
       type: object
       description: >
