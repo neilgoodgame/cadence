@@ -28,4 +28,5 @@ urlpatterns = [
     path("", include("uploads.urls")),
     path("", include("dataexport.urls")),
     path("", include("webhooks.urls")),
+    path("", include("garmin.urls")),
 ]

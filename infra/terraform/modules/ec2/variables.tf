@@ -81,6 +81,11 @@ variable "oauth_mcp_secret_arn" {
   type        = string
 }
 
+variable "garmin_secret_arn" {
+  description = "cadence-staging-garmin-encryption-key - a plain string secret (base64 of 32 random bytes, `openssl rand -base64 32`). The AES-256-GCM key that encrypts stored Garmin Personal API keys; changing or losing it makes every stored key undecryptable."
+  type        = string
+}
+
 variable "oauth_issuer" {
   description = "Real deployed issuer (https://api.cadence.bioinform.co.uk), not the code's cadence.cc placeholder default - used in the MCP server's RFC 8414/9728 discovery documents. Mirrors jwt_issuer's existing override."
   type        = string

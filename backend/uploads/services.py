@@ -1,6 +1,7 @@
 import hashlib
 import io
 import zipfile
+from collections.abc import Iterable
 from typing import Any
 
 from django.core.files.storage import default_storage
@@ -111,17 +112,42 @@ def create_activity_batch_upload(request: Request, athlete_id: str) -> tuple[Upl
     if len(names) > MAX_BATCH_FILES:
         raise ValidationError({"file": f"Archive exceeds the {MAX_BATCH_FILES}-file limit."})
 
+    files = ((name, zf.read(name)) for name in names)
+    batch = create_batch_from_files(athlete_id, archive.name, on_duplicate, files)
+    return batch, 202
+
+
+def create_batch_from_files(
+    athlete_id: str,
+    filename: str,
+    on_duplicate: str,
+    files: Iterable[tuple[str, bytes]],
+    session: dict[str, Any] | None = None,
+) -> UploadBatch:
+    """Stage and queue each (name, content) as its own upload under one new batch. Takes an
+    iterable so a caller unpacking a big archive can stay lazy. Also used by the Garmin sync,
+    which already holds the files and so skips the zip round trip. ``session`` (weight_before_kg,
+    weight_after_kg, fluids_ml, shoe_id) is applied to every upload, as for a single-file upload."""
+    session = session or {}
     batch = UploadBatch.objects.create(
-        athlete_id=athlete_id, filename=archive.name, on_duplicate=on_duplicate, status="processing"
+        athlete_id=athlete_id, filename=filename, on_duplicate=on_duplicate, status="processing"
     )
 
-    for name in names:
-        content = zf.read(name)
+    for name, content in files:
         file_hash = hashlib.sha256(content).hexdigest()
         short_name = name.rsplit("/", 1)[-1]
         existing = _existing_ready_upload(athlete_id, file_hash)
 
-        upload = Upload.objects.create(athlete_id=athlete_id, batch=batch, filename=short_name, file_hash=file_hash)
+        upload = Upload.objects.create(
+            athlete_id=athlete_id,
+            batch=batch,
+            filename=short_name,
+            file_hash=file_hash,
+            weight_before_kg=session.get("weight_before_kg"),
+            weight_after_kg=session.get("weight_after_kg"),
+            fluids_ml=session.get("fluids_ml"),
+            shoe_id=session.get("shoe_id"),
+        )
 
         if existing and on_duplicate == "skip":
             upload.status = "duplicate"
@@ -142,5 +168,4 @@ def create_activity_batch_upload(request: Request, athlete_id: str) -> tuple[Upl
     # upload_batch.completed webhook fires for this path too.
     _maybe_finalize_batch(batch.id)
     batch.refresh_from_db()
-
-    return batch, 202
+    return batch

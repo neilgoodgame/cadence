@@ -75,6 +75,8 @@ tags:
     description: Reusable race courses - route, elevation profile and climbs, from a GPX upload or an activity's GPS track.
   - name: Webhooks
     description: Subscribe to platform events.
+  - name: Garmin
+    description: Link a Garmin Connect account so activities can be pulled in on request.
 
 paths:
   /v1/auth/register:
@@ -3377,6 +3379,189 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/garmin/connection:
+    get:
+      tags: [Garmin]
+      summary: Get the Garmin link
+      operationId: getGarminConnection
+      description: >
+        The caller's Garmin Connect link, or `connected: false` if none. The API key is
+        write-only and never returned.
+      responses:
+        "200":
+          description: Link status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GarminConnection"
+    put:
+      tags: [Garmin]
+      summary: Save the Garmin link
+      operationId: saveGarminConnection
+      description: >
+        Creates or updates the link. `api_key` is a Garmin Personal API key (created at
+        connect.garmin.com/app/settings/personalApiToken); it is required the first time and
+        optional afterwards - omit it to edit the email or expiry without replacing the stored
+        key. It is encrypted at rest (AES-256-GCM). `email` is the Garmin account's email and
+        defaults to the caller's own login email. `key_expires_on` is the date the key expires
+        (Garmin issues them for 30/90/180/365 days but does not expose it); only `api_key`
+        is preserved when omitted, so omitting `key_expires_on` clears it. `sync_limit` is how
+        many activities one sync pulls (1-100, default 50); it is left unchanged when omitted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                api_key: { type: string, minLength: 8, maxLength: 512, writeOnly: true }
+                email: { type: string, format: email, maxLength: 320 }
+                key_expires_on: { type: string, format: date, nullable: true }
+                sync_limit: { type: integer, minimum: 1, maximum: 100, description: Most activities one sync pulls. Defaults to 50. }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GarminConnection"
+        "400":
+          description: No key on first save, a malformed field, or an expiry date in the past.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Garmin key storage is not configured on this server.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [Garmin]
+      summary: Remove the Garmin link
+      operationId: deleteGarminConnection
+      description: Deletes the stored key and link. Already-imported activities are kept.
+      responses:
+        "204":
+          description: Removed (also returned when there was no link).
+
+  /v1/garmin/sync:
+    post:
+      tags: [Garmin]
+      summary: Pull activities from Garmin Connect
+      operationId: syncGarmin
+      description: >
+        Pulls the caller's activities from Garmin Connect using the stored Personal API key
+        and feeds them through the same pipeline as `POST /v1/activities/batch`, so identical
+        files and metadata-only stub files are handled identically. Every Garmin activity id
+        pulled is remembered per athlete and skipped (before downloading) on later syncs, so an
+        activity you delete in Cadence, or edit in Garmin Connect, is not re-imported. Activities are taken
+        **oldest first** within the window, at most `limit` per call, so repeated syncs work
+        steadily through a backlog; `truncated: true` means more remain - call again. The
+        window starts the day after the last sync (30 days back the first time) unless `since`
+        is given. `last_synced_at` only advances when every download succeeded.
+
+
+        Returns `202 Accepted`; poll `batch` via `GET /v1/uploads/batches/{id}` (its `Location`)
+        until it settles. `batch` is null when there was nothing new to import.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  description: >
+                    Most activities to import this run. Defaults to the caller's saved
+                    `sync_limit` (50 unless changed); never above 100.
+                since: { type: string, format: date, description: Start of the window; not in the future. }
+                latest:
+                  type: boolean
+                  description: >
+                    Sync only Garmin's single newest activity (ignores `limit` and `since`, and
+                    does not move the sync window, so older activities are still picked up by a
+                    normal sync). Skipped, like any sync, if that activity was already pulled.
+                weight_before_kg: { type: number, format: float, description: "Only with `latest`. As for a single-file upload." }
+                weight_after_kg: { type: number, format: float, description: "Only with `latest`." }
+                fluids_ml: { type: integer, description: "Only with `latest`." }
+                shoe_id: { type: string, description: "Only with `latest`. Shoe worn (run activities); an unknown id is a 400." }
+      responses:
+        "202":
+          description: Sync accepted.
+          headers:
+            Location:
+              description: URL of the batch job to poll (absent when `batch` is null).
+              schema: { type: string, example: /v1/uploads/batches/bat_3Yc1Qd }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { type: string, enum: [garmin_sync] }
+                  id: { type: string, description: The recorded sync run (see `GET /v1/garmin/syncs`). }
+                  found: { type: integer, description: Activities Garmin has in the window. }
+                  already_synced: { type: integer, description: Of those, how many an earlier sync already pulled (skipped without downloading). }
+                  requested: { type: integer, description: How many this run tried to import. }
+                  failed: { type: integer, description: Activities that could not be downloaded. }
+                  truncated: { type: boolean, description: More remain in the window beyond this run. }
+                  batch:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/UploadBatch"
+        "400":
+          description: "`limit` outside 1..100, `since` in the future, session details without `latest`, or an unknown `shoe_id`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No Garmin connection is saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: The saved key's expiry date has passed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Garmin rejected the key (expired or revoked).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Garmin could not be reached, or every download failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/garmin/syncs:
+    get:
+      tags: [Garmin]
+      summary: Recent Garmin sync runs
+      operationId: listGarminSyncs
+      description: >
+        The caller's most recent sync attempts, newest first, including failed ones. The last
+        50 are kept.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: Runs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GarminSyncRun"
+
   /v1/webhooks:
     get:
       tags: [Webhooks]
@@ -3512,6 +3697,68 @@ components:
               param: gpx
 
   schemas:
+    GarminConnection:
+      type: object
+      required: [connected]
+      properties:
+        connected: { type: boolean }
+        email: { type: string, format: email, nullable: true }
+        key_expires_on: { type: string, format: date, nullable: true }
+        sync_limit: { type: integer, minimum: 1, maximum: 100, nullable: true, description: Most activities one sync pulls (null when not connected). }
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: The sync window marker (where the next sync resumes), not when a sync last ran.
+        last_run_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When a sync last ran, successful or not.
+        last_activity:
+          nullable: true
+          description: The newest Garmin activity ever pulled, by its start time.
+          type: object
+          properties:
+            garmin_activity_id: { type: integer, format: int64 }
+            start_time: { type: string, format: date-time }
+    GarminSyncRun:
+      type: object
+      description: >
+        One past sync attempt. `batch` and each activity's `upload_status`, `activity_id`,
+        `name` and `sport` are read live, so a run still being processed settles in place; they
+        are null once the batch or activity has since been deleted (the Garmin id and start time
+        are always present). `error` is set when the attempt failed (never contains the key).
+      properties:
+        id: { type: string, example: gsr_8Zq2Lm }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time, nullable: true }
+        found: { type: integer }
+        already_synced: { type: integer }
+        requested: { type: integer }
+        failed: { type: integer }
+        truncated: { type: boolean }
+        error: { type: string, nullable: true }
+        batch:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string }
+            status: { type: string }
+            counts: { type: object }
+        activities:
+          type: array
+          description: Oldest first.
+          items:
+            type: object
+            properties:
+              garmin_activity_id: { type: integer, format: int64 }
+              start_time: { type: string, format: date-time }
+              upload_status: { type: string, nullable: true }
+              activity_id: { type: string, nullable: true }
+              name: { type: string, nullable: true }
+              sport: { type: string, nullable: true }
+
     Sport:
       type: string
       enum: [bike, run, swim, walk, multisport, transition]

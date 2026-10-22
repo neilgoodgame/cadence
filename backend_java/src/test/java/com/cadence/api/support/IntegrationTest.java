@@ -29,7 +29,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * ends.
  */
 @Tag("integration")
-@SpringBootTest
+// Throwaway AES-256 key (base64 of 32 ASCII bytes) so Garmin key storage is enabled under test.
+@SpringBootTest(properties = "cadence.garmin.encryption-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
 public abstract class IntegrationTest {
 
 	@ServiceConnection

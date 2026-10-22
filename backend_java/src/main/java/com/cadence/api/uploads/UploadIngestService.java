@@ -96,7 +96,12 @@ public class UploadIngestService {
 			Path dir = Path.of(properties.uploads().mediaRoot(), athleteId);
 			Files.createDirectories(dir);
 			String safeName = hash + "_" + System.nanoTime() + "_" + sanitize(filename);
-			Path target = dir.resolve(safeName);
+			Path target = dir.resolve(safeName).normalize();
+			// sanitize() already leaves no path separators; this keeps the write inside the athlete's
+			// directory even if that ever changes.
+			if (!target.startsWith(dir.normalize())) {
+				throw new ValidationException("Invalid file name.", "file");
+			}
 			Files.write(target, bytes);
 			return athleteId + "/" + safeName;
 		}

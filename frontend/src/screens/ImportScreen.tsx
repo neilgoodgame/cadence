@@ -1,29 +1,17 @@
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { listShoes } from "../api/gear";
 import { clearUploadHistory, uploadActivity, uploadActivityBatch, type UploadHistoryPurge, type UploadMetadata } from "../api/uploads";
 import { ApiError } from "../api/types";
 import type { Upload, UploadBatch } from "../api/types";
 import { BatchStatus } from "./import/BatchStatus";
+import { GarminSyncCard } from "./import/GarminSyncCard";
+import { SessionDetailsFields } from "./import/SessionDetailsFields";
+import { emptySessionDetails, toUploadMetadata, type SessionDetailsDraft } from "./import/sessionDetails";
 import { UploadStatus } from "./import/UploadStatus";
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 8,
-  border: "1px solid var(--line)",
-  background: "var(--elev)",
-  fontSize: 14,
-  color: "var(--ink)",
-};
 
 export function ImportScreen() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [weightBefore, setWeightBefore] = useState("");
-  const [weightAfter, setWeightAfter] = useState("");
-  const [fluids, setFluids] = useState("");
-  const [shoeId, setShoeId] = useState("");
+  const [details, setDetails] = useState<SessionDetailsDraft>(emptySessionDetails);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadResult, setUploadResult] = useState<{ data: Upload; retryAfterSeconds: number | null } | null>(null);
@@ -33,14 +21,9 @@ export function ImportScreen() {
   const [clearState, setClearState] = useState<"idle" | "confirming" | "clearing" | UploadHistoryPurge>("idle");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: shoes } = useQuery({ queryKey: ["shoes"], queryFn: listShoes });
-
   function reset() {
     setFile(null);
-    setWeightBefore("");
-    setWeightAfter("");
-    setFluids("");
-    setShoeId("");
+    setDetails(emptySessionDetails);
     setError(null);
   }
 
@@ -58,12 +41,7 @@ export function ImportScreen() {
         setBatchResult(await uploadActivityBatch(file));
       }
       else {
-        const metadata: UploadMetadata = {
-          weightBeforeKg: weightBefore ? Number(weightBefore) : undefined,
-          weightAfterKg: weightAfter ? Number(weightAfter) : undefined,
-          fluidsMl: fluids ? Number(fluids) : undefined,
-          shoeId: shoeId || undefined,
-        };
+        const metadata: UploadMetadata = toUploadMetadata(details);
         setUploadResult(await uploadActivity(file, metadata));
       }
       setFile(null);
@@ -95,6 +73,8 @@ export function ImportScreen() {
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
         {isZip ? "Import activities" : "Import an activity"}
       </h1>
+
+      <GarminSyncCard />
 
       <div
         onDragOver={(e) => {
@@ -137,61 +117,7 @@ export function ImportScreen() {
       {file && !isZip && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Session details (optional)</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <label>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>
-                Weight before (kg)
-              </div>
-              <input
-                type="number"
-                step="0.1"
-                className="mono"
-                style={inputStyle}
-                value={weightBefore}
-                onChange={(e) => setWeightBefore(e.target.value)}
-                placeholder="72.4"
-              />
-            </label>
-            <label>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>
-                Weight after (kg)
-              </div>
-              <input
-                type="number"
-                step="0.1"
-                className="mono"
-                style={inputStyle}
-                value={weightAfter}
-                onChange={(e) => setWeightAfter(e.target.value)}
-                placeholder="70.9"
-              />
-            </label>
-            <label>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>
-                Fluids consumed (ml)
-              </div>
-              <input
-                type="number"
-                step="50"
-                className="mono"
-                style={inputStyle}
-                value={fluids}
-                onChange={(e) => setFluids(e.target.value)}
-                placeholder="750"
-              />
-            </label>
-            <label>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Shoes</div>
-              <select style={inputStyle} value={shoeId} onChange={(e) => setShoeId(e.target.value)}>
-                <option value="">None</option>
-                {shoes?.data.map((shoe) => (
-                  <option key={shoe.id} value={shoe.id}>
-                    {shoe.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <SessionDetailsFields value={details} onChange={setDetails} />
         </div>
       )}
 

@@ -77,6 +77,12 @@ data "aws_secretsmanager_secret" "oauth_mcp_client_secret" {
   name = "cadence-staging-oauth-mcp-client-secret"
 }
 
+# AES-256-GCM key for stored Garmin Personal API keys. Created by hand like the
+# secrets above - see infra/README.md's "Garmin encryption key" section.
+data "aws_secretsmanager_secret" "garmin_encryption_key" {
+  name = "cadence-staging-garmin-encryption-key"
+}
+
 locals {
   # module.ecr.repository_url is "registry/repo-name" as one string (e.g.
   # 423351912929.dkr.ecr.eu-west-2.amazonaws.com/cadence-backend-java) -
@@ -106,6 +112,7 @@ module "ec2" {
   oauth_secret_arn = data.aws_secretsmanager_secret.oauth_client_secret.arn
 
   oauth_mcp_secret_arn = data.aws_secretsmanager_secret.oauth_mcp_client_secret.arn
+  garmin_secret_arn    = data.aws_secretsmanager_secret.garmin_encryption_key.arn
   oauth_issuer         = "https://api.cadence.bioinform.co.uk" # real issuer, not the code's cadence.cc placeholder default - MCP's RFC 8414/9728 discovery documents advertise this.
 
   # Real deployed frontend origin + local dev (kept, so the local frontend can still

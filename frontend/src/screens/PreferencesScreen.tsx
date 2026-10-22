@@ -6,13 +6,14 @@ import { RacesTab } from "./preferences/RacesTab";
 import { CoursesTab } from "./preferences/CoursesTab";
 import { SharingTab } from "./preferences/SharingTab";
 import { TokensTab } from "./preferences/TokensTab";
+import { GarminTab } from "./preferences/GarminTab";
 import { ZoneEditorTab } from "./preferences/ZoneEditorTab";
 import { BestEffortsTab } from "./preferences/BestEffortsTab";
 import { ExportTab } from "./preferences/ExportTab";
 import { TagsTab } from "./preferences/TagsTab";
 import type { ZoneType } from "../api/types";
 
-type TabKey = "profile" | "workouts" | ZoneType | "best_efforts" | "tags" | "races" | "courses" | "sharing" | "tokens" | "export";
+type TabKey = "profile" | "workouts" | ZoneType | "best_efforts" | "tags" | "races" | "courses" | "sharing" | "garmin" | "tokens" | "export";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "profile", label: "Profile" },
@@ -26,6 +27,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "races", label: "Races" },
   { key: "courses", label: "Courses" },
   { key: "sharing", label: "Sharing" },
+  { key: "garmin", label: "Garmin" },
   { key: "tokens", label: "API tokens" },
   { key: "export", label: "Export data" },
 ];
@@ -72,6 +74,7 @@ export function PreferencesScreen() {
         {tab === "races" && <RacesTab />}
         {tab === "courses" && <CoursesTab />}
         {tab === "sharing" && <SharingTab />}
+        {tab === "garmin" && <GarminTab />}
         {tab === "tokens" && <TokensTab />}
         {tab === "export" && <ExportTab />}
       </div>
