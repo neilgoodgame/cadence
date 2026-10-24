@@ -2,13 +2,105 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { deleteActivity, getStreams, listTags, tagActivity, untagActivity, updateActivity } from "../../api/activities";
+import { listBikes, listShoes } from "../../api/gear";
 import { createRace, listRaces, updateRace } from "../../api/races";
-import type { Activity } from "../../api/types";
+import type { Activity, Bike, Shoe } from "../../api/types";
 import { formatDateTime } from "../../lib/format";
 import { buildGpx, downloadGpx } from "../../lib/gpxExport";
 import { sportColor, sportColorSoft, sportLabel } from "../../lib/sportColors";
 import { SportIcon } from "../../lib/sportIcons";
 import { tagColor, tagRgba } from "../../lib/tagColors";
+
+/** The bike (bike activities) or pair of shoes (run activities) used for this activity, with
+ * its current mileage - sits in the header's info row rather than its own card, since that row
+ * otherwise has a lot of empty space. */
+function GearBadge({ activity }: { activity: Activity }) {
+  const kind: "bike" | "shoe" | null = activity.sport === "bike" ? "bike" : activity.sport === "run" ? "shoe" : null;
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [selected, setSelected] = useState("");
+
+  const { data: bikes } = useQuery({ queryKey: ["bikes"], queryFn: listBikes, enabled: kind === "bike" });
+  const { data: shoes } = useQuery({ queryKey: ["shoes"], queryFn: listShoes, enabled: kind === "shoe" });
+
+  const saveMutation = useMutation({
+    mutationFn: (patch: { bike_id?: string | null; shoe_id?: string | null }) => updateActivity(activity.id, patch),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["activity", activity.id], updated);
+      setEditing(false);
+    },
+  });
+
+  if (!kind) return null;
+
+  const options = kind === "bike" ? bikes?.data : shoes?.data;
+  const currentId = kind === "bike" ? activity.bike_id : activity.shoe_id;
+  const current = options?.find((item) => item.id === currentId);
+  const label = kind === "bike" ? "bike" : "shoes";
+
+  function startEditing() {
+    setSelected(currentId ?? "");
+    setEditing(true);
+  }
+
+  function commit() {
+    const patch = kind === "bike" ? { bike_id: selected || null } : { shoe_id: selected || null };
+    saveMutation.mutate(patch);
+  }
+
+  if (editing) {
+    return (
+      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          autoFocus
+          style={{ fontSize: 12, padding: "2px 6px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)" }}
+        >
+          <option value="">None</option>
+          {options?.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={commit}
+          disabled={saveMutation.isPending}
+          style={{ fontSize: 11, fontWeight: 700, border: "none", background: "none", color: "var(--ember)", cursor: "pointer" }}
+        >
+          {saveMutation.isPending ? "…" : "Save"}
+        </button>
+        <button type="button" onClick={() => setEditing(false)} style={{ fontSize: 11, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer" }}>
+          Cancel
+        </button>
+      </span>
+    );
+  }
+
+  if (current) {
+    const mileage = kind === "bike" ? `${(current as Bike).distance_km} km` : `${(current as Shoe).km} / ${(current as Shoe).limit_km} km`;
+    return (
+      <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink3)" }}>
+        · {kind === "bike" ? "🚲" : "👟"} <span style={{ color: "var(--ink2)", fontWeight: 600 }}>{current.name}</span> ({mileage})
+        <button type="button" onClick={startEditing} style={{ fontSize: 11, border: "none", background: "none", color: "var(--ink3)", cursor: "pointer", textDecoration: "underline" }}>
+          Change
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={startEditing}
+      style={{ fontSize: 12, fontWeight: 600, border: "1px dashed var(--line)", background: "none", color: "var(--ink3)", padding: "2px 10px", borderRadius: 20, cursor: "pointer" }}
+    >
+      + Assign {label}
+    </button>
+  );
+}
 
 function HeaderActions({ activity }: { activity: Activity }) {
   const [copied, setCopied] = useState(false);
@@ -505,6 +597,7 @@ export function Header({ activity }: { activity: Activity }) {
           {formatDateTime(activity.start_date)} · {activity.source}
           {activity.device && ` · ${activity.device}`}
         </span>
+        <GearBadge activity={activity} />
         <HeaderActions activity={activity} />
       </div>
       {linkedRace ? (
