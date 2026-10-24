@@ -19,7 +19,7 @@ from core.units import parse_distance_meters
 
 from .models import Workout
 from .serializers import build_step_tree
-from .views import SORT_OPTIONS, _replace_steps, build_match_comparison_rows
+from .views import SORT_OPTIONS, _replace_steps, _resolve_folder, build_match_comparison_rows
 
 
 def _convert_step_distances(steps: list[dict[str, Any]]) -> None:
@@ -147,6 +147,57 @@ class WorkoutMCPTools(ScopedMCPToolset):
         workout = Workout.objects.create(created_by_id=athlete_id, name=name, sport=sport, folder=None, tags=tags or [])
         _replace_steps(workout, steps)
         return _workout_summary(workout)
+
+    def update_workout(
+        self,
+        workout_id: str,
+        name: str | None = None,
+        steps: list[dict[str, Any]] | None = None,
+        folder_id: str | None = None,
+        tags: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Rename or re-author an existing saved workout. Only the fields you pass are changed -
+        omit a field to leave it as-is. Passing steps replaces the entire step tree (same shape
+        as create_workout's steps argument); duration and TSS are recomputed from it. Pass
+        folder_id="" to clear the folder (omit folder_id entirely to leave it untouched); tags,
+        if passed, replaces the whole tag list (pass an empty list to clear tags). The workout's
+        sport cannot be changed after creation - delete and recreate it instead. Edits do not
+        affect already-completed activities matched to this workout."""
+        self._require_scope(WORKOUTS_WRITE)
+        workout = get_object_or_404(Workout, pk=workout_id)
+        self._require_write(workout.created_by_id)
+
+        update_fields = []
+        if name is not None:
+            if not name.strip():
+                raise ValidationError({"name": "name is required."})
+            workout.name = name
+            update_fields.append("name")
+        if folder_id is not None:
+            workout.folder = _resolve_folder(folder_id, workout.created_by_id)
+            update_fields.append("folder")
+        if tags is not None:
+            workout.tags = tags
+            update_fields.append("tags")
+        if update_fields:
+            workout.save(update_fields=[*update_fields, "updated_at"])
+
+        if steps is not None:
+            _require_target_scale(steps)
+            _convert_step_distances(steps)
+            _replace_steps(workout, steps)
+
+        return _workout_summary(workout)
+
+    def delete_workout(self, workout_id: str) -> dict[str, Any]:
+        """Permanently delete a workout from the library. Any scheduled calendar instances of
+        this workout are deleted too; completed activities previously matched to it keep their
+        history but lose the match link. This cannot be undone."""
+        self._require_scope(WORKOUTS_WRITE)
+        workout = get_object_or_404(Workout, pk=workout_id)
+        self._require_write(workout.created_by_id)
+        workout.delete()
+        return {"id": workout_id, "deleted": True}
 
     def get_workout_matches(self, workout_id: str) -> dict[str, Any]:
         """Compare every completed activity matched to a saved workout - average power, average
