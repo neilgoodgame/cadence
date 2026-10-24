@@ -681,6 +681,12 @@ paths:
                 workout_id:
                   type: [string, "null"]
                   description: Link a designed workout, or null to clear.
+                bike_id:
+                  type: [string, "null"]
+                  description: Link a bike (bike/ride activities), or null to clear. Must belong to this activity's athlete.
+                shoe_id:
+                  type: [string, "null"]
+                  description: Link a pair of shoes (run activities), or null to clear. Must belong to this activity's athlete.
                 primary_activity_id:
                   type: [string, "null"]
                   description: >
@@ -4424,8 +4430,8 @@ components:
           items: { type: string }
           example: [Endurance, Race]
         workout_id: { type: [string, "null"], example: wkt_long_z2 }
-        bike_id: { type: [string, "null"] }
-        shoe_id: { type: [string, "null"], example: shoe_vf3 }
+        bike_id: { type: [string, "null"], description: "Settable via PATCH /v1/activities/{id}." }
+        shoe_id: { type: [string, "null"], example: shoe_vf3, description: "Settable via PATCH /v1/activities/{id}." }
         parent_activity_id:
           type: [string, "null"]
           description: >

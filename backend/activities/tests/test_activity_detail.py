@@ -4,6 +4,7 @@ from django.test import TestCase
 
 from accounts.models import User, UserRelationship
 from athletes.models import ThresholdHistory
+from gear.models import Bike, Shoe, ShoeModel, ShoeModelVersion
 from workouts.models import Workout, WorkoutStep
 
 from ..models import Activity, ActivityTag, Lap, Record, Tag
@@ -66,6 +67,66 @@ class ActivityDetailViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["workout_id"])
+
+    def test_patch_link_bike(self):
+        activity = _make_activity(self.athlete)
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7")
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"bike_id": bike.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["bike_id"], bike.id)
+
+    def test_patch_unlink_bike(self):
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7")
+        activity = _make_activity(self.athlete)
+        activity.bike = bike
+        activity.save(update_fields=["bike"])
+        response = _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"bike_id": None}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["bike_id"])
+
+    def test_patch_link_bike_belonging_to_someone_else_404(self):
+        activity = _make_activity(self.athlete)
+        other_athlete = User.objects.create_user(email="other-bike@example.cc", password="x", name="Other")
+        bike = Bike.objects.create(athlete=other_athlete, name="Not mine")
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"bike_id": bike.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_link_shoe(self):
+        activity = _make_activity(self.athlete)
+        shoe_model = ShoeModel.objects.create(manufacturer="Nike", model="Vaporfly")
+        version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="3")
+        shoe = Shoe.objects.create(athlete=self.athlete, shoe_model_version=version, name="Race Day Flyers")
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"shoe_id": shoe.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["shoe_id"], shoe.id)
+
+    def test_patch_unlink_shoe(self):
+        shoe_model = ShoeModel.objects.create(manufacturer="Nike", model="Vaporfly")
+        version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="3")
+        shoe = Shoe.objects.create(athlete=self.athlete, shoe_model_version=version, name="Race Day Flyers")
+        activity = _make_activity(self.athlete)
+        activity.shoe = shoe
+        activity.save(update_fields=["shoe"])
+        response = _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"shoe_id": None}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["shoe_id"])
+
+    def test_patch_link_shoe_belonging_to_someone_else_404(self):
+        activity = _make_activity(self.athlete)
+        other_athlete = User.objects.create_user(email="other-shoe@example.cc", password="x", name="Other")
+        shoe_model = ShoeModel.objects.create(manufacturer="Nike", model="Vaporfly")
+        version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="3")
+        shoe = Shoe.objects.create(athlete=other_athlete, shoe_model_version=version, name="Not mine")
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"shoe_id": shoe.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 404)
 
     # The following cover accepting a Scan-for-matches candidate applying the same match
     # preferences ingest-time auto-match already does (see activities/match_preferences.py) -

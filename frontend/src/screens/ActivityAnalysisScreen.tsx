@@ -9,6 +9,7 @@ import { ActivitySectionsCard } from "./activity-analysis/ActivitySectionsCard";
 import { CommentsSection } from "./activity-analysis/CommentsSection";
 import { CurvesTab } from "./activity-analysis/CurvesTab";
 import { DuplicateBanner, DuplicatesCard } from "./activity-analysis/DuplicatesCard";
+import { GearCard } from "./activity-analysis/GearCard";
 import { Header } from "./activity-analysis/Header";
 import { HydrationBlock } from "./activity-analysis/HydrationBlock";
 import { LapsTab } from "./activity-analysis/LapsTab";
@@ -61,6 +62,7 @@ export function ActivityAnalysisScreen() {
       <Header activity={activity} />
       <StatRow activity={activity} />
       {activity.workout_id && <MatchedWorkoutCard activity={activity} />}
+      {(activity.sport === "bike" || activity.sport === "run") && <GearCard activity={activity} />}
       <ActivityBestEffortsCard activity={activity} athleteId={user.id} />
 
       {activity.sport === "multisport" && <MultisportLegs activity={activity} />}

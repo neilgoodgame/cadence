@@ -12,12 +12,25 @@ import com.cadence.api.activities.dto.ActivitySplitsResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.ValidationException;
+import com.cadence.api.gear.Bike;
+import com.cadence.api.gear.BikeRepository;
+import com.cadence.api.gear.Shoe;
+import com.cadence.api.gear.ShoeModel;
+import com.cadence.api.gear.ShoeModelRepository;
+import com.cadence.api.gear.ShoeModelVersion;
+import com.cadence.api.gear.ShoeModelVersionRepository;
+import com.cadence.api.gear.ShoeRepository;
+import com.cadence.api.gear.dto.BikeResponse;
+import com.cadence.api.gear.dto.ShoeCatalogEntryResponse;
+import com.cadence.api.gear.dto.ShoeResponse;
 import com.cadence.api.mcp.dto.McpAthleteProfile;
 import com.cadence.api.mcp.dto.McpCustomSplitStepInput;
 import com.cadence.api.mcp.dto.McpWorkoutLeafStep;
 import com.cadence.api.mcp.dto.McpWorkoutStepInput;
 import com.cadence.api.mcp.tools.activities.ActivityReadTools;
 import com.cadence.api.mcp.tools.athletes.AthleteProfileTools;
+import com.cadence.api.mcp.tools.gear.GearReadTools;
+import com.cadence.api.mcp.tools.gear.GearWriteTools;
 import com.cadence.api.mcp.tools.races.RaceTools;
 import com.cadence.api.mcp.tools.scheduling.ScheduledWorkoutWriteTools;
 import com.cadence.api.mcp.tools.workouts.WorkoutReadTools;
@@ -94,6 +107,24 @@ class McpToolsIntegrationTest extends IntegrationTest {
 	@Autowired
 	private UserRelationshipRepository userRelationshipRepository;
 
+	@Autowired
+	private GearReadTools gearReadTools;
+
+	@Autowired
+	private GearWriteTools gearWriteTools;
+
+	@Autowired
+	private BikeRepository bikeRepository;
+
+	@Autowired
+	private ShoeRepository shoeRepository;
+
+	@Autowired
+	private ShoeModelRepository shoeModelRepository;
+
+	@Autowired
+	private ShoeModelVersionRepository shoeModelVersionRepository;
+
 	@AfterEach
 	void clearAuthContext() {
 		AuthContextHolder.clear();
@@ -109,6 +140,17 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 	private void authAs(String userId, String... scopes) {
 		AuthContextHolder.set(AuthContext.self(userId, Set.of(scopes), AuthContext.CredentialKind.OAUTH2));
+	}
+
+	private ShoeModelVersion saveShoeModelVersion(String manufacturer, String model, String version) {
+		ShoeModel shoeModel = new ShoeModel();
+		shoeModel.setManufacturer(manufacturer);
+		shoeModel.setModel(model);
+		shoeModelRepository.save(shoeModel);
+		ShoeModelVersion smv = new ShoeModelVersion();
+		smv.setShoeModel(shoeModel);
+		smv.setVersion(version);
+		return shoeModelVersionRepository.save(smv);
 	}
 
 	@Test
@@ -610,5 +652,165 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		assertThatThrownBy(() -> raceTools.createRace("Goal Marathon", "2026-10-12", "run", null, null, null, null,
 				null, null, null, null, null, null, null, null, null))
 				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void createBikePersistsWithDefaults() {
+		User athlete = saveAthlete("mcp-gear-create-bike@example.cc");
+		authAs(athlete.getId(), "gear:write");
+
+		BikeResponse response = gearWriteTools.createBike("Tarmac SL7", "road", "Dura-Ace", 1200);
+
+		assertThat(response.name()).isEqualTo("Tarmac SL7");
+		assertThat(response.distanceKm()).isEqualTo(1200);
+		Bike persisted = bikeRepository.findById(response.id()).orElseThrow();
+		assertThat(persisted.getAthlete().getId()).isEqualTo(athlete.getId());
+	}
+
+	@Test
+	void createBikeRejectsWithoutTheWriteScope() {
+		User athlete = saveAthlete("mcp-gear-create-bike-scope@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> gearWriteTools.createBike("Tarmac SL7", null, null, null))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void updateBikeChangesOnlyPassedFields() {
+		User athlete = saveAthlete("mcp-gear-update-bike@example.cc");
+		authAs(athlete.getId(), "gear:write");
+		BikeResponse created = gearWriteTools.createBike("Original", "road", null, null);
+
+		BikeResponse updated = gearWriteTools.updateBike(created.id(), "Renamed", null, null, 500);
+
+		assertThat(updated.name()).isEqualTo("Renamed");
+		assertThat(updated.kind().wireValue()).isEqualTo("road");
+		assertThat(updated.distanceKm()).isEqualTo(500);
+	}
+
+	@Test
+	void updateBikeFromAnotherAthleteIsRejected() {
+		User owner = saveAthlete("mcp-gear-update-bike-owner@example.cc");
+		User other = saveAthlete("mcp-gear-update-bike-other@example.cc");
+		authAs(owner.getId(), "gear:write");
+		BikeResponse created = gearWriteTools.createBike("Tarmac SL7", null, null, null);
+
+		authAs(other.getId(), "gear:write");
+		assertThatThrownBy(() -> gearWriteTools.updateBike(created.id(), "Hijacked", null, null, null))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void deleteBikeRemovesIt() {
+		User athlete = saveAthlete("mcp-gear-delete-bike@example.cc");
+		authAs(athlete.getId(), "gear:write");
+		BikeResponse created = gearWriteTools.createBike("Doomed", null, null, null);
+
+		gearWriteTools.deleteBike(created.id());
+
+		assertThat(bikeRepository.findById(created.id())).isEmpty();
+	}
+
+	@Test
+	void deleteBikeFromAnotherAthleteIsRejected() {
+		User owner = saveAthlete("mcp-gear-delete-bike-owner@example.cc");
+		User other = saveAthlete("mcp-gear-delete-bike-other@example.cc");
+		authAs(owner.getId(), "gear:write");
+		BikeResponse created = gearWriteTools.createBike("Tarmac SL7", null, null, null);
+
+		authAs(other.getId(), "gear:write");
+		assertThatThrownBy(() -> gearWriteTools.deleteBike(created.id())).isInstanceOf(ForbiddenException.class);
+		assertThat(bikeRepository.findById(created.id())).isPresent();
+	}
+
+	@Test
+	void searchShoeCatalogFiltersByManufacturerOrModel() {
+		// Fake, distinctive manufacturer names - the real shoe catalog is seeded with real
+		// brands by a Flyway migration, so a count-based assertion must avoid colliding with
+		// that pre-existing seeded data.
+		User athlete = saveAthlete("mcp-gear-search-catalog@example.cc");
+		authAs(athlete.getId(), "activities:read");
+		saveShoeModelVersion("Zzyzx", "Vaporfly", "3");
+		saveShoeModelVersion("Qorvex", "Nimbus", "25");
+
+		List<ShoeCatalogEntryResponse> results = gearReadTools.searchShoeCatalog("zzyzx");
+
+		assertThat(results).hasSize(1);
+		assertThat(results.get(0).manufacturer()).isEqualTo("Zzyzx");
+	}
+
+	@Test
+	void createShoePersistsAndDefaultsName() {
+		User athlete = saveAthlete("mcp-gear-create-shoe@example.cc");
+		authAs(athlete.getId(), "gear:write");
+		ShoeModelVersion smv = saveShoeModelVersion("Nike", "Vaporfly", "3");
+
+		ShoeResponse response = gearWriteTools.createShoe(smv.getId(), "Volt / Black", null, null, null);
+
+		assertThat(response.name()).isEqualTo("Nike Vaporfly 3 Volt / Black");
+		Shoe persisted = shoeRepository.findById(response.id()).orElseThrow();
+		assertThat(persisted.getAthlete().getId()).isEqualTo(athlete.getId());
+	}
+
+	@Test
+	void createShoeRejectsWithoutTheWriteScope() {
+		User athlete = saveAthlete("mcp-gear-create-shoe-scope@example.cc");
+		authAs(athlete.getId(), "activities:read");
+		ShoeModelVersion smv = saveShoeModelVersion("Nike", "Vaporfly", "3");
+
+		assertThatThrownBy(() -> gearWriteTools.createShoe(smv.getId(), "Volt", null, null, null))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void updateShoeRetiresIt() {
+		User athlete = saveAthlete("mcp-gear-update-shoe@example.cc");
+		authAs(athlete.getId(), "gear:write");
+		ShoeModelVersion smv = saveShoeModelVersion("Nike", "Vaporfly", "3");
+		ShoeResponse created = gearWriteTools.createShoe(smv.getId(), "Volt", "Race Flyers", null, null);
+
+		gearWriteTools.updateShoe(created.id(), null, null, null, null, true);
+
+		Shoe persisted = shoeRepository.findById(created.id()).orElseThrow();
+		assertThat(persisted.isRetired()).isTrue();
+	}
+
+	@Test
+	void updateShoeFromAnotherAthleteIsRejected() {
+		User owner = saveAthlete("mcp-gear-update-shoe-owner@example.cc");
+		User other = saveAthlete("mcp-gear-update-shoe-other@example.cc");
+		authAs(owner.getId(), "gear:write");
+		ShoeModelVersion smv = saveShoeModelVersion("Nike", "Vaporfly", "3");
+		ShoeResponse created = gearWriteTools.createShoe(smv.getId(), "Volt", null, null, null);
+
+		authAs(other.getId(), "gear:write");
+		assertThatThrownBy(() -> gearWriteTools.updateShoe(created.id(), "Hijacked", null, null, null, null))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void deleteShoeRemovesIt() {
+		User athlete = saveAthlete("mcp-gear-delete-shoe@example.cc");
+		authAs(athlete.getId(), "gear:write");
+		ShoeModelVersion smv = saveShoeModelVersion("Nike", "Vaporfly", "3");
+		ShoeResponse created = gearWriteTools.createShoe(smv.getId(), "Volt", null, null, null);
+
+		gearWriteTools.deleteShoe(created.id());
+
+		assertThat(shoeRepository.findById(created.id())).isEmpty();
+	}
+
+	@Test
+	void createShoeCatalogEntryPersists() {
+		User athlete = saveAthlete("mcp-gear-create-catalog@example.cc");
+		authAs(athlete.getId(), "gear:write");
+
+		ShoeCatalogEntryResponse response = gearWriteTools.createShoeCatalogEntry("Hoka", "Rocket X", "2");
+
+		assertThat(response.manufacturer()).isEqualTo("Hoka");
+		assertThat(response.version()).isEqualTo("2");
+		assertThat(shoeModelRepository.findFirstByManufacturerIgnoreCaseAndModelIgnoreCase("Hoka", "Rocket X"))
+				.isPresent();
 	}
 }
