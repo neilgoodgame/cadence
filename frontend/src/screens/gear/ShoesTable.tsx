@@ -3,7 +3,10 @@ import { updateShoe } from "../../api/gear";
 import { Card } from "../../components/Card";
 import type { Shoe } from "../../api/types";
 import { WEAR_STATUS_COLOR, wearStatus } from "../../lib/gear";
+import { GearActivitiesSection } from "./GearActivitiesSection";
 import { tableStyle, tdStyle, thStyle } from "./tableStyle";
+
+const COLUMN_COUNT = 7;
 
 function ShoeRow({ shoe }: { shoe: Shoe }) {
   const queryClient = useQueryClient();
@@ -16,42 +19,49 @@ function ShoeRow({ shoe }: { shoe: Shoe }) {
   const pct = shoe.limit_km > 0 ? Math.round(Math.min(shoe.km / shoe.limit_km, 1) * 100) : 0;
 
   return (
-    <tr>
-      <td style={{ ...tdStyle, color: "var(--ink)", fontWeight: 700 }}>{shoe.name}</td>
-      <td style={tdStyle}>{shoe.role ?? ""}</td>
-      <td className="mono" style={tdStyle}>
-        {shoe.km} km
-      </td>
-      <td className="mono" style={tdStyle}>
-        {shoe.limit_km} km
-      </td>
-      <td className="mono" style={tdStyle}>
-        {pct}%
-      </td>
-      <td style={tdStyle}>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            padding: "2px 8px",
-            borderRadius: 20,
-            color: WEAR_STATUS_COLOR[status],
-            background: `${WEAR_STATUS_COLOR[status]}22`,
-          }}
-        >
-          {status === "good" ? "In rotation" : status === "soon" ? "Near limit" : "Retire now"}
-        </span>
-      </td>
-      <td style={tdStyle}>
-        <button
-          onClick={() => retireMutation.mutate()}
-          disabled={retireMutation.isPending}
-          style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, fontWeight: 600, padding: 0, cursor: "pointer" }}
-        >
-          Retire
-        </button>
-      </td>
-    </tr>
+    <>
+      <tr>
+        <td style={{ ...tdStyle, color: "var(--ink)", fontWeight: 700 }}>{shoe.name}</td>
+        <td style={tdStyle}>{shoe.role ?? ""}</td>
+        <td className="mono" style={tdStyle}>
+          {shoe.km} km
+        </td>
+        <td className="mono" style={tdStyle}>
+          {shoe.limit_km} km
+        </td>
+        <td className="mono" style={tdStyle}>
+          {pct}%
+        </td>
+        <td style={tdStyle}>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "2px 8px",
+              borderRadius: 20,
+              color: WEAR_STATUS_COLOR[status],
+              background: `${WEAR_STATUS_COLOR[status]}22`,
+            }}
+          >
+            {status === "good" ? "In rotation" : status === "soon" ? "Near limit" : "Retire now"}
+          </span>
+        </td>
+        <td style={tdStyle}>
+          <button
+            onClick={() => retireMutation.mutate()}
+            disabled={retireMutation.isPending}
+            style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, fontWeight: 600, padding: 0, cursor: "pointer" }}
+          >
+            Retire
+          </button>
+        </td>
+      </tr>
+      <tr>
+        <td colSpan={COLUMN_COUNT} style={{ padding: "0 12px 10px", borderBottom: "1px solid var(--line)" }}>
+          <GearActivitiesSection filter={{ shoe_id: shoe.id }} />
+        </td>
+      </tr>
+    </>
   );
 }
 
