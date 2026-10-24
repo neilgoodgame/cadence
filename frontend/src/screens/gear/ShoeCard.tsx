@@ -4,18 +4,45 @@ import { updateShoe } from "../../api/gear";
 import { Card } from "../../components/Card";
 import type { Shoe } from "../../api/types";
 import { WEAR_STATUS_COLOR, wearStatus } from "../../lib/gear";
+import { GearActivitiesSection } from "./GearActivitiesSection";
 import { ShoePhotoTimeline } from "./ShoePhotoTimeline";
 
 const RING_RADIUS = 30;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
+const editInputStyle: React.CSSProperties = {
+  width: 72,
+  padding: "3px 8px",
+  borderRadius: 6,
+  border: "1px solid var(--line)",
+  background: "var(--elev)",
+  fontSize: 12,
+  color: "var(--ink)",
+};
+
 export function ShoeCard({ shoe }: { shoe: Shoe }) {
   const queryClient = useQueryClient();
   const [showPhotos, setShowPhotos] = useState(false);
+  const [editingMileage, setEditingMileage] = useState(false);
+  const [kmInput, setKmInput] = useState("");
+  const [limitKmInput, setLimitKmInput] = useState("");
   const retireMutation = useMutation({
     mutationFn: () => updateShoe(shoe.id, { retired: true }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shoes"] }),
   });
+  const updateMileageMutation = useMutation({
+    mutationFn: () => updateShoe(shoe.id, { km: Number(kmInput), limit_km: Number(limitKmInput) }),
+    onSuccess: () => {
+      setEditingMileage(false);
+      queryClient.invalidateQueries({ queryKey: ["shoes"] });
+    },
+  });
+
+  function startEditingMileage() {
+    setKmInput(String(shoe.km));
+    setLimitKmInput(String(shoe.limit_km));
+    setEditingMileage(true);
+  }
 
   const status = wearStatus(shoe.km, shoe.limit_km);
   const fraction = shoe.limit_km > 0 ? Math.min(shoe.km / shoe.limit_km, 1) : 0;
@@ -44,9 +71,43 @@ export function ShoeCard({ shoe }: { shoe: Shoe }) {
 
       <div style={{ fontSize: 14, fontWeight: 700 }}>{shoe.name}</div>
       {shoe.role && <div style={{ fontSize: 12, color: "var(--ink3)" }}>{shoe.role}</div>}
-      <div className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
-        {shoe.km} / {shoe.limit_km} km
-      </div>
+      {editingMileage ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
+          <div className="mono" style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+            <input type="number" value={kmInput} onChange={(e) => setKmInput(e.target.value)} autoFocus style={editInputStyle} />
+            <span>/</span>
+            <input type="number" value={limitKmInput} onChange={(e) => setLimitKmInput(e.target.value)} style={editInputStyle} />
+            <span>km</span>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={() => updateMileageMutation.mutate()}
+              disabled={updateMileageMutation.isPending}
+              style={{ border: "none", borderRadius: 6, background: "var(--ember)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 12px", cursor: "pointer" }}
+            >
+              {updateMileageMutation.isPending ? "…" : "Save"}
+            </button>
+            <button
+              onClick={() => setEditingMileage(false)}
+              style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 11, cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mono" style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "var(--ink2)" }}>
+          {shoe.km} / {shoe.limit_km} km
+          <button
+            onClick={startEditingMileage}
+            title="Edit distance / retirement limit"
+            style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, cursor: "pointer", padding: "0 2px", lineHeight: 1 }}
+          >
+            ✎
+          </button>
+        </div>
+      )}
+      {!editingMileage && (
       <span
         style={{
           fontSize: 11,
@@ -59,7 +120,9 @@ export function ShoeCard({ shoe }: { shoe: Shoe }) {
       >
         {status === "good" ? "In rotation" : status === "soon" ? "Near limit" : "Retire now"}
       </span>
+      )}
 
+      {!editingMileage && (
       <div style={{ display: "flex", gap: 14 }}>
         <button
           onClick={() => setShowPhotos((v) => !v)}
@@ -75,10 +138,17 @@ export function ShoeCard({ shoe }: { shoe: Shoe }) {
           Retire
         </button>
       </div>
+      )}
 
       {showPhotos && (
         <div style={{ alignSelf: "stretch", textAlign: "left" }}>
           <ShoePhotoTimeline shoeId={shoe.id} currentKm={shoe.km} />
+        </div>
+      )}
+
+      {!editingMileage && (
+        <div style={{ alignSelf: "stretch", textAlign: "left" }}>
+          <GearActivitiesSection filter={{ shoe_id: shoe.id }} />
         </div>
       )}
     </Card>

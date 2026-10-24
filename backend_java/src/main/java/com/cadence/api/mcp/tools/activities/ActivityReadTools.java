@@ -76,7 +76,7 @@ public class ActivityReadTools {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		int effectiveLimit = Math.max(1, Math.min(limit != null ? limit : 20, 100));
-		var page = activityService.list(athleteId, query, parseSport(sport), null, null, after, before, cursor, effectiveLimit);
+		var page = activityService.list(athleteId, query, parseSport(sport), null, null, after, before, cursor, effectiveLimit, null, null);
 		return new McpActivityPage(page.hasMore(), page.nextCursor(), page.data().stream().map(McpActivitySummary::from).toList());
 	}
 

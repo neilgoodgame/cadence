@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createComponent, getBike } from "../../api/gear";
+import { createComponent, getBike, updateBike } from "../../api/gear";
 import { Card } from "../../components/Card";
 import type { Bike } from "../../api/types";
 import { ComponentRow } from "./ComponentRow";
+import { GearActivitiesSection } from "./GearActivitiesSection";
 import { WEAR_STATUS_COLOR, WEAR_STATUS_LABEL, type WearStatus, wearStatus } from "../../lib/gear";
 
 const inputStyle: React.CSSProperties = {
@@ -27,6 +28,8 @@ export function BikeCard({ bike }: { bike: Bike }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [limitKm, setLimitKm] = useState("");
+  const [editingDistance, setEditingDistance] = useState(false);
+  const [distanceKmInput, setDistanceKmInput] = useState("");
   const queryClient = useQueryClient();
 
   const { data: detail } = useQuery({
@@ -44,6 +47,20 @@ export function BikeCard({ bike }: { bike: Bike }) {
       queryClient.invalidateQueries({ queryKey: ["bike", bike.id] });
     },
   });
+
+  const updateDistanceMutation = useMutation({
+    mutationFn: () => updateBike(bike.id, { distance_km: Number(distanceKmInput) }),
+    onSuccess: () => {
+      setEditingDistance(false);
+      queryClient.invalidateQueries({ queryKey: ["bikes"] });
+    },
+  });
+
+  function startEditingDistance(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDistanceKmInput(String(bike.distance_km));
+    setEditingDistance(true);
+  }
 
   const overall = detail ? worstStatus(detail.components.map((c) => wearStatus(c.km, c.limit_km))) : null;
 
@@ -73,8 +90,43 @@ export function BikeCard({ bike }: { bike: Bike }) {
         )}
       </div>
 
-      <div className="mono" style={{ display: "flex", gap: 18, marginTop: 12, fontSize: 13, color: "var(--ink2)" }}>
-        <span>{bike.distance_km} km</span>
+      <div className="mono" style={{ display: "flex", gap: 18, marginTop: 12, fontSize: 13, color: "var(--ink2)", alignItems: "center" }}>
+        {editingDistance ? (
+          <span style={{ display: "flex", gap: 6, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
+            <input
+              type="number"
+              value={distanceKmInput}
+              onChange={(e) => setDistanceKmInput(e.target.value)}
+              autoFocus
+              style={{ ...inputStyle, width: 80, padding: "3px 8px" }}
+            />
+            <span>km</span>
+            <button
+              onClick={() => updateDistanceMutation.mutate()}
+              disabled={updateDistanceMutation.isPending}
+              style={{ border: "none", borderRadius: 6, background: "var(--ember)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "3px 9px", cursor: "pointer" }}
+            >
+              {updateDistanceMutation.isPending ? "…" : "Save"}
+            </button>
+            <button
+              onClick={() => setEditingDistance(false)}
+              style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 11, cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {bike.distance_km} km
+            <button
+              onClick={startEditingDistance}
+              title="Edit distance"
+              style={{ border: "none", background: "none", color: "var(--ink3)", fontSize: 12, cursor: "pointer", padding: "0 2px", lineHeight: 1 }}
+            >
+              ✎
+            </button>
+          </span>
+        )}
         <span>{bike.hours}h</span>
         <span>{bike.rides} rides</span>
         <span>{bike.components} components</span>
@@ -115,6 +167,8 @@ export function BikeCard({ bike }: { bike: Bike }) {
               + Add component
             </button>
           )}
+
+          <GearActivitiesSection filter={{ bike_id: bike.id }} />
         </div>
       )}
     </Card>

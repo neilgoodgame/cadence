@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from django.test import TestCase
 
 from accounts.models import User, UserRelationship
+from gear.models import Bike, Shoe, ShoeModel, ShoeModelVersion
 from uploads.models import Upload
 
 from ..models import Activity, ActivityTag, Record, Tag
@@ -55,6 +56,27 @@ class ActivityListViewTests(TestCase):
         response = _bearer_client(self.athlete).get("/v1/activities?environment=indoor")
         names = [a["name"] for a in response.json()["data"]]
         self.assertEqual(names, ["Treadmill"])
+
+    def test_filter_by_bike_id_query_param(self):
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7")
+        other_bike = Bike.objects.create(athlete=self.athlete, name="Stumpjumper")
+        _make_activity(self.athlete, sport="bike", name="On the Tarmac", bike=bike)
+        _make_activity(self.athlete, sport="bike", name="On the Stumpjumper", bike=other_bike)
+
+        response = _bearer_client(self.athlete).get(f"/v1/activities?bike_id={bike.id}")
+        names = [a["name"] for a in response.json()["data"]]
+        self.assertEqual(names, ["On the Tarmac"])
+
+    def test_filter_by_shoe_id_query_param(self):
+        shoe_model = ShoeModel.objects.create(manufacturer="Nike", model="Vaporfly")
+        version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="3")
+        shoe = Shoe.objects.create(athlete=self.athlete, shoe_model_version=version, name="Flyers")
+        _make_activity(self.athlete, sport="run", name="In the Flyers", shoe=shoe)
+        _make_activity(self.athlete, sport="run", name="Barefoot")
+
+        response = _bearer_client(self.athlete).get(f"/v1/activities?shoe_id={shoe.id}")
+        names = [a["name"] for a in response.json()["data"]]
+        self.assertEqual(names, ["In the Flyers"])
 
     def test_filter_by_tag_query_param_matches_multi_word_tag_name(self):
         matching = _make_activity(self.athlete, name="Sauna Ride")
@@ -265,3 +287,18 @@ class DeleteAllActivitiesTests(TestCase):
         response = client.delete("/v1/activities")
         self.assertEqual(response.status_code, 403)
         self.assertEqual(Activity.objects.filter(athlete=self.athlete).count(), 1)
+
+    def test_delete_all_subtracts_aggregated_gear_mileage_but_not_other_athletes(self):
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7", distance_km=200)
+        _make_activity(self.athlete, sport="bike", distance_km=40.3, bike=bike)
+        _make_activity(self.athlete, sport="bike", distance_km=19.6, bike=bike)
+        theirs_bike = Bike.objects.create(athlete=self.other_athlete, name="Not mine", distance_km=50)
+        _make_activity(self.other_athlete, sport="bike", distance_km=50.0, bike=theirs_bike)
+
+        response = _bearer_client(self.athlete).delete("/v1/activities")
+        self.assertEqual(response.status_code, 204)
+        bike.refresh_from_db()
+        theirs_bike.refresh_from_db()
+        # 200 - (round(40.3) + round(19.6)) = 200 - (40 + 20) = 140
+        self.assertEqual(bike.distance_km, 140)
+        self.assertEqual(theirs_bike.distance_km, 50)

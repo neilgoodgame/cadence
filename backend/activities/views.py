@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from typing import Any
 
 from django.db.models import Count, Exists, F, FloatField, Min, OuterRef, Q, Value
@@ -16,6 +17,7 @@ from core.exceptions import ConflictError, UnprocessableEntityError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
 from courses.views import preview_settings
+from gear.mileage import apply_bike_change, apply_shoe_change
 from gear.models import Bike, Shoe
 from uploads.processing import (
     backfill_extended_stats,
@@ -213,6 +215,17 @@ class ActivityListView(APIView):
                 raise ValidationError({"environment": f"Unknown environment '{environment}'."})
             qs = qs.filter(environment=environment)
 
+        # The gear screen's "activities using this bike/shoe" list - already implicitly scoped
+        # to this athlete by the qs.filter(athlete_id=...) above, since bike_id/shoe_id on an
+        # activity can only ever point at that same athlete's own gear (enforced at link time).
+        bike_id = request.query_params.get("bike_id")
+        if bike_id:
+            qs = qs.filter(bike_id=bike_id)
+
+        shoe_id = request.query_params.get("shoe_id")
+        if shoe_id:
+            qs = qs.filter(shoe_id=shoe_id)
+
         # Separate from `q`: the CQL `tag <name>` clause only ever captures a single
         # token as the value (see core/cql/parser.py), so a multi-word tag name like
         # "Heat Training" silently loses everything after the first word and matches
@@ -282,6 +295,25 @@ class ActivityListView(APIView):
     def delete(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_write(request, athlete_id)
+
+        # Aggregated per-gear (not a single rounded sum) so this exactly cancels out the
+        # incremental deltas apply_bike_change/apply_shoe_change already applied one activity
+        # at a time.
+        bike_totals: dict[str, int] = defaultdict(int)
+        shoe_totals: dict[str, int] = defaultdict(int)
+        for bike_id, distance_km in Activity.objects.filter(athlete_id=athlete_id, bike_id__isnull=False).values_list(
+            "bike_id", "distance_km"
+        ):
+            bike_totals[bike_id] += round(distance_km)
+        for shoe_id, distance_km in Activity.objects.filter(athlete_id=athlete_id, shoe_id__isnull=False).values_list(
+            "shoe_id", "distance_km"
+        ):
+            shoe_totals[shoe_id] += round(distance_km)
+        for bike_id, total in bike_totals.items():
+            apply_bike_change(bike_id, None, total)
+        for shoe_id, total in shoe_totals.items():
+            apply_shoe_change(shoe_id, None, total)
+
         # record is range-partitioned on ts into ~126 monthly partitions, so per-activity
         # cascade deletes each visit every partition; clear the records in one set-based statement
         # first, then let the cascade handle the small per-activity tables. Uploads keep
@@ -335,17 +367,23 @@ class ActivityDetailView(APIView):
             update_fields.append("workout")
             if newly_matched_workout is not None:
                 apply_match_rename(activity, newly_matched_workout.name, activity.athlete, update_fields)
+        old_bike_id, new_bike_id = None, None
         if "bike_id" in data:
             bike_id = data["bike_id"]
+            old_bike_id = activity.bike_id
             activity.bike = (
                 None if bike_id is None else get_object_or_404(Bike, pk=bike_id, athlete_id=activity.athlete_id)
             )
+            new_bike_id = activity.bike_id
             update_fields.append("bike")
+        old_shoe_id, new_shoe_id = None, None
         if "shoe_id" in data:
             shoe_id = data["shoe_id"]
+            old_shoe_id = activity.shoe_id
             activity.shoe = (
                 None if shoe_id is None else get_object_or_404(Shoe, pk=shoe_id, athlete_id=activity.athlete_id)
             )
+            new_shoe_id = activity.shoe_id
             update_fields.append("shoe")
         if "primary_activity_id" in data:
             primary_id = data["primary_activity_id"]
@@ -387,6 +425,10 @@ class ActivityDetailView(APIView):
 
         if update_fields:
             activity.save(update_fields=update_fields)
+        if "bike_id" in data:
+            apply_bike_change(old_bike_id, new_bike_id, activity.distance_km)
+        if "shoe_id" in data:
+            apply_shoe_change(old_shoe_id, new_shoe_id, activity.distance_km)
         if newly_matched_workout is not None:
             apply_match_side_effects(activity, newly_matched_workout, activity.athlete)
         return Response(ActivitySerializer(activity).data)
@@ -396,6 +438,8 @@ class ActivityDetailView(APIView):
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, activity.athlete_id):
             raise PermissionDenied("You do not have write access to that athlete's data.")
+        apply_bike_change(activity.bike_id, None, activity.distance_km)
+        apply_shoe_change(activity.shoe_id, None, activity.distance_km)
         activity.delete()
         return Response(status=204)
 

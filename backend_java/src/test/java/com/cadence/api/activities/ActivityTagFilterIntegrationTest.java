@@ -66,7 +66,7 @@ class ActivityTagFilterIntegrationTest extends IntegrationTest {
 		activityTagRepository.save(link);
 
 		CursorPage<ActivityResponse> page = activityService.list(
-				athlete.getId(), null, null, null, "Heat Training", null, null, null, 50);
+				athlete.getId(), null, null, null, "Heat Training", null, null, null, 50, null, null);
 
 		assertThat(page.data()).extracting(ActivityResponse::name).containsExactly("Sauna Ride");
 	}

@@ -6,6 +6,7 @@ import { listBikes, listShoes } from "../../api/gear";
 import { createRace, listRaces, updateRace } from "../../api/races";
 import type { Activity, Bike, Shoe } from "../../api/types";
 import { formatDateTime } from "../../lib/format";
+import { sortShoesByManufacturerAndName } from "../../lib/gear";
 import { buildGpx, downloadGpx } from "../../lib/gpxExport";
 import { sportColor, sportColorSoft, sportLabel } from "../../lib/sportColors";
 import { SportIcon } from "../../lib/sportIcons";
@@ -33,7 +34,7 @@ function GearBadge({ activity }: { activity: Activity }) {
 
   if (!kind) return null;
 
-  const options = kind === "bike" ? bikes?.data : shoes?.data;
+  const options = kind === "bike" ? bikes?.data : shoes && sortShoesByManufacturerAndName(shoes.data);
   const currentId = kind === "bike" ? activity.bike_id : activity.shoe_id;
   const current = options?.find((item) => item.id === currentId);
   const label = kind === "bike" ? "bike" : "shoes";

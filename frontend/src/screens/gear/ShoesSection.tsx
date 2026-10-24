@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listShoes, updateShoe } from "../../api/gear";
 import { useAuth } from "../../auth/AuthContext";
+import { sortShoesByManufacturerAndName } from "../../lib/gear";
 import { AddShoeForm } from "./AddShoeForm";
 import { ImportShoesPanel } from "./ImportShoesPanel";
 import { ShoeCard } from "./ShoeCard";
@@ -15,7 +16,7 @@ export function ShoesSection({ view = "cards" }: { view?: GearView }) {
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
 
-  const shoes = data?.data ?? [];
+  const shoes = sortShoesByManufacturerAndName(data?.data ?? []);
   const unsetLimitShoes = shoes.filter((s) => s.limit_km === 0);
 
   const backfillLimitMutation = useMutation({

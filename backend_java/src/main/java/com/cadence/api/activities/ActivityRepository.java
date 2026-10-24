@@ -110,4 +110,14 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	@Modifying
 	@Query("delete from Activity a where a.athlete.id = :athleteId")
 	void deleteAllByAthleteId(@Param("athleteId") String athleteId);
+
+	// deleteAllActivities' gear-mileage backout - aggregated per bike/shoe in
+	// GearMileageService's caller rather than here, so the sum exactly matches the sum of the
+	// individually-rounded deltas applyBikeChange/applyShoeChange already applied one activity
+	// at a time.
+	@Query("select a.bike.id, a.distanceKm from Activity a where a.athlete.id = :athleteId and a.bike is not null")
+	List<Object[]> findBikeIdAndDistanceKmByAthleteId(@Param("athleteId") String athleteId);
+
+	@Query("select a.shoe.id, a.distanceKm from Activity a where a.athlete.id = :athleteId and a.shoe is not null")
+	List<Object[]> findShoeIdAndDistanceKmByAthleteId(@Param("athleteId") String athleteId);
 }
