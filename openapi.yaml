@@ -400,6 +400,14 @@ paths:
           schema:
             type: string
             enum: [outdoor, indoor]
+        - name: bike_id
+          in: query
+          description: Only activities linked to this bike — the gear screen's usage list.
+          schema: { type: string }
+        - name: shoe_id
+          in: query
+          description: Only activities linked to this pair of shoes — the gear screen's usage list.
+          schema: { type: string }
         - name: limit
           in: query
           description: Page size, max 200.

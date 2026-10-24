@@ -11,6 +11,7 @@ import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.config.CadenceProperties;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.gear.GearMileageService;
 import com.cadence.api.uploads.Upload;
 import com.cadence.api.uploads.UploadCalculations;
 import com.cadence.api.uploads.UploadProcessingException;
@@ -58,14 +59,17 @@ public class ParseFileTasklet implements Tasklet {
 	private final ActivityRepository activityRepository;
 	private final LapRepository lapRepository;
 	private final CadenceProperties properties;
+	private final GearMileageService gearMileageService;
 
 	public ParseFileTasklet(UploadJobContextRegistry contextRegistry, UploadRepository uploadRepository,
-			ActivityRepository activityRepository, LapRepository lapRepository, CadenceProperties properties) {
+			ActivityRepository activityRepository, LapRepository lapRepository, CadenceProperties properties,
+			GearMileageService gearMileageService) {
 		this.contextRegistry = contextRegistry;
 		this.uploadRepository = uploadRepository;
 		this.activityRepository = activityRepository;
 		this.lapRepository = lapRepository;
 		this.properties = properties;
+		this.gearMileageService = gearMileageService;
 	}
 
 	@Override
@@ -159,6 +163,9 @@ public class ParseFileTasklet implements Tasklet {
 				activity.setShoe(upload.getShoe());
 			}
 			activityRepository.save(activity);
+			if (activity.getShoe() != null) {
+				gearMileageService.applyShoeChange(null, activity.getShoe().getId(), activity.getDistanceKm());
+			}
 			if (multisport && parent == null) {
 				parent = activity;
 			}

@@ -16,6 +16,7 @@ import com.cadence.api.cql.CqlParser;
 import com.cadence.api.cql.spec.CqlSpecification;
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.BikeRepository;
+import com.cadence.api.gear.GearMileageService;
 import com.cadence.api.gear.Shoe;
 import com.cadence.api.gear.ShoeRepository;
 import com.cadence.api.workouts.Workout;
@@ -23,6 +24,7 @@ import com.cadence.api.workouts.WorkoutService;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -44,12 +46,14 @@ public class ActivityService {
 	private final ActivityDurabilityRepository durabilityRepository;
 	private final BikeRepository bikeRepository;
 	private final ShoeRepository shoeRepository;
+	private final GearMileageService gearMileageService;
 	private final ActivityFieldMap fieldMap = new ActivityFieldMap();
 
 	public ActivityService(ActivityRepository activityRepository, ActivityTagRepository activityTagRepository,
 			RecordRepository recordRepository, ActivityCursorPagination pagination, WorkoutService workoutService,
 			ThresholdHistoryRepository thresholdHistoryRepository, WorkoutMatchPreferenceService matchPreferenceService,
-			ActivityDurabilityRepository durabilityRepository, BikeRepository bikeRepository, ShoeRepository shoeRepository) {
+			ActivityDurabilityRepository durabilityRepository, BikeRepository bikeRepository, ShoeRepository shoeRepository,
+			GearMileageService gearMileageService) {
 		this.activityRepository = activityRepository;
 		this.activityTagRepository = activityTagRepository;
 		this.recordRepository = recordRepository;
@@ -60,6 +64,7 @@ public class ActivityService {
 		this.durabilityRepository = durabilityRepository;
 		this.bikeRepository = bikeRepository;
 		this.shoeRepository = shoeRepository;
+		this.gearMileageService = gearMileageService;
 	}
 
 	public Activity getActivity(String id) {
@@ -155,7 +160,8 @@ public class ActivityService {
 	}
 
 	public CursorPage<ActivityResponse> list(String athleteId, String q, Sport sportFilter, Environment environmentFilter,
-			String tagFilter, LocalDate after, LocalDate before, String cursor, int limit) {
+			String tagFilter, LocalDate after, LocalDate before, String cursor, int limit,
+			String bikeIdFilter, String shoeIdFilter) {
 		// Multisport children are reachable via their parent's child_activity_ids, not the list -
 		// showing legs alongside the parent would present the same session twice. Duplicate
 		// recordings are likewise reachable only via their primary's duplicate_activity_ids.
@@ -193,6 +199,15 @@ public class ActivityService {
 		// chips drive this param directly instead of smuggling the tag name through CQL text.
 		if (tagFilter != null && !tagFilter.isBlank()) {
 			spec = spec.and((root, query, cb) -> new ActivityTagPredicateFactory().forTagName(root, query, cb, tagFilter));
+		}
+		// The gear screen's "activities using this bike/shoe" list - already implicitly scoped
+		// to this athlete by the athlete.id predicate above, since bike/shoe on an activity can
+		// only ever point at that same athlete's own gear (enforced at link time).
+		if (bikeIdFilter != null) {
+			spec = spec.and((root, query, cb) -> cb.equal(root.get("bike").get("id"), bikeIdFilter));
+		}
+		if (shoeIdFilter != null) {
+			spec = spec.and((root, query, cb) -> cb.equal(root.get("shoe").get("id"), shoeIdFilter));
 		}
 		if (after != null) {
 			Instant afterInstant = after.atStartOfDay(ZoneOffset.UTC).toInstant();
@@ -254,12 +269,18 @@ public class ActivityService {
 			matchPreferenceService.applyRename(activity, newlyMatchedWorkout, activity.getAthlete(),
 					body.containsKey("name"));
 		}
-		if (body.containsKey("bike_id")) {
+		String oldBikeId = null;
+		boolean bikeChanged = body.containsKey("bike_id");
+		if (bikeChanged) {
 			Object value = body.get("bike_id");
+			oldBikeId = activity.getBike() == null ? null : activity.getBike().getId();
 			activity.setBike(value == null ? null : resolveBike(activity.getAthlete().getId(), (String) value));
 		}
-		if (body.containsKey("shoe_id")) {
+		String oldShoeId = null;
+		boolean shoeChanged = body.containsKey("shoe_id");
+		if (shoeChanged) {
 			Object value = body.get("shoe_id");
+			oldShoeId = activity.getShoe() == null ? null : activity.getShoe().getId();
 			activity.setShoe(value == null ? null : resolveShoe(activity.getAthlete().getId(), (String) value));
 		}
 		if (body.containsKey("primary_activity_id")) {
@@ -302,6 +323,14 @@ public class ActivityService {
 			activity.setAnaerobicTrainingEffect(toTrainingEffect(body.get("anaerobic_training_effect")));
 		}
 		Activity saved = activityRepository.save(activity);
+		if (bikeChanged) {
+			String newBikeId = saved.getBike() == null ? null : saved.getBike().getId();
+			gearMileageService.applyBikeChange(oldBikeId, newBikeId, saved.getDistanceKm());
+		}
+		if (shoeChanged) {
+			String newShoeId = saved.getShoe() == null ? null : saved.getShoe().getId();
+			gearMileageService.applyShoeChange(oldShoeId, newShoeId, saved.getDistanceKm());
+		}
 		if (newlyMatchedWorkout != null) {
 			matchPreferenceService.applySideEffects(saved, newlyMatchedWorkout, saved.getAthlete());
 		}
@@ -310,11 +339,26 @@ public class ActivityService {
 
 	@Transactional
 	public void deleteActivity(String id) {
+		Activity activity = activityRepository.findById(id).orElseThrow(() -> new NotFoundException("No such activity."));
+		String bikeId = activity.getBike() == null ? null : activity.getBike().getId();
+		String shoeId = activity.getShoe() == null ? null : activity.getShoe().getId();
+		gearMileageService.applyBikeChange(bikeId, null, activity.getDistanceKm());
+		gearMileageService.applyShoeChange(shoeId, null, activity.getDistanceKm());
 		activityRepository.deleteById(id);
 	}
 
 	@Transactional
 	public void deleteAllActivities(String athleteId) {
+		Map<String, Integer> bikeTotals = new HashMap<>();
+		for (Object[] row : activityRepository.findBikeIdAndDistanceKmByAthleteId(athleteId)) {
+			bikeTotals.merge((String) row[0], Math.round((float) (double) row[1]), Integer::sum);
+		}
+		Map<String, Integer> shoeTotals = new HashMap<>();
+		for (Object[] row : activityRepository.findShoeIdAndDistanceKmByAthleteId(athleteId)) {
+			shoeTotals.merge((String) row[0], Math.round((float) (double) row[1]), Integer::sum);
+		}
+		bikeTotals.forEach((bikeId, total) -> gearMileageService.applyBikeChange(bikeId, null, total));
+		shoeTotals.forEach((shoeId, total) -> gearMileageService.applyShoeChange(shoeId, null, total));
 		recordRepository.deleteByAthleteId(athleteId);
 		activityRepository.deleteAllByAthleteId(athleteId);
 	}

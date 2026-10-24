@@ -100,11 +100,11 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivity(athlete, "Later", Instant.parse("2026-03-01T07:00:00Z"));
 
 		CursorPage<ActivityResponse> desc =
-				activityService.list(athlete.getId(), "orderby date desc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby date desc", null, null, null, null, null, null, 50, null, null);
 		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("Later", "Earlier");
 
 		CursorPage<ActivityResponse> asc =
-				activityService.list(athlete.getId(), "orderby date asc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby date asc", null, null, null, null, null, null, 50, null, null);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Earlier", "Later");
 	}
 
@@ -116,11 +116,11 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithHr(athlete, "High HR", 170);
 
 		CursorPage<ActivityResponse> desc =
-				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, null, 50, null, null);
 		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("High HR", "Low HR", "No HR");
 
 		CursorPage<ActivityResponse> asc =
-				activityService.list(athlete.getId(), "orderby hr asc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby hr asc", null, null, null, null, null, null, 50, null, null);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Low HR", "High HR", "No HR");
 	}
 
@@ -133,12 +133,12 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithHr(athlete, "No HR B", null);
 
 		CursorPage<ActivityResponse> firstPage =
-				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, null, 2);
+				activityService.list(athlete.getId(), "orderby hr desc", null, null, null, null, null, null, 2, null, null);
 		assertThat(firstPage.data()).extracting(ActivityResponse::name).containsExactly("High HR", "Low HR");
 		assertThat(firstPage.hasMore()).isTrue();
 
 		CursorPage<ActivityResponse> secondPage = activityService.list(
-				athlete.getId(), "orderby hr desc", null, null, null, null, null, firstPage.nextCursor(), 2);
+				athlete.getId(), "orderby hr desc", null, null, null, null, null, firstPage.nextCursor(), 2, null, null);
 		assertThat(secondPage.data()).extracting(ActivityResponse::name)
 				.containsExactlyInAnyOrder("No HR A", "No HR B");
 		assertThat(secondPage.hasMore()).isFalse();
@@ -155,11 +155,11 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithAirTemp(athlete, "Hot", 31.2);
 
 		CursorPage<ActivityResponse> desc =
-				activityService.list(athlete.getId(), "orderby temperature desc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby temperature desc", null, null, null, null, null, null, 50, null, null);
 		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("Hot", "Cool", "No Temp");
 
 		CursorPage<ActivityResponse> asc =
-				activityService.list(athlete.getId(), "orderby temperature asc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby temperature asc", null, null, null, null, null, null, 50, null, null);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Cool", "Hot", "No Temp");
 	}
 
@@ -172,12 +172,12 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithAirTemp(athlete, "No Temp B", null);
 
 		CursorPage<ActivityResponse> firstPage =
-				activityService.list(athlete.getId(), "orderby temperature desc", null, null, null, null, null, null, 2);
+				activityService.list(athlete.getId(), "orderby temperature desc", null, null, null, null, null, null, 2, null, null);
 		assertThat(firstPage.data()).extracting(ActivityResponse::name).containsExactly("Hot", "Cool");
 		assertThat(firstPage.hasMore()).isTrue();
 
 		CursorPage<ActivityResponse> secondPage = activityService.list(
-				athlete.getId(), "orderby temperature desc", null, null, null, null, null, firstPage.nextCursor(), 2);
+				athlete.getId(), "orderby temperature desc", null, null, null, null, null, firstPage.nextCursor(), 2, null, null);
 		assertThat(secondPage.data()).extracting(ActivityResponse::name)
 				.containsExactlyInAnyOrder("No Temp A", "No Temp B");
 		assertThat(secondPage.hasMore()).isFalse();
@@ -191,11 +191,11 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithHumidity(athlete, "Humid", 88);
 
 		CursorPage<ActivityResponse> desc =
-				activityService.list(athlete.getId(), "orderby humidity desc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby humidity desc", null, null, null, null, null, null, 50, null, null);
 		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("Humid", "Dry", "No Humidity");
 
 		CursorPage<ActivityResponse> asc =
-				activityService.list(athlete.getId(), "orderby humidity asc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby humidity asc", null, null, null, null, null, null, 50, null, null);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Dry", "Humid", "No Humidity");
 	}
 
@@ -210,11 +210,11 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithMaxHeatStrain(athlete, "Severe", 4.2);
 
 		CursorPage<ActivityResponse> desc =
-				activityService.list(athlete.getId(), "orderby max_heat_strain desc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby max_heat_strain desc", null, null, null, null, null, null, 50, null, null);
 		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("Severe", "Mild", "No CORE sensor");
 
 		CursorPage<ActivityResponse> asc =
-				activityService.list(athlete.getId(), "orderby max_heat_strain asc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby max_heat_strain asc", null, null, null, null, null, null, 50, null, null);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Mild", "Severe", "No CORE sensor");
 	}
 
@@ -225,7 +225,7 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithMaxHeatStrain(athlete, "Severe", 4.2);
 
 		CursorPage<ActivityResponse> result =
-				activityService.list(athlete.getId(), "max_heat_strain>3", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "max_heat_strain>3", null, null, null, null, null, null, 50, null, null);
 		assertThat(result.data()).extracting(ActivityResponse::name).containsExactly("Severe");
 	}
 
@@ -241,11 +241,11 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithFluidsMl(athlete, "Chugged", 900);
 
 		CursorPage<ActivityResponse> desc =
-				activityService.list(athlete.getId(), "orderby fluids_ml desc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby fluids_ml desc", null, null, null, null, null, null, 50, null, null);
 		assertThat(desc.data()).extracting(ActivityResponse::name).containsExactly("Chugged", "Sipped", "No weigh-in");
 
 		CursorPage<ActivityResponse> asc =
-				activityService.list(athlete.getId(), "orderby fluids_ml asc", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "orderby fluids_ml asc", null, null, null, null, null, null, 50, null, null);
 		assertThat(asc.data()).extracting(ActivityResponse::name).containsExactly("Sipped", "Chugged", "No weigh-in");
 	}
 
@@ -256,7 +256,7 @@ class ActivitySortIntegrationTest extends IntegrationTest {
 		newActivityWithFluidsMl(athlete, "Chugged", 900);
 
 		CursorPage<ActivityResponse> result =
-				activityService.list(athlete.getId(), "fluids_ml>500", null, null, null, null, null, null, 50);
+				activityService.list(athlete.getId(), "fluids_ml>500", null, null, null, null, null, null, 50, null, null);
 		assertThat(result.data()).extracting(ActivityResponse::name).containsExactly("Chugged");
 	}
 }

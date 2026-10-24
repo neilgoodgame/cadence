@@ -1,3 +1,5 @@
+import type { Shoe } from "../api/types";
+
 export type WearStatus = "good" | "soon" | "replace";
 
 export const WEAR_STATUS_COLOR: Record<WearStatus, string> = {
@@ -20,4 +22,12 @@ export function wearStatus(km: number, limitKm: number): WearStatus {
   if (fraction >= 1.0) return "replace";
   if (fraction >= 0.85) return "soon";
   return "good";
+}
+
+/** Shared ordering for every place shoes are listed (the gear screen's grid/table and the
+ * activity header's shoe picker) - manufacturer first, then name, both case-insensitive. */
+export function sortShoesByManufacturerAndName<T extends Pick<Shoe, "manufacturer" | "name">>(shoes: T[]): T[] {
+  return [...shoes].sort(
+    (a, b) => a.manufacturer.localeCompare(b.manufacturer) || a.name.localeCompare(b.name),
+  );
 }

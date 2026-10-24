@@ -128,6 +128,82 @@ class ActivityDetailViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_patch_link_bike_adds_activity_distance_to_bike_mileage(self):
+        activity = _make_activity(self.athlete, sport="bike", distance_km=42.0)
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7", distance_km=100)
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"bike_id": bike.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 142)
+
+    def test_patch_unlink_bike_subtracts_activity_distance(self):
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7", distance_km=142)
+        activity = _make_activity(self.athlete, sport="bike", distance_km=42.0, bike=bike)
+        response = _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"bike_id": None}, format="json")
+        self.assertEqual(response.status_code, 200)
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 100)
+
+    def test_patch_change_bike_moves_the_distance(self):
+        old_bike = Bike.objects.create(athlete=self.athlete, name="Old bike", distance_km=142)
+        new_bike = Bike.objects.create(athlete=self.athlete, name="New bike", distance_km=0)
+        activity = _make_activity(self.athlete, sport="bike", distance_km=42.0, bike=old_bike)
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"bike_id": new_bike.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        old_bike.refresh_from_db()
+        new_bike.refresh_from_db()
+        self.assertEqual(old_bike.distance_km, 100)
+        self.assertEqual(new_bike.distance_km, 42)
+
+    def test_patch_bike_id_unchanged_does_not_double_count(self):
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7", distance_km=142)
+        activity = _make_activity(self.athlete, sport="bike", distance_km=42.0, bike=bike)
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"bike_id": bike.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 142)
+
+    def test_patch_link_shoe_adds_activity_distance_to_shoe_mileage(self):
+        activity = _make_activity(self.athlete, sport="run", distance_km=10.4)
+        shoe_model = ShoeModel.objects.create(manufacturer="Nike", model="Vaporfly")
+        version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="3")
+        shoe = Shoe.objects.create(athlete=self.athlete, shoe_model_version=version, name="Flyers", km=50)
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/activities/{activity.id}", {"shoe_id": shoe.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        shoe.refresh_from_db()
+        self.assertEqual(shoe.km, 60)
+
+    def test_patch_unlink_shoe_subtracts_activity_distance(self):
+        shoe_model = ShoeModel.objects.create(manufacturer="Nike", model="Vaporfly")
+        version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="3")
+        shoe = Shoe.objects.create(athlete=self.athlete, shoe_model_version=version, name="Flyers", km=60)
+        activity = _make_activity(self.athlete, sport="run", distance_km=10.4, shoe=shoe)
+        response = _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"shoe_id": None}, format="json")
+        self.assertEqual(response.status_code, 200)
+        shoe.refresh_from_db()
+        self.assertEqual(shoe.km, 50)
+
+    def test_delete_activity_subtracts_linked_gear_mileage(self):
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7", distance_km=142)
+        shoe_model = ShoeModel.objects.create(manufacturer="Nike", model="Vaporfly")
+        version = ShoeModelVersion.objects.create(shoe_model=shoe_model, version="3")
+        shoe = Shoe.objects.create(athlete=self.athlete, shoe_model_version=version, name="Flyers", km=60)
+        activity = _make_activity(self.athlete, sport="bike", distance_km=42.0, bike=bike, shoe=shoe)
+        response = _bearer_client(self.athlete).delete(f"/v1/activities/{activity.id}")
+        self.assertEqual(response.status_code, 204)
+        bike.refresh_from_db()
+        shoe.refresh_from_db()
+        self.assertEqual(bike.distance_km, 100)
+        self.assertEqual(shoe.km, 18)
+
     # The following cover accepting a Scan-for-matches candidate applying the same match
     # preferences ingest-time auto-match already does (see activities/match_preferences.py) -
     # this PATCH endpoint is exactly what the "accept" click in the UI calls.

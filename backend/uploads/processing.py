@@ -13,6 +13,7 @@ from activities.models import Activity, ActivityDurability, ActivityTag, BestEff
 from athletes import threshold_suggestions
 from athletes.threshold_history import recompute_for_activity
 from athletes.zones import get_or_create_zone_set, reference_for
+from gear.mileage import apply_shoe_change
 from scheduling.models import ScheduledWorkout
 from scheduling.serializers import ScheduledWorkoutSerializer
 from webhooks.events import fire_event
@@ -1322,6 +1323,7 @@ def _ingest_activity(
         fluids_ml=upload.fluids_ml if parent is None else None,
         shoe_id=upload.shoe_id if wears_shoe else None,
     )
+    apply_shoe_change(None, activity.shoe_id, activity.distance_km)
 
     Record.objects.bulk_create(
         [
