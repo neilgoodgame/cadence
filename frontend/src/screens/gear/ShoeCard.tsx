@@ -4,7 +4,6 @@ import { updateShoe } from "../../api/gear";
 import { Card } from "../../components/Card";
 import type { Shoe } from "../../api/types";
 import { WEAR_STATUS_COLOR, wearStatus } from "../../lib/gear";
-import { GearActivitiesSection } from "./GearActivitiesSection";
 import { ShoePhotoTimeline } from "./ShoePhotoTimeline";
 
 const RING_RADIUS = 30;
@@ -143,12 +142,6 @@ export function ShoeCard({ shoe }: { shoe: Shoe }) {
       {showPhotos && (
         <div style={{ alignSelf: "stretch", textAlign: "left" }}>
           <ShoePhotoTimeline shoeId={shoe.id} currentKm={shoe.km} />
-        </div>
-      )}
-
-      {!editingMileage && (
-        <div style={{ alignSelf: "stretch", textAlign: "left" }}>
-          <GearActivitiesSection filter={{ shoe_id: shoe.id }} />
         </div>
       )}
     </Card>

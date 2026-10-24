@@ -4,7 +4,6 @@ import { createComponent, getBike, updateBike } from "../../api/gear";
 import { Card } from "../../components/Card";
 import type { Bike } from "../../api/types";
 import { ComponentRow } from "./ComponentRow";
-import { GearActivitiesSection } from "./GearActivitiesSection";
 import { WEAR_STATUS_COLOR, WEAR_STATUS_LABEL, type WearStatus, wearStatus } from "../../lib/gear";
 
 const inputStyle: React.CSSProperties = {
@@ -167,8 +166,6 @@ export function BikeCard({ bike }: { bike: Bike }) {
               + Add component
             </button>
           )}
-
-          <GearActivitiesSection filter={{ bike_id: bike.id }} />
         </div>
       )}
     </Card>

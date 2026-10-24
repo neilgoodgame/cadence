@@ -30,28 +30,39 @@ fi
 bikes=$(curl -sf "$API_BASE/v1/gear/bikes" -H "Authorization: Bearer $PAT")
 shoes=$(curl -sf "$API_BASE/v1/gear/shoes" -H "Authorization: Bearer $PAT")
 
-activities="[]"
+# Accumulated in a temp file, not a growing shell variable passed as a python3 argv - an
+# athlete with a large activity history blows past the OS's argument-length limit ("Argument
+# list too long") once that variable gets into the megabytes.
+activities_file=$(mktemp)
+echo "[]" > "$activities_file"
+plan_script=$(mktemp)
+trap 'rm -f "$plan_script" "$activities_file"' EXIT
+
 cursor=""
 while :; do
   url="$API_BASE/v1/activities?limit=200"
   [ -n "$cursor" ] && url="$url&cursor=$cursor"
   page=$(curl -sf "$url" -H "Authorization: Bearer $PAT")
-  activities=$(python3 -c 'import json,sys; a=json.loads(sys.argv[1]); b=json.load(sys.stdin)["data"]; print(json.dumps(a+b))' "$activities" <<< "$page")
+  python3 -c '
+import json, sys
+
+with open(sys.argv[1]) as f:
+    acc = json.load(f)
+acc += json.load(sys.stdin)["data"]
+with open(sys.argv[1], "w") as f:
+    json.dump(acc, f)
+' "$activities_file" <<< "$page"
   cursor=$(python3 -c 'import json,sys; c=json.load(sys.stdin).get("next_cursor"); print(c or "")' <<< "$page")
   [ -z "$cursor" ] && break
 done
-
-# Written to a temp file rather than fed in as a heredoc, because the heredoc's own stdin
-# redirect would otherwise clobber the `<<<` used below to pipe the fetched JSON into this script.
-plan_script=$(mktemp)
-trap 'rm -f "$plan_script"' EXIT
 cat > "$plan_script" <<'PY'
 import json, sys
 from collections import defaultdict
 
 bikes = json.loads(sys.argv[1])["data"]
 shoes = json.loads(sys.argv[2])["data"]
-activities = json.loads(sys.argv[3])
+with open(sys.argv[3]) as f:
+    activities = json.load(f)
 
 bike_sums, shoe_sums = defaultdict(int), defaultdict(int)
 for a in activities:
@@ -76,7 +87,7 @@ for shoe_id, total in shoe_sums.items():
     print(f"SHOE\t{shoe_id}\t{shoe['name']}\t{shoe['km']}\t{shoe['km'] + total}")
 PY
 
-plan=$(python3 "$plan_script" "$bikes" "$shoes" "$activities")
+plan=$(python3 "$plan_script" "$bikes" "$shoes" "$activities_file")
 
 if [ -z "$plan" ]; then
   echo "Nothing to backfill - no bike/shoe has any currently-linked activity distance to add."
