@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/AuthContext";
 import { deleteGarminConnection, getGarminConnection, saveGarminConnection } from "../../api/garmin";
+import { GarminWorkoutQueue } from "../garmin/GarminWorkoutQueue";
 
 const EXPIRY_WARNING_DAYS = 14;
 const DEFAULT_SYNC_LIMIT = 50;
@@ -167,6 +168,8 @@ export function GarminTab() {
           )}
         </div>
       </div>
+
+      {connected && <GarminWorkoutQueue />}
     </div>
   );
 }

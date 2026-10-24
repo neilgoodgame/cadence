@@ -41,6 +41,8 @@ public interface ScheduledWorkoutRepository extends JpaRepository<ScheduledWorko
 
 	Optional<ScheduledWorkout> findByIdAndAthleteId(String id, String athleteId);
 
+	boolean existsByAthleteIdAndWorkoutId(String athleteId, String workoutId);
+
 	// LEFT (not inner) join - assignedBy is null for the common self-scheduled case, which an
 	// inner join would silently exclude entirely. Lets SchedulingMapper safely read
 	// assignedBy.getName()/.isVirtual() - see its Javadoc.

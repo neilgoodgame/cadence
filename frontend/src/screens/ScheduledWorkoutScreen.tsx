@@ -3,11 +3,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getScheduledWorkout, unscheduleWorkout, updateScheduledWorkout } from "../api/scheduling";
 import { getWorkout } from "../api/workouts";
+import { queueGarminWorkoutOp } from "../api/garmin";
+import { ApiError } from "../api/types";
 import type { ScheduledWorkout, TimeOfDay, WorkoutDetail } from "../api/types";
 import { Card } from "../components/Card";
 import { formatDuration } from "../lib/format";
 import { sportColor, sportLabel } from "../lib/sportColors";
 import { useAuth } from "../auth/AuthContext";
+import { GarminPushOption } from "./garmin/GarminPushOption";
+import { queueWorkoutPush, refreshGarminQueries } from "./garmin/garminWorkouts";
+import { useGarminWorkouts } from "./garmin/useGarminWorkouts";
 import { NOOP_STRUCTURE_ACTIONS, withIds } from "./workouts/workoutTree";
 import { buildTcx, download, tcxHasApproximateTarget, thresholdsFromAthlete } from "./workouts/workoutExport";
 import { ExportModal } from "./workouts/ExportModal";
@@ -92,7 +97,18 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | "">(scheduled.time_of_day || "");
   const [notes, setNotes] = useState(scheduled.notes);
 
-  const dirty = date !== scheduled.date || timeOfDay !== (scheduled.time_of_day || "") || notes !== scheduled.notes;
+  const garmin = useGarminWorkouts();
+  const onGarmin = garmin.isScheduleOnGarmin(scheduled.id);
+  // null = untouched: the box follows whether this is already on the Garmin Connect calendar.
+  const [garminDraft, setGarminDraft] = useState<boolean | null>(null);
+  const [garminError, setGarminError] = useState<string | null>(null);
+  const applyToGarmin = garmin.available && (garminDraft ?? onGarmin);
+
+  const dirty =
+    date !== scheduled.date ||
+    timeOfDay !== (scheduled.time_of_day || "") ||
+    notes !== scheduled.notes ||
+    (applyToGarmin && !onGarmin);
 
   // withIds generates fresh ids on every call (see workoutTree.ts's module-level counter) -
   // memoized so typing in the notes field below doesn't remount every structure row on each
@@ -100,17 +116,55 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
   const structure = useMemo(() => withIds(workout.steps), [workout]);
 
   const saveMutation = useMutation({
-    mutationFn: () => updateScheduledWorkout(scheduled.id, { date, time_of_day: timeOfDay || undefined, notes }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      await updateScheduledWorkout(scheduled.id, { date, time_of_day: timeOfDay || undefined, notes });
+      // Saved either way; a failure to queue the Garmin change is reported separately.
+      let queueError: string | null = null;
+      if (applyToGarmin && (date !== scheduled.date || !onGarmin)) {
+        try {
+          if (!garmin.isWorkoutOnGarmin(workout.id)) {
+            await queueWorkoutPush(workout.id, workout.name, workout.sport, structure, user);
+          }
+          await queueGarminWorkoutOp({
+            kind: onGarmin ? "reschedule" : "schedule",
+            workout_id: workout.id,
+            scheduled_workout_id: scheduled.id,
+            date,
+          });
+        }
+        catch (err) {
+          queueError = err instanceof ApiError ? err.message : "Saved, but couldn't queue the change for Garmin.";
+        }
+      }
+      return queueError;
+    },
+    onSuccess: (queueError) => {
       queryClient.invalidateQueries({ queryKey: ["scheduled-workout", scheduled.id] });
       queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      refreshGarminQueries(queryClient);
+      setGarminError(queueError);
     },
   });
 
   const unscheduleMutation = useMutation({
-    mutationFn: () => unscheduleWorkout(scheduled.id),
-    onSuccess: () => {
+    mutationFn: async () => {
+      await unscheduleWorkout(scheduled.id);
+      let queueError: string | null = null;
+      if (applyToGarmin && onGarmin) {
+        try {
+          await queueGarminWorkoutOp({ kind: "unschedule", workout_id: workout.id, scheduled_workout_id: scheduled.id });
+        }
+        catch (err) {
+          queueError = err instanceof ApiError ? err.message : "couldn't queue it for Garmin.";
+        }
+      }
+      return queueError;
+    },
+    onSuccess: (queueError) => {
       queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      refreshGarminQueries(queryClient);
+      // This screen is about to go away, so a failed Garmin queue can only be surfaced here.
+      if (queueError) window.alert(`Removed from the calendar, but not from Garmin Connect: ${queueError}`);
       navigate(-1);
     },
   });
@@ -218,11 +272,25 @@ function ScheduledWorkoutForm({ scheduled, workout }: { scheduled: ScheduledWork
             />
           </label>
 
+          {garmin.available && (
+            <GarminPushOption
+              checked={applyToGarmin}
+              onChange={setGarminDraft}
+              label={onGarmin ? "Apply to Garmin Connect" : "Also add to Garmin Connect"}
+              hint={
+                onGarmin
+                  ? "On your Garmin Connect calendar. Rescheduling or unscheduling here is queued for garmin-sync to apply there too."
+                  : "Queued for garmin-sync on your computer; the workout is pushed first if it isn't on Garmin yet."
+              }
+            />
+          )}
+
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button onClick={() => saveMutation.mutate()} disabled={!dirty || saveMutation.isPending} style={{ ...primaryBtn, opacity: !dirty || saveMutation.isPending ? 0.6 : 1 }}>
               {saveMutation.isPending ? "Saving…" : "Save changes"}
             </button>
             {saveMutation.isError && <span style={{ fontSize: 13, color: "#e0442e" }}>Failed to save. Try again.</span>}
+            {garminError && <span style={{ fontSize: 13, color: "#e0442e" }}>{garminError}</span>}
           </div>
         </div>
       </Card>
