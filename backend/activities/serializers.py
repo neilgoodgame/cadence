@@ -150,6 +150,8 @@ class ActivityUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
     sport = serializers.ChoiceField(choices=Activity.SPORT_CHOICES, required=False)
     workout_id = serializers.CharField(required=False, allow_null=True)
+    bike_id = serializers.CharField(required=False, allow_null=True)
+    shoe_id = serializers.CharField(required=False, allow_null=True)
     primary_activity_id = serializers.CharField(required=False, allow_null=True)
     start_weight_kg = serializers.FloatField(required=False, allow_null=True)
     end_weight_kg = serializers.FloatField(required=False, allow_null=True)

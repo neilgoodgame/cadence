@@ -516,6 +516,8 @@ export interface ActivityUpdate {
   name?: string;
   sport?: Sport;
   workout_id?: string | null;
+  bike_id?: string | null;
+  shoe_id?: string | null;
   /** Mark this activity as a duplicate of the given primary, or null to unlink. */
   primary_activity_id?: string | null;
   start_weight_kg?: number | null;
