@@ -16,6 +16,7 @@ from core.exceptions import ConflictError, UnprocessableEntityError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
 from courses.views import preview_settings
+from gear.models import Bike, Shoe
 from uploads.processing import (
     backfill_extended_stats,
     compute_decoupling_and_durability_for_activity,
@@ -334,6 +335,18 @@ class ActivityDetailView(APIView):
             update_fields.append("workout")
             if newly_matched_workout is not None:
                 apply_match_rename(activity, newly_matched_workout.name, activity.athlete, update_fields)
+        if "bike_id" in data:
+            bike_id = data["bike_id"]
+            activity.bike = (
+                None if bike_id is None else get_object_or_404(Bike, pk=bike_id, athlete_id=activity.athlete_id)
+            )
+            update_fields.append("bike")
+        if "shoe_id" in data:
+            shoe_id = data["shoe_id"]
+            activity.shoe = (
+                None if shoe_id is None else get_object_or_404(Shoe, pk=shoe_id, athlete_id=activity.athlete_id)
+            )
+            update_fields.append("shoe")
         if "primary_activity_id" in data:
             primary_id = data["primary_activity_id"]
             activity.primary_activity = None if primary_id is None else _resolve_primary_activity(activity, primary_id)

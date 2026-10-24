@@ -14,6 +14,10 @@ import com.cadence.api.cql.CqlException;
 import com.cadence.api.cql.CqlNode;
 import com.cadence.api.cql.CqlParser;
 import com.cadence.api.cql.spec.CqlSpecification;
+import com.cadence.api.gear.Bike;
+import com.cadence.api.gear.BikeRepository;
+import com.cadence.api.gear.Shoe;
+import com.cadence.api.gear.ShoeRepository;
 import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutService;
 import java.time.Instant;
@@ -38,12 +42,14 @@ public class ActivityService {
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final WorkoutMatchPreferenceService matchPreferenceService;
 	private final ActivityDurabilityRepository durabilityRepository;
+	private final BikeRepository bikeRepository;
+	private final ShoeRepository shoeRepository;
 	private final ActivityFieldMap fieldMap = new ActivityFieldMap();
 
 	public ActivityService(ActivityRepository activityRepository, ActivityTagRepository activityTagRepository,
 			RecordRepository recordRepository, ActivityCursorPagination pagination, WorkoutService workoutService,
 			ThresholdHistoryRepository thresholdHistoryRepository, WorkoutMatchPreferenceService matchPreferenceService,
-			ActivityDurabilityRepository durabilityRepository) {
+			ActivityDurabilityRepository durabilityRepository, BikeRepository bikeRepository, ShoeRepository shoeRepository) {
 		this.activityRepository = activityRepository;
 		this.activityTagRepository = activityTagRepository;
 		this.recordRepository = recordRepository;
@@ -52,6 +58,8 @@ public class ActivityService {
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.matchPreferenceService = matchPreferenceService;
 		this.durabilityRepository = durabilityRepository;
+		this.bikeRepository = bikeRepository;
+		this.shoeRepository = shoeRepository;
 	}
 
 	public Activity getActivity(String id) {
@@ -246,6 +254,14 @@ public class ActivityService {
 			matchPreferenceService.applyRename(activity, newlyMatchedWorkout, activity.getAthlete(),
 					body.containsKey("name"));
 		}
+		if (body.containsKey("bike_id")) {
+			Object value = body.get("bike_id");
+			activity.setBike(value == null ? null : resolveBike(activity.getAthlete().getId(), (String) value));
+		}
+		if (body.containsKey("shoe_id")) {
+			Object value = body.get("shoe_id");
+			activity.setShoe(value == null ? null : resolveShoe(activity.getAthlete().getId(), (String) value));
+		}
 		if (body.containsKey("primary_activity_id")) {
 			Object value = body.get("primary_activity_id");
 			activity.setPrimaryActivity(value == null ? null : resolvePrimaryActivity(activity, (String) value));
@@ -332,6 +348,16 @@ public class ActivityService {
 	private boolean isMultisportLinked(Activity activity) {
 		return activity.getSport() == Sport.MULTISPORT || activity.getSport() == Sport.TRANSITION
 				|| activity.getParentActivity() != null;
+	}
+
+	private Bike resolveBike(String athleteId, String bikeId) {
+		return bikeRepository.findByIdAndAthleteId(bikeId, athleteId)
+				.orElseThrow(() -> new ValidationException("Unknown bike '" + bikeId + "'.", "bike_id"));
+	}
+
+	private Shoe resolveShoe(String athleteId, String shoeId) {
+		return shoeRepository.findByIdAndAthleteId(shoeId, athleteId)
+				.orElseThrow(() -> new ValidationException("Unknown shoe '" + shoeId + "'.", "shoe_id"));
 	}
 
 	private Double toDouble(Object value) {
