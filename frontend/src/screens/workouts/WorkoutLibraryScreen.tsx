@@ -242,24 +242,32 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
               Tags
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {allTags.map((t) => (
-                <div
-                  key={t}
-                  onClick={() => setTag(tag === t ? null : t)}
-                  style={{
-                    padding: "5px 11px",
-                    borderRadius: 20,
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    border: `1px solid ${tag === t ? "var(--ember)" : "var(--line)"}`,
-                    color: tag === t ? "var(--ember)" : "var(--ink2)",
-                    background: tag === t ? "rgba(236,74,38,0.08)" : "transparent",
-                  }}
-                >
-                  {t}
-                </div>
-              ))}
+              {allTags.map((t) => {
+                const active = tag === t;
+                const color = tagColor(t);
+                return (
+                  <div
+                    key={t}
+                    onClick={() => setTag(active ? null : t)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: active ? "5px 11px" : "5px 11px 5px 7px",
+                      borderRadius: 20,
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      border: `1px solid ${active ? color : tagRgba(t, 0.3)}`,
+                      color: active ? "#fff" : "var(--ink2)",
+                      background: active ? color : tagRgba(t, 0.1),
+                    }}
+                  >
+                    {!active && <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />}
+                    {t}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
