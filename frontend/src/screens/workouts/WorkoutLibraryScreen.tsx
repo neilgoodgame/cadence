@@ -12,6 +12,7 @@ import {
 } from "../../api/workouts";
 import type { ChartPreviewPoint, Workout, WorkoutFolder, WorkoutSort, WorkoutSport } from "../../api/types";
 import { sportColor, sportLabel } from "../../lib/sportColors";
+import { tagColor, tagRgba } from "../../lib/tagColors";
 import { useAuth } from "../../auth/AuthContext";
 import { fmtDuration, withIds, zoneColor } from "./workoutTree";
 import { AssignModal } from "./AssignModal";
@@ -505,7 +506,22 @@ function WorkoutCard({
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5, marginTop: 10 }}>
         {workout.tags.map((t) => (
-          <span key={t} style={{ fontSize: 10.5, fontWeight: 600, color: "var(--ink3)", background: "var(--elev)", padding: "3px 8px", borderRadius: 20 }}>
+          <span
+            key={t}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: "var(--ink2)",
+              background: tagRgba(t, 0.1),
+              border: `1px solid ${tagRgba(t, 0.3)}`,
+              padding: "3px 8px 3px 6px",
+              borderRadius: 20,
+            }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: tagColor(t), flexShrink: 0 }} />
             {t}
           </span>
         ))}
@@ -539,7 +555,22 @@ function WorkoutRow({
       <span style={{ fontFamily: "monospace", fontSize: 12.5, color: "var(--ink2)" }}>{workout.tss}</span>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minWidth: 0 }}>
         {workout.tags.map((t) => (
-          <span key={t} style={{ fontSize: 10.5, fontWeight: 600, color: "var(--ink3)", background: "var(--elev)", padding: "2px 7px", borderRadius: 20 }}>
+          <span
+            key={t}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: "var(--ink2)",
+              background: tagRgba(t, 0.1),
+              border: `1px solid ${tagRgba(t, 0.3)}`,
+              padding: "2px 7px 2px 5px",
+              borderRadius: 20,
+            }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: tagColor(t), flexShrink: 0 }} />
             {t}
           </span>
         ))}
