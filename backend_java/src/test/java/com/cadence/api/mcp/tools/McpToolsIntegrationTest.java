@@ -8,6 +8,9 @@ import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
+import com.cadence.api.activities.Tag;
+import com.cadence.api.activities.TagOrigin;
+import com.cadence.api.activities.TagRepository;
 import com.cadence.api.activities.dto.ActivitySplitsResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
@@ -51,8 +54,11 @@ import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutRepository;
+import com.cadence.api.workouts.WorkoutTag;
+import com.cadence.api.workouts.WorkoutTagRepository;
 import com.cadence.api.workouts.dto.WorkoutMatchComparisonResponse;
 import com.cadence.api.workouts.dto.WorkoutResponse;
+import com.cadence.api.workouts.dto.WorkoutTagAttachResponse;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -85,6 +91,12 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private WorkoutRepository workoutRepository;
+
+	@Autowired
+	private WorkoutTagRepository workoutTagRepository;
+
+	@Autowired
+	private TagRepository tagRepository;
 
 	@Autowired
 	private ActivityRepository activityRepository;
@@ -251,7 +263,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
 		WorkoutResponse created = workoutWriteTools.createWorkout("Original Name", "bike", steps, List.of("a"));
 
-		WorkoutResponse updated = workoutWriteTools.updateWorkout(created.id(), "Renamed", null, null, null);
+		WorkoutResponse updated = workoutWriteTools.updateWorkout(created.id(), "Renamed", null, null);
 
 		assertThat(updated.name()).isEqualTo("Renamed");
 		assertThat(updated.tags()).containsExactly("a");
@@ -270,7 +282,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		List<McpWorkoutStepInput> newSteps = List.of(
 				new McpWorkoutStepInput("warmup", "time", 600, null, "power", 50.0, 50.0, null, null, null),
 				new McpWorkoutStepInput("cool", "time", 300, null, "power", 45.0, 45.0, null, null, null));
-		WorkoutResponse updated = workoutWriteTools.updateWorkout(created.id(), null, newSteps, null, null);
+		WorkoutResponse updated = workoutWriteTools.updateWorkout(created.id(), null, newSteps, null);
 
 		assertThat(updated.duration()).isEqualTo(900);
 	}
@@ -287,7 +299,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		List<McpWorkoutStepInput> badSteps = List.of(
 				new McpWorkoutStepInput("warmup", "time", 600, null, "power", 0.65, 0.75, null, null, null));
 
-		assertThatThrownBy(() -> workoutWriteTools.updateWorkout(created.id(), null, badSteps, null, null))
+		assertThatThrownBy(() -> workoutWriteTools.updateWorkout(created.id(), null, badSteps, null))
 				.isInstanceOf(ValidationException.class);
 	}
 
@@ -300,7 +312,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		WorkoutResponse created = workoutWriteTools.createWorkout("To Edit", "bike", steps, null);
 
 		authAs(athlete.getId()); // no scopes granted at all
-		assertThatThrownBy(() -> workoutWriteTools.updateWorkout(created.id(), "Renamed", null, null, null))
+		assertThatThrownBy(() -> workoutWriteTools.updateWorkout(created.id(), "Renamed", null, null))
 				.isInstanceOf(ForbiddenException.class);
 	}
 
@@ -314,7 +326,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 		User outsider = saveAthlete("mcp-update-workout-outsider@example.cc");
 		authAs(outsider.getId(), "workouts:write");
-		assertThatThrownBy(() -> workoutWriteTools.updateWorkout(created.id(), "Hijacked", null, null, null))
+		assertThatThrownBy(() -> workoutWriteTools.updateWorkout(created.id(), "Hijacked", null, null))
 				.isInstanceOf(ForbiddenException.class);
 	}
 
@@ -342,6 +354,88 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		authAs(athlete.getId()); // no scopes granted at all
 		assertThatThrownBy(() -> workoutWriteTools.deleteWorkout(created.id())).isInstanceOf(ForbiddenException.class);
 		assertThat(workoutRepository.findById(created.id())).isPresent();
+	}
+
+	@Test
+	void tagWorkoutAttachesANewTag() {
+		User athlete = saveAthlete("mcp-tag-workout@example.cc");
+		authAs(athlete.getId(), "workouts:write", "activities:read");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Long Run", "run", steps, null);
+
+		WorkoutTagAttachResponse result = workoutWriteTools.tagWorkout(created.id(), "Key session");
+
+		assertThat(result.workoutId()).isEqualTo(created.id());
+		assertThat(result.tag().name()).isEqualTo("Key session");
+		assertThat(workoutReadTools.getWorkout(created.id()).workout().tags()).containsExactly("Key session");
+	}
+
+	@Test
+	void tagWorkoutSharesTheActivityTagCatalog() {
+		User athlete = saveAthlete("mcp-tag-workout-shared@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+		Tag existing = new Tag();
+		existing.setAthlete(athlete);
+		existing.setName("Key session");
+		existing.setOrigin(TagOrigin.MANUAL);
+		existing = tagRepository.save(existing);
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Long Run", "run", steps, null);
+
+		WorkoutTagAttachResponse result = workoutWriteTools.tagWorkout(created.id(), "Key session");
+
+		assertThat(result.tag().id()).isEqualTo(existing.getId());
+	}
+
+	@Test
+	void tagWorkoutRejectsAnOutsider() {
+		User owner = saveAthlete("mcp-tag-workout-owner@example.cc");
+		authAs(owner.getId(), "workouts:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Owner's workout", "bike", steps, null);
+
+		User outsider = saveAthlete("mcp-tag-workout-outsider@example.cc");
+		authAs(outsider.getId(), "workouts:write");
+		assertThatThrownBy(() -> workoutWriteTools.tagWorkout(created.id(), "Key session"))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void untagWorkoutRemovesIt() {
+		User athlete = saveAthlete("mcp-untag-workout@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Long Run", "run", steps, null);
+		WorkoutTagAttachResponse tagged = workoutWriteTools.tagWorkout(created.id(), "Key session");
+
+		WorkoutResponse result = workoutWriteTools.untagWorkout(created.id(), tagged.tag().id());
+
+		assertThat(result.tags()).isEmpty();
+	}
+
+	@Test
+	void untagWorkoutRejectsAnAutoAppliedTag() {
+		User athlete = saveAthlete("mcp-untag-workout-auto@example.cc");
+		authAs(athlete.getId(), "workouts:write");
+		List<McpWorkoutStepInput> steps = List.of(
+				new McpWorkoutStepInput("warmup", "time", 300, null, "power", 50.0, 50.0, null, null, null));
+		WorkoutResponse created = workoutWriteTools.createWorkout("Long Run", "run", steps, null);
+		Tag newTag = new Tag();
+		newTag.setAthlete(athlete);
+		newTag.setName("Auto-matched");
+		newTag.setOrigin(TagOrigin.AUTO);
+		Tag autoTag = tagRepository.save(newTag);
+		WorkoutTag link = new WorkoutTag();
+		link.setWorkout(workoutRepository.findById(created.id()).orElseThrow());
+		link.setTag(autoTag);
+		workoutTagRepository.save(link);
+
+		assertThatThrownBy(() -> workoutWriteTools.untagWorkout(created.id(), autoTag.getId()))
+				.isInstanceOf(ForbiddenException.class);
 	}
 
 	@Test

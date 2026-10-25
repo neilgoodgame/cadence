@@ -1,6 +1,7 @@
 import { apiFetch } from "./client";
 import type {
   DataList,
+  Tag,
   Workout,
   WorkoutDetail,
   WorkoutFolder,
@@ -47,13 +48,23 @@ export function createWorkout(input: WorkoutInput): Promise<Workout> {
 
 export function updateWorkout(
   id: string,
-  input: { name?: string; steps?: WorkoutStep[]; folder_id?: string | null; tags?: string[] },
+  input: { name?: string; steps?: WorkoutStep[]; folder_id?: string | null },
 ): Promise<Workout> {
   return apiFetch<Workout>(`/v1/workouts/${id}`, { method: "PATCH", body: input });
 }
 
 export function deleteWorkout(id: string): Promise<void> {
   return apiFetch<void>(`/v1/workouts/${id}`, { method: "DELETE" });
+}
+
+/** Tags are shared with activities (same catalog) - see tagActivity/untagActivity in
+ * api/activities.ts for the exact counterpart. */
+export function tagWorkout(workoutId: string, name: string): Promise<{ workout_id: string; tag: Tag }> {
+  return apiFetch(`/v1/workouts/${workoutId}/tags`, { method: "POST", body: { name } });
+}
+
+export function untagWorkout(workoutId: string, tagId: string): Promise<void> {
+  return apiFetch<void>(`/v1/workouts/${workoutId}/tags/${tagId}`, { method: "DELETE" });
 }
 
 export function getWorkoutMatches(id: string, method: WorkoutMatchMethod | "all" = "all"): Promise<DataList<WorkoutMatch>> {

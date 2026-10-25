@@ -727,12 +727,20 @@ class CurvesView(APIView):
         return Response(DurationCurveSerializer(curve).data)
 
 
+def _combined_tag_count() -> Count:
+    """Tag is shared between activities and workouts - usage counts/sort order on /v1/tags
+    reflect both. distinct=True on each matters once both relations are joined in the same
+    query (which annotating both in one call does) - otherwise the activity_tag/workout_tag
+    cross-join would double-count either side."""
+    return Count("activity_tags", distinct=True) + Count("workout_tags", distinct=True)
+
+
 class TagListView(APIView):
     def get(self, request: Request) -> Response:
         _, athlete_id = get_effective_athlete_id(request)
         _require_read(request, athlete_id)
         tags = (
-            Tag.objects.filter(athlete_id=athlete_id).annotate(count=Count("activity_tags")).order_by("-count", "name")
+            Tag.objects.filter(athlete_id=athlete_id).annotate(count=_combined_tag_count()).order_by("-count", "name")
         )
         return Response({"data": TagSerializer(tags, many=True).data})
 
@@ -759,7 +767,7 @@ class TagDetailView(APIView):
         serializer = TagNameSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         result = rename_tag(tag, serializer.validated_data["name"])
-        result = Tag.objects.annotate(count=Count("activity_tags")).get(pk=result.pk)
+        result = Tag.objects.annotate(count=_combined_tag_count()).get(pk=result.pk)
         return Response(TagSerializer(result).data)
 
     def delete(self, request: Request, id: str) -> Response:

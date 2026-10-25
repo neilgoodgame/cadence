@@ -56,7 +56,7 @@ from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
 from races.models import Race, RaceComment
 from scheduling.models import ScheduledWorkout
 from workouts.calculations import compute_chart_preview, compute_duration_and_tss, normalize_power_units
-from workouts.models import Workout, WorkoutStep
+from workouts.models import Workout, WorkoutStep, WorkoutTag
 
 logger = logging.getLogger(__name__)
 
@@ -256,8 +256,12 @@ def _import_workouts(
                     # scope, and any incoming id wouldn't resolve to a folder this athlete
                     # owns anyway. Matches the Java backend's ImportReader exactly.
                     folder=None,
-                    tags=workout.get("tags") or [],
                 )
+                for tag_name in workout.get("tags") or []:
+                    tag, _created_tag = Tag.objects.get_or_create(
+                        athlete_id=athlete_id, name=tag_name, defaults={"origin": "manual"}
+                    )
+                    WorkoutTag.objects.get_or_create(workout=created, tag=tag)
                 _create_steps(created, steps)
                 zone_type = "bike_power" if workout["sport"] == "bike" else "run_power"
                 normalized = normalize_power_units(steps, reference_for(athlete, zone_type))

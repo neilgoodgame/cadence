@@ -54,7 +54,7 @@ public class WorkoutReadTools {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		return workoutService.listWorkouts(athleteId, folderId, tag, sport, search, sort).stream()
-				.map(workoutMapper::toResponse).toList();
+				.map(workoutService::toResponse).toList();
 	}
 
 	@McpTool(name = "get_workout", description = "Get full detail on a single saved workout by id, "
@@ -68,7 +68,7 @@ public class WorkoutReadTools {
 		Workout workout = workoutService.getWorkoutWithSteps(workoutId);
 		accessGuard.requireRead(workout.getCreatedBy().getId());
 		var steps = workoutMapper.toStepTree(workout.getSteps());
-		return new WorkoutDetailResponse(workoutMapper.toResponse(workout), steps);
+		return new WorkoutDetailResponse(workoutService.toResponse(workout), steps);
 	}
 
 	@McpTool(name = "get_workout_matches", description = "Compare every completed activity matched "

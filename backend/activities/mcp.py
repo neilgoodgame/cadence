@@ -12,7 +12,7 @@ inherited scope/ownership helpers are underscore-prefixed instead.
 import base64
 from typing import Any
 
-from django.db.models import Count, Exists, F, Min, OuterRef, Q
+from django.db.models import Exists, F, Min, OuterRef, Q
 from django.db.models.functions import Mod
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -30,6 +30,7 @@ from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Tag
 from .serializers import ActivityCommentSerializer
 from .splits import get_custom_activity_splits
 from .tag_management import rename_tag as tag_rename
+from .views import _combined_tag_count
 
 ACTIVITY_FIELD_MAP = {
     "date": "start_date",
@@ -395,13 +396,14 @@ class ActivityMCPTools(ScopedMCPToolset):
         return self.get_activity(activity_id)
 
     def list_tags(self) -> dict[str, Any]:
-        """List the authenticated athlete's tags with how many activities carry each one, most
-        used first - use this to find a tag's exact name before renaming or deleting it."""
+        """List the authenticated athlete's tags with how many activities and workouts carry
+        each one combined, most used first - use this to find a tag's exact name before
+        renaming or deleting it."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
         tags = (
-            Tag.objects.filter(athlete_id=athlete_id).annotate(count=Count("activity_tags")).order_by("-count", "name")
+            Tag.objects.filter(athlete_id=athlete_id).annotate(count=_combined_tag_count()).order_by("-count", "name")
         )
         return {
             "data": [{"id": t.id, "name": t.name, "origin": t.origin, "color": t.color, "count": t.count} for t in tags]
@@ -422,8 +424,8 @@ class ActivityMCPTools(ScopedMCPToolset):
     def rename_tag(self, name: str, new_name: str) -> dict[str, Any]:
         """Renames a tag (see list_tags for exact names) to new_name. If the athlete already has
         a different tag with that name (case-insensitive), merges into it instead - every
-        activity carrying the old tag ends up carrying the existing one, and the old tag is
-        removed. Returns the tag that now holds new_name."""
+        activity or workout carrying the old tag ends up carrying the existing one, and the old
+        tag is removed. Returns the tag that now holds new_name."""
         self._require_scope(ACTIVITIES_WRITE)
         if not new_name or not new_name.strip():
             raise ValidationError({"new_name": "new_name cannot be empty."})
@@ -431,7 +433,7 @@ class ActivityMCPTools(ScopedMCPToolset):
         self._require_write(athlete_id)
         tag = self._find_tag_by_name(athlete_id, name)
         result = tag_rename(tag, new_name.strip())
-        result = Tag.objects.annotate(count=Count("activity_tags")).get(pk=result.pk)
+        result = Tag.objects.annotate(count=_combined_tag_count()).get(pk=result.pk)
         return {
             "id": result.id,
             "name": result.name,
@@ -442,7 +444,7 @@ class ActivityMCPTools(ScopedMCPToolset):
 
     def delete_tag(self, name: str) -> dict[str, Any]:
         """Deletes a tag (see list_tags for exact names) entirely, removing it from every
-        activity that carries it - not just an unused one."""
+        activity and workout that carries it - not just an unused one."""
         self._require_scope(ACTIVITIES_WRITE)
         athlete_id = self._effective_athlete_id()
         self._require_write(athlete_id)

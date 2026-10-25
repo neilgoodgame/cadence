@@ -9,11 +9,15 @@ from .views import (
     WorkoutMatchListView,
     WorkoutMatchScanCreateView,
     WorkoutMatchScanDetailView,
+    WorkoutTagView,
+    WorkoutUntagView,
 )
 
 urlpatterns = [
     path("v1/workouts", WorkoutListView.as_view(), name="workout-list"),
     path("v1/workouts/<str:id>", WorkoutDetailView.as_view(), name="workout-detail"),
+    path("v1/workouts/<str:id>/tags", WorkoutTagView.as_view(), name="workout-tags"),
+    path("v1/workouts/<str:id>/tags/<str:tag_id>", WorkoutUntagView.as_view(), name="workout-untag"),
     path("v1/workouts/<str:id>/matches", WorkoutMatchListView.as_view(), name="workout-matches"),
     path(
         "v1/workouts/<str:id>/matches/compare",

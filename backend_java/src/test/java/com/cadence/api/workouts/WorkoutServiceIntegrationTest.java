@@ -104,7 +104,7 @@ class WorkoutServiceIntegrationTest extends IntegrationTest {
 
 		List<WorkoutStepDto> newSteps = List
 				.of(group(4, leaf(StepKind.BLOCK, StepEndType.TIME, 300, TargetType.POWER, 100.0, 100.0)));
-		Workout updated = workoutService.updateWorkout(workout.getId(), new WorkoutUpdateRequest(null, newSteps, null, null));
+		Workout updated = workoutService.updateWorkout(workout.getId(), new WorkoutUpdateRequest(null, newSteps, null));
 
 		assertThat(updated.getDuration()).isEqualTo(1200);
 		assertThat(updated.getTss()).isEqualTo(33);

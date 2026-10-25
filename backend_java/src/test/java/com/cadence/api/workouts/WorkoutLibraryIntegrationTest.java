@@ -3,6 +3,7 @@ package com.cadence.api.workouts;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cadence.api.activities.Tag;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -104,10 +105,22 @@ class WorkoutLibraryIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void createAndUpdateWorkoutTags() {
+	void createWorkoutWithTagsResolvesAgainstTheSharedCatalog() {
 		User athlete = saveAthlete("tags@example.cc");
 		Workout workout = createWorkout(athlete, "Tagged", Sport.BIKE, null, List.of("intervals", "race prep"));
-		assertThat(workout.getTags()).containsExactly("intervals", "race prep");
+		assertThat(workoutService.toResponse(workout).tags()).containsExactly("intervals", "race prep");
+	}
+
+	@Test
+	void attachAndDetachTag() {
+		User athlete = saveAthlete("tag-attach-detach@example.cc");
+		Workout workout = createWorkout(athlete, "Tagged", Sport.BIKE, null, null);
+
+		Tag tag = workoutService.attachTag(workout, athlete, null, "Key session");
+		assertThat(workoutService.toResponse(workout).tags()).containsExactly("Key session");
+
+		workoutService.detachTag(workout.getId(), tag.getId());
+		assertThat(workoutService.toResponse(workout).tags()).isEmpty();
 	}
 
 	@Test

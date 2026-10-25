@@ -5,10 +5,11 @@ from django.test import TestCase
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.models import User
+from activities.models import Tag
 from authn.oauth_utils import issue_token_pair
 
 from .mcp import WorkoutMCPTools
-from .models import Workout, WorkoutFolder
+from .models import Workout, WorkoutFolder, WorkoutTag
 
 
 def _mcp_request(user: User, scope: str) -> Any:
@@ -38,7 +39,9 @@ class UpdateWorkoutToolTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="mcp-workout@example.cc", password="x", name="Athlete")
         self.tools = WorkoutMCPTools(request=_mcp_request(self.athlete, "workouts:write"))
-        self.workout = Workout.objects.create(created_by=self.athlete, name="Original Name", sport="bike", tags=["a"])
+        self.workout = Workout.objects.create(created_by=self.athlete, name="Original Name", sport="bike")
+        tag_a = Tag.objects.create(athlete=self.athlete, name="a")
+        WorkoutTag.objects.create(workout=self.workout, tag=tag_a)
 
     def test_name_only_update_leaves_steps_and_tags_untouched(self):
         result = self.tools.update_workout(workout_id=self.workout.id, name="Renamed")
@@ -87,10 +90,6 @@ class UpdateWorkoutToolTests(TestCase):
 
         result = self.tools.update_workout(workout_id=self.workout.id, name="Renamed Again")
         self.assertEqual(result["folder_id"], folder.id)
-
-    def test_tags_replace_whole_list(self):
-        result = self.tools.update_workout(workout_id=self.workout.id, tags=["b", "c"])
-        self.assertEqual(result["tags"], ["b", "c"])
 
     def test_requires_write_scope(self):
         tools = WorkoutMCPTools(request=_mcp_request(self.athlete, "activities:read"))

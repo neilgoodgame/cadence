@@ -5,7 +5,7 @@ from django.test import TestCase
 from accounts.models import User
 from activities.models import Activity, ActivityTag, BestEffort, Lap, Record, Tag
 from scheduling.models import ScheduledWorkout
-from workouts.models import Workout, WorkoutStep
+from workouts.models import Workout, WorkoutStep, WorkoutTag
 from workouts.tests import _make_gorby_workout, _seed_matching_records
 
 from ..processing import BEST_EFFORT_TRIM_PERIOD_DAYS, _trim_kind_window, attempt_workout_match, update_best_efforts
@@ -174,6 +174,15 @@ class WorkoutMatchingTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(email="wm@example.cc", password="x", name="WM Athlete")
 
+    def _tagged_workout(self, name, tag_names):
+        workout = Workout.objects.create(created_by=self.athlete, name=name, sport="run")
+        for tag_name in tag_names:
+            tag, _created = Tag.objects.get_or_create(
+                athlete=self.athlete, name=tag_name, defaults={"origin": "manual"}
+            )
+            WorkoutTag.objects.create(workout=workout, tag=tag)
+        return workout
+
     def test_links_and_tags_matching_scheduled_workout(self):
         workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run")
         scheduled = ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 11))
@@ -329,9 +338,7 @@ class WorkoutMatchingTests(TestCase):
         self.assertEqual(activity.name, "Morning run")
 
     def test_does_not_copy_workout_tags_by_default(self):
-        workout = Workout.objects.create(
-            created_by=self.athlete, name="Tempo run", sport="run", tags=["Speedwork", "Race prep"]
-        )
+        workout = self._tagged_workout("Tempo run", ["Speedwork", "Race prep"])
         ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 17))
         activity = Activity.objects.create(
             athlete=self.athlete,
@@ -347,9 +354,7 @@ class WorkoutMatchingTests(TestCase):
     def test_copies_workout_tags_when_preference_enabled(self):
         self.athlete.copy_matched_workout_tags = True
         self.athlete.save(update_fields=["copy_matched_workout_tags"])
-        workout = Workout.objects.create(
-            created_by=self.athlete, name="Tempo run", sport="run", tags=["Speedwork", "Race prep"]
-        )
+        workout = self._tagged_workout("Tempo run", ["Speedwork", "Race prep"])
         ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 18))
         activity = Activity.objects.create(
             athlete=self.athlete,
@@ -374,7 +379,7 @@ class WorkoutMatchingTests(TestCase):
         self.athlete.copy_matched_workout_tags = True
         self.athlete.save(update_fields=["copy_matched_workout_tags"])
         existing = Tag.objects.create(athlete=self.athlete, name="Speedwork", origin="manual")
-        workout = Workout.objects.create(created_by=self.athlete, name="Tempo run", sport="run", tags=["Speedwork"])
+        workout = self._tagged_workout("Tempo run", ["Speedwork"])
         ScheduledWorkout.objects.create(workout=workout, athlete=self.athlete, date=date(2026, 6, 19))
         activity = Activity.objects.create(
             athlete=self.athlete,

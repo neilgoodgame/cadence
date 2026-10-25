@@ -150,11 +150,17 @@ class WorkoutSerializer(serializers.ModelSerializer):
     # is declared explicitly. `getattr(workout, "folder_id")` reads the raw FK
     # column directly — no join needed.
     folder_id = serializers.CharField(allow_null=True, read_only=True)
+    # tags is now a M2M through WorkoutTag (shared with activities' Tag catalog), not a plain
+    # field ModelSerializer can read directly - mirrors ActivitySerializer.get_tags exactly.
+    tags = serializers.SerializerMethodField()
 
     class Meta:
         model = Workout
         fields = ["id", "name", "sport", "type", "duration", "tss", "folder_id", "tags", "chart_preview", "updated_at"]
         read_only_fields = ["id", "type", "duration", "tss", "folder_id", "tags", "chart_preview", "updated_at"]
+
+    def get_tags(self, obj: Workout) -> list[str]:
+        return list(obj.tags.order_by("name").values_list("name", flat=True))
 
 
 class WorkoutDetailSerializer(WorkoutSerializer):
@@ -176,10 +182,11 @@ class WorkoutCreateSerializer(serializers.Serializer):
 
 
 class WorkoutUpdateSerializer(serializers.Serializer):
+    # No tags field here - same as ActivityUpdateSerializer, tags are never settable via the
+    # main PATCH, only via the dedicated attach/detach endpoints (WorkoutTagView/WorkoutUntagView).
     name = serializers.CharField(required=False)
     steps = serializers.ListField(child=serializers.DictField(), required=False)
     folder_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    tags = serializers.ListField(child=serializers.CharField(), required=False)
 
 
 class WorkoutFolderSerializer(serializers.ModelSerializer):

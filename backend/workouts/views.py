@@ -7,14 +7,15 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from activities.models import Activity, Lap, Record
+from activities.models import Activity, Lap, Record, Tag
+from activities.serializers import TagAttachSerializer, TagSerializer
 from athletes.zones import reference_for
 from core.auth_context import get_effective_athlete_id
 from core.permissions import user_may_read, user_may_write
 
 from .calculations import compute_chart_preview, compute_duration_and_tss, normalize_power_units
 from .match_scan import scannability_error, total_planned_distance_meters
-from .models import Workout, WorkoutFolder, WorkoutMatchScan, WorkoutStep
+from .models import Workout, WorkoutFolder, WorkoutMatchScan, WorkoutStep, WorkoutTag
 from .serializers import (
     WorkoutCreateSerializer,
     WorkoutDetailSerializer,
@@ -105,6 +106,15 @@ def _resolve_folder(folder_id: str | None, athlete_id: str) -> WorkoutFolder | N
     return get_object_or_404(WorkoutFolder, pk=folder_id, created_by_id=athlete_id)
 
 
+def _attach_tags_by_name(workout: Workout, athlete_id: str, names: list[str]) -> None:
+    """Create-time convenience, mirroring tag_activity's own get-or-create-by-name (same shared
+    Tag catalog) - lets create_workout/POST accept plain tag names instead of requiring a
+    separate attach call per tag right after creation."""
+    for name in names:
+        tag, _created = Tag.objects.get_or_create(athlete_id=athlete_id, name=name, defaults={"origin": "manual"})
+        WorkoutTag.objects.get_or_create(workout=workout, tag=tag)
+
+
 class WorkoutListView(APIView):
     def get(self, request: Request) -> Response:
         sub, athlete_id = get_effective_athlete_id(request)
@@ -117,7 +127,7 @@ class WorkoutListView(APIView):
             workouts = workouts.filter(folder_id=folder_id)
         tag = request.query_params.get("tag")
         if tag:
-            workouts = workouts.filter(tags__contains=[tag])
+            workouts = workouts.filter(workout_tags__tag__name=tag)
         sport = request.query_params.get("sport")
         if sport:
             workouts = workouts.filter(sport=sport)
@@ -147,8 +157,8 @@ class WorkoutListView(APIView):
             name=serializer.validated_data["name"],
             sport=serializer.validated_data["sport"],
             folder=_resolve_folder(serializer.validated_data.get("folder_id"), athlete_id),
-            tags=serializer.validated_data.get("tags", []),
         )
+        _attach_tags_by_name(workout, athlete_id, serializer.validated_data.get("tags", []))
         _replace_steps(workout, serializer.validated_data["steps"])
 
         return Response(WorkoutSerializer(workout).data, status=201)
@@ -178,9 +188,6 @@ class WorkoutDetailView(APIView):
         if "folder_id" in serializer.validated_data:
             workout.folder = _resolve_folder(serializer.validated_data["folder_id"], workout.created_by_id)
             update_fields.append("folder")
-        if "tags" in serializer.validated_data:
-            workout.tags = serializer.validated_data["tags"]
-            update_fields.append("tags")
         if update_fields:
             workout.save(update_fields=[*update_fields, "updated_at"])
 
@@ -195,6 +202,47 @@ class WorkoutDetailView(APIView):
         if not user_may_write(sub, workout.created_by_id):
             raise PermissionDenied("You do not have write access to that athlete's data.")
         workout.delete()
+        return Response(status=204)
+
+
+class WorkoutTagView(APIView):
+    """Attach a tag to a workout - mirrors ActivityTagView exactly, against the same shared
+    Tag catalog (see activities/views.py)."""
+
+    def post(self, request: Request, id: str) -> Response:
+        workout = get_object_or_404(Workout, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, workout.created_by_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        serializer = TagAttachSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        if data.get("tag_id"):
+            tag = get_object_or_404(Tag, pk=data["tag_id"], athlete_id=workout.created_by_id)
+        else:
+            tag, _created = Tag.objects.get_or_create(
+                athlete_id=workout.created_by_id, name=data["name"], defaults={"origin": "manual"}
+            )
+
+        WorkoutTag.objects.get_or_create(workout=workout, tag=tag)
+        return Response({"workout_id": workout.id, "tag": TagSerializer(tag).data}, status=201)
+
+
+class WorkoutUntagView(APIView):
+    """Detach a tag from a workout - mirrors ActivityUntagView exactly."""
+
+    def delete(self, request: Request, id: str, tag_id: str) -> Response:
+        workout = get_object_or_404(Workout, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, workout.created_by_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        link = get_object_or_404(WorkoutTag, workout=workout, tag_id=tag_id)
+        if link.tag.origin == "auto":
+            raise PermissionDenied("Auto-applied tags cannot be removed.")
+        link.delete()
         return Response(status=204)
 
 

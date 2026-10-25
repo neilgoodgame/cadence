@@ -41,7 +41,9 @@ class Workout(PrefixedIDModel):
     duration = models.IntegerField(default=0)
     tss = models.IntegerField(default=0)
     folder = models.ForeignKey(WorkoutFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name="workouts")
-    tags = models.JSONField(default=list, blank=True)
+    # Shared with activities - "activities.Tag" (not a workout-only catalog), through WorkoutTag
+    # below, mirroring Activity.tags/ActivityTag in activities/models.py exactly.
+    tags = models.ManyToManyField("activities.Tag", through="WorkoutTag", related_name="workouts")
     # Flattened per-leaf average target intensity, recomputed alongside duration/tss
     # whenever steps are replaced — cheap chart data for library cards/rows without
     # shipping the full step tree in the list response.
@@ -51,6 +53,22 @@ class Workout(PrefixedIDModel):
 
     def __str__(self) -> str:
         return self.name
+
+
+class WorkoutTag(models.Model):
+    """Join table - no id in its own right, never fetched independently. Mirrors
+    activities.ActivityTag exactly, against the same Tag catalog."""
+
+    workout = models.ForeignKey(Workout, on_delete=models.CASCADE, related_name="workout_tags")
+    tag = models.ForeignKey("activities.Tag", on_delete=models.CASCADE, related_name="workout_tags")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["workout", "tag"], name="unique_workout_tag"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.workout_id} -> {self.tag_id}"
 
 
 MATCH_SCAN_STATUS_CHOICES = [

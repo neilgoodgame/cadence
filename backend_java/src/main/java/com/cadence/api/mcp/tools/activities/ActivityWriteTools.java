@@ -15,6 +15,7 @@ import com.cadence.api.mcp.dispatch.McpToolAuthorizer;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
+import com.cadence.api.workouts.WorkoutTagRepository;
 import java.util.Map;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
@@ -35,17 +36,19 @@ public class ActivityWriteTools {
 	private final TagService tagService;
 	private final TagMapper tagMapper;
 	private final ActivityTagRepository activityTagRepository;
+	private final WorkoutTagRepository workoutTagRepository;
 	private final UserService userService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityWriteTools(ActivityService activityService, TagService tagService, TagMapper tagMapper,
-			ActivityTagRepository activityTagRepository, UserService userService, AccessGuard accessGuard,
-			McpToolAuthorizer authorizer) {
+			ActivityTagRepository activityTagRepository, WorkoutTagRepository workoutTagRepository,
+			UserService userService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.tagService = tagService;
 		this.tagMapper = tagMapper;
 		this.activityTagRepository = activityTagRepository;
+		this.workoutTagRepository = workoutTagRepository;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
@@ -92,9 +95,9 @@ public class ActivityWriteTools {
 
 	@McpTool(name = "rename_tag", description = "Renames a tag (see list_tags for exact names) "
 			+ "to new_name. If the athlete already has a different tag with that name "
-			+ "(case-insensitive), merges into it instead - every activity carrying the old tag "
-			+ "ends up carrying the existing one, and the old tag is removed. Returns the tag "
-			+ "that now holds new_name.",
+			+ "(case-insensitive), merges into it instead - every activity or workout carrying "
+			+ "the old tag ends up carrying the existing one, and the old tag is removed. Returns "
+			+ "the tag that now holds new_name.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public TagResponse renameTag(
@@ -105,12 +108,14 @@ public class ActivityWriteTools {
 		accessGuard.requireWrite(athleteId);
 		Tag tag = tagService.findByName(athleteId, name);
 		Tag result = tagService.renameTag(athleteId, tag.getId(), newName);
-		return new TagResponse(result.getId(), result.getName(), result.getOrigin(), result.getColor(),
-				activityTagRepository.countByTagId(result.getId()));
+		long combinedCount = activityTagRepository.countByTagId(result.getId())
+				+ workoutTagRepository.countByTagId(result.getId());
+		return new TagResponse(result.getId(), result.getName(), result.getOrigin(), result.getColor(), combinedCount);
 	}
 
 	@McpTool(name = "delete_tag", description = "Deletes a tag (see list_tags for exact names) "
-			+ "entirely, removing it from every activity that carries it - not just an unused one.",
+			+ "entirely, removing it from every activity and workout that carries it - not just "
+			+ "an unused one.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = true, idempotentHint = false, openWorldHint = false))
 	public Map<String, Object> deleteTag(

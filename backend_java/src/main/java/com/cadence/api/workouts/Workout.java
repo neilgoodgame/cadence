@@ -49,10 +49,6 @@ public class Workout extends PrefixedIdEntity {
 	@JoinColumn(name = "folder_id")
 	private WorkoutFolder folder;
 
-	@JdbcTypeCode(SqlTypes.JSON)
-	@Column(nullable = false)
-	private List<String> tags = new ArrayList<>();
-
 	/** Flattened per-leaf average target intensity and duration, recomputed alongside
 	 * duration/tss whenever steps are replaced - cheap chart data for library cards/rows
 	 * without shipping the full step tree in the list response. */
@@ -127,14 +123,6 @@ public class Workout extends PrefixedIdEntity {
 
 	public void setFolder(WorkoutFolder folder) {
 		this.folder = folder;
-	}
-
-	public List<String> getTags() {
-		return tags;
-	}
-
-	public void setTags(List<String> tags) {
-		this.tags = tags;
 	}
 
 	public List<ChartPreviewPoint> getChartPreview() {

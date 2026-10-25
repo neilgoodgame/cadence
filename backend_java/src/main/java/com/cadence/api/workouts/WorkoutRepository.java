@@ -30,17 +30,19 @@ public interface WorkoutRepository extends JpaRepository<Workout, String> {
 	 * Single dynamic-filter/sort query backing the library screen. Only one CASE branch is
 	 * non-null per row (matching :sort), so it effectively sorts by that one active criterion,
 	 * falling through to updated_at DESC for "recent" and as a stable tiebreak otherwise.
-	 * Native SQL (not JPQL) because tag filtering needs Postgres jsonb containment and the
-	 * "used" sort needs a correlated subquery in ORDER BY - both awkward in JPQL/Specifications.
-	 * CAST(... AS text) on each nullable param avoids Postgres/JDBC "could not determine data
-	 * type" errors when a bind value is null.
+	 * Native SQL (not JPQL) because the "used" sort needs a correlated subquery in ORDER BY -
+	 * awkward in JPQL/Specifications. CAST(... AS text) on each nullable param avoids
+	 * Postgres/JDBC "could not determine data type" errors when a bind value is null.
 	 */
 	@Query(
 			value = """
 					SELECT w.* FROM workout w
 					WHERE w.created_by = :athleteId
 					  AND (CAST(:folderId AS text) IS NULL OR w.folder_id = :folderId)
-					  AND (CAST(:tag AS text) IS NULL OR w.tags::jsonb @> to_jsonb(ARRAY[:tag]::text[]))
+					  AND (CAST(:tag AS text) IS NULL OR EXISTS (
+					        SELECT 1 FROM workout_tag wt JOIN tag t ON t.id = wt.tag_id
+					        WHERE wt.workout_id = w.id AND t.name = :tag
+					      ))
 					  AND (CAST(:sport AS text) IS NULL OR w.sport = :sport)
 					  AND (CAST(:search AS text) IS NULL OR w.name ILIKE CONCAT('%', :search, '%'))
 					ORDER BY

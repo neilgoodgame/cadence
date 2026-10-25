@@ -12,8 +12,12 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface WorkoutMapper {
 
-	@Mapping(target = "folderId", source = "folder.id")
-	WorkoutResponse toResponse(Workout workout);
+	// tags comes from WorkoutTagRepository.findTagNamesByWorkoutId, not a mapped entity field -
+	// mirrors ActivityResponse, where tags is likewise fetched separately and passed in rather
+	// than read off a JPA relation (see WorkoutService.toResponse).
+	@Mapping(target = "folderId", source = "workout.folder.id")
+	@Mapping(target = "tags", source = "tags")
+	WorkoutResponse toResponse(Workout workout, List<String> tags);
 
 	@Mapping(target = "children", ignore = true)
 	WorkoutStepDto toDto(WorkoutStep step);

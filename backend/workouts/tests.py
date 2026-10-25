@@ -959,15 +959,49 @@ class WorkoutLibraryTests(TestCase):
         )
         self.assertEqual(rename_response.status_code, 403)
 
-    def test_create_and_patch_workout_with_tags(self):
+    def test_create_with_tags_resolves_against_the_shared_catalog(self):
         response = self.client.post("/v1/workouts", _workout_payload(tags=["intervals", "race prep"]), format="json")
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["tags"], ["intervals", "race prep"])
+
+    def test_patch_does_not_accept_tags(self):
+        # Mirrors ActivityUpdateSerializer - tags are never settable via the main PATCH, only
+        # via the dedicated attach/detach endpoints below. No "tags" field on
+        # WorkoutUpdateSerializer means DRF just ignores it rather than erroring.
+        response = self.client.post("/v1/workouts", _workout_payload(tags=["intervals"]), format="json")
         workout_id = response.json()["id"]
 
         patch_response = self.client.patch(f"/v1/workouts/{workout_id}", {"tags": ["base"]}, format="json")
         self.assertEqual(patch_response.status_code, 200)
-        self.assertEqual(patch_response.json()["tags"], ["base"])
+        self.assertEqual(patch_response.json()["tags"], ["intervals"])
+
+    def test_tag_and_untag_workout(self):
+        response = self.client.post("/v1/workouts", _workout_payload(tags=["intervals"]), format="json")
+        workout_id = response.json()["id"]
+
+        tag_response = self.client.post(f"/v1/workouts/{workout_id}/tags", {"name": "base"}, format="json")
+        self.assertEqual(tag_response.status_code, 201)
+        tag_id = tag_response.json()["tag"]["id"]
+        self.assertEqual(tag_response.json()["workout_id"], workout_id)
+
+        get_response = self.client.get(f"/v1/workouts/{workout_id}")
+        self.assertEqual(sorted(get_response.json()["tags"]), ["base", "intervals"])
+
+        untag_response = self.client.delete(f"/v1/workouts/{workout_id}/tags/{tag_id}")
+        self.assertEqual(untag_response.status_code, 204)
+        get_response = self.client.get(f"/v1/workouts/{workout_id}")
+        self.assertEqual(get_response.json()["tags"], ["intervals"])
+
+    def test_tag_shared_with_activity_catalog(self):
+        from activities.models import Tag
+
+        tag = Tag.objects.create(athlete=self.athlete, name="Key session")
+        response = self.client.post("/v1/workouts", _workout_payload(), format="json")
+        workout_id = response.json()["id"]
+
+        tag_response = self.client.post(f"/v1/workouts/{workout_id}/tags", {"tag_id": tag.id}, format="json")
+        self.assertEqual(tag_response.status_code, 201)
+        self.assertEqual(tag_response.json()["tag"]["id"], tag.id)
 
     def test_chart_preview_is_computed_on_save(self):
         response = self.client.post("/v1/workouts", _workout_payload(), format="json")
