@@ -1,4 +1,6 @@
+import os
 from datetime import date, timedelta
+from unittest import mock
 
 from django.test import Client, TestCase
 
@@ -10,10 +12,15 @@ from .derived import compute_compliance, compute_flags
 
 
 class HealthcheckTests(TestCase):
-    def test_healthz_returns_ok(self):
+    def test_healthz_defaults_build_to_unknown(self):
         response = Client().get("/healthz")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok"})
+        self.assertEqual(response.json(), {"status": "ok", "build": "unknown"})
+
+    @mock.patch.dict(os.environ, {"BUILD_SHA": "sha-abc1234"})
+    def test_healthz_reports_build_sha_from_env(self):
+        response = Client().get("/healthz")
+        self.assertEqual(response.json(), {"status": "ok", "build": "sha-abc1234"})
 
 
 class DerivedMetricsTests(TestCase):

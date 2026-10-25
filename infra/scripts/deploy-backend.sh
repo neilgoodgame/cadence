@@ -43,7 +43,7 @@ else
 	# --provenance=false --sbom=false: ECR rejects the default attestation
 	# manifest with a bare 400 - see infra/README.md's ECR section.
 	docker buildx build --platform linux/arm64 --provenance=false --sbom=false \
-		-t "$IMAGE" --push "$BACKEND_DIR"
+		--build-arg GIT_SHA="$GIT_SHA" -t "$IMAGE" --push "$BACKEND_DIR"
 fi
 
 echo "Updating $PARAM_NAME to $TAG..."

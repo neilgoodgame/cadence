@@ -8,6 +8,12 @@ COPY src ./src
 RUN ./gradlew bootJar --no-daemon -x test
 
 FROM eclipse-temurin:25-jre-noble
+# Passed in by infra/scripts/deploy-backend.sh - the exact commit this image was built from,
+# surfaced on GET /healthz so a deploy can be confirmed without comparing against the deploy
+# log by hand. .git isn't in this stage's build context (one level above backend_java/), so
+# this has to come in as a build arg rather than being read from .git directly.
+ARG GIT_SHA=unknown
+ENV BUILD_SHA=$GIT_SHA
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
