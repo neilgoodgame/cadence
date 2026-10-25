@@ -11,6 +11,7 @@ import { ZoneEditorTab } from "./preferences/ZoneEditorTab";
 import { BestEffortsTab } from "./preferences/BestEffortsTab";
 import { ExportTab } from "./preferences/ExportTab";
 import { TagsTab } from "./preferences/TagsTab";
+import { BuildInfo } from "./preferences/BuildInfo";
 import type { ZoneType } from "../api/types";
 
 type TabKey = "profile" | "workouts" | ZoneType | "best_efforts" | "tags" | "races" | "courses" | "sharing" | "garmin" | "tokens" | "export";
@@ -63,6 +64,7 @@ export function PreferencesScreen() {
             {t.label}
           </button>
         ))}
+        <BuildInfo />
       </nav>
 
       <div style={{ flex: 1 }}>
