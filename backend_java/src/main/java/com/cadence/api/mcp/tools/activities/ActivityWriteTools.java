@@ -76,7 +76,8 @@ public class ActivityWriteTools {
 	@McpTool(name = "tag_activity", description = "Attach a tag to an activity (from "
 			+ "list_activities/get_activity) by name - creates the tag if the athlete doesn't "
 			+ "already have one with this name (case-insensitive), matching the web app's tag "
-			+ "picker. A no-op if the activity already carries this tag.",
+			+ "picker. A no-op if the activity already carries this tag. The returned tag's count "
+			+ "is not populated here - use list_tags for usage counts.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public TagAttachResponse tagActivity(

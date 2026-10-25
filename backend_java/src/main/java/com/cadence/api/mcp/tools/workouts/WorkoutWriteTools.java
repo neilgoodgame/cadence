@@ -133,7 +133,8 @@ public class WorkoutWriteTools {
 			+ "get_workout) by name - creates the tag if the athlete doesn't already have one with "
 			+ "this exact name. Workouts and activities share the same tag catalog (see list_tags), "
 			+ "so a tag created here can also be attached to an activity, and vice versa. A no-op if "
-			+ "the workout already carries this tag.",
+			+ "the workout already carries this tag. The returned tag's count is not populated here "
+			+ "- use list_tags for usage counts.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public WorkoutTagAttachResponse tagWorkout(
