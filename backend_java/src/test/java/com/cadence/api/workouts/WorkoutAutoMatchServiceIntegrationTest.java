@@ -52,6 +52,9 @@ class WorkoutAutoMatchServiceIntegrationTest extends IntegrationTest {
 	private TagRepository tagRepository;
 
 	@Autowired
+	private WorkoutTagRepository workoutTagRepository;
+
+	@Autowired
 	private RecordRepository recordRepository;
 
 	@Autowired
@@ -81,8 +84,25 @@ class WorkoutAutoMatchServiceIntegrationTest extends IntegrationTest {
 		workout.setCreatedBy(athlete);
 		workout.setName(name);
 		workout.setSport(Sport.RUN);
-		workout.setTags(tags);
-		return workoutRepository.save(workout);
+		workout = workoutRepository.save(workout);
+		for (String tagName : tags) {
+			// Reuses an existing same-named tag rather than blindly creating one - same
+			// find-or-create-by-name WorkoutService.attachTag itself does, and required here
+			// too: Tag has a unique(athlete, name) constraint, which a blind create would
+			// violate whenever a test (deliberately) pre-creates a same-named tag.
+			Tag tag = tagRepository.findByAthleteIdAndNameIgnoreCase(athlete.getId(), tagName).orElseGet(() -> {
+				Tag created = new Tag();
+				created.setAthlete(athlete);
+				created.setName(tagName);
+				created.setOrigin(TagOrigin.MANUAL);
+				return tagRepository.save(created);
+			});
+			WorkoutTag link = new WorkoutTag();
+			link.setWorkout(workout);
+			link.setTag(tag);
+			workoutTagRepository.save(link);
+		}
+		return workout;
 	}
 
 	private Set<String> activityTagNames(Activity activity) {

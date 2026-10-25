@@ -3,6 +3,8 @@ package com.cadence.api.activities;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.users.User;
 import com.cadence.api.workouts.Workout;
+import com.cadence.api.workouts.WorkoutTag;
+import com.cadence.api.workouts.WorkoutTagRepository;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Service;
@@ -26,14 +28,14 @@ public class WorkoutMatchPreferenceService {
 	// "{sport} on {date}" activity name already uses.
 	private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-	private final TagRepository tagRepository;
 	private final ActivityTagRepository activityTagRepository;
+	private final WorkoutTagRepository workoutTagRepository;
 	private final LapDerivationService lapDerivationService;
 
-	public WorkoutMatchPreferenceService(TagRepository tagRepository, ActivityTagRepository activityTagRepository,
-			LapDerivationService lapDerivationService) {
-		this.tagRepository = tagRepository;
+	public WorkoutMatchPreferenceService(ActivityTagRepository activityTagRepository,
+			WorkoutTagRepository workoutTagRepository, LapDerivationService lapDerivationService) {
 		this.activityTagRepository = activityTagRepository;
+		this.workoutTagRepository = workoutTagRepository;
 		this.lapDerivationService = lapDerivationService;
 	}
 
@@ -55,29 +57,20 @@ public class WorkoutMatchPreferenceService {
 	}
 
 	/** Copies the workout's tags (if enabled) and (re)derives laps from it (if enabled) - call
-	 * once activity.workout has actually been saved, since lap derivation reads it back. */
+	 * once activity.workout has actually been saved, since lap derivation reads it back.
+	 *
+	 * <p>Workouts and activities now share the same Tag catalog (WorkoutTag/ActivityTag both
+	 * point at activities.Tag), so "copying" a workout's tags onto the activity is just linking
+	 * the activity to the same Tag rows the workout already carries - no more
+	 * find-or-create-by-name. */
 	public void applySideEffects(Activity activity, Workout workout, User athlete) {
 		if (athlete.isCopyMatchedWorkoutTags()) {
-			for (String workoutTagName : workout.getTags()) {
-				if (workoutTagName.isBlank()) {
-					continue;
-				}
-				// MANUAL, not AUTO: these are the workout's own descriptive tags (e.g. "road",
-				// "marathon") - ordinary content that happens to be copied automatically, not a
-				// system marker like "Auto-matched". AUTO would permanently block removal (see
-				// TagService.detachTag) on every activity that ever reuses this tag name.
-				Tag workoutTag = tagRepository.findByAthleteIdAndNameIgnoreCase(athlete.getId(), workoutTagName)
-						.orElseGet(() -> {
-							Tag created = new Tag();
-							created.setAthlete(athlete);
-							created.setName(workoutTagName);
-							created.setOrigin(TagOrigin.MANUAL);
-							return tagRepository.save(created);
-						});
-				if (!activityTagRepository.existsByActivityIdAndTagId(activity.getId(), workoutTag.getId())) {
+			for (WorkoutTag workoutTag : workoutTagRepository.findByWorkoutId(workout.getId())) {
+				Tag tag = workoutTag.getTag();
+				if (!activityTagRepository.existsByActivityIdAndTagId(activity.getId(), tag.getId())) {
 					ActivityTag link = new ActivityTag();
 					link.setActivity(activity);
-					link.setTag(workoutTag);
+					link.setTag(tag);
 					activityTagRepository.save(link);
 				}
 			}

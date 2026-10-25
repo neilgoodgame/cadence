@@ -7,6 +7,7 @@ import {
   getWorkout,
   listWorkoutFolders,
   listWorkouts,
+  tagWorkout,
   updateWorkout,
 } from "../../api/workouts";
 import type { ChartPreviewPoint, Workout, WorkoutFolder, WorkoutSort, WorkoutSport } from "../../api/types";
@@ -115,14 +116,9 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
 
   const bulkTagMutation = useMutation({
     mutationFn: async ({ ids, tagName }: { ids: string[]; tagName: string }) => {
-      const workouts = workoutsQuery.data?.data ?? [];
-      await Promise.all(
-        ids.map((id) => {
-          const workout = workouts.find((w) => w.id === id);
-          const tags = workout && !workout.tags.includes(tagName) ? [...workout.tags, tagName] : workout?.tags;
-          return updateWorkout(id, { tags });
-        }),
-      );
+      // tagWorkout is idempotent (a no-op if the workout already carries the tag), so no need
+      // to pre-check workout.tags here the way the old raw-list PATCH did.
+      await Promise.all(ids.map((id) => tagWorkout(id, tagName)));
     },
     onSuccess: () => {
       invalidate();

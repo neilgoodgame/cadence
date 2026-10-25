@@ -6,11 +6,12 @@ import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.users.User;
+import com.cadence.api.workouts.WorkoutTagRepository;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,23 +20,31 @@ public class TagService {
 
 	private final TagRepository tagRepository;
 	private final ActivityTagRepository activityTagRepository;
+	private final WorkoutTagRepository workoutTagRepository;
 
-	public TagService(TagRepository tagRepository, ActivityTagRepository activityTagRepository) {
+	public TagService(TagRepository tagRepository, ActivityTagRepository activityTagRepository,
+			WorkoutTagRepository workoutTagRepository) {
 		this.tagRepository = tagRepository;
 		this.activityTagRepository = activityTagRepository;
+		this.workoutTagRepository = workoutTagRepository;
 	}
 
 	public List<Tag> listTags(String athleteId) {
 		return tagRepository.findByAthleteIdOrderByName(athleteId);
 	}
 
-	/** Same tags as {@link #listTags}, annotated with an athlete-scoped usage count and
-	 * ordered most-used first (ties broken alphabetically, same as the frontend/design
-	 * spec's tag filter bar). */
+	/** Same tags as {@link #listTags}, annotated with an athlete-scoped usage count - combined
+	 * across activities and workouts, since they share this one catalog - and ordered
+	 * most-used first (ties broken alphabetically, same as the frontend/design spec's tag
+	 * filter bar). */
 	public List<TagResponse> listTagsWithCounts(String athleteId) {
-		Map<String, Long> counts = activityTagRepository.countByAthleteId(athleteId).stream()
-				.collect(Collectors.toMap(ActivityTagRepository.TagUsageCount::getTagId,
-						ActivityTagRepository.TagUsageCount::getUsageCount));
+		Map<String, Long> counts = new HashMap<>();
+		for (ActivityTagRepository.TagUsageCount row : activityTagRepository.countByAthleteId(athleteId)) {
+			counts.merge(row.getTagId(), row.getUsageCount(), Long::sum);
+		}
+		for (WorkoutTagRepository.TagUsageCount row : workoutTagRepository.countByAthleteId(athleteId)) {
+			counts.merge(row.getTagId(), row.getUsageCount(), Long::sum);
+		}
 		return tagRepository.findByAthleteIdOrderByName(athleteId).stream()
 				.map(t -> new TagResponse(t.getId(), t.getName(), t.getOrigin(), t.getColor(),
 						counts.getOrDefault(t.getId(), 0L)))
@@ -138,11 +147,14 @@ public class TagService {
 			return tagRepository.save(tag);
 		}
 		Tag target = existing.get();
-		// Drop the old-tag link for any activity that already carries the target tag too (would
-		// otherwise violate activity_tag's unique(activity_id, tag_id) once repointed), then
-		// repoint everything else.
+		// Drop the old-tag link for any activity/workout that already carries the target tag
+		// too (would otherwise violate activity_tag/workout_tag's unique constraint once
+		// repointed), then repoint everything else - both link tables, since they share this
+		// one Tag catalog.
 		activityTagRepository.deleteLinksAlreadyOnTarget(tag, target);
 		activityTagRepository.repointLinks(tag, target);
+		workoutTagRepository.deleteLinksAlreadyOnTarget(tag, target);
+		workoutTagRepository.repointLinks(tag, target);
 		tagRepository.delete(tag);
 		return target;
 	}

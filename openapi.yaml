@@ -1456,9 +1456,10 @@ paths:
       operationId: updateWorkout
       description: >
         Rename or re-author the workout. Passing `steps` replaces the entire step
-        list; duration and TSS are recomputed. `folder_id`/`tags`, if present,
-        replace the workout's folder/tags — `folder_id: null` (or `""`) clears
-        the folder; omitting a field leaves it untouched. Edits do not affect
+        list; duration and TSS are recomputed. `folder_id`, if present, replaces
+        the workout's folder — `folder_id: null` (or `""`) clears it; omitting a
+        field leaves it untouched. Tags are managed separately — see
+        `POST`/`DELETE /v1/workouts/{id}/tags[/{tag_id}]`. Edits do not affect
         already-completed activities matched to this workout.
       requestBody:
         required: true
@@ -1473,7 +1474,6 @@ paths:
                   items:
                     $ref: "#/components/schemas/WorkoutStep"
                 folder_id: { type: [string, "null"] }
-                tags: { type: array, items: { type: string } }
       responses:
         "200":
           description: The updated workout.
@@ -1495,6 +1495,65 @@ paths:
           description: Deleted.
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /v1/workouts/{id}/tags:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Tags]
+      summary: Tag a workout
+      operationId: tagWorkout
+      description: >
+        Attaches a tag - shares the same tag catalog as activities (see
+        `/v1/tags`), so a tag created here is also available to attach to an
+        activity, and vice versa. Auto-tags are read-only; manual tags can be
+        added or removed freely.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tag_id:
+                  type: string
+                  description: Attach an existing tag.
+                name:
+                  type: string
+                  description: Or create a tag by name.
+      responses:
+        "201":
+          description: Tag attached.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workout_id: { type: string }
+                  tag:
+                    $ref: "#/components/schemas/Tag"
+
+  /v1/workouts/{id}/tags/{tag_id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+      - name: tag_id
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Tags]
+      summary: Remove a tag
+      operationId: untagWorkout
+      description: Detaches a manual tag from the workout.
+      responses:
+        "204":
+          description: Tag removed.
 
   /v1/workout-folders:
     get:

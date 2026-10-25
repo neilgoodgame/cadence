@@ -12,7 +12,7 @@ opposite of what accepting a candidate means.
 from accounts.models import User
 
 from .lap_derivation import replace_laps_with_derived
-from .models import Activity, ActivityTag, Tag
+from .models import Activity, ActivityTag
 
 
 def matched_activity_name(workout_name: str, activity: Activity, athlete: User) -> str:
@@ -38,18 +38,14 @@ def apply_match_rename(activity: Activity, workout_name: str, athlete: User, upd
 
 def apply_match_side_effects(activity: Activity, workout, athlete: User) -> None:
     """Copies the workout's tags (if enabled) and (re)derives laps from it (if enabled) - call
-    once activity.workout has actually been saved, since lap derivation reads it back."""
+    once activity.workout has actually been saved, since lap derivation reads it back.
+
+    Workouts and activities now share the same Tag catalog (WorkoutTag/ActivityTag both point at
+    activities.Tag), so "copying" a workout's tags onto the activity is just linking the
+    activity to the same Tag rows the workout already carries - no more get-or-create-by-name.
+    """
     if athlete.copy_matched_workout_tags:
-        for workout_tag_name in workout.tags:
-            if not workout_tag_name.strip():
-                continue
-            # manual, not auto: these are the workout's own descriptive tags (e.g. "road",
-            # "marathon") - ordinary content that happens to be copied automatically, not a
-            # system marker like "Auto-matched". auto would permanently block removal (see
-            # views.py's untag_activity) on every activity that ever reuses this tag name.
-            workout_tag, _created = Tag.objects.get_or_create(
-                athlete=athlete, name=workout_tag_name, defaults={"origin": "manual"}
-            )
-            ActivityTag.objects.get_or_create(activity=activity, tag=workout_tag)
+        for tag in workout.tags.all():
+            ActivityTag.objects.get_or_create(activity=activity, tag=tag)
     if athlete.lap_source == "matched_workout":
         replace_laps_with_derived(activity, workout)

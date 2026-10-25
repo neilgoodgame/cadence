@@ -157,8 +157,8 @@ public class ActivityReadTools {
 	}
 
 	@McpTool(name = "list_tags", description = "List the authenticated athlete's tags with how "
-			+ "many activities carry each one, most used first - use this to find a tag's exact "
-			+ "name before renaming or deleting it.",
+			+ "many activities and workouts carry each one combined, most used first - use this "
+			+ "to find a tag's exact name before renaming or deleting it.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public List<TagResponse> listTags() {

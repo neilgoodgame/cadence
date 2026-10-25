@@ -13,6 +13,8 @@ import com.cadence.api.workouts.TargetType;
 import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutRepository;
 import com.cadence.api.workouts.WorkoutStep;
+import com.cadence.api.workouts.WorkoutTag;
+import com.cadence.api.workouts.WorkoutTagRepository;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -36,6 +38,10 @@ class ActivityServiceMatchPreferencesTest extends IntegrationTest {
 	private WorkoutRepository workoutRepository;
 	@Autowired
 	private ActivityTagRepository activityTagRepository;
+	@Autowired
+	private TagRepository tagRepository;
+	@Autowired
+	private WorkoutTagRepository workoutTagRepository;
 	@Autowired
 	private RecordRepository recordRepository;
 	@Autowired
@@ -63,8 +69,21 @@ class ActivityServiceMatchPreferencesTest extends IntegrationTest {
 		workout.setCreatedBy(athlete);
 		workout.setName(name);
 		workout.setSport(Sport.RUN);
-		workout.setTags(tags);
-		return workoutRepository.save(workout);
+		workout = workoutRepository.save(workout);
+		for (String tagName : tags) {
+			Tag tag = tagRepository.findByAthleteIdAndNameIgnoreCase(athlete.getId(), tagName).orElseGet(() -> {
+				Tag created = new Tag();
+				created.setAthlete(athlete);
+				created.setName(tagName);
+				created.setOrigin(TagOrigin.MANUAL);
+				return tagRepository.save(created);
+			});
+			WorkoutTag link = new WorkoutTag();
+			link.setWorkout(workout);
+			link.setTag(tag);
+			workoutTagRepository.save(link);
+		}
+		return workout;
 	}
 
 	@Test

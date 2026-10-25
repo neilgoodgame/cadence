@@ -5,7 +5,7 @@ from django.test import TestCase
 from accounts.models import User, UserRelationship
 from athletes.models import ThresholdHistory
 from gear.models import Bike, Shoe, ShoeModel, ShoeModelVersion
-from workouts.models import Workout, WorkoutStep
+from workouts.models import Workout, WorkoutStep, WorkoutTag
 
 from ..models import Activity, ActivityTag, Lap, Record, Tag
 from .helpers import _bearer_client, _delegated_client, _make_activity
@@ -246,7 +246,8 @@ class ActivityDetailViewTests(TestCase):
 
     def test_patch_link_workout_does_not_copy_tags_by_default(self):
         activity = _make_activity(self.athlete)
-        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run", tags=["endurance"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run")
+        WorkoutTag.objects.create(workout=workout, tag=Tag.objects.create(athlete=self.athlete, name="endurance"))
 
         _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json")
 
@@ -256,7 +257,8 @@ class ActivityDetailViewTests(TestCase):
         self.athlete.copy_matched_workout_tags = True
         self.athlete.save(update_fields=["copy_matched_workout_tags"])
         activity = _make_activity(self.athlete)
-        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run", tags=["endurance"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run")
+        WorkoutTag.objects.create(workout=workout, tag=Tag.objects.create(athlete=self.athlete, name="endurance"))
 
         _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"workout_id": workout.id}, format="json")
 
@@ -316,7 +318,8 @@ class ActivityDetailViewTests(TestCase):
     def test_patch_unlinking_a_workout_does_not_apply_match_preferences(self):
         self.athlete.copy_matched_workout_tags = True
         self.athlete.save(update_fields=["copy_matched_workout_tags"])
-        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run", tags=["endurance"])
+        workout = Workout.objects.create(created_by=self.athlete, name="Z2 long ride", sport="run")
+        WorkoutTag.objects.create(workout=workout, tag=Tag.objects.create(athlete=self.athlete, name="endurance"))
         activity = _make_activity(self.athlete, workout=workout)
 
         _bearer_client(self.athlete).patch(f"/v1/activities/{activity.id}", {"workout_id": None}, format="json")

@@ -27,8 +27,8 @@ function DeleteTagDialog({ tag, onClose }: { tag: Tag; onClose: () => void }) {
         <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Delete "{tag.name}"?</h2>
         <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0, lineHeight: 1.5 }}>
           {tag.count === 1
-            ? "This will remove the tag from the 1 activity that carries it."
-            : `This will remove the tag from all ${tag.count} activities that carry it.`}{" "}
+            ? "This will remove the tag from the 1 activity or workout that carries it."
+            : `This will remove the tag from all ${tag.count} activities/workouts that carry it.`}{" "}
           This cannot be undone.
         </p>
         {mutation.isError && (
@@ -264,9 +264,9 @@ export function TagsTab() {
       <div>
         <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>Tags</h3>
         <p style={{ fontSize: 13, color: "var(--ink3)", margin: 0, lineHeight: 1.5 }}>
-          Rename a tag to merge it into another tag of that name - every activity carrying either
-          one ends up with just the merged tag. Deleting a tag removes it from every activity that
-          carries it.
+          Shared between activities and workouts. Rename a tag to merge it into another tag of
+          that name - every activity or workout carrying either one ends up with just the merged
+          tag. Deleting a tag removes it from everything that carries it.
         </p>
       </div>
 

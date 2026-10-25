@@ -43,6 +43,7 @@ import com.cadence.api.users.UserRepository;
 import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutMapper;
 import com.cadence.api.workouts.WorkoutRepository;
+import com.cadence.api.workouts.WorkoutTagRepository;
 import com.cadence.api.workouts.dto.WorkoutDetailResponse;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -117,6 +118,7 @@ public class ExportWriter {
 	private final RaceCommentRepository raceCommentRepository;
 	private final WorkoutRepository workoutRepository;
 	private final WorkoutMapper workoutMapper;
+	private final WorkoutTagRepository workoutTagRepository;
 	private final ScheduledWorkoutRepository scheduledWorkoutRepository;
 	private final SchedulingMapper schedulingMapper;
 	private final GearService gearService;
@@ -142,7 +144,7 @@ public class ExportWriter {
 	public ExportWriter(ActivityRepository activityRepository, ActivityService activityService, LapRepository lapRepository,
 			LapMapper lapMapper, StreamService streamService, CourseRepository courseRepository, CourseService courseService,
 			RaceRepository raceRepository, RaceService raceService, RaceCommentRepository raceCommentRepository,
-			WorkoutRepository workoutRepository, WorkoutMapper workoutMapper,
+			WorkoutRepository workoutRepository, WorkoutMapper workoutMapper, WorkoutTagRepository workoutTagRepository,
 			ScheduledWorkoutRepository scheduledWorkoutRepository, SchedulingMapper schedulingMapper,
 			GearService gearService, ShoeService shoeService, BikeRepository bikeRepository, ShoeRepository shoeRepository,
 			ComponentRepository componentRepository, GearMapper gearMapper,
@@ -160,6 +162,7 @@ public class ExportWriter {
 		this.raceCommentRepository = raceCommentRepository;
 		this.workoutRepository = workoutRepository;
 		this.workoutMapper = workoutMapper;
+		this.workoutTagRepository = workoutTagRepository;
 		this.scheduledWorkoutRepository = scheduledWorkoutRepository;
 		this.schedulingMapper = schedulingMapper;
 		this.gearService = gearService;
@@ -415,8 +418,9 @@ public class ExportWriter {
 		generator.writeArrayPropertyStart("workouts");
 		for (Workout workout : workoutRepository.findByCreatedByIdOrderByIdDesc(athleteId)) {
 			if (sportFilter == null || sportFilter.equals(workout.getSport())) {
+				List<String> tags = workoutTagRepository.findTagNamesByWorkoutId(workout.getId());
 				generator.writePOJO(new WorkoutDetailResponse(
-						workoutMapper.toResponse(workout), workoutMapper.toStepTree(workout.getSteps())));
+						workoutMapper.toResponse(workout, tags), workoutMapper.toStepTree(workout.getSteps())));
 				progress.tick();
 			}
 		}

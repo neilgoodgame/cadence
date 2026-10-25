@@ -8,6 +8,7 @@ import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
+import com.cadence.api.workouts.WorkoutTagRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,15 +29,18 @@ public class TagController {
 	private final UserService userService;
 	private final AccessGuard accessGuard;
 	private final ActivityTagRepository activityTagRepository;
+	private final WorkoutTagRepository workoutTagRepository;
 
 	public TagController(TagService tagService, TagMapper tagMapper, ActivityService activityService,
-			UserService userService, AccessGuard accessGuard, ActivityTagRepository activityTagRepository) {
+			UserService userService, AccessGuard accessGuard, ActivityTagRepository activityTagRepository,
+			WorkoutTagRepository workoutTagRepository) {
 		this.tagService = tagService;
 		this.tagMapper = tagMapper;
 		this.activityService = activityService;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
 		this.activityTagRepository = activityTagRepository;
+		this.workoutTagRepository = workoutTagRepository;
 	}
 
 	@GetMapping("/v1/tags")
@@ -87,7 +91,8 @@ public class TagController {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		Tag result = tagService.renameTag(athleteId, id, request.name());
-		return new TagResponse(result.getId(), result.getName(), result.getOrigin(), result.getColor(),
-				activityTagRepository.countByTagId(result.getId()));
+		long combinedCount = activityTagRepository.countByTagId(result.getId())
+				+ workoutTagRepository.countByTagId(result.getId());
+		return new TagResponse(result.getId(), result.getName(), result.getOrigin(), result.getColor(), combinedCount);
 	}
 }

@@ -11,15 +11,16 @@ from typing import Any
 
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
+from activities.models import Tag
 from authn.mcp_scopes import ACTIVITIES_READ, WORKOUTS_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
 from core.units import parse_distance_meters
 
-from .models import Workout
+from .models import Workout, WorkoutTag
 from .serializers import build_step_tree
-from .views import SORT_OPTIONS, _replace_steps, _resolve_folder, build_match_comparison_rows
+from .views import SORT_OPTIONS, _attach_tags_by_name, _replace_steps, _resolve_folder, build_match_comparison_rows
 
 
 def _convert_step_distances(steps: list[dict[str, Any]]) -> None:
@@ -68,7 +69,7 @@ def _workout_summary(workout: Workout) -> dict[str, Any]:
         "duration": workout.duration,
         "tss": workout.tss,
         "folder_id": workout.folder_id,
-        "tags": workout.tags,
+        "tags": list(workout.tags.order_by("name").values_list("name", flat=True)),
         "chart_preview": workout.chart_preview,
         "updated_at": workout.updated_at.isoformat(),
     }
@@ -94,7 +95,7 @@ class WorkoutMCPTools(ScopedMCPToolset):
         if folder_id:
             workouts = workouts.filter(folder_id=folder_id)
         if tag:
-            workouts = workouts.filter(tags__contains=[tag])
+            workouts = workouts.filter(workout_tags__tag__name=tag)
         if sport:
             workouts = workouts.filter(sport=sport)
         if search:
@@ -144,7 +145,8 @@ class WorkoutMCPTools(ScopedMCPToolset):
         _require_target_scale(steps)
         _convert_step_distances(steps)
 
-        workout = Workout.objects.create(created_by_id=athlete_id, name=name, sport=sport, folder=None, tags=tags or [])
+        workout = Workout.objects.create(created_by_id=athlete_id, name=name, sport=sport, folder=None)
+        _attach_tags_by_name(workout, athlete_id, tags or [])
         _replace_steps(workout, steps)
         return _workout_summary(workout)
 
@@ -154,15 +156,14 @@ class WorkoutMCPTools(ScopedMCPToolset):
         name: str | None = None,
         steps: list[dict[str, Any]] | None = None,
         folder_id: str | None = None,
-        tags: list[str] | None = None,
     ) -> dict[str, Any]:
         """Rename or re-author an existing saved workout. Only the fields you pass are changed -
         omit a field to leave it as-is. Passing steps replaces the entire step tree (same shape
         as create_workout's steps argument); duration and TSS are recomputed from it. Pass
-        folder_id="" to clear the folder (omit folder_id entirely to leave it untouched); tags,
-        if passed, replaces the whole tag list (pass an empty list to clear tags). The workout's
-        sport cannot be changed after creation - delete and recreate it instead. Edits do not
-        affect already-completed activities matched to this workout."""
+        folder_id="" to clear the folder (omit folder_id entirely to leave it untouched). Tags
+        are managed separately - see tag_workout/untag_workout. The workout's sport cannot be
+        changed after creation - delete and recreate it instead. Edits do not affect
+        already-completed activities matched to this workout."""
         self._require_scope(WORKOUTS_WRITE)
         workout = get_object_or_404(Workout, pk=workout_id)
         self._require_write(workout.created_by_id)
@@ -176,9 +177,6 @@ class WorkoutMCPTools(ScopedMCPToolset):
         if folder_id is not None:
             workout.folder = _resolve_folder(folder_id, workout.created_by_id)
             update_fields.append("folder")
-        if tags is not None:
-            workout.tags = tags
-            update_fields.append("tags")
         if update_fields:
             workout.save(update_fields=[*update_fields, "updated_at"])
 
@@ -198,6 +196,35 @@ class WorkoutMCPTools(ScopedMCPToolset):
         self._require_write(workout.created_by_id)
         workout.delete()
         return {"id": workout_id, "deleted": True}
+
+    def tag_workout(self, workout_id: str, name: str) -> dict[str, Any]:
+        """Attach a tag to a workout (from list_workouts/get_workout) by name - creates the tag
+        if the athlete doesn't already have one with this exact name. Workouts and activities
+        share the same tag catalog (see list_tags), so a tag created here can also be attached
+        to an activity, and vice versa. A no-op if the workout already carries this tag."""
+        self._require_scope(WORKOUTS_WRITE)
+        if not name or not name.strip():
+            raise ValidationError({"name": "name cannot be empty."})
+        workout = get_object_or_404(Workout, pk=workout_id)
+        self._require_write(workout.created_by_id)
+        tag, _created = Tag.objects.get_or_create(
+            athlete_id=workout.created_by_id, name=name, defaults={"origin": "manual"}
+        )
+        WorkoutTag.objects.get_or_create(workout=workout, tag=tag)
+        return _workout_summary(workout)
+
+    def untag_workout(self, workout_id: str, tag_id: str) -> dict[str, Any]:
+        """Remove a tag from a workout (from list_workouts/get_workout) - the tag itself stays in
+        the catalog, still available for other workouts/activities (see delete_tag to remove it
+        entirely instead)."""
+        self._require_scope(WORKOUTS_WRITE)
+        workout = get_object_or_404(Workout, pk=workout_id)
+        self._require_write(workout.created_by_id)
+        link = get_object_or_404(WorkoutTag, workout=workout, tag_id=tag_id)
+        if link.tag.origin == "auto":
+            raise PermissionDenied("Auto-applied tags cannot be removed.")
+        link.delete()
+        return _workout_summary(workout)
 
     def get_workout_matches(self, workout_id: str) -> dict[str, Any]:
         """Compare every completed activity matched to a saved workout - average power, average

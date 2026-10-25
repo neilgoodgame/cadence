@@ -27,7 +27,7 @@ from races.mcp import RaceMCPTools
 from scheduling.mcp import SchedulingMCPTools
 from scheduling.models import ScheduledWorkout
 from workouts.mcp import WorkoutMCPTools
-from workouts.models import Workout
+from workouts.models import Workout, WorkoutTag
 
 
 def _mcp_request(user: User, scope: str) -> Any:
@@ -302,6 +302,79 @@ class WorkoutToolsTests(TestCase):
         tools = WorkoutMCPTools(request=_mcp_request(outsider, "activities:read"))
         with self.assertRaises(PermissionDenied):
             tools.get_workout_matches(workout_id=workout.id)
+
+    def test_tag_workout_attaches_a_new_tag(self) -> None:
+        athlete = User.objects.create_user(email="mcp-tag-workout@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="Long Run", sport="run")
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        result = tools.tag_workout(workout_id=workout.id, name="Key session")
+
+        self.assertIn("Key session", result["tags"])
+
+    def test_tag_workout_is_a_no_op_for_an_already_applied_tag(self) -> None:
+        athlete = User.objects.create_user(email="mcp-tag-workout-noop@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="Long Run", sport="run")
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+        tools.tag_workout(workout_id=workout.id, name="Key session")
+
+        result = tools.tag_workout(workout_id=workout.id, name="Key session")
+
+        self.assertEqual(result["tags"].count("Key session"), 1)
+
+    def test_tag_workout_shares_the_activity_tag_catalog(self) -> None:
+        athlete = User.objects.create_user(email="mcp-tag-workout-shared@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        activity_tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        activity_tools.tag_activity(activity_id=activity.id, name="Key session")
+        tag_id = Tag.objects.get(athlete=athlete, name="Key session").id
+        workout = Workout.objects.create(created_by=athlete, name="Long Run", sport="run")
+        workout_tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        workout_tools.tag_workout(workout_id=workout.id, name="Key session")
+
+        self.assertEqual(Tag.objects.get(athlete=athlete, name="Key session").id, tag_id)
+
+    def test_tag_workout_rejects_an_outsider(self) -> None:
+        owner = User.objects.create_user(email="mcp-tag-workout-owner@example.cc", password="x", name="Owner")
+        outsider = User.objects.create_user(email="mcp-tag-workout-outsider@example.cc", password="x", name="Outsider")
+        workout = Workout.objects.create(created_by=owner, name="Owner's workout", sport="bike")
+        tools = WorkoutMCPTools(request=_mcp_request(outsider, "workouts:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.tag_workout(workout_id=workout.id, name="Key session")
+
+    def test_untag_workout_removes_it(self) -> None:
+        athlete = User.objects.create_user(email="mcp-untag-workout@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="Long Run", sport="run")
+        tag = Tag.objects.create(athlete=athlete, name="Key session")
+        WorkoutTag.objects.create(workout=workout, tag=tag)
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        result = tools.untag_workout(workout_id=workout.id, tag_id=tag.id)
+
+        self.assertEqual(result["tags"], [])
+
+    def test_untag_workout_rejects_an_auto_applied_tag(self) -> None:
+        athlete = User.objects.create_user(email="mcp-untag-workout-auto@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="Long Run", sport="run")
+        tag = Tag.objects.create(athlete=athlete, name="Auto-matched", origin="auto")
+        WorkoutTag.objects.create(workout=workout, tag=tag)
+        tools = WorkoutMCPTools(request=_mcp_request(athlete, "workouts:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.untag_workout(workout_id=workout.id, tag_id=tag.id)
+
+    def _new_activity(self, athlete: User) -> Activity:
+        return Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Morning Run",
+            start_date=timezone.now(),
+            moving_time=100,
+            distance_km=1,
+        )
 
 
 class SchedulingToolsTests(TestCase):
@@ -852,6 +925,20 @@ class ActivityToolsTests(TestCase):
 
         self.assertEqual(result["data"], [{"id": tag.id, "name": "Race", "origin": "manual", "color": "", "count": 1}])
 
+    def test_list_tags_counts_combine_activities_and_workouts(self) -> None:
+        athlete = User.objects.create_user(email="mcp-list-tags-shared@example.cc", password="x", name="Athlete")
+        tag = Tag.objects.create(athlete=athlete, name="Key session")
+        ActivityTag.objects.create(activity=self._new_activity(athlete), tag=tag)
+        workout = Workout.objects.create(created_by=athlete, name="Long Run", sport="run")
+        WorkoutTag.objects.create(workout=workout, tag=tag)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_tags()
+
+        self.assertEqual(
+            result["data"], [{"id": tag.id, "name": "Key session", "origin": "manual", "color": "", "count": 2}]
+        )
+
     def test_rename_tag_merges_case_insensitively(self) -> None:
         athlete = User.objects.create_user(email="mcp-rename-tag@example.cc", password="x", name="Athlete")
         a1 = self._new_activity(athlete)
@@ -866,6 +953,20 @@ class ActivityToolsTests(TestCase):
 
         self.assertEqual(result["id"], target.id)
         self.assertEqual(result["count"], 2)
+        self.assertFalse(Tag.objects.filter(id=old.id).exists())
+
+    def test_rename_tag_merge_also_repoints_workout_links(self) -> None:
+        athlete = User.objects.create_user(email="mcp-rename-tag-workout@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="Long Run", sport="run")
+        old = Tag.objects.create(athlete=athlete, name="race")
+        target = Tag.objects.create(athlete=athlete, name="Race")
+        WorkoutTag.objects.create(workout=workout, tag=old)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.rename_tag(name="race", new_name="Race")
+
+        self.assertEqual(result["id"], target.id)
+        self.assertTrue(WorkoutTag.objects.filter(workout=workout, tag=target).exists())
         self.assertFalse(Tag.objects.filter(id=old.id).exists())
 
     def test_rename_tag_rejects_empty_new_name(self) -> None:
@@ -887,6 +988,18 @@ class ActivityToolsTests(TestCase):
 
         self.assertEqual(result, {"deleted": True, "name": "Race"})
         self.assertFalse(Tag.objects.filter(id=tag.id).exists())
+
+    def test_delete_tag_also_removes_workout_links(self) -> None:
+        athlete = User.objects.create_user(email="mcp-delete-tag-workout@example.cc", password="x", name="Athlete")
+        workout = Workout.objects.create(created_by=athlete, name="Long Run", sport="run")
+        tag = Tag.objects.create(athlete=athlete, name="Race")
+        WorkoutTag.objects.create(workout=workout, tag=tag)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.delete_tag(name="Race")
+
+        self.assertEqual(result, {"deleted": True, "name": "Race"})
+        self.assertFalse(WorkoutTag.objects.filter(tag_id=tag.id).exists())
 
 
 class AthleteToolsTests(TestCase):

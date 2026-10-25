@@ -1,5 +1,7 @@
 package com.cadence.api.mcp.tools.workouts;
 
+import com.cadence.api.activities.Tag;
+import com.cadence.api.activities.TagMapper;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.mcp.McpUnits;
@@ -21,6 +23,7 @@ import com.cadence.api.workouts.WorkoutService;
 import com.cadence.api.workouts.dto.WorkoutCreateRequest;
 import com.cadence.api.workouts.dto.WorkoutResponse;
 import com.cadence.api.workouts.dto.WorkoutStepDto;
+import com.cadence.api.workouts.dto.WorkoutTagAttachResponse;
 import com.cadence.api.workouts.dto.WorkoutUpdateRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
@@ -42,15 +45,17 @@ public class WorkoutWriteTools {
 
 	private final WorkoutService workoutService;
 	private final WorkoutMapper workoutMapper;
+	private final TagMapper tagMapper;
 	private final UserService userService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 	private final Validator validator;
 
-	public WorkoutWriteTools(WorkoutService workoutService, WorkoutMapper workoutMapper, UserService userService,
-			AccessGuard accessGuard, McpToolAuthorizer authorizer, Validator validator) {
+	public WorkoutWriteTools(WorkoutService workoutService, WorkoutMapper workoutMapper, TagMapper tagMapper,
+			UserService userService, AccessGuard accessGuard, McpToolAuthorizer authorizer, Validator validator) {
 		this.workoutService = workoutService;
 		this.workoutMapper = workoutMapper;
+		this.tagMapper = tagMapper;
 		this.userService = userService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
@@ -82,15 +87,15 @@ public class WorkoutWriteTools {
 		validate(request);
 
 		Workout workout = workoutService.createWorkout(creator, request);
-		return workoutMapper.toResponse(workout);
+		return workoutService.toResponse(workout);
 	}
 
 	@McpTool(name = "update_workout", description = "Rename or re-author an existing saved workout. "
 			+ "Only the fields you pass are changed - omit a field to leave it as-is. Passing steps "
 			+ "replaces the entire step tree (same shape as create_workout's steps argument); duration "
 			+ "and TSS are recomputed from it. Pass folderId=\"\" to clear the folder (omit folderId "
-			+ "entirely to leave it untouched); tags, if passed, replaces the whole tag list (pass an "
-			+ "empty list to clear tags). The workout's sport cannot be changed after creation - delete "
+			+ "entirely to leave it untouched). Tags are managed separately - see tag_workout/"
+			+ "untag_workout. The workout's sport cannot be changed after creation - delete "
 			+ "and recreate it instead. Edits do not affect already-completed activities matched to "
 			+ "this workout.",
 			annotations = @McpTool.McpAnnotations(
@@ -99,18 +104,17 @@ public class WorkoutWriteTools {
 			@McpToolParam(description = "The workout's id", required = true) String workoutId,
 			@McpToolParam(description = "New name, if changing it", required = false) String name,
 			@McpToolParam(description = "The full new step tree, if replacing it", required = false) List<McpWorkoutStepInput> steps,
-			@McpToolParam(description = "New folder id, \"\" to clear, omit to leave untouched", required = false) String folderId,
-			@McpToolParam(description = "New full tag list, if replacing it", required = false) List<String> tags) {
+			@McpToolParam(description = "New folder id, \"\" to clear, omit to leave untouched", required = false) String folderId) {
 		authorizer.requireScope(McpScopes.WORKOUTS_WRITE);
 		Workout workout = workoutService.getWorkout(workoutId);
 		accessGuard.requireWrite(workout.getCreatedBy().getId());
 
 		List<WorkoutStepDto> stepDtos = steps == null ? null : steps.stream().map(WorkoutWriteTools::toStepDto).toList();
-		WorkoutUpdateRequest request = new WorkoutUpdateRequest(name, stepDtos, folderId, tags);
+		WorkoutUpdateRequest request = new WorkoutUpdateRequest(name, stepDtos, folderId);
 		validate(request);
 
 		Workout updated = workoutService.updateWorkout(workoutId, request);
-		return workoutMapper.toResponse(updated);
+		return workoutService.toResponse(updated);
 	}
 
 	@McpTool(name = "delete_workout", description = "Permanently delete a workout from the library. "
@@ -123,6 +127,41 @@ public class WorkoutWriteTools {
 		Workout workout = workoutService.getWorkout(workoutId);
 		accessGuard.requireWrite(workout.getCreatedBy().getId());
 		workoutService.deleteWorkout(workoutId);
+	}
+
+	@McpTool(name = "tag_workout", description = "Attach a tag to a workout (from list_workouts/"
+			+ "get_workout) by name - creates the tag if the athlete doesn't already have one with "
+			+ "this exact name. Workouts and activities share the same tag catalog (see list_tags), "
+			+ "so a tag created here can also be attached to an activity, and vice versa. A no-op if "
+			+ "the workout already carries this tag.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public WorkoutTagAttachResponse tagWorkout(
+			@McpToolParam(description = "The workout's id", required = true) String workoutId,
+			@McpToolParam(description = "The tag name, e.g. \"Key session\"", required = true) String name) {
+		authorizer.requireScope(McpScopes.WORKOUTS_WRITE);
+		if (name == null || name.isBlank()) {
+			throw new ValidationException("name must not be blank.", "name");
+		}
+		Workout workout = workoutService.getWorkout(workoutId);
+		accessGuard.requireWrite(workout.getCreatedBy().getId());
+		Tag tag = workoutService.attachTag(workout, workout.getCreatedBy(), null, name);
+		return new WorkoutTagAttachResponse(workoutId, tagMapper.toResponse(tag));
+	}
+
+	@McpTool(name = "untag_workout", description = "Remove a tag from a workout (from "
+			+ "list_workouts/get_workout) - the tag itself stays in the catalog, still available "
+			+ "for other workouts/activities (see delete_tag to remove it entirely instead).",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public WorkoutResponse untagWorkout(
+			@McpToolParam(description = "The workout's id", required = true) String workoutId,
+			@McpToolParam(description = "The tag's id (see get_workout's tags)", required = true) String tagId) {
+		authorizer.requireScope(McpScopes.WORKOUTS_WRITE);
+		Workout workout = workoutService.getWorkout(workoutId);
+		accessGuard.requireWrite(workout.getCreatedBy().getId());
+		workoutService.detachTag(workoutId, tagId);
+		return workoutService.toResponse(workout);
 	}
 
 	private <T> void validate(T request) {
