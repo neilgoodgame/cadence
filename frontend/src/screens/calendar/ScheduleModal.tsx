@@ -7,9 +7,11 @@ import { queueGarminWorkoutOp } from "../../api/garmin";
 import { GarminPushOption } from "../garmin/GarminPushOption";
 import { queueWorkoutPush, refreshGarminQueries } from "../garmin/garminWorkouts";
 import { useGarminWorkouts } from "../garmin/useGarminWorkouts";
-import { withIds } from "../workouts/workoutTree";
+import { fmtDuration, withIds } from "../workouts/workoutTree";
+import { WorkoutPickerModal } from "../workouts/WorkoutPickerModal";
 import { useAuth } from "../../auth/AuthContext";
-import { formatDuration } from "../../lib/format";
+import { sportColor, sportLabel } from "../../lib/sportColors";
+import { tagColor, tagRgba } from "../../lib/tagColors";
 import type { TimeOfDay } from "../../api/types";
 
 const TIME_OPTIONS: { value: TimeOfDay; label: string }[] = [
@@ -35,6 +37,7 @@ export function ScheduleModal({
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["workouts"], queryFn: () => listWorkouts() });
   const [workoutId, setWorkoutId] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState(date);
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | "">("");
   const [notes, setNotes] = useState("");
@@ -83,6 +86,7 @@ export function ScheduleModal({
   });
 
   const workouts = data?.data ?? [];
+  const selectedWorkout = workouts.find((w) => w.id === workoutId);
   const inclusiveMax = maxDate ? new Date(`${maxDate}T00:00:00`) : null;
   if (inclusiveMax) inclusiveMax.setDate(inclusiveMax.getDate() - 1);
   const pastMax = inclusiveMax != null && scheduleDate > inclusiveMax.toISOString().slice(0, 10);
@@ -98,21 +102,71 @@ export function ScheduleModal({
       >
         <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Schedule a workout</h2>
 
-        <label>
+        <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Workout</div>
-          <select
-            value={workoutId}
-            onChange={(e) => setWorkoutId(e.target.value)}
-            style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)" }}
-          >
-            <option value="">Choose a workout…</option>
-            {workouts.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name} · {formatDuration(w.duration)} · {w.tss} TSS
-              </option>
-            ))}
-          </select>
-        </label>
+          {selectedWorkout ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "inline-flex", padding: "2px 8px", borderRadius: 6, fontFamily: "monospace", fontSize: 10, fontWeight: 700, background: `${sportColor(selectedWorkout.sport)}22`, color: sportColor(selectedWorkout.sport) }}>
+                    {sportLabel(selectedWorkout.sport)}
+                  </div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedWorkout.name}</div>
+                </div>
+                <div style={{ fontFamily: "monospace", fontSize: 11.5, color: "var(--ink3)", marginTop: 4 }}>
+                  {fmtDuration(selectedWorkout.duration)} · {selectedWorkout.tss} TSS
+                </div>
+                {selectedWorkout.tags.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                    {selectedWorkout.tags.map((t) => (
+                      <span
+                        key={t}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: "var(--ink2)",
+                          background: tagRgba(t, 0.1),
+                          border: `1px solid ${tagRgba(t, 0.3)}`,
+                          padding: "2px 7px 2px 5px",
+                          borderRadius: 20,
+                        }}
+                      >
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: tagColor(t), flexShrink: 0 }} />
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setPickerOpen(true)}
+                style={{ flexShrink: 0, border: "1px solid var(--line)", background: "var(--card)", borderRadius: 7, fontSize: 12, fontWeight: 600, color: "var(--ink2)", padding: "6px 10px", cursor: "pointer" }}
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setPickerOpen(true)}
+              style={{ width: "100%", textAlign: "left", padding: "9px 12px", borderRadius: 8, border: "1px dashed var(--line)", background: "var(--elev)", color: "var(--ink3)", fontSize: 13, cursor: "pointer" }}
+            >
+              Choose a workout…
+            </button>
+          )}
+        </div>
+
+        {pickerOpen && (
+          <WorkoutPickerModal
+            onSelect={(w) => {
+              setWorkoutId(w.id);
+              setPickerOpen(false);
+            }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
 
         <label>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink2)", marginBottom: 6 }}>Date</div>
