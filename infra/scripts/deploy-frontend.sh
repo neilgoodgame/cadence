@@ -11,6 +11,7 @@
 set -eu
 
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+GIT_SHA=$(cd "$REPO_ROOT" && git rev-parse --short=7 HEAD)
 FRONTEND_DIR="$REPO_ROOT/frontend"
 API_BASE_URL="https://api.cadence.bioinform.co.uk"
 SITE_URL="https://cadence.bioinform.co.uk"
@@ -37,6 +38,11 @@ npm ci
 
 echo "Building..."
 VITE_API_BASE_URL="$API_BASE_URL" VITE_OAUTH_CLIENT_SECRET="$OAUTH_SECRET" npm run build
+
+# A plain static file, not baked into the JS bundle - so "what's actually live" can be checked
+# with one `curl`, the same way GET /healthz answers that for the backend, without needing to
+# open devtools or worry about a stale cached index.html having run stale JS.
+echo "{\"build\": \"$GIT_SHA\"}" > dist/version.json
 
 echo "Syncing dist/ to s3://$S3_BUCKET..."
 $AWS s3 sync dist/ "s3://$S3_BUCKET" --delete
