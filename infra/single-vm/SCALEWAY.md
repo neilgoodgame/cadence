@@ -4,23 +4,36 @@ Provider-specific steps only. Architecture, compose, Caddyfile, backups and
 the AWS-to-VM data migration are in `COMMON.md`. Ranked against the others
 in `COMPARISON.md`.
 
-## Cost (checked 2026-10-21 via web search; verify on scaleway.com/en/pricing/virtual-instances)
+## Cost (read from scaleway.com/en/pricing/virtual-instances on 2026-10-26)
 
-| Item | Spec | List price (ex VAT) | Notes |
-|---|---|---|---|
-| **DEV1-M** | 3 vCPU x86 (AMD), 4 GB RAM, 40 GB local SSD | €0.0202/h, **~€14.74/month** | Rate rose from €0.0198/h on 2026-06-01 per Scaleway's pricing blog. |
-| Flexible public IPv4 | | roughly €3/month (€0.004/h) | Third-party listings show ~€20.8 all-in; confirm. |
-| Snapshots | | per GB-month, small | Before migrations/upgrades. |
+The page's own note: list prices include egress and IPv6 addresses;
+**storage (local, block) and attached public IPv4 addresses are billed
+separately.** Prices are in euros, shown ex VAT, for zone PAR-1.
 
-**Estimated total: about €15 to 18 per month plus VAT (roughly £13 to 17).**
-Traffic is not metered on the instance side for typical use; check current
-egress terms. DEV1 is Scaleway's older "development" line; newer
-general-purpose lines (PRO2, STARDUST for tiny sizes) cost more per GB of RAM
-or are too small for this workload. Stardust instances (about €0.4/month)
-are far too small for a JVM + Postgres.
+| Line | Instance | Spec | €/hour | ~€/month |
+|---|---|---|---|---|
+| Development | DEV1-S | 2 vCPU, 2 GB, 200 Mbps | 0.00898 | 6.55 (too small) |
+| Development | **DEV1-M** | **3 vCPU, 4 GB, 300 Mbps** | **0.0202** | **14.74** |
+| Development | DEV1-L | 4 vCPU, 8 GB, 400 Mbps | 0.04284 | 31.27 |
+| Development | PLAY2-NANO | 2 vCPU, 4 GB, 200 Mbps | 0.02754 | 20.10 |
+| General Purpose | BASIC3-X2C-4G | 2 vCPU, 4 GB, 350 Mbps | 0.03945 | 28.79 |
+| Add-on | Flexible public IPv4 | per Scaleway docs, not shown on the page I read | ~0.004 | ~2.92 |
 
-Scaleway's ARM instances are in a different (more expensive) family and I did
-not find a 4 GB ARM size inside the $20 envelope; assume **x86**.
+I found no ARM instance with 4 GB under about €20 on this page (I only
+read the Development and the start of the General Purpose tables, so a
+cost-optimized ARM type further down the list could exist; check the filtered
+list with RAM = 4 GB).
+
+**Estimated total for DEV1-M: about €17.7 per month ex VAT** (€14.74 plus
+about €2.92 for the IPv4), roughly **€21 with 20% UK VAT** (about £18).
+**That is slightly over a $20 ceiling.** I could not confirm from the
+pricing page whether DEV1-M's 40 GB local SSD is included in the €14.74 or
+shows up as a separate storage line; the earlier research said it is
+included. Check the console's cost estimate at server creation. Hourly
+billing; no commitment.
+
+The older Stardust instances (about €0.43 per month) are far too small for
+a JVM + Postgres.
 
 ## Location and architecture
 
@@ -83,10 +96,13 @@ Pros
 - Decent default network and a real stateful security-group firewall.
 
 Cons
-- **~3x the Hetzner price** for the same 4 GB, and about 50% above OVH.
+- **About 4x OVH and slightly over a $20 ceiling** once the IPv4
+  address and VAT are added (about €21), and it costs more than Hetzner's
+  cost-optimized tier would.
 - **No UK region**.
 - Older DEV1 hardware (AMD EPYC 7281-era) is slower per core than Hetzner's
   or Vultr's current CPUs; fine for this load, not generous.
 - Local-SSD storage: data is lost if the instance is deleted; backups are
   essential.
-- Price rose on 2026-06-01 and the lineup is in flux; check before committing.
+- Price rose on 2026-06-01 (DEV1-M from €0.0198 to €0.0202 an hour);
+  storage and IPv4 are separate line items.
