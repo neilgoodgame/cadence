@@ -4,29 +4,46 @@ Provider-specific steps only. Architecture, compose, Caddyfile, backups and
 the AWS-to-VM data migration are in `COMMON.md`. Ranked against the others
 in `COMPARISON.md`.
 
-## Cost (checked 2026-10-21 via web search; secondary sources, verify on ovhcloud.com)
+## Cost (read from ovhcloud.com/en-gb/vps and its configurator on 2026-10-26)
 
-OVH repositioned its VPS range in 2025/26 (VPS-1 to VPS-6 tiers), with a
-price rise of roughly 30% on the entry tier. I could not confirm a London
-price directly.
+OVH's current UK range is the "VPS 2027" line, and it is far cheaper than my
+earlier web-search estimate (which assumed about €10 for 4 GB). Prices are
+shown ex VAT, with the VAT-inclusive figure alongside on the plan page.
 
-| Plan | Spec | List price | Notes |
+| Plan | Spec | 12-month commitment (per month) | No commitment (per month) |
 |---|---|---|---|
-| VPS-1 | entry tier | ~$6.5 | Too small (RAM); do not use. |
-| **VPS-2** | listed variously as 4+ GB RAM; one listing shows 6 vCores / 12 GB | ~€9.99/month (€8.49 with a 12-month term) | **Confirm RAM, disk and location before ordering**; sources conflict. |
-| Snapshot / backup add-ons | | extra | Optional. |
+| **VPS-1** | **2 vCores, 4 GB RAM, 40 GB NVMe**, 500 Mbps, unlimited traffic | **£3.31 ex VAT (£3.97 inc)** | **£3.90 ex VAT (about £4.68 inc)** |
+| VPS-2 | 4 vCores, 8 GB RAM, 75 GB NVMe, 1 Gbps | £6.29 ex VAT (£7.55 inc) | not read (about £7.40 ex VAT if the same 15% discount applies) |
+| VPS-3 | 6 vCores, 12 GB RAM, 100 GB NVMe, 2 Gbps | £9.01 ex VAT | not read |
+| VPS-4 | 8 vCores, 24 GB RAM, 200 GB NVMe, 3 Gbps | £17.34 ex VAT | not read |
+| Commitment discounts | 6 months: 5% off; 12 months: 15% off | | |
+| Snapshot backup (optional add-on) | on-demand image of the server | price not read | |
 
-**Estimated total: about €10 per month (about £9), possibly €8.49 on a
-12-month commitment.** Traffic is unmetered at a fixed port speed.
-Need at least 4 GB RAM; if VPS-2 turns out smaller, use the next tier up
-(check it is still $20 or under).
+The configurator showed no extra charge for the public IPv4 address, the
+OS image (Ubuntu 26.04, Debian 13 and others are free) or storage ("included").
+
+**Estimated total for the VPS-1 plan: about £4 to 5 per month including
+VAT** (£3.97 on a 12-month term, about £4.68 month to month). VPS-2 at about
+£7.5 to 9 is the headroom option and has double the disk and RAM.
+By a wide margin this is the cheapest provider with a 4 GB plan here.
+
+Both plans have **daily backup of the previous 24 hours included** and
+unlimited traffic. That provider-side backup is a convenience only, not
+the plan: `COMMON.md`'s encrypted offsite dumps still apply (a same-provider
+backup does not survive an account or provider incident, and it covers
+only the last 24 hours).
+
+Sizing check: VPS-1 has exactly the 4 GB RAM `COMMON.md` budgets
+(about 3.0 GB used), leaving about 1 GB of headroom, with 40 GB of disk. Check
+`du -sh /opt/cadence/media` and the database size on staging first; if
+they are more than a few GB, or you want RAM headroom, take VPS-2.
 
 ## Location and architecture
 
-- Regions include **London (UK)**, Gravelines (FR), Strasbourg, Frankfurt,
-  Warsaw and others; availability varies by plan, so London must be selected
-  at order time and confirmed on the plan you pick. OVH's UK VPS has been
-  sold from London for years, but verify for the current range.
+- The configurator offers **Europe (United Kingdom, Erith, Greater
+  London)** and Europe (France, Strasbourg), both "Available now" at the same
+  price for VPS-1. More locations need another VPS offer. Choose the UK one.
+  Erith is a London-area datacentre, so UK latency and UK data residency.
 - x86 only. Build `linux/amd64` images (`COMMON.md` deploy snippet).
 - OVH is French; DPA and GDPR tooling are standard. UK location keeps data
   in the UK.
@@ -38,8 +55,8 @@ no first-class CLI for ordering and Terraform cannot order a VPS (it can
 manage DNS and some existing resources). Treat the server as hand-made and
 document it.
 
-1. Order VPS-2 (or the confirmed 4 GB+ tier), choose **Ubuntu 24.04**,
-   location London, upload your SSH public key at order time (otherwise OVH
+1. Order VPS-1 (or VPS-2 for headroom), choose **Ubuntu 26.04** (or
+   Debian 13; both are free images), location **UK (Erith)**, upload your SSH public key at order time (otherwise OVH
    emails a root password; change it immediately and disable password auth).
 2. Wait for the "ready" email (usually minutes, sometimes longer on a new
    account).
@@ -73,14 +90,19 @@ you move DNS to OVH, which is not required.
 ## Provider-specific pros and cons
 
 Pros
-- **UK (London) region available**, with unmetered traffic.
-- Low price: about half the Vultr and Scaleway cost.
+- **UK datacentre (Erith, Greater London)**, with unmetered traffic.
+- Lowest price here by far: about £4 to 5/month for 4 GB, roughly a fifth
+  of Hetzner CPX22 and a third of Scaleway.
+- Daily provider backup of the previous 24 hours included.
 - Anti-DDoS included; mature, large operator.
 - Long-standing VPS product with simple fixed pricing and optional
   12-month discounts.
 
 Cons
-- **Sources conflict on plan specs and London pricing**; verify before ordering.
+- VPS-1 has a 40 GB disk and a 500 Mbps port; check data and media size
+  first, or use VPS-2 (75 GB, 1 Gbps).
+- The lowest prices need a 12-month commitment (15% off); month to month is
+  £3.90 ex VAT.
 - No CLI/Terraform ordering, so the server is a hand-built pet; document it
   in a runbook.
 - Control panel and support are rougher than Hetzner or Scaleway; account
