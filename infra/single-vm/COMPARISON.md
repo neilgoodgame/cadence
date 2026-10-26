@@ -6,35 +6,37 @@ Hetzner, OVHcloud, Scaleway and Vultr. Excluded by price: DigitalOcean
 ($24), Akamai/Linode ($24), AWS Lightsail ($24 for 4 GB). Excluded by
 request: Oracle Cloud's free tier.
 
-**All prices were gathered on 2026-10-21 from web searches, mostly
-secondary sources, and several conflict. Re-check each provider's own
-pricing page before deciding.** Two findings matter more than the numbers:
-Hetzner's cheap plans were reported as temporarily unavailable, and Vultr's
-$20 4 GB plan may have been withdrawn.
+**Hetzner's figures were read from its own plan pages on 2026-10-26.**
+The other providers' prices were gathered on 2026-10-21 from web searches,
+mostly secondary sources, and several conflict; re-check each provider's own
+pricing page before deciding. Two findings matter more than the numbers:
+all of Hetzner's Cost-Optimized plans are currently not available (leaving
+CPX22 at €19.99), and Vultr's $20 4 GB plan may have been withdrawn.
 
 ## At a glance
 
 | | Hetzner | OVHcloud | Scaleway | Vultr |
 |---|---|---|---|---|
-| Plan | CAX11 (ARM) or CX23 | VPS-2 | DEV1-M | Regular 4 GB |
+| Plan | CPX22 (CAX11/CX23 not available) | VPS-2 | DEV1-M | Regular 4 GB |
 | vCPU / RAM | 2 / 4 GB | 4+ GB (verify) | 3 / 4 GB | 2 / 4 GB |
-| Architecture | ARM or x86 | x86 | x86 | x86 |
-| ~Monthly cost | €5 to 7 | ~€10 | €15 to 18 | $20 |
-| ~Monthly in £ (incl. VAT where billed) | £5 to 8 | £9 to 11 | £13 to 19 | £15 to 19 |
+| Architecture | x86 (ARM if CAX returns) | x86 | x86 | x86 |
+| ~Monthly cost | €19.99 net (~€24 to 25 with IPv4 + UK VAT); €6.49 if CAX11 returns | ~€10 | €15 to 18 | $20 |
+| ~Monthly in £ (incl. VAT where billed) | £17 to 21 (£6 to 8 if CAX returns) | £9 to 11 | £13 to 19 | £15 to 19 |
 | **UK region** | No | **Yes (London)** | No | **Yes (London)** |
 | Nearest region to UK | DE / FI | London | Paris / Amsterdam | London |
 | Cloud firewall | Yes | Host-level only | Yes (stateful) | Yes (stateful) |
 | CLI | `hcloud` | None for ordering | `scw` | `vultr-cli` |
 | Terraform | Yes | No (VPS ordering) | Yes | Yes |
 | Transfer | 20 TB | Unmetered | Generous (verify) | 3 TB |
-| Image build change from today | None (CAX) | arm64 to amd64 | arm64 to amd64 | arm64 to amd64 |
-| Biggest risk | Availability / signup screening | Spec and price uncertainty | Price | Plan may not exist |
+| Image build change from today | arm64 to amd64 (none if CAX) | arm64 to amd64 | arm64 to amd64 | arm64 to amd64 |
+| Biggest risk | Cheap tier out of stock; at the ceiling | Spec and price uncertainty | Price | Plan may not exist |
 
 ## Cost over time (approximate, 4 GB single VM, before backups storage)
 
 | | Monthly | 12 months |
 |---|---|---|
-| Hetzner | €5 to 7 | €60 to 85 |
+| Hetzner CPX22 | €19.99 net (~€24 to 25 with IPv4 + VAT) | €240 to 300 |
+| Hetzner CAX11 (if back in stock) | ~€6.49 to 8 | €78 to 96 |
 | OVHcloud | ~€10 (€8.49 on a 12-month term) | ~€100, or ~€85 committed (verify) |
 | Scaleway | €15 to 18 | €180 to 215 |
 | Vultr | $20 | $240 |
@@ -47,12 +49,15 @@ was $24 to 29.
 ## Pros and cons
 
 ### Hetzner
-- Pros: cheapest by a wide margin; ARM keeps the current image build;
-  NVMe, 20 TB transfer; excellent CLI and Terraform provider; first-class
-  primary IPs and snapshots.
-- Cons: no UK region; April 2026 price rise of about 30%; cheap plans
-  reported "currently not available"; signup fraud-screening can delay or
-  refuse new accounts.
+- Pros: 80 GB NVMe and 20 TB transfer on CPX22; excellent CLI and Terraform
+  provider; first-class primary IPs and snapshots. The Cost-Optimized tier,
+  if it returns, would be the cheapest by a wide margin and keeps the ARM
+  image build.
+- Cons: no UK region; **every Cost-Optimized plan is currently not
+  available**, so today's option is CPX22 at €19.99 net (about 3x the
+  planned price, at the ceiling and over it with IPv4 and VAT); April 2026
+  price rise of about 30%; signup fraud-screening can delay or refuse new
+  accounts.
 
 ### OVHcloud
 - Pros: London region; second cheapest; unmetered traffic; anti-DDoS
@@ -75,29 +80,32 @@ was $24 to 29.
 
 ## Recommendation
 
-1. **Hetzner CAX11 in Falkenstein or Helsinki**, if the plan is orderable
-   and EU rather than UK hosting is acceptable. It is a quarter to a third of
-   the cost of the others and needs no image build change. Have OVH London
-   ready as the fallback if signup or stock is a problem.
-2. **OVH VPS-2 in London** if UK data residency matters, or Hetzner is not
-   available. Confirm specs and London pricing at checkout before relying on
-   the estimate.
+1. **OVH VPS-2 in London**, about half the price of the others and the only
+   cheap option with a UK region. Confirm specs and London pricing at
+   checkout before relying on the estimate; they are the least verified
+   figures here.
+2. **Hetzner CPX22 (Falkenstein or Helsinki)** if you want Hetzner's
+   tooling, NVMe and 80 GB disk, and EU rather than UK hosting is fine. At
+   €19.99 net it is at the ceiling and over it once IPv4 and VAT are added.
+   If the Cost-Optimized CAX11 (€6.49) returns to stock, it jumps to first
+   place on price and needs no image build change.
 3. **Scaleway DEV1-M** if developer experience, a real firewall and
-   Terraform-managed infrastructure matter more than saving about €8 to 10
-   per month.
+   Terraform-managed infrastructure matter more than saving about €5 per
+   month over OVH.
 4. **Vultr** only if its $20 4 GB plan is actually orderable in London; it
    buys nothing over OVH except an easier signup.
 
 The deciding questions, in order:
-1. Do you need UK-hosted data? If yes: OVH or Vultr. If no: Hetzner.
-2. Is Hetzner's cheap plan orderable today? If yes: choose it.
+1. Do you need UK-hosted data? If yes: OVH or Vultr. If no: OVH or Hetzner.
+2. Is Hetzner's Cost-Optimized tier (CAX11/CX23) orderable? If yes, it is
+   the cheapest. If not, Hetzner is only a tooling preference.
 3. Do you want Terraform-managed infrastructure? Rules out OVH.
 
 ## Variant: frontend stays on AWS
 
 Any provider above can be combined with keeping the SPA on S3 + CloudFront
 (see "Variant: keep the frontend on AWS" in `COMMON.md`). Add about $1 to 2 a
-month: Hetzner roughly €7 to 9, OVH €11 to 12, Scaleway €16 to 20, Vultr
+month: Hetzner CPX22 roughly €21 to 26 (CAX11, if back: €8 to 10), OVH €11 to 12, Scaleway €16 to 20, Vultr
 about $21 to 22 (which breaks the $20 ceiling). It keeps `deploy-frontend.sh`
 and the frontend Terraform modules, gives a global CDN and keeps the site up
 during a VM outage, and makes rollback trivial. It costs you a permanent

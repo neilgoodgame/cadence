@@ -4,31 +4,38 @@ Provider-specific steps only. Architecture, compose, Caddyfile, backups and
 the AWS-to-VM data migration are in `COMMON.md`. Ranked against the others
 in `COMPARISON.md`.
 
-## Cost (checked 2026-10-21 via web search; secondary sources, verify on hetzner.com/cloud)
+## Cost (read from hetzner.com/cloud plan pages on 2026-10-26)
 
-Hetzner raised prices about 30% on 2026-04-01, so older figures you may
-have seen (CX22 at about €3) are stale.
+Hetzner raised prices about 30% on 2026-04-01. The site's VAT selector was
+set to 0%, so the prices below are net; the "from" price probably excludes
+the IPv4 address, so confirm the total in the console's order summary.
 
-| Plan | Spec | List price (ex VAT) | Notes |
-|---|---|---|---|
-| CX23 | 2 vCPU x86, 4 GB, 40 GB | ~€3.99 to 5.99 | Replaced CX22. Sources disagree on the exact figure. |
-| CAX11 | 2 vCPU **ARM**, 4 GB, 40 GB | ~€4.49 to 5.99 | Same architecture as the current Graviton image. |
-| CAX21 | 4 vCPU ARM, 8 GB, 80 GB | roughly double CAX11 | Headroom option. |
-| IPv4 address | | +€0.50 | Per server; IPv6-only is free but not viable here (see below). |
-| Backups (optional) | | +20% of server price | Provider-side convenience only. |
-| Snapshots | | ~€0.01/GB/month | Before migrations and upgrades. |
+| Line | Plan | Spec | List price | Status |
+|---|---|---|---|---|
+| Cost-Optimized | CX23 | 2 vCPU Intel/AMD, 4 GB, 40 GB | €5.99 | **not available** |
+| Cost-Optimized | CAX11 (ARM) | 2 vCPU, 4 GB, 40 GB | €6.49 | **not available** |
+| Cost-Optimized | CX33 | 4 vCPU, 8 GB, 80 GB | €8.99 | **not available** |
+| Cost-Optimized | CAX21 (ARM) | 4 vCPU, 8 GB, 80 GB | €10.99 | **not available** |
+| Regular Performance | CPX12 | 1 vCPU AMD, 2 GB, 40 GB | €11.99 | orderable; too small |
+| **Regular Performance** | **CPX22** | **2 vCPU AMD, 4 GB, 80 GB NVMe** | **€19.99** | **orderable; the option to use** |
+| Regular Performance | CPX32 | 4 vCPU AMD, 8 GB, 160 GB | €35.99 | orderable; over budget |
+| General Purpose | CCX13 | 2 dedicated vCPU, 8 GB | €43.49 | over budget |
+| IPv4 address | | | ~€0.50 | Per server; IPv6-only is not viable here |
+| Backups (optional) | | | +20% of server price | Provider-side convenience only |
+| Snapshots | | | ~€0.01/GB/month | Before migrations and upgrades |
 
-**Estimated total: about €5 to 7 per month plus UK VAT (20%) if billed as a
-UK consumer, so roughly £5 to 8.** Traffic: 20 TB included in EU regions.
-Comfortably the cheapest provider here.
+**Today's choice is CPX22 at €19.99 per month**, net of VAT and probably
+before the IPv4 charge. With IPv4 and 20% UK VAT (if billed as a UK
+consumer) expect roughly €24 to 25, which is **over a $20 ceiling**.
+Traffic: 20 TB included in EU regions.
 
-**Availability warning:** a late-August 2026 check reported the CX and CAX
-"Cost-Optimized" plans as *currently not available* on Hetzner's own page,
-with a limited-availability notice open since 2026-06-26. Check that the
-plan can be ordered in your chosen location before planning around it. The
-fallback is the next dedicated-vCPU (CCX) or regular-performance (CPX) tier,
-which costs more (CPX21-class is typically in the €8 to 12 range) but would
-still beat every other provider here.
+**Availability:** every Cost-Optimized plan, including all the ARM ones, was
+marked "not available" on Hetzner's own page. Earlier web searches reported
+a limited-availability notice open since 2026-06-26, so this is not a
+short blip. That tier would have been the cheapest provider here (CAX11 at
+€6.49, about a third of CPX22). Re-check the page before ordering; if stock
+returns, CAX11 (ARM, reuses the arm64 image build) is the better choice and
+the rest of this document applies unchanged.
 
 ## Location and architecture
 
@@ -36,9 +43,9 @@ still beat every other provider here.
   Ashburn, Hillsboro. **No UK region.** Expect about 20 to 35 ms from the UK
   to Germany or Finland, which is irrelevant for this app. If you need UK
   data residency, use OVH or Vultr instead.
-- Choose **CAX11 (ARM)** to reuse the `linux/arm64` image build that
-  `deploy-backend.sh` already does. Choose **CX23 (x86)** if CAX stock is
-  unavailable; then build `linux/amd64`. The Dockerfile's base images
+- **CPX22 is AMD x86**, so build `linux/amd64` images (`COMMON.md`
+  deploy snippet). If CAX11 (ARM) comes back in stock, choose it to reuse the
+  `linux/arm64` build that `deploy-backend.sh` already does. The Dockerfile's base images
   (`eclipse-temurin:25`, `postgres:16`, `caddy:2`) are all multi-arch.
 - GDPR: EU-hosted, fine for an EU/UK audience; document it in your privacy
   notice. Hetzner is a German company with DPA available in the console.
@@ -55,7 +62,7 @@ hcloud firewall add-rule cadence --direction in --protocol tcp --port 80  --sour
 hcloud firewall add-rule cadence --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0 --source-ips ::/0
 hcloud firewall add-rule cadence --direction in --protocol tcp --port 22  --source-ips <YOUR_IP>/32
 
-hcloud server create --name cadence --type cax11 --image ubuntu-24.04 \
+hcloud server create --name cadence --type cpx22 --image ubuntu-24.04 \
     --location fsn1 --ssh-key neil --firewall cadence
 ```
 
@@ -89,14 +96,17 @@ about 40 lines replaces `modules/ec2` and `modules/vpc`. Not written.
 ## Provider-specific pros and cons
 
 Pros
-- By far the lowest price: roughly a quarter to a third of the others.
-- ARM (CAX) matches the existing image; one fewer build-pipeline change.
+- The cheap tier (CAX11 at €6.49) would be roughly a third of the others'
+  price if it returns to stock. CPX22 is merely in line with them.
+- If CAX returns, ARM matches the existing image; one fewer build change.
 - Generous transfer (20 TB), fast NVMe storage, good CLI and Terraform provider.
 - Primary IPs, firewalls and snapshots are first-class.
 
 Cons
 - **No UK region**; EU only (or US).
-- Recent price rises and reported limited availability of the cheap plans.
+- **All Cost-Optimized plans are currently not available**, leaving CPX22 at
+  €19.99 (net), about 3x the planned price and at the budget ceiling.
+- A price rise of about 30% in April 2026; x86 only while CAX is out.
 - Fraud-screening on new accounts can delay or reject signups, sometimes
   asking for ID; plan for it.
 - Smaller managed-service ecosystem (irrelevant here since we self-manage).
