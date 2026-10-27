@@ -17,6 +17,9 @@ browser to the backend's REST API.
     missed (a strict react-hooks config, among other things).
   - `npm test` (vitest).
 - Build: `npm run build`.
+- E2E (Playwright, real browser against a real backend): `npm run test:e2e` — see
+  `e2e/README.md`. Separate from `npm test` (vitest); not part of the required pre-push
+  trio above unless you touched a flow it covers.
 - **Taming output**: `npx tsc -b` with many errors, and a full `npm test`
   run, can both print hundreds of lines. Redirect to a file instead of
   letting it print directly: `npx tsc -b > tsc.log 2>&1; echo $?` (scratch
