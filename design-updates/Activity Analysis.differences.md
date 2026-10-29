@@ -85,3 +85,10 @@ None of these rows were applied to the mock.
 
 Left as the mock's own: "Big Loop in Watopia" (a virtual ride, Sweet Spot 3×12
 match). The live activity in the screenshot is a 35 km trail long run.
+
+## Live app changes since 21 Oct 2026 (refreshed 29 Oct)
+
+The live screenshots were retaken at 1380px (Teal) against `main` at 9158def with the local backend rebuilt from the same commit. **The mock itself has not been updated for these changes.**
+
+- The header now has the gear link in the title row: "+ Assign shoes" on runs and "+ Assign bike" on rides (#461). When gear is assigned it shows its mileage; no local activity has gear, so only the unassigned state was captured.
+- All four live screenshots retaken: `activity-analysis-{run,bike}-{workout,no-workout}-live-1380.png`. Same activities as before; the page heights changed slightly with the header row.

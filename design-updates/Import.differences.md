@@ -38,3 +38,11 @@ These are behaviour differences, not layout ones, so the mock is unchanged.
 
 Sample file names (for example "2026-09-26-parkrun.fit") are illustrative and
 were left as is. The live page has no data on first load.
+
+## Live app changes since 21 Oct 2026 (refreshed 29 Oct)
+
+The live screenshots were retaken at 1380px (Teal) against `main` at 9158def with the local backend rebuilt from the same commit. **The mock itself has not been updated for these changes.**
+
+- A Garmin Connect sync card now sits above the file drop zone (#457, #463). Not connected, it reads "Pull activities straight from Garmin Connect - connect your account in Preferences"; the connected state (sync button, queue) was not captured because no Garmin key is linked locally.
+- Session details fields were added to the import flow (`SessionDetailsFields`); not captured.
+- Screenshot: `import-live-1380.png`.

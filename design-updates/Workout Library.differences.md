@@ -34,3 +34,10 @@ not, because every sample workout in the mock has a folder.
 Not re-anchored. The mock shows 8 sample workouts in 4 folders; the live
 library has 76 workouts, one folder view ("All workouts 76") and 30 tags such
 as yorkshire-2026, marathon-pace and aerobic. See the live screenshot.
+
+## Live app changes since 21 Oct 2026 (refreshed 29 Oct)
+
+The live screenshots were retaken at 1380px (Teal) against `main` at 9158def with the local backend rebuilt from the same commit. **The mock itself has not been updated for these changes.**
+
+- Tag filter chips and tag chips on workout cards are now colour-coded to match activities (#469, #471); tags come from one shared catalog (#467).
+- Screenshot: `workout-library-live-1380.png`. The workout editor changed too (#458); `workout-designer-live-1380.png` was retaken.

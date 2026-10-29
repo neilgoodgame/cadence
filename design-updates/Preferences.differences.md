@@ -81,3 +81,12 @@ tokens. Its text was compared instead.
 | Export data | Close | Live adds an **Include profile & zone settings** option ("age, weight, FTP, LTHR, max/resting HR, and your zone percentages. Importing this file elsewhere will overwrite that account's own values with these."). Otherwise the same Export and Import sections |
 
 None of these tab differences were applied to the mock yet.
+
+## Live app changes since 21 Oct 2026 (refreshed 29 Oct)
+
+The live screenshots were retaken at 1380px (Teal) against `main` at 9158def with the local backend rebuilt from the same commit. **The mock itself has not been updated for these changes.**
+
+- New **Garmin** tab between Sharing and API tokens (#457, #459): Personal API key, Garmin account email (defaults to the Cadence email), key expiry date, activities per sync (50, max 100), Connect button, and links to connect.garmin.com and Garmin's instructions. Screenshot: `preferences-garmin-live-1380.png` (it shows the account email address in the field).
+- A small "backend unknown" build line now sits under the tab list (#466); it reads the deployed git SHA, and is "unknown" for a local build.
+- Tags tab copy now says tags are shared between activities and workouts, and renames merge them (#467). Screenshot: `preferences-tags-live-1380.png`.
+- Profile tab retaken: `preferences-profile-live-1380.png`. The mock has no Garmin tab or build line.

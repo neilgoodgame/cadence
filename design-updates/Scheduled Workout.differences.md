@@ -42,3 +42,9 @@ Not applied (described only):
 
 Left as the mock's own: "Long run — easy", scheduled by Mara Køhl, 27 Sep
 2026, AM, note "Hilly route if dry".
+
+## Live app changes since 21 Oct 2026 (refreshed 29 Oct)
+
+The live screenshots were retaken at 1380px (Teal) against `main` at 9158def with the local backend rebuilt from the same commit. **The mock itself has not been updated for these changes.**
+
+- The live page gained a Garmin push option (#458, #463). Not retaken: the local account has no scheduled workout and no linked Garmin account, and I did not create data in your local database.

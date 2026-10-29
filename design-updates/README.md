@@ -70,3 +70,7 @@ carry a "Races" item that links nowhere for this reason.
 - The live pages were swept for inner scroll boxes that a full-page capture would cut off. Only one was found: the Splits table on Race Detail, which was expanded for its capture. The Activities list loads 30 rows at a time, so it was scrolled to the end first.
 - A scroll-and-join test on a long Preferences tab (three scrolled frames stitched) gave the same height as the full-page capture, with the same content.
 - Not kept: a live API tokens capture (it shows the start of real tokens). Not captured: the shared public race page and the email-verification success states (see `Screens without mocks.md`).
+
+## Refresh of 29 Oct 2026
+
+Live screenshots retaken for Import, Preferences (Profile, Tags, new Garmin tab), Gear (cards and table), Activity Analysis (four samples), Workout Library, Workout Designer, and new ones for the Calendar schedule dialog and workout picker. Each affected `*.differences.md` has a section listing what changed. The mocks themselves were not updated and the existing `-design-updated` screenshots are from 21 Oct.

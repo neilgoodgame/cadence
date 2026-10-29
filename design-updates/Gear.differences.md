@@ -54,3 +54,12 @@ Retire". The Role column is empty for every shoe in this account.
 There is no mock for the Table view, and no live capture of the bikes table: the
 account has no bikes, so the live Bikes section shows "No bikes in the
 garage yet." even in Table view. The mock still has cards only.
+
+## Live app changes since 21 Oct 2026 (refreshed 29 Oct)
+
+The live screenshots were retaken at 1380px (Teal) against `main` at 9158def with the local backend rebuilt from the same commit. **The mock itself has not been updated for these changes.**
+
+- Cards and Table views now show mileage accrued from linked activities, and an Activities section per item (#460-#463). In the Table view each shoe row is followed by an "Activities" sub-row (empty for every local shoe, because the local activities are not linked to gear).
+- Gear column headers in the table: Name, Role, Distance, Limit, Worn, Status.
+- Local data has no bikes ("No bikes in the garage yet"), so bike cards and the bike table were not captured.
+- Screenshots: `gear-live-1380.png`, `gear-table-live-1380.png`.

@@ -43,3 +43,10 @@ totals such as PLANNED 747 TSS · 12.3h). Re-anchoring would need per-entry
 planned durations and TSS that the live grid does not display, so the mock's
 data model would have to change. See `screenshots/calendar-live-1380.png` for
 the real month.
+
+## Live app changes since 21 Oct 2026 (refreshed 29 Oct)
+
+The live screenshots were retaken at 1380px (Teal) against `main` at 9158def with the local backend rebuilt from the same commit. **The mock itself has not been updated for these changes.**
+
+- **Schedule workout** now opens a dialog with a "Choose a workout..." button that opens a filterable picker (#470): search box, All / Bike / Run filter, grid of workout cards with sport, duration, TSS and a zone-coloured profile.
+- Screenshots: `calendar-schedule-modal-live-1380.png` (dialog) and `calendar-workout-picker-live-1380.png` (picker). The mock has neither.
