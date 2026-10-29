@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+  input.cad,input.cadt{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
+  input.cad{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
+  input.cadt{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
+  input.cad:focus,input.cadt:focus{border-color:var(--ember,#ec4a26);}
+  input.cad::placeholder,input.cadt::placeholder{color:var(--ink3,#9a958d);font-weight:400;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+  <!-- ============ SIDEBAR (AppShell.tsx) ============ -->
+  <div style="width:228px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:24px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+      <div style="width:24px;height:24px;border-radius:7px;background:var(--ember,#ec4a26);"></div>
+      <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <a href="../Dashboard.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Dashboard</a>
+      <div style="padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink,#1b1a18);background:var(--elev,#faf9f7);">Activities</div>
+      <a href="../Best Efforts.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Best efforts</a>
+      <a href="../Import.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Import</a>
+      <a href="../Calendar.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Calendar</a>
+      <a href="#" title="No Races mock yet" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);"><svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5V2"></path><path d="M3.5 2.5h8.5l-2 3 2 3H3.5"></path></svg>Races</a>
+      <a href="../Workout Library.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Workouts</a>
+      <a href="../Gear.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Gear</a>
+      <a href="../Preferences.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Preferences</a>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><a href="../Admin.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Admin</a></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+      <a href="../Login.dc.html" style="display:block;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
+
+  <div data-screen-label="activities" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
+      </div>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="../Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <div aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink3,#9a958d);flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="../Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0;">
+      <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Activities</h1>
+
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input value="{{ q }}" onInput="{{ onQ }}" placeholder="Search — e.g. avg hr > 140 and sport = run" style="flex:1;min-width:0;padding:12px 14px;border-radius:10px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;outline:none;"/>
+        <div onClick="{{ openHelp }}" title="Search field reference" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink3,#9a958d);font-size:15px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;">?</div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <sc-for list="{{ sportFilters }}" as="f" hint-placeholder-count="6">
+            <div onClick="{{ f.onClick }}" style="{{ f.style }}">{{ f.label }}</div>
+          </sc-for>
+        </div>
+        <div onClick="{{ toggleMatched }}" style="{{ matchedStyle }}">Matched only</div>
+      </div>
+
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <sc-for list="{{ tags }}" as="t" hint-placeholder-count="5">
+          <span onClick="{{ t.onClick }}" style="{{ t.style }}">
+            <sc-if value="{{ t.showDot }}" hint-placeholder-val="{{ true }}"><span style="{{ t.dotStyle }}"></span></sc-if>
+            {{ t.name }}
+            <span style="{{ t.countStyle }}">{{ t.count }}</span>
+            <sc-if value="{{ t.unused }}" hint-placeholder-val="{{ false }}"><span onClick="{{ t.onDelete }}" title="Delete unused tag" style="{{ t.delStyle }}">×</span></sc-if>
+          </span>
+        </sc-for>
+        <sc-if value="{{ hasSelectedTag }}" hint-placeholder-val="{{ false }}"><div onClick="{{ clearTag }}" style="border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;color:var(--ink3,#9a958d);cursor:pointer;">Clear ×</div></sc-if>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Sort by</span>
+        <sc-for list="{{ sortBtns }}" as="s" hint-placeholder-count="8">
+          <div onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.label }}</div>
+        </sc-for>
+        <sc-if value="{{ sortOverridden }}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;color:var(--ink3,#9a958d);">overridden by query</span></sc-if>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <sc-for list="{{ cards }}" as="a" hint-placeholder-count="6">
+          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+              <a href="../Activity Analysis.dc.html" style="flex:1;min-width:0;cursor:pointer;text-decoration:none;color:inherit;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap;">
+                  <span style="{{ a.sportPill }}">{{ a.sportLabel }}</span>
+                  <span style="font-size:12px;color:var(--ink3,#9a958d);">{{ a.date }}</span>
+                  <sc-if value="{{ a.matched }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:#2fa66a;font-weight:600;">✓ Matched</span></sc-if>
+                  <sc-if value="{{ a.indoor }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:var(--ink3,#9a958d);background:var(--elev,#faf9f7);padding:1px 6px;border-radius:6px;">Indoor</span></sc-if>
+                </div>
+                <div style="font-weight:700;font-size:15px;margin-bottom:4px;color:var(--ink,#1b1a18);">{{ a.name }}</div>
+                <div style="font-size:13px;color:var(--ink2,#6f6b65);">{{ a.summary }}</div>
+                <sc-if value="{{ a.hasTags }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                    <sc-for list="{{ a.tagChips }}" as="tg" hint-placeholder-count="1">
+                      <span style="{{ tg.style }}"><span style="{{ tg.dot }}"></span>{{ tg.name }}</span>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </a>
+              <div style="text-align:right;display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);">{{ a.hr }}</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ember,#ec4a26);">TSS {{ a.tss }}</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <sc-if value="{{ a.hasLinked }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(61,127,214,0.1);color:#3d7fd6;">{{ a.linkedCount }} linked</span></sc-if>
+                  <div onClick="{{ a.toggle }}" style="color:var(--ink3,#9a958d);font-size:12px;cursor:pointer;">{{ a.toggleLabel }}</div>
+                </div>
+              </div>
+            </div>
+            <sc-if value="{{ a.expanded }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line,#e6e2dc);">
+                <sc-if value="{{ a.hasHr }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:10px;">
+                    <sc-for list="{{ a.zones }}" as="z" hint-placeholder-count="5"><div style="{{ z.bar }}"></div></sc-for>
+                  </div>
+                  <div style="display:flex;gap:14px;flex-wrap:wrap;">
+                    <sc-for list="{{ a.zones }}" as="z" hint-placeholder-count="5">
+                      <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2,#6f6b65);"><span style="{{ z.dot }}"></span>{{ z.label }}</div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ a.noHr }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--ink3,#9a958d);">No heart rate data for this activity.</div></sc-if>
+                <sc-if value="{{ a.hasLinked }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line,#e6e2dc);">
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:10px;">OTHER ACTIVITIES MATCHED TO THIS WORKOUT</div>
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                      <sc-for list="{{ a.linked }}" as="l" hint-placeholder-count="2">
+                        <a href="../Activity Analysis.dc.html" style="display:flex;align-items:center;gap:14px;padding:9px 12px;border-radius:9px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);text-decoration:none;">
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--ink,#1b1a18);width:78px;flex-shrink:0;">{{ l.date }}</span>
+                          <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);flex:1;min-width:0;">{{ l.name }}</span>
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink3,#9a958d);">{{ l.metric }}</span>
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);">TSS {{ l.tss }}</span>
+                        </a>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div style="color:var(--ink3,#9a958d);font-size:13px;">No activities match.</div></sc-if>
+      </div>
+
+      <!-- CQL search help modal (SearchHelpModal) -->
+      <sc-if value="{{ helpOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeHelp }}" style="position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:80px 16px 0;">
+          <div onClick="{{ stop }}" style="background:var(--card,#fff);backdrop-filter:blur(14px);border-radius:14px;border:1px solid var(--line,#e6e2dc);box-shadow:0 24px 64px rgba(0,0,0,0.35),0 8px 24px rgba(0,0,0,0.2);padding:28px 32px;width:100%;max-width:640px;max-height:80vh;overflow-y:auto;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+              <h2 style="margin:0;font-size:17px;font-weight:800;color:var(--ink,#1b1a18);">Search reference</h2>
+              <div onClick="{{ closeHelp }}" style="font-size:20px;color:var(--ink3,#9a958d);cursor:pointer;line-height:1;">×</div>
+            </div>
+            <div style="margin-bottom:24px;">
+              <div style="font-size:11px;font-weight:700;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:10px;">Fields</div>
+              <div style="display:grid;grid-template-columns:auto 1fr auto;column-gap:16px;font-size:13px;">
+                <div style="padding:4px 0 8px;color:var(--ink3,#9a958d);font-weight:600;font-size:11px;border-bottom:1px solid var(--line,#e6e2dc);">Field</div>
+                <div style="padding:4px 0 8px;color:var(--ink3,#9a958d);font-weight:600;font-size:11px;border-bottom:1px solid var(--line,#e6e2dc);">Aliases</div>
+                <div style="padding:4px 0 8px;color:var(--ink3,#9a958d);font-weight:600;font-size:11px;border-bottom:1px solid var(--line,#e6e2dc);">Unit / Values</div>
+                <sc-for list="{{ cqlFields }}" as="f" hint-placeholder-count="13">
+                  <div style="padding:7px 0;font-weight:700;white-space:nowrap;border-bottom:1px solid var(--line,#e6e2dc);color:var(--ink,#1b1a18);">{{ f.label }}</div>
+                  <div style="padding:7px 0;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ f.aliases }}</div>
+                  <div style="padding:7px 0;border-bottom:1px solid var(--line,#e6e2dc);color:var(--ink3,#9a958d);font-size:12px;">{{ f.unit }}</div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="margin-bottom:24px;">
+              <div style="font-size:11px;font-weight:700;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:10px;">Operators</div>
+              <div style="display:flex;gap:20px;flex-wrap:wrap;">
+                <div><div style="font-size:11px;color:var(--ink3,#9a958d);margin-bottom:5px;">Numeric</div><div style="display:flex;gap:6px;"><sc-for list="{{ numOps }}" as="o" hint-placeholder-count="6"><code style="font-family:'JetBrains Mono',monospace;font-size:13px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);border-radius:4px;padding:2px 7px;color:var(--ink,#1b1a18);">{{ o }}</code></sc-for></div></div>
+                <div><div style="font-size:11px;color:var(--ink3,#9a958d);margin-bottom:5px;">Text (= exact, ~ contains)</div><div style="display:flex;gap:6px;"><sc-for list="{{ textOps }}" as="o" hint-placeholder-count="2"><code style="font-family:'JetBrains Mono',monospace;font-size:13px;background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);border-radius:4px;padding:2px 7px;color:var(--ink,#1b1a18);">{{ o }}</code></sc-for></div></div>
+              </div>
+              <div style="margin-top:10px;font-size:12px;color:var(--ink3,#9a958d);">Combine clauses with <code style="font-family:'JetBrains Mono',monospace;">AND</code> or <code style="font-family:'JetBrains Mono',monospace;">OR</code>. Sort with <code style="font-family:'JetBrains Mono',monospace;">orderby &lt;field&gt; asc|desc</code>.</div>
+            </div>
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:10px;">Examples</div>
+              <div style="display:flex;flex-direction:column;gap:7px;">
+                <sc-for list="{{ cqlExamples }}" as="e" hint-placeholder-count="10">
+                  <div style="display:flex;align-items:baseline;gap:12px;"><code style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ember,#ec4a26);white-space:nowrap;flex-shrink:0;">{{ e.q }}</code><span style="font-size:12px;color:var(--ink3,#9a958d);">{{ e.desc }}</span></div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;coachAccount&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', q: '', sport: 'all', tag: null, matched: false, help: false, sortKey: 'date', sortDir: 'desc', expanded: {}, deleted: [] };
+
+  shellState = { theme: 'lab', ctxOpen: false, ctxAthlete: null, emailSent: false };
+  coached = ['Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'];
+  shellVals() {
+    const st = { ...this.shellState, ...this.state };
+    const t = st.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const on = { textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--elev,#f2f6f7)' };
+    const off = { ...on, color: 'var(--ink3,#9a958d)', background: 'transparent' };
+    return {
+      isAdmin: true,
+      themeVars: { '--sport-ride': '#3d7fd6', '--sport-run': '#ec4a26', '--sport-swim': '#2fa66a', '--sport-walk': '#8b95a1', '--sport-row': '#1b8fa8', '--sport-multisport': '#a86fd6', '--sport-transition': '#6b7683', '--role-coach': '#c084fc', ...({ lab, cockpit, day }[t] || lab) },
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: t === 'lab' ? on : off, cockpitBtn: t === 'cockpit' ? on : off, dayBtn: t === 'day' ? on : off,
+      pName: 'Neil Goodgame', chipMeta: 'FTP 260 \u00b7 LTHR 154', isCoach: !!this.props.coachAccount,
+      ctxOpen: st.ctxOpen, toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })), closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: st.ctxAthlete ? 'Coaching \u00b7 ' + st.ctxAthlete : 'My training',
+      ctxItems: [null, ...this.coached].map(id => { const act = (st.ctxAthlete || null) === id; return { name: id || 'My training', onClick: () => this.setState({ ctxOpen: false, ctxAthlete: id }), rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: act ? 700 : 500, color: 'var(--ink,#1b1a18)', background: act ? 'var(--elev,#faf9f7)' : 'transparent' } }; }),
+      showEmailBanner: false, emailNotSent: true, emailBannerText: '', resendEmail: () => {},
+    };
+  }
+
+  palette = ['#3d7fd6', '#2fa66a', '#f0a02e', '#e0442e', '#ec4a26', '#9a6ad0', '#8b95a1', '#0d9488', '#f0823a', '#7e858e'];
+  tagColor(n) { let h = 0; for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) | 0; return this.palette[Math.abs(h) % this.palette.length]; }
+  tagRgba(n, a) { const x = parseInt(this.tagColor(n).slice(1), 16); return 'rgba(' + ((x >> 16) & 255) + ', ' + ((x >> 8) & 255) + ', ' + (x & 255) + ', ' + a + ')'; }
+  sportC = { bike: 'var(--sport-ride)', run: 'var(--sport-run)', swim: 'var(--sport-swim)', walk: 'var(--sport-walk)', row: 'var(--sport-row)', multisport: 'var(--sport-multisport)' };
+  sportL = { bike: 'Ride', run: 'Run', swim: 'Swim', walk: 'Walk', row: 'Row', multisport: 'Multisport' };
+  allTags = [{ id: 't1', name: 'Auto-matched', count: 50 }, { id: 't2', name: 'yorkshire-2026', count: 32 }, { id: 't3', name: 'VO2 max', count: 29 }, { id: 't4', name: 'aerobic', count: 24 }, { id: 't5', name: 'easy', count: 21 }, { id: 't6', name: 'long-run', count: 17 }, { id: 't7', name: 'marathon-pace', count: 15 }, { id: 't8', name: 'trail', count: 14 }, { id: 't9', name: 'Long Run', count: 10 }, { id: 't10', name: 'marathon', count: 10 }, { id: 't11', name: 'Climb Portal', count: 9 }, { id: 't12', name: 'deload', count: 7 }, { id: 't13', name: 'marathon-build', count: 7 }, { id: 't14', name: 'Threshold', count: 7 }, { id: 't15', name: 'HEAT TRAINING', count: 6 }, { id: 't16', name: 'race-week', count: 5 }, { id: 't17', name: 'FTP Test', count: 4 }, { id: 't18', name: 'taper', count: 4 }, { id: 't19', name: 'autumn-2026', count: 3 }, { id: 't20', name: 'power-based', count: 3 }, { id: 't21', name: 'progression', count: 2 }, { id: 't22', name: 'Sweat Spot', count: 2 }, { id: 't23', name: 'bike', count: 1 }, { id: 't24', name: 'Brick', count: 1 }, { id: 't25', name: 'Fartlek', count: 1 }, { id: 't26', name: 'Hot day', count: 1 }, { id: 't27', name: 'over-under', count: 1 }, { id: 't28', name: 'shakeout', count: 1 }, { id: 't29', name: 'steady', count: 1 }, { id: 't30', name: 'strides', count: 1 }];
+  acts = [
+    { id: 'a1', sport: 'run', date: 'Sun 18 Oct', name: 'Run on 2026-10-18', dur: '3:20:58', km: 42.4, w: 261, temp: 14, hum: 55, hr: 138, tss: 293, tags: [], zones: [3, 20, 41, 30, 6] },
+    { id: 'a2', sport: 'run', date: 'Sat 17 Oct', name: 'Pre-race Shakeout \u2014 20min w/ Strides', dur: '35:04', km: 4.0, w: 213, temp: 13, hum: 47, hr: 116, tss: 36, workout: 'w3', tags: ['Auto-matched', 'race-week', 'shakeout', 'yorkshire-2026'], zones: [5, 24, 40, 28, 3] },
+    { id: 'a3', sport: 'run', date: 'Thu 15 Oct', name: '8km: 2km WU + 2x2km @ MP (2km recovery)', dur: '44:05', km: 8.4, w: 252, temp: 23, hum: 47, hr: 120, tss: 61, workout: 'w4', tags: ['Auto-matched', 'marathon-pace', 'race-week', 'yorkshire-2026'], zones: [5, 24, 40, 28, 3] },
+    { id: 'a4', sport: 'bike', date: 'Wed 14 Oct', name: 'Easy Bike \u2014 60min Zone 2', dur: '1:05:09', km: 32.1, w: 191, hr: 111, tss: 61, indoor: true, workout: 'w2', tags: ['aerobic', 'Auto-matched', 'easy', 'race-week', 'yorkshire-2026'], zones: [8, 41, 36, 15, 0] },
+    { id: 'a5', sport: 'run', date: 'Tue 13 Oct', name: '13km w/ 4x1km @ Marathon Pace', dur: '1:11:21', km: 13.0, w: 239, temp: 16, hum: 50, hr: 117, tss: 89, workout: 'w5', tags: ['Auto-matched', 'marathon-pace', 'race-week', 'yorkshire-2026'], zones: [5, 24, 40, 28, 3] },
+    { id: 'a6', sport: 'bike', date: 'Mon 12 Oct', name: 'Easy Bike \u2014 60min Zone 2', dur: '1:05:03', km: 32.8, w: 192, hr: 111, tss: 60, indoor: true, workout: 'w2', tags: ['aerobic', 'Auto-matched', 'easy', 'race-week', 'yorkshire-2026'], zones: [8, 41, 36, 15, 0] },
+    { id: 'a7', sport: 'run', date: 'Sun 11 Oct', name: '3-2-1 Progression Run (MP / HM / 10k power)', dur: '1:00:39', km: 12.0, w: 269, temp: 17, hum: 40, hr: 124, tss: 95, workout: 'w6', tags: ['Auto-matched', 'marathon-pace', 'progression', 'taper', 'yorkshire-2026'], zones: [5, 24, 40, 28, 3] },
+    { id: 'a8', sport: 'run', date: 'Sat 10 Oct', name: '3x2km @ Marathon Pace', dur: '1:07:46', km: 13.2, w: 262, temp: 12, hum: 49, hr: 125, tss: 102, workout: 'w7', tags: ['Auto-matched', 'marathon-pace', 'taper', 'yorkshire-2026'], zones: [5, 24, 40, 28, 3] },
+    { id: 'a9', sport: 'bike', date: 'Sat 10 Oct', name: 'Bike on 2026-10-10', dur: '1:05:03', km: 33.3, w: 183, hr: 106, tss: 55, indoor: true, tags: [], zones: [8, 41, 36, 15, 0] },
+  ];
+  cqlFields = [['Avg HR', 'hr \u00b7 bpm \u00b7 heartrate', 'bpm'], ['Max HR', 'maxhr \u00b7 hrmax', 'bpm'], ['TSS', 'tss \u00b7 load \u00b7 stress', 'number'], ['Distance', 'distance \u00b7 dist \u00b7 km', 'km'], ['Duration', 'duration \u00b7 time \u00b7 mins', 'min'], ['Power', 'power \u00b7 watts \u00b7 np', 'W'], ['Pace', 'pace', '/km'], ['Temperature', 'temperature \u00b7 temp \u00b7 airtemp', '\u00b0C'], ['Humidity', 'humidity \u00b7 hum', '%'], ['Sport', 'sport \u00b7 type \u00b7 discipline', 'run \u00b7 bike \u00b7 swim \u00b7 row \u00b7 multisport'], ['Environment', 'environment \u00b7 env', 'indoor \u00b7 outdoor'], ['Name', 'name \u00b7 title', 'text'], ['Tag', 'tag', 'tag <name> \u2014 no operator; quote multi-word names, e.g. tag "Heat Training"; combine with AND / OR']].map(([label, aliases, unit]) => ({ label, aliases, unit }));
+  cqlExamples = [['hr > 150 and sport = run', 'Hard runs'], ['tss > 200 orderby tss desc', 'High-stress sessions, hardest first'], ['distance > 20 sport = run', 'Long runs over 20 km'], ['power > 260 env = indoor', 'Strong indoor rides'], ['temperature > 25 orderby temperature desc', 'Hot-weather runs, hottest first'], ['name ~ marathon', 'Activities with "marathon" in the name'], ['tag race', 'All tagged as race'], ['tag "Heat Training"', 'Multi-word tag name (quoted)'], ['tag race OR tag parkrun', 'Tagged as race or parkrun'], ['duration > 120 tss < 100', 'Long but low-stress sessions']].map(([q, desc]) => ({ q, desc }));
+  chip(a) { return { border: '1px solid var(--line,#e6e2dc)', borderRadius: '8px', padding: '6px 12px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: a ? 'var(--elev,#faf9f7)' : 'transparent', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)' }; }
+  renderVals() {
+    const st = this.state;
+    const ZC = ['#8b95a1', '#3d7fd6', '#2fa66a', '#f0a02e', '#e0442e'], ZN = ['Z1 Recovery', 'Z2 Aerobic', 'Z3 Tempo', 'Z4 Threshold', 'Z5 VO2 Max'];
+    const overridden = /\b(orderby|order(ed)?\s+by|sort(ed)?\s+by)\b/i.test(st.q);
+    let list = this.acts.filter(a => (st.sport === 'all' || a.sport === st.sport) && (!st.matched || a.workout) && (!st.tag || a.tags.includes(st.tag)));
+    const cards = list.map(a => {
+      const linked = a.workout ? list.filter(b => b.workout === a.workout && b.id !== a.id) : [];
+      const ex = !!st.expanded[a.id];
+      const summary = [a.dur, a.km.toFixed(1) + ' km', a.w ? a.w + ' W' : null, a.temp != null ? a.temp + '\u00b0C' : null, a.hum != null ? a.hum + '% RH' : null].filter(Boolean).join(' \u00b7 ');
+      return {
+        ...a, sportLabel: this.sportL[a.sport], summary, matched: !!a.workout, indoor: !!a.indoor,
+        sportPill: { fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: this.sportC[a.sport], color: '#fff' },
+        hasTags: a.tags.length > 0,
+        tagChips: a.tags.map(t => ({ name: t, style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 600, color: 'var(--ink2,#6f6b65)', background: this.tagRgba(t, 0.1), border: '1px solid ' + this.tagRgba(t, 0.3), padding: '2px 8px 2px 6px', borderRadius: '20px' }, dot: { width: '6px', height: '6px', borderRadius: '50%', background: this.tagColor(t), flexShrink: 0 } })),
+        hr: a.hr != null ? a.hr + ' bpm' : '\u2014',
+        hasLinked: linked.length > 0, linkedCount: linked.length,
+        linked: linked.map(b => ({ date: b.date, name: b.name, metric: b.km.toFixed(1) + ' km', tss: b.tss })),
+        expanded: ex, toggleLabel: ex ? 'Hide zones' : 'Show zones',
+        toggle: () => this.setState(s => ({ expanded: { ...s.expanded, [a.id]: !s.expanded[a.id] } })),
+        hasHr: !!a.zones, noHr: !a.zones,
+        zones: (a.zones || []).map((p, i) => ({ label: ZN[i] + ' \u00b7 ' + p + '%', bar: { width: p + '%', background: ZC[i] }, dot: { width: '8px', height: '8px', borderRadius: '2px', background: ZC[i] } })),
+      };
+    });
+    const tags = this.allTags.filter(t => !st.deleted.includes(t.id)).map(t => {
+      const act = st.tag === t.name, c = this.tagColor(t.name);
+      return { name: t.name, count: t.count, showDot: !act, unused: t.count === 0,
+        onClick: () => this.setState({ tag: act ? null : t.name }),
+        onDelete: (e) => { e.stopPropagation(); this.setState(s => ({ deleted: [...s.deleted, t.id] })); },
+        style: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 600, padding: act ? '6px 12px' : '6px 7px 6px 10px', borderRadius: '20px', cursor: 'pointer', color: act ? '#fff' : 'var(--ink2,#6f6b65)', background: act ? c : this.tagRgba(t.name, 0.1), border: '1px solid ' + (act ? c : this.tagRgba(t.name, 0.3)) },
+        dotStyle: { width: '6px', height: '6px', borderRadius: '50%', background: c, flexShrink: 0 },
+        countStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 600, padding: '0 5px', borderRadius: '20px', background: act ? 'rgba(255,255,255,0.25)' : 'var(--canvas,#f3f1ee)', color: act ? '#fff' : 'var(--ink3,#9a958d)' },
+        delStyle: { color: act ? '#fff' : 'var(--ink3,#9a958d)', cursor: 'pointer', fontSize: '13px', lineHeight: '1', fontWeight: 700, opacity: 0.8 } };
+    });
+    const sorts = [['date', 'Date'], ['tss', 'TSS'], ['distance', 'Distance'], ['duration', 'Duration'], ['hr', 'Avg HR'], ['power', 'Power'], ['temperature', 'Temp'], ['humidity', 'Humidity']];
+    return {
+      ...this.shellVals(),
+      q: st.q, onQ: (e) => this.setState({ q: e.target.value }),
+      helpOpen: st.help, openHelp: () => this.setState({ help: true }), closeHelp: () => this.setState({ help: false }), stop: (e) => e.stopPropagation(),
+      sportFilters: [['all', 'All'], ['bike', 'Ride'], ['run', 'Run'], ['swim', 'Swim'], ['row', 'Row'], ['multisport', 'Multisport']].map(([v, l]) => ({ label: l, onClick: () => this.setState({ sport: v }), style: this.chip(st.sport === v) })),
+      matchedStyle: this.chip(st.matched), toggleMatched: () => this.setState(s => ({ matched: !s.matched })),
+      tags, hasSelectedTag: !!st.tag, clearTag: () => this.setState({ tag: null }),
+      sortBtns: sorts.map(([k, l]) => { const a = !overridden && st.sortKey === k; return { label: l + (a ? (st.sortDir === 'asc' ? ' \u2191' : ' \u2193') : ''), style: { ...this.chip(a), opacity: overridden ? 0.5 : 1 }, onClick: () => { if (overridden) return; this.setState(s => s.sortKey === k ? { sortDir: s.sortDir === 'asc' ? 'desc' : 'asc' } : { sortKey: k, sortDir: 'desc' }); } }; }),
+      sortOverridden: overridden,
+      cards, isEmpty: cards.length === 0,
+      cqlFields: this.cqlFields, cqlExamples: this.cqlExamples, numOps: ['>', '<', '>=', '<=', '=', '!='], textOps: ['=', '~'],
+    };
+  }
+}
+</script>
+</body>
+</html>

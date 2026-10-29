@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+  input.cad,input.cadt{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
+  input.cad{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
+  input.cadt{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
+  input.cad:focus,input.cadt:focus{border-color:var(--ember,#ec4a26);}
+  input.cad::placeholder,input.cadt::placeholder{color:var(--ink3,#9a958d);font-weight:400;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+  <!-- ============ SIDEBAR (AppShell.tsx) ============ -->
+  <div style="width:228px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:24px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+      <div style="width:24px;height:24px;border-radius:7px;background:var(--ember,#ec4a26);"></div>
+      <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <a href="../Dashboard.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Dashboard</a>
+      <a href="../Activities.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Activities</a>
+      <a href="../Best Efforts.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Best efforts</a>
+      <a href="../Import.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Import</a>
+      <a href="../Calendar.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Calendar</a>
+      <a href="#" title="No Races mock yet" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);"><svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5V2"></path><path d="M3.5 2.5h8.5l-2 3 2 3H3.5"></path></svg>Races</a>
+      <a href="../Workout Library.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Workouts</a>
+      <div style="padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink,#1b1a18);background:var(--elev,#faf9f7);">Gear</div>
+      <a href="../Preferences.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Preferences</a>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><a href="../Admin.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Admin</a></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+      <a href="../Login.dc.html" style="display:block;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
+
+  <div data-screen-label="gear" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
+      </div>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="../Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <div aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink3,#9a958d);flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="../Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0;">
+      <div style="display:flex;flex-direction:column;gap:36px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Gear</h1>
+        <!-- Cards / Table view switch (GearScreen.tsx). The Table view (BikesTable / ShoesTable) is not mocked yet. -->
+        <div style="display:flex;border:1px solid var(--line,#e6e2dc);border-radius:8px;overflow:hidden;">
+          <div style="padding:6px 12px;font-size:13px;font-weight:600;background:var(--ember,#ec4a26);color:#fff;">Cards</div>
+          <div title="Table view is not mocked yet" style="padding:6px 12px;font-size:13px;font-weight:600;background:var(--card,#fff);color:var(--ink2,#6f6b65);">Table</div>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Bikes</h2>
+          <div onClick="{{ toggleAddBike }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink,#1b1a18);">{{ addBikeLabel }}</div>
+        </div>
+        <sc-if value="{{ addingBike }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+            <input placeholder="Name" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <select style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"><option>road</option><option>indoor</option><option>gravel</option><option>tt</option></select>
+            <input placeholder="Groupset (optional)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <div onClick="{{ toggleAddBike }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add</div>
+          </div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <sc-for list="{{ bikes }}" as="b" hint-placeholder-count="2">
+            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+              <div onClick="{{ b.toggle }}" style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer;">
+                <div>
+                  <div style="font-size:16px;font-weight:700;color:var(--ink,#1b1a18);">{{ b.name }}</div>
+                  <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ b.meta }}</div>
+                </div>
+                <sc-if value="{{ b.expanded }}" hint-placeholder-val="{{ false }}"><span style="{{ b.statusStyle }}">{{ b.status }}</span></sc-if>
+              </div>
+              <div style="display:flex;gap:18px;margin-top:12px;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink2,#6f6b65);flex-wrap:wrap;">
+                <span>{{ b.km }} km</span><span>{{ b.hours }}h</span><span>{{ b.rides }} rides</span><span>{{ b.compCount }} components</span>
+              </div>
+              <sc-if value="{{ b.expanded }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:14px;">
+                  <sc-for list="{{ b.components }}" as="c" hint-placeholder-count="3">
+                    <div style="display:flex;flex-direction:column;gap:6px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);">
+                      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">
+                        <div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ c.name }}<span style="color:var(--ink3,#9a958d);font-weight:400;"> · {{ c.model }}</span></div>
+                        <div style="display:flex;gap:10px;align-items:center;">
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ c.km }} / {{ c.limit }} km</span>
+                          <span style="{{ c.pill }}">{{ c.label }}</span>
+                        </div>
+                      </div>
+                      <div style="height:6px;border-radius:4px;background:var(--elev,#faf9f7);overflow:hidden;"><div style="{{ c.bar }}"></div></div>
+                      <div style="display:flex;gap:12px;">
+                        <div onClick="{{ c.logService }}" style="color:var(--ember,#ec4a26);font-size:12px;font-weight:600;cursor:pointer;">Log replacement</div>
+                        <div style="color:#e0442e;font-size:12px;font-weight:600;cursor:pointer;">Remove</div>
+                      </div>
+                      <sc-if value="{{ c.confirming }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:12px;color:var(--ink2,#6f6b65);display:flex;gap:6px;">Resets this component's distance to 0. <span onClick="{{ c.confirm }}" style="color:var(--ember,#ec4a26);font-weight:700;cursor:pointer;">Confirm</span> <span onClick="{{ c.cancel }}" style="color:var(--ink3,#9a958d);cursor:pointer;">Cancel</span></div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                  <div style="color:var(--ember,#ec4a26);font-size:12px;font-weight:600;margin-top:10px;cursor:pointer;">+ Add component</div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Run shoes</h2>
+          <div style="display:flex;gap:8px;">
+            <sc-if value="{{ hasUnset }}" hint-placeholder-val="{{ true }}"><div title="Set the default wear limit (from Preferences) on every shoe that doesn't have one" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink,#1b1a18);">Set wear limit ({{ unsetCount }})</div></sc-if>
+            <div title="Import panel is not mocked yet" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink,#1b1a18);">Import from CSV</div>
+            <div onClick="{{ toggleAddShoe }}" style="border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink,#1b1a18);">{{ addShoeLabel }}</div>
+          </div>
+        </div>
+        <sc-if value="{{ shoeStepSearch }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+            <input value="{{ shoeQuery }}" onInput="{{ onShoeQuery }}" placeholder="Search the shoe catalog (e.g. Nike Vaporfly)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <sc-if value="{{ hasResults }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;border:1px solid var(--line,#e6e2dc);border-radius:8px;overflow:hidden;">
+                <sc-for list="{{ results }}" as="r" hint-placeholder-count="3"><div onClick="{{ r.pick }}" style="text-align:left;padding:8px 12px;border-top:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;color:var(--ink,#1b1a18);cursor:pointer;">{{ r.name }}</div></sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ hasQuery }}" hint-placeholder-val="{{ false }}"><div onClick="{{ startNewModel }}" style="align-self:flex-start;color:var(--ink3,#9a958d);font-size:13px;cursor:pointer;">+ Can't find your shoe? Add it to the catalog</div></sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ shoeStepNewModel }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+            <span style="font-size:13px;color:var(--ink3,#9a958d);">Add a new shoe model to the catalog</span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input placeholder="Manufacturer (e.g. Nike)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+              <input placeholder="Model (e.g. Pegasus)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+              <input placeholder="Version (e.g. 41, optional)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;width:150px;"/>
+              <div onClick="{{ pickNewModel }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add to catalog</div>
+              <div onClick="{{ backToSearch }}" style="color:var(--ink3,#9a958d);font-size:13px;padding:8px 4px;cursor:pointer;">Cancel</div>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ shoeStepDetails }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ pickedModel }}</span>
+            <input placeholder="Colourway" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <input placeholder="Custom name (optional)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;"/>
+            <input placeholder="Limit km" type="number" value="600" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;box-sizing:border-box;width:100px;"/>
+            <div onClick="{{ toggleAddShoe }}" style="border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Add</div>
+            <div onClick="{{ backToSearch }}" style="color:var(--ink3,#9a958d);font-size:13px;cursor:pointer;">Back</div>
+          </div>
+        </sc-if>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;">
+          <sc-for list="{{ shoes }}" as="s" hint-placeholder-count="4">
+            <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
+              <svg width="76" height="76" viewBox="0 0 76 76">
+                <circle cx="38" cy="38" r="30" fill="none" stroke="var(--line,#e6e2dc)" stroke-width="6"></circle>
+                <circle cx="38" cy="38" r="30" fill="none" stroke="{{ s.color }}" stroke-width="6" stroke-dasharray="188.5" stroke-dashoffset="{{ s.offset }}" stroke-linecap="round" transform="rotate(-90 38 38)"></circle>
+                <text x="38" y="38" text-anchor="middle" dominant-baseline="middle" font-size="14" font-weight="700" fill="var(--ink,#1b1a18)">{{ s.pct }}</text>
+              </svg>
+              <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);">{{ s.name }}</div>
+              <sc-if value="{{ s.hasRole }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ s.role }}</div></sc-if>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ s.km }} / {{ s.limit }} km</div>
+              <span style="{{ s.pill }}">{{ s.label }}</span>
+              <div style="display:flex;gap:14px;">
+                <div title="Photo timeline is not mocked yet" style="color:var(--ink3,#9a958d);font-size:12px;font-weight:600;cursor:pointer;">Photos</div>
+                <div onClick="{{ s.retire }}" style="color:var(--ink3,#9a958d);font-size:12px;font-weight:600;cursor:pointer;">Retire</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;coachAccount&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', addingBike: false, shoeStep: null, shoeQuery: '', picked: null, expanded: { b1: true }, confirming: null, retired: [], resets: {} };
+
+  shellState = { theme: 'lab', ctxOpen: false, ctxAthlete: null, emailSent: false };
+  coached = ['Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'];
+  shellVals() {
+    const st = { ...this.shellState, ...this.state };
+    const t = st.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const on = { textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--elev,#f2f6f7)' };
+    const off = { ...on, color: 'var(--ink3,#9a958d)', background: 'transparent' };
+    return {
+      isAdmin: true,
+      themeVars: { '--sport-ride': '#3d7fd6', '--sport-run': '#ec4a26', '--sport-swim': '#2fa66a', '--sport-walk': '#8b95a1', '--sport-row': '#1b8fa8', '--sport-multisport': '#a86fd6', '--sport-transition': '#6b7683', '--role-coach': '#c084fc', ...({ lab, cockpit, day }[t] || lab) },
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: t === 'lab' ? on : off, cockpitBtn: t === 'cockpit' ? on : off, dayBtn: t === 'day' ? on : off,
+      pName: 'Neil Goodgame', chipMeta: 'FTP 260 \u00b7 LTHR 154', isCoach: !!this.props.coachAccount,
+      ctxOpen: st.ctxOpen, toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })), closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: st.ctxAthlete ? 'Coaching \u00b7 ' + st.ctxAthlete : 'My training',
+      ctxItems: [null, ...this.coached].map(id => { const act = (st.ctxAthlete || null) === id; return { name: id || 'My training', onClick: () => this.setState({ ctxOpen: false, ctxAthlete: id }), rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: act ? 700 : 500, color: 'var(--ink,#1b1a18)', background: act ? 'var(--elev,#faf9f7)' : 'transparent' } }; }),
+      showEmailBanner: false, emailNotSent: true, emailBannerText: '', resendEmail: () => {},
+    };
+  }
+
+  bikes = [
+    { id: 'b1', name: 'Canyon Ultimate CF SLX', kind: 'road', groupset: 'Shimano Ultegra Di2', km: '8,412', hours: 286, rides: 214, comps: [['c1', 'Chain', 'Ultegra CN-M8100', 2780, 3000], ['c2', 'Cassette', '11-30', 5120, 12000], ['c3', 'Tyres', 'GP5000 28mm', 3520, 4000], ['c4', 'Brake pads', 'L05A', 1200, 3500]] },
+    { id: 'b2', name: 'Wahoo KICKR setup', kind: 'indoor', groupset: '', km: '3,960', hours: 131, rides: 118, comps: [['c5', 'Chain', 'KMC X11', 3050, 3000]] },
+  ];
+  shoesData = [
+    ['s1', 'HOKA Mach 5 Red', '', 579, 0], ['s2', 'Nike Pegasus Plus', '', 357, 0], ['s3', 'HOKA Mach 6', '', 198, 0],
+    ['s4', 'Saucony Endorphin Edge 3', '', 522, 0], ['s5', 'ASICS Superblast 2', '', 18, 0], ['s6', 'Nike Vomero Plus', '', 616, 0],
+    ['s7', 'Nike Vaporfly 3 red', '', 0, 600],
+    // state examples kept from the original mock (the live account has no shoe near or past its limit):
+    ['s8', 'Nike Vaporfly 3', 'Race & threshold', 212, 400], ['s9', 'ASICS Novablast 4', 'Daily trainer', 548, 650], ['s10', 'Hoka Clifton 9', 'Recovery', 702, 700],
+  ];
+  catalog = ['Nike Vaporfly 3', 'Nike Pegasus 41', 'Nike Zoom Fly 6', 'Nike Invincible 3'];
+  st(km, lim) { const f = lim > 0 ? km / lim : 0; return f >= 1 ? 'replace' : f >= 0.85 ? 'soon' : 'good'; }
+  C = { good: '#2fa66a', soon: '#f0a02e', replace: '#e0442e' };
+  L = { good: 'Good', soon: 'Soon', replace: 'Replace' };
+  pill(c) { return { fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', color: c, background: c + '22' }; }
+  renderVals() {
+    const s = this.state;
+    const bikes = this.bikes.map(b => {
+      const comps = b.comps.map(([id, name, model, km0, lim]) => { const km = s.resets[id] ? 0 : km0; const k = this.st(km, lim); return { id, name, model, km, limit: lim, k, label: this.L[k], pill: this.pill(this.C[k]), bar: { height: '100%', width: Math.min(km / lim, 1) * 100 + '%', background: this.C[k] }, confirming: s.confirming === id, logService: () => this.setState({ confirming: id }), confirm: () => this.setState(x => ({ confirming: null, resets: { ...x.resets, [id]: true } })), cancel: () => this.setState({ confirming: null }) }; });
+      const ks = comps.map(c => c.k); const worst = ks.includes('replace') ? 'replace' : ks.includes('soon') ? 'soon' : 'good';
+      return { name: b.name, meta: b.kind.toUpperCase() + (b.groupset ? ' \u00b7 ' + b.groupset : ''), km: b.km, hours: b.hours, rides: b.rides, compCount: comps.length, expanded: !!s.expanded[b.id], toggle: () => this.setState(x => ({ expanded: { ...x.expanded, [b.id]: !x.expanded[b.id] } })), components: comps, status: worst === 'good' ? 'All healthy' : this.L[worst], statusStyle: this.pill(this.C[worst]) };
+    });
+    const shoes = this.shoesData.filter(x => !s.retired.includes(x[0])).map(([id, name, role, km, lim]) => { const k = this.st(km, lim); const f = lim > 0 ? Math.min(km / lim, 1) : 0; return { name, role, hasRole: !!role, km, limit: lim, color: this.C[k], offset: (188.5 * (1 - f)).toFixed(1), pct: Math.round(f * 100) + '%', label: k === 'good' ? 'In rotation' : k === 'soon' ? 'Near limit' : 'Retire now', pill: this.pill(this.C[k]), retire: () => this.setState(x => ({ retired: [...x.retired, id] })) }; });
+    const q = s.shoeQuery.trim().toLowerCase();
+    const results = q ? this.catalog.filter(c => c.toLowerCase().includes(q)).map(n => ({ name: n, pick: () => this.setState({ shoeStep: 'details', picked: n }) })) : [];
+    return {
+      ...this.shellVals(),
+      addingBike: s.addingBike, addBikeLabel: s.addingBike ? 'Cancel' : '+ Add bike', toggleAddBike: () => this.setState(x => ({ addingBike: !x.addingBike })),
+      bikes, shoes, hasUnset: this.shoesData.some(x => x[4] === 0), unsetCount: this.shoesData.filter(x => x[4] === 0).length,
+      addShoeLabel: s.shoeStep ? 'Cancel' : '+ Add shoes', toggleAddShoe: () => this.setState(x => ({ shoeStep: x.shoeStep ? null : 'search', shoeQuery: '', picked: null })),
+      shoeStepSearch: s.shoeStep === 'search', shoeStepNewModel: s.shoeStep === 'newModel', shoeStepDetails: s.shoeStep === 'details',
+      shoeQuery: s.shoeQuery, onShoeQuery: (e) => this.setState({ shoeQuery: e.target.value }), results, hasResults: results.length > 0, hasQuery: !!q,
+      startNewModel: () => this.setState({ shoeStep: 'newModel' }), pickNewModel: () => this.setState({ shoeStep: 'details', picked: 'New model' }), backToSearch: () => this.setState({ shoeStep: 'search', picked: null }),
+      pickedModel: s.picked || '',
+    };
+  }
+}
+</script>
+</body>
+</html>
