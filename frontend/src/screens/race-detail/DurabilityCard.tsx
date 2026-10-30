@@ -94,7 +94,7 @@ export function DurabilityCard({
                   <div style={{ fontSize: 12, color: "var(--ink2)" }}>
                     {fmtThreshold(durability.sport, cell.threshold)} · <span className="mono">{cell.power} W</span>
                   </div>
-                  <div style={{ position: "relative", width: "100%", height: 6, borderRadius: 3, background: "var(--canvas)", marginTop: 3 }}>
+                  <div style={{ position: "relative", width: "100%", height: 6, borderRadius: 3, background: "var(--canvas-solid)", marginTop: 3 }}>
                     <div style={{ width: `${pct}%`, height: "100%", background: "var(--ember)", borderRadius: 3 }} />
                     {comparisonPct != null && (
                       <div style={{ position: "absolute", left: `${comparisonPct}%`, top: -2, bottom: -2, width: 2, background: "var(--ink2)" }} />

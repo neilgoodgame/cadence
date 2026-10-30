@@ -385,7 +385,7 @@ export function ActivitiesScreen() {
                     fontWeight: 600,
                     padding: "0 5px",
                     borderRadius: 20,
-                    background: active ? "rgba(255,255,255,0.25)" : "var(--canvas)",
+                    background: active ? "rgba(255,255,255,0.25)" : "var(--canvas-solid)",
                     color: active ? "#fff" : "var(--ink3)",
                   }}
                 >

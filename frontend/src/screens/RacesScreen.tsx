@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listRaces } from "../api/races";
 import type { Sport } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
+import { SegmentedControl } from "../components/SegmentedControl";
 import { AddRaceModal } from "./calendar/AddRaceModal";
 import { CurrentBlockCard } from "./races/CurrentBlockCard";
 import { PastRacesTable } from "./races/PastRacesTable";
@@ -14,20 +15,6 @@ const SPORT_FILTERS: { key: "all" | Sport; label: string }[] = [
   { key: "bike", label: "Bike" },
   { key: "multisport", label: "Multisport" },
 ];
-
-function segStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "5px 11px",
-    fontSize: 11.5,
-    fontWeight: 600,
-    borderRadius: 7,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-    boxShadow: active ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-  };
-}
 
 export function RacesScreen() {
   const { user } = useAuth();
@@ -54,13 +41,12 @@ export function RacesScreen() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-            {SPORT_FILTERS.map((s) => (
-              <div key={s.key} onClick={() => setSportFilter(s.key)} style={segStyle(s.key === sportFilter)}>
-                {s.label}
-              </div>
-            ))}
-          </div>
+          <SegmentedControl
+            size="sm"
+            options={SPORT_FILTERS.map((s) => ({ key: s.key, value: s.key, label: s.label }))}
+            value={sportFilter}
+            onChange={setSportFilter}
+          />
           <button
             onClick={() => setShowAddModal(true)}
             style={{ border: "none", borderRadius: 8, background: "var(--ember)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 16px", cursor: "pointer" }}

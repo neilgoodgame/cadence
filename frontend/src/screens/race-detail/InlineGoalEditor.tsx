@@ -61,7 +61,7 @@ export function InlineGoalEditor({
   if (predictionS != null) presets.push({ label: "Predicted", seconds: predictionS });
 
   return (
-    <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--canvas)", border: "1px solid var(--line)" }}>
+    <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--canvas-solid)", border: "1px solid var(--line)" }}>
       <input
         autoFocus
         value={value}

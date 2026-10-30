@@ -560,7 +560,7 @@ export function Header({ activity }: { activity: Activity }) {
                             padding: "5px 10px",
                             borderRadius: 20,
                             cursor: "pointer",
-                            background: "var(--canvas)",
+                            background: "var(--canvas-solid)",
                             border: "1px solid var(--line)",
                             color: "var(--ink2)",
                           }}

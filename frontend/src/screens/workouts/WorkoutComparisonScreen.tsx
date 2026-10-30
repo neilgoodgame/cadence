@@ -5,6 +5,7 @@ import { regenerateActivityLaps } from "../../api/activities";
 import { getWorkout, getWorkoutMatchComparison } from "../../api/workouts";
 import type { WorkoutMatchComparisonEntry } from "../../api/types";
 import { Card } from "../../components/Card";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { formatDate } from "../../lib/format";
 import { WorkoutComparisonChart, type ComparisonPoint } from "./WorkoutComparisonChart";
 
@@ -30,20 +31,6 @@ const METRICS: { key: MetricKey; label: string; format: (v: number) => string }[
 ];
 
 const GRID_COLS = "28px minmax(90px,0.9fr) minmax(140px,1.3fr) 0.55fr 0.5fr 0.6fr minmax(180px,1.8fr) 0.65fr 0.6fr 0.5fr";
-
-function segBtn(active: boolean) {
-  return {
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 600,
-    borderRadius: 7,
-    cursor: "pointer",
-    whiteSpace: "nowrap" as const,
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-    border: "none",
-  };
-}
 
 function ColHeaders() {
   const style = { fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--ink3)", textTransform: "uppercase" as const };
@@ -191,13 +178,13 @@ export function WorkoutComparisonScreen() {
       </div>
 
       <Card>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 14 }}>
-          {METRICS.map((m) => (
-            <button key={m.key} onClick={() => setMetric(m.key)} style={segBtn(metric === m.key)}>
-              {m.label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          fill={false}
+          style={{ flexWrap: "wrap", marginBottom: 14 }}
+          options={METRICS.map((m) => ({ key: m.key, value: m.key, label: m.label }))}
+          value={metric}
+          onChange={setMetric}
+        />
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 10 }}>
           {activeMetric.label} on {workoutQuery.data.name}
         </div>

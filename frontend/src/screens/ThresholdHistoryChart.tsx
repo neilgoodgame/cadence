@@ -2,6 +2,7 @@ import { extent } from "d3-array";
 import { scaleLinear, scaleTime } from "d3-scale";
 import { curveStepAfter, line } from "d3-shape";
 import { useMemo, useState } from "react";
+import { SegmentedControl } from "../components/SegmentedControl";
 import { formatPace } from "../lib/format";
 import { FIELDS } from "../lib/thresholdFields";
 import {
@@ -39,16 +40,6 @@ function fmtTooltipDate(d: Date): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-const rangeTabStyle = (active: boolean): React.CSSProperties => ({
-  padding: "5px 11px",
-  borderRadius: 7,
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: "pointer",
-  color: active ? "var(--ink)" : "var(--ink3)",
-  background: active ? "var(--card)" : "transparent",
-  boxShadow: active ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-});
 
 interface RealPoint extends ClippedPoint {
   real: true;
@@ -218,13 +209,13 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
             {bestLegendText}
           </span>
         </div>
-        <div style={{ display: "flex", gap: 3, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-          {RANGES.map((r) => (
-            <div key={r.key} onClick={() => { setRange(r.key); setHover(null); }} style={rangeTabStyle(r.key === range)}>
-              {r.label}
-            </div>
-          ))}
-        </div>
+        <SegmentedControl
+          size="sm"
+          fill={false}
+          options={RANGES.map((r) => ({ key: r.key, value: r.key, label: r.label }))}
+          value={range}
+          onChange={(r) => { setRange(r); setHover(null); }}
+        />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "22px 58px minmax(0,1fr)" }}>

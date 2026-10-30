@@ -4,22 +4,9 @@ import { listWorkouts } from "../../api/workouts";
 import type { Workout, WorkoutSport } from "../../api/types";
 import { sportColor, sportLabel } from "../../lib/sportColors";
 import { tagColor, tagRgba } from "../../lib/tagColors";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { fmtDuration } from "./workoutTree";
 import { MiniChart } from "./WorkoutLibraryScreen";
-
-const segBtn = (active: boolean) => ({
-  flex: 1,
-  textAlign: "center" as const,
-  padding: "5px 11px",
-  fontSize: 12,
-  fontWeight: 600,
-  borderRadius: 7,
-  cursor: "pointer",
-  whiteSpace: "nowrap" as const,
-  color: active ? "var(--ink)" : "var(--ink3)",
-  background: active ? "var(--card)" : "transparent",
-  border: "none",
-});
 
 export function WorkoutPickerModal({
   onSelect,
@@ -71,11 +58,16 @@ export function WorkoutPickerModal({
             placeholder="Search workouts…"
             style={{ flex: "1 1 180px", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", fontSize: 13 }}
           />
-          <div style={{ display: "flex", gap: 3, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-            <button onClick={() => setSport("all")} style={segBtn(sport === "all")}>All</button>
-            <button onClick={() => setSport("bike")} style={segBtn(sport === "bike")}>Bike</button>
-            <button onClick={() => setSport("run")} style={segBtn(sport === "run")}>Run</button>
-          </div>
+          <SegmentedControl
+            size="sm"
+            options={[
+              { key: "all", value: "all" as const, label: "All" },
+              { key: "bike", value: "bike" as const, label: "Bike" },
+              { key: "run", value: "run" as const, label: "Run" },
+            ]}
+            value={sport}
+            onChange={setSport}
+          />
         </div>
 
         {allTags.length > 0 && (

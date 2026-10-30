@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  a{color:inherit;}
+  input,select{font-family:inherit;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- ============ SIDEBAR (AppShell.tsx) ============ -->
+  <div style="width:228px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:24px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+      <div style="width:24px;height:24px;border-radius:7px;background:var(--ember,#ec4a26);"></div>
+      <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <a href="../Dashboard.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Dashboard</a>
+      <a href="../Activities.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Activities</a>
+      <a href="../Best Efforts.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Best efforts</a>
+      <a href="../Import.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Import</a>
+      <a href="../Calendar.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Calendar</a>
+      <a href="#" title="No Races mock yet" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);"><svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5V2"></path><path d="M3.5 2.5h8.5l-2 3 2 3H3.5"></path></svg>Races</a>
+      <div style="padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink,#1b1a18);background:var(--elev,#faf9f7);">Workouts</div>
+      <a href="../Gear.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Gear</a>
+      <a href="../Preferences.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Preferences</a>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><a href="../Admin.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Admin</a></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+      <a href="../Login.dc.html" style="display:block;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div data-screen-label="workout-library" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
+      </div>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="../Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <div aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink3,#9a958d);flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="../Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:32px 32px 0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+      <div>
+        <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Workout library</h1>
+        <div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:4px;font-family:'JetBrains Mono',monospace;">{{ countLabel }}</div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <div title="Import .zwo, .xml or .json" style="border:1px solid var(--line,#e6e2dc);border-radius:10px;background:var(--card,#fff);color:var(--ink2,#6f6b65);font-size:14px;font-weight:700;padding:10px 20px;cursor:pointer;">Import</div>
+        <a href="../Workout Designer.dc.html" style="text-decoration:none;border-radius:10px;background:var(--ember,#ec4a26);color:#fff;font-size:14px;font-weight:700;padding:10px 20px;">+ New workout</a>
+      </div>
+    </div>
+    <div style="padding:20px 32px 64px;display:grid;grid-template-columns:210px minmax(0,1fr);gap:20px;align-items:start;">
+
+      <!-- ============ LEFT RAIL: folders + tags ============ -->
+      <div style="display:flex;flex-direction:column;gap:18px;position:sticky;top:82px;">
+        <div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.05em;color:var(--ink3,#9a958d);text-transform:uppercase;margin-bottom:8px;">Folders</div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <sc-for list="{{ folders }}" as="f" hint-placeholder-count="4">
+              <div onClick="{{ f.onClick }}" style="{{ f.style }}">
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.name }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ f.count }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div onClick="{{ addFolder }}" style="margin-top:4px;padding:7px 10px;font-size:12px;font-weight:600;color:var(--ink3,#9a958d);cursor:pointer;">+ New folder</div>
+        </div>
+
+        <div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.05em;color:var(--ink3,#9a958d);text-transform:uppercase;margin-bottom:8px;">Tags</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <sc-for list="{{ tags }}" as="t" hint-placeholder-count="6">
+              <div onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.name }}</div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.05em;color:var(--ink3,#9a958d);text-transform:uppercase;margin-bottom:8px;">Sport</div>
+          <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+            <div onClick="{{ setSportAll }}" style="{{ sportAllBtn }}">All</div>
+            <div onClick="{{ setSportBike }}" style="{{ sportBikeBtn }}">Bike</div>
+            <div onClick="{{ setSportRun }}" style="{{ sportRunBtn }}">Run</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ RIGHT: search + grid ============ -->
+      <div style="min-width:0;">
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <div style="position:relative;flex:1;min-width:220px;">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.8" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);"><circle cx="7" cy="7" r="5"></circle><line x1="11" y1="11" x2="14.5" y2="14.5"></line></svg>
+            <input value="{{ searchValue }}" onChange="{{ onSearchChange }}" placeholder="Search workouts…" style="width:100%;padding:9px 14px 9px 34px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink,#1b1a18);font-size:13.5px;outline:none;" />
+          </div>
+          <select value="{{ sortValue }}" onChange="{{ onSortChange }}" style="padding:9px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink,#1b1a18);font-size:13px;font-weight:600;">
+            <option value="recent">Recently updated</option>
+            <option value="name">Name A–Z</option>
+            <option value="duration">Duration</option>
+            <option value="tss">TSS</option>
+            <option value="used">Most used</option>
+          </select>
+          <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+            <div onClick="{{ setViewGrid }}" style="{{ viewGridBtn }}">Grid</div>
+            <div onClick="{{ setViewList }}" style="{{ viewListBtn }}">List</div>
+          </div>
+        </div>
+
+        <!-- bulk action bar -->
+        <sc-if value="{{ hasSelection }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-radius:10px;background:var(--emberSoft,#fff5f1);border:1px solid rgba(236,74,38,0.25);margin-bottom:14px;">
+            <span style="font-size:13px;font-weight:700;color:var(--ember,#ec4a26);">{{ selectedCount }} selected</span>
+            <div style="width:1px;height:18px;background:rgba(236,74,38,0.25);"></div>
+            <div onClick="{{ bulkTag }}" style="font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Add tag</div>
+            <div onClick="{{ bulkExport }}" style="font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Export</div>
+            <div onClick="{{ bulkDelete }}" style="font-size:12.5px;font-weight:600;color:#c4332a;cursor:pointer;">Delete</div>
+            <div onClick="{{ clearSelection }}" style="margin-left:auto;font-size:12.5px;font-weight:600;color:var(--ink3,#9a958d);cursor:pointer;">Clear</div>
+          </div>
+        </sc-if>
+
+        <!-- ===== GRID VIEW ===== -->
+        <sc-if value="{{ isGridView }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;">
+            <sc-for list="{{ cards }}" as="w" hint-placeholder-count="6">
+              <div style="{{ w.cardStyle }}">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+                  <div onClick="{{ w.toggleSelect }}" style="{{ w.checkStyle }}"><sc-if value="{{ w.selected }}" hint-placeholder-val="{{ false }}">✓</sc-if></div>
+                  <div style="{{ w.sportBadgeStyle }}">{{ w.sportLabel }}</div>
+                </div>
+                <div onClick="{{ w.onOpen }}" style="cursor:pointer;">
+                  <div style="font-size:15px;font-weight:700;color:var(--ink,#1b1a18);margin:10px 0 2px;letter-spacing:-0.01em;">{{ w.name }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ w.metaLabel }}</div>
+                  <div style="height:44px;display:flex;align-items:flex-end;gap:1px;background:var(--elev,#faf9f7);border-radius:6px;overflow:hidden;margin-top:10px;">
+                    <sc-for list="{{ w.chart }}" as="seg" hint-placeholder-count="8">
+                      <div style="{{ seg.wrapStyle }}"><div style="{{ seg.barStyle }}"></div></div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:10px;">
+                  <sc-for list="{{ w.tags }}" as="tg" hint-placeholder-count="2">
+                    <span style="font-size:10.5px;font-weight:600;color:var(--ink3,#9a958d);background:var(--elev,#faf9f7);padding:3px 8px;border-radius:20px;">{{ tg.name }}</span>
+                  </sc-for>
+                  <select value="{{ w.folder }}" title="Move to folder" style="font-size:11.5px;font-weight:600;color:var(--ink2,#6f6b65);background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);border-radius:6px;padding:3px 6px;max-width:100%;font-family:'Hanken Grotesk',sans-serif;"><option value="">No folder</option><sc-for list="{{ folderOpts }}" as="fo" hint-placeholder-count="4"><option value="{{ fo.id }}">{{ fo.name }}</option></sc-for></select>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#e6e2dc);">
+                  <div onClick="{{ w.onAssign }}" style="{{ w.actionBtnStyle }}" title="Assign">⚲</div>
+                  <div onClick="{{ w.onDuplicate }}" style="{{ w.actionBtnStyle }}" title="Duplicate">⧉</div>
+                  <div onClick="{{ w.onExport }}" style="{{ w.actionBtnStyle }}" title="Export">↓</div>
+                  <div onClick="{{ w.onDelete }}" style="{{ w.actionBtnStyle }}margin-left:auto;color:#c4332a;" title="Delete">✕</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <!-- ===== LIST VIEW ===== -->
+        <sc-if value="{{ isListView }}" hint-placeholder-val="{{ false }}">
+          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
+            <div style="display:grid;grid-template-columns:26px minmax(150px,1.4fr) 80px 90px 70px 1fr 110px 150px;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink3,#9a958d);align-items:center;">
+              <span></span><span>Name</span><span>Sport</span><span>Duration</span><span>TSS</span><span>Tags</span><span>Folder</span><span style="text-align:right;">Actions</span>
+            </div>
+            <sc-for list="{{ cards }}" as="w" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:26px minmax(150px,1.4fr) 80px 90px 70px 1fr 110px 150px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
+                <div onClick="{{ w.toggleSelect }}" style="{{ w.checkStyle }}"><sc-if value="{{ w.selected }}" hint-placeholder-val="{{ false }}">✓</sc-if></div>
+                <div onClick="{{ w.onOpen }}" style="cursor:pointer;min-width:0;">
+                  <div style="font-size:13.5px;font-weight:700;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ w.name }}</div>
+                </div>
+                <div style="{{ w.sportBadgeStyle }}justify-self:start;">{{ w.sportLabel }}</div>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink2,#6f6b65);">{{ w.durationLabel }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--ink2,#6f6b65);">{{ w.tssLabel }}</span>
+                <div style="display:flex;flex-wrap:wrap;gap:4px;min-width:0;">
+                  <sc-for list="{{ w.tags }}" as="tg" hint-placeholder-count="2">
+                    <span style="font-size:10.5px;font-weight:600;color:var(--ink3,#9a958d);background:var(--elev,#faf9f7);padding:2px 7px;border-radius:20px;">{{ tg.name }}</span>
+                  </sc-for>
+                </div>
+                <select value="{{ w.folder }}" title="Move to folder" style="font-size:11.5px;font-weight:600;color:var(--ink2,#6f6b65);background:var(--elev,#faf9f7);border:1px solid var(--line,#e6e2dc);border-radius:6px;padding:3px 6px;max-width:100%;font-family:'Hanken Grotesk',sans-serif;"><option value="">No folder</option><sc-for list="{{ folderOpts }}" as="fo" hint-placeholder-count="4"><option value="{{ fo.id }}">{{ fo.name }}</option></sc-for></select>
+                <div style="display:flex;align-items:center;gap:5px;justify-self:end;">
+                  <div onClick="{{ w.onAssign }}" style="{{ w.actionBtnStyle }}" title="Assign">⚲</div>
+                  <div onClick="{{ w.onDuplicate }}" style="{{ w.actionBtnStyle }}" title="Duplicate">⧉</div>
+                  <div onClick="{{ w.onExport }}" style="{{ w.actionBtnStyle }}" title="Export">↓</div>
+                  <div onClick="{{ w.onDelete }}" style="{{ w.actionBtnStyle }}color:#c4332a;" title="Delete">✕</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;padding:60px 20px;color:var(--ink3,#9a958d);">
+            <div style="font-size:14px;font-weight:600;color:var(--ink2,#6f6b65);">No workouts match your filters</div>
+            <div style="font-size:12.5px;margin-top:4px;">Try clearing the search, folder, or tag filters.</div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ASSIGN MODAL ============ -->
+  <sc-if value="{{ assignOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeAssign }}" style="position:fixed;inset:0;background:rgba(10,12,16,0.55);display:flex;align-items:center;justify-content:center;z-index:50;">
+      <div onClick="{{ stopProp }}" style="width:380px;max-width:90vw;background:var(--card,#fff);border-radius:16px;padding:22px 24px;border:1px solid var(--line,#e6e2dc);">
+        <div style="font-size:16px;font-weight:800;color:var(--ink,#1b1a18);margin-bottom:4px;">Assign “{{ assignTargetName }}”</div>
+        <div style="font-size:12.5px;color:var(--ink3,#9a958d);margin-bottom:16px;">Choose athletes and a date.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+          <sc-for list="{{ assignAthleteChips }}" as="a" hint-placeholder-count="3">
+            <div onClick="{{ a.toggle }}" style="{{ a.style }}">{{ a.name }}</div>
+          </sc-for>
+        </div>
+        <input type="date" value="{{ assignDate }}" onChange="{{ onAssignDateChange }}" style="width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;margin-bottom:18px;" />
+        <div style="display:flex;gap:8px;">
+          <div onClick="{{ closeAssign }}" style="flex:1;text-align:center;padding:9px 0;border-radius:8px;border:1px solid var(--line,#e6e2dc);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Cancel</div>
+          <div onClick="{{ confirmAssign }}" style="flex:1;text-align:center;padding:9px 0;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Assign</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;coachAccount&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  seedWorkouts() {
+    const mk = (name, sport, dur, tss, steps, tags, chart, folder) => ({ id: name, name, sport, dur, tss, steps, tags, chart, folder, uses: Math.floor(Math.random() * 12) });
+    return [
+      mk('VO2 Max · 5×5', 'bike', 3300, 78, 12, ['intervals', 'race prep'], [40,100,100,40,45,118,118,45,45,118,118,45], 'vo2'),
+      mk('Threshold 3×10', 'bike', 3000, 71, 8, ['intervals'], [40,100,95,95,45,95,95,45,95,95,45], 'threshold'),
+      mk('Tempo 20min', 'bike', 2400, 52, 3, ['base'], [40,100,84,84,84,45], 'base'),
+      mk('Easy Endurance', 'bike', 5400, 60, 1, ['recovery', 'base'], [65,65,65,65,65,65], 'base'),
+      mk('5×5min Run VO2', 'run', 3000, 68, 12, ['intervals', 'run'], [40,105,105,40,45,105,105,45,45,105,105,45], 'vo2'),
+      mk('Progressive Long Run', 'run', 6300, 82, 4, ['long run', 'race prep'], [50,70,70,85,85,95,95], 'race'),
+      mk('Recovery Spin', 'bike', 1800, 22, 1, ['recovery'], [45,45,45,45], 'base'),
+      mk('Hill Repeats 6×3', 'run', 2700, 64, 12, ['intervals', 'run'], [40,110,110,45,45,110,110,45], 'vo2'),
+    ];
+  }
+  loadSaved() {
+    try {
+      const raw = localStorage.getItem('cadence_library_workouts');
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  state = {
+    theme: 'lab', sport: 'all', folder: 'all', tag: null, search: '', sort: 'recent', view: 'grid',
+    selected: {}, assignOpen: false, assignTarget: null, assignAthletes: {}, assignDate: '2026-08-04',
+    workouts: [...this.seedWorkouts(), ...this.loadSaved()],
+  };
+
+  fmtDuration(sec) {
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  renderVals() {
+    const st = this.state;
+    const isLab = st.theme === 'lab';
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)' };
+    const seg = (active) => ({ flex: 1, textAlign: 'center', padding: '5px 11px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', whiteSpace: 'nowrap', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent', boxShadow: active ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+
+    const folderDefs = [
+      { id: 'all', name: 'All workouts' },
+      { id: 'vo2', name: 'VO2 Max' },
+      { id: 'threshold', name: 'Threshold' },
+      { id: 'base', name: 'Base / Endurance' },
+      { id: 'race', name: 'Race Prep' },
+    ];
+    const allTags = Array.from(new Set(st.workouts.flatMap(w => w.tags))).sort();
+
+    let list = st.workouts.filter(w =>
+      (st.sport === 'all' || w.sport === st.sport) &&
+      (st.folder === 'all' || w.folder === st.folder) &&
+      (!st.tag || w.tags.includes(st.tag)) &&
+      (!st.search || w.name.toLowerCase().includes(st.search.toLowerCase()))
+    );
+    const sorters = {
+      recent: (a, b) => 0, name: (a, b) => a.name.localeCompare(b.name),
+      duration: (a, b) => b.dur - a.dur, tss: (a, b) => b.tss - a.tss, used: (a, b) => b.uses - a.uses,
+    };
+    list = list.slice().sort(sorters[st.sort] || sorters.recent);
+
+    const folders = folderDefs.map(f => ({
+      name: f.name, count: f.id === 'all' ? st.workouts.length : st.workouts.filter(w => w.folder === f.id).length,
+      onClick: () => this.setState({ folder: f.id }),
+      style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: st.folder === f.id ? 700 : 500, color: st.folder === f.id ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', background: st.folder === f.id ? 'var(--emberSoft,#fff5f1)' : 'transparent' },
+    }));
+    const tags = allTags.map(t => ({
+      name: t, onClick: () => this.setState({ tag: st.tag === t ? null : t }),
+      style: { padding: '5px 11px', borderRadius: '20px', fontSize: '11.5px', fontWeight: 600, cursor: 'pointer', border: '1px solid ' + (st.tag === t ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), color: st.tag === t ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', background: st.tag === t ? 'var(--emberSoft,#fff5f1)' : 'transparent' },
+    }));
+
+    const cardsSrc = list.map(w => {
+      const total = w.chart.reduce((a, v) => a + 1, 0) || 1;
+      const chart = w.chart.map((v, i) => ({
+        wrapStyle: { width: (100 / total) + '%', height: '100%', display: 'flex', alignItems: 'flex-end' },
+        barStyle: { width: '100%', height: Math.min(100, (v / 150) * 100).toFixed(0) + '%', background: v < 56 ? '#8a94a6' : v < 76 ? '#3d7fd6' : v < 91 ? '#2fa66a' : v < 106 ? '#f0a02e' : v < 121 ? '#ec4a26' : '#c4332a', opacity: 0.65 },
+      }));
+      const selected = !!st.selected[w.id];
+      return {
+        id: w.id, name: w.name, selected,
+        sportLabel: w.sport === 'run' ? 'Run' : 'Ride',
+        sportBadgeStyle: { display: 'inline-flex', padding: '3px 9px', borderRadius: '6px', fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 700, background: w.sport === 'run' ? 'rgba(236,74,38,0.13)' : 'rgba(61,127,214,0.13)', color: w.sport === 'run' ? '#ec4a26' : '#3d7fd6' },
+        metaLabel: this.fmtDuration(w.dur) + ' · ' + w.tss + ' TSS',
+        durationLabel: this.fmtDuration(w.dur), tssLabel: w.tss, folder: w.folder || '',
+        chart,
+        tags: w.tags.map(t => ({ name: t })),
+        checkStyle: { width: '20px', height: '20px', borderRadius: '6px', border: '1.5px solid ' + (selected ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), background: selected ? 'var(--ember,#ec4a26)' : 'transparent', color: '#fff', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
+        cardStyle: { background: 'var(--card,#fff)', border: '1px solid ' + (selected ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), borderRadius: '14px', padding: '14px 16px 16px' },
+        actionBtnStyle: { width: '26px', height: '26px', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink3,#9a958d)', cursor: 'pointer', textDecoration: 'none', flexShrink: 0 },
+        toggleSelect: (e) => { e.stopPropagation(); this.setState({ selected: { ...st.selected, [w.id]: !selected } }); },
+        onOpen: () => {}, onDuplicate: (e) => { e.stopPropagation(); }, onDelete: (e) => { e.stopPropagation(); this.setState({ workouts: this.state.workouts.filter(x => x.id !== w.id) }); },
+        onExport: (e) => { e.stopPropagation(); },
+        onAssign: (e) => { e.stopPropagation(); this.setState({ assignOpen: true, assignTarget: w.id, assignAthletes: {} }); },
+      };
+    });
+
+    const selectedCount = Object.values(st.selected).filter(Boolean).length;
+    const athleteNames = ['Sam Ortega', 'Priya Nair', 'Jules Ferran'];
+    const target = st.workouts.find(w => w.id === st.assignTarget);
+
+    return {
+      isAdmin: true,
+      themeVars: st.theme === 'day' ? day : (isLab ? lab : cockpit),
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(st.theme === 'lab'), cockpitBtn: seg(st.theme === 'cockpit'), dayBtn: seg(st.theme === 'day'),
+      countLabel: list.length + ' of ' + st.workouts.length + ' workouts',
+      folders, tags, folderOpts: folderDefs.filter(f => f.id !== 'all'),
+      isCoach: !!this.props.coachAccount, showEmailBanner: false, emailNotSent: true, emailBannerText: '', resendEmail: () => {},
+      ctxOpen: !!this.state.ctxOpen, toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })), closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: 'My training', pName: 'Neil Goodgame', chipMeta: 'FTP 260 \u00b7 LTHR 154',
+      ctxItems: ['My training', 'Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'].map((n, i) => ({ name: n, onClick: () => this.setState({ ctxOpen: false }), rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: i === 0 ? 700 : 500, color: 'var(--ink,#1b1a18)', background: i === 0 ? 'var(--elev,#faf9f7)' : 'transparent' } })),
+      
+      setSportAll: () => this.setState({ sport: 'all' }), setSportBike: () => this.setState({ sport: 'bike' }), setSportRun: () => this.setState({ sport: 'run' }),
+      sportAllBtn: seg(st.sport === 'all'), sportBikeBtn: seg(st.sport === 'bike'), sportRunBtn: seg(st.sport === 'run'),
+      addFolder: () => {},
+      searchValue: st.search, onSearchChange: (e) => this.setState({ search: e.target.value }),
+      sortValue: st.sort, onSortChange: (e) => this.setState({ sort: e.target.value }),
+      setViewGrid: () => this.setState({ view: 'grid' }), setViewList: () => this.setState({ view: 'list' }),
+      viewGridBtn: seg(st.view === 'grid'), viewListBtn: seg(st.view === 'list'),
+      isGridView: st.view === 'grid', isListView: st.view === 'list',
+      hasSelection: selectedCount > 0, selectedCount,
+      bulkTag: () => {}, bulkExport: () => {}, bulkDelete: () => { const ids = Object.keys(st.selected).filter(k => st.selected[k]); this.setState({ workouts: this.state.workouts.filter(w => !ids.includes(w.id)), selected: {} }); },
+      clearSelection: () => this.setState({ selected: {} }),
+      cards: cardsSrc, isEmpty: cardsSrc.length === 0,
+      stopProp: (e) => e.stopPropagation(),
+      assignOpen: st.assignOpen, assignTargetName: target ? target.name : '',
+      closeAssign: () => this.setState({ assignOpen: false }),
+      confirmAssign: () => this.setState({ assignOpen: false }),
+      assignDate: st.assignDate, onAssignDateChange: (e) => this.setState({ assignDate: e.target.value }),
+      assignAthleteChips: athleteNames.map(n => ({ name: n, style: { padding: '7px 13px', borderRadius: '20px', border: '1px solid ' + (st.assignAthletes[n] ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)'), background: st.assignAthletes[n] ? 'var(--emberSoft,#fff5f1)' : 'transparent', color: st.assignAthletes[n] ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer' }, toggle: () => this.setState({ assignAthletes: { ...this.state.assignAthletes, [n]: !this.state.assignAthletes[n] } }) })),
+    };
+  }
+}
+</script>
+</body>
+</html>
