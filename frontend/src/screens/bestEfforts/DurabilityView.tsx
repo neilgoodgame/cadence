@@ -70,12 +70,12 @@ export function DurabilityView({ athleteId, period }: { athleteId: string; perio
             {data && <div style={{ fontSize: 12.5, color: "var(--ink3)", marginTop: 2 }}>{summaryLine(metric, data.summary.count, data.summary)}</div>}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
+            <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
               {METRICS.map((m) => (
                 <div key={m.key} onClick={() => setMetric(m.key)} style={segStyle(m.key === metric)}>{m.label}</div>
               ))}
             </div>
-            <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
+            <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
               {SPORTS.map((s) => (
                 <div key={s.key} onClick={() => setSport(s.key)} style={segStyle(s.key === sport)}>{s.label}</div>
               ))}

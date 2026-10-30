@@ -197,7 +197,7 @@ export function ThresholdHistoryScreen() {
         </Link>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", margin: 0, color: "var(--ink)" }}>Thresholds &amp; zones</h1>
-          <div style={{ display: "flex", gap: 3, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
+          <div style={{ display: "flex", gap: 3, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
             {FIELDS.map((f) => (
               <Link key={f.field} to={`/thresholds/${f.field}`} style={{ textDecoration: "none" }}>
                 <div style={fieldTabStyle(f.field === active.field)}>{f.label}</div>

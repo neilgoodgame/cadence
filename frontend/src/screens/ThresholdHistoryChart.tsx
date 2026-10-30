@@ -218,7 +218,7 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
             {bestLegendText}
           </span>
         </div>
-        <div style={{ display: "flex", gap: 3, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
+        <div style={{ display: "flex", gap: 3, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
           {RANGES.map((r) => (
             <div key={r.key} onClick={() => { setRange(r.key); setHover(null); }} style={rangeTabStyle(r.key === range)}>
               {r.label}

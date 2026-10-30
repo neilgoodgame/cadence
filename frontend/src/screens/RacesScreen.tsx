@@ -54,7 +54,7 @@ export function RacesScreen() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
+          <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
             {SPORT_FILTERS.map((s) => (
               <div key={s.key} onClick={() => setSportFilter(s.key)} style={segStyle(s.key === sportFilter)}>
                 {s.label}

@@ -16,7 +16,7 @@ function DeltaBar({ delta, maxDelta = MAX_DELTA }: { delta: number | null; maxDe
   const pct = (Math.abs(clamped) / maxDelta) * 50;
   const faster = delta < 0;
   return (
-    <div style={{ width: 90, height: 10, position: "relative", background: "var(--canvas)", borderRadius: 4 }}>
+    <div style={{ width: 90, height: 10, position: "relative", background: "var(--canvas-solid)", borderRadius: 4 }}>
       <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "var(--line)" }} />
       <div
         style={{
@@ -91,7 +91,7 @@ export function SplitsCard({
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Splits</h2>
-        <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
+        <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
           {modes.map((m) => (
             <div
               key={m}

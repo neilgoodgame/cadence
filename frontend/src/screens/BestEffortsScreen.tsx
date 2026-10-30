@@ -167,7 +167,7 @@ function TabBar({
       style={{
         display: "flex",
         gap: 2,
-        background: "var(--canvas)",
+        background: "var(--canvas-solid)",
         border: "1px solid var(--line)",
         borderRadius: 9,
         padding: 3,
@@ -1066,7 +1066,7 @@ export function BestEffortsScreen() {
             style={{
               display: "flex",
               gap: 2,
-              background: "var(--canvas)",
+              background: "var(--canvas-solid)",
               border: "1px solid var(--line)",
               borderRadius: 9,
               padding: 3,
@@ -1080,7 +1080,7 @@ export function BestEffortsScreen() {
             style={{
               display: "flex",
               gap: 2,
-              background: "var(--canvas)",
+              background: "var(--canvas-solid)",
               border: "1px solid var(--line)",
               borderRadius: 9,
               padding: 3,

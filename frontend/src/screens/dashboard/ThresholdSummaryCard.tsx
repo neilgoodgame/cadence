@@ -253,7 +253,7 @@ export function ThresholdSummaryCard() {
 
       <div
         style={{
-          display: "flex", gap: 3, background: "var(--canvas)", border: "1px solid var(--line)",
+          display: "flex", gap: 3, background: "var(--canvas-solid)", border: "1px solid var(--line)",
           borderRadius: 10, padding: 3, margin: "16px 0 20px", width: "fit-content",
         }}
       >

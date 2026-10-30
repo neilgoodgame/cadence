@@ -387,7 +387,7 @@ export function LapsTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3, width: "fit-content" }}>
+      <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3, width: "fit-content" }}>
         {modes.map((m) => (
           <div
             key={m}

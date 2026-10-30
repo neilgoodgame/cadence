@@ -20,7 +20,7 @@ function segStyle(active: boolean): React.CSSProperties {
 
 function tile(label: string, value: string, sub?: string) {
   return (
-    <div style={{ flex: 1, minWidth: 110, padding: "10px 14px", borderRadius: 10, background: "var(--canvas)" }}>
+    <div style={{ flex: 1, minWidth: 110, padding: "10px 14px", borderRadius: 10, background: "var(--canvas-solid)" }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)" }}>{label}</div>
       <div className="mono" style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>{value}</div>
       {sub && <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 1 }}>{sub}</div>}
@@ -54,11 +54,11 @@ export function PacingPlanCard({ race, sweatRateLPerH }: { race: Race; sweatRate
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Pacing and fuelling plan</h2>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
+          <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
             <div onClick={() => setStrategy("even")} style={segStyle(strategy === "even")}>Even</div>
             <div onClick={() => setStrategy("negative")} style={segStyle(strategy === "negative")}>Negative split</div>
           </div>
-          <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
+          <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
             {CARBS_OPTIONS.map((g) => (
               <div key={g} onClick={() => setCarbsGPerH(g)} style={segStyle(carbsGPerH === g)}>{g} g/h</div>
             ))}
