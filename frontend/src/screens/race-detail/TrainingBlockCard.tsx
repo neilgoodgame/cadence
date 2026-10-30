@@ -11,6 +11,7 @@ import {
   type BlockChartSport,
 } from "./raceBlockChart";
 import { TrainingBlockChart } from "./TrainingBlockChart";
+import { SegmentedControl } from "../../components/SegmentedControl";
 
 const METRICS: { key: BlockChartMetric; label: string }[] = [
   { key: "tss", label: "Load (TSS)" },
@@ -37,18 +38,6 @@ function formatMetric(value: number | null, metric: BlockChartMetric): string {
   return value?.toFixed(metric === "tss" ? 0 : 1) ?? "–";
 }
 
-function segStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "5px 11px",
-    fontSize: 11.5,
-    fontWeight: 600,
-    borderRadius: 7,
-    cursor: "pointer",
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-    boxShadow: active ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-  };
-}
 
 /** For a B/C race's own block there's no backend phase list (block.phases is empty) - the
  * table instead shows a position relative to the race itself ("-2 wk" / "Race" / "+1 wk").
@@ -220,16 +209,20 @@ export function TrainingBlockCard({
               {compareOn ? "✓" : ""} Compare: {comparisonRace?.name ?? "previous"} {comparisonYear}
             </button>
           )}
-          <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-            {SPORTS.map((s) => (
-              <div key={s.key} onClick={() => setSport(s.key)} style={segStyle(s.key === sport)}>{s.label}</div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-            {METRICS.map((m) => (
-              <div key={m.key} onClick={() => setMetric(m.key)} style={segStyle(m.key === metric)}>{m.label}</div>
-            ))}
-          </div>
+          <SegmentedControl
+            size="sm"
+            fill={false}
+            options={SPORTS.map((s) => ({ key: s.key, value: s.key, label: s.label }))}
+            value={sport}
+            onChange={setSport}
+          />
+          <SegmentedControl
+            size="sm"
+            fill={false}
+            options={METRICS.map((m) => ({ key: m.key, value: m.key, label: m.label }))}
+            value={metric}
+            onChange={setMetric}
+          />
         </div>
       </div>
 

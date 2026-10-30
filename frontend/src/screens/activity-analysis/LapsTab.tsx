@@ -9,6 +9,7 @@ import { formatDuration, formatPace } from "../../lib/format";
 import { splitRowLabel } from "../../lib/splits";
 import { powerZoneType } from "../../lib/zones";
 import { kindLabel, zoneColor } from "../workouts/workoutTree";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import {
   compliancePct,
   complianceColor,
@@ -387,26 +388,17 @@ export function LapsTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3, width: "fit-content" }}>
-        {modes.map((m) => (
-          <div
-            key={m}
-            onClick={() => setMode(m)}
-            style={{
-              padding: "5px 11px",
-              fontSize: 11.5,
-              fontWeight: 600,
-              borderRadius: 7,
-              cursor: "pointer",
-              color: mode === m ? "var(--ink)" : "var(--ink3)",
-              background: mode === m ? "var(--card)" : "transparent",
-              boxShadow: mode === m ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-            }}
-          >
-            {m === "laps" ? "Laps" : m === "1" ? "1 km" : m === "5" ? "5 km" : "Elevation"}
-          </div>
-        ))}
-      </div>
+      <SegmentedControl
+        size="sm"
+        fill={false}
+        options={modes.map((m) => ({
+          key: m,
+          value: m,
+          label: m === "laps" ? "Laps" : m === "1" ? "1 km" : m === "5" ? "5 km" : "Elevation",
+        }))}
+        value={mode}
+        onChange={setMode}
+      />
 
       {mode !== "laps" ? (
         <DistanceSplitsTable activityId={activityId} mode={mode} />

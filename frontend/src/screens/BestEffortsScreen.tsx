@@ -5,6 +5,7 @@ import { listBestEfforts, excludeActivityFromBestEfforts } from "../api/athletes
 import { DurabilityView } from "./bestEfforts/DurabilityView";
 import { listActivities, getActivity } from "../api/activities";
 import { ActivityNameLink } from "../components/ActivityNameLink";
+import { SegmentedControl } from "../components/SegmentedControl";
 import { useAuth } from "../auth/AuthContext";
 import { formatDuration, formatPace } from "../lib/format";
 import { windowLabel, windowToKm, windowToSeconds } from "../lib/bestEfforts";
@@ -83,36 +84,6 @@ function uniqueWindowsSorted(efforts: BestEffort[], sortFn: (a: string, b: strin
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
-function pillStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "5px 11px",
-    fontSize: 11.5,
-    fontWeight: 600,
-    borderRadius: 7,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-    boxShadow: active ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-  };
-}
-
-function segStyle(active: boolean): React.CSSProperties {
-  return {
-    flex: 1,
-    textAlign: "center" as const,
-    padding: "6px 12px",
-    fontSize: 12.5,
-    fontWeight: 600,
-    borderRadius: 7,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-    boxShadow: active ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-  };
-}
-
 function PrBadge({ color }: { color: string }) {
   return (
     <span
@@ -163,22 +134,13 @@ function TabBar({
   onChange: (t: string) => void;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 2,
-        background: "var(--canvas-solid)",
-        border: "1px solid var(--line)",
-        borderRadius: 9,
-        padding: 3,
-      }}
-    >
-      {tabs.map((t) => (
-        <div key={t} onClick={() => onChange(t)} style={pillStyle(t === active)}>
-          {windowLabel(t)}
-        </div>
-      ))}
-    </div>
+    <SegmentedControl
+      size="sm"
+      fill={false}
+      options={tabs.map((t) => ({ key: t, value: t, label: windowLabel(t) }))}
+      value={active}
+      onChange={onChange}
+    />
   );
 }
 
@@ -1062,36 +1024,20 @@ export function BestEffortsScreen() {
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <div
-            style={{
-              display: "flex",
-              gap: 2,
-              background: "var(--canvas-solid)",
-              border: "1px solid var(--line)",
-              borderRadius: 9,
-              padding: 3,
-            }}
-          >
-            <div onClick={() => setView("records")} style={segStyle(view === "records")}>Records</div>
-            <div onClick={() => setView("durability")} style={segStyle(view === "durability")}>Durability</div>
-          </div>
+          <SegmentedControl
+            options={[
+              { key: "records", value: "records" as const, label: "Records" },
+              { key: "durability", value: "durability" as const, label: "Durability" },
+            ]}
+            value={view}
+            onChange={setView}
+          />
 
-          <div
-            style={{
-              display: "flex",
-              gap: 2,
-              background: "var(--canvas-solid)",
-              border: "1px solid var(--line)",
-              borderRadius: 9,
-              padding: 3,
-            }}
-          >
-            {DISPLAY_PERIODS.map((p) => (
-              <div key={p} onClick={() => setDisplayPeriod(p)} style={segStyle(p === displayPeriod)}>
-                {PERIOD_CONFIG[p].label}
-              </div>
-            ))}
-          </div>
+          <SegmentedControl
+            options={DISPLAY_PERIODS.map((p) => ({ key: p, value: p, label: PERIOD_CONFIG[p].label }))}
+            value={displayPeriod}
+            onChange={setDisplayPeriod}
+          />
         </div>
       </div>
 

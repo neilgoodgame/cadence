@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getActivity, listActivities } from "../../api/activities";
 import { createCourseFromActivity, listCourses, updateCourse, uploadCourseGpx } from "../../api/courses";
 import { updateRace } from "../../api/races";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import type { Course } from "../../api/types";
 
 type Tab = "upload" | "activity" | "existing";
@@ -17,18 +18,6 @@ const fieldStyle: React.CSSProperties = {
   fontSize: 13,
   boxSizing: "border-box",
 };
-
-function tabStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "7px 14px",
-    fontSize: 12.5,
-    fontWeight: 700,
-    borderRadius: 7,
-    cursor: "pointer",
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-  };
-}
 
 function UploadTab({ raceDistanceKm, onLinked }: { raceDistanceKm: number | null; onLinked: (id: string) => void }) {
   const [preview, setPreview] = useState<Course | null>(null);
@@ -229,11 +218,17 @@ export function LinkCourseDialog({
         style={{ background: "var(--card)", borderRadius: 14, padding: 24, width: 480, maxHeight: "80vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}
       >
         <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Link a course</h2>
-        <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3, alignSelf: "flex-start" }}>
-          <div onClick={() => setTab("upload")} style={tabStyle(tab === "upload")}>Upload GPX</div>
-          <div onClick={() => setTab("activity")} style={tabStyle(tab === "activity")}>From activity</div>
-          <div onClick={() => setTab("existing")} style={tabStyle(tab === "existing")}>Existing course</div>
-        </div>
+        <SegmentedControl
+          fill={false}
+          style={{ alignSelf: "flex-start" }}
+          options={[
+            { key: "upload", value: "upload" as const, label: "Upload GPX" },
+            { key: "activity", value: "activity" as const, label: "From activity" },
+            { key: "existing", value: "existing" as const, label: "Existing course" },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
 
         {tab === "upload" && <UploadTab raceDistanceKm={raceDistanceKm} onLinked={(id) => linkMutation.mutate(id)} />}
         {tab === "activity" && <ActivityTab raceActivityId={raceActivityId} onLinked={(id) => linkMutation.mutate(id)} />}

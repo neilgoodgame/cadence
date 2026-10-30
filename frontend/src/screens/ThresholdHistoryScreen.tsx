@@ -65,12 +65,13 @@ const GRID_COLS = "28px minmax(90px,0.8fr) minmax(160px,1.4fr) minmax(115px,0.95
 const fieldTabStyle = (active: boolean): React.CSSProperties => ({
   padding: "6px 12px",
   borderRadius: 7,
-  fontSize: 12,
+  fontSize: 12.5,
   fontWeight: 600,
   cursor: "pointer",
   whiteSpace: "nowrap",
-  color: active ? "#fff" : "var(--ink3)",
-  background: active ? "var(--ember)" : "none",
+  color: active ? "var(--ink)" : "var(--ink3)",
+  background: active ? "var(--card)" : "transparent",
+  boxShadow: active ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
 });
 
 // Parses a field's current/display value down to the plain number zoneRange() needs - a string

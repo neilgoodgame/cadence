@@ -1,22 +1,10 @@
 import { useMemo, useState } from "react";
 import { computeRacePlan, type SplitStrategy } from "../../lib/racePlan";
 import { formatDuration, formatPace, parseDuration } from "../../lib/format";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import type { Race } from "../../api/types";
 
 const CARBS_OPTIONS = [45, 60, 75, 90];
-
-function segStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "5px 11px",
-    fontSize: 11.5,
-    fontWeight: 600,
-    borderRadius: 7,
-    cursor: "pointer",
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-    boxShadow: active ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-  };
-}
 
 function tile(label: string, value: string, sub?: string) {
   return (
@@ -54,15 +42,23 @@ export function PacingPlanCard({ race, sweatRateLPerH }: { race: Race; sweatRate
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Pacing and fuelling plan</h2>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-            <div onClick={() => setStrategy("even")} style={segStyle(strategy === "even")}>Even</div>
-            <div onClick={() => setStrategy("negative")} style={segStyle(strategy === "negative")}>Negative split</div>
-          </div>
-          <div style={{ display: "flex", gap: 2, background: "var(--canvas-solid)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-            {CARBS_OPTIONS.map((g) => (
-              <div key={g} onClick={() => setCarbsGPerH(g)} style={segStyle(carbsGPerH === g)}>{g} g/h</div>
-            ))}
-          </div>
+          <SegmentedControl
+            size="sm"
+            fill={false}
+            options={[
+              { key: "even", value: "even" as const, label: "Even" },
+              { key: "negative", value: "negative" as const, label: "Negative split" },
+            ]}
+            value={strategy}
+            onChange={setStrategy}
+          />
+          <SegmentedControl
+            size="sm"
+            fill={false}
+            options={CARBS_OPTIONS.map((g) => ({ key: g, value: g, label: `${g} g/h` }))}
+            value={carbsGPerH}
+            onChange={setCarbsGPerH}
+          />
         </div>
       </div>
 

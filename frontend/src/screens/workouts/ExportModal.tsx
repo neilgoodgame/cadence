@@ -1,6 +1,7 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState } from "react";
 import type { WorkoutSport } from "../../api/types";
 import { useAuth } from "../../auth/AuthContext";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { isGroup, type Step } from "./workoutTree";
 import { buildFixtureJson, buildTcx, buildZwo, download, powerReferenceFor, tcxHasApproximateTarget, thresholdsFromAthlete } from "./workoutExport";
 
@@ -36,18 +37,6 @@ export function ExportModal({ name, sport, steps, onClose }: { name: string; spo
           : "Garmin Connect → Training → Workouts → Import. Heart-rate, pace, and power targets all use your real thresholds."
         : "For backend testing: drop the file into backend/workouts/test_fixtures/roundtrip/ to add it as a round-trip inference test case.";
 
-  const segBtn = (active: boolean): CSSProperties => ({
-    flex: 1,
-    textAlign: "center",
-    padding: "5px 11px",
-    fontSize: 12,
-    fontWeight: 600,
-    borderRadius: 7,
-    cursor: "pointer",
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-  });
-
   return (
     <div
       onClick={onClose}
@@ -69,17 +58,17 @@ export function ExportModal({ name, sport, steps, onClose }: { name: string; spo
           </button>
         </div>
         <div style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: 14, minHeight: 0 }}>
-          <div style={{ display: "flex", gap: 4, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 9, padding: 3, width: "fit-content" }}>
-            <div onClick={() => setFormat("zwo")} style={segBtn(format === "zwo")}>
-              Zwift · .zwo
-            </div>
-            <div onClick={() => setFormat("tcx")} style={segBtn(format === "tcx")}>
-              Garmin · .tcx
-            </div>
-            <div onClick={() => setFormat("fixture")} style={segBtn(format === "fixture")}>
-              Test fixture · .json
-            </div>
-          </div>
+          <SegmentedControl
+            size="sm"
+            fill={false}
+            options={[
+              { key: "zwo", value: "zwo" as const, label: "Zwift · .zwo" },
+              { key: "tcx", value: "tcx" as const, label: "Garmin · .tcx" },
+              { key: "fixture", value: "fixture" as const, label: "Test fixture · .json" },
+            ]}
+            value={format}
+            onChange={setFormat}
+          />
           <div style={{ fontSize: 12.5, color: "var(--ink2)" }}>{note}</div>
           {showOverride && (
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink2)" }}>

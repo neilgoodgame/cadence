@@ -11,6 +11,7 @@ import {
 } from "../../api/athletes";
 import { getContexts } from "../../api/auth";
 import { Card } from "../../components/Card";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { formatPace, parsePace } from "../../lib/format";
 import { FIELDS, formatValue, type TabField } from "../../lib/thresholdFields";
 import { useAuth } from "../../auth/AuthContext";
@@ -60,18 +61,6 @@ function deltaLabel(field: TabField, entry: ThresholdSummaryEntry): string | nul
   if (delta === 0) return "No change";
   return `${delta > 0 ? "+" : ""}${delta}W vs previous`;
 }
-
-const tabStyle = (isActive: boolean): React.CSSProperties => ({
-  padding: "7px 14px",
-  borderRadius: 7,
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-  color: isActive ? "var(--ink)" : "var(--ink3)",
-  background: isActive ? "var(--card)" : "transparent",
-  boxShadow: isActive ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-});
 
 /** Current FTP/critical running power/threshold pace/LTHR, one at a time via tabs (each is the
  * best qualifying effort within a trailing window, default 16 weeks - so a value can drop as an
@@ -251,18 +240,13 @@ export function ThresholdSummaryCard() {
         <AddRaceModal date={todayISODate()} initialSport="run" maxDate={raceTarget.expiry_date} onClose={() => setRaceTarget(null)} />
       )}
 
-      <div
-        style={{
-          display: "flex", gap: 3, background: "var(--canvas-solid)", border: "1px solid var(--line)",
-          borderRadius: 10, padding: 3, margin: "16px 0 20px", width: "fit-content",
-        }}
-      >
-        {FIELDS.map((f) => (
-          <div key={f.field} onClick={() => setActiveField(f.field)} style={tabStyle(f.field === active.field)}>
-            {f.label}
-          </div>
-        ))}
-      </div>
+      <SegmentedControl
+        fill={false}
+        style={{ margin: "16px 0 20px" }}
+        options={FIELDS.map((f) => ({ key: f.field, value: f.field, label: f.label }))}
+        value={active.field}
+        onChange={setActiveField}
+      />
 
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span className="mono" style={{ fontSize: 32, fontWeight: 600, color: "var(--ink)" }}>
