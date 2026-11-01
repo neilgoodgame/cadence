@@ -1,6 +1,6 @@
 plugins {
 	java
-	id("org.springframework.boot") version "4.1.1"
+	id("org.springframework.boot") version "4.1.2"
 	id("io.spring.dependency-management") version "1.1.7"
 }
 
@@ -43,9 +43,9 @@ dependencies {
 
 	// Auth via the default credentials/region provider chain (the EC2 instance profile in
 	// prod, ~/.aws/credentials locally) - no static keys configured anywhere in this repo.
-	implementation("software.amazon.awssdk:sesv2:2.57.2")
+	implementation("software.amazon.awssdk:sesv2:2.57.6")
 
-	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
 	implementation("com.garmin:fit:21.218.0")
 	// Course GPX parsing (races feature) - distance/elevation/track points off a course's
 	// uploaded GPX, separate from GpxFileParser (which builds an Activity's full sample
@@ -53,7 +53,7 @@ dependencies {
 	implementation("io.jenetics:jpx:4.0.1")
 
 	// SPIKE: compatibility check only, see infra/... plan - MCP transport under Spring Boot 4.1.0.
-	implementation(platform("org.springframework.ai:spring-ai-bom:2.0.1"))
+	implementation(platform("org.springframework.ai:spring-ai-bom:2.0.2"))
 	implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc")
 
 	implementation("org.mapstruct:mapstruct:$mapstructVersion")
