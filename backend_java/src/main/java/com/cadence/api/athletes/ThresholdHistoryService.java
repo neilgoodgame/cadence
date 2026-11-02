@@ -100,6 +100,12 @@ public class ThresholdHistoryService {
 		return recomputeAndRecord(athlete, field, null);
 	}
 
+	/** Self-edit shorthand (setBy = athlete) - see the 5-arg overload for a coach-on-behalf-of edit. */
+	@Transactional
+	public boolean recordManualValue(User athlete, ThresholdField field, Integer valueNumeric, String valuePace) {
+		return recordManualValue(athlete, field, valueNumeric, valuePace, athlete);
+	}
+
 	/** The athlete directly declared this value via their profile (PATCH /v1/athletes/{id}) -
 	 * trusted unconditionally (no sanity-band check, no window search: an explicit choice, not a
 	 * computed candidate), effective from today. Behaves exactly like any other ledger entry from
@@ -107,9 +113,11 @@ public class ThresholdHistoryService {
 	 * later qualifying activity or another manual edit. A no-op if the submitted value matches
 	 * what's already current (e.g. re-saving the profile form without touching this field - the
 	 * frontend always resubmits every field). Doesn't touch the athlete's live field itself - the
-	 * caller (AthleteService.updateProfile) already wrote that as part of the same request. */
+	 * caller (AthleteService.updateProfile) already wrote that as part of the same request.
+	 * `setBy` is the acting principal - equal to `athlete` for a self-edit, a different User for
+	 * a coach acting on the athlete's behalf. */
 	@Transactional
-	public boolean recordManualValue(User athlete, ThresholdField field, Integer valueNumeric, String valuePace) {
+	public boolean recordManualValue(User athlete, ThresholdField field, Integer valueNumeric, String valuePace, User setBy) {
 		Double implied = field == ThresholdField.THRESHOLD_PACE
 				? mmssToSeconds(valuePace)
 				: (valueNumeric != null ? valueNumeric.doubleValue() : null);
@@ -127,6 +135,7 @@ public class ThresholdHistoryService {
 		entry.setAthlete(athlete);
 		entry.setField(field);
 		entry.setSourceActivity(null);
+		entry.setSetBy(setBy);
 		entry.setEffectiveFrom(LocalDate.now());
 		entry.setCurrentFrom(LocalDate.now());
 		if (field == ThresholdField.THRESHOLD_PACE) {
@@ -251,26 +260,31 @@ public class ThresholdHistoryService {
 		return entry.getSourceActivity() != null ? entry.getSourceActivity().getId() : null;
 	}
 
+	// Null for an auto-derived value (sourceActivity populated instead) - see recordManualValue.
+	private static String setByUserIdOf(ThresholdHistory entry) {
+		return entry.getSetBy() != null ? entry.getSetBy().getId() : null;
+	}
+
 	/** GET /v1/athletes/{id}/thresholds' per-field entry: current + previous value, and whether
 	 * the current one has aged out of the window. */
 	public ThresholdSummaryEntry summaryFor(User athlete, ThresholdField field) {
 		List<ThresholdHistory> entries =
 				thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field);
 		if (entries.isEmpty()) {
-			return new ThresholdSummaryEntry(null, null, null, null, true);
+			return new ThresholdSummaryEntry(null, null, null, null, true, null);
 		}
 		ThresholdHistory current = entries.get(0);
 		ThresholdHistory previous = entries.size() > 1 ? entries.get(1) : null;
 		boolean stale = ChronoUnit.DAYS.between(current.getEffectiveFrom(), LocalDate.now()) > athlete.getThresholdWindowDays();
 		return new ThresholdSummaryEntry(valueOf(field, current), previous != null ? valueOf(field, previous) : null,
-				sourceActivityIdOf(current), current.getEffectiveFrom(), stale);
+				sourceActivityIdOf(current), current.getEffectiveFrom(), stale, setByUserIdOf(current));
 	}
 
 	/** GET /v1/athletes/{id}/threshold-history?field=... - the full ledger, most recent first. */
 	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field) {
 		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).stream()
-				.map(entry -> new ThresholdHistoryEntryResponse(
-						valueOf(field, entry), sourceActivityIdOf(entry), entry.getEffectiveFrom(), entry.getCurrentFrom()))
+				.map(entry -> new ThresholdHistoryEntryResponse(valueOf(field, entry), sourceActivityIdOf(entry),
+						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry)))
 				.toList();
 	}
 }

@@ -100,6 +100,12 @@ public class AthleteProfileTools {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		User athlete = userService.getById(athleteId);
+		return thresholdsSummary(athlete);
+	}
+
+	// Shared by getAthleteThresholds and AthleteProfileWriteTools.setAthleteThresholds, so both
+	// return the identical shape.
+	Map<String, ThresholdSummaryEntry> thresholdsSummary(User athlete) {
 		return Map.of(
 				ThresholdField.FTP.wireValue(), thresholdHistoryService.summaryFor(athlete, ThresholdField.FTP),
 				ThresholdField.CRITICAL_RUN_POWER.wireValue(), thresholdHistoryService.summaryFor(athlete, ThresholdField.CRITICAL_RUN_POWER),
