@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:rgba(140,150,160,0.4);border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- ============ SIDEBAR (AppShell.tsx) ============ -->
+  <div style="width:228px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:24px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+      <div style="width:24px;height:24px;border-radius:7px;background:var(--ember,#ec4a26);"></div>
+      <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <a href="../Dashboard.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Dashboard</a>
+      <a href="../Activities.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Activities</a>
+      <a href="../Best Efforts.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Best efforts</a>
+      <a href="../Import.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Import</a>
+      <a href="../Calendar.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Calendar</a>
+      <a href="#" title="No Races mock yet" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);"><svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5V2"></path><path d="M3.5 2.5h8.5l-2 3 2 3H3.5"></path></svg>Races</a>
+      <a href="../Workout Library.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Workouts</a>
+      <a href="../Gear.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Gear</a>
+      <a href="../Preferences.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Preferences</a>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><a href="../Admin.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Admin</a></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+      <a href="../Login.dc.html" style="display:block;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
+
+  <div data-screen-label="threshold-history" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="../Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <div aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink3,#9a958d);flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="../Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:32px;display:flex;flex-direction:column;gap:20px;">
+
+      <!-- ThresholdHistoryScreen.tsx, extended to "Thresholds & zones" (shipped Oct 2026). Reached from the Dashboard
+           Thresholds card's "Zones & history" link (not in the sidebar). Field tabs = :field route param. -->
+      <div style="max-width:1200px;">
+        <a href="../Dashboard.dc.html" style="font-size:13px;color:var(--ink3,#9a958d);text-decoration:none;">&larr; Back to dashboard</a>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:8px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <h1 style="font-size:22px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Thresholds &amp; zones</h1>
+          </div>
+          <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+            <sc-for list="{{ fieldTabs }}" as="ft" hint-placeholder-count="4">
+              <div onClick="{{ ft.onClick }}" style="{{ ft.style }}">{{ ft.label }}</div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- CURRENT ZONES -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;color:var(--ink3,#9a958d);text-transform:uppercase;">Current {{ fieldLabel }}</div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:4px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:600;color:var(--ink,#1b1a18);">{{ currentValue }}</span>
+              <span style="font-size:14px;font-weight:500;color:var(--ink2,#6f6b65);">{{ currentUnit }}</span>
+            </div>
+            <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ currentSince }}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span style="font-size:12px;color:var(--ink3,#9a958d);">Zones {{ zoneRefLabel }}</span>
+            <a href="../Preferences.dc.html" style="font-size:12px;font-weight:600;color:var(--ember,#ec4a26);text-decoration:none;">Edit zones →</a>
+          </div>
+        </div>
+        <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:14px;">
+          <sc-for list="{{ zoneRows }}" as="z" hint-placeholder-count="5"><div style="{{ z.barStyle }}"></div></sc-for>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1.4fr) 70px minmax(0,1fr) minmax(0,1fr);gap:0 16px;font-size:13px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3,#9a958d);padding:0 0 8px;">Zone</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3,#9a958d);padding:0 0 8px;">% thr</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3,#9a958d);padding:0 0 8px;">Now</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3,#9a958d);padding:0 0 8px;">{{ prevHeader }}</div>
+          <sc-for list="{{ zoneRows }}" as="z" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line,#e6e2dc);min-width:0;">
+              <span style="{{ z.swatchStyle }}"></span>
+              <span style="color:var(--ink,#1b1a18);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ z.name }}</span>
+            </div>
+            <div style="padding:9px 0;border-top:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ z.pct }}</div>
+            <div style="padding:9px 0;border-top:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">{{ z.range }}</div>
+            <div style="padding:9px 0;border-top:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ z.prevRange }}</div>
+          </sc-for>
+        </div>
+      </div>
+
+      <sc-if value="{{ noHistory }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:13px;color:var(--ink3,#9a958d);">LTHR is set manually in Preferences — no history is recorded.</div>
+      </sc-if>
+
+      <sc-if value="{{ hasHistory }}" hint-placeholder-val="{{ true }}">
+      <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);margin-top:4px;">History</div>
+      <!-- CHART (ThresholdHistoryChart.tsx, redesigned) -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px 24px 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink3,#9a958d);">
+            <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:9px;height:9px;border-radius:50%;background:var(--ember,#ec4a26);"></span>New best effort</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:9px;height:9px;border-radius:50%;border:1.5px solid var(--ink3,#9a958d);box-sizing:border-box;"></span>Dropped (older best aged out)</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:14px;border-top:1.5px dashed var(--ink3,#9a958d);"></span>{{ bestLegend }}</span>
+          </div>
+          <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+            <sc-for list="{{ rangeTabs }}" as="r" hint-placeholder-count="3">
+              <div onClick="{{ r.onClick }}" style="{{ r.style }}">{{ r.label }}</div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:22px 58px minmax(0,1fr);">
+          <div style="position:relative;">
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-90deg);white-space:nowrap;font-size:12px;font-weight:700;color:var(--ink2,#6f6b65);">{{ yAxisTitle }}</div>
+          </div>
+          <div style="position:relative;">
+            <sc-for list="{{ yTicks }}" as="yt" hint-placeholder-count="4">
+              <div style="{{ yt.textStyle }}">{{ yt.label }}</div>
+            </sc-for>
+          </div>
+          <div style="position:relative;min-width:0;">
+            <svg width="100%" viewBox="0 0 1200 310" role="img" style="display:block;overflow:visible;">
+              <defs>
+                <linearGradient id="thrArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" style="stop-color:var(--ember,#ec4a26);stop-opacity:0.24;"></stop>
+                  <stop offset="100%" style="stop-color:var(--ember,#ec4a26);stop-opacity:0;"></stop>
+                </linearGradient>
+              </defs>
+              <g transform="translate(0,5)">
+                <sc-for list="{{ yearBands }}" as="yb" hint-placeholder-count="4">
+                  <rect style="{{ yb.rectStyle }}"></rect>
+                </sc-for>
+                <sc-for list="{{ yTicks }}" as="yt" hint-placeholder-count="4">
+                  <g>
+                    <rect style="{{ yt.lineStyle }}"></rect>
+                    <rect style="{{ yt.tickStyle }}"></rect>
+                  </g>
+                </sc-for>
+                <rect style="x:0px;y:0px;width:1.5px;height:300px;fill:var(--ink3,#9a958d);"></rect>
+                <rect style="x:0px;y:299px;width:1200px;height:1.5px;fill:var(--ink3,#9a958d);"></rect>
+                <sc-for list="{{ xTicks }}" as="xt" hint-placeholder-count="12">
+                  <rect style="{{ xt.tickStyle }}"></rect>
+                </sc-for>
+                <rect style="{{ bestLineStyle }}"></rect>
+                <path style="{{ areaStyle }}"></path>
+                <path style="{{ chartPathStyle }}"></path>
+                <sc-for list="{{ changePts }}" as="p" hint-placeholder-count="8">
+                  <g>
+                    <circle style="{{ p.dotStyle }}"></circle>
+                    <circle onMouseEnter="{{ p.onEnter }}" onMouseLeave="{{ p.onLeave }}" style="{{ p.hitStyle }}"></circle>
+                  </g>
+                </sc-for>
+                <circle style="{{ endDotStyle }}"></circle>
+              </g>
+            </svg>
+            <div style="{{ endPillStyle }}">{{ endPillLabel }}</div>
+            <sc-if value="{{ hasHover }}" hint-placeholder-val="{{ false }}">
+              <div style="{{ tipStyle }}">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--ink,#1b1a18);">{{ tip.value }}</div>
+                <div style="{{ tip.deltaStyle }}">{{ tip.delta }}</div>
+                <div style="font-size:11.5px;color:var(--ink3,#9a958d);margin-top:4px;">From {{ tip.date }} · {{ tip.days }}</div>
+                <div style="font-size:11.5px;color:var(--ink2,#6f6b65);margin-top:2px;">{{ tip.source }}</div>
+              </div>
+            </sc-if>
+          </div>
+          <div></div>
+          <div></div>
+          <div style="position:relative;height:40px;">
+            <sc-for list="{{ xTicks }}" as="xt" hint-placeholder-count="12">
+              <div style="{{ xt.textStyle }}">{{ xt.label }}</div>
+            </sc-for>
+            <sc-for list="{{ yearBands }}" as="yb" hint-placeholder-count="4">
+              <div style="{{ yb.textStyle }}">{{ yb.label }}</div>
+            </sc-for>
+          </div>
+          <div></div>
+          <div></div>
+          <div style="text-align:center;font-size:12px;font-weight:700;color:var(--ink2,#6f6b65);padding-top:2px;">Date value took effect</div>
+        </div>
+      </div>
+
+      <!-- LEDGER (ThresholdHistoryScreen.tsx: a table, one row per recorded value, newest first) -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line,#e6e2dc);">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--ink3,#9a958d);">{{ ledgerTitle }}</span>
+          <span style="font-size:12px;color:var(--ink3,#9a958d);">{{ ledgerCount }}</span>
+        </div>
+        <div style="{{ ledgerGrid }}padding:10px 18px;border-bottom:1px solid var(--line,#e6e2dc);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink3,#9a958d);white-space:nowrap;">
+          <span>#</span><span>Value</span><span>Activity</span><span>&Delta; vs previous</span><span>Effective from</span><span>Days in effect</span><span>Effort date</span>
+        </div>
+        <sc-for list="{{ ledger }}" as="e" hint-placeholder-count="12">
+          <div style="{{ ledgerGrid }}padding:11px 18px;border-bottom:1px solid var(--line,#e6e2dc);align-items:center;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ e.n }}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--ink,#1b1a18);">{{ e.value }}</span>
+            <sc-if value="{{ e.hasSource }}" hint-placeholder-val="{{ true }}"><a href="Activity Analysis.dc.html" style="font-size:13px;font-weight:600;color:var(--ember,#ec4a26);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none;">{{ e.activity }}</a></sc-if>
+            <sc-if value="{{ e.noSource }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">&mdash;</span></sc-if>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);white-space:nowrap;">{{ e.delta }}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ e.date }}</span>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:56px;height:6px;border-radius:3px;background:var(--line,#e6e2dc);overflow:hidden;flex-shrink:0;"><div style="{{ e.barStyle }}"></div></div><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);white-space:nowrap;">{{ e.days }}</span></div>
+            <sc-if value="{{ e.revealed }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:baseline;gap:6px;white-space:nowrap;"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;background:var(--emberSoft,rgba(236,74,38,0.13));color:var(--ember,#ec4a26);letter-spacing:0.04em;">REVEALED</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ e.effortDate }}</span></span></sc-if>
+            <sc-if value="{{ e.notRevealed }}" hint-placeholder-val="{{ true }}"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">&mdash;</span></sc-if>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;coachAccount&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', field: 'ftp', range: 'all', hover: null };
+
+  // Fixed "today" anchor so the mock renders identically on every load - matches Dashboard.dc.html.
+  today = new Date(2026, 6, 29);
+  mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  // Most-recent-first, matching the real ledger API's ordering - a threshold value is a step
+  // function (constant, then jumps on the next qualifying effort), spanning real multi-year
+  // account history.
+  FIELD_DATA = {
+    ftp: {
+      label: 'FTP', unit: 'W', lowerIsBetter: false,
+      entries: [
+        ['2026-10-05', 260, false, null, null],
+        ['2026-08-20', 225, true, '2026-08-07', 'SST (Med) 2026-08-07'],
+        ['2026-04-28', 255, true, null, 'Zwift Climb Portal: Col Du Platzerwasel'],
+        ['2026-04-18', 253, true, null, 'Bike on 2026-04-18'],
+        ['2026-04-01', 250, true, null, 'Bike on 2026-04-01'],
+        ['2026-02-24', 249, true, null, 'Zwift - Elevation Evaluation'],
+        ['2026-02-19', 244, true, null, 'Bike on 2026-02-19'],
+        ['2026-02-19', 241, true, null, 'Zwift - Climb Portal: Mt Fuji at 100% Elevation in France'],
+        ['2026-02-06', 232, true, null, 'Bike on 2026-02-06'],
+        ['2026-01-15', 227, true, '2025-11-07', 'Bike on 2025-11-07'],
+        ['2025-11-23', 230, true, '2025-09-23', 'Bike on 2025-09-23'],
+        ['2025-09-22', 232, true, '2025-07-31', 'Bike on 2025-07-31'],
+        ['2025-08-08', 235, true, '2025-05-18', 'Bike on 2025-05-18'],
+        ['2025-04-18', 314, true, null, 'Bike on 2025-04-18'],
+        ['2025-04-06', 252, true, null, 'Zwift 2 x 20 minutes at FTP'],
+        ['2025-01-02', 241, true, null, 'Bike on 2025-01-02'],
+        ['2024-12-23', 239, true, null, 'Bike on 2024-12-23'],
+        ['2024-12-22', 236, true, null, 'Bike on 2024-12-22'],
+        ['2024-05-25', 228, true, '2024-02-17', 'Bike on 2024-02-17'],
+        ['2024-02-03', 262, true, null, 'Zwift 20 minute FTP test'],
+        ['2023-11-30', 254, true, '2023-10-28', 'Zwift 20 minute FTP test'],
+        ['2023-08-09', 262, true, null, 'Zwift 20 minute FTP test'],
+        ['2023-07-18', 249, true, null, 'Bike on 2023-07-18'],
+        ['2023-07-12', 209, true, null, 'Bike on 2023-07-12'],
+        ['2023-06-28', 200, true, null, 'Bike on 2023-06-28'],
+        ['2023-06-27', 177, true, null, 'Bike on 2023-06-27'],
+        ['2023-03-05', 74, true, null, 'Bike on 2023-03-05'],
+        ['2023-01-12', 0, true, null, 'Bike on 2023-01-12'],
+        ['2022-08-21', 58, true, null, 'Bike on 2022-08-21'],
+        ['2022-03-12', 0, true, null, 'Bike on 2022-03-12']
+      ],
+    },
+    critical_run_power: {
+      label: 'Critical running power', unit: 'W', lowerIsBetter: false,
+      entries: [
+        ['2026-04-29', 285, true], ['2026-01-24', 276, true], ['2025-09-16', 291, true],
+        ['2025-06-21', 268, true], ['2025-02-19', 272, true], ['2024-09-19', 264, true],
+        ['2024-03-24', 270, true], ['2023-09-03', 278, true], ['2023-03-01', 262, true],
+        ['2022-10-17', 247, true], ['2021-10-17', 220, false],
+      ],
+    },
+    threshold_pace: {
+      label: 'Threshold pace', unit: '/km', lowerIsBetter: true,
+      entries: [
+        ['2026-05-10', '4:00', true], ['2026-01-24', '4:06', true], ['2025-09-04', '4:15', true],
+        ['2025-04-26', '4:22', true], ['2024-11-25', '4:31', true], ['2024-07-02', '4:19', true],
+        ['2024-01-11', '4:36', true], ['2023-06-07', '4:44', true], ['2022-12-29', '4:58', true],
+        ['2022-03-25', '5:12', false], ['2021-10-17', '5:28', false],
+      ],
+    },
+    lthr: { label: 'Heart rate', unit: 'bpm', lowerIsBetter: false, noHistory: true, entries: [['2026-03-02', 155, false]] },
+  };
+  fieldOrder = ['ftp', 'critical_run_power', 'threshold_pace', 'lthr'];
+  // Zone models — same % bands as Preferences / Dashboard.
+  ZONE_FOR = { ftp: 'bike', critical_run_power: 'run', threshold_pace: 'pace', lthr: 'hr' };
+  ZONES = {
+    hr: [['Z1 Recovery', 0, 80, '#8b95a1'], ['Z2 Aerobic', 81, 89, '#3d7fd6'], ['Z3 Tempo', 90, 93, '#2fa66a'], ['Z4 Threshold', 94, 99, '#f0a02e'], ['Z5 VO2 Max', 100, null, '#e0442e']],
+    bike: [['Z1 Active Recovery', 0, 55, '#8b95a1'], ['Z2 Endurance', 56, 75, '#3d7fd6'], ['Z3 Tempo', 76, 90, '#2fa66a'], ['Z4 Threshold', 91, 105, '#f0a02e'], ['Z5 VO2 Max', 106, 120, '#ec4a26'], ['Z6 Anaerobic', 121, 150, '#e0442e'], ['Z7 Neuromuscular', 151, null, '#9a6ad0']],
+    run: [['Z1 Easy', 0, 80, '#8b95a1'], ['Z2 Moderate', 81, 90, '#3d7fd6'], ['Z3 Threshold', 91, 100, '#f0a02e'], ['Z4 Interval', 101, 115, '#ec4a26'], ['Z5 Repetition', 116, null, '#9a6ad0']],
+    pace: [['Z1 Easy', 0, 76, '#8b95a1'], ['Z2 Endurance', 77, 87, '#3d7fd6'], ['Z3 Tempo', 88, 95, '#2fa66a'], ['Z4 Threshold', 96, 102, '#f0a02e'], ['Z5 Interval', 103, null, '#e0442e']],
+  };
+  zoneRange(type, base, lo, hi) {
+    if (type === 'pace') {
+      const at = (pct) => this.secToPace(base / (pct / 100));
+      if (lo <= 0) return '> ' + at(hi) + ' /km';
+      if (hi == null) return '< ' + at(lo) + ' /km';
+      return at(hi) + '\u2013' + at(lo) + ' /km';
+    }
+    const u = type === 'hr' ? ' bpm' : ' W';
+    const L = Math.round(base * lo / 100), H = hi == null ? null : Math.round(base * hi / 100);
+    if (lo <= 0) return '\u2264 ' + H + u;
+    if (hi == null) return '\u2265 ' + L + u;
+    return L + '\u2013' + H + u;
+  }
+  fmtShort(date) { const d = new Date(date + 'T00:00:00'); return d.getDate() + ' ' + this.mo[d.getMonth()] + ' ' + d.getFullYear(); }
+  buildZones() {
+    const f = this.state.field, spec = this.FIELD_DATA[f], type = this.ZONE_FOR[f];
+    const num = (v) => spec.unit === '/km' ? this.paceToSec(v) : +v;
+    const [curDate, curVal] = spec.entries[0];
+    const prev = spec.entries[1];
+    const base = num(curVal), prevBase = prev ? num(prev[1]) : null;
+    const zs = this.ZONES[type];
+    const spans = zs.map(([, lo, hi]) => Math.max(1, (hi == null ? lo + (type === 'bike' ? 40 : 25) : hi) - lo));
+    const total = spans.reduce((a, b) => a + b, 0);
+    const refLabel = { bike: 'as % of FTP', run: 'as % of critical power', pace: 'as % of threshold pace', hr: 'as % of LTHR' }[type];
+    return {
+      currentValue: spec.unit === '/km' ? curVal : String(curVal),
+      currentUnit: spec.unit,
+      currentSince: spec.noHistory ? 'Set in Preferences' : 'Effective from ' + this.fmtShort(curDate),
+      zoneRefLabel: refLabel,
+      prevHeader: prev ? 'Before ' + this.fmtShort(curDate).replace(/ \d{4}$/, '') : '',
+      zoneRows: zs.map(([name, lo, hi, color], i) => ({
+        name,
+        pct: lo <= 0 ? '\u2264 ' + hi + '%' : hi == null ? '\u2265 ' + lo + '%' : lo + '\u2013' + hi + '%',
+        range: this.zoneRange(type, base, lo, hi),
+        prevRange: prev ? this.zoneRange(type, prevBase, lo, hi) : '',
+        swatchStyle: { width: '10px', height: '10px', borderRadius: '3px', flexShrink: 0, background: color },
+        barStyle: { width: (spans[i] / total * 100).toFixed(2) + '%', background: color, height: '100%' },
+      })),
+    };
+  }
+
+  paceToSec(str) { const p = String(str).split(':').map(Number); return p.length === 2 ? p[0] * 60 + p[1] : (parseFloat(str) || 0); }
+  secToPace(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return m + ':' + String(s).padStart(2, '0'); }
+
+  buildChart() {
+    const spec = this.FIELD_DATA[this.state.field];
+    const lib = !!spec.lowerIsBetter, isPace = spec.unit === '/km';
+    const num = (v) => isPace ? this.paceToSec(v) : +v;
+    const fmt = (v) => isPace ? this.secToPace(v) + ' /km' : Math.round(v) + ' ' + spec.unit;
+    const DAY = 86400000;
+    let pts = [...spec.entries].reverse().map(([date, value, hasSource]) => ({ date: new Date(date + 'T00:00:00'), value: num(value), hasSource, real: true }));
+    // delta vs previous, computed on the full series before range-clipping
+    pts.forEach((p, i) => { p.prev = i > 0 ? pts[i - 1].value : null; p.next = pts[i + 1] ? pts[i + 1].date : this.today; });
+    const range = this.state.range || 'all';
+    if (range !== 'all') {
+      const start = new Date(this.today.getTime() - (range === '1y' ? 365 : 112) * DAY);
+      const before = pts.filter(p => p.date <= start).pop();
+      const after = pts.filter(p => p.date > start);
+      pts = before ? [{ date: start, value: before.value, real: false }, ...after] : after;
+    }
+    const last = pts[pts.length - 1];
+    const series = this.today > last.date ? [...pts, { date: this.today, value: last.value, real: false }] : pts;
+
+    const W = 1200, H = 300;
+    const t0 = series[0].date.getTime(), t1 = series[series.length - 1].date.getTime();
+    const x = (d) => t1 > t0 ? ((d.getTime() - t0) / (t1 - t0)) * W : 0;
+    const vals = series.map(p => p.value);
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    const pad = (mx - mn) * 0.18 || Math.max(1, mx * 0.05);
+    const lo = mn - pad, hi = mx + pad;
+    const y = (v) => { const k = (v - lo) / (hi - lo); return lib ? k * H : H - k * H; };
+
+    let d = 'M ' + x(series[0].date).toFixed(1) + ' ' + y(series[0].value).toFixed(1);
+    for (let i = 1; i < series.length; i++) d += ' H ' + x(series[i].date).toFixed(1) + ' V ' + y(series[i].value).toFixed(1);
+    const area = d + ' V ' + H + ' H ' + x(series[0].date).toFixed(1) + ' Z';
+
+    const yTicks = [0, 1, 2, 3].map(i => {
+      const v = lo + (hi - lo) * (i / 3), yp = y(v);
+      return { label: fmt(v),
+        lineStyle: { x: '0px', y: (yp - 0.5) + 'px', width: W + 'px', height: '1px', fill: 'var(--line,#e6e2dc)' },
+        tickStyle: { x: '-8px', y: (yp - 0.75) + 'px', width: '8px', height: '1.5px', fill: 'var(--ink3,#9a958d)' },
+        textStyle: { position: 'absolute', right: '8px', top: ((5 + yp) / 310 * 100) + '%', transform: 'translateY(-50%)', fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', color: 'var(--ink2,#6f6b65)', whiteSpace: 'nowrap' } };
+    });
+    // x ticks: monthly for <= ~13 months, otherwise quarterly. Longer tick at each year boundary.
+    const spanDays = (t1 - t0) / DAY, step = spanDays <= 400 ? 1 : spanDays <= 800 ? 3 : 6;
+    const xTicks = [];
+    const sd = series[0].date;
+    for (let m = new Date(sd.getFullYear(), Math.ceil(sd.getMonth() / step) * step, 1); m.getTime() <= t1; m = new Date(m.getFullYear(), m.getMonth() + step, 1)) {
+      if (m.getTime() < t0) continue;
+      const xp = x(m), jan = m.getMonth() === 0;
+      xTicks.push({ label: this.mo[m.getMonth()],
+        tickStyle: { x: (xp - 0.75) + 'px', y: H + 'px', width: '1.5px', height: (jan ? 22 : 10) + 'px', fill: 'var(--ink3,#9a958d)' },
+        textStyle: { position: 'absolute', left: (xp / W * 100) + '%', top: '4px', transform: 'translateX(-50%)', fontSize: '11px', color: 'var(--ink3,#9a958d)', whiteSpace: 'nowrap' } });
+    }
+
+    // alternating calendar-year bands, year label centred at the bottom
+    const yearBands = [];
+    for (let yr = series[0].date.getFullYear(); yr <= series[series.length - 1].date.getFullYear(); yr++) {
+      const xa = Math.max(0, x(new Date(yr, 0, 1))), xb = Math.min(W, x(new Date(yr + 1, 0, 1)));
+      if (xb - xa < 1) continue;
+      yearBands.push({ label: xb - xa > 90 ? String(yr) : '',
+        rectStyle: { x: xa + 'px', y: '0px', width: (xb - xa) + 'px', height: H + 'px', fill: yr % 2 ? 'var(--elev,#faf9f7)' : 'transparent' },
+        textStyle: { position: 'absolute', left: ((xa + xb) / 2 / W * 100) + '%', top: '21px', transform: 'translateX(-50%)', fontSize: '12px', fontWeight: 700, color: 'var(--ink2,#6f6b65)', whiteSpace: 'nowrap' } });
+    }
+
+    const real = pts.filter(p => p.real);
+    const bestV = real.length ? (lib ? Math.min(...real.map(p => p.value)) : Math.max(...real.map(p => p.value))) : null;
+    const bestPt = real.find(p => p.value === bestV);
+    const curIsBest = bestV != null && last.value === bestV;
+    const hov = this.state.hover;
+    const changePts = real.map((p, i) => {
+      const improved = p.prev == null || (lib ? p.value < p.prev : p.value > p.prev);
+      const on = hov === i;
+      return {
+        dotStyle: { cx: x(p.date) + 'px', cy: y(p.value) + 'px', r: (on ? 6 : 4) + 'px', fill: improved ? 'var(--ember,#ec4a26)' : 'var(--card,#fff)', stroke: improved ? 'var(--ember,#ec4a26)' : 'var(--ink3,#9a958d)', strokeWidth: '1.75px', transition: 'r 0.12s' },
+        hitStyle: { cx: x(p.date) + 'px', cy: y(p.value) + 'px', r: '14px', fill: 'transparent', cursor: 'pointer' },
+        onEnter: () => this.setState({ hover: i }), onLeave: () => this.setState({ hover: null }),
+      };
+    });
+    const pctX = (xv) => (xv / 1200 * 100);
+    const pctY = (yv) => ((5 + yv) / 310 * 100);
+
+    let tip = null, tipStyle = {};
+    if (hov != null && real[hov]) {
+      const p = real[hov];
+      const dlt = p.prev == null ? null : p.value - p.prev;
+      const improved = dlt == null || (lib ? dlt < 0 : dlt > 0);
+      const days = Math.round(((p.next || this.today) - p.date) / DAY);
+      const dtxt = dlt == null ? 'First recorded value' : isPace ? (dlt < 0 ? '\u25bc ' : '\u25b2 ') + this.secToPace(Math.abs(dlt)) + ' /km vs previous' : (dlt > 0 ? '+' : '\u2212') + Math.abs(Math.round(dlt)) + ' ' + spec.unit + ' vs previous';
+      tip = { value: fmt(p.value), delta: dtxt, date: p.date.getDate() + ' ' + this.mo[p.date.getMonth()] + ' ' + p.date.getFullYear(), days: days + ' day' + (days === 1 ? '' : 's') + ' in effect',
+        source: p.hasSource ? (improved ? 'Set by a qualifying activity' : 'Previous best aged out of window') : 'Entered manually',
+        deltaStyle: { fontSize: '12px', fontWeight: 600, marginTop: '2px', color: improved ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)' } };
+      const px = pctX(x(p.date)), py = pctY(y(p.value));
+      tipStyle = { position: 'absolute', left: px + '%', top: py + '%', transform: 'translate(' + (px > 78 ? '-100%' : px < 18 ? '0' : '-50%') + ', calc(-100% - 14px))', pointerEvents: 'none',
+        background: 'var(--card,#fff)', border: '1px solid var(--line,#e6e2dc)', borderRadius: '10px', padding: '10px 12px', boxShadow: '0 8px 24px rgba(0,0,0,0.18)', minWidth: '190px', zIndex: 2 };
+    }
+
+    const ex = x(last.date === series[series.length - 1].date ? last.date : this.today), ey = y(last.value);
+    return {
+      chartPathStyle: { d: "path('" + d + "')", fill: 'none', stroke: 'var(--ember,#ec4a26)', strokeWidth: '2px', strokeLinejoin: 'round' },
+      areaStyle: { d: "path('" + area + "')", fill: 'url(#thrArea)', stroke: 'none' },
+      yTicks, yearBands, changePts, xTicks,
+      yAxisTitle: spec.label + (isPace ? ' (min/km, faster \u2191)' : ' (' + spec.unit + ')'),
+      bestLineStyle: bestV == null ? { display: 'none' } : { x: '0px', y: (y(bestV) - 0.5) + 'px', width: W + 'px', height: '1px', fill: 'none', stroke: 'var(--ink3,#9a958d)', strokeDasharray: '4 4', strokeWidth: '1px', opacity: 0.8 },
+      bestLegend: bestV == null ? 'Best' : 'Best in range ' + fmt(bestV) + (bestPt ? ' \u00b7 ' + this.mo[bestPt.date.getMonth()] + ' ' + bestPt.date.getFullYear() : '') + (curIsBest ? ' (current)' : ''),
+      endDotStyle: { cx: ex + 'px', cy: ey + 'px', r: '4.5px', fill: 'var(--card,#fff)', stroke: 'var(--ember,#ec4a26)', strokeWidth: '2.5px' },
+      endPillLabel: 'Now ' + fmt(last.value),
+      endPillStyle: { position: 'absolute', left: pctX(ex) + '%', top: pctY(ey) + '%', transform: 'translate(-100%, calc(-100% - 10px))', fontFamily: "'JetBrains Mono',monospace", fontSize: '11.5px', fontWeight: 700, color: 'var(--ink,#1b1a18)', background: 'var(--card,#fff)', border: '1px solid var(--ember,#ec4a26)', borderRadius: '6px', padding: '3px 8px', whiteSpace: 'nowrap', pointerEvents: 'none' },
+      hasHover: !!tip, tip: tip || {}, tipStyle,
+      rangeTabs: [['all', 'All time'], ['1y', '1 year'], ['16w', '16 weeks']].map(([k, l]) => ({ label: l, onClick: () => this.setState({ range: k, hover: null }),
+        style: { padding: '5px 11px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', color: range === k ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: range === k ? 'var(--card,#fff)' : 'transparent', boxShadow: range === k ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' } })),
+    };
+  }
+
+  buildLedger() {
+    const spec = this.FIELD_DATA[this.state.field];
+    const mo = this.mo, dayMs = 86400000;
+    const fmt = (d) => d.getDate() + ' ' + mo[d.getMonth()] + ' ' + d.getFullYear();
+    const todayUtc = new Date(2026, 9, 21);
+    const isPace = spec.unit === '/km';
+    const secs = (v) => { const p = String(v).split(':'); return +p[0] * 60 + +p[1]; };
+    const dates = spec.entries.map(([date]) => new Date(date + 'T00:00:00'));
+    const days = dates.map((d, i) => Math.max(0, Math.round(((i === 0 ? todayUtc : dates[i - 1]) - d) / dayMs)));
+    const maxDays = Math.max(1, ...days);
+    const rows = spec.entries.map(([date, value], i) => {
+      const next = spec.entries[i + 1];
+      let delta = '—';
+      if (next) {
+        if (isPace) { const dv = secs(value) - secs(next[1]); if (dv) { const a = Math.abs(dv); delta = (dv < 0 ? '▼ ' : '▲ ') + Math.floor(a / 60) + ':' + String(a % 60).padStart(2, '0'); } }
+        else { const dv = Number(value) - Number(next[1]); if (dv) delta = (dv > 0 ? '+' : '') + dv + 'W'; }
+      }
+      // a few rows are marked REVEALED (an older dormant effort surfaced later) so the badge is drawn
+      const revealedIso = spec.entries[i][3];
+      const revealed = revealedIso !== undefined ? !!revealedIso : (!!next && i % 5 === 1 && !isPace);
+      return {
+        n: i + 1,
+        value: isPace ? value + '/km' : value + 'W',
+        hasSource: !!spec.entries[i][2], noSource: !spec.entries[i][2],
+        activity: spec.entries[i][4] || ('Bike on ' + date),
+        delta, date: fmt(dates[i]),
+        days: days[i] + ' day' + (days[i] === 1 ? '' : 's'),
+        barStyle: { width: Math.round(days[i] / maxDays * 100) + '%', height: '100%', background: 'var(--ember,#ec4a26)', borderRadius: '3px' },
+        revealed, notRevealed: !revealed,
+        effortDate: revealed ? fmt(revealedIso ? new Date(revealedIso + 'T00:00:00') : new Date(dates[i] - 13 * dayMs)) : '',
+      };
+    });
+    return { ledger: rows, ledgerTitle: spec.label.toUpperCase().replace(/ \(.*\)$/, '') + ' · LEDGER', ledgerCount: rows.length + ' ' + (rows.length === 1 ? 'entry' : 'entries'),
+      ledgerGrid: { display: 'grid', gridTemplateColumns: '28px minmax(90px,0.8fr) minmax(160px,1.4fr) minmax(115px,0.95fr) minmax(105px,0.85fr) minmax(140px,1.1fr) minmax(115px,0.95fr)', gap: '8px' } };
+  }
+
+  renderVals() {
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const t = this.state.theme;
+    const palettes = { lab, cockpit, day };
+    const seg = (a) => ({ flex: 1, textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: a ? 'var(--card,#fff)' : 'transparent', boxShadow: a ? '0 1px 2px rgba(0,0,0,0.18)' : 'none' });
+
+    const fieldTabStyle = (active) => ({ padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', color: active ? '#fff' : 'var(--ink3,#9a958d)', background: active ? 'var(--ember,#ec4a26)' : 'none' });
+    const fieldTabs = this.fieldOrder.map(k => ({
+      label: this.FIELD_DATA[k].label, onClick: () => this.setState({ field: k, hover: null }),
+      style: fieldTabStyle(this.state.field === k),
+    }));
+
+    return {
+      isAdmin: true,
+      themeVars: palettes[t] || lab,
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }),
+      setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(t === 'lab'), cockpitBtn: seg(t === 'cockpit'), dayBtn: seg(t === 'day'),
+      pName: 'Neil Goodgame', chipMeta: 'FTP 260 \u00b7 LTHR 154', isCoach: !!this.props.coachAccount, ctxOpen: false, toggleCtx: () => {}, closeCtx: () => {}, ctxLabel: 'My training', ctxItems: [],
+      fieldLabel: this.FIELD_DATA[this.state.field].label,
+      fieldTabs,
+      ...this.buildZones(),
+      ...(this.FIELD_DATA[this.state.field].noHistory ? { hasHistory: false, noHistory: true, chartPathStyle: {}, areaStyle: {}, yTicks: [], yAxisTitle: '', yearBands: [], changePts: [], bestLineStyle: {}, endDotStyle: {}, endPillStyle: { display: 'none' }, hasHover: false, tip: {}, rangeTabs: [], ledger: [] } : { hasHistory: true, noHistory: false, ...this.buildChart(), ...this.buildLedger() }),
+    };
+  }
+}
+</script>
+</body>
+</html>

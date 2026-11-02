@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+  input.cad,input.cadt{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
+  input.cad{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
+  input.cadt{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
+  input.cad:focus,input.cadt:focus{border-color:var(--ember,#ec4a26);}
+  input.cad::placeholder,input.cadt::placeholder{color:var(--ink3,#9a958d);font-weight:400;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+  <!-- ============ SIDEBAR (AppShell.tsx) ============ -->
+  <div style="width:228px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:24px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+      <div style="width:24px;height:24px;border-radius:7px;background:var(--ember,#ec4a26);"></div>
+      <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <a href="../Dashboard.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Dashboard</a>
+      <a href="../Activities.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Activities</a>
+      <div style="padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink,#1b1a18);background:var(--elev,#faf9f7);">Best efforts</div>
+      <a href="../Import.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Import</a>
+      <a href="../Calendar.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Calendar</a>
+      <a href="#" title="No Races mock yet" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);"><svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5V2"></path><path d="M3.5 2.5h8.5l-2 3 2 3H3.5"></path></svg>Races</a>
+      <a href="../Workout Library.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Workouts</a>
+      <a href="../Gear.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Gear</a>
+      <a href="../Preferences.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Preferences</a>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><a href="../Admin.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Admin</a></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+      <a href="../Login.dc.html" style="display:block;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
+
+  <div data-screen-label="best-efforts" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
+      </div>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="../Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <div aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink3,#9a958d);flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="../Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0;">
+      <div style="margin:-32px -32px 0;position:sticky;top:63px;z-index:5;display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);flex-wrap:wrap;gap:12px;">
+        <div style="flex-shrink:0;">
+          <h1 style="font-size:21px;font-weight:800;letter-spacing:-0.02em;margin:0;color:var(--ink,#1b1a18);">Best efforts</h1>
+          <div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:2px;">Personal bests across running and cycling · {{ periodLabel }}</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <!-- Records / Durability view switch (BestEffortsScreen.tsx). The Durability view is not mocked yet. -->
+          <div style="display:flex;gap:2px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+            <div style="{{ viewOn }}">Records</div>
+            <div title="Durability view is not mocked yet (see screenshots/best-efforts-durability-live-1380.png)" style="{{ viewOff }}">Durability</div>
+          </div>
+          <div style="display:flex;gap:2px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+            <sc-for list="{{ periods }}" as="p" hint-placeholder-count="4"><div onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</div></sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding-top:4px;padding-bottom:32px;display:flex;flex-direction:column;gap:28px;">
+        <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="2">
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="{{ sec.swatch }}"></span>
+              <h2 style="font-size:17px;font-weight:800;letter-spacing:-0.01em;margin:0;color:var(--ink,#1b1a18);">{{ sec.label }}</h2>
+              <span style="font-size:13px;color:var(--ink3,#9a958d);">{{ sec.summary }}</span>
+            </div>
+            <sc-for list="{{ sec.cards }}" as="c" hint-placeholder-count="3">
+              <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line,#e6e2dc);flex-wrap:wrap;gap:10px;">
+                  <span style="display:flex;align-items:baseline;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--ink3,#9a958d);"><span>{{ c.title }}</span><span style="font-size:11px;font-weight:400;letter-spacing:0.04em;">{{ c.titleMeta }}</span></span>
+                  <sc-if value="{{ c.hasTabs }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;gap:2px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;flex-wrap:wrap;">
+                      <sc-for list="{{ c.tabs }}" as="t" hint-placeholder-count="5"><div onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</div></sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+                <div style="overflow-x:auto;">
+                  <div style="{{ c.headStyle }}">
+                    <sc-for list="{{ c.cols }}" as="h" hint-placeholder-count="7"><span>{{ h }}</span></sc-for>
+                  </div>
+                  <sc-for list="{{ c.rows }}" as="r" hint-placeholder-count="5">
+                    <div style="{{ c.rowStyle }}">
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ r.rank }}</span>
+                      <a href="../Activity Analysis.dc.html" style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none;">{{ r.name }}</a>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);white-space:nowrap;">{{ r.date }}</span>
+                      <sc-for list="{{ r.cells }}" as="x" hint-placeholder-count="4">
+                        <span style="display:flex;align-items:baseline;gap:5px;white-space:nowrap;">
+                          <span style="{{ x.style }}">{{ x.text }}</span>
+                          <sc-if value="{{ x.pr }}" hint-placeholder-val="{{ false }}"><span style="{{ x.prStyle }}">PR</span></sc-if>
+                        </span>
+                      </sc-for>
+                      <sc-if value="{{ c.excludable }}" hint-placeholder-val="{{ true }}"><div onClick="{{ r.exclude }}" style="border:1px solid var(--line,#e6e2dc);padding:2px 6px;border-radius:4px;color:var(--ink3,#9a958d);font-size:11px;line-height:1.4;white-space:nowrap;cursor:pointer;text-align:center;">Exclude</div></sc-if>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ c.empty }}" hint-placeholder-val="{{ false }}"><div style="padding:20px 18px;color:var(--ink3,#9a958d);font-size:13px;">{{ c.emptyMsg }}</div></sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;coachAccount&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', period: '16w', tabs: {}, excluded: [] };
+
+  shellState = { theme: 'lab', ctxOpen: false, ctxAthlete: null, emailSent: false };
+  coached = ['Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'];
+  shellVals() {
+    const st = { ...this.shellState, ...this.state };
+    const t = st.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const on = { textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--elev,#f2f6f7)' };
+    const off = { ...on, color: 'var(--ink3,#9a958d)', background: 'transparent' };
+    return {
+      isAdmin: true,
+      themeVars: { '--sport-ride': '#3d7fd6', '--sport-run': '#ec4a26', '--sport-swim': '#2fa66a', '--sport-walk': '#8b95a1', '--sport-row': '#1b8fa8', '--sport-multisport': '#a86fd6', '--sport-transition': '#6b7683', '--role-coach': '#c084fc', ...({ lab, cockpit, day }[t] || lab) },
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: t === 'lab' ? on : off, cockpitBtn: t === 'cockpit' ? on : off, dayBtn: t === 'day' ? on : off,
+      pName: 'Neil Goodgame', chipMeta: 'FTP 260 \u00b7 LTHR 154', isCoach: !!this.props.coachAccount,
+      ctxOpen: st.ctxOpen, toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })), closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: st.ctxAthlete ? 'Coaching \u00b7 ' + st.ctxAthlete : 'My training',
+      ctxItems: [null, ...this.coached].map(id => { const act = (st.ctxAthlete || null) === id; return { name: id || 'My training', onClick: () => this.setState({ ctxOpen: false, ctxAthlete: id }), rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: act ? 700 : 500, color: 'var(--ink,#1b1a18)', background: act ? 'var(--elev,#faf9f7)' : 'transparent' } }; }),
+      showEmailBanner: false, emailNotSent: true, emailBannerText: '', resendEmail: () => {},
+    };
+  }
+
+  names = { run: ['Threshold 3\u00d710', 'Saturday parkrun', 'Hill Repeats 6\u00d73', 'Long run \u2014 river loop', 'Tempo 8k', 'Track 5\u00d71k', 'City 10k', 'Progressive long run', 'Easy + strides', 'Half marathon'], bike: ['Sweet Spot 3\u00d712', 'VO2 Max \u00b7 5\u00d75', 'Alpine Loop', 'Saturday group ride', 'Zwift \u2014 Watopia', 'Threshold 2\u00d720', 'Century attempt', 'Hill sprints', 'Endurance 3h', 'Crit practice'] };
+  dates = ['Sep 24, 2026', 'Sep 19, 2026', 'Sep 13, 2026', 'Sep 6, 2026', 'Aug 30, 2026', 'Aug 22, 2026', 'Aug 15, 2026', 'Aug 2, 2026', 'Jul 26, 2026', 'Jul 12, 2026'];
+  pace(s) { const m = Math.floor(s / 60), x = Math.round(s % 60); return m + ':' + String(x).padStart(2, '0') + ' /km'; }
+  dur(s) { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
+  renderVals() {
+    const st = this.state;
+    const P = { '4w': ['4 weeks', 3], '16w': ['16 weeks', 6], '1y': ['1 year', 9], all: ['All time', 10] };
+    const n = P[st.period][1];
+    const seg = (a) => ({ flex: 1, textAlign: 'center', padding: '6px 12px', fontSize: '12.5px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', whiteSpace: 'nowrap', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: a ? 'var(--card,#fff)' : 'transparent', boxShadow: a ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+    const pill = (a) => ({ ...seg(a), flex: 'none', padding: '5px 11px', fontSize: '11.5px' });
+    const mono = (sz, c, w) => ({ fontFamily: "'JetBrains Mono',monospace", fontSize: sz + 'px', color: c, fontWeight: w || 400 });
+    const RUN = 'var(--sport-run,#ec4a26)', BIKE = 'var(--sport-ride,#3d7fd6)';
+    const card = (id, sport, title, titleMeta, windows, cols, grid, mkCells, empty, excludable = true, fixedRows) => {
+      const tab = st.tabs[id] || (windows ? windows[0] : null);
+      const wi = windows ? windows.indexOf(tab) : 0;
+      const rows = (fixedRows || Array.from({ length: n }, (_, i) => i)).map((i) => {
+        const key = id + ':' + tab + ':' + i;
+        if (st.excluded.includes(key)) return null;
+        return { name: this.names[sport][(i * 3 + wi) % 10], date: this.dates[Math.min(9, Math.floor(i * 10 / Math.max(n, 1)))], cells: mkCells(i, tab), exclude: () => this.setState(s => ({ excluded: [...s.excluded, key] })) };
+      }).filter(Boolean).map((r, i) => ({ ...r, rank: i + 1 }));
+      return {
+        title, titleMeta: titleMeta || '', hasTabs: !!windows,
+        tabs: (windows || []).map(w => ({ label: w, style: pill(w === tab), onClick: () => this.setState(s => ({ tabs: { ...s.tabs, [id]: w } })) })),
+        cols: excludable ? [...cols, ''] : cols, excludable,
+        headStyle: { display: 'grid', gridTemplateColumns: grid, gap: '8px', padding: '10px 18px', borderBottom: '1px solid var(--line,#e6e2dc)', fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink3,#9a958d)', whiteSpace: 'nowrap', minWidth: '720px' },
+        rowStyle: { display: 'grid', gridTemplateColumns: grid, gap: '8px', padding: '11px 18px', borderBottom: '1px solid var(--line,#e6e2dc)', alignItems: 'center', minWidth: '720px' },
+        rows, empty: rows.length === 0, emptyMsg: empty,
+      };
+    };
+    const val = (text, color, pr) => ({ text, style: mono(15, color, 700), pr, prStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px', background: color === RUN ? 'rgba(236,74,38,0.15)' : 'rgba(61,127,214,0.15)', color, letterSpacing: '0.04em' } });
+    const sub = (text) => ({ text, style: mono(12, 'var(--ink2,#6f6b65)'), pr: false });
+    const G8 = '28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.5fr 0.55fr 64px';
+    const km = { '1 km': 1, '5 km': 5, '10 km': 10, '10 mile': 16.093, 'Half marathon': 21.097, '30 km': 30, 'Marathon': 42.195 };
+    const runPace = card('rpace', 'run', 'BEST TIME \u00b7 BY DISTANCE', '', Object.keys(km), ['#', 'Activity', 'Date', 'Time', 'Pace', 'Avg HR', 'Power'], '28px minmax(120px,1.3fr) 0.5fr 0.85fr 0.55fr 0.5fr 0.55fr 64px',
+      (i, t) => { const p = 222 + i * 6 + km[t] * 3; return [val(this.dur(p * km[t]), RUN, i === 0 && st.period !== '4w'), sub(this.pace(p)), sub((158 + (i % 4) * 3) + ' bpm'), sub((292 - i * 4) + 'w')]; }, 'No running pace data for this period.');
+    const secW = ['1 min', '5 min', '20 min', '60 min'];
+    const runHr = card('rhr', 'run', 'HEART RATE \u00b7 MAX SUSTAINED', '', secW, ['#', 'Activity', 'Date', 'Duration', 'Avg HR', 'Power', 'Pace'], G8,
+      (i, t) => [sub(t), val((181 - secW.indexOf(t) * 5 - i) + ' bpm', RUN, i === 0), sub((300 - i * 5) + 'w'), sub(this.pace(236 + i * 7))], 'No heart rate data for this period.');
+    const runPwr = card('rpwr', 'run', 'POWER \u00b7 STRYD', 'rCP 285w', secW, ['#', 'Activity', 'Date', 'Duration', 'Power', 'Avg HR', 'Pace'], G8,
+      (i, t) => [sub(t), val((392 - secW.indexOf(t) * 34 - i * 4) + 'w', RUN, i === 0), sub((164 - i) + ' bpm'), sub(this.pace(232 + i * 6))], 'No running power data for this period.');
+    const bW = ['5 sec', '1 min', '5 min', '20 min', '60 min'];
+    const bikePwr = card('bpwr', 'bike', 'PEAK POWER', '', bW, ['#', 'Activity', 'Date', 'Duration', 'Power', 'W/kg', 'Avg HR'], '28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.45fr 0.55fr 64px',
+      (i, t) => { const w = [980, 520, 342, 282, 258][bW.indexOf(t)] - i * 6; return [sub(t), val(w + 'w', BIKE, i === 0), sub((w / 72).toFixed(1)), sub((150 + (i % 5) * 2) + ' bpm')]; }, 'No cycling power data for this period.');
+    const bikeHr = card('bhr', 'bike', 'HEART RATE \u00b7 MAX SUSTAINED', '', secW, ['#', 'Activity', 'Date', 'Duration', 'Avg HR', 'Power'], '28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.55fr 64px',
+      (i, t) => [sub(t), val((176 - secW.indexOf(t) * 5 - i) + ' bpm', BIKE, i === 0), sub((310 - i * 6) + 'w')], 'No heart rate data for this period.');
+    const top = Array.from({ length: 10 }, (_, i) => i);
+    const longest = card('long', 'bike', 'LONGEST RIDES \u00b7 TOP 10', '', null, ['#', 'Activity', 'Date', 'Duration', 'Distance', 'Elevation'], '28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr 0.55fr',
+      (i) => [sub(this.dur((160 - i * 9) / 29 * 3600)), val((160 - i * 9) + ' km', BIKE, false), sub((1840 - i * 110) + ' m')], 'No cycling activities yet.', false, top);
+    const climbs = card('climb', 'bike', 'BIGGEST CLIMBS \u00b7 ELEVATION GAIN \u00b7 TOP 10', '', null, ['#', 'Activity', 'Date', 'Distance', 'Elevation'], '28px minmax(120px,1.3fr) 0.5fr 0.55fr 0.85fr',
+      (i) => [sub((118 - i * 6) + ' km'), val((2310 - i * 140) + ' m', BIKE, false)], 'No climbing data yet.', false, top);
+    const prCount = (cs) => cs.reduce((s, c) => s + c.rows.filter(r => r.cells.some(x => x.pr)).length, 0);
+    const runCards = [runPace, runHr, runPwr], bikeCards = [bikePwr, bikeHr, longest, climbs];
+    const rc = prCount(runCards), bc = prCount(bikeCards);
+    const sw = (c) => ({ width: '11px', height: '11px', borderRadius: '3px', background: c, display: 'inline-block', flexShrink: 0 });
+    return {
+      ...this.shellVals(),
+      periodLabel: P[st.period][0].toLowerCase(),
+      viewOn: seg(true), viewOff: seg(false),
+      periods: Object.keys(P).map(k => ({ label: P[k][0], style: seg(k === st.period), onClick: () => this.setState({ period: k }) })),
+      sections: [
+        { label: 'Running', swatch: sw(RUN), summary: rc + ' record' + (rc === 1 ? '' : 's') + ' standing this period', cards: runCards },
+        { label: 'Cycling', swatch: sw(BIKE), summary: bc + ' record' + (bc === 1 ? '' : 's') + ' standing this period', cards: bikeCards },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

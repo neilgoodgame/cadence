@@ -208,6 +208,10 @@ export interface ThresholdSummaryEntry {
   value: number | string | null;
   previous_value: number | string | null;
   source_activity_id: string | null;
+  /** Null for an auto-derived value (source_activity_id is populated instead). For a
+   * manually-entered value, the id of whoever set it - equal to this athlete's own id for a
+   * self-edit, a different user's id if a coach set it on their behalf. */
+  set_by_user_id: string | null;
   effective_from: string | null;
   /** The source activity has aged out of the trailing window - surfaced, never silently
    * auto-corrected. Recomputes on the next activity, or via a manual refresh. */
@@ -227,6 +231,10 @@ export interface ThresholdsSummary {
 export interface ThresholdHistoryPoint {
   value: number | string;
   source_activity_id: string | null;
+  /** Null for an auto-derived row (source_activity_id is populated instead). For a
+   * manually-entered row, the id of whoever set it - equal to this athlete's own id for a
+   * self-edit, a different user's id if a coach set it on their behalf. */
+  set_by_user_id: string | null;
   effective_from: string;
   current_from: string;
 }

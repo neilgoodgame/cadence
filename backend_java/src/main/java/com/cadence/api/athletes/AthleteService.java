@@ -34,9 +34,18 @@ public class AthleteService {
 		this.thresholdSuggestionService = thresholdSuggestionService;
 	}
 
-	/** Applies the patch and returns the zone types to report as recomputed - see {@link ZoneService#recomputedZoneTypes}. */
+	/** Applies the patch as a self-edit (setBy = athlete) - see the 3-arg overload for a
+	 * coach-on-behalf-of edit. */
 	@Transactional
 	public List<ZoneType> updateProfile(User athlete, AthleteUpdateRequest request) {
+		return updateProfile(athlete, request, athlete);
+	}
+
+	/** Applies the patch and returns the zone types to report as recomputed - see {@link ZoneService#recomputedZoneTypes}.
+	 * `setBy` is the acting principal threaded into any changed threshold's ledger entry - equal
+	 * to `athlete` for a self-edit, a different User for a coach acting on the athlete's behalf. */
+	@Transactional
+	public List<ZoneType> updateProfile(User athlete, AthleteUpdateRequest request, User setBy) {
 		Set<String> changed = new HashSet<>();
 		// Settings whose change can affect which Threshold suggestions are current (lead time
 		// feeds detection directly) - tracked separately from `changed` (which only maps to zone
@@ -62,19 +71,19 @@ public class AthleteService {
 		if (request.ftp() != null) {
 			athlete.setFtp(request.ftp());
 			changed.add("ftp");
-			thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, request.ftp(), null);
+			thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, request.ftp(), null, setBy);
 			suggestionsAffected = true;
 		}
 		if (request.criticalRunPower() != null) {
 			athlete.setCriticalRunPower(request.criticalRunPower());
 			changed.add("criticalRunPower");
-			thresholdHistoryService.recordManualValue(athlete, ThresholdField.CRITICAL_RUN_POWER, request.criticalRunPower(), null);
+			thresholdHistoryService.recordManualValue(athlete, ThresholdField.CRITICAL_RUN_POWER, request.criticalRunPower(), null, setBy);
 			suggestionsAffected = true;
 		}
 		if (request.thresholdPace() != null) {
 			athlete.setThresholdPace(request.thresholdPace());
 			changed.add("thresholdPace");
-			thresholdHistoryService.recordManualValue(athlete, ThresholdField.THRESHOLD_PACE, null, request.thresholdPace());
+			thresholdHistoryService.recordManualValue(athlete, ThresholdField.THRESHOLD_PACE, null, request.thresholdPace(), setBy);
 			suggestionsAffected = true;
 		}
 		if (request.lthr() != null) {

@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+  input.cad,input.cadt{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
+  input.cad{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
+  input.cadt{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
+  input.cad:focus,input.cadt:focus{border-color:var(--ember,#ec4a26);}
+  input.cad::placeholder,input.cadt::placeholder{color:var(--ink3,#9a958d);font-weight:400;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- ============ SIDEBAR (AppShell.tsx) ============ -->
+  <div style="width:228px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:24px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+      <div style="width:24px;height:24px;border-radius:7px;background:var(--ember,#ec4a26);"></div>
+      <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <div style="padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink,#1b1a18);background:var(--elev,#faf9f7);">Dashboard</div>
+      <a href="../Activities.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Activities</a>
+      <a href="../Best Efforts.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Best efforts</a>
+      <a href="../Import.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Import</a>
+      <a href="../Calendar.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Calendar</a>
+      <a href="#" title="No Races mock yet" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);"><svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5V2"></path><path d="M3.5 2.5h8.5l-2 3 2 3H3.5"></path></svg>Races</a>
+      <a href="../Workout Library.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Workouts</a>
+      <a href="../Gear.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Gear</a>
+      <a href="../Preferences.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Preferences</a>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><a href="../Admin.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Admin</a></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+      <a href="../Login.dc.html" style="display:block;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div data-screen-label="dashboard" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
+      </div>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="../Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <div aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink3,#9a958d);flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="../Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:32px;display:flex;flex-direction:column;gap:24px;">
+      <!-- THIS WEEK -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+        <div style="font-size:16px;font-weight:700;color:var(--ink,#1b1a18);margin:0 0 14px;">This week</div>
+
+        <div style="display:flex;gap:32px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--line,#e6e2dc);flex-wrap:wrap;">
+          <sc-for list="{{ weekStats }}" as="c" hint-placeholder-count="8">
+            <sc-if value="{{ c.isDivider }}" hint-placeholder-val="{{ false }}"><div style="width:1px;background:var(--line,#e6e2dc);align-self:stretch;"></div></sc-if>
+            <sc-if value="{{ c.isStat }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;margin-bottom:2px;">{{ c.label }}</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:800;color:var(--ink,#1b1a18);">{{ c.value }}</div>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;">
+          <sc-for list="{{ weekDays }}" as="d" hint-placeholder-count="7">
+            <div style="min-width:0;">
+              <div style="{{ d.headStyle }}">
+                <div style="{{ d.dowStyle }}">{{ d.dow }}</div>
+                <div style="{{ d.dateStyle }}">{{ d.date }}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <sc-if value="{{ d.empty }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--ink3,#9a958d);text-align:center;padding-top:4px;">—</div></sc-if>
+                <sc-for list="{{ d.acts }}" as="a" hint-placeholder-count="2">
+                  <a href="../Activity Analysis.dc.html" title="{{ a.topTitle }}" style="{{ a.blockStyle }}">
+                    <div style="font-size:12px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--ink,#1b1a18);margin-bottom:2px;">{{ a.name }}</div>
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ a.meta }}</div>
+                    <sc-if value="{{ a.hasTop }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:3px 4px;margin-top:5px;min-width:0;">
+                        <span style="{{ a.topBadgeStyle }}">#{{ a.topRank }}</span>
+                        <span style="font-size:10.5px;font-weight:600;color:var(--ink2,#6f6b65);min-width:0;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{{ a.topLabel }}</span>
+                      </div>
+                    </sc-if>
+                  </a>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+      </div>
+
+      <!-- TOP EFFORTS THIS WEEK (TopEffortsCard.tsx; components/BestEffortRow.tsx; lib/bestEfforts.ts) (last-7-day activities ranking top 3 over 16 weeks, 1 year or all time; headline = widest qualifying period) -->
+      <sc-if value="{{ hasTopEfforts }}" hint-placeholder-val="{{ true }}">
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9981a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8v5a4 4 0 0 1-8 0V3Z"></path><path d="M8 4H5a2 2 0 0 0 0 4h1.5M16 4h3a2 2 0 0 1 0 4h-1.5"></path><path d="M10 15v2M14 15v2M8 21h8M9 17h6l1 4H8l1-4Z"></path></svg>
+            <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Top efforts this week</div>
+            
+          </div>
+          <a href="../Best Efforts.dc.html" style="font-size:13px;font-weight:600;color:var(--ember,#ec4a26);text-decoration:none;">Best Efforts →</a>
+        </div>
+        <div style="font-size:12.5px;color:var(--ink3,#9a958d);margin-bottom:10px;">{{ topEffortsSummary }}</div>
+        <div style="display:flex;flex-direction:column;">
+          <sc-for list="{{ topActivities }}" as="g" hint-placeholder-count="4">
+            <div style="display:flex;gap:14px;padding:12px 6px;border-top:1px solid var(--line,#e6e2dc);">
+              <span style="{{ g.rankStyle }}">#{{ g.rank }}</span>
+              <div style="{{ g.sportBarStyle }}"></div>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;">
+                <a href="../Activity Analysis.dc.html" style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;text-decoration:none;">
+                  <span style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);">{{ g.activityName }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--ink3,#9a958d);">{{ g.date }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink2,#6f6b65);">{{ g.headline }} · {{ g.countLabel }}</span>
+                </a>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <sc-for list="{{ g.families }}" as="f" hint-placeholder-count="2">
+                    <div style="display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px;align-items:start;">
+                      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink3,#9a958d);padding-top:4px;">{{ f.label }}</div>
+                      <div style="display:flex;flex-direction:column;gap:4px;">
+                        <sc-for list="{{ f.efforts }}" as="e" hint-placeholder-count="1">
+                          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);min-width:96px;">{{ e.metric }}</span>
+                            <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--ink,#1b1a18);min-width:64px;">{{ e.value }}</span>
+                            <div style="display:flex;align-items:center;gap:4px;">
+                              <sc-for list="{{ e.chips }}" as="c" hint-placeholder-count="3">
+                                <span title="{{ c.title }}" style="{{ c.style }}">{{ c.label }} {{ c.rankText }}</span>
+                              </sc-for>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ g.hasMore }}" hint-placeholder-val="{{ false }}">
+                  <div onClick="{{ g.toggleMore }}" style="align-self:flex-start;margin-left:94px;font-size:12px;font-weight:600;color:var(--ember,#ec4a26);cursor:pointer;">{{ g.moreLabel }}</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- HEART RATE ZONES (WeekCalendar.tsx WeekHrDistribution: its own card, below Top efforts) -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0442e;font-weight:600;letter-spacing:0.06em;margin-bottom:10px;">HEART RATE ZONES</div>
+          <sc-for list="{{ hrZones }}" as="z" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px;">
+              <span style="width:8px;height:8px;border-radius:2px;flex-shrink:0;background:{{ z.color }};"></span>
+              <span style="width:110px;flex-shrink:0;color:var(--ink,#1b1a18);">{{ z.name }}</span>
+              <span style="font-family:'JetBrains Mono',monospace;width:80px;flex-shrink:0;font-size:11px;color:var(--ink3,#9a958d);">{{ z.range }}</span>
+              <div style="flex:1;height:6px;background:var(--elev,#faf9f7);border-radius:3px;">
+                <div style="{{ z.barStyle }}"></div>
+              </div>
+              <span style="font-family:'JetBrains Mono',monospace;width:60px;text-align:right;flex-shrink:0;color:var(--ink2,#6f6b65);">{{ z.time }}</span>
+            </div>
+          </sc-for>
+      </div>
+
+      <!-- NEXT RACE CARD -->
+      <div onClick="{{ openRace }}" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-radius:12px;border:1px solid var(--ember,#ec4a26);background:var(--card,#fff);cursor:pointer;">
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--ember,#ec4a26);margin-bottom:4px;">Next race</div>
+          <div style="font-size:18px;font-weight:800;color:var(--ink,#1b1a18);">{{ nextRace.name }}</div>
+          <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ nextRace.meta }}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:20px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:36px;font-weight:800;line-height:1;color:var(--ember,#ec4a26);">{{ nextRace.days }}</div>
+          <div style="font-size:11px;color:var(--ink3,#9a958d);margin-top:2px;">{{ nextRace.weeksLabel }}</div>
+        </div>
+      </div>
+
+      <!-- UPCOMING WORKOUTS -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Upcoming workouts</div>
+          <a href="../Workout Library.dc.html" style="font-size:13px;font-weight:600;color:var(--ember,#ec4a26);text-decoration:none;">Library →</a>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <sc-if value="{{ noUpcoming }}" hint-placeholder-val="{{ true }}"><div style="font-size:13px;color:var(--ink3,#9a958d);padding:8px 6px;">No workouts scheduled — plan one in the Workout Designer.</div></sc-if>
+          <sc-for list="{{ upcomingWorkouts }}" as="w" hint-placeholder-count="3">
+            <a href="../Scheduled Workout.dc.html" style="{{ w.rowStyle }}">
+              <div style="{{ w.dateBoxStyle }}">
+                <div style="{{ w.dowStyle }}">{{ w.dow }}</div>
+                <div style="{{ w.dateNumStyle }}">{{ w.dateNum }}</div>
+              </div>
+              <div style="{{ w.sportDotStyle }}"></div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:14px;font-weight:700;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ w.name }}</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);margin-top:1px;">{{ w.meta }}</div>
+              </div>
+              <div style="{{ w.tssBadgeStyle }}">{{ w.tss }} TSS</div>
+            </a>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- STAT ROW (StatCardsRow.tsx) -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:13px;">
+        <sc-for list="{{ stats }}" as="s" hint-placeholder-count="4">
+          <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;display:flex;flex-direction:column;">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink3,#9a958d);font-weight:600;margin-bottom:6px;">{{ s.label }}</div>
+            <div style="display:flex;align-items:baseline;gap:6px;">
+              <span style="{{ s.valStyle }}">{{ s.value }}</span>
+              <span style="font-size:13px;font-weight:500;color:var(--ink2,#6f6b65);">{{ s.unit }}</span>
+            </div>
+            <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ s.sub }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- THRESHOLDS (ThresholdSummaryCard.tsx) -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+        <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Thresholds</div>
+        <div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ thrSubtitle }}</div>
+        <div style="display:flex;gap:3px;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);border-radius:10px;padding:3px;margin:16px 0 20px;width:fit-content;max-width:100%;flex-wrap:wrap;">
+          <sc-for list="{{ thrTabs }}" as="t" hint-placeholder-count="4">
+            <div onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:600;color:var(--ink,#1b1a18);">{{ thrValue }}</span>
+          <span style="font-size:14px;font-weight:500;color:var(--ink2,#6f6b65);">{{ thrUnit }}</span>
+        </div>
+        <sc-if value="{{ thrHasDelta }}" hint-placeholder-val="{{ true }}"><div style="font-size:13px;color:var(--ink3,#9a958d);margin-top:4px;">{{ thrDelta }}</div></sc-if>
+        <sc-if value="{{ thrHasValid }}" hint-placeholder-val="{{ true }}"><div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">{{ thrValid }}</div></sc-if>
+        <sc-if value="{{ thrStale }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <span style="font-size:12px;color:var(--ember,#ec4a26);">Aged out of window</span>
+            <div onClick="{{ thrRefresh }}" style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:6px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);cursor:pointer;">{{ thrRefreshLabel }}</div>
+          </div>
+        </sc-if>
+        <a href="../ThresholdHistory.dc.html" style="display:inline-block;margin-top:14px;padding-top:12px;border-top:1px solid var(--line,#e6e2dc);width:100%;font-size:12px;color:var(--ember,#ec4a26);font-weight:600;text-decoration:none;">Zones &amp; history →</a>
+      </div>
+
+      <!-- 16-WEEK BLOCK -->
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+          <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">16-week block</div>
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+            <sc-for list="{{ trainingMetricBtns }}" as="b" hint-placeholder-count="4">
+              <div onClick="{{ b.onClick }}" style="{{ b.style }}">{{ b.label }}</div>
+            </sc-for>
+            <sc-if value="{{ showRecompute }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ recomputeTss }}" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid var(--line,#e6e2dc);background:none;color:var(--ink3,#9a958d);cursor:pointer;margin-left:8px;">{{ recomputeLabel }}</div>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:3px;align-items:flex-end;height:100px;">
+          <sc-for list="{{ trainingBars }}" as="w" hint-placeholder-count="16">
+            <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;">
+              <div style="{{ w.barStyle }}"></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:3px;margin-bottom:20px;border-top:1px solid var(--line,#e6e2dc);padding-top:4px;">
+          <sc-for list="{{ trainingBars }}" as="w" hint-placeholder-count="16">
+            <div style="flex:1;">
+              <sc-if value="{{ w.hasLabel }}" hint-placeholder-val="{{ false }}"><span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.06em;">{{ w.monthLabel }}</span></sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;gap:32px;padding-top:14px;border-top:1px solid var(--line,#e6e2dc);flex-wrap:wrap;">
+          <sc-for list="{{ trainingStats }}" as="c" hint-placeholder-count="8">
+            <sc-if value="{{ c.isDivider }}" hint-placeholder-val="{{ false }}"><div style="width:1px;background:var(--line,#e6e2dc);align-self:stretch;"></div></sc-if>
+            <sc-if value="{{ c.isStat }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <div style="font-size:11px;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;margin-bottom:2px;">{{ c.label }}</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:800;color:var(--ink,#1b1a18);">{{ c.value }}</div>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- COACHING: ATHLETE ACTIVITY -->
+      <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ false }}">
+      <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <span style="font-size:16px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Your athletes</span>
+          <a href="../Coach Roster.dc.html" style="font-size:13px;font-weight:600;color:var(--ember,#ec4a26);text-decoration:none;">Open roster →</a>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:13px;">
+          <sc-for list="{{ coachFeed }}" as="a" hint-placeholder-count="3">
+            <div style="border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:16px 18px;background:var(--card,#fff);display:flex;align-items:center;gap:10px;">
+              <div style="{{ a.avatarStyle }}">{{ a.initial }}</div>
+              <div style="min-width:0;">
+                <div style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ a.name }}</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:{{ a.compColor }};">{{ a.compliance }}% compliance · TSB {{ a.tsb }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+
+          </div>
+  </div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900},&quot;upcomingScheduled&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;coachAccount&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;emailVerified&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;weight&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:72,&quot;min&quot;:40,&quot;max&quot;:120,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', trainingMetric: 'run_distance', recomputeDone: false, prefsOpen: false, prefsTab: 'profile', ctxOpen: false, dashZoneType: 'bike', thrField: 'ftp', thrZonesOpen: false, thrRefreshing: false, emailSent: false,
+    prefs: { name: 'Neil Goodgame', age: 34, ftp: 260, cp: 285, thrPace: '4:00', lthr: 154, maxHr: 186 },
+    zones: {
+      hr: [
+        { name: 'Z1 Recovery', lo: 0, hi: 80, color: '#8b95a1' },
+        { name: 'Z2 Aerobic', lo: 81, hi: 89, color: '#3d7fd6' },
+        { name: 'Z3 Tempo', lo: 90, hi: 93, color: '#2fa66a' },
+        { name: 'Z4 Threshold', lo: 94, hi: 99, color: '#f0a02e' },
+        { name: 'Z5 VO2 Max', lo: 100, hi: null, color: '#e0442e' },
+      ],
+      bike: [
+        { name: 'Z1 Active Recovery', lo: 0, hi: 55, color: '#8b95a1' },
+        { name: 'Z2 Endurance', lo: 56, hi: 75, color: '#3d7fd6' },
+        { name: 'Z3 Tempo', lo: 76, hi: 90, color: '#2fa66a' },
+        { name: 'Z4 Threshold', lo: 91, hi: 105, color: '#f0a02e' },
+        { name: 'Z5 VO2 Max', lo: 106, hi: 120, color: '#ec4a26' },
+        { name: 'Z6 Anaerobic', lo: 121, hi: 150, color: '#e0442e' },
+        { name: 'Z7 Neuromuscular', lo: 151, hi: null, color: '#9a6ad0' },
+      ],
+      run: [
+        { name: 'Z1 Easy', lo: 0, hi: 80, color: '#8b95a1' },
+        { name: 'Z2 Moderate', lo: 81, hi: 90, color: '#3d7fd6' },
+        { name: 'Z3 Threshold', lo: 91, hi: 100, color: '#f0a02e' },
+        { name: 'Z4 Interval', lo: 101, hi: 115, color: '#ec4a26' },
+        { name: 'Z5 Repetition', lo: 116, hi: null, color: '#9a6ad0' },
+      ],
+      pace: [
+        { name: 'Z1 Easy', lo: 0, hi: 76, color: '#8b95a1' },
+        { name: 'Z2 Endurance', lo: 77, hi: 87, color: '#3d7fd6' },
+        { name: 'Z3 Tempo', lo: 88, hi: 95, color: '#2fa66a' },
+        { name: 'Z4 Threshold', lo: 96, hi: 102, color: '#f0a02e' },
+        { name: 'Z5 Interval', lo: 103, hi: null, color: '#e0442e' },
+      ],
+    },
+  };
+
+  // Mirrors the real CoachedAthlete shape returned by GET /v1/me/contexts: name/compliance/TSB
+  // only — no per-athlete activity feed (that needs a delegated JWT the Dashboard doesn't fetch).
+  coachedAthletes = [
+    { id: 'sofia', name: 'Sofia Greco', sport: 'Triathlon', color: '#ec4a26', compliance: 92, tsb: -4 },
+    { id: 'tom', name: 'Tom Reyes', sport: 'Cycling', color: '#3d7fd6', compliance: 78, tsb: -14 },
+    { id: 'mara', name: 'Mara Køhl', sport: 'Running', color: '#2fa66a', compliance: 95, tsb: 6 },
+  ];
+
+  mulberry32(seed) {
+    return function () {
+      let t = (seed += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  rgba(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  spark(vals) {
+    const lo = Math.min(...vals), hi = Math.max(...vals), n = vals.length;
+    return vals.map((v, i) => {
+      const x = (i / (n - 1)) * 100;
+      const y = hi > lo ? 28 - ((v - lo) / (hi - lo)) * 26 : 14;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+  }
+
+  sgn(v) { return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1); }
+
+  // Fixed "today" anchor so the mock renders identically on every load — matches the
+  // live app's current data (Wed 21 Oct 2026) rather than drifting with the real clock.
+  today = new Date(2026, 9, 21);
+  mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  build() {
+    const rnd = this.mulberry32(11);
+    const D = 84;
+    const pat = [15, 72, 55, 68, 20, 150, 60];
+    const tss = [];
+    for (let i = 0; i < D; i++) {
+      const dow = i % 7;
+      const week = Math.floor(i / 7);
+      const buildMul = (week % 4 === 3) ? 0.62 : (0.82 + week * 0.028);
+      let v = Math.round(pat[dow] * (0.72 + rnd() * 0.55) * buildMul);
+      if (rnd() > 0.93) v = Math.round(v * 0.28);
+      tss.push(v);
+    }
+    const ctl = [], atl = [];
+    let c = 44, a = 46;
+    const kc = 2 / 43, ka = 2 / 8;
+    for (let i = 0; i < D; i++) {
+      c = c + kc * (tss[i] - c);
+      a = a + ka * (tss[i] - a);
+      ctl.push(c); atl.push(a);
+    }
+
+    // ---- stat cards (Fitness / Fatigue / Form / 7-day Load — matches StatCardsRow.tsx) ----
+    const ctlNow = ctl[D - 1], ctlPrev = ctl[D - 8];
+    const atlNow = atl[D - 1], atlPrev = atl[D - 8];
+    const tsbNow = ctlNow - atlNow;
+    const load7 = tss.slice(-7).reduce((s, v) => s + v, 0);
+    const formLabel = tsbNow > 5 ? 'Fresh & ready' : tsbNow > -10 ? 'Building fitness' : 'Carrying fatigue';
+    const formColor = tsbNow > 5 ? '#2fa66a' : tsbNow > -10 ? '#f0a02e' : '#e0442e';
+    const valBase = { fontFamily: "'JetBrains Mono',monospace", fontSize: '25px', fontWeight: 600, letterSpacing: '-0.02em', lineHeight: '1' };
+    const stats = [
+      { label: 'Fitness', value: Math.round(ctlNow), unit: '', valStyle: { ...valBase, color: '#3d7fd6' }, sub: this.sgn(ctlNow - ctlPrev) + ' CTL · 42-day load' },
+      { label: 'Fatigue', value: Math.round(atlNow), unit: '', valStyle: { ...valBase, color: '#f0a02e' }, sub: this.sgn(atlNow - atlPrev) + ' ATL · 7-day load' },
+      { label: 'Form', value: Math.round(tsbNow), unit: '', valStyle: { ...valBase, color: formColor }, sub: formLabel },
+      { label: '7-day Load', value: Math.round(load7), unit: 'TSS', valStyle: { ...valBase, color: 'var(--ember,#ec4a26)' }, sub: 'last 7 days' },
+    ];
+
+    // Fixed to the live screen's current values (the seeded series above no longer drives the cards).
+    const liveStats = [
+      { label: 'Fitness', value: 117, unit: '', valStyle: { ...valBase, color: '#3d7fd6' }, sub: '-2.8 CTL · 42-day load' },
+      { label: 'Fatigue', value: 66, unit: '', valStyle: { ...valBase, color: '#f0a02e' }, sub: '-10.9 ATL · 7-day load' },
+      { label: 'Form', value: 52, unit: '', valStyle: { ...valBase, color: '#2fa66a' }, sub: 'Fresh & ready' },
+      { label: '7-day Load', value: 451, unit: 'TSS', valStyle: { ...valBase, color: 'var(--ember,#ec4a26)' }, sub: 'last 7 days' },
+    ];
+    return { stats: liveStats };
+  }
+
+  model = this.build();
+
+  // ---- upcoming workouts (next scheduled sessions from the Builder/Library) ----
+  upcomingWorkoutsData = [
+    { date: '2026-10-22', name: 'Threshold 3×10', sport: 'bike', dur: '50:00', tss: 71, targetLabel: '95% FTP' },
+    { date: '2026-10-23', name: '5×5min Run VO2', sport: 'run', dur: '50:00', tss: 68, targetLabel: '105% CP' },
+    { date: '2026-10-25', name: 'Progressive Long Run', sport: 'run', dur: '1:45:00', tss: 82, targetLabel: '50→95% CP' },
+  ];
+  buildUpcoming() {
+    const C = { bike: '#3d7fd6', run: '#ec4a26', walk: '#8b95a1' };
+    const dow3 = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const rows = this.props.upcomingScheduled ? this.upcomingWorkoutsData : [];
+    return {
+      noUpcoming: rows.length === 0,
+      upcomingWorkouts: rows.map(w => {
+        const d = new Date(w.date + 'T00:00:00');
+        return {
+          dow: dow3[d.getDay()], dateNum: d.getDate(), name: w.name,
+          meta: w.dur,
+          tss: w.tss,
+          rowStyle: { display: 'flex', alignItems: 'center', gap: '14px', padding: '10px 6px', borderRadius: '10px', textDecoration: 'none', cursor: 'pointer' },
+          dateBoxStyle: { width: '40px', flexShrink: 0, textAlign: 'center' },
+          dowStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--ink3,#9a958d)' },
+          dateNumStyle: { fontSize: '17px', fontWeight: 800, color: 'var(--ink,#1b1a18)', lineHeight: '1.15' },
+          sportDotStyle: { width: '4px', height: '32px', borderRadius: '3px', flexShrink: 0, background: C[w.sport] },
+          tssBadgeStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11.5px', fontWeight: 700, color: 'var(--ink2,#6f6b65)', flexShrink: 0 },
+        };
+      }),
+    };
+  }
+
+  // ---- top efforts this week (shipped: lib/bestEfforts.ts) ----
+  // Entry = activity x Best Efforts category (family + metric), with its rank per qualifying period.
+  // Qualifies if top 3 in any of 16w / 1y / all (4 weeks excluded). Headline = WIDEST period with rank <= 3.
+  // Card groups by activity -> family (Power, Pace, Heart rate, Distance, Elevation) -> effort.
+  periodDefs = [['all', 'All time', 'All-time', 'AT'], ['1y', '1 yr', '1-year', '1Y'], ['16w', '16 wk', '16-week', '16W']];
+  familyOrder = ['Power', 'Pace', 'Heart rate', 'Distance', 'Elevation'];
+  effortsCap = 3; // per activity; rest behind "+N more"
+  // v1 (shipped): only the five BestEffortKinds — Power / Pace / Heart rate. Distance & Elevation families are deferred (not periodized).
+  recentTopEfforts = [
+    { day: 18, act: 0, sport: 'run', family: 'Pace', metric: '30 km', value: '2:20:51', ranks: { '16w': 1, '1y': 1, all: 2 } },
+    { day: 18, act: 0, sport: 'run', family: 'Pace', metric: 'Marathon', value: '3:19:47', ranks: { '16w': 1, '1y': 1, all: 2 } },
+    { day: 18, act: 0, sport: 'run', family: 'Pace', metric: 'Half marathon', value: '1:38:54', ranks: { '16w': 1, '1y': 1, all: 6 } },
+    { day: 18, act: 0, sport: 'run', family: 'Pace', metric: '10 mile', value: '1:15:22', ranks: { '1y': 2 } },
+    { day: 17, act: 0, sport: 'run', family: 'Power', metric: '5 s', value: '531 W', ranks: { '16w': 1, '1y': 2 } },
+    { day: 17, act: 0, sport: 'run', family: 'Power', metric: '15 s', value: '399 W', ranks: { '16w': 1, '1y': 4 } },
+  ];
+  rankColors = { 1: '#c9981a', 2: '#8e98a3', 3: '#c98a52' };
+  rankInk = '#1b1a18'; // dark text on medal fills (white fails 4.5:1)
+  headlineOf(e) {
+    for (let i = 0; i < this.periodDefs.length; i++) {
+      const [k, , adj, code] = this.periodDefs[i];
+      if (e.ranks[k] && e.ranks[k] <= 3) return { key: k, width: this.periodDefs.length - i, rank: e.ranks[k], adj, code };
+    }
+    return null;
+  }
+  cmpEffort(x, y) { return y.hl.width - x.hl.width || x.hl.rank - y.hl.rank || y.day - x.day; }
+  qualifyingEfforts() {
+    return this.recentTopEfforts.map(e => ({ ...e, hl: this.headlineOf(e) })).filter(e => e.hl).sort((x, y) => this.cmpEffort(x, y));
+  }
+  topEffortsFor(day, act) { return this.qualifyingEfforts().filter(e => e.day === day && e.act === act); }
+  effortLabel(e) { return e.family === 'Distance' || e.family === 'Elevation' ? e.metric : e.metric + ' ' + e.family.toLowerCase(); }
+  buildTopEfforts() {
+    const C = { bike: '#3d7fd6', run: '#ec4a26', walk: '#8b95a1' };
+    const list = this.qualifyingEfforts();
+    if (!list.length) return { hasTopEfforts: false };
+    const groups = [];
+    list.forEach(e => { const k = e.day + ':' + e.act; let g = groups.find(x => x.k === k); if (!g) groups.push(g = { k, items: [] }); g.items.push(e); });
+    const famCounts = this.familyOrder.map(f => [f, list.filter(e => e.family === f).length]).filter(x => x[1]);
+    return {
+      hasTopEfforts: true,
+      topEffortsSummary: list.length + ' top-3 efforts across ' + groups.length + ' activities in the last 7 days \u00b7 ' + famCounts.map(([f, n]) => f + ' ' + n).join(' \u00b7 '),
+      topActivities: groups.map(g => {
+        const best = g.items[0];
+        const open = !!(this.state.effortsOpen || {})[g.k];
+        const hidden = Math.max(0, g.items.length - this.effortsCap);
+        const shown = open ? g.items : g.items.slice(0, this.effortsCap);
+        const d = this.weekDaysData.find(x => x.date === best.day);
+        const a = d && d.acts[best.act];
+        return {
+          rank: best.hl.rank,
+          activityName: a ? a[1] : '', date: (d ? d.dow.charAt(0) + d.dow.slice(1).toLowerCase() : '') + ' ' + best.day + ' Oct',
+          headline: best.hl.adj + ' #' + best.hl.rank,
+          countLabel: g.items.length + (g.items.length === 1 ? ' effort' : ' efforts'),
+          hasMore: hidden > 0,
+          moreLabel: open ? 'Show fewer' : '+' + hidden + ' more effort' + (hidden === 1 ? '' : 's'),
+          toggleMore: () => this.setState(st => ({ effortsOpen: { ...(st.effortsOpen || {}), [g.k]: !open } })),
+          families: this.familyOrder.filter(f => shown.some(e => e.family === f)).map(f => ({
+            label: f,
+            efforts: shown.filter(e => e.family === f).map(e => ({
+              metric: e.metric, value: e.value,
+              chips: this.periodDefs.map(([k, label]) => {
+                const r = e.ranks[k], top = r && r <= 3;
+                return {
+                  label, rankText: top ? '#' + r : '\u2014',
+                  title: label + ': ' + (r ? 'rank ' + r : 'not ranked'),
+                  style: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10.5px', fontWeight: 700, whiteSpace: 'nowrap', padding: '2px 7px', borderRadius: '5px',
+                    color: top ? this.rankInk : 'var(--ink3,#9a958d)', background: top ? this.rankColors[r] : 'transparent',
+                    border: '1px solid ' + (top ? this.rankColors[r] : 'var(--line,#e6e2dc)') },
+                };
+              }),
+            })),
+          })),
+          rankStyle: { width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'JetBrains Mono',monospace", fontSize: '12px', fontWeight: 800, color: this.rankInk, background: this.rankColors[best.hl.rank] },
+          sportBarStyle: { width: '4px', alignSelf: 'stretch', borderRadius: '3px', flexShrink: 0, background: C[best.sport] },
+        };
+      }),
+    };
+  }
+
+  // ---- next race (NextRaceCard.tsx) ----
+  race = { name: 'Sevilla Marathon', date: '2027-02-21', sport: 'Run', distanceKm: 42.195, goalTime: '3:20:00' };
+
+  buildRace() {
+    const r = this.race;
+    const raceDate = new Date(r.date + 'T00:00:00');
+    const days = Math.round((raceDate - this.today) / 86400000);
+    const weeksLabel = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days < 14 ? days + ' days' : Math.round(days / 7) + ' weeks';
+    const meta = r.date + ' · ' + r.sport + ' · ' + r.distanceKm + ' km · Goal: ' + r.goalTime;
+    return { nextRace: { name: r.name, meta, days, weeksLabel }, openRace: () => {} };
+  }
+
+  // ---- this week (WeekCalendar.tsx) — fixed to match the live screen's current data ----
+  weekStatsData = [
+    { label: 'Training time', value: '4:40:07' }, { label: 'TSS', value: '390' }, null,
+    { label: 'Run distance', value: '54.8 km' }, { label: 'Runs', value: '3' }, { label: 'Avg run pace', value: '5:07 /km' },
+    // Bike group (Bike distance / Rides / Avg power) only appears in the app when the week has a ride.
+  ];
+  weekDaysData = [
+    { dow: 'THU', date: 15, acts: [['run', '8km: 2km WU + 2x2km @ MP (2km recovery)', '8.4 km · 44:05']] },
+    { dow: 'FRI', date: 16, acts: [] },
+    { dow: 'SAT', date: 17, acts: [['run', 'Pre-race Shakeout — 20min w/ Strides', '4.0 km · 35:04']] },
+    { dow: 'SUN', date: 18, acts: [['run', 'Run on 2026-10-18', '42.4 km · 3:20:58']] },
+    { dow: 'MON', date: 19, acts: [] },
+    { dow: 'TUE', date: 20, acts: [] },
+    { dow: 'WED', date: 21, today: true, acts: [] },
+  ];
+  hrZonesData = [
+    { name: 'Z1 Active Recovery', range: '0–105 bpm', color: '#8b95a1', seconds: 480, time: '8:00' },
+    { name: 'Z2 Endurance', range: '105–126 bpm', color: '#3d7fd6', seconds: 3295, time: '54:55' },
+    { name: 'Z3 Tempo', range: '126–145 bpm', color: '#2fa66a', seconds: 11875, time: '3:17:55' },
+    { name: 'Z4 Threshold', range: '145–162 bpm', color: '#f0a02e', seconds: 580, time: '9:40' },
+    { name: 'Z5 VO2max', range: '162+ bpm', color: '#e0442e', seconds: 10, time: '0:10' },
+  ];
+
+  buildWeek() {
+    const statCell = (s) => s === null ? { isDivider: true, isStat: false } : { isDivider: false, isStat: true, label: s.label, value: s.value };
+    const weekStats = this.weekStatsData.map(statCell);
+
+    const C = { bike: '#3d7fd6', run: '#ec4a26', walk: '#8b95a1' };
+    const weekDays = this.weekDaysData.map(d => ({
+      dow: d.dow, date: d.date, empty: d.acts.length === 0,
+      headStyle: { paddingBottom: '8px', marginBottom: '8px', borderBottom: '2px solid ' + (d.today ? 'var(--ember,#ec4a26)' : 'var(--line,#e6e2dc)') },
+      dowStyle: { fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: d.today ? 'var(--ember,#ec4a26)' : 'var(--ink3,#9a958d)' },
+      dateStyle: { fontSize: '20px', fontWeight: 800, lineHeight: '1.2', color: d.today ? 'var(--ink,#1b1a18)' : 'var(--ink2,#6f6b65)' },
+      acts: d.acts.map(([sport, name, meta], i) => {
+        const top = this.topEffortsFor(d.date, i);
+        const best = top[0];
+        const rc = best ? this.rankColors[best.hl.rank] : null;
+        return {
+          name, meta, onClick: () => {},
+          hasTop: !!best,
+          topRank: best ? best.hl.rank + ' ' + best.hl.code : '',
+          topLabel: best ? this.effortLabel(best) + (top.length > 1 ? ' +' + (top.length - 1) : '') : '',
+          topTitle: top.map(e => e.hl.adj + ' #' + e.hl.rank + ' \u00b7 ' + e.family + ' \u00b7 ' + e.metric + ' \u2014 ' + e.value).join('\n'),
+          topBadgeStyle: { flexShrink: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: '10px', fontWeight: 800, color: this.rankInk, background: rc, borderRadius: '4px', padding: '1px 5px' },
+          blockStyle: { padding: '6px 8px', borderRadius: '6px', background: best ? this.rgba(rc, 0.1) : 'var(--elev,#faf9f7)', boxShadow: best ? 'inset 0 0 0 1px ' + this.rgba(rc, 0.45) : 'none', cursor: 'pointer', borderLeft: '3px solid ' + C[sport], textDecoration: 'none', display: 'block' },
+        };
+      }),
+    }));
+
+    const maxSeconds = Math.max(1, ...this.hrZonesData.map(z => z.seconds));
+    const hrZones = this.hrZonesData.map(z => ({
+      name: z.name, range: z.range, color: z.color, time: z.time,
+      barStyle: { width: (z.seconds / maxSeconds * 100) + '%', height: '100%', background: z.color, borderRadius: '3px' },
+    }));
+
+    return { weekStats, weekDays, hrZones };
+  }
+
+  // ---- 16-week block (TrainingHistory.tsx) ----
+  trainingStatsData = [
+    { label: 'Training time/wk', value: '12:04:18' }, { label: 'TSS/wk', value: '897' }, null,
+    { label: 'Run dist/wk', value: '87.7 km' }, { label: 'Runs/wk', value: '5.4' }, { label: 'Avg run pace', value: '5:29 /km' }, null,
+    { label: 'Bike dist/wk', value: '113.2 km' }, { label: 'Rides/wk', value: '3.1' }, { label: 'Avg power', value: '197 W' },
+  ];
+  // Weekly run distance (km), 29 Jun - 12 Oct 2026, read from the live screen's bar tooltips.
+  liveRunDistance = [57.5, 94.2, 55.5, 115.5, 90.5, 104.7, 82.7, 93.4, 92.6, 110.9, 83.9, 107.2, 83.6, 102.6, 60.7, 67.8];
+  trainingMetricLabels = { run_distance: 'Run distance', run_time: 'Run time', activity_time: 'Activity time', tss: 'TSS' };
+
+  getMonday(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); const day = x.getDay(); x.setDate(x.getDate() - (day === 0 ? 6 : day - 1)); return x; }
+
+  weekBlocks() {
+    const thisMonday = this.getMonday(this.today);
+    const blocks = [];
+    for (let i = 16; i >= 1; i--) {
+      const ws = new Date(thisMonday); ws.setDate(thisMonday.getDate() - i * 7);
+      blocks.push(ws);
+    }
+    return blocks.map((ws, idx) => {
+      const prev = idx > 0 ? blocks[idx - 1] : null;
+      return { start: ws, monthLabel: (!prev || ws.getMonth() !== prev.getMonth()) ? this.mo[ws.getMonth()] : null };
+    });
+  }
+
+  buildHistory() {
+    const metric = this.state.trainingMetric;
+    const weeks = this.weekBlocks();
+    // per-metric seed so switching the toggle visibly reshapes the histogram
+    const seeds = { run_distance: 5, run_time: 7, activity_time: 9, tss: 13 };
+    const rnd = this.mulberry32(seeds[metric]);
+    const raw = weeks.map((w, i) => {
+      const buildMul = (i % 4 === 3) ? 0.55 : (0.7 + (i % 4) * 0.12);
+      return Math.max(0.05, (0.4 + rnd() * 0.7) * buildMul);
+    });
+    const vals = metric === 'run_distance' ? this.liveRunDistance : raw;
+    const maxValue = Math.max(...vals);
+    const trainingBars = weeks.map((w, i) => ({
+      hasLabel: !!w.monthLabel, monthLabel: w.monthLabel,
+      barStyle: { width: '100%', height: (vals[i] / maxValue * 100) + '%', minHeight: '3px', background: 'var(--ember,#ec4a26)', borderRadius: '3px 3px 0 0', opacity: 0.85 },
+    }));
+
+    const seg = (active) => ({ fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', border: '1px solid var(--line,#e6e2dc)', background: active ? 'var(--ember,#ec4a26)' : 'none', color: active ? '#fff' : 'var(--ink3,#9a958d)', cursor: 'pointer' });
+    const trainingMetricBtns = Object.keys(this.trainingMetricLabels).map(k => ({ label: this.trainingMetricLabels[k], onClick: () => this.setState({ trainingMetric: k }), style: seg(metric === k) }));
+
+    const statCell = (s) => s === null ? { isDivider: true, isStat: false } : { isDivider: false, isStat: true, label: s.label, value: s.value };
+    const trainingStats = this.trainingStatsData.map(statCell);
+
+    return {
+      trainingBars, trainingMetricBtns, trainingStats,
+      showRecompute: metric === 'tss',
+      recomputeLabel: this.state.recomputeDone ? 'Updated 428' : 'Recompute TSS',
+      recomputeTss: () => this.setState({ recomputeDone: true }),
+    };
+  }
+
+  paceToSec(str) { const p = String(str).split(':').map(Number); return p.length === 2 ? p[0] * 60 + p[1] : (parseFloat(str) || 0); }
+  secToPace(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return m + ':' + String(s).padStart(2, '0'); }
+
+  onPref(k) { return (e) => { const raw = e.target.value; const val = (k === 'name' || k === 'thrPace') ? raw : (raw === '' ? '' : (parseFloat(raw) || 0)); this.setState(s => ({ prefs: { ...s.prefs, [k]: val } })); }; }
+  onZone(type, idx, field) { return (e) => { const raw = e.target.value; const val = field === 'name' ? raw : (raw === '' ? 0 : (parseFloat(raw) || 0)); this.setState(s => ({ zones: { ...s.zones, [type]: s.zones[type].map((z, i) => i === idx ? { ...z, [field]: val } : z) } })); }; }
+
+  openPrefsThresholds = () => this.setState({ prefsOpen: true, prefsTab: this.state.dashZoneType });
+
+  thresholds = {
+    ftp: { label: 'FTP', unit: 'W', zone: 'bike', value: '260', delta: '+35W vs previous', remaining: 96, stale: false },
+    critical_run_power: { label: 'Critical running power', unit: 'W', zone: 'run', value: '285', delta: '+4W vs previous', remaining: 51, stale: false },
+    threshold_pace: { label: 'Threshold pace', unit: '', zone: 'pace', value: '4:00/km', delta: '\u25bc 0:05 /km vs previous', remaining: 12, stale: false },
+    lthr: { label: 'Heart rate', unit: 'bpm', zone: 'hr', value: '154', delta: null, remaining: null, stale: false },
+  };
+  buildThresholds() {
+    const f = this.state.thrField, e = this.thresholds[f];
+    const tab = (a) => ({ padding: '7px 14px', borderRadius: '7px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: a ? 'var(--card,#fff)' : 'transparent', boxShadow: a ? '0 1px 2px rgba(0,0,0,0.14)' : 'none' });
+    const { zoneRows, zoneRefLabel } = this.computeZone(e.zone);
+    const open = this.state.thrZonesOpen;
+    return {
+      thrTabs: Object.keys(this.thresholds).map(k => ({ label: this.thresholds[k].label, onClick: () => this.setState({ thrField: k }), style: tab(k === f) })),
+      thrSubtitle: f === 'lthr' ? 'Set manually in your profile' : 'Best qualifying effort within your trailing window',
+      thrValue: e.value, thrUnit: e.unit,
+      thrHasDelta: !!e.delta, thrDelta: e.delta || '',
+      thrHasValid: e.remaining != null && !e.stale, thrValid: 'Valid for ' + e.remaining + ' more days',
+      thrStale: e.stale, thrRefreshLabel: this.state.thrRefreshing ? 'Refreshing\u2026' : 'Refresh', thrRefresh: () => this.setState({ thrRefreshing: true }),
+      thrHasHistory: f !== 'lthr',
+      thrZonesOpen: open, thrZonesLabel: open ? 'Hide zones' : 'Show zones',
+      toggleThrZones: () => this.setState(s => ({ thrZonesOpen: !s.thrZonesOpen })),
+      thrCaretStyle: { display: 'inline-block', fontSize: '9px', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' },
+      dashZoneRows: zoneRows, dashZoneRefLabel: zoneRefLabel,
+    };
+  }
+
+  buildDashZones() {
+    const active = this.state.dashZoneType;
+    const tabs = [['hr', 'Heart rate'], ['bike', 'Bike power'], ['run', 'Run power'], ['pace', 'Pace']].map(([k, l]) => ({
+      label: l, onClick: () => this.setState({ dashZoneType: k }),
+      style: { padding: '5px 11px', fontSize: '11.5px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: k === active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: k === active ? 'var(--elev,#f3f1ee)' : 'transparent' },
+    }));
+    const { zoneRows, zoneRefLabel } = this.computeZone(active);
+    return { dashZoneTabs: tabs, dashZoneRows: zoneRows, dashZoneRefLabel: zoneRefLabel };
+  }
+
+  computeZone(type) {
+    const p = this.state.prefs;
+    const zs = this.state.zones[type];
+    const base = (type === 'hr' ? +p.lthr : type === 'bike' ? +p.ftp : type === 'run' ? +p.cp : this.paceToSec(p.thrPace)) || 0;
+    const unit = type === 'hr' ? ' bpm' : type === 'pace' ? ' /km' : ' w';
+    const refLabel = type === 'hr' ? 'as % of LTHR (' + p.lthr + ' bpm)' : type === 'bike' ? 'as % of FTP (' + p.ftp + ' W)' : type === 'run' ? 'as % of critical power (' + p.cp + ' W)' : 'as % of threshold pace (' + p.thrPace + ' /km)';
+    const spans = zs.map(z => (z.hi == null ? z.lo + (type === 'bike' ? 40 : 25) : z.hi) - z.lo);
+    const totalSpan = spans.reduce((a, b) => a + Math.max(b, 1), 0) || 1;
+    const rows = zs.map((z, i) => {
+      let range;
+      if (type === 'pace') {
+        const paceAt = (pct) => pct <= 0 ? 0 : base / (pct / 100);
+        if (z.lo <= 0) range = '> ' + this.secToPace(paceAt(z.hi)) + ' /km';
+        else if (z.hi == null) range = '< ' + this.secToPace(paceAt(z.lo)) + ' /km';
+        else range = this.secToPace(paceAt(z.hi)) + '\u2013' + this.secToPace(paceAt(z.lo)) + ' /km';
+      } else {
+        const lo = Math.round(base * z.lo / 100), hi = z.hi == null ? null : Math.round(base * z.hi / 100);
+        if (z.lo <= 0) range = '\u2264 ' + hi + unit;
+        else if (z.hi == null) range = '\u2265 ' + lo + unit;
+        else range = lo + '\u2013' + hi + unit;
+      }
+      return {
+        name: z.name, color: z.color, lo: z.lo, hi: z.hi == null ? '' : z.hi, hiOpen: z.hi == null, hiClosed: z.hi != null, range,
+        onName: this.onZone(type, i, 'name'), onLo: this.onZone(type, i, 'lo'), onHi: this.onZone(type, i, 'hi'),
+        barStyle: { width: (Math.max(spans[i], 1) / totalSpan * 100).toFixed(1) + '%', background: z.color, height: '100%' },
+      };
+    });
+    return { zoneRows: rows, zoneRefLabel: refLabel };
+  }
+
+  buildPrefs() {
+    const p = this.state.prefs, tab = this.state.prefsTab;
+    const railItem = (a) => ({ display: 'flex', alignItems: 'center', gap: '9px', padding: '9px 12px', borderRadius: '9px', fontSize: '13px', fontWeight: a ? 600 : 500, cursor: 'pointer', color: a ? 'var(--ember,#ec4a26)' : 'var(--ink2,#6f6b65)', background: a ? 'var(--emberSoft,#fff5f1)' : 'transparent' });
+    const prefsTabs = [['profile', 'Profile'], ['hr', 'Heart rate'], ['bike', 'Bike power'], ['run', 'Run power'], ['pace', 'Pace']].map(([k, l]) => ({ label: l, onClick: () => this.setState({ prefsTab: k }), style: railItem(tab === k) }));
+    const isProfile = tab === 'profile';
+    const zone = isProfile ? { zoneRows: [], zoneRefLabel: '' } : this.computeZone(tab);
+    return {
+      prefsOpen: this.state.prefsOpen,
+      openPrefs: () => this.setState({ prefsOpen: true }),
+      closePrefs: () => this.setState({ prefsOpen: false }),
+      savePrefs: () => this.setState({ prefsOpen: false }),
+      stopP: (e) => e.stopPropagation(),
+      prefsTabs, isProfile, isZone: !isProfile,
+      pName: p.name, pAge: p.age, pFtp: p.ftp, pCp: p.cp, pThrPace: p.thrPace, pLthr: p.lthr, pMaxHr: p.maxHr,
+      onName: this.onPref('name'), onAge: this.onPref('age'), onFtp: this.onPref('ftp'), onCp: this.onPref('cp'), onThrPace: this.onPref('thrPace'), onLthr: this.onPref('lthr'), onMaxHr: this.onPref('maxHr'),
+      greetingName: String(p.name).split(' ')[0],
+      chipMeta: 'FTP ' + p.ftp + ' · LTHR ' + p.lthr,
+      ...zone,
+    };
+  }
+
+  renderVals() {
+    const t = this.state.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--emberLine': 'rgba(45,212,191,0.34)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--emberLine': 'rgba(192,132,252,0.34)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--emberLine': 'rgba(13,148,136,0.30)', '--grid': 'rgba(14,24,32,0.06)' };
+    const palettes = { lab, cockpit, day };
+    const isLab = t === 'lab';
+    const segActive = { textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--elev,#faf9f7)' };
+    const segIdle = { textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink3,#9a958d)', background: 'transparent' };
+    return {
+      themeVars: palettes[t] || lab,
+      setLab: () => this.setState({ theme: 'lab' }),
+      setCockpit: () => this.setState({ theme: 'cockpit' }),
+      setDay: () => this.setState({ theme: 'day' }),
+      labBtn: t === 'lab' ? segActive : segIdle,
+      cockpitBtn: t === 'cockpit' ? segActive : segIdle,
+      dayBtn: t === 'day' ? segActive : segIdle,
+      ...this.model,
+      ...this.buildRace(),
+      ...this.buildThresholds(),
+      ...this.buildTopEfforts(),
+      ...this.buildUpcoming(),
+      ...this.buildWeek(),
+      ...this.buildHistory(),
+      ...this.buildPrefs(),
+      isCoach: !!this.props.coachAccount,
+      isAdmin: true,
+      ctxOpen: this.state.ctxOpen,
+      toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })),
+      closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: this.state.ctxAthlete ? 'Coaching \u00b7 ' + this.state.ctxAthlete : 'My training',
+      ctxItems: [{ id: null, name: 'My training' }, ...this.coachedAthletes.map(a => ({ id: a.name, name: a.name }))]
+        .map(it => { const act = (this.state.ctxAthlete || null) === it.id; return { name: it.name, onClick: () => this.setState({ ctxOpen: false, ctxAthlete: it.id }),
+          rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: act ? 700 : 500, color: 'var(--ink,#1b1a18)', background: act ? 'var(--elev,#faf9f7)' : 'transparent' } }; }),
+      showEmailBanner: this.props.emailVerified === false,
+      emailNotSent: !this.state.emailSent,
+      emailBannerText: this.state.emailSent ? 'Verification email sent - check your inbox.' : 'Verify neil@example.com to secure your account.',
+      resendEmail: () => this.setState({ emailSent: true }),
+      // Matches CoachingSection.tsx: name + compliance% + TSB only — no per-athlete
+      // activity feed (that needs a delegated JWT the Dashboard doesn't fetch).
+      coachFeed: this.coachedAthletes.map(a => ({
+        name: a.name, tsb: a.tsb, compliance: Math.round(a.compliance),
+        initial: a.name.charAt(0),
+        avatarStyle: { width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, color: '#fff', background: 'var(--role-coach,#c084fc)' },
+        compColor: a.compliance >= 90 ? '#2fa66a' : (a.compliance >= 80 ? '#f0a02e' : '#e0442e'),
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -384,15 +384,22 @@ def recompute_for_activity(activity: Activity) -> None:
             _recompute_and_record(athlete, field, as_of=activity.start_date.date())
 
 
-def record_manual_value(athlete: User, field: str, raw_value: int | str, as_of: date | None = None) -> bool:
-    """The athlete directly declared this value via their profile (PATCH /v1/athletes/<id>) -
-    trusted unconditionally (no sanity-band check, no window search: an explicit choice, not a
-    computed candidate), effective from today. Behaves exactly like any other ledger entry from
-    here on: ages out after threshold_window_days like any other, and can be superseded by a
-    later qualifying activity or another manual edit. A no-op if the submitted value matches
-    what's already current (e.g. re-saving the profile form without touching this field - the
-    frontend always resubmits every field). Doesn't touch athlete.<field> itself - the caller
-    (AthleteUpdateSerializer.save()) already wrote that as part of the same request."""
+def record_manual_value(
+    athlete: User, field: str, raw_value: int | str, set_by: User | None = None, as_of: date | None = None
+) -> bool:
+    """The athlete directly declared this value via their profile (PATCH /v1/athletes/<id>), or
+    had it set on their behalf by a coach with write access - trusted unconditionally (no
+    sanity-band check, no window search: an explicit choice, not a computed candidate), effective
+    from today. Behaves exactly like any other ledger entry from here on: ages out after
+    threshold_window_days like any other, and can be superseded by a later qualifying activity or
+    another manual edit. A no-op if the submitted value matches what's already current (e.g.
+    re-saving the profile form without touching this field - the frontend always resubmits every
+    field). Doesn't touch athlete.<field> itself - the caller (AthleteUpdateSerializer.save())
+    already wrote that as part of the same request.
+
+    `set_by` is the acting principal - equal to `athlete` for a self-edit, a different User for a
+    coach acting on the athlete's behalf, or None only for the auto-derived path (which goes
+    through _record_candidate instead, never through here)."""
     implied_value = _mmss_to_seconds(raw_value) if field == "threshold_pace" else raw_value
     if not implied_value:
         return False
@@ -410,6 +417,7 @@ def record_manual_value(athlete: User, field: str, raw_value: int | str, as_of: 
         value_numeric=value_numeric,
         value_pace=value_pace,
         source_activity=None,
+        set_by=set_by,
         effective_from=effective_as_of,
         current_from=effective_as_of,
     )

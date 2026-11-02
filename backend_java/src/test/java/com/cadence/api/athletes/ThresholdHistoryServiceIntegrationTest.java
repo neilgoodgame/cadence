@@ -227,6 +227,42 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void recordManualValueDefaultsSetByToTheAthleteItself() {
+		User athlete = newAthlete("manual-threshold-setby-default@example.cc");
+
+		thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 250, null);
+
+		ThresholdHistory entry = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
+		assertThat(entry.getSetBy().getId()).isEqualTo(athlete.getId());
+	}
+
+	@Test
+	void recordManualValueRecordsAnExplicitlyPassedActingUser() {
+		User athlete = newAthlete("manual-threshold-setby-coach-athlete@example.cc");
+		User coach = newAthlete("manual-threshold-setby-coach@example.cc");
+
+		thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 250, null, coach);
+
+		ThresholdHistory entry = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
+		assertThat(entry.getSetBy().getId()).isEqualTo(coach.getId());
+	}
+
+	@Test
+	void autoDerivedEntryHasNoSetBy() {
+		User athlete = newAthlete("auto-threshold-setby@example.cc");
+		newPowerActivity(athlete, Instant.now().minus(10, java.time.temporal.ChronoUnit.DAYS), 230, 1200);
+
+		boolean changed = thresholdHistoryService.refreshField(athlete, ThresholdField.FTP);
+
+		assertThat(changed).isTrue();
+		ThresholdHistory entry = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
+		assertThat(entry.getSetBy()).isNull();
+	}
+
+	@Test
 	void ledgerForExposesCurrentFromDistinctFromEffectiveFrom() {
 		// The history screen's "effective from" date must be currentFrom, not effectiveFrom -
 		// see ThresholdHistory.getCurrentFrom()'s Javadoc for why a row's own activity date can

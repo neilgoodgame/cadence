@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  @keyframes popIn{0%{opacity:0;transform:translateY(8px) scale(0.98);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeIn{0%{opacity:0;}100%{opacity:1;}}
+  input.cad,input.cadt{box-sizing:border-box;width:100%;border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:9px 11px;background:var(--card,#fff);color:var(--ink,#1b1a18);outline:none;}
+  input.cad{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;text-align:center;}
+  input.cadt{font-family:'Hanken Grotesk',sans-serif;font-size:13px;font-weight:600;}
+  input.cad:focus,input.cadt:focus{border-color:var(--ember,#ec4a26);}
+  input.cad::placeholder,input.cadt::placeholder{color:var(--ink3,#9a958d);font-weight:400;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+  <!-- ============ SIDEBAR (AppShell.tsx) ============ -->
+  <div style="width:228px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:24px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+      <div style="width:24px;height:24px;border-radius:7px;background:var(--ember,#ec4a26);"></div>
+      <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <a href="../Dashboard.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Dashboard</a>
+      <a href="../Activities.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Activities</a>
+      <a href="../Best Efforts.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Best efforts</a>
+      <a href="../Import.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Import</a>
+      <a href="../Calendar.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Calendar</a>
+      <a href="#" title="No Races mock yet" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);"><svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5V2"></path><path d="M3.5 2.5h8.5l-2 3 2 3H3.5"></path></svg>Races</a>
+      <a href="../Workout Library.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Workouts</a>
+      <a href="../Gear.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Gear</a>
+      <div style="padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink,#1b1a18);background:var(--elev,#faf9f7);">Preferences</div>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><a href="../Admin.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Admin</a></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+      <a href="../Login.dc.html" style="display:block;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
+
+  <div data-screen-label="preferences" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- email verification banner (EmailVerificationBanner.tsx; shown until email is verified) -->
+    <sc-if value="{{ showEmailBanner }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 32px;background:#15110f;color:#fff;font-size:13px;">
+        <span>{{ emailBannerText }}</span>
+        <sc-if value="{{ emailNotSent }}" hint-placeholder-val="{{ true }}"><div onClick="{{ resendEmail }}" style="border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Resend email</div></sc-if>
+      </div>
+    </sc-if>
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="../Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <div aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink3,#9a958d);flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="../Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0;">
+      <h1 style="font-size:26px;font-weight:800;letter-spacing:-0.02em;margin:0 0 8px;color:var(--ink,#1b1a18);">Preferences</h1>
+      <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap;">
+        <nav style="width:178px;flex-shrink:0;display:flex;flex-direction:column;gap:2px;">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="12"><div onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</div></sc-for>
+        </nav>
+        <div style="flex:1;min-width:280px;">
+
+          <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:20px;max-width:460px;">
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Athlete</h3><div style="display:flex;flex-direction:column;gap:12px;"><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Name</div><input value="Neil Goodgame" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Age</div><input value="52" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Weight<span style="color:var(--ink3,#9a958d);font-weight:400;"> (kg)</span></div><input value="72" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label></div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Thresholds</h3><div style="display:flex;flex-direction:column;gap:12px;">
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">FTP<span style="color:var(--ink3,#9a958d);font-weight:400;"> (W)</span></div><input value="260" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label>
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">FTP calculation method</div><select style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"><option>20-minute test (best 20-min power × 0.95)</option><option>60-minute direct (best 60-min power)</option></select></label>
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Critical run power<span style="color:var(--ink3,#9a958d);font-weight:400;"> (W)</span></div><input value="280" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label>
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Running power source</div><select style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"><option>Stryd</option><option>Native (e.g. Garmin Running Power)</option></select></label>
+                <p style="font-size:12px;color:var(--ink3,#9a958d);margin:-6px 0 0;line-height:1.5;">Native running-power algorithms tend to read meaningfully higher than Stryd for the same effort - the source you don't pick is ignored entirely on future uploads, not used as a fallback. Doesn't retroactively change already-imported activities' stored data, but best efforts, TSS, and critical running power all re-check this preference whenever recomputed.</p>
+                <label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Threshold pace<span style="color:var(--ink3,#9a958d);font-weight:400;"> (MM:SS /km)</span></div><input value="4:35" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">LTHR<span style="color:var(--ink3,#9a958d);font-weight:400;"> (bpm)</span></div><input value="154" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Max heart rate<span style="color:var(--ink3,#9a958d);font-weight:400;"> (bpm)</span></div><input value="168" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Resting heart rate<span style="color:var(--ink3,#9a958d);font-weight:400;"> (bpm)</span></div><input value="44" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Expiry warning<span style="color:var(--ink3,#9a958d);font-weight:400;"> (days before a threshold's best effort ages out)</span></div><div style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;font-family:'Hanken Grotesk',sans-serif;">21 days (recommended)</div></label><p style="font-size:12px;color:var(--ink3,#9a958d);margin:-6px 0 0;line-height:1.5;">Expiring thresholds appear under Suggestions on Thresholds &amp; zones from this many days out, and on the Dashboard from 10 days. Small drops (under 2%), thresholds you've nearly matched in the last 14 days, and ones a booked race should refresh are skipped. With a trailing window shorter than 12 weeks, a quarter of the window is used instead.</p>
+              </div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Aerobic decoupling</h3><div style="display:flex;flex-direction:column;gap:12px;"><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">VI limit - bike<span style="color:var(--ink3,#9a958d);font-weight:400;"> (variability index)</span></div><input value="1.06" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">VI limit - run<span style="color:var(--ink3,#9a958d);font-weight:400;"> (variability index)</span></div><input value="1.04" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">IF limit<span style="color:var(--ink3,#9a958d);font-weight:400;"> (intensity factor)</span></div><input value="0.85" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Minimum steady time<span style="color:var(--ink3,#9a958d);font-weight:400;"> (minutes)</span></div><input value="60" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Warm-up trim<span style="color:var(--ink3,#9a958d);font-weight:400;"> (minutes)</span></div><input value="5" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink,#1b1a18);"><span style="width:14px;height:14px;margin-top:2px;border-radius:3px;border:1px solid var(--line,#e6e2dc);flex-shrink:0;"></span><span>When an activity is matched to a designed workout with its own warmup step, trim that step's exact duration instead of the flat warm-up trim above</span></label><p style="font-size:12px;color:var(--ink3,#9a958d);margin:-6px 0 0;line-height:1.5;">Gates whether a session's Pw:HR decoupling % gets computed at all - too variable, too intense, or too short a steady effort and it's skipped instead of scored. Read at compute time, not retroactive: changing these doesn't repaint already-scored activities on its own.</p></div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Heat-confound flags</h3><div style="display:flex;flex-direction:column;gap:12px;"><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Warm - air temp<span style="color:var(--ink3,#9a958d);font-weight:400;"> (°C)</span></div><input value="25" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Warm - skin temp<span style="color:var(--ink3,#9a958d);font-weight:400;"> (°C)</span></div><input value="33" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Hot - air temp<span style="color:var(--ink3,#9a958d);font-weight:400;"> (°C)</span></div><input value="30" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Hot - skin temp<span style="color:var(--ink3,#9a958d);font-weight:400;"> (°C)</span></div><input value="34" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><p style="font-size:12px;color:var(--ink3,#9a958d);margin:-6px 0 0;line-height:1.5;">Flags a decoupling reading as heat-confounded, not excluded from scoring. Both warm and hot trigger from air OR skin temp alone - either one elevated is enough. Core temp isn't used here: a long steady session drives it up from sustained effort alone, even on a cool day.</p></div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Gear</h3><div style="display:flex;flex-direction:column;gap:12px;"><label style="display:block;"><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:6px;">Default shoe wear limit<span style="color:var(--ink3,#9a958d);font-weight:400;"> (km)</span></div><input value="800" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:14px;color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></label><p style="font-size:12px;color:var(--ink3,#9a958d);margin:-6px 0 0;line-height:1.5;">Applied to a new shoe's wear limit whenever one isn't set explicitly - both the &quot;Add shoes&quot; form and a gear CSV import. Doesn't change any shoe you've already added.</p></div></div>
+              <div style="display:flex;align-items:center;"><div onClick="{{ doSave }}" style="align-self:flex-start;padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;width:fit-content;">Save changes</div><sc-if value="{{ savedShown }}" hint-placeholder-val="{{ false }}"><span style="margin-left:10px;font-size:13px;color:#2fa66a;">{{ savedText }}</span></sc-if></div>
+              <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:20px;">
+                <h3 style="font-size:14px;font-weight:700;margin:0 0 6px;color:#e0442e;">Danger zone</h3>
+                <p style="font-size:13px;color:var(--ink2,#6f6b65);margin:0 0 12px;">Remove every activity from your account. Uploaded files can be imported again afterwards.</p>
+                <div onClick="{{ openDanger }}" style="width:fit-content;padding:8px 16px;border-radius:8px;border:1px solid #e0442e;color:#e0442e;font-size:13px;font-weight:700;cursor:pointer;">Remove all activities…</div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isWorkouts }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:20px;max-width:460px;">
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Workout matching</h3><div style="display:flex;flex-direction:column;gap:10px;">
+                <label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink,#1b1a18);"><input type="checkbox" checked="{{ renameOn }}" onChange="{{ toggleRename }}" style="margin-top:2px;"/><span>Rename matched activities to their workout's name<div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">Whenever an activity gets matched to a workout - on import, or when you accept a Scan-for-matches candidate - use the workout's name instead of the default.</div></span></label>
+                <label style="{{ appendStyle }}"><input type="checkbox" disabled="{{ renameOff }}" style="margin-top:2px;"/><span>Also append the date<div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">e.g. "Tempo run - 2026-06-15" instead of just "Tempo run".</div></span></label>
+                <label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink,#1b1a18);"><input type="checkbox" style="margin-top:2px;"/><span>Copy the workout's tags to matched activities<div style="font-size:12px;color:var(--ink3,#9a958d);margin-top:2px;">Whenever an activity gets matched to a workout - on import, or when you accept a Scan-for-matches candidate - also apply the workout's tags to the activity.</div></span></label>
+              </div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Laps</h3><label style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--ink,#1b1a18);"><span>For activities matched to a workout, use</span><select style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;max-width:280px;"><option>Laps derived from the matched workout's steps</option><option>Original laps from the device/file</option></select><div style="font-size:12px;color:var(--ink3,#9a958d);">Applies whenever an activity gets newly matched to a workout - on import, or when you accept a Scan-for-matches candidate. Use "Regenerate from workout" on an activity's Laps tab to re-derive laps for one already matched.</div></label></div>
+              <div style="display:flex;align-items:center;"><div onClick="{{ doSave }}" style="align-self:flex-start;padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;width:fit-content;">Save changes</div><sc-if value="{{ savedShown }}" hint-placeholder-val="{{ false }}"><span style="margin-left:10px;font-size:13px;color:#2fa66a;">{{ savedText }}</span></sc-if></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isZone }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <sc-if value="{{ isHr }}" hint-placeholder-val="{{ false }}">
+                <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;margin-bottom:20px;max-width:560px;">
+                  <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;color:var(--ink,#1b1a18);">Recompute zones</h3>
+                  <p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;margin-bottom:12px;">Generate a fresh 5-zone set from your heart-rate markers.</p>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                    <div><div style="font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">RESTING HR</div><input placeholder="45" value="46" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;width:90px;"/></div>
+                    <div><div style="font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">LTHR</div><input placeholder="155" value="155" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;width:90px;"/></div>
+                    <div><div style="font-size:11px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">MAX HR</div><input placeholder="176" value="186" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;width:90px;"/></div>
+                    <div style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;cursor:pointer;">Generate</div>
+                  </div>
+                </div>
+              </sc-if>
+              <div style="font-size:13px;color:var(--ink3,#9a958d);margin-bottom:16px;">Reference threshold: <span style="font-family:'JetBrains Mono',monospace;">{{ zoneRef }}</span> {{ zoneUnit }}</div>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 80px 80px 140px;gap:8px 12px;font-size:13px;max-width:620px;">
+                <div style="color:var(--ink3,#9a958d);font-size:11px;font-weight:700;">Zone</div><div style="color:var(--ink3,#9a958d);font-size:11px;font-weight:700;">Low %</div><div style="color:var(--ink3,#9a958d);font-size:11px;font-weight:700;">High %</div><div style="color:var(--ink3,#9a958d);font-size:11px;font-weight:700;">Range</div>
+                <sc-for list="{{ zones }}" as="z" hint-placeholder-count="5">
+                  <input value="{{ z.name }}" style="border:none;border-top:1px solid var(--line,#e6e2dc);padding:8px 0;background:none;color:var(--ink,#1b1a18);font-size:13px;font-family:'Hanken Grotesk',sans-serif;"/>
+                  <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:6px;"><input value="{{ z.lo }}" style="width:60px;border:1px solid var(--line,#e6e2dc);border-radius:6px;padding:4px;background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></div>
+                  <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:6px;"><input value="{{ z.hi }}" style="width:60px;border:1px solid var(--line,#e6e2dc);border-radius:6px;padding:4px;background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-family:'JetBrains Mono',monospace;"/></div>
+                  <div style="border-top:1px solid var(--line,#e6e2dc);padding:8px 0;font-family:'JetBrains Mono',monospace;color:var(--ink2,#6f6b65);">{{ z.range }}</div>
+                </sc-for>
+              </div>
+              <div style="margin-top:16px;"><div style="display:flex;align-items:center;"><div onClick="{{ doSave }}" style="align-self:flex-start;padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;width:fit-content;">Save zones</div><sc-if value="{{ savedShown }}" hint-placeholder-val="{{ false }}"><span style="margin-left:10px;font-size:13px;color:#2fa66a;">{{ savedText }}</span></sc-if></div></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isBest }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:24px;max-width:560px;">
+              <sc-for list="{{ bestSections }}" as="b" hint-placeholder-count="5">
+                <div style="display:flex;flex-direction:column;gap:8px;padding-bottom:20px;border-bottom:1px solid var(--line,#e6e2dc);">
+                  <h2 style="font-size:15px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">{{ b.title }}</h2>
+                  <p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;">{{ b.desc }}</p>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <sc-if value="{{ b.hasInput }}" hint-placeholder-val="{{ false }}"><input value="{{ b.value }}" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-family:'JetBrains Mono',monospace;width:90px;"/><span style="font-size:12px;color:var(--ink3,#9a958d);">{{ b.unit }}</span></sc-if>
+                    <div onClick="{{ b.run }}" style="{{ b.btnStyle }}">{{ b.btn }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isTags }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:16px;max-width:520px;">
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 4px;color:var(--ink,#1b1a18);">Tags</h3><p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;">Rename a tag to merge it into another tag of that name - every activity carrying either one ends up with just the merged tag. Deleting a tag removes it from every activity that carries it.</p></div>
+              <div style="display:flex;gap:8px;"><input placeholder="New tag name" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;flex:1;"/><div style="padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;opacity:0.4;">Create</div></div>
+              <div>
+                <sc-for list="{{ tagRows }}" as="t" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line,#e6e2dc);">
+                    <span style="{{ t.dot }}"></span>
+                    <div style="flex:1;min-width:0;"><span style="font-size:14px;font-weight:600;color:var(--ink,#1b1a18);">{{ t.name }}</span><sc-if value="{{ t.auto }}" hint-placeholder-val="{{ false }}"><span style="margin-left:8px;font-size:11px;font-weight:600;color:var(--ink3,#9a958d);">auto</span></sc-if></div>
+                    <span style="{{ t.count }}">{{ t.n }}</span>
+                    <div style="display:flex;gap:14px;"><span style="color:var(--ink2,#6f6b65);font-size:12px;font-weight:600;cursor:pointer;">Rename</span><span style="color:#e0442e;font-size:12px;font-weight:600;cursor:pointer;">Delete</span></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isRaces }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:24px;max-width:560px;">
+              <p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;">Add races from the Calendar view. Link a completed race to an activity to track your result automatically.</p>
+              <sc-for list="{{ raceGroups }}" as="g" hint-placeholder-count="2">
+                <div>
+                  <h3 style="font-size:13px;font-weight:700;color:var(--ink3,#9a958d);text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">{{ g.label }}</h3>
+                  <sc-for list="{{ g.races }}" as="r" hint-placeholder-count="2">
+                    <div style="{{ r.style }}">
+                      <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;font-size:14px;color:var(--ink,#1b1a18);">{{ r.name }}</div>
+                        <div style="font-size:12px;color:var(--ink3,#9a958d);">{{ r.meta }}</div>
+                        <sc-if value="{{ r.hasUrl }}" hint-placeholder-val="{{ false }}"><a href="#" style="font-size:12px;color:var(--ember,#ec4a26);margin-top:2px;display:block;">{{ r.host }}</a></sc-if>
+                        <sc-if value="{{ r.hasResults }}" hint-placeholder-val="{{ false }}"><a href="#" style="font-size:12px;color:var(--ember,#ec4a26);margin-top:2px;display:block;">Results ↗</a></sc-if>
+                      </div>
+                      <sc-if value="{{ r.noResult }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:var(--ink3,#9a958d);font-style:italic;">no result</span></sc-if>
+                      <sc-if value="{{ r.linked }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:#2fa66a;font-weight:600;">linked</span></sc-if>
+                      <div style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;cursor:pointer;">Edit</div><div style="padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;cursor:pointer;color:#e0442e;">Delete</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <!-- COURSES (preferences/CoursesTab.tsx): how elevation is split into flat / climb / descent sections -->
+          <sc-if value="{{ isCourses }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:24px;max-width:620px;">
+              <div style="font-size:13px;color:var(--ink2,#6f6b65);">How elevation is split into flat, climb and descent sections - on a course's race page and on every run, walk and ride. Changes apply the next time one is viewed.</div>
+              <div>
+                <h3 style="font-size:14px;font-weight:700;margin:0 0 8px;color:var(--ink,#1b1a18);">Method</h3>
+                <div style="display:flex;gap:6px;">
+                  <div title="Splits at the worst-fitting point until every section fits." style="flex:1;text-align:center;padding:7px 0;border-radius:8px;border:1px solid var(--ember,#ec4a26);background:var(--emberSoft,rgba(236,74,38,0.13));color:var(--ember,#ec4a26);font-size:13px;font-weight:700;">Douglas–Peucker</div>
+                  <div title="Joins the best-fitting neighbours until no join fits." style="flex:1;text-align:center;padding:7px 0;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:700;">Bottom-up merge</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;align-items:center;"><div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">Flat band</div><div style="font-size:12px;color:var(--ink3,#9a958d);">Average grade within ± this counts as flat.</div></div><div style="display:flex;align-items:center;gap:6px;"><div style="padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'JetBrains Mono',monospace;width:80px;box-sizing:border-box;">1</div><span style="font-size:12px;color:var(--ink3,#9a958d);">±%</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;align-items:center;"><div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">Steep threshold</div><div style="font-size:12px;color:var(--ink3,#9a958d);">Average grade beyond ± this counts as steep.</div></div><div style="display:flex;align-items:center;gap:6px;"><div style="padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'JetBrains Mono',monospace;width:80px;box-sizing:border-box;">4</div><span style="font-size:12px;color:var(--ink3,#9a958d);">±%</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;align-items:center;"><div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">Fit tolerance</div><div style="font-size:12px;color:var(--ink3,#9a958d);">How far a section's straight line may stray from the smoothed elevation. Lower finds smaller hills.</div></div><div style="display:flex;align-items:center;gap:6px;"><div style="padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'JetBrains Mono',monospace;width:80px;box-sizing:border-box;">2</div><span style="font-size:12px;color:var(--ink3,#9a958d);">m</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;align-items:center;"><div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">Minimum section length</div><div style="font-size:12px;color:var(--ink3,#9a958d);">Shorter sections fold into a neighbour…</div></div><div style="display:flex;align-items:center;gap:6px;"><div style="padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'JetBrains Mono',monospace;width:80px;box-sizing:border-box;">250</div><span style="font-size:12px;color:var(--ink3,#9a958d);">m</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;align-items:center;"><div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);">…unless they rise or drop at least</div><div style="font-size:12px;color:var(--ink3,#9a958d);">Keeps short, sharp hills.</div></div><div style="display:flex;align-items:center;gap:6px;"><div style="padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;font-family:'JetBrains Mono',monospace;width:80px;box-sizing:border-box;">5</div><span style="font-size:12px;color:var(--ink3,#9a958d);">m</span></div></div>
+                <div style="align-self:flex-start;color:var(--ink2,#6f6b65);font-size:12.5px;font-weight:600;">▸ Advanced</div>
+              </div>
+              <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:16px;">
+                <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;color:var(--ink,#1b1a18);">My courses</h3>
+                <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:8px;">Rename a course, or delete one you no longer need.</div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Rob Burrows Leeds Marathon</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Yorkshire Marathon</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Brighton Marathon</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Cambridge Half Marathon</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Chicago Marathon</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Olympic Park 10k</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Leeds Marathon</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Great Birmingham Run 2022</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">gpx_20251012_id10457_race1_20250826213208</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Chelmsford Marathon</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:var(--ink2,#6f6b65);opacity:0.5;">Rename</div><div style="padding:6px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:none;font-size:12.5px;font-weight:600;color:#e0442e;">Delete</div></div>
+                </div>
+              </div>
+              <div>
+                <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;color:var(--ink,#1b1a18);">Preview</h3>
+                <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:8px;">See these settings on one of your courses before saving.</div>
+                <div style="max-width:320px;padding:7px 10px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);color:var(--ink,#1b1a18);font-size:13px;">Choose a course…</div>
+              </div>
+              <div>
+                <div style="display:inline-block;padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;">Save changes</div>
+                <div style="display:inline-block;margin-left:10px;padding:8px 14px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;">Reset to defaults</div>
+              </div>
+              <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:16px;">
+                <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;color:var(--ink,#1b1a18);">Rebuild course elevation</h3>
+                <div style="font-size:12px;color:var(--ink3,#9a958d);margin-bottom:8px;">Re-reads every course's elevation from its GPX file or source activity. Only needed if a course's source data changed - the settings above never need it.</div>
+                <div style="display:inline-block;padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);color:var(--ink2,#6f6b65);font-size:12.5px;font-weight:600;">Rebuild all courses</div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isSharing }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:28px;max-width:520px;">
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">My coaches</h3><sc-for list="{{ coachShares }}" as="s" hint-placeholder-count="1"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);"><div><div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;color:var(--ink,#1b1a18);">{{ s.name }}<sc-if value="{{ s.ai }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:700;color:var(--ink3,#9a958d);border:1px solid var(--line,#e6e2dc);border-radius:4px;padding:1px 5px;">AI</span></sc-if></div><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ s.meta }}</div></div><div style="display:flex;gap:8px;align-items:center;"><span style="{{ s.viewer }}">Viewer</span><span style="{{ s.coach }}">Coach</span><span style="color:#e0442e;font-size:12px;font-weight:600;cursor:pointer;">Revoke</span></div></div></sc-for></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Invite someone</h3><div style="display:flex;gap:8px;flex-wrap:wrap;"><input placeholder="Email or @handle" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;flex:1;min-width:160px;"/><select style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"><option>Viewer</option><option>Coach</option></select><div style="padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Invite</div></div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Add an AI coach</h3><p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;margin-bottom:12px;">Creates a coach account for an AI assistant like Claude.ai to connect to over MCP, separate from your own login. It can view your training data, schedule or create workouts, and comment on activities, the same as a human coach.</p>
+                <sc-if value="{{ aiNotCreated }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:8px;"><input placeholder="Name, e.g. Claude.ai" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;flex:1;"/><div onClick="{{ createAi }}" style="padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Create</div></div></sc-if>
+                <sc-if value="{{ aiCreated }}" hint-placeholder-val="{{ false }}"><div style="border:1px solid #2fa66a;border-radius:10px;padding:16px;background:var(--elev,#faf9f7);"><div style="font-weight:700;font-size:14px;color:#2fa66a;margin-bottom:8px;">Claude.ai created — copy this now, you won't see it again</div><div style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);margin-bottom:4px;">Login — use this if an MCP client's setup asks you to sign in (e.g. Claude.ai's OAuth step)</div><div style="padding:10px 12px;border-radius:8px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);font-size:13px;word-break:break-all;font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);">vc-7f3a@coach.cadence.app<br/>q8W-2mZt-Lp4r-x9Hc</div><div style="display:flex;gap:8px;margin-top:10px;"><div style="font-size:12px;font-weight:600;padding:6px 12px;border-radius:6px;border:1px solid var(--line,#e6e2dc);color:var(--ink,#1b1a18);cursor:pointer;">Copy</div><div onClick="{{ dismissAi }}" style="font-size:12px;font-weight:600;padding:6px 12px;color:var(--ink3,#9a958d);cursor:pointer;">Done</div></div></div></sc-if>
+              </div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">People with access</h3><sc-for list="{{ allShares }}" as="s" hint-placeholder-count="3"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);"><div><div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;color:var(--ink,#1b1a18);">{{ s.name }}<sc-if value="{{ s.ai }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:700;color:var(--ink3,#9a958d);border:1px solid var(--line,#e6e2dc);border-radius:4px;padding:1px 5px;">AI</span></sc-if></div><div style="font-size:12px;color:var(--ink3,#9a958d);">{{ s.meta }}</div></div><div style="display:flex;gap:8px;align-items:center;"><span style="{{ s.viewer }}">Viewer</span><span style="{{ s.coach }}">Coach</span><span style="color:#e0442e;font-size:12px;font-weight:600;cursor:pointer;">Revoke</span></div></div></sc-for></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isTokens }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:24px;max-width:520px;">
+              <p style="font-size:13px;color:var(--ink3,#9a958d);margin:0;line-height:1.5;">Personal access tokens let you script against the API as yourself. Scope each one to only what it needs.</p>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Generate token</h3><div style="display:flex;flex-direction:column;gap:12px;"><input placeholder="Name, e.g. Home server sync" style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;"/><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;"><sc-for list="{{ scopes }}" as="sc" hint-placeholder-count="4"><label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink,#1b1a18);"><input type="checkbox"/>{{ sc }}</label></sc-for></div><div style="padding:8px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:700;opacity:0.4;width:fit-content;">Generate</div></div></div>
+              <div><h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink,#1b1a18);">Active tokens</h3><sc-for list="{{ tokens }}" as="t" hint-placeholder-count="2"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e6e2dc);"><div><div style="font-weight:600;font-size:14px;color:var(--ink,#1b1a18);">{{ t.name }}</div><div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ t.meta }}</div></div><div style="display:flex;gap:10px;"><span style="font-size:12px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;">Rotate</span><span style="font-size:12px;font-weight:600;color:#e0442e;cursor:pointer;">Revoke</span></div></div></sc-for></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isExport }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:28px;max-width:480px;">
+              <div style="display:flex;flex-direction:column;gap:16px;">
+                <div><h3 style="margin:0 0 4px;font-size:16px;color:var(--ink,#1b1a18);">Export your data</h3><p style="margin:0;color:var(--ink2,#6f6b65);font-size:14px;line-height:1.5;">Download all of your activities (including recorded streams), races, workouts, and equipment as a single compressed JSON file (.json.gz). Optionally narrow it to a single sport.</p></div>
+                <div style="display:flex;gap:10px;align-items:center;"><select style="box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e6e2dc);background:var(--elev,#faf9f7);font-size:13px;color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;font-size:14px;"><option>All sports</option><option>Bike</option><option>Run</option><option>Swim</option><option>Walk</option><option>Row</option></select><div onClick="{{ startExport }}" style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Generate export</div></div>
+              </div>
+              <div style="border-top:1px solid var(--line,#e6e2dc);padding-top:20px;">
+                <h3 style="margin:0 0 4px;font-size:16px;color:var(--ink,#1b1a18);">Import your data</h3>
+                <p style="margin:0 0 12px;color:var(--ink2,#6f6b65);font-size:14px;line-height:1.5;">Restore activities, races, workouts, and equipment from a previously-exported .json.gz file. This always creates new entries - importing the same file twice will create duplicates.</p>
+                <div style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:14px;font-weight:600;cursor:pointer;width:fit-content;">Choose file to import</div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <sc-if value="{{ dangerOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeDanger }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+          <div onClick="{{ stop }}" style="background:var(--card,#fff);backdrop-filter:blur(14px);border-radius:14px;padding:24px;width:420px;max-width:calc(100% - 32px);display:flex;flex-direction:column;gap:16px;">
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Remove all activities?</h2>
+            <p style="font-size:13px;color:var(--ink2,#6f6b65);margin:0;line-height:1.5;">This will permanently remove all existing activities from your account, including their laps, streams, and tags. This cannot be undone. Do you want to proceed?</p>
+            <div style="display:flex;justify-content:flex-end;gap:8px;"><div onClick="{{ closeDanger }}" style="border:1px solid var(--line,#e6e2dc);border-radius:8px;color:var(--ink2,#6f6b65);font-size:13px;font-weight:600;padding:8px 16px;cursor:pointer;">Cancel</div><div onClick="{{ closeDanger }}" style="border-radius:8px;background:#e0442e;color:#fff;font-size:13px;font-weight:700;padding:8px 16px;cursor:pointer;">Remove all activities</div></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ exportOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeExport }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+          <div onClick="{{ stop }}" style="background:var(--card,#fff);backdrop-filter:blur(14px);border-radius:14px;padding:24px;width:420px;max-width:calc(100% - 32px);display:flex;flex-direction:column;gap:14px;">
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink,#1b1a18);">Exporting your data</h2>
+            <div style="font-size:13px;color:var(--ink2,#6f6b65);">{{ exportStep }}</div>
+            <div style="height:6px;border-radius:4px;background:var(--elev,#faf9f7);overflow:hidden;"><div style="{{ exportBar }}"></div></div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink3,#9a958d);">{{ exportCount }}</div>
+            <sc-if value="{{ exportReady }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:12px;"><div style="padding:9px 16px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Download export</div><div onClick="{{ closeExport }}" style="border:1px solid var(--line,#e6e2dc);border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);cursor:pointer;">Close</div></div></sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;coachAccount&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;$preview&quot;:{&quot;width&quot;:1380,&quot;height&quot;:900},&quot;initialTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;profile&quot;,&quot;workouts&quot;,&quot;heart_rate&quot;,&quot;bike_power&quot;,&quot;run_power&quot;,&quot;pace&quot;,&quot;best_efforts&quot;,&quot;tags&quot;,&quot;races&quot;,&quot;sharing&quot;,&quot;tokens&quot;,&quot;export&quot;],&quot;default&quot;:&quot;profile&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  state = { theme: 'lab', tab: this.props.initialTab || 'profile', saved: false, rename: true, danger: false, ai: false, exp: null, bestRun: {} };
+
+  shellState = { theme: 'lab', ctxOpen: false, ctxAthlete: null, emailSent: false };
+  coached = ['Sofia Greco', 'Tom Reyes', 'Mara K\u00f8hl'];
+  shellVals() {
+    const st = { ...this.shellState, ...this.state };
+    const t = st.theme;
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)', '--grid': 'rgba(255,255,255,0.07)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)', '--grid': 'rgba(255,255,255,0.07)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)', '--grid': 'rgba(14,24,32,0.06)' };
+    const on = { textAlign: 'center', padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', color: 'var(--ink,#1b1a18)', background: 'var(--elev,#f2f6f7)' };
+    const off = { ...on, color: 'var(--ink3,#9a958d)', background: 'transparent' };
+    return {
+      isAdmin: true,
+      themeVars: { '--sport-ride': '#3d7fd6', '--sport-run': '#ec4a26', '--sport-swim': '#2fa66a', '--sport-walk': '#8b95a1', '--sport-row': '#1b8fa8', '--sport-multisport': '#a86fd6', '--sport-transition': '#6b7683', '--role-coach': '#c084fc', ...({ lab, cockpit, day }[t] || lab) },
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: t === 'lab' ? on : off, cockpitBtn: t === 'cockpit' ? on : off, dayBtn: t === 'day' ? on : off,
+      pName: 'Neil Goodgame', chipMeta: 'FTP 260 \u00b7 LTHR 154', isCoach: !!this.props.coachAccount,
+      ctxOpen: st.ctxOpen, toggleCtx: () => this.setState(s => ({ ctxOpen: !s.ctxOpen })), closeCtx: () => this.setState({ ctxOpen: false }),
+      ctxLabel: st.ctxAthlete ? 'Coaching \u00b7 ' + st.ctxAthlete : 'My training',
+      ctxItems: [null, ...this.coached].map(id => { const act = (st.ctxAthlete || null) === id; return { name: id || 'My training', onClick: () => this.setState({ ctxOpen: false, ctxAthlete: id }), rowStyle: { padding: '8px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '13px', fontWeight: act ? 700 : 500, color: 'var(--ink,#1b1a18)', background: act ? 'var(--elev,#faf9f7)' : 'transparent' } }; }),
+      showEmailBanner: false, emailNotSent: true, emailBannerText: '', resendEmail: () => {},
+    };
+  }
+
+  componentWillUnmount() { clearInterval(this.t); }
+  palette = ['#3d7fd6', '#2fa66a', '#f0a02e', '#e0442e', '#ec4a26', '#9a6ad0', '#8b95a1', '#0d9488', '#f0823a', '#7e858e'];
+  tagColor(n) { let h = 0; for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) | 0; return this.palette[Math.abs(h) % this.palette.length]; }
+  zoneData = {
+    heart_rate: [155, 'bpm', [['Z1 Recovery', 0, 81], ['Z2 Aerobic', 81, 89], ['Z3 Tempo', 90, 93], ['Z4 Threshold', 94, 99], ['Z5 VO2 Max', 100, 106]]],
+    bike_power: [265, 'w', [['Z1 Active Recovery', 0, 55], ['Z2 Endurance', 56, 75], ['Z3 Tempo', 76, 90], ['Z4 Threshold', 91, 105], ['Z5 VO2 Max', 106, 120]]],
+    run_power: [285, 'w', [['Z1 Easy', 0, 80], ['Z2 Moderate', 81, 90], ['Z3 Threshold', 91, 100], ['Z4 Interval', 101, 115], ['Z5 Repetition', 116, 130]]],
+    pace: ['4:00', '/km', [['Z1 Easy', 0, 76], ['Z2 Endurance', 77, 87], ['Z3 Tempo', 88, 95], ['Z4 Threshold', 96, 102], ['Z5 Interval', 103, 110]]],
+  };
+  renderVals() {
+    const st = this.state;
+    const T = [['profile', 'Profile'], ['workouts', 'Workouts'], ['heart_rate', 'Heart rate'], ['bike_power', 'Bike power'], ['run_power', 'Run power'], ['pace', 'Pace'], ['best_efforts', 'Best efforts'], ['tags', 'Tags'], ['races', 'Races'], ['courses', 'Courses'], ['sharing', 'Sharing'], ['tokens', 'API tokens'], ['export', 'Export data']];
+    const isZone = ['heart_rate', 'bike_power', 'run_power', 'pace'].includes(st.tab);
+    let zones = [], zoneRef = '', zoneUnit = '';
+    if (isZone) { const [ref, unit, zs] = this.zoneData[st.tab]; zoneRef = ref; zoneUnit = unit;
+      const num = typeof ref === 'number' ? ref : 240;
+      zones = zs.map(([name, lo, hi], i) => { const last = i === zs.length - 1; let range;
+        if (st.tab === 'pace') { const p = (pct) => { const s = Math.round(num / (pct / 100)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }; range = lo === 0 ? '> ' + p(hi) + ' /km' : p(hi) + '\u2013' + p(lo) + ' /km'; }
+        else range = Math.round(num * lo / 100) + (last ? '+' : '\u2013' + Math.round(num * hi / 100)) + ' ' + unit;
+        return { name, lo, hi, range }; }); }
+    const pill = (a) => ({ border: '1px solid var(--line,#e6e2dc)', borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: 600, background: a ? 'var(--elev,#faf9f7)' : 'transparent', color: a ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', cursor: 'pointer' });
+    const shares = [['Mara K\u00f8hl', '@mara', 'coach', 'Since 2026-03-02', false], ['Claude.ai', 'vc-7f3a', 'coach', 'Since 2026-08-19', true], ['Sam Ortiz', '@sam.o', 'viewer', 'Pending', false]].map(([name, handle, role, since, ai]) => ({ name, ai, meta: handle + ' \u00b7 ' + since, role, viewer: pill(role === 'viewer'), coach: pill(role === 'coach') }));
+    const bestDefs = [['entries', 'Entries per window', 'How many ranked entries to keep for each best-effort window (per period).', true, '10', 'entries', 'Save'], ['be', 'Recompute best efforts', 'Re-scan every activity\'s stored streams and rebuild all best-effort leaderboards from scratch.', false, '', '', 'Recompute'], ['stats', 'Recompute derived stats', 'Backfill max power, cadence, elevation, calories and TRIMP on activities imported before those fields existed.', false, '', '', 'Recompute'], ['curves', 'Recompute duration curves', 'Rebuild the power/HR/pace duration curves used by the Curves tab.', false, '', '', 'Recompute'], ['window', 'Threshold history', 'Trailing window used to pick your current FTP, critical running power and threshold pace.', true, '112', 'days', 'Save']];
+    const exp = st.exp;
+    return {
+      ...this.shellVals(),
+      tabs: T.map(([k, l]) => ({ label: l, onClick: () => this.setState({ tab: k, saved: false }), style: { textAlign: 'left', padding: '9px 12px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer', background: st.tab === k ? 'var(--elev,#faf9f7)' : 'transparent', color: st.tab === k ? 'var(--ink,#1b1a18)' : 'var(--ink2,#6f6b65)' } })),
+      isProfile: st.tab === 'profile', isWorkouts: st.tab === 'workouts', isZone, isHr: st.tab === 'heart_rate', isBest: st.tab === 'best_efforts', isTags: st.tab === 'tags', isRaces: st.tab === 'races', isCourses: st.tab === 'courses', isSharing: st.tab === 'sharing', isTokens: st.tab === 'tokens', isExport: st.tab === 'export',
+      doSave: () => this.setState({ saved: true }), savedShown: st.saved, savedText: st.tab === 'profile' ? 'Saved - recomputed heart_rate, bike_power zones.' : 'Saved.',
+      openDanger: () => this.setState({ danger: true }), closeDanger: () => this.setState({ danger: false }), dangerOpen: st.danger, stop: (e) => e.stopPropagation(),
+      renameOn: st.rename, renameOff: !st.rename, toggleRename: () => this.setState(s => ({ rename: !s.rename })),
+      appendStyle: { display: 'flex', alignItems: 'flex-start', gap: '9px', fontSize: '13px', marginLeft: '24px', opacity: st.rename ? 1 : 0.5, color: 'var(--ink,#1b1a18)' },
+      zones, zoneRef, zoneUnit,
+      bestSections: bestDefs.map(([id, title, desc, hasInput, value, unit, btn]) => { const r = st.bestRun[id]; return { title, desc, hasInput, value, unit, btn: r === 'busy' ? (btn === 'Save' ? 'Saving\u2026' : 'Recomputing\u2026') : r === 'done' ? (btn === 'Save' ? 'Saved' : 'Done') : btn,
+        btnStyle: { padding: '8px 16px', borderRadius: '8px', background: 'var(--ember,#ec4a26)', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer', opacity: r === 'busy' ? 0.6 : 1 },
+        run: () => { this.setState(s => ({ bestRun: { ...s.bestRun, [id]: 'busy' } })); setTimeout(() => this.setState(s => ({ bestRun: { ...s.bestRun, [id]: 'done' } })), 900); } }; }),
+      tagRows: [['Heat Training', 7, false], ['long run', 9, false], ['parkrun', 12, true], ['race', 4, false], ['brick', 0, false]].map(([n, c, auto]) => { const col = this.tagColor(n); const x = parseInt(col.slice(1), 16); return { name: n, n: c, auto, dot: { width: '10px', height: '10px', borderRadius: '50%', background: col, flexShrink: 0 }, count: { fontFamily: "'JetBrains Mono',monospace", fontSize: '11px', fontWeight: 600, padding: '2px 7px', borderRadius: '20px', background: 'rgba(' + ((x >> 16) & 255) + ',' + ((x >> 8) & 255) + ',' + (x & 255) + ',0.12)', color: 'var(--ink2,#6f6b65)' } }; }),
+      raceGroups: [
+        { label: 'Upcoming', races: [['City Marathon', '2026-10-04 \u00b7 Run \u00b7 42.195 km \u00b7 Goal: 3:15:00', 'citymarathon.org', false, false, false, false], ['Autumn Half', '2026-11-15 \u00b7 Run \u00b7 21.0975 km \u00b7 Goal: 1:28:00', '', false, false, false, false]] },
+        { label: 'Past', races: [['Sprint triathlon', '2026-09-19 \u00b7 Multisport \u00b7 25.8 km \u00b7 Goal: 1:16:00 \u00b7 Result: 1:14:52', 'trifest.co.uk', true, false, true, false], ['Spring 10K', '2026-04-12 \u00b7 Run \u00b7 10 km \u00b7 Goal: 38:30', '', false, true, false, false]] },
+      ].map(g => ({ label: g.label, races: g.races.map(([name, meta, host, results, noResult, linked]) => ({ name, meta, host, hasUrl: !!host, hasResults: results, noResult, linked, style: { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderTop: '1px solid var(--line,#e6e2dc)', opacity: noResult ? 0.6 : 1, flexWrap: 'wrap' } })) })),
+      coachShares: shares.filter(s => s.role === 'coach'), allShares: shares,
+      aiCreated: st.ai, aiNotCreated: !st.ai, createAi: () => this.setState({ ai: true }), dismissAi: () => this.setState({ ai: false }),
+      scopes: ['activities:read', 'activities:write', 'workouts:write', 'gear:write'],
+      tokens: [['Home server sync', 'cad_pat_8Hq2\u2026 \u00b7 activities:read, activities:write'], ['Sheets export', 'cad_pat_x71L\u2026 \u00b7 activities:read']].map(([name, meta]) => ({ name, meta })),
+      exportOpen: !!exp, closeExport: () => { clearInterval(this.t); this.setState({ exp: null }); },
+      startExport: () => { this.setState({ exp: 0 }); clearInterval(this.t); this.t = setInterval(() => this.setState(s => { const n = Math.min(412, (s.exp || 0) + 37); if (n >= 412) clearInterval(this.t); return { exp: n }; }), 250); },
+      exportStep: exp >= 412 ? 'Ready' : 'Writing activities\u2026', exportCount: (exp || 0) + ' / 412 items', exportReady: exp >= 412,
+      exportBar: { height: '100%', width: ((exp || 0) / 412 * 100) + '%', background: 'var(--ember,#ec4a26)' },
+    };
+  }
+}
+</script>
+</body>
+</html>

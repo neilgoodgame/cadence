@@ -42,7 +42,11 @@ class ScopedMCPToolset(MCPToolset):
         if not user_may_read(sub, athlete_id):
             raise PermissionDenied("You do not have access to that athlete's data.")
 
-    def _require_write(self, athlete_id: str) -> None:
+    def _require_write(self, athlete_id: str) -> str:
+        """Returns the acting principal's own id (`sub`) - equal to `athlete_id` for a self-edit,
+        different for a coach with write access acting on the athlete's behalf. Most callers
+        don't need it and can ignore the return value."""
         sub, _ = get_effective_athlete_id(self.request)
         if not user_may_write(sub, athlete_id):
             raise PermissionDenied("You do not have write access to that athlete's data.")
+        return sub

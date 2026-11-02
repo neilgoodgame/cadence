@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="../support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Hanken Grotesk',sans-serif;-webkit-font-smoothing:antialiased;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#bdb8b0;border-radius:6px;border:2px solid transparent;background-clip:padding-box;}
+  a{color:inherit;}
+</style>
+</helmet>
+
+<div style="{{ themeVars }}">
+<div style="display:flex;min-height:100vh;background:var(--canvas,#f3f1ee);color:var(--ink,#1b1a18);font-family:'Hanken Grotesk',sans-serif;">
+
+  <!-- ============ SIDEBAR (AppShell.tsx) ============ -->
+  <div style="width:228px;flex-shrink:0;border-right:1px solid var(--line,#e6e2dc);padding:24px;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:32px;">
+      <div style="width:24px;height:24px;border-radius:7px;background:var(--ember,#ec4a26);"></div>
+      <span style="font-size:15px;font-weight:700;letter-spacing:-0.01em;color:var(--ink,#1b1a18);">Cadence</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <a href="../Dashboard.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Dashboard</a>
+      <a href="../Activities.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Activities</a>
+      <a href="../Best Efforts.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Best efforts</a>
+      <a href="../Import.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Import</a>
+      <a href="../Calendar.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Calendar</a>
+      <a href="#" title="No Races mock yet" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);"><svg width="14" height="14" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14.5V2"></path><path d="M3.5 2.5h8.5l-2 3 2 3H3.5"></path></svg>Races</a>
+      <div style="padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink,#1b1a18);background:var(--elev,#faf9f7);">Workouts</div>
+      <a href="../Gear.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Gear</a>
+      <a href="../Preferences.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Preferences</a>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ true }}"><a href="../Admin.dc.html" style="text-decoration:none;padding:9px 12px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--ink2,#6f6b65);">Admin</a></sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:3px;background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:9px;padding:3px;">
+        <div onClick="{{ setLab }}" style="{{ labBtn }}">Teal</div>
+        <div onClick="{{ setCockpit }}" style="{{ cockpitBtn }}">Violet</div>
+        <div onClick="{{ setDay }}" style="{{ dayBtn }}">Day</div>
+      </div>
+      <a href="../Login.dc.html" style="display:block;text-align:center;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink,#1b1a18);text-decoration:none;">Log out</a>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div data-screen-label="workout-comparison" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+
+    <!-- top bar (AppShell.tsx: actions only, right-aligned) -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;border-bottom:1px solid var(--line,#e6e2dc);background:var(--card,#fff);position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <a href="../Import.dc.html" style="padding:8px 15px;border-radius:8px;background:var(--ember,#ec4a26);color:#fff;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;">+ Import activity</a>
+        <div aria-hidden="true" style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);color:var(--ink3,#9a958d);flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2a4 4 0 0 0-4 4c0 4-1.5 5-1.5 5h11S12 10 12 6a4 4 0 0 0-4-4Z"></path><path d="M6.5 13.5a1.6 1.6 0 0 0 3 0"></path></svg></div>
+        <div style="width:1px;height:28px;background:var(--line,#e6e2dc);margin:0 3px;"></div>
+        <!-- TrainingContextSwitcher.tsx: coach accounts only -->
+        <sc-if value="{{ isCoach }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative;">
+          <div onClick="{{ toggleCtx }}" style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);font-size:13px;font-weight:600;color:var(--ink2,#6f6b65);cursor:pointer;white-space:nowrap;"><span>{{ ctxLabel }}</span><span style="font-size:10px;">▾</span></div>
+          <sc-if value="{{ ctxOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCtx }}" style="position:fixed;inset:0;z-index:30;"></div>
+            <div style="position:absolute;top:calc(100% + 6px);right:0;z-index:31;width:220px;max-height:260px;overflow-y:auto;background:var(--card,#fff);backdrop-filter:blur(14px);border:1px solid var(--line,#e6e2dc);border-radius:10px;box-shadow:0 16px 40px rgba(0,0,0,0.3);padding:6px;">
+              <sc-for list="{{ ctxItems }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onClick }}" style="{{ c.rowStyle }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+        </sc-if>
+        <a href="../Preferences.dc.html" style="display:flex;align-items:center;gap:10px;padding:5px 12px 5px 5px;border-radius:11px;border:1px solid var(--line,#e6e2dc);background:var(--card,#fff);cursor:pointer;text-decoration:none;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--canvas,#f3f1ee);border:1px solid var(--line,#e6e2dc);"></div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);line-height:1.15;">{{ pName }}</div><div style="font-size:11px;color:var(--ink3,#9a958d);font-family:'JetBrains Mono',monospace;">{{ chipMeta }}</div></div>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--ink3,#9a958d)" stroke-width="1.4" style="margin-left:3px;"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"></path></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="padding:32px;max-width:964px;width:100%;box-sizing:border-box;">
+      <a href="../Workout Detail.dc.html" style="display:inline-block;font-size:12px;font-weight:600;color:var(--ink3,#9a958d);text-decoration:none;margin-bottom:6px;">← {{ workoutName }}</a>
+      <h1 style="font-size:22px;font-weight:800;letter-spacing:-0.02em;margin:8px 0 20px;color:var(--ink,#1b1a18);">Compare matched activities</h1>
+
+      <div style="display:flex;flex-direction:column;gap:20px;">
+
+        <!-- ============ METRIC SELECTOR + CHART ============ -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px;">
+            <sc-for list="{{ metricBtns }}" as="m" hint-placeholder-count="9">
+              <div onClick="{{ m.onClick }}" style="{{ m.style }}">{{ m.label }}</div>
+            </sc-for>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:var(--ink,#1b1a18);margin-bottom:10px;">{{ metricSubtitle }}</div>
+
+          <sc-if value="{{ hasChart }}" hint-placeholder-val="{{ true }}">
+            <div>
+              <div onMouseMove="{{ onChartMove }}" onMouseLeave="{{ onChartLeave }}" style="position:relative;cursor:crosshair;">
+                <svg viewBox="0 0 1000 260" preserveAspectRatio="none" style="width:100%;height:260px;display:block;">
+                  <sc-for list="{{ gridLines }}" as="g" hint-placeholder-count="5">
+                    <line x1="64" y1="{{ g.y }}" x2="984" y2="{{ g.y }}" stroke="var(--line,#e6e2dc)" stroke-width="1" stroke-dasharray="3 3"></line>
+                    <text x="56" y="{{ g.y }}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="var(--ink3,#9a958d)">{{ g.label }}</text>
+                  </sc-for>
+                  <polyline points="{{ chartLine }}" fill="none" stroke="var(--ember,#ec4a26)" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline>
+                  <sc-for list="{{ chartPoints }}" as="p" hint-placeholder-count="6">
+                    <circle cx="{{ p.x }}" cy="{{ p.y }}" r="{{ p.r }}" fill="var(--ember,#ec4a26)"></circle>
+                  </sc-for>
+                  <line x1="{{ crossX }}" y1="14" x2="{{ crossX }}" y2="230" stroke="var(--ink3,#9a958d)" stroke-width="1" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" style="display:{{ hoverDisplay }};"></line>
+                  <sc-for list="{{ xTicks }}" as="t" hint-placeholder-count="6">
+                    <text x="{{ t.x }}" y="252" text-anchor="middle" font-size="10" fill="var(--ink3,#9a958d)">{{ t.label }}</text>
+                  </sc-for>
+                </svg>
+              </div>
+              <sc-if value="{{ hoverVisible }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:14px;font-size:12px;color:var(--ink2,#6f6b65);margin-top:6px;">
+                  <span style="font-family:'JetBrains Mono',monospace;color:var(--ink,#1b1a18);font-weight:700;">{{ hoverValue }}</span>
+                  <span>{{ hoverDate }}</span>
+                  <a href="../Activity Analysis.dc.html" style="color:var(--ember,#ec4a26);font-weight:600;text-decoration:none;">{{ hoverName }}</a>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noChart }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;color:var(--ink3,#9a958d);">Not enough matches yet to chart.</div>
+          </sc-if>
+        </div>
+
+        <!-- ============ FULL RANKING ============ -->
+        <div style="background:var(--card,#fff);border:1px solid var(--line,#e6e2dc);border-radius:14px;padding:18px;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);margin-bottom:12px;">{{ rankingHeader }}</div>
+          <sc-if value="{{ hasRanking }}" hint-placeholder-val="{{ true }}">
+            <div style="overflow-x:auto;">
+              <div style="display:grid;grid-template-columns:{{ gridCols }};gap:8px;padding:0 4px 8px;min-width:830px;">
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">#</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Date</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Activity</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Power</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">HR</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">EF</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Work-block Power</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Block HR</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">Core Temp</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:0.06em;color:var(--ink3,#9a958d);text-transform:uppercase;">TSS</span>
+              </div>
+              <sc-for list="{{ rankedRows }}" as="r" hint-placeholder-count="6">
+                <a href="../Activity Analysis.dc.html" style="display:grid;grid-template-columns:{{ gridCols }};gap:8px;align-items:center;padding:8px 4px;border-top:1px solid var(--line,#e6e2dc);min-width:830px;text-decoration:none;color:inherit;">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3,#9a958d);">{{ r.rank }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink,#1b1a18);">{{ r.dateIso }}</span>
+                  <span style="font-size:13px;font-weight:600;color:var(--ink,#1b1a18);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.name }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ r.powerLabel }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ r.hrLabel }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--ink,#1b1a18);">{{ r.efLabel }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">
+                    <sc-if value="{{ r.showRegenerate }}" hint-placeholder-val="{{ false }}">
+                      <div onClick="{{ r.onRegenerate }}" style="{{ r.regenBtnStyle }}">{{ r.regenLabel }}</div>
+                    </sc-if>
+                    <sc-if value="{{ r.showWorkBlockPower }}" hint-placeholder-val="{{ true }}">{{ r.workBlockPowerLabel }}</sc-if>
+                  </span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ r.blockHrLabel }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ r.coreTempLabel }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink2,#6f6b65);">{{ r.tssLabel }}</span>
+                </a>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noRanking }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;color:var(--ink3,#9a958d);">No matches have this metric yet.</div>
+          </sc-if>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;coachAccount&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  workoutName = 'The Gorby';
+
+  // Same 6 matches as Workout Detail.dc.html, so the two mocks read as one consistent dataset.
+  matches = [
+    { id: 'a1', name: 'The Gorby', date: '2026-01-12', avg_power: 178, avg_hr: 142, ef: 1.253, work_block_avg_power: null, work_block_avg_hr: null, avg_core_temp: null, avg_air_temp: 18.2, avg_humidity: 55, tss: 64 },
+    { id: 'a2', name: 'The Gorby', date: '2026-03-02', avg_power: 182, avg_hr: 140, ef: 1.300, work_block_avg_power: 228, work_block_avg_hr: 158, avg_core_temp: 37.4, avg_air_temp: 16.0, avg_humidity: 48, tss: 67 },
+    { id: 'a3', name: 'The Gorby', date: '2026-04-18', avg_power: 186, avg_hr: 139, ef: 1.338, work_block_avg_power: 231, work_block_avg_hr: 156, avg_core_temp: 37.5, avg_air_temp: 19.4, avg_humidity: 51, tss: 69 },
+    { id: 'a4', name: 'The Gorby', date: '2026-06-07', avg_power: 190, avg_hr: 138, ef: 1.377, work_block_avg_power: 235, work_block_avg_hr: 155, avg_core_temp: 37.6, avg_air_temp: 22.1, avg_humidity: 60, tss: 70 },
+    { id: 'a5', name: 'The Gorby', date: '2026-07-22', avg_power: 188, avg_hr: 141, ef: 1.333, work_block_avg_power: 233, work_block_avg_hr: 159, avg_core_temp: 37.8, avg_air_temp: 27.3, avg_humidity: 68, tss: 69 },
+    { id: 'a6', name: 'The Gorby', date: '2026-08-30', avg_power: 194, avg_hr: 137, ef: 1.416, work_block_avg_power: 239, work_block_avg_hr: 154, avg_core_temp: 37.3, avg_air_temp: 15.5, avg_humidity: 44, tss: 71 },
+  ];
+
+  METRICS = [
+    { key: 'ef', label: 'Aerobic Efficiency', format: v => v.toFixed(3) },
+    { key: 'avg_power', label: 'Avg Power', format: v => Math.round(v) + 'W' },
+    { key: 'avg_hr', label: 'Avg HR', format: v => Math.round(v) + 'bpm' },
+    { key: 'work_block_avg_power', label: 'Work-block Power', format: v => Math.round(v) + 'W' },
+    { key: 'work_block_avg_hr', label: 'Work-block HR', format: v => Math.round(v) + 'bpm' },
+    { key: 'avg_core_temp', label: 'Core Temp', format: v => v.toFixed(1) + '°C' },
+    { key: 'avg_air_temp', label: 'Air Temp', format: v => v.toFixed(1) + '°C' },
+    { key: 'avg_humidity', label: 'Humidity', format: v => Math.round(v) + '%' },
+  ];
+
+  GRID_COLS = '28px minmax(90px,0.9fr) minmax(140px,1.3fr) 0.55fr 0.5fr 0.6fr minmax(180px,1.8fr) 0.65fr 0.6fr 0.5fr';
+
+  state = { theme: 'lab', metric: 'ef', hoverIdx: null, overrides: {}, regenerating: {} };
+
+  setMetric(key) { this.setState({ metric: key, hoverIdx: null }); }
+
+  regenerate(id) {
+    this.setState(s => ({ regenerating: { ...s.regenerating, [id]: true } }));
+    setTimeout(() => {
+      this.setState(s => ({
+        regenerating: { ...s.regenerating, [id]: false },
+        // Regenerating laps from the matched workout derives both work-block figures together,
+        // same as RegenerateWorkBlockButton's real mutation (they come from the same lap data).
+        overrides: { ...s.overrides, [id]: { work_block_avg_power: 224, work_block_avg_hr: 157 } },
+      }));
+    }, 700);
+  }
+
+  fmtDateMonYr(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', year: '2-digit' }); }
+  fmtDateShort(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+  renderVals() {
+    const st = this.state;
+    const isLab = st.theme === 'lab';
+    const lab = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(150,42,108,0.30), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(18,134,122,0.32), transparent 52%), #080b11', '--card': 'rgba(15,24,33,0.60)', '--elev': 'rgba(24,35,46,0.50)', '--ink': '#eaf2f4', '--ink2': '#93a3b0', '--ink3': '#5c6b78', '--line': 'rgba(255,255,255,0.08)', '--ember': '#2dd4bf', '--emberSoft': 'rgba(45,212,191,0.13)' };
+    const cockpit = { '--canvas': 'radial-gradient(115% 80% at 90% -8%, rgba(168,85,247,0.28), transparent 46%), radial-gradient(95% 80% at -6% 106%, rgba(20,120,120,0.24), transparent 52%), #07080d', '--card': 'rgba(18,19,31,0.62)', '--elev': 'rgba(28,29,44,0.52)', '--ink': '#eef0f6', '--ink2': '#a0a3b8', '--ink3': '#6b6f86', '--line': 'rgba(255,255,255,0.08)', '--ember': '#c084fc', '--emberSoft': 'rgba(192,132,252,0.14)' };
+    const day = { '--canvas': 'radial-gradient(115% 80% at 88% -8%, rgba(192,132,252,0.10), transparent 46%), radial-gradient(95% 78% at -8% 108%, rgba(13,148,136,0.12), transparent 52%), #f3f6f8', '--card': '#ffffff', '--elev': '#f2f6f7', '--ink': '#0e1820', '--ink2': '#51606b', '--ink3': '#8a97a1', '--line': 'rgba(14,24,32,0.10)', '--ember': '#0d9488', '--emberSoft': 'rgba(13,148,136,0.10)' };
+    const seg = (active) => ({ padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer', whiteSpace: 'nowrap', color: active ? 'var(--ink,#1b1a18)' : 'var(--ink3,#9a958d)', background: active ? 'var(--card,#fff)' : 'transparent' });
+
+    // apply any locally-regenerated work-block overrides on top of the seed data
+    const matches = this.matches.map(m => (st.overrides[m.id] ? { ...m, ...st.overrides[m.id] } : m));
+
+    const metricDef = this.METRICS.find(m => m.key === st.metric);
+    const metricBtns = this.METRICS.map(m => ({ key: m.key, label: m.label, onClick: () => this.setMetric(m.key), style: seg(m.key === st.metric) }));
+
+    // ---- chart: chronological, padded linear y-scale, time-scaled x (mirrors WorkoutComparisonChart.tsx) ----
+    const W = 1000, H = 260, ML = 64, MR = 16, MT = 14, MB = 30;
+    const iw = W - ML - MR, ih = H - MT - MB;
+    const withVal = matches.filter(m => m[st.metric] != null).sort((a, b) => a.date.localeCompare(b.date));
+    let chart = null;
+    if (withVal.length > 0) {
+      const times = withVal.map(m => new Date(m.date + 'T00:00:00').getTime());
+      const minT = Math.min(...times), maxT = Math.max(...times);
+      const vals = withVal.map(m => m[st.metric]);
+      const minV = Math.min(...vals), maxV = Math.max(...vals);
+      const pad = (maxV - minV) * 0.15 || Math.max(1, maxV * 0.05);
+      const yLo = minV - pad, yHi = maxV + pad;
+      const xOf = (t) => maxT > minT ? ML + ((t - minT) / (maxT - minT)) * iw : ML + iw / 2;
+      const yOf = (v) => MT + ih - ((v - yLo) / (yHi - yLo)) * ih;
+      const pxPoints = withVal.map((m, i) => ({ ...m, x: +xOf(times[i]).toFixed(1), y: +yOf(m[st.metric]).toFixed(1) }));
+      const n = 4;
+      const gridLines = Array.from({ length: n + 1 }, (_, i) => { const v = yLo + (yHi - yLo) * (i / n); return { y: +yOf(v).toFixed(1), label: metricDef.format(v) }; });
+      const xTicks = pxPoints.map(p => ({ x: p.x, label: this.fmtDateMonYr(p.date) }));
+      chart = { pxPoints, gridLines, xTicks, line: pxPoints.map(p => p.x + ',' + p.y).join(' ') };
+    }
+
+    const hover = chart && st.hoverIdx != null ? chart.pxPoints[st.hoverIdx] : null;
+
+    // ---- full ranking table ----
+    const ranked = matches.filter(m => m[st.metric] != null).sort((a, b) => b[st.metric] - a[st.metric]);
+    const regenBtnStyle = (pending) => ({
+      // Exact match to LapsTab.tsx's "Create workout from laps" button style.
+      border: '1px solid var(--line,#e6e2dc)', borderRadius: '8px', background: 'var(--card,#fff)', color: 'var(--ink2,#6f6b65)',
+      fontSize: '12.5px', fontWeight: 700, padding: '7px 14px', cursor: pending ? 'default' : 'pointer', opacity: pending ? 0.6 : 1, width: '100%', textAlign: 'center', whiteSpace: 'nowrap',
+    });
+    const rankedRows = ranked.map((m, i) => {
+      const missingWorkBlock = m.work_block_avg_power == null && m.work_block_avg_hr == null;
+      const pending = !!st.regenerating[m.id];
+      return {
+        id: m.id, rank: i + 1, dateIso: new Date(m.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }), name: m.name,
+        powerLabel: m.avg_power != null ? (Math.round(m.avg_power) + 'W') : '—',
+        hrLabel: m.avg_hr != null ? String(m.avg_hr) : '—',
+        efLabel: m.ef != null ? m.ef.toFixed(3) : '—',
+        showRegenerate: missingWorkBlock, showWorkBlockPower: !missingWorkBlock,
+        regenLabel: pending ? 'Regenerating…' : 'Regenerate laps from workout',
+        regenBtnStyle: regenBtnStyle(pending),
+        onRegenerate: (e) => { e.preventDefault(); e.stopPropagation(); this.regenerate(m.id); },
+        workBlockPowerLabel: m.work_block_avg_power != null ? (m.work_block_avg_power + 'W') : '—',
+        blockHrLabel: missingWorkBlock ? '' : (m.work_block_avg_hr != null ? String(m.work_block_avg_hr) : '—'),
+        coreTempLabel: m.avg_core_temp != null ? (m.avg_core_temp.toFixed(1) + '°C') : '—',
+        tssLabel: String(m.tss),
+      };
+    });
+
+    return {
+      isAdmin: true,
+      themeVars: st.theme === 'day' ? day : (isLab ? lab : cockpit),
+      setLab: () => this.setState({ theme: 'lab' }), setCockpit: () => this.setState({ theme: 'cockpit' }), setDay: () => this.setState({ theme: 'day' }),
+      labBtn: seg(st.theme === 'lab'), cockpitBtn: seg(st.theme === 'cockpit'), dayBtn: seg(st.theme === 'day'),
+      pName: 'Neil Goodgame', chipMeta: 'FTP 260 \u00b7 LTHR 154', isCoach: false, ctxOpen: false, toggleCtx: () => {}, closeCtx: () => {}, ctxLabel: 'My training', ctxItems: [],
+
+      workoutName: this.workoutName,
+      metricBtns,
+      metricSubtitle: metricDef.label + ' on ' + this.workoutName,
+
+      hasChart: !!chart, noChart: !chart,
+      chartLine: chart ? chart.line : '',
+      chartPoints: chart ? chart.pxPoints.map((p, i) => ({ x: p.x, y: p.y, r: st.hoverIdx === i ? 4 : 2.5 })) : [],
+      gridLines: chart ? chart.gridLines : [],
+      xTicks: chart ? chart.xTicks : [],
+      crossX: hover ? hover.x : -100,
+      hoverDisplay: hover ? 'block' : 'none',
+      hoverVisible: !!hover,
+      hoverValue: hover ? metricDef.format(hover[st.metric]) : '',
+      hoverDate: hover ? this.fmtDateShort(hover.date) : '',
+      hoverName: hover ? hover.name : '',
+      onChartMove: (e) => {
+        if (!chart) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const relX = ((e.clientX - rect.left) / rect.width) * W;
+        let closest = 0, closestDist = Infinity;
+        chart.pxPoints.forEach((p, i) => { const d = Math.abs(p.x - relX); if (d < closestDist) { closestDist = d; closest = i; } });
+        this.setState({ hoverIdx: closest });
+      },
+      onChartLeave: () => this.setState({ hoverIdx: null }),
+
+      rankingHeader: 'FULL RANKING (' + metricDef.label.toUpperCase() + ', HIGHEST TO LOWEST)',
+      gridCols: this.GRID_COLS,
+      hasRanking: rankedRows.length > 0, noRanking: rankedRows.length === 0,
+      rankedRows,
+    };
+  }
+}
+</script>
+</body>
+</html>

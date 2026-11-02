@@ -151,6 +151,32 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void selfEditRecordsSetByAsTheAthlete() {
+		User athlete = newAthlete("setby-self@example.cc");
+
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+		ThresholdHistory entry = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
+		assertThat(entry.getSetBy().getId()).isEqualTo(athlete.getId());
+	}
+
+	@Test
+	void coachEditRecordsSetByAsTheCoach() {
+		User athlete = newAthlete("setby-coach-athlete@example.cc");
+		User coach = newAthlete("setby-coach@example.cc");
+
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, null, 280, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null),
+				coach);
+
+		ThresholdHistory entry = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
+		assertThat(entry.getSetBy().getId()).isEqualTo(coach.getId());
+	}
+
+	@Test
 	void defaultShoeLimitKmDefaultsTo800() {
 		User athlete = newAthlete("shoe-limit-default@example.cc");
 

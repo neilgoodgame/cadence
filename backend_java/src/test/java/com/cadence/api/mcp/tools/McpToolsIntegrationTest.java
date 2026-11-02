@@ -32,6 +32,7 @@ import com.cadence.api.mcp.dto.McpWorkoutLeafStep;
 import com.cadence.api.mcp.dto.McpWorkoutStepInput;
 import com.cadence.api.mcp.tools.activities.ActivityReadTools;
 import com.cadence.api.mcp.tools.athletes.AthleteProfileTools;
+import com.cadence.api.mcp.tools.athletes.AthleteProfileWriteTools;
 import com.cadence.api.mcp.tools.gear.GearReadTools;
 import com.cadence.api.mcp.tools.gear.GearWriteTools;
 import com.cadence.api.mcp.tools.races.RaceTools;
@@ -88,6 +89,9 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private AthleteProfileTools athleteProfileTools;
+
+	@Autowired
+	private AthleteProfileWriteTools athleteProfileWriteTools;
 
 	@Autowired
 	private WorkoutRepository workoutRepository;
@@ -615,6 +619,63 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 		assertThat(profile.id()).isEqualTo(athlete.getId());
 		assertThat(profile.ftp()).isEqualTo(250);
+	}
+
+	@Test
+	void setAthleteThresholdsAsSelfRecordsSetByAsTheAthlete() {
+		User athlete = saveAthlete("mcp-set-thresholds-self@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var result = athleteProfileWriteTools.setAthleteThresholds(280, null, null);
+
+		assertThat(result.get("ftp").value()).isEqualTo(280);
+		assertThat(result.get("ftp").setByUserId()).isEqualTo(athlete.getId());
+		assertThat(result.get("ftp").sourceActivityId()).isNull();
+	}
+
+	@Test
+	void setAthleteThresholdsAsADelegatedCoachRecordsSetByAsTheCoach() {
+		User athlete = saveAthlete("mcp-set-thresholds-athlete@example.cc");
+		User coach = saveAthlete("mcp-set-thresholds-coach@example.cc");
+		UserRelationship relationship = new UserRelationship();
+		relationship.setOwner(athlete);
+		relationship.setGrantee(coach);
+		relationship.setRole(ShareRole.COACH);
+		relationship.setStatus(ShareStatus.ACTIVE);
+		userRelationshipRepository.save(relationship);
+		AuthContextHolder.set(new AuthContext(coach.getId(), athlete.getId(),
+				Set.of("activities:read", "activities:write"), AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
+
+		var result = athleteProfileWriteTools.setAthleteThresholds(280, null, null);
+
+		assertThat(result.get("ftp").setByUserId()).isEqualTo(coach.getId());
+		assertThat(result.get("ftp").setByUserId()).isNotEqualTo(athlete.getId());
+	}
+
+	@Test
+	void setAthleteThresholdsAsAViewerIsForbidden() {
+		User athlete = saveAthlete("mcp-set-thresholds-viewer-athlete@example.cc");
+		User viewer = saveAthlete("mcp-set-thresholds-viewer@example.cc");
+		UserRelationship relationship = new UserRelationship();
+		relationship.setOwner(athlete);
+		relationship.setGrantee(viewer);
+		relationship.setRole(ShareRole.VIEWER);
+		relationship.setStatus(ShareStatus.ACTIVE);
+		userRelationshipRepository.save(relationship);
+		AuthContextHolder.set(new AuthContext(viewer.getId(), athlete.getId(),
+				Set.of("activities:read", "activities:write"), AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
+
+		assertThatThrownBy(() -> athleteProfileWriteTools.setAthleteThresholds(280, null, null))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void setAthleteThresholdsWithNoFieldsIsRejected() {
+		User athlete = saveAthlete("mcp-set-thresholds-empty@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> athleteProfileWriteTools.setAthleteThresholds(null, null, null))
+				.isInstanceOf(ValidationException.class);
 	}
 
 	@Test
