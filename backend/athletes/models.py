@@ -67,6 +67,12 @@ class ThresholdHistory(models.Model):
     source_activity = models.ForeignKey(
         Activity, on_delete=models.CASCADE, related_name="threshold_history", null=True, blank=True
     )
+    # Null for an auto-derived row (source_activity populated instead). Populated for a manual
+    # entry - the user who made it. Equal to athlete_id means the athlete edited their own value;
+    # different means someone else with write access (a coach) edited it on the athlete's behalf.
+    set_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, related_name="threshold_edits_made", null=True, blank=True
+    )
     # The qualifying activity's own date - what "this activity set/previously defined your X"
     # display is keyed on. NOT necessarily the date this row started being the recorded current
     # value - see current_from below for that. Equal to current_from for the common case (this

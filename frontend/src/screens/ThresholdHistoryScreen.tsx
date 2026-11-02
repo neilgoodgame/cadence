@@ -60,7 +60,19 @@ function fmtShortDateNoYear(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-const GRID_COLS = "28px minmax(90px,0.8fr) minmax(160px,1.4fr) minmax(115px,0.95fr) minmax(105px,0.85fr) minmax(140px,1.1fr) minmax(115px,0.95fr)";
+const GRID_COLS =
+  "28px minmax(90px,0.8fr) minmax(160px,1.4fr) minmax(80px,0.6fr) minmax(115px,0.95fr) minmax(105px,0.85fr) minmax(140px,1.1fr) minmax(115px,0.95fr)";
+
+/** "Auto" for an auto-derived row (set_by_user_id is null); "You" when the current real
+ * principal is who set it (selfId - stable across a coach's context switch, so this is correct
+ * whether you're viewing your own history or an athlete's as a coach); "Athlete" when a coach is
+ * viewing their athlete's own self-edit; "Coach" otherwise (someone else with write access). */
+function setByLabel(setById: string | null, activeAthleteId: string | null, selfId: string | null): string {
+  if (setById === null) return "Auto";
+  if (setById === selfId) return "You";
+  if (setById === activeAthleteId) return "Athlete";
+  return "Coach";
+}
 
 const fieldTabStyle = (active: boolean): React.CSSProperties => ({
   padding: "6px 12px",
@@ -90,7 +102,7 @@ function numericReference(field: TabField, value: number | string): number | nul
  * threshold-history mechanic) - just the zones card and a note. */
 export function ThresholdHistoryScreen() {
   const { field: rawField } = useParams<{ field: string }>();
-  const { user, activeAthleteId, isCoachAccount } = useAuth();
+  const { user, selfId, activeAthleteId, isCoachAccount } = useAuth();
   const qc = useQueryClient();
   const [accepted, setAccepted] = useState<{ id: string; field: ThresholdFieldName; value: number | string; effectiveFrom: string } | null>(null);
   const [scheduleTarget, setScheduleTarget] = useState<ActionableSuggestion | null>(null);
@@ -444,6 +456,7 @@ export function ThresholdHistoryScreen() {
                   <span>#</span>
                   <span>Value</span>
                   <span>Activity</span>
+                  <span>Set by</span>
                   <span>&Delta; vs previous</span>
                   <span>Effective from</span>
                   <span>Days in effect</span>
@@ -480,6 +493,9 @@ export function ThresholdHistoryScreen() {
                       ) : (
                         <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>&mdash;</span>
                       )}
+                      <span className="mono" style={{ fontSize: 12, color: "var(--ink3)", whiteSpace: "nowrap" }}>
+                        {setByLabel(entry.set_by_user_id, activeAthleteId, selfId)}
+                      </span>
                       <span className="mono" style={{ fontSize: 12, color: "var(--ink3)", whiteSpace: "nowrap" }}>
                         {delta ?? "—"}
                       </span>

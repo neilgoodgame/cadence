@@ -6,6 +6,7 @@ function point(overrides: Partial<ThresholdHistoryPoint> = {}): ThresholdHistory
   return {
     value: 250,
     source_activity_id: "act_x",
+    set_by_user_id: null,
     effective_from: "2026-01-01",
     current_from: "2026-01-01",
     ...overrides,

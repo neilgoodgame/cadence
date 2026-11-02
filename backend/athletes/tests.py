@@ -113,6 +113,29 @@ class AthleteDetailViewTests(TestCase):
         response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
         self.assertEqual(response.json()["zones_recomputed"], [])
 
+    def test_self_edit_records_set_by_as_the_athlete(self):
+        response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
+        self.assertEqual(response.status_code, 200)
+
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertEqual(entry.set_by_id, self.athlete.id)
+
+    def test_coach_edit_records_set_by_as_the_coach(self):
+        coach = User.objects.create_user(email="coach@example.cc", password="x", name="Coach", is_coach=True)
+        UserRelationship.objects.create(
+            owner=self.athlete,
+            grantee=coach,
+            role=UserRelationship.ROLE_COACH,
+            status=UserRelationship.STATUS_ACTIVE,
+        )
+        client = _delegated_client(coach, self.athlete, scopes=["activities:write"])
+
+        response = client.patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertEqual(entry.set_by_id, coach.id)
+
     def test_update_with_existing_zone_set_reports_recompute(self):
         ZoneSet.objects.create(athlete=self.athlete, type="bike_power", zones=DEFAULT_ZONES)
         response = _bearer_client(self.athlete).patch(f"/v1/athletes/{self.athlete.id}", {"ftp": 280}, format="json")
@@ -1165,6 +1188,20 @@ class RecordManualValueTests(TestCase):
         self.assertEqual(entry.value_pace, "4:15")
         self.assertIsNone(entry.value_numeric)
 
+    def test_set_by_defaults_to_none(self):
+        record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 1))
+
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertIsNone(entry.set_by_id)
+
+    def test_set_by_records_the_acting_user(self):
+        coach = User.objects.create_user(email="rmv-coach@example.cc", password="x", name="Coach")
+
+        record_manual_value(self.athlete, "ftp", 250, set_by=coach, as_of=date(2026, 6, 1))
+
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertEqual(entry.set_by_id, coach.id)
+
     def test_a_manual_entry_becomes_the_activity_scoped_reference_going_forward(self):
         record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 1))
         activity = Activity.objects.create(
@@ -1224,6 +1261,15 @@ class RefreshFieldTests(TestCase):
         entries = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp")
         self.assertEqual(entries.count(), 1)
         self.assertEqual(entries.get().value_numeric, 255)
+
+    def test_auto_derived_entry_has_no_set_by(self):
+        self._make_power_activity(datetime.now(UTC) - timedelta(days=10), power=230)
+
+        changed = refresh_field(self.athlete, "ftp")
+
+        self.assertTrue(changed)
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertIsNone(entry.set_by_id)
 
     # Regression test for a real bug found live: threshold_pace's implied value is a raw,
     # sub-second float (unlike ftp/critical_run_power, which round before this comparison), while

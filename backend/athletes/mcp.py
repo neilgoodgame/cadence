@@ -13,14 +13,30 @@ from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
 from activities.models import BestEffort
-from authn.mcp_scopes import ACTIVITIES_READ
+from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 
-from .views import BEST_EFFORT_PERIOD_DAYS, LOWER_IS_BETTER_KINDS, cap_per_window, threshold_summary_for_field
+from .views import (
+    BEST_EFFORT_PERIOD_DAYS,
+    LOWER_IS_BETTER_KINDS,
+    _apply_threshold_patch,
+    cap_per_window,
+    threshold_summary_for_field,
+)
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for
 
 _THRESHOLD_FIELDS = ("ftp", "critical_run_power", "threshold_pace")
+
+
+def _thresholds_summary(athlete: User) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for field in _THRESHOLD_FIELDS:
+        summary = threshold_summary_for_field(athlete, field)
+        if summary["effective_from"] is not None:
+            summary["effective_from"] = summary["effective_from"].isoformat()
+        result[field] = summary
+    return result
 
 
 class AthleteMCPTools(ScopedMCPToolset):
@@ -89,14 +105,39 @@ class AthleteMCPTools(ScopedMCPToolset):
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
         athlete = get_object_or_404(User, pk=athlete_id)
+        return _thresholds_summary(athlete)
 
-        result: dict[str, Any] = {}
-        for field in _THRESHOLD_FIELDS:
-            summary = threshold_summary_for_field(athlete, field)
-            if summary["effective_from"] is not None:
-                summary["effective_from"] = summary["effective_from"].isoformat()
-            result[field] = summary
-        return result
+    def set_athlete_thresholds(
+        self,
+        ftp: int | None = None,
+        critical_run_power: int | None = None,
+        threshold_pace: str | None = None,
+    ) -> dict[str, Any]:
+        """Set the athlete's FTP, critical running power, and/or threshold pace directly - e.g.
+        from a recent field test, or a coach's assessment. Equivalent to editing these fields in
+        Preferences: only the fields you pass are changed, and each changed value is trusted
+        unconditionally and recorded in the threshold history ledger (it still ages out and can
+        be superseded by a later qualifying activity or another edit, same as any other entry).
+        Pace is "M:SS" per km. Returns the athlete's threshold summary (same shape as
+        get_athlete_thresholds) after applying the change."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        sub = self._require_write(athlete_id)
+
+        data = {}
+        if ftp is not None:
+            data["ftp"] = ftp
+        if critical_run_power is not None:
+            data["critical_run_power"] = critical_run_power
+        if threshold_pace is not None:
+            data["threshold_pace"] = threshold_pace
+        if not data:
+            raise ValidationError({"error": "Pass at least one of ftp, critical_run_power, threshold_pace."})
+
+        athlete = get_object_or_404(User, pk=athlete_id)
+        set_by = athlete if sub == athlete_id else get_object_or_404(User, pk=sub)
+        _apply_threshold_patch(athlete, data, set_by)
+        return _thresholds_summary(athlete)
 
     def list_best_efforts(self, kind: str, period: str = "all") -> dict[str, Any]:
         """Get the authenticated athlete's best efforts for one metric (e.g. best 5-min power

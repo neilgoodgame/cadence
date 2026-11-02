@@ -51,6 +51,14 @@ public class ThresholdHistory {
 	@JoinColumn(name = "source_activity_id", nullable = true)
 	private Activity sourceActivity;
 
+	// Null for an auto-derived row (sourceActivity populated instead). Populated for a manual
+	// entry - the user who made it. Equal to athlete's id means the athlete edited their own
+	// value; different means someone else with write access (a coach) edited it on the
+	// athlete's behalf.
+	@ManyToOne(fetch = FetchType.LAZY, optional = true)
+	@JoinColumn(name = "set_by_user_id", nullable = true)
+	private User setBy;
+
 	// The qualifying activity's own date - what "this activity set/previously defined your X"
 	// display is keyed on. NOT necessarily the date this row started being the recorded current
 	// value - see currentFrom below for that. Equal to currentFrom for the common case (this
@@ -125,6 +133,14 @@ public class ThresholdHistory {
 
 	public void setSourceActivity(Activity sourceActivity) {
 		this.sourceActivity = sourceActivity;
+	}
+
+	public User getSetBy() {
+		return setBy;
+	}
+
+	public void setSetBy(User setBy) {
+		this.setBy = setBy;
 	}
 
 	public LocalDate getEffectiveFrom() {

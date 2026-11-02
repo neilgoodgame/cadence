@@ -84,10 +84,42 @@ def _require_read(request: Request, athlete_id: str) -> None:
         raise PermissionDenied("You do not have access to that athlete's data.")
 
 
-def _require_write(request: Request, athlete_id: str) -> None:
+def _require_write(request: Request, athlete_id: str) -> str:
+    """Returns the acting principal's own id (`sub`) - equal to `athlete_id` for a self-edit,
+    different for a coach with write access acting on the athlete's behalf. Most callers don't
+    need it and can ignore the return value; AthleteDetailView.patch does, to record it as the
+    threshold ledger's set_by."""
     sub, _ = get_effective_athlete_id(request)
     if not user_may_write(sub, athlete_id):
         raise PermissionDenied("You do not have write access to that athlete's data.")
+    return sub
+
+
+def _apply_threshold_patch(athlete: User, data: dict, set_by: User) -> AthleteUpdateSerializer:
+    """Validates and applies a partial athlete-profile update, writing a ThresholdHistory entry
+    for each changed threshold field - `set_by` is the acting principal (the athlete itself for
+    a self-edit, or a coach with write access acting on the athlete's behalf), threaded straight
+    into record_manual_value. Also invalidates cached threshold suggestions if anything
+    suggestion-affecting changed. Shared by AthleteDetailView.patch and the
+    set_athlete_thresholds MCP tool, so both go through identical validation/ledger-write logic -
+    don't duplicate this body at the new call site."""
+    serializer = AthleteUpdateSerializer(athlete, data=data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    with transaction.atomic():
+        serializer.save()
+        # A manually-entered threshold functions as an initial value (or a correction) just
+        # like any other ledger entry - see threshold_history.py::record_manual_value. The
+        # Preferences form resubmits every field on every save regardless of whether it was
+        # edited, so record_manual_value's own no-op-if-unchanged check is load-bearing here.
+        for field in FIELD_SPORT:
+            if field in serializer.validated_data:
+                record_manual_value(athlete, field, serializer.validated_data[field], set_by=set_by)
+        # A manual threshold edit above already changes what's current (so suggestions could
+        # change too); a change to one of the detection-affecting settings can change the
+        # suggestion list even when no threshold value itself was touched this request.
+        if set(serializer.validated_data) & (set(FIELD_SPORT) | _SUGGESTION_AFFECTING_SETTINGS):
+            threshold_suggestions.invalidate(athlete.id)
+    return serializer
 
 
 class AthleteDetailView(APIView):
@@ -97,25 +129,11 @@ class AthleteDetailView(APIView):
         return Response(UserSerializer(athlete).data)
 
     def patch(self, request: Request, id: str) -> Response:
-        _require_write(request, id)
+        sub = _require_write(request, id)
         athlete = get_object_or_404(User, pk=id)
+        set_by = athlete if sub == id else get_object_or_404(User, pk=sub)
 
-        serializer = AthleteUpdateSerializer(athlete, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        with transaction.atomic():
-            serializer.save()
-            # A manually-entered threshold functions as an initial value (or a correction) just
-            # like any other ledger entry - see threshold_history.py::record_manual_value. The
-            # Preferences form resubmits every field on every save regardless of whether it was
-            # edited, so record_manual_value's own no-op-if-unchanged check is load-bearing here.
-            for field in FIELD_SPORT:
-                if field in serializer.validated_data:
-                    record_manual_value(athlete, field, serializer.validated_data[field])
-            # A manual threshold edit above already changes what's current (so suggestions could
-            # change too); a change to one of the detection-affecting settings can change the
-            # suggestion list even when no threshold value itself was touched this request.
-            if set(serializer.validated_data) & (set(FIELD_SPORT) | _SUGGESTION_AFFECTING_SETTINGS):
-                threshold_suggestions.invalidate(athlete.id)
+        serializer = _apply_threshold_patch(athlete, request.data, set_by)
 
         recomputed = zone_types_affected_by(serializer.validated_data.keys())
         existing = set(ZoneSet.objects.filter(athlete=athlete, type__in=recomputed).values_list("type", flat=True))
@@ -638,6 +656,7 @@ def threshold_summary_for_field(athlete: User, field: str) -> dict:
             "value": None,
             "previous_value": None,
             "source_activity_id": None,
+            "set_by_user_id": None,
             "effective_from": None,
             "stale": True,
         }
@@ -650,6 +669,7 @@ def threshold_summary_for_field(athlete: User, field: str) -> dict:
         "value": _value(current),
         "previous_value": _value(previous) if previous is not None else None,
         "source_activity_id": current.source_activity_id,
+        "set_by_user_id": current.set_by_id,
         "effective_from": current.effective_from,
         "stale": is_stale(athlete, field),
     }
@@ -688,6 +708,7 @@ class ThresholdHistoryListView(APIView):
             {
                 "value": entry.value_pace if field == "threshold_pace" else entry.value_numeric,
                 "source_activity_id": entry.source_activity_id,
+                "set_by_user_id": entry.set_by_id,
                 "effective_from": entry.effective_from,
                 "current_from": entry.current_from,
             }
