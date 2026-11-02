@@ -13,15 +13,16 @@ below as "the doc", with its section numbers). The parity rule in the root
 
 | Area | Recommendation |
 |---|---|
-| Decay model | As proposed, but evaluated as a **daily recurrence** towards a moving target rather than a closed form anchored to `ftp_last`, and **never easing upwards** (see 2.2) |
+| Decay model | As proposed, but evaluated as a **daily recurrence** towards a moving target rather than a closed form anchored to `ftp_last`, and **never easing upwards**. Amplitude has a **minimum** (`A_min` 3%), so an unverified value always drifts a little, even with load maintained (see 2.2) |
 | "Current best" | Comes from the **ledger** (latest measured or manual row, the "anchor"), not the window scan. The window scan can't see manual rows |
-| Load term | Per-sport 42-day EWMA of **power TSS at a fixed reference** (the anchor value), using stored `norm_power` and `moving_time`; stored hrTSS for activities without power. Not circular, and needs no record-stream reads (see 2.3) |
+| Load term | Per-sport 42-day EWMA of **intensity-filtered load**: TSS-rate summed over only the 30 s-smoothed samples above Z2 (≥ 75% of the anchor value). The cutoff is fixed at the anchor, so it isn't circular. Read from a new per-activity **intensity histogram**, so no record streams are re-read each day (see 2.3) |
+| Calibration | Run on the brief's athlete's real rides (section 13): decaying from 260 W at expiry on 19 Aug would give **≈ 248 W today**, with the above-Z2 ratio at 0.80. Their HR-capped "Z2" rides at ~205 W sit above the 195 W cutoff, so they still count. Their current manual 255 W holds until 22 Feb 2027, then settles at 243–248 W if training continues as now |
 | Pace | Decay arithmetic in effort space (speed = 1/pace), so decay always makes pace **slower** (see 2.4) |
 | Trigger | **Daily scheduled job** plus the existing ingest and refresh hooks. Not compute-on-read (see 4.4) |
 | Day-to-day vs rebuild | One pure **simulation** function used for both, so a rebuild reproduces day-to-day behaviour by construction (see 3, 4.2) |
 | Ledger | New `kind` column: `measured` / `manual` / `decayed` (see 5) |
 | TSS/IF | Recompute intensity **and** TSS together for activities affected by any ledger change, through one shared helper (see 4.6, 8) |
-| Settings | `threshold_decay_enabled` (on for new athletes, **off for existing**), `threshold_decay_tau_days` = 25, `threshold_decay_max_pct` = 12. Edited in Preferences → Best efforts → Threshold history (see 6) |
+| Settings | `threshold_decay_enabled` (on for new athletes, **off for existing**), `threshold_decay_tau_days` = 25, `threshold_decay_min_pct` = 3, `threshold_decay_max_pct` = 12. Edited in Preferences → Best efforts → Threshold history (see 6) |
 | Separate bugs | TSS not recomputed by "Recompute stats" (8); window/sanity settings never saved (6.2); manual value replaced early (1.1); rebuild deletes manual rows (1.4) |
 
 ---
@@ -152,12 +153,19 @@ All decay arithmetic is in **effort units**, where higher is better (section
 4. **On or after expiry:**
 
    ```
-   ratio  = clamp(L(d) / L(a), 0, 1)         # 1 if L(a) < 1 (see Q3)
-   floor  = A · (1 − max_pct · (1 − ratio))
-   target = max(successor, floor)   if successor exists
-          = A · (1 − max_pct)       otherwise
-   v      = min(v, target + (v − target) · e^(−1/τ))
+   ratio     = clamp(L(d) / L(a), 0, 1)      # 1 if L(a) < 1 (see Q3)
+   amplitude = min_pct + (max_pct − min_pct) · (1 − ratio)
+   floor     = A · (1 − amplitude)
+   target    = max(successor, floor)   if successor exists
+             = A · (1 − max_pct)       otherwise
+   v         = min(v, target + (v − target) · e^(−1/τ))
    ```
+
+   `min_pct` (default 3%) means a value that hasn't been re-verified always
+   drifts a little, even with load fully maintained. A 260 W anchor goes to
+   about 255 W at day 28, 253 W at day 56 and 252 W at day 90. This picks up a
+   real decline that happens despite training (ageing, illness, a lighter mix),
+   which `ratio = 1 → no decay` never could.
 
    If `round(v)` differs from the last emitted value, emit a `decayed` row with
    `effective_from = current_from = d`.
@@ -171,39 +179,70 @@ the brief's "upward evidence wins immediately; don't ease upwards".
 over at once, as a `measured` row with `effective_from` = the successor's date
 and `current_from = d`. The only change is the 1.1 fix.
 
-**Long-term behaviour to be aware of.** Under sustained easy riding with reduced
-load, `v` decays until an easy ride implies `x ≥ round(v)`, which becomes a new
-(submaximal) anchor. 112 days later that decays too. The ratchet is slow and
-bounded by `max_pct` per cycle, and any real test resets it upwards. See Q4.
+**Long-term behaviour to be aware of.** `v` decays until some ride implies
+`x ≥ round(v)`, which becomes a new anchor. 112 days later that one decays too,
+by at least `min_pct`. So without a real test, the value ratchets down by
+roughly `min_pct` to `max_pct` per window cycle: about 3% per ~4 months with
+training maintained. Each re-anchor does need a ride whose 20-minute best
+supports the current value, so this is the intended "test due" pressure rather
+than unbounded drift, and any real test resets it upwards. See Q4.
 
 ### 2.3 Load term: recommendation
 
-**Recommended: power TSS at a fixed reference, per sport.**
+**Agreed: intensity-filtered load, per sport, measured against the anchor.**
 
-For each activity of the field's sport, the daily "decay load" is:
+Plain TSS still adds up hours. An hour at IF 0.70 is about 49 TSS, so two hours
+of Z2 count about the same as one hour at threshold. Hickson found that dropping
+intensity loses fitness even when volume is kept up. So the load only counts
+work above Z2.
 
-- **Activities with trusted power** (`norm_power` set, and for runs
-  `matches_running_power_preference`): `moving_time · NP² / R² / 36`, where `R`
-  is the anchor's value for that sport's **power** field. That's the bike
-  anchor for FTP, and the critical-running-power anchor for both run fields.
-- **Everything else:** the stored `tss`. For an activity without power this is
-  hrTSS, which depends on LTHR. LTHR is manual and has no ledger, so this isn't
-  circular.
+For each activity of the field's sport, the daily "decay load" is a TSS rate
+summed over 30 s-smoothed power samples `p` (the same rolling mean NP already
+computes):
 
-`L(d)` is a 42-day EWMA of daily decay load, walked from the athlete's first
-activity of that sport, the same loop as `FitnessService` / `core.derived`.
+```
+load = Σ_samples  w(p / R) · (p / R)² · 100 / 3600
 
-**Why this one:**
+v1:          w(x) = 1 if x ≥ cutoff (0.75), else 0      # Z3+ only
+alternative: w(x) = clamp((x − 0.75) / 0.25, 0, 1)      # smooth ramp, no hard edge
+```
 
-- **Not circular.** It never reads the decaying ledger.
-- **`R` doesn't change the ratio.** `R` is the same at both ends of
-  `L(d) / L(a)`, so it cancels for an all-power history; it only sets the scale
-  relative to hrTSS activities. "TSS recomputed against `ftp_last`" is therefore
-  exactly an FTP-independent load measure, which is what we want.
-- **Cheap.** One query of `(start_date, sport, norm_power, moving_time, tss,
-  power_source)` per athlete, with no record streams.
-- **Intensity-weighted.** It keeps TSS's IF² weighting, which the brief's
-  Hickson reasoning relies on.
+Each part of the formula:
+
+- **`R`** is the **anchor value** (`ftp_last`), never the decaying `v`. If the
+  cutoff followed `v`, the Z2/Z3 boundary would drop with FTP and more riding
+  would count: the circularity problem again. For both run fields `R` is the
+  critical-running-power anchor.
+- **Z3+, not Z4+.** Tempo and sweet-spot work help hold threshold. A Z4-only
+  cutoff would treat a solid sweet-spot block as detraining.
+- **`(p/R)²`** keeps TSS's IF² weighting above the cutoff, so a minute at
+  threshold still outweighs a minute at tempo.
+- **`L(d)`** is a 42-day EWMA of daily load, the same loop as `FitnessService`
+  / `core.derived`. Both `L(d)` and `L(a)` are computed with the same `R` and
+  cutoff, so the ratio compares like with like.
+- **When the anchor changes** (an upward reset or a manual entry), `R` changes,
+  so `L` is recomputed over the whole history. That's why the next point
+  matters.
+
+**Storage: a per-activity intensity histogram.** The cutoff depends on the
+anchor, so load can't be precomputed as one number. Re-reading record streams
+for every activity on every evaluation would be far too expensive: one
+athlete's history is millions of `Record` rows, against a 600 MB container on
+staging. Instead, store a compact histogram once per activity:
+
+- seconds per whole watt of 30 s-smoothed power,
+- seconds per bpm of heart rate, for the fallback below.
+
+That's a few hundred keys per activity. Any `R`, cutoff or weighting can then be
+evaluated exactly from it, with no streams. Switching v1's hard cutoff to the
+smooth ramp later needs no reprocessing. Schema and backfill are in section 5.
+
+**HR fallback for activities without trusted power** (HR-only rides, runs
+without power, runs whose power source the athlete excludes): the same formula
+on the HR histogram, with `R = LTHR`. LTHR is manual and has no ledger, so this
+isn't circular. Proposed cutoff: 0.85 × LTHR. HR is compressed relative to
+power, so its Z2/Z3 boundary sits higher as a fraction of threshold; this needs
+calibrating (Q7). An activity with neither power nor HR contributes no load.
 
 **Why not TRIMP / hrTSS for everything:**
 
@@ -211,11 +250,17 @@ activity of that sport, the same loop as `FitnessService` / `core.derived`.
   count as zero load, and the athlete would look like they'd stopped.
 - Edwards' TRIMP weights intensity linearly by zone number, not quadratically,
   so it under-credits the intensity that Hickson says preserves threshold.
-- Its scale differs from TSS, so mixing it with power-based load needs
-  calibration we don't have.
 
-**Pace field.** It uses the same run load as critical running power. A run with
-no trusted power uses its stored hrTSS.
+**Pace field.** It uses the same run load as critical running power: run power
+against the critical-running-power anchor, with the HR fallback for runs
+without trusted power.
+
+**Known sensitivity at the boundary.** For the brief's athlete, the cutoff is
+0.75 × 260 = 195 W, and their HR-capped "Z2" rides sit at 182–215 W. So the
+same ride type falls either side of the cutoff depending on the day.
+Section 13 measures this on real data: the 30 s smoothing and the 42-day
+average absorb most of it, and the smooth ramp lands within 1 W of the hard
+cutoff.
 
 ### 2.4 Pace direction
 
@@ -243,7 +288,7 @@ without a database:
 | Java | `backend_java/.../athletes/ThresholdDecay.java` (static and final, like `TssCalculator`) |
 
 ```
-DecaySettings(enabled, window_days, sanity_pct, tau_days, max_pct)
+DecaySettings(enabled, window_days, sanity_pct, tau_days, min_pct, max_pct)
 Anchor(value, effective_from, kind, activity_id)
 Candidate(date, implied_value, activity_id, accepted)     # reuse the existing dataclass/record
 Step(value, kind, activity_id, effective_from, current_from)
@@ -252,7 +297,10 @@ simulate(field, settings, seed_anchor, seed_value, seed_window,
          candidates_by_day, manual_by_day, load_by_day,
          start, end) -> list[Step]
 
-decay_load_series(activities, reference_power) -> dict[date, float]   # the 42-day EWMA
+intensity_histogram(power_series, hr_series) -> (power_30s_hist, hr_hist)
+                                                     # at ingest and recompute-stats
+activity_load(power_30s_hist, hr_hist, R, lthr, cutoff=0.75, hr_cutoff=0.85) -> float
+decay_load_series(daily_loads) -> dict[date, float]                    # the 42-day EWMA
 ```
 
 - `simulate` holds the day loop from 2.2 for both the enabled and disabled
@@ -378,7 +426,11 @@ are dated daily, so they would wrongly reset this.
 - **`upcoming_drop`** (`_latest_entry`, and the expiry computation in both
   calculators) uses the same anchor lookup.
 - **While decaying,** the summary returns `stale: true`, `kind: "decayed"` and a
-  `decay` object (7.1). The UI shows the value as modelled.
+  `decay` object (7.1). The UI shows the value as "Modelled · test due".
+- **The stale / test-due flag doesn't depend on load.** With `min_pct` above 0,
+  even a fully maintained athlete decays slightly. So a decayed value is always
+  flagged, and can never be mistaken for a measured one, however much the
+  athlete is still training.
 
 ### 4.6 Zones and TSS for past activities
 
@@ -464,12 +516,48 @@ See section 10.
 identifies manual rows unambiguously. That includes manual rows with
 `set_by = null` from before `set_by` existed, and imported rows.
 
+### `activity_intensity_histogram` (new table, for the load term in 2.3)
+
+| Column | Type | Meaning |
+|---|---|---|
+| `activity_id` | PK, FK → activity, `ON DELETE CASCADE` | One row per activity |
+| `power_30s` | jsonb, nullable | `{watts: seconds}` of 30 s-smoothed power, whole watts. Running power goes through the same sanitiser as every other running-power consumer |
+| `heartrate` | jsonb, nullable | `{bpm: seconds}` |
+
+| | Change |
+|---|---|
+| Django | `activities/migrations/0024_activityintensityhistogram.py`. A model `ActivityIntensityHistogram` with a `OneToOneField(primary_key=True)` |
+| Flyway | `V92__activity_intensity_histogram.sql`, plus a matching JPA entity and repository |
+
+A separate table rather than columns on `Activity`, because Java's `Activity`
+entity is loaded on nearly every request and these maps are only needed by the
+decay job.
+
+**When it's written:**
+
+- At ingest, next to NP. Java: `ComputeDerivedStatsTasklet`. Django:
+  `_ingest_activity`. Both already compute the 30 s rolling mean.
+- By `recompute-stats`, single and bulk.
+
+**Backfill: lazy.** The decay loader computes a missing histogram from records
+the first time it needs one, and persists it. Enabling decay prompts a rebuild
+anyway, so that's where most of the backfill happens; the bulk "Recompute
+stats" also fills them.
+
+**Not exported.** It's derived from records, so an import recomputes it lazily.
+
+**Parity note.** Django has no running-power spike filter (`max_running_power_watts`
+is Java-only; see "Backend differences" in `docs/thresholds-and-zones.md`), so
+run histograms can differ for spiky Stryd files. The parity fixtures avoid
+spikes, and closing that gap is separate work.
+
 ### User settings
 
 | Field | Type | Default (new athletes) | Existing athletes |
 |---|---|---|---|
 | `threshold_decay_enabled` | bool | `true` | `false` |
 | `threshold_decay_tau_days` | small int, 7–90 | 25 | 25 |
+| `threshold_decay_min_pct` | small int, 0–10, ≤ max | 3 | 3 |
 | `threshold_decay_max_pct` | small int, 0–30 | 12 | 12 |
 
 | | Change |
@@ -507,7 +595,12 @@ Sanity limit, and share their Save button:
   kept training that sport."
 - **Decay time constant (days)**: number input, 7–90, disabled when decay is
   off. Help: "About 63% of the way to the target after this many days."
-- **Maximum decay (%)**: number input, 0–30, disabled when decay is off.
+- **Minimum decay (%)**: number input, 0–10, disabled when decay is off. Help:
+  "How far an unverified value drifts even if you keep training as hard as
+  before. Set to 0 to hold it while training is maintained."
+- **Maximum decay (%)**: number input, 0–30, disabled when decay is off. Help:
+  "How far it can fall with no riding above Z2 at all." Client-side validation
+  keeps minimum ≤ maximum, and the backends enforce it too.
 - **When decay is switched on**, show: "Rebuild each field below to apply decay
   to past history." This reuses the existing per-field Recompute buttons and
   follows the existing note that window and sanity changes aren't retroactive.
@@ -526,9 +619,9 @@ Both backends silently drop them, so the Save button there has never worked.
 
 | | Fix |
 |---|---|
-| Java | Append `thresholdWindowDays`, `thresholdSanityPct` and the three decay fields to the **end** of `AthleteUpdateRequest` (see the positional-record gotcha in `backend_java/CLAUDE.md`). Handle them in `AthleteService.updateProfile` with clamping, and set `suggestionsAffected` |
-| Django | Add all five to the update serializer `fields` and `extra_kwargs`, with `min_value` / `max_value`. Add the decay settings to `_SUGGESTION_AFFECTING_SETTINGS` in `athletes/views.py` |
-| Ranges | Window 1–365 and sanity 1–100, matching the UI; tau 7–90; max 0–30 |
+| Java | Append `thresholdWindowDays`, `thresholdSanityPct` and the four decay fields to the **end** of `AthleteUpdateRequest` (see the positional-record gotcha in `backend_java/CLAUDE.md`). Handle them in `AthleteService.updateProfile` with clamping, and set `suggestionsAffected` |
+| Django | Add all six to the update serializer `fields` and `extra_kwargs`, with `min_value` / `max_value`, plus a `validate()` for min ≤ max. Add the decay settings to `_SUGGESTION_AFFECTING_SETTINGS` in `athletes/views.py` |
+| Ranges | Window 1–365 and sanity 1–100, matching the UI; tau 7–90; min 0–10; max 0–30; min ≤ max (400 if violated after merging with stored values) |
 
 Changing a decay setting isn't retroactive, matching the window/sanity
 convention. The daily job applies new settings from the next day, seeded from
@@ -540,8 +633,8 @@ the existing ledger.
 
 ### 7.1 `openapi.yaml`
 
-- **`User`**: the three decay fields, with defaults and descriptions.
-- **PATCH `/v1/athletes/{id}`**: the three decay fields, plus clamping notes
+- **`User`**: the four decay fields, with defaults and descriptions.
+- **PATCH `/v1/athletes/{id}`**: the four decay fields, plus clamping notes
   for window and sanity.
 - **`ThresholdSummaryEntry`**:
   - add `kind` (`measured` / `manual` / `decayed`),
@@ -639,16 +732,29 @@ This is independent of decay and should ship first (section 11).
 - **Never eases upwards:** load recovers so the floor exceeds `v`; `v` doesn't
   increase.
 - **No successor:** the target is `A·(1 − max_pct)`.
-- **Load-ratio clamp:** ratio > 1 is clamped to 1 (no decay with maintained
-  load); 0 gives the full `max_pct`; `L(a) < 1` gives a ratio of 1.
+- **Load-ratio clamp and amplitude:** ratio > 1 is clamped to 1, which gives
+  exactly `min_pct` (a 260 W anchor targets 252.2 W, **not** 260); ratio 0
+  gives `max_pct`; `L(a) < 1` gives a ratio of 1. `min_pct = 0` reproduces
+  "no decay with maintained load".
+- **Minimum drift with maintained load:** 260 W, ratio held at 1 → 257 / 255 /
+  253 W at t = 14 / 28 / 56.
 - **Pace:** a decayed `threshold_pace` is non-decreasing in seconds/km, and the
   floor for a 240 s anchor is 273 s.
 - **Disabled mode** reproduces the existing replay's ledger on the current
   replay fixtures, so existing behaviour is pinned.
 - **Manual anchor before expiry** isn't replaced by a lower later ride (the 1.1
   regression).
-- **Load series** is independent of `R` for an all-power history, and doesn't
-  change when the FTP ledger changes (no circularity).
+- **Load filter:**
+  - a sample at exactly 0.75 R counts and one at 0.749 R doesn't (hard
+    cutoff);
+  - a steady 2 h ride at 0.70 R contributes 0, and a 1 h ride at 0.80 R
+    contributes 64;
+  - the smooth-ramp variant gives 0 at 0.75 R and full weight at 1.0 R.
+- **No circularity:** the load series is unchanged when the FTP ledger (and
+  so stored TSS and IF) changes, and changes only when the anchor `R` changes.
+- **Histogram:** `intensity_histogram` of a known series yields the expected
+  30 s-smoothed bins, and `activity_load` from the histogram equals the load
+  computed directly from the series, to 1e-9.
 
 ### 9.2 Parity: golden fixtures, as for course sections
 
@@ -664,6 +770,8 @@ Follow `backend/courses/fixtures/sections/regenerate.py` and
   - that the copy matches the Python directory byte for byte.
 - **Scenarios:**
   - the brief's 260 → 232 (load maintained, halved and dropped),
+  - the real-data-shaped case from section 13 (the steady and interval
+    templates, cutoff 75%),
   - no successor,
   - pace,
   - an upward reset mid-decay,
@@ -688,28 +796,41 @@ Follow `backend/courses/fixtures/sections/regenerate.py` and
 - **Activity "revealed" indicator** ignores decayed rows.
 - **Late upload** inside a decay period: decayed rows after it are regenerated,
   and TSS for later activities is recomputed.
-- **Settings PATCH** persists window, sanity and the three decay fields (the
+- **Settings PATCH** persists window, sanity and the four decay fields (the
   6.2 regression), with clamping.
 - **Export/import** round-trips `kind`, and an old-format file infers it.
 - **Section 8** regression tests.
 
 ### 9.4 Scenario regression: the brief's case
 
-Fixture: a 260 W 20-minute-test ride, then 16 weeks of Z2 rides implying
-225–235 W with bike load halved. Assert:
+Two fixtures.
+
+**Synthetic.** A 260 W 20-minute-test ride, then 16 weeks of rides implying
+225–235 W with the above-Z2 load halved. Assert:
 
 - no single-day drop greater than 1%,
-- FTP is 253 W at 14 days after expiry and 249 W at 28 days (the "halved" row
+- FTP is 252 W at 14 days after expiry and 247 W at 28 days (the "halved" row
   of the worked example in section 10),
-- the 3 h, 185 W NP ride rated 28 days after expiry has IF ≈ 0.74 and
-  TSS ≈ 182, not 0.80 / 211.
+- the 3 h, 185 W NP ride rated 28 days after expiry has IF ≈ 0.75 and
+  TSS ≈ 186, not 0.80 / 211.
+
+**Real-data-shaped.** Section 13's rides, from 1 Dec 2025 to 1 Nov 2026, with
+the 260 W anchor on 28 Apr and the successor at 232 W. Assert:
+
+- the expiry is 19 Aug,
+- FTP is 255 / 252 / 250 W on 2 Sep / 16 Sep / 14 Oct, and 248 W on 2 Nov,
+- the 1 Nov ride rates at about IF 0.75 / TSS 184.
+
+These numbers come from the section 13 model; regenerate them from real
+histograms once the feature exists.
 
 ### 9.5 Frontend (vitest)
 
 - The suggestion verb depends on `decays`.
 - The summary card shows "Modelled" for a decayed entry and uses the API's
   `stale`.
-- The BestEffortsTab Save sends all five settings and enables only on change.
+- The BestEffortsTab Save sends all six settings, enables only on change, and
+  blocks min > max.
 
 ---
 
@@ -723,28 +844,31 @@ Fixture: a 260 W 20-minute-test ride, then 16 weeks of Z2 rides implying
 - **Section 3.4:** add `kind` to the ledger table, and staleness from the
   anchor.
 - **Section 5:** the decay wording for upcoming drops.
-- **Section 6:** the three settings, and note that window/sanity now save.
+- **Section 6:** the four settings, and note that window/sanity now save.
 - **Backend differences:** nothing new expected, since the parity fixtures
   enforce it. The existing running-power-spike note stays.
 
 ### Worked example
 
-260 W anchor expires on day 0; successor 232 W; τ = 25; `max_pct` = 12%.
+260 W anchor expires on day 0; successor 232 W; τ = 25; `min_pct` = 3%;
+`max_pct` = 12%. "Load" means the above-Z2 load from 2.3.
 
-| Bike load vs the anchor date | Target | t = 0 | 14 | 28 | 56 |
-|---|---|---|---|---|---|
-| Maintained (ratio 1) | max(232, 260) = 260 | 260 | 260 | 260 | 260 |
-| Halved (ratio 0.5, floor 244.4) | 244.4 | 260 | 253 | 249 | 246 |
-| Stopped (ratio 0, floor 228.8) | max(232, 228.8) = 232 | 260 | 248 | 241 | 235 |
-| No qualifying ride at all | 260 × 0.88 = 228.8 | 260 | 247 | 239 | 232 |
+| Above-Z2 load vs the anchor date | Amplitude | Target | t = 0 | 14 | 28 | 56 |
+|---|---|---|---|---|---|---|
+| Maintained (ratio 1) | 3% | 252.2 | 260 | 257 | 255 | 253 |
+| Halved (ratio 0.5) | 7.5% | 240.5 | 260 | 252 | 247 | 243 |
+| None (ratio 0; floor 228.8 is below the successor) | 12% | 232 | 260 | 248 | 241 | 235 |
+| No qualifying ride at all | 12% | 228.8 | 260 | 247 | 239 | 232 |
+| **The brief's athlete, real rides** (section 13; the ratio falls 0.99 → 0.80) | 3–4.8% | 252 → 248 | 260 | 255 | 252 | 250 |
 
 What this means for the brief's 3 h endurance ride (NP 185 W, 3.31 h):
 
 | | IF | TSS |
 |---|---|---|
-| Today, rated against 232 W | 0.80 | 211 |
-| Halved-load case, rated at day 28 (249 W) | 0.74 | 182 |
-| Stopped case, rated at day 28 (241 W) | 0.77 | 195 |
+| As it happened, rated against 232 W | 0.80 | 211 |
+| Maintained, rated at day 28 (255 W) | 0.73 | 174 |
+| Halved, rated at day 28 (247 W) | 0.75 | 186 |
+| Real rides, rated on 1 Nov (≈ 248 W) | 0.75 | 184 |
 
 ---
 
@@ -762,6 +886,7 @@ Each PR is a parity pair: both backends together.
    regression test.
 5. **Decay core**:
    - the pure module and parity fixtures,
+   - the `activity_intensity_histogram` table, written at ingest and recompute-stats, with lazy backfill,
    - suffix re-simulation,
    - rebuild keeping manual rows,
    - the daily job,
@@ -775,14 +900,14 @@ Each PR is a parity pair: both backends together.
 
 ## 12. Open questions
 
-1. **Maintained load never decays.** With ratio 1 the floor equals the anchor,
-   so FTP holds indefinitely until a better effort arrives. That's consistent
-   with Hickson, and it's the brief's model. Accept it?
-2. **Volume can stand in for intensity.** TSS weights intensity by IF², but a
-   high-volume Z2 block can still reach the same CTL as a structured block, and
-   so hold the ratio near 1. Hickson suggests intensity is what preserves
-   threshold. *Recommendation:* ship v1 as designed. If the brief's athlete
-   still sees no decay, consider counting only time above Z2 in the load term.
+1. ~~**Maintained load never decays.**~~ **Resolved:** `min_pct` (3%) gives a
+   small decay even with load fully maintained, so the model can pick up a
+   decline that happens despite training. The stale / test-due flag applies to
+   every decayed value regardless (4.5).
+2. ~~**Volume can stand in for intensity.**~~ **Resolved:** the load counts only
+   30 s power above 75% of the anchor (2.3). On the brief's athlete's real
+   rides, plain TSS load *rose* 7% across the "Z2 block" (ratio 1.0, no extra
+   decay), while the filtered load fell to 0.80 (section 13).
 3. **No baseline load** (`L(a) < 1`), for example a new athlete's manual FTP.
    *Recommendation:* ratio 1, so the successor and the no-successor fallback
    drive the target. The alternative is the full `max_pct`.
@@ -801,3 +926,101 @@ Each PR is a parity pair: both backends together.
    load-based floor? The load falls naturally with no rides, so they converge
    anyway, though more slowly with the load-based floor. *Recommendation:* keep
    the brief's rule.
+8. **HR fallback cutoff.** The proposal is 0.85 × LTHR with `(HR/LTHR)²`
+   weighting, for activities without trusted power. It's uncalibrated.
+   *Recommendation:* check it against a few rides that have both power and HR
+   before shipping. For the brief's athlete, nearly every ride has power, so it
+   barely matters for them.
+9. **Hard cutoff vs smooth ramp.** On real data the two land within 1 W of each
+   other (section 13). *Recommendation:* ship the hard cutoff as agreed. The
+   histogram means switching later needs no reprocessing.
+10. **Check before calibrating: the 20-minute window doesn't match the
+    duration curve.** The 28 Apr ride's duration-curve 20-minute best is
+    268.3 W, which implies 255 W, but the ledger recorded 260 W (that's
+    273.7 W × 0.95). The successor shows the same ~2% gap: no ride's curve
+    implies 232 W. The threshold calculation's sample-count window and the
+    duration curve evidently measure "20 minutes" differently (gaps or pauses
+    in the record stream are the likely cause). This doesn't change the decay
+    design, but it means the anchor itself may be about 2% high. Worth its own
+    small investigation.
+11. **Stored IF isn't always consistent with the ledger.** The 23 Oct ride's
+    stored IF of 0.799 with 205 W average power needs an FTP of about 257 W or
+    more, but the ledger said 232 W on that date. So some activities were rated
+    against a different value than `reference_for` would give now. 4.6's
+    "re-rate on every ledger change" fixes this going forward. A one-off bulk
+    re-rate after PR 1 would clean up history.
+
+---
+
+## 13. Calibration on the brief's athlete's real rides
+
+This section runs the proposed model (2.2 and 2.3; `min_pct` 3%, `max_pct` 12%,
+τ 25, cutoff 0.75 × anchor) on the athlete's real bike history, read through
+the Cadence MCP: every ride from 1 Dec 2025 to 1 Nov 2026, duplicate
+recordings removed.
+
+### Inputs
+
+| Input | Value | How it was established |
+|---|---|---|
+| Anchor | 260 W, 28 Apr 2026 | The ledger's previous value was 232 W, so 260 W came before it. Stored IFs bracket the drop: the 7 Aug SST ride (avg 211 W, IF 0.863) is only consistent with 260 W, and the 20 Aug ride (IF 1.004, 60 min best 228.5 W) only with 232 W. The drop therefore fell between 17 and 20 Aug, which puts the source 113 days earlier, on 28 Apr. That ride's duration-curve 20 min best is 268.3 W (see Q10) |
+| Expiry | 19 Aug 2026 | |
+| Successor | 232 W | The value the ledger dropped to, unchanged until the manual edit |
+| Current value | 255 W manual, 1 Nov 2026 | `get_athlete_thresholds` |
+| Ride intensity distribution | Approximated from real templates | The MCP doesn't expose per-second power. Each steady ride uses the 23 Oct "Zone 2 Workout 90" 15 s stream, shifted to that ride's average power. Each interval ride (Gorby, threshold, SST, over/unders, tempo, climbs, the test) uses the 24 Sep Gorby stream, scaled to its average. Both are smoothed to 30 s |
+
+A normal approximation fitted from stored IF was tried first and dropped: some
+stored IFs aren't consistent with the ledger (Q11), and interval sessions are
+bimodal (~295 W work, ~150 W recovery), which a normal curve can't represent.
+
+### What decay would have done since 19 Aug
+
+| Load definition | Ratio on 2 Nov | Target | 2 Sep | 16 Sep | 14 Oct | 2 Nov |
+|---|---|---|---|---|---|---|
+| **Above-Z2, hard cutoff at 75%** (as agreed) | 0.80 | 248 | 255 | 252 | 250 | **248** |
+| Above-Z2, hard cutoff at 80% | 0.69 | 245 | 254 | 251 | 248 | 246 |
+| Above-Z2, smooth ramp from 75% | 0.82 | 248 | 255 | 253 | 252 | 249 |
+| Plain TSS, unfiltered (for comparison) | 1.00 | 252 | 256 | 255 | 253 | 252 |
+
+### Findings
+
+- **Plain TSS load went *up* during the "Z2 block".** It rose from 31.5 at the
+  anchor to 33.6 on 1 Nov, so on plain load, training looks fully maintained.
+  This confirms the agreed concern: volume masks the loss of intensity.
+- **The filter moves the ratio, but only to 0.80, because the "Z2" isn't
+  power-Z2.** The HR-capped rides (≤ 125 bpm) average 183–215 W against a
+  cutoff of 195 W, so most of the 205 W rides still count as tempo. Only the
+  ~182–186 W rides, and the 1 Nov Watopia ride, fall mostly below the cutoff.
+- **The result lands where the athlete estimated.** A modelled 248 W today
+  sits a few watts under the athlete's own 255 W estimate, and well above the
+  232 W cliff. TSS for the 1 Nov ride would have been about 184, not 211.
+- **The cutoff choice matters less than feared.** Moving it from 75% to 80%
+  shifts today's value by 2 W, and the smooth ramp by 1 W.
+
+### Projection for the current 255 W (manual, 1 Nov)
+
+Under the new rules, the manual value is the anchor. Lower rides can't replace
+it before it expires, which fixes 1.1. Expiry is 22 Feb 2027; after that it
+decays against the above-Z2 load measured relative to 1 Nov, with `R` = 255 W
+and a cutoff of 191 W.
+
+| Bike training from now on | Ratio | Target | 22 Mar 2027 | 19 Apr | 23 May |
+|---|---|---|---|---|---|
+| Same mix as the six weeks to 1 Nov | ≈ 1.0 | 247 | 250 | 248 | 248 |
+| Less tempo / sweet spot, like the drop seen since April | ≈ 0.8 | 243 | 247 | 244 | 243 |
+| Half the above-Z2 riding | 0.5 | 236 | 242 | 238 | 236 |
+| No riding above Z2, or no bike | 0 | 224 | 234 | 228 | 225 |
+
+Any ride with an implied FTP of at least the current value before then resets
+the anchor (an upward reset), as does a new manual entry after a test. Without
+that, the value is flagged "Modelled · test due" from 22 Feb onwards.
+
+### Caveats
+
+- **The ride shapes are approximations.** They come from two real templates,
+  not each ride's own stream. The production feature computes from real
+  per-activity histograms (5), so expect the numbers to move by a watt or two.
+- **The successor's exact value isn't confirmed.** No ride's duration curve
+  implies exactly 232 W (Q10). In this case it doesn't matter, because the
+  floor (≥ 245 W in every variant) is above it throughout.
+- **The anchor may be about 2% high** (Q10).
