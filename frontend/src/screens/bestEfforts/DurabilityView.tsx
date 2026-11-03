@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { getDurability } from "../../api/athletes";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { DurabilityTrendChart } from "./DurabilityTrendChart";
 import { DurabilitySportTable } from "./DurabilityTables";
 import { HOT_RING_COLOR, SPORT_COLOR, type DurabilityMetric, type DurabilitySportFilter } from "./durabilityChart";
@@ -15,20 +16,6 @@ const SPORTS: { key: DurabilitySportFilter; label: string }[] = [
   { key: "ride", label: "Ride" },
   { key: "run", label: "Run" },
 ];
-
-function segStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "5px 11px",
-    fontSize: 11.5,
-    fontWeight: 600,
-    borderRadius: 7,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-    boxShadow: active ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-  };
-}
 
 function summaryLine(metric: DurabilityMetric, n: number, summary: DurabilitySummary): string {
   const sessionsLabel = `${n} steady session${n === 1 ? "" : "s"}`;
@@ -70,16 +57,20 @@ export function DurabilityView({ athleteId, period }: { athleteId: string; perio
             {data && <div style={{ fontSize: 12.5, color: "var(--ink3)", marginTop: 2 }}>{summaryLine(metric, data.summary.count, data.summary)}</div>}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-              {METRICS.map((m) => (
-                <div key={m.key} onClick={() => setMetric(m.key)} style={segStyle(m.key === metric)}>{m.label}</div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-              {SPORTS.map((s) => (
-                <div key={s.key} onClick={() => setSport(s.key)} style={segStyle(s.key === sport)}>{s.label}</div>
-              ))}
-            </div>
+            <SegmentedControl
+              size="sm"
+              fill={false}
+              options={METRICS.map((m) => ({ key: m.key, value: m.key, label: m.label }))}
+              value={metric}
+              onChange={setMetric}
+            />
+            <SegmentedControl
+              size="sm"
+              fill={false}
+              options={SPORTS.map((s) => ({ key: s.key, value: s.key, label: s.label }))}
+              value={sport}
+              onChange={setSport}
+            />
           </div>
         </div>
 

@@ -14,6 +14,7 @@ import type { ChartPreviewPoint, Workout, WorkoutFolder, WorkoutSort, WorkoutSpo
 import { sportColor, sportLabel } from "../../lib/sportColors";
 import { tagColor, tagRgba } from "../../lib/tagColors";
 import { useAuth } from "../../auth/AuthContext";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { fmtDuration, withIds, zoneColor } from "./workoutTree";
 import { AssignModal } from "./AssignModal";
 import { ExportModal } from "./ExportModal";
@@ -27,20 +28,6 @@ const SORTS: { value: WorkoutSort; label: string }[] = [
   { value: "tss", label: "TSS" },
   { value: "used", label: "Most used" },
 ];
-
-const segBtn = (active: boolean) => ({
-  flex: 1,
-  textAlign: "center" as const,
-  padding: "5px 11px",
-  fontSize: 12,
-  fontWeight: 600,
-  borderRadius: 7,
-  cursor: "pointer",
-  whiteSpace: "nowrap" as const,
-  color: active ? "var(--ink)" : "var(--ink3)",
-  background: active ? "var(--card)" : "transparent",
-  border: "none",
-});
 
 export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) => void; onNew: () => void }) {
   const queryClient = useQueryClient();
@@ -275,11 +262,16 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", color: "var(--ink3)", textTransform: "uppercase", marginBottom: 8 }}>
               Sport
             </div>
-            <div style={{ display: "flex", gap: 3, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-              <button onClick={() => setSport("all")} style={segBtn(sport === "all")}>All</button>
-              <button onClick={() => setSport("bike")} style={segBtn(sport === "bike")}>Bike</button>
-              <button onClick={() => setSport("run")} style={segBtn(sport === "run")}>Run</button>
-            </div>
+            <SegmentedControl
+              size="sm"
+              options={[
+                { key: "all", value: "all" as const, label: "All" },
+                { key: "bike", value: "bike" as const, label: "Bike" },
+                { key: "run", value: "run" as const, label: "Run" },
+              ]}
+              value={sport}
+              onChange={setSport}
+            />
           </div>
         </div>
 
@@ -302,10 +294,15 @@ export function WorkoutLibraryScreen({ onEdit, onNew }: { onEdit: (id: string) =
                 </option>
               ))}
             </select>
-            <div style={{ display: "flex", gap: 3, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-              <button onClick={() => setView("grid")} style={segBtn(view === "grid")}>Grid</button>
-              <button onClick={() => setView("list")} style={segBtn(view === "list")}>List</button>
-            </div>
+            <SegmentedControl
+              size="sm"
+              options={[
+                { key: "grid", value: "grid" as const, label: "Grid" },
+                { key: "list", value: "list" as const, label: "List" },
+              ]}
+              value={view}
+              onChange={setView}
+            />
           </div>
 
           {selectedIds.length > 0 && (

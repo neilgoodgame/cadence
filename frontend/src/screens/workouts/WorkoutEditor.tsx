@@ -7,6 +7,7 @@ import { GarminPushOption } from "../garmin/GarminPushOption";
 import { queueWorkoutPush, refreshGarminQueries } from "../garmin/garminWorkouts";
 import { useGarminWorkouts } from "../garmin/useGarminWorkouts";
 import { Card } from "../../components/Card";
+import { SegmentedControl } from "../../components/SegmentedControl";
 import { ApiError, type WorkoutSport } from "../../api/types";
 import { WorkoutChart } from "./WorkoutChart";
 import { WorkoutStructureList, type StructureActions } from "./WorkoutStructureList";
@@ -226,14 +227,15 @@ function WorkoutEditorForm({
           <SummaryStat label="EST. TSS" value={String(tss)} />
           <SummaryStat label="STEPS" value={String(count)} />
         </div>
-        <div style={{ display: "flex", gap: 3, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-          <button onClick={() => setLayout("list")} style={segBtnStyle(layout === "list")}>
-            List view
-          </button>
-          <button onClick={() => setLayout("chart")} style={segBtnStyle(layout === "chart")}>
-            Chart-first
-          </button>
-        </div>
+        <SegmentedControl
+          size="sm"
+          options={[
+            { key: "list", value: "list" as const, label: "List view" },
+            { key: "chart", value: "chart" as const, label: "Chart-first" },
+          ]}
+          value={layout}
+          onChange={setLayout}
+        />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" }}>
@@ -363,21 +365,6 @@ const secondaryBtnStyle = {
   color: "var(--ink2)",
   cursor: "pointer",
 } as const;
-
-function segBtnStyle(active: boolean) {
-  return {
-    flex: 1,
-    textAlign: "center" as const,
-    padding: "5px 11px",
-    fontSize: 12,
-    fontWeight: 600,
-    borderRadius: 7,
-    cursor: "pointer",
-    border: "none",
-    color: active ? "var(--ink)" : "var(--ink3)",
-    background: active ? "var(--card)" : "transparent",
-  };
-}
 
 function dashedBtnStyle(color = "var(--ink2)") {
   return {

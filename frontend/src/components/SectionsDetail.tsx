@@ -52,7 +52,7 @@ export function SectionsDetail({ profile, sections }: { profile: [number, number
       {climbs.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
           {climbs.map((c, i) => (
-            <span key={i} style={{ fontSize: 11, color: "var(--ink2)", background: "var(--canvas)", borderRadius: 20, padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span key={i} style={{ fontSize: 11, color: "var(--ink2)", background: "var(--canvas-solid)", borderRadius: 20, padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: 5 }}>
               <span style={{ width: 7, height: 7, borderRadius: 2, background: SECTION_COLORS[c.type] }} />
               C{i + 1} · km {c.start_km.toFixed(1)}–{c.end_km.toFixed(1)} · +{c.gain_m} m · {c.avg_grade_pct.toFixed(1)}%
               {c.type === "steep_climb" && " · steep"}

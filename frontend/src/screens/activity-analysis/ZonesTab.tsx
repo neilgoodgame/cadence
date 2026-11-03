@@ -95,7 +95,7 @@ function ZoneList({
                 </div>
               )}
             </div>
-            <div style={{ flex: 1, height: 18, borderRadius: 5, background: "var(--canvas)", overflow: "hidden" }}>
+            <div style={{ flex: 1, height: 18, borderRadius: 5, background: "var(--canvas-solid)", overflow: "hidden" }}>
               <div
                 style={{
                   height: "100%",

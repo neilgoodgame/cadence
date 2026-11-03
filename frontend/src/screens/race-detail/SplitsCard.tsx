@@ -6,6 +6,7 @@ import type { Course, SplitsMode } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
 import { SECTION_COLORS, formatGrade } from "../../lib/courseSections";
 import { defaultSplitsMode, splitRowLabel } from "../../lib/splits";
+import { SegmentedControl } from "../../components/SegmentedControl";
 
 const MAX_DELTA = 12;
 const MAX_POWER_DELTA = 40;
@@ -16,7 +17,7 @@ function DeltaBar({ delta, maxDelta = MAX_DELTA }: { delta: number | null; maxDe
   const pct = (Math.abs(clamped) / maxDelta) * 50;
   const faster = delta < 0;
   return (
-    <div style={{ width: 90, height: 10, position: "relative", background: "var(--canvas)", borderRadius: 4 }}>
+    <div style={{ width: 90, height: 10, position: "relative", background: "var(--canvas-solid)", borderRadius: 4 }}>
       <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "var(--line)" }} />
       <div
         style={{
@@ -91,28 +92,19 @@ export function SplitsCard({
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Splits</h2>
-        <div style={{ display: "flex", gap: 2, background: "var(--canvas)", border: "1px solid var(--line)", borderRadius: 9, padding: 3 }}>
-          {modes.map((m) => (
-            <div
-              key={m}
-              onClick={() => (m !== "laps" || hasLaps) && setUserMode(m)}
-              title={m === "laps" && !hasLaps ? "No manual laps on this activity - pick 1 km or 5 km instead." : undefined}
-              style={{
-                padding: "5px 11px",
-                fontSize: 11.5,
-                fontWeight: 600,
-                borderRadius: 7,
-                cursor: m === "laps" && !hasLaps ? "default" : "pointer",
-                opacity: m === "laps" && !hasLaps ? 0.4 : 1,
-                color: activeMode === m ? "var(--ink)" : "var(--ink3)",
-                background: activeMode === m ? "var(--card)" : "transparent",
-                boxShadow: activeMode === m ? "0 1px 2px rgba(0,0,0,0.14)" : "none",
-              }}
-            >
-              {m === "laps" ? "Laps" : m === "1" ? "1 km" : m === "5" ? "5 km" : "Elevation"}
-            </div>
-          ))}
-        </div>
+        <SegmentedControl
+          size="sm"
+          fill={false}
+          options={modes.map((m) => ({
+            key: m,
+            value: m,
+            label: m === "laps" ? "Laps" : m === "1" ? "1 km" : m === "5" ? "5 km" : "Elevation",
+            disabled: m === "laps" && !hasLaps,
+            title: m === "laps" && !hasLaps ? "No manual laps on this activity - pick 1 km or 5 km instead." : undefined,
+          }))}
+          value={activeMode}
+          onChange={setUserMode}
+        />
       </div>
 
       {data && (

@@ -32,7 +32,7 @@ export function ProfileChip() {
         textDecoration: "none",
       }}
     >
-      <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--canvas)", border: "1px solid var(--line)", flexShrink: 0 }} />
+      <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--canvas-solid)", border: "1px solid var(--line)", flexShrink: 0 }} />
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", lineHeight: 1.15, whiteSpace: "nowrap" }}>{user.name}</div>
         {metaParts.length > 0 && (

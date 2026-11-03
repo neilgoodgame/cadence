@@ -8,7 +8,7 @@ import { TrainingBlockChart } from "../race-detail/TrainingBlockChart";
 
 function tile(label: string, value: string, sub?: string) {
   return (
-    <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--canvas)", minWidth: 100 }}>
+    <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--canvas-solid)", minWidth: 100 }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)" }}>
         {label}
       </div>
