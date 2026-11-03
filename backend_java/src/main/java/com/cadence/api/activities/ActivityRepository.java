@@ -72,6 +72,15 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	@Query("select a from Activity a where a.athlete.id = :athleteId and a.parentActivity is null and a.primaryActivity is null")
 	List<Activity> findRecomputeCandidates(@Param("athleteId") String athleteId);
 
+	// ThresholdHistoryService.recordManualValue's re-rate hook after a manual threshold edit -
+	// same multisport/duplicate exclusion as findRecomputeCandidates above, scoped to the one
+	// sport the edited field applies to and only activities on/after the edit's effective date
+	// (normally just today's).
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.sport = :sport and a.startDate >= :start "
+			+ "and a.parentActivity is null and a.primaryActivity is null")
+	List<Activity> findForReRateAfterThresholdEdit(@Param("athleteId") String athleteId,
+			@Param("sport") com.cadence.api.common.domain.Sport sport, @Param("start") Instant start);
+
 	// RecomputeDurabilityRunner's backfill candidate set - optionally scoped to one athlete
 	// and/or a start-date cutoff, same (:param is null or ...) optional-filter shape used
 	// elsewhere in this repository.

@@ -73,6 +73,27 @@ class RecomputeActivityStatsViewTests(TestCase):
         self.assertIsNone(body["avg_cadence"])
         self.assertIsNone(body["calories"])
 
+    def test_recompute_stats_now_also_sets_tss_alongside_intensity(self):
+        # Issue #481: recompute-stats used to update intensity but never tss. Real case: FTP
+        # changed 232 -> 255, a 185W-NP/3.31h ride's IF should drop to 0.725 and TSS to 174.
+        activity = _make_activity(
+            self.athlete,
+            sport="bike",
+            moving_time=11916,
+            tss=211,
+            intensity=0.798,  # stale, as if rated at FTP 232
+        )
+        self.athlete.ftp = 255
+        self.athlete.save(update_fields=["ftp"])
+        for t in range(11916):
+            Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=185)
+
+        response = _bearer_client(self.athlete).post(f"/v1/activities/{activity.id}/recompute-stats")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertAlmostEqual(body["intensity"], 0.725, delta=0.0005)
+        self.assertEqual(body["tss"], 174)
+
     def test_outsider_cannot_recompute(self):
         activity = self._make_activity_with_records()
         client = _delegated_client(self.outsider, self.athlete, scopes=["activities:read"])
@@ -254,9 +275,12 @@ class RecomputeAthleteStatsViewTests(TestCase):
     def test_activities_with_no_records_are_not_counted_as_updated(self):
         # No lthr on this athlete (unlike self.athlete) so compute_edwards_trimp also has
         # nothing to compute - otherwise trimp still resolves to 0.0 (a real "zero time in
-        # any zone" value, distinct from "nothing to backfill") even with zero records.
+        # any zone" value, distinct from "nothing to backfill") even with zero records. tss=0
+        # (not _make_activity's usual filler default of 50) - with no records and no ftp, the
+        # correctly-rated tss for this activity actually is 0, so this must already be it, or
+        # rate_activity's own fix (issue #481) would legitimately count it as changed.
         no_lthr_athlete = User.objects.create_user(email="bulk-no-lthr@example.cc", password="x", name="No LTHR")
-        _make_activity(no_lthr_athlete)
+        _make_activity(no_lthr_athlete, tss=0)
 
         response = _bearer_client(no_lthr_athlete).post(f"/v1/athletes/{no_lthr_athlete.id}/recompute-stats")
         self.assertEqual(response.status_code, 200)

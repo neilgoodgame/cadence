@@ -2,12 +2,15 @@ package com.cadence.api.athletes;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.athletes.ThresholdHistoryCalculator.Candidate;
 import com.cadence.api.athletes.ThresholdHistoryCalculator.ThresholdHistoryEntry;
 import com.cadence.api.athletes.dto.ThresholdHistoryEntryResponse;
 import com.cadence.api.athletes.dto.ThresholdSummaryEntry;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
@@ -31,13 +34,22 @@ public class ThresholdHistoryService {
 	private final ThresholdHistoryCalculator calculator;
 	private final ActivityRepository activityRepository;
 	private final UserRepository userRepository;
+	private final TssRecomputeService tssRecomputeService;
 
 	public ThresholdHistoryService(ThresholdHistoryRepository thresholdHistoryRepository,
-			ThresholdHistoryCalculator calculator, ActivityRepository activityRepository, UserRepository userRepository) {
+			ThresholdHistoryCalculator calculator, ActivityRepository activityRepository, UserRepository userRepository,
+			TssRecomputeService tssRecomputeService) {
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.calculator = calculator;
 		this.activityRepository = activityRepository;
 		this.userRepository = userRepository;
+		this.tssRecomputeService = tssRecomputeService;
+	}
+
+	// FTP -> bike; critical running power/threshold pace -> run - the sport each field's
+	// ledger entry should re-rate activities for after a manual edit (part 3 of issue #481's fix).
+	private static Sport sportFor(ThresholdField field) {
+		return field == ThresholdField.FTP ? Sport.BIKE : Sport.RUN;
 	}
 
 	private static LocalDate dateOf(Activity activity) {
@@ -145,7 +157,25 @@ public class ThresholdHistoryService {
 			entry.setValueNumeric(valueNumeric);
 		}
 		thresholdHistoryRepository.save(entry);
+		reRateActivitiesFrom(athlete, field, entry.getEffectiveFrom());
 		return true;
+	}
+
+	/** Re-rates (intensity + tss) every one of the athlete's activities of the affected sport
+	 * dated on/after a manual threshold edit's effective date - otherwise they'd stay scored
+	 * against the now-superseded value until someone happens to press a recompute button (issue
+	 * #481, part 3). Normally a tiny set (today's activities, if any), not a full-history
+	 * rebuild - activities before `effectiveFrom` are correctly left alone, since the previous
+	 * ledger entry is still the one effective for their own date. */
+	private void reRateActivitiesFrom(User athlete, ThresholdField field, LocalDate effectiveFrom) {
+		Instant start = effectiveFrom.atStartOfDay(ZoneOffset.UTC).toInstant();
+		List<Activity> activities =
+				activityRepository.findForReRateAfterThresholdEdit(athlete.getId(), sportFor(field), start);
+		for (Activity activity : activities) {
+			if (tssRecomputeService.rate(activity, athlete)) {
+				activityRepository.save(activity);
+			}
+		}
 	}
 
 	private boolean recomputeAndRecord(User athlete, ThresholdField field, LocalDate asOf) {

@@ -920,6 +920,51 @@ paths:
         "422":
           description: The activity isn't a run, walk or ride.
 
+  /v1/activities/{id}/recompute-tss:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Re-rate an activity's intensity factor and TSS
+      operationId: recomputeActivityTss
+      description: >-
+        Recomputes intensity (normalized power ÷ the FTP/critical-running-power ledger entry
+        effective on the activity's own date) and TSS together from the activity's stored
+        records, falling back to an HR-based TSS estimate when power data isn't usable. The
+        same helper recompute-stats and ingest use, so the three can't drift apart.
+      responses:
+        "200":
+          description: The activity with its re-rated intensity and TSS.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Activity" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/activities/{id}/recompute-stats:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Rebuild an activity's derived stats, including intensity and TSS
+      operationId: recomputeActivityStats
+      description: >-
+        Backfills average/normalized power, cadence, elevation, calories, TRIMP and similar
+        derived fields from the activity's stored records - and, like recompute-tss above,
+        intensity and TSS together, via the same shared helper.
+      responses:
+        "200":
+          description: The activity with its rebuilt stats.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Activity" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/activities/{id}/recompute-elevation:
     parameters:
       - $ref: "#/components/parameters/ActivityId"

@@ -421,7 +421,30 @@ def record_manual_value(
         effective_from=effective_as_of,
         current_from=effective_as_of,
     )
+    _rerate_activities_from(athlete, field, effective_as_of)
     return True
+
+
+def _rerate_activities_from(athlete: User, field: str, effective_from: date) -> None:
+    """Re-rates (intensity + tss) every one of the athlete's activities of the affected sport
+    dated on/after a manual threshold edit's effective date - otherwise they'd stay scored
+    against the now-superseded value until someone happens to press a recompute button (issue
+    #481, part 3). Normally a tiny set (today's activities, if any), not a full-history rebuild -
+    activities before `effective_from` are correctly left alone, since the previous ledger entry
+    is still the one effective for their own date. Same multisport-parent exclusion
+    athletes.views.RecomputeAthleteTssView already uses - local import to avoid a circular import
+    (uploads.processing imports this module at the top level for recompute_for_activity).
+    """
+    from uploads.processing import rate_activity
+
+    candidates = Activity.objects.filter(
+        athlete=athlete, sport=FIELD_SPORT[field], parent_activity__isnull=True, start_date__date__gte=effective_from
+    )
+    for activity in candidates:
+        power_series = list(activity.records.order_by("t").values_list("power", flat=True))
+        hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
+        if rate_activity(activity, athlete, power_series, hr_series):
+            activity.save(update_fields=["intensity", "tss"])
 
 
 def refresh_field(athlete: User, field: str) -> bool:

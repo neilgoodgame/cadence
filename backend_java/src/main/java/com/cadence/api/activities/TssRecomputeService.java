@@ -10,6 +10,7 @@ import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.users.User;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,25 +36,17 @@ public class TssRecomputeService {
 		Activity activity = activityRepository.findById(activityId)
 				.orElseThrow(() -> new com.cadence.api.common.error.NotFoundException("No such activity."));
 		User athlete = activity.getAthlete();
-		ZoneSet hrZoneSet = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE);
-		Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
-		int tss = computeTss(activity, athlete, hrZoneSet, hrThreshold);
-		activity.setTss(tss);
+		rate(activity, athlete);
 		activityRepository.save(activity);
-		return tss;
+		return activity.getTss();
 	}
 
 	@Transactional
 	public int recomputeForAthlete(User athlete) {
-		ZoneSet hrZoneSet = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE);
-		Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
-
 		List<Activity> activities = activityRepository.findRecomputeCandidates(athlete.getId());
 		int updated = 0;
 		for (Activity activity : activities) {
-			int newTss = computeTss(activity, athlete, hrZoneSet, hrThreshold);
-			if (newTss != activity.getTss()) {
-				activity.setTss(newTss);
+			if (rate(activity, athlete)) {
 				activityRepository.save(activity);
 				updated++;
 			}
@@ -61,14 +54,19 @@ public class TssRecomputeService {
 		return updated;
 	}
 
-	private int computeTss(Activity activity, User athlete, ZoneSet hrZoneSet, Double hrThreshold) {
+	/** Computes and writes {@code intensity} and {@code tss} together from this activity's own
+	 * stored Record rows - used by ingest ({@code ComputeDerivedStatsTasklet}), "Recompute TSS"
+	 * (above) and "Recompute stats" ({@code DerivedStatsRecomputeService}) alike, so the three
+	 * can't drift apart (see docs/plans/threshold-decay.md section 8 - issue #481: "Recompute
+	 * stats" used to update intensity but never tss). Returns whether either value changed. Does
+	 * NOT touch avgPower/normPower/other derived stats - those stay exactly where they are
+	 * today. */
+	public boolean rate(Activity activity, User athlete) {
 		// Reads the ThresholdHistory entry effective as of the activity's own date, not the
 		// athlete's current profile - so this stays historically accurate whether called at
-		// ingest or from an explicit "Recompute TSS" action (both single-activity and
-		// bulk-per-athlete). Falls back to the athlete's live profile value when no ledger entry
-		// is effective yet (e.g. before any qualifying effort exists) - same convention as
-		// ComputeDerivedStatsTasklet. `athlete` is still needed below for the HR-based fallback,
-		// which has no ledger equivalent (lthr isn't rolling-window derived).
+		// ingest or from an explicit recompute action (single-activity, bulk-per-athlete, or the
+		// post-threshold-edit re-rate hook). Falls back to the athlete's live profile value when
+		// no ledger entry is effective yet (e.g. before any qualifying effort exists).
 		Double thresholdPowerDouble = switch (activity.getSport()) {
 			case BIKE -> referenceForOrLive(athlete, ZoneType.BIKE_POWER, activity);
 			case RUN -> referenceForOrLive(athlete, ZoneType.RUN_POWER, activity);
@@ -89,14 +87,32 @@ public class TssRecomputeService {
 		Double normPower = !excludedRunningPower && powerSeries.stream().anyMatch(p -> p != null)
 				? NormalizedPowerCalculator.compute(powerSeries) : null;
 
-		Integer tss = TssCalculator.powerBased(normPower, thresholdPower, activity.getMovingTime());
-		if (tss != null) {
-			return tss;
+		boolean changed = false;
+
+		Double newIntensity = null;
+		if (normPower != null && normPower > 0 && thresholdPowerDouble != null
+				&& (activity.getSport() == Sport.BIKE || activity.getSport() == Sport.RUN)) {
+			newIntensity = Math.round(normPower / thresholdPowerDouble * 1000) / 1000.0;
+		}
+		if (!Objects.equals(newIntensity, activity.getIntensity())) {
+			activity.setIntensity(newIntensity);
+			changed = true;
 		}
 
-		List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
-		Map<String, Integer> secondsPerZone = TssCalculator.secondsPerZone(hrSeries, hrZoneSet.getZones(), hrThreshold);
-		return TssCalculator.hrBased(secondsPerZone, hrZoneSet.getZones());
+		Integer tss = TssCalculator.powerBased(normPower, thresholdPower, activity.getMovingTime());
+		if (tss == null) {
+			ZoneSet hrZoneSet = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE);
+			Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
+			List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
+			Map<String, Integer> secondsPerZone = TssCalculator.secondsPerZone(hrSeries, hrZoneSet.getZones(), hrThreshold);
+			tss = TssCalculator.hrBased(secondsPerZone, hrZoneSet.getZones());
+		}
+		if (!Objects.equals(tss, activity.getTss())) {
+			activity.setTss(tss);
+			changed = true;
+		}
+
+		return changed;
 	}
 
 	private Double referenceForOrLive(User athlete, ZoneType type, Activity activity) {

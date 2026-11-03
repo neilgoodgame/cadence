@@ -1210,6 +1210,64 @@ class RecordManualValueTests(TestCase):
 
         self.assertEqual(reference_for(self.athlete, "bike_power", activity=activity), 250)
 
+    def test_manual_edit_alone_rerates_activities_on_or_after_the_effective_date(self):
+        # Issue #481, part 3: a manual threshold edit used to leave every already-ingested
+        # activity's intensity/tss stale until someone happened to press a recompute button.
+        # Real case: FTP 232 -> 255 should drop a 185W-NP/3.31h ride's IF to 0.725, TSS to 174.
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="bike",
+            name="Ride",
+            start_date=datetime(2026, 6, 1, 7, 0, tzinfo=UTC),
+            moving_time=11916,
+            tss=211,
+            intensity=0.798,
+        )
+        for t in range(11916):
+            Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=185)
+
+        record_manual_value(self.athlete, "ftp", 255, as_of=date(2026, 6, 1))
+
+        activity.refresh_from_db()
+        self.assertAlmostEqual(activity.intensity, 0.725, delta=0.0005)
+        self.assertEqual(activity.tss, 174)
+
+    def test_manual_edit_does_not_rerate_activities_before_the_effective_date(self):
+        # The previous ledger entry is still the one effective for this activity's own (earlier)
+        # date - re-rating it would wrongly apply a value that wasn't yet in effect then.
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="bike",
+            name="Earlier ride",
+            start_date=datetime(2026, 5, 1, 7, 0, tzinfo=UTC),
+            moving_time=3600,
+            tss=50,
+            intensity=0.5,
+        )
+
+        record_manual_value(self.athlete, "ftp", 255, as_of=date(2026, 6, 1))
+
+        activity.refresh_from_db()
+        self.assertEqual(activity.tss, 50)
+        self.assertEqual(activity.intensity, 0.5)
+
+    def test_manual_edit_does_not_overwrite_a_multisport_parents_summed_tss(self):
+        # A multisport parent's tss is the sum of its legs, not a single-threshold rating - the
+        # re-rate hook must not touch it even when its date matches the edit.
+        parent = Activity.objects.create(
+            athlete=self.athlete,
+            sport="multisport",
+            name="Multisport",
+            start_date=datetime(2026, 6, 1, 7, 0, tzinfo=UTC),
+            moving_time=7200,
+            tss=150,
+        )
+
+        record_manual_value(self.athlete, "ftp", 255, as_of=date(2026, 6, 1))
+
+        parent.refresh_from_db()
+        self.assertEqual(parent.tss, 150)
+
     def test_a_manual_entry_becomes_stale_after_the_window(self):
         self.athlete.threshold_window_days = 112
         self.athlete.save(update_fields=["threshold_window_days"])

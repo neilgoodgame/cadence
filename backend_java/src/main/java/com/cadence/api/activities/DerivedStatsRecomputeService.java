@@ -46,16 +46,18 @@ public class DerivedStatsRecomputeService {
 	private final UserRepository userRepository;
 	private final ZoneService zoneService;
 	private final ActivityDecouplingService decouplingService;
+	private final TssRecomputeService tssRecomputeService;
 	private final TransactionTemplate tx;
 
 	public DerivedStatsRecomputeService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			UserRepository userRepository, ZoneService zoneService, ActivityDecouplingService decouplingService,
-			PlatformTransactionManager tm) {
+			TssRecomputeService tssRecomputeService, PlatformTransactionManager tm) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.userRepository = userRepository;
 		this.zoneService = zoneService;
 		this.decouplingService = decouplingService;
+		this.tssRecomputeService = tssRecomputeService;
 		this.tx = new TransactionTemplate(tm);
 	}
 
@@ -158,23 +160,11 @@ public class DerivedStatsRecomputeService {
 			}
 		}
 
-		// intensity: same normPower/threshold-power ratio ComputeDerivedStatsTasklet computes at
-		// ingest time - like avgPower/normPower above, it's never touched once set, so a backfilled
-		// normPower correction above would otherwise leave this stuck at its old, equally-skewed
-		// value (e.g. a stale intensity of 11+ instead of the normal ~0.5-1.2 range).
-		if (normPower != null && normPower > 0 && activity.getSport() == Sport.BIKE) {
-			Double ftp = referenceForOrLive(athlete, ZoneType.BIKE_POWER, activity);
-			if (ftp != null) {
-				activity.setIntensity(round3(normPower / ftp));
-				changed = true;
-			}
-		}
-		else if (normPower != null && normPower > 0 && activity.getSport() == Sport.RUN) {
-			Double criticalRunPower = referenceForOrLive(athlete, ZoneType.RUN_POWER, activity);
-			if (criticalRunPower != null) {
-				activity.setIntensity(round3(normPower / criticalRunPower));
-				changed = true;
-			}
+		// intensity + tss together, via the same shared helper "Recompute TSS" and ingest use -
+		// so this backfill path can't drift out of sync with either of them again (issue #481:
+		// this used to update intensity but never tss).
+		if (tssRecomputeService.rate(activity, athlete)) {
+			changed = true;
 		}
 
 		List<Integer> cadenceSeries = records.stream().map(Record::getCadence).toList();
@@ -270,14 +260,6 @@ public class DerivedStatsRecomputeService {
 		}
 
 		return changed;
-	}
-
-	/** Ledger entry effective as of {@code activity}'s own date, falling back to the athlete's
-	 * live profile value when none is effective yet - mirrors ComputeDerivedStatsTasklet's
-	 * ingest-time helper of the same name. */
-	private Double referenceForOrLive(User athlete, ZoneType type, Activity activity) {
-		Double value = zoneService.referenceFor(athlete, type, activity);
-		return value != null ? value : zoneService.referenceFor(athlete, type);
 	}
 
 	private double round3(double v) {
