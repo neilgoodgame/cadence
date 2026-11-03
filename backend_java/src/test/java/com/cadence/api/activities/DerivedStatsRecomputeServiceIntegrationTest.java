@@ -228,6 +228,29 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void recomputeForActivityNowAlsoSetsTssAlongsideIntensity() {
+		// Issue #481: recompute-stats used to update intensity but never tss.
+		User athlete = newAthlete("recompute-stats-tss-fix@example.cc");
+		athlete.setFtp(255);
+		athlete = userRepository.save(athlete);
+		int movingTime = 11916; // 3.31 h
+		Activity activity = newActivity(athlete, movingTime);
+		for (int t = 0; t < movingTime; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(185);
+			recordRepository.save(record);
+		}
+
+		Activity updated = derivedStatsRecomputeService.recomputeForActivity(activity.getId());
+
+		assertThat(updated.getIntensity()).isCloseTo(0.725, org.assertj.core.data.Offset.offset(0.0005));
+		assertThat(updated.getTss()).isEqualTo(174);
+	}
+
+	@Test
 	void recomputeForAthleteBackfillsStatsAcrossAllOfTheirActivities() {
 		User athlete = newAthlete("bulk-backfill@example.cc");
 		Activity first = newActivity(athlete, 3600);

@@ -88,6 +88,19 @@ class TssRecomputeServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void recomputeForActivityNowAlsoSetsIntensityAlongsideTss() {
+		// Symmetric issue-481 fix: "Recompute TSS" used to leave intensity untouched.
+		User athlete = newAthlete("recompute-tss-intensity-fix@example.cc", 255);
+		Activity activity = newRideWithConstantPower(athlete, Instant.parse("2026-01-01T07:00:00Z"), 255, 185, 11916);
+
+		tssRecomputeService.recomputeForActivity(activity.getId());
+
+		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(reloaded.getIntensity()).isCloseTo(0.725, org.assertj.core.data.Offset.offset(0.0005));
+		assertThat(reloaded.getTss()).isEqualTo(174);
+	}
+
+	@Test
 	void recomputeForAthleteUsesEachActivitysOwnHistoricalValue() {
 		// Distinct dates - each ride's ledger entry has its own effectiveFrom, so a same-day
 		// collision between two different historical values for the same athlete/field can't

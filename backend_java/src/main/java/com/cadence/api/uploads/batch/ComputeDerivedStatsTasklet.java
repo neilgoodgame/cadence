@@ -2,6 +2,7 @@ package com.cadence.api.uploads.batch;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.activities.calc.NormalizedPowerCalculator;
 import com.cadence.api.activities.calc.TrainingEffectLabel;
 import com.cadence.api.activities.calc.TrimpCalculator;
@@ -33,12 +34,14 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 	private final UploadJobContextRegistry contextRegistry;
 	private final ActivityRepository activityRepository;
 	private final ZoneService zoneService;
+	private final TssRecomputeService tssRecomputeService;
 
 	public ComputeDerivedStatsTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
-			ZoneService zoneService) {
+			ZoneService zoneService, TssRecomputeService tssRecomputeService) {
 		this.contextRegistry = contextRegistry;
 		this.activityRepository = activityRepository;
 		this.zoneService = zoneService;
+		this.tssRecomputeService = tssRecomputeService;
 	}
 
 	@Override
@@ -59,9 +62,12 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 				parent = activity;
 			}
 			else {
-				int tss = computeTss(activity, segment.parsed());
-				activity.setTss(tss);
-				childTssSum += tss;
+				// intensity + tss together, via the same shared helper "Recompute TSS" and
+				// "Recompute stats" use - the loadRecordsStep two steps earlier has already
+				// committed this activity's Record rows, so rate() can read them back safely
+				// (see docs/plans/threshold-decay.md section 8).
+				tssRecomputeService.rate(activity, activity.getAthlete());
+				childTssSum += activity.getTss();
 			}
 			activityRepository.save(activity);
 		}
@@ -86,24 +92,6 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 		activity.setNormPower(normPower != null ? (int) Math.round(normPower) : null);
 		activity.setAvgHr(avgHr != null ? (int) Math.round(avgHr) : null);
 		activity.setMaxHr(maxHr);
-
-		// Ledger entry effective as of this activity's own date, falling back to the athlete's
-		// live profile value if none is effective yet (e.g. before any qualifying effort has
-		// established one) - intensity should still reflect the best available evidence rather
-		// than being left unset. zoneService.referenceFor(athlete, type) alone (no activity) stays
-		// strict/null-returning for the Zones tab display; this fallback is local to intensity/TSS.
-		if (normPower != null && normPower > 0 && activity.getSport() == Sport.BIKE) {
-			Double ftp = referenceForOrLive(athlete, ZoneType.BIKE_POWER, activity);
-			if (ftp != null) {
-				activity.setIntensity(round3(normPower / ftp));
-			}
-		}
-		else if (normPower != null && normPower > 0 && activity.getSport() == Sport.RUN) {
-			Double criticalRunPower = referenceForOrLive(athlete, ZoneType.RUN_POWER, activity);
-			if (criticalRunPower != null) {
-				activity.setIntensity(round3(normPower / criticalRunPower));
-			}
-		}
 
 		// Stryd-derived, run only (matches the Python backend - a bike's ambient readings
 		// aren't meaningful the same way, and PATCH lets athletes set these manually for
@@ -202,35 +190,6 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 		}
 	}
 
-	/** Ledger entry effective as of {@code activity}'s own date, falling back to the athlete's
-	 * live profile value when none is effective yet - see the comment in applySeriesStats. */
-	private Double referenceForOrLive(User athlete, ZoneType type, Activity activity) {
-		Double value = zoneService.referenceFor(athlete, type, activity);
-		return value != null ? value : zoneService.referenceFor(athlete, type);
-	}
-
-	private int computeTss(Activity activity, ParsedActivity parsed) {
-		User athlete = activity.getAthlete();
-		Integer normPower = activity.getNormPower();
-		List<Integer> hrSeries = parsed.samples().stream().map(ParsedActivity.Sample::heartrate).toList();
-
-		Double thresholdPowerDouble = switch (activity.getSport()) {
-			case BIKE -> referenceForOrLive(athlete, ZoneType.BIKE_POWER, activity);
-			case RUN -> referenceForOrLive(athlete, ZoneType.RUN_POWER, activity);
-			default -> null;
-		};
-		Integer thresholdPower = thresholdPowerDouble != null ? (int) Math.round(thresholdPowerDouble) : null;
-		Integer tss = TssCalculator.powerBased(normPower != null ? normPower.doubleValue() : null, thresholdPower,
-				activity.getMovingTime());
-		if (tss == null) {
-			List<Zone> zones = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE).getZones();
-			Double threshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
-			Map<String, Integer> secondsPerZone = TssCalculator.secondsPerZone(hrSeries, zones, threshold);
-			tss = TssCalculator.hrBased(secondsPerZone, zones);
-		}
-		return tss;
-	}
-
 	private Double mean(List<Integer> values) {
 		OptionalDouble avg = values.stream().filter(Objects::nonNull).mapToInt(Integer::intValue).average();
 		return avg.isPresent() ? avg.getAsDouble() : null;
@@ -254,10 +213,6 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 	private Double minDouble(List<Double> values) {
 		OptionalDouble min = values.stream().filter(Objects::nonNull).mapToDouble(Double::doubleValue).min();
 		return min.isPresent() ? min.getAsDouble() : null;
-	}
-
-	private double round3(double v) {
-		return Math.round(v * 1000) / 1000.0;
 	}
 
 	private double round1(double v) {

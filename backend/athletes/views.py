@@ -529,7 +529,7 @@ class RecomputeAthleteTssView(APIView):
         athlete = get_object_or_404(User, pk=id)
 
         from activities.models import Activity
-        from uploads.processing import compute_normalized_power, compute_tss
+        from uploads.processing import rate_activity
 
         candidates = Activity.objects.filter(
             athlete_id=id,
@@ -540,11 +540,8 @@ class RecomputeAthleteTssView(APIView):
         for activity in candidates:
             power_series = list(activity.records.order_by("t").values_list("power", flat=True))
             hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
-            norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
-            new_tss = compute_tss(activity, athlete, norm_power, hr_series)
-            if new_tss != activity.tss:
-                activity.tss = new_tss
-                activity.save(update_fields=["tss"])
+            if rate_activity(activity, athlete, power_series, hr_series):
+                activity.save(update_fields=["intensity", "tss"])
                 updated += 1
 
         return Response({"updated": updated})

@@ -3,14 +3,22 @@ package com.cadence.api.athletes;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.Record;
+import com.cadence.api.activities.RecordId;
+import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.courses.CourseSections;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -28,6 +36,12 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private ThresholdHistoryRepository thresholdHistoryRepository;
+
+	@Autowired
+	private ActivityRepository activityRepository;
+
+	@Autowired
+	private RecordRepository recordRepository;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -174,6 +188,66 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		ThresholdHistory entry = thresholdHistoryRepository
 				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
 		assertThat(entry.getSetBy().getId()).isEqualTo(coach.getId());
+	}
+
+	@Test
+	void manualThresholdEditAloneReRatesTodaysActivityWithoutAnExplicitRecomputeCall() {
+		// Issue #481, part 3: a manual threshold edit used to leave every already-ingested
+		// activity's intensity/tss stale until someone happened to press a recompute button.
+		User athlete = newAthlete("rerate-on-edit@example.cc");
+		athlete.setFtp(232);
+		athlete = userRepository.save(athlete);
+
+		int movingTime = 11916; // 3.31 h
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName("Today's ride");
+		activity.setStartDate(Instant.now());
+		activity.setMovingTime(movingTime);
+		// Stale, as if originally rated against the old 232W FTP (the real case from the issue).
+		activity.setIntensity(0.798);
+		activity.setTss(211);
+		activity = activityRepository.save(activity);
+		for (int t = 0; t < movingTime; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(185);
+			recordRepository.save(record);
+		}
+
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, null, 255, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
+		// 185W at a 255W FTP: IF 0.725, TSS 174 - not the stale 0.798/211 a 232W FTP gave it.
+		assertThat(reloaded.getIntensity()).isCloseTo(0.725, Offset.offset(0.0005));
+		assertThat(reloaded.getTss()).isEqualTo(174);
+	}
+
+	@Test
+	void manualThresholdEditDoesNotOverwriteAMultisportParentsSummedTss() {
+		// A multisport parent's tss is the sum of its legs, not a single-threshold rating - the
+		// re-rate hook must not touch it even when its date matches the edit.
+		User athlete = newAthlete("rerate-multisport-safe@example.cc");
+		athlete.setFtp(232);
+		athlete = userRepository.save(athlete);
+
+		Activity parent = new Activity();
+		parent.setAthlete(athlete);
+		parent.setSport(Sport.MULTISPORT);
+		parent.setName("Multisport today");
+		parent.setStartDate(Instant.now());
+		parent.setMovingTime(7200);
+		parent.setTss(150);
+		parent = activityRepository.save(parent);
+
+		athleteService.updateProfile(athlete,
+				new AthleteUpdateRequest(null, null, null, 255, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+		assertThat(activityRepository.findById(parent.getId()).orElseThrow().getTss()).isEqualTo(150);
 	}
 
 	@Test

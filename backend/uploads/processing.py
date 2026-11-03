@@ -811,6 +811,43 @@ def compute_tss(
     return _hr_based_tss(athlete, heartrate_series, activity.moving_time)
 
 
+def rate_activity(
+    activity: Activity, athlete: User, power_series: Sequence[float | None], heartrate_series: Sequence[float | None]
+) -> bool:
+    """Computes and writes `intensity` and `tss` together - used by ingest (_ingest_activity),
+    "Recompute TSS" and "Recompute stats" alike, so the three can't drift apart (issue #481:
+    "Recompute stats" used to update intensity but never tss). Mutates `activity` in place and
+    returns whether either value actually changed (the caller decides whether/how to persist -
+    see backfill_extended_stats, whose bulk callers only count/save activities that actually
+    changed). Does NOT touch avg_power/norm_power/other derived stats - those stay exactly where
+    they are today.
+    """
+    if activity.sport == "run" and not activity.matches_running_power_preference(athlete):
+        # Same gate compute_tss applies internally for tss - applied here too, upfront, so
+        # intensity sees the same gated series rather than being derived from a power source
+        # the athlete currently excludes.
+        power_series = [None] * len(power_series)
+    norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
+
+    threshold = None
+    if activity.sport == "bike":
+        threshold = reference_for(athlete, "bike_power", activity) or reference_for(athlete, "bike_power")
+    elif activity.sport == "run":
+        threshold = reference_for(athlete, "run_power", activity) or reference_for(athlete, "run_power")
+
+    new_intensity = round(norm_power / threshold, 3) if norm_power and threshold else None
+    new_tss = compute_tss(activity, athlete, norm_power, heartrate_series)
+
+    changed = False
+    if new_intensity != activity.intensity:
+        activity.intensity = new_intensity
+        changed = True
+    if new_tss != activity.tss:
+        activity.tss = new_tss
+        changed = True
+    return changed
+
+
 def compute_edwards_trimp(athlete: User, heartrate_series: Sequence[float | None]) -> float | None:
     """Edwards' TRIMP: sum over HR zones of (minutes in zone * zone number 1-5). Chosen
     over Banister's original formula because it needs no resting-HR baseline - it reuses
@@ -889,6 +926,21 @@ def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
     if max_power is not None:
         activity.max_power = round(max_power)
         update_fields.append("max_power")
+
+    avg_power = _mean(power_series)
+    if avg_power is not None:
+        activity.avg_power = round(avg_power)
+        update_fields.append("avg_power")
+    norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
+    if norm_power is not None:
+        activity.norm_power = round(norm_power)
+        update_fields.append("norm_power")
+
+    # intensity + tss together, via the same shared helper ingest and "Recompute TSS" use - so
+    # this backfill path can't drift out of sync with either of them again (issue #481: this
+    # used to update intensity but never tss).
+    if rate_activity(activity, athlete, power_series, hr_series):
+        update_fields.extend(["intensity", "tss"])
 
     if any(c is not None for c in cadence_series):
         avg_cadence = _mean(cadence_series)
@@ -1490,19 +1542,11 @@ def _ingest_activity(
                 ]
             )
 
-        # Same live-profile fallback as compute_tss below, for the same reason: before any
-        # qualifying effort has established a ledger entry, intensity should still reflect the
-        # athlete's manually-declared threshold rather than being left unset.
-        if norm_power and activity.sport == "bike":
-            ftp = reference_for(athlete, "bike_power", activity) or reference_for(athlete, "bike_power")
-            if ftp:
-                activity.intensity = round(norm_power / ftp, 3)
-        elif norm_power and activity.sport == "run":
-            critical_run_power = reference_for(athlete, "run_power", activity) or reference_for(athlete, "run_power")
-            if critical_run_power:
-                activity.intensity = round(norm_power / critical_run_power, 3)
-        # The multisport parent's TSS is set by the caller as the sum of its legs'.
-        activity.tss = compute_tss(activity, athlete, norm_power, hr_series)
+        # intensity + tss together, via the same shared helper "Recompute TSS" and "Recompute
+        # stats" use - so this ingest path can't drift out of sync with either of them again
+        # (issue #481). The multisport parent's TSS is set by the caller as the sum of its legs',
+        # so rate_activity is skipped for it (same is_multisport_parent guard as above).
+        rate_activity(activity, athlete, power_series, hr_series)
         update_fields.extend(["intensity", "tss"])
 
     activity.save(update_fields=update_fields)
