@@ -44,7 +44,12 @@ public record AthleteUpdateRequest(
 		SectionSettingsUpdate courseSectionSettings,
 		// Appended at the end for the same reason as decouplingWarmupMinutes above - avoids
 		// re-indexing every existing positional AthleteUpdateRequest(...) test call site.
-		java.util.Map<String, Integer> raceBlockWeekDefaults) {
+		java.util.Map<String, Integer> raceBlockWeekDefaults,
+		// Issue #482: the frontend has always sent these, and openapi.yaml has always documented
+		// them, but there was no field here to receive them, so Jackson silently dropped every
+		// edit. Appended at the end for the same reason as above.
+		Integer thresholdWindowDays,
+		Integer thresholdSanityPct) {
 
 	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
 	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */

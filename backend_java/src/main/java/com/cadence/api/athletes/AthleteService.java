@@ -123,6 +123,14 @@ public class AthleteService {
 			athlete.setThresholdWarningDays(request.thresholdWarningDays());
 			suggestionsAffected = true;
 		}
+		if (request.thresholdWindowDays() != null) {
+			athlete.setThresholdWindowDays(Math.max(1, Math.min(365, request.thresholdWindowDays())));
+			suggestionsAffected = true;
+		}
+		if (request.thresholdSanityPct() != null) {
+			athlete.setThresholdSanityPct(Math.max(1, Math.min(100, request.thresholdSanityPct())));
+			suggestionsAffected = true;
+		}
 		if (request.decouplingViLimitBike() != null) {
 			athlete.setDecouplingViLimitBike(request.decouplingViLimitBike());
 			changed.add("decouplingViLimitBike");

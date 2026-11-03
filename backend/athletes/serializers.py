@@ -30,6 +30,8 @@ class SectionSettingsSerializer(serializers.Serializer):
 class AthleteUpdateSerializer(serializers.ModelSerializer):
     best_effort_top_n = serializers.IntegerField(required=False, min_value=0, max_value=50)
     default_shoe_limit_km = serializers.IntegerField(required=False, min_value=0, max_value=5000)
+    threshold_window_days = serializers.IntegerField(required=False, min_value=1, max_value=365)
+    threshold_sanity_pct = serializers.IntegerField(required=False, min_value=1, max_value=100)
     course_section_settings = SectionSettingsSerializer(required=False)
 
     def validate_course_section_settings(self, value: dict[str, Any]) -> SectionSettings:
@@ -76,6 +78,8 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "copy_matched_workout_tags",
             "lap_source",
             "default_shoe_limit_km",
+            "threshold_window_days",
+            "threshold_sanity_pct",
             "threshold_warning_days",
             "decoupling_vi_limit_bike",
             "decoupling_vi_limit_run",

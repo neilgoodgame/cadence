@@ -181,6 +181,38 @@ class AthleteDetailViewTests(TestCase):
         response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}")
         self.assertEqual(response.json()["default_shoe_limit_km"], 800)
 
+    def test_self_can_update_threshold_window_days(self):
+        # Issue #482: the serializer silently dropped this field, so a Save in Preferences never
+        # actually took effect.
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_window_days": 56}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["threshold_window_days"], 56)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.threshold_window_days, 56)
+
+    def test_threshold_window_days_out_of_range_is_rejected(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_window_days": 366}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_self_can_update_threshold_sanity_pct(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_sanity_pct": 45}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["threshold_sanity_pct"], 45)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.threshold_sanity_pct, 45)
+
+    def test_threshold_sanity_pct_out_of_range_is_rejected(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_sanity_pct": 101}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_self_can_update_race_block_weeks(self):
         response = _bearer_client(self.athlete).patch(
             f"/v1/athletes/{self.athlete.id}", {"race_block_weeks": 20}, format="json"
