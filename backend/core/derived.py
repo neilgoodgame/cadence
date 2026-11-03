@@ -10,10 +10,10 @@ DEFAULT_FITNESS_WINDOW_DAYS = 84
 COMPLIANCE_WINDOW_DAYS = 28
 
 
-def _daily_tss(athlete_id: str, start_date: date, end_date: date) -> dict[date, int]:
+def _daily_tss(athlete_id: str, start_date: date, end_date: date, sport: str | None = None) -> dict[date, int]:
     from activities.models import Activity
 
-    rows = (
+    qs = (
         # Multisport children are excluded: the parent already carries the sum of its
         # legs' TSS, so counting both would double the training load. Duplicate
         # recordings are excluded for the same reason: only the primary counts.
@@ -23,18 +23,23 @@ def _daily_tss(athlete_id: str, start_date: date, end_date: date) -> dict[date, 
             parent_activity__isnull=True,
             primary_activity__isnull=True,
         )
-        .values("start_date__date")
-        .annotate(total_tss=Sum("tss"))
     )
+    if sport is not None:
+        qs = qs.filter(sport=sport)
+    rows = qs.values("start_date__date").annotate(total_tss=Sum("tss"))
     return {row["start_date__date"]: row["total_tss"] or 0 for row in rows}
 
 
-def compute_fitness_series(athlete_id: str, from_date: date, to_date: date) -> list[dict[str, Any]]:
+def compute_fitness_series(
+    athlete_id: str, from_date: date, to_date: date, sport: str | None = None
+) -> list[dict[str, Any]]:
     """Daily CTL (42-day EWMA)/ATL (7-day EWMA)/TSB (CTL-ATL) of TSS.
 
     Walks day-by-day from the athlete's first-ever activity (so CTL/ATL start
     from a true 0/0 baseline rather than an arbitrary seed) through to_date,
-    returning only the days in [from_date, to_date].
+    returning only the days in [from_date, to_date]. `sport`, if given,
+    restricts the series to just that sport's activities (e.g. a bike-only
+    fitness trend) - every other caller's combined-sport series is unaffected.
     """
     from activities.models import Activity
 
@@ -48,7 +53,7 @@ def compute_fitness_series(athlete_id: str, from_date: date, to_date: date) -> l
     if start > to_date:
         return []
 
-    tss_by_day = _daily_tss(athlete_id, start, to_date)
+    tss_by_day = _daily_tss(athlete_id, start, to_date, sport)
 
     ctl = 0.0
     atl = 0.0

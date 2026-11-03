@@ -12,6 +12,14 @@ import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagOrigin;
 import com.cadence.api.activities.TagRepository;
 import com.cadence.api.activities.dto.ActivitySplitsResponse;
+import com.cadence.api.athletes.AcceptedThresholdCandidate;
+import com.cadence.api.athletes.AcceptedThresholdCandidateRepository;
+import com.cadence.api.athletes.FitnessPoint;
+import com.cadence.api.athletes.ThresholdField;
+import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatus;
+import com.cadence.api.athletes.ThresholdHistoryKind;
+import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.ValidationException;
@@ -33,6 +41,7 @@ import com.cadence.api.mcp.dto.McpWorkoutStepInput;
 import com.cadence.api.mcp.tools.activities.ActivityReadTools;
 import com.cadence.api.mcp.tools.athletes.AthleteProfileTools;
 import com.cadence.api.mcp.tools.athletes.AthleteProfileWriteTools;
+import com.cadence.api.mcp.tools.athletes.FitnessTrendTools;
 import com.cadence.api.mcp.tools.gear.GearReadTools;
 import com.cadence.api.mcp.tools.gear.GearWriteTools;
 import com.cadence.api.mcp.tools.races.RaceTools;
@@ -92,6 +101,15 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private AthleteProfileWriteTools athleteProfileWriteTools;
+
+	@Autowired
+	private FitnessTrendTools fitnessTrendTools;
+
+	@Autowired
+	private ThresholdHistoryRepository thresholdHistoryRepository;
+
+	@Autowired
+	private AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository;
 
 	@Autowired
 	private WorkoutRepository workoutRepository;
@@ -676,6 +694,159 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 		assertThatThrownBy(() -> athleteProfileWriteTools.setAthleteThresholds(null, null, null))
 				.isInstanceOf(ValidationException.class);
+	}
+
+	private Activity newBikeActivity(User athlete, String name, Instant startDate, int power, int durationSeconds) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName(name);
+		activity.setStartDate(startDate);
+		activity.setMovingTime(durationSeconds);
+		activityRepository.save(activity);
+		for (int t = 0; t < durationSeconds; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), startDate.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(power);
+			recordRepository.save(record);
+		}
+		return activity;
+	}
+
+	@Test
+	void listThresholdHistoryReturnsTheFullLedgerMostRecentFirst() {
+		User athlete = saveAthlete("mcp-threshold-history@example.cc");
+		ThresholdHistory older = new ThresholdHistory();
+		older.setAthlete(athlete);
+		older.setField(ThresholdField.FTP);
+		older.setValueNumeric(250);
+		older.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		older.setCurrentFrom(LocalDate.of(2026, 1, 1));
+		older.setKind(ThresholdHistoryKind.MANUAL);
+		thresholdHistoryRepository.save(older);
+		ThresholdHistory newer = new ThresholdHistory();
+		newer.setAthlete(athlete);
+		newer.setField(ThresholdField.FTP);
+		newer.setValueNumeric(260);
+		newer.setEffectiveFrom(LocalDate.of(2026, 2, 1));
+		newer.setCurrentFrom(LocalDate.of(2026, 2, 1));
+		newer.setKind(ThresholdHistoryKind.MANUAL);
+		thresholdHistoryRepository.save(newer);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.listThresholdHistory("ftp", null, null);
+
+		assertThat(result).hasSize(2);
+		assertThat(result.get(0).value()).isEqualTo(260);
+		assertThat(result.get(0).effectiveFrom()).isEqualTo(LocalDate.of(2026, 2, 1));
+		assertThat(result.get(1).value()).isEqualTo(250);
+	}
+
+	@Test
+	void listThresholdHistoryFiltersByDateRange() {
+		User athlete = saveAthlete("mcp-threshold-history-range@example.cc");
+		ThresholdHistory outOfRange = new ThresholdHistory();
+		outOfRange.setAthlete(athlete);
+		outOfRange.setField(ThresholdField.FTP);
+		outOfRange.setValueNumeric(240);
+		outOfRange.setEffectiveFrom(LocalDate.of(2025, 1, 1));
+		outOfRange.setCurrentFrom(LocalDate.of(2025, 1, 1));
+		outOfRange.setKind(ThresholdHistoryKind.MANUAL);
+		thresholdHistoryRepository.save(outOfRange);
+		ThresholdHistory inRange = new ThresholdHistory();
+		inRange.setAthlete(athlete);
+		inRange.setField(ThresholdField.FTP);
+		inRange.setValueNumeric(250);
+		inRange.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		inRange.setCurrentFrom(LocalDate.of(2026, 1, 1));
+		inRange.setKind(ThresholdHistoryKind.MANUAL);
+		thresholdHistoryRepository.save(inRange);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.listThresholdHistory("ftp", LocalDate.of(2025, 6, 1), LocalDate.of(2026, 6, 1));
+
+		assertThat(result).hasSize(1);
+		assertThat(result.get(0).value()).isEqualTo(250);
+	}
+
+	@Test
+	void listThresholdCandidatesClassifiesEachActivity() {
+		User athlete = saveAthlete("mcp-threshold-candidates@example.cc");
+		athlete.setFtp(200);
+		userRepository.save(athlete);
+		Activity qualified = newBikeActivity(athlete, "Qualified", Instant.parse("2026-01-01T07:00:00Z"), 230, 1200);
+		Activity rejected = newBikeActivity(athlete, "Rejected", Instant.parse("2026-01-05T07:00:00Z"), 422, 1200);
+		Activity accepted = newBikeActivity(athlete, "Accepted", Instant.parse("2026-01-10T07:00:00Z"), 422, 1200);
+		AcceptedThresholdCandidate acceptedCandidate = new AcceptedThresholdCandidate();
+		acceptedCandidate.setAthlete(athlete);
+		acceptedCandidate.setField(ThresholdField.FTP);
+		acceptedCandidate.setActivity(accepted);
+		acceptedThresholdCandidateRepository.save(acceptedCandidate);
+		Activity tooShort = newBikeActivity(athlete, "TooShort", Instant.parse("2026-01-15T07:00:00Z"), 230, 600);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.listThresholdCandidates("ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
+
+		var byId = result.stream().collect(java.util.stream.Collectors.toMap(
+				com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatusEntry::activityId, c -> c));
+		assertThat(byId.get(qualified.getId()).status()).isEqualTo(CandidateStatus.QUALIFIED);
+		assertThat(byId.get(rejected.getId()).status()).isEqualTo(CandidateStatus.REJECTED_SANITY);
+		assertThat(byId.get(accepted.getId()).status()).isEqualTo(CandidateStatus.ACCEPTED);
+		assertThat(byId.get(tooShort.getId()).status()).isEqualTo(CandidateStatus.TOO_SHORT);
+		assertThat(byId.get(tooShort.getId()).impliedValue()).isNull();
+	}
+
+	@Test
+	void getFitnessTrendSportFilterExcludesOtherSports() {
+		User athlete = saveAthlete("mcp-fitness-trend-sport@example.cc");
+		Activity bike = new Activity();
+		bike.setAthlete(athlete);
+		bike.setSport(Sport.BIKE);
+		bike.setName("Ride");
+		bike.setStartDate(Instant.now());
+		bike.setTss(100);
+		activityRepository.save(bike);
+		Activity run = new Activity();
+		run.setAthlete(athlete);
+		run.setSport(Sport.RUN);
+		run.setName("Run");
+		run.setStartDate(Instant.now());
+		run.setTss(50);
+		activityRepository.save(run);
+		authAs(athlete.getId(), "activities:read");
+		LocalDate today = LocalDate.now();
+
+		List<FitnessPoint> bikeOnly = fitnessTrendTools.getFitnessTrend(today, today, "bike");
+		List<FitnessPoint> combined = fitnessTrendTools.getFitnessTrend(today, today, null);
+
+		assertThat(bikeOnly.get(0).ctl()).isLessThan(combined.get(0).ctl());
+	}
+
+	@Test
+	void getFitnessTrendRejectsAnUnknownSport() {
+		User athlete = saveAthlete("mcp-fitness-trend-bad-sport@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> fitnessTrendTools.getFitnessTrend(null, null, "triathlon"))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void getThresholdSettingsReturnsTheAthletesSettings() {
+		User athlete = saveAthlete("mcp-threshold-settings@example.cc");
+		athlete.setThresholdWindowDays(60);
+		athlete.setThresholdSanityPct(20);
+		userRepository.save(athlete);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.getThresholdSettings();
+
+		assertThat(result.get("threshold_window_days")).isEqualTo(60);
+		assertThat(result.get("threshold_sanity_pct")).isEqualTo(20);
+		assertThat(result.get("ftp_calculation_method")).isEqualTo(athlete.getFtpCalculationMethod());
+		assertThat(result.get("running_power_source")).isEqualTo(athlete.getRunningPowerSource());
 	}
 
 	@Test

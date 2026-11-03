@@ -579,6 +579,55 @@ def rejected_candidates(athlete: User, field: str, as_of: date | None = None) ->
     return candidates
 
 
+@dataclass(frozen=True)
+class CandidateStatus:
+    activity_id: str
+    date: date
+    status: str  # "qualified" | "rejected_sanity" | "accepted" | "too_short"
+    implied_value: float | None
+    raw_value: float | None
+    window: str | None
+
+
+def candidate_statuses(athlete: User, field: str, from_date: date, to_date: date) -> list[CandidateStatus]:
+    """Every one of the athlete's activities of `field`'s sport in [from_date, to_date],
+    classified against the athlete's *current* profile value - a single snapshot, not a moving
+    reference (see current_window_value's own docstring for that distinction): 'qualified'
+    (within the sanity band), 'rejected_sanity' (outside it), 'accepted' (explicitly accepted
+    despite failing the band - see AcceptedThresholdCandidate), or 'too_short' (no qualifying
+    effort at all, e.g. too short for the field's window). Unlike rejected_candidates, returns
+    every activity in range, not just the rejected-and-better subset - built for the Threshold
+    suggestions calibration tooling (list_threshold_candidates), to see what a model would have
+    had to predict between ledger entries."""
+    reference_value = _athlete_reference_value(athlete, field)
+    accepted_ids = _accepted_activity_ids(athlete, field)
+
+    activities = Activity.objects.filter(
+        athlete=athlete,
+        sport=FIELD_SPORT[field],
+        start_date__date__gte=from_date,
+        start_date__date__lte=to_date,
+    ).order_by("start_date")
+
+    statuses: list[CandidateStatus] = []
+    for activity in activities:
+        activity_date = activity.start_date.date()
+        detail = _implied_value_detail(activity, field)
+        if detail is None:
+            statuses.append(CandidateStatus(activity.id, activity_date, "too_short", None, None, None))
+            continue
+        if activity.id in accepted_ids:
+            status = "accepted"
+        elif _within_sanity_band(field, detail.value, reference_value, athlete.threshold_sanity_pct):
+            status = "qualified"
+        else:
+            status = "rejected_sanity"
+        statuses.append(
+            CandidateStatus(activity.id, activity_date, status, detail.value, detail.raw_value, detail.window)
+        )
+    return statuses
+
+
 def warning_lead_days(athlete: User) -> int:
     """How many days before a threshold's current source activity ages out of the window the
     Threshold suggestions feature warns the athlete - User.threshold_warning_days, scaled down

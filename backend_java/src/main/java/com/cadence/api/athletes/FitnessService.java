@@ -1,6 +1,7 @@
 package com.cadence.api.athletes;
 
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.common.domain.Sport;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -29,6 +30,14 @@ public class FitnessService {
 	}
 
 	public List<FitnessPoint> computeFitnessSeries(String athleteId, LocalDate from, LocalDate to) {
+		return computeFitnessSeries(athleteId, from, to, null);
+	}
+
+	/** As {@link #computeFitnessSeries(String, LocalDate, LocalDate)}, but restricted to one
+	 * sport's activities when {@code sport} is non-null (e.g. a bike-only CTL to compare against
+	 * FTP, independent of running load) - every other caller's combined-sport series is
+	 * unaffected. */
+	public List<FitnessPoint> computeFitnessSeries(String athleteId, LocalDate from, LocalDate to, Sport sport) {
 		LocalDate start = activityRepository.findEarliestStartDate(athleteId)
 				.map(i -> i.atZone(ZoneOffset.UTC).toLocalDate())
 				.map(earliest -> earliest.isBefore(from) ? earliest : from)
@@ -37,7 +46,7 @@ public class FitnessService {
 			return List.of();
 		}
 
-		Map<LocalDate, Integer> tssByDay = dailyTss(athleteId, start, to);
+		Map<LocalDate, Integer> tssByDay = dailyTss(athleteId, start, to, sport);
 
 		double ctl = 0;
 		double atl = 0;
@@ -60,10 +69,12 @@ public class FitnessService {
 		return series.isEmpty() ? new FitnessPoint(asOf, 0, 0, 0) : series.get(0);
 	}
 
-	private Map<LocalDate, Integer> dailyTss(String athleteId, LocalDate start, LocalDate to) {
+	private Map<LocalDate, Integer> dailyTss(String athleteId, LocalDate start, LocalDate to, Sport sport) {
 		Instant startInstant = start.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant endInstant = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-		List<Object[]> rows = activityRepository.findStartDatesAndTssInRange(athleteId, startInstant, endInstant);
+		List<Object[]> rows = sport != null
+				? activityRepository.findStartDatesAndTssInRangeForSport(athleteId, sport, startInstant, endInstant)
+				: activityRepository.findStartDatesAndTssInRange(athleteId, startInstant, endInstant);
 		Map<LocalDate, Integer> result = new HashMap<>();
 		for (Object[] row : rows) {
 			Instant startDate = (Instant) row[0];
