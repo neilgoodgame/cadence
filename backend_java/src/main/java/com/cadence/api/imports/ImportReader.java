@@ -12,6 +12,7 @@ import com.cadence.api.activities.dto.LapResponse;
 import com.cadence.api.activities.dto.StreamsResponse;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryKind;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.athletes.ZoneSet;
 import com.cadence.api.athletes.ZoneSetRepository;
@@ -889,6 +890,11 @@ public class ImportReader {
 					// is the same non-regressing fallback the migration backfilled existing rows
 					// with.
 					row.setCurrentFrom(entry.currentFrom() != null ? entry.currentFrom() : entry.effectiveFrom());
+					// A file exported before `kind` existed has no such key - infer it the same way
+					// V90 backfilled existing rows: no source activity means manual, otherwise
+					// measured (can't have been "decayed" - that kind doesn't exist yet either).
+					row.setKind(entry.kind() != null ? entry.kind()
+							: rawSourceActivityId == null ? ThresholdHistoryKind.MANUAL : ThresholdHistoryKind.MEASURED);
 					thresholdHistoryRepository.save(row);
 				});
 				counts.thresholdHistory++;

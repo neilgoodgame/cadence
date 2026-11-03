@@ -687,6 +687,10 @@ def _import_threshold_history(
             # A file exported before current_from existed has no such key - effective_from is
             # the same non-regressing fallback the migration backfilled existing rows with.
             current_from = parse_date(row["current_from"]) if row.get("current_from") else effective_from
+            # A file exported before `kind` existed has no such key - infer it the same way the
+            # 0009 migration backfilled existing rows: a row with no source activity is manual,
+            # otherwise measured. (Can't have been "decayed" - that kind doesn't exist yet either.)
+            kind = row.get("kind") or ("manual" if not raw_source_activity_id else "measured")
             entries.append(
                 ThresholdHistory(
                     athlete_id=athlete_id,
@@ -696,6 +700,7 @@ def _import_threshold_history(
                     source_activity_id=new_activity_id,
                     effective_from=effective_from,
                     current_from=current_from,
+                    kind=kind,
                 )
             )
             counts["threshold_history_imported"] += 1

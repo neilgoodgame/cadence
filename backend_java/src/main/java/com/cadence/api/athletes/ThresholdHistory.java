@@ -84,6 +84,11 @@ public class ThresholdHistory {
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
+	// Issue #483: previously indistinguishable from MANUAL (both have sourceActivity == null) -
+	// a prerequisite for decay (#485), where a decayed row also has no sourceActivity.
+	@Column(name = "kind", nullable = false)
+	private ThresholdHistoryKind kind = ThresholdHistoryKind.MEASURED;
+
 	@jakarta.persistence.PrePersist
 	private void onCreate() {
 		if (createdAt == null) {
@@ -161,5 +166,13 @@ public class ThresholdHistory {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	public ThresholdHistoryKind getKind() {
+		return kind;
+	}
+
+	public void setKind(ThresholdHistoryKind kind) {
+		this.kind = kind;
 	}
 }

@@ -328,6 +328,7 @@ class ImportThresholdHistoryTests(TestCase):
             source_activity=activity,
             effective_from=date(2026, 1, 1),
             current_from=date(2026, 3, 1),
+            kind="measured",
         )
 
         relative_path = "exports/test/threshold-history-roundtrip.json.gz"
@@ -343,6 +344,7 @@ class ImportThresholdHistoryTests(TestCase):
         # to it, which would reintroduce the cascading-expiry bug on the imported copy.
         self.assertEqual(imported_entry.effective_from, date(2026, 1, 1))
         self.assertEqual(imported_entry.current_from, date(2026, 3, 1))
+        self.assertEqual(imported_entry.kind, "measured")  # issue #483
         # The target's own live ftp is untouched by the import - only the ledger is populated.
         target.refresh_from_db()
         self.assertEqual(target.ftp, 222)
@@ -363,6 +365,7 @@ class ImportThresholdHistoryTests(TestCase):
             source_activity=None,
             effective_from=date(2026, 1, 1),
             current_from=date(2026, 1, 1),
+            kind="manual",
         )
 
         relative_path = "exports/test/threshold-history-manual-roundtrip.json.gz"
@@ -374,6 +377,7 @@ class ImportThresholdHistoryTests(TestCase):
         imported_entry = ThresholdHistory.objects.get(athlete=target)
         self.assertEqual(imported_entry.value_numeric, 260)
         self.assertIsNone(imported_entry.source_activity_id)
+        self.assertEqual(imported_entry.kind, "manual")  # issue #483
 
         from django.core.files.storage import default_storage
 

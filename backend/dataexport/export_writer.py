@@ -291,6 +291,7 @@ def _write_threshold_history(
             "source_activity_id": entry.source_activity_id,
             "effective_from": entry.effective_from,
             "current_from": entry.current_from,
+            "kind": entry.kind,
         }
         for entry in _threshold_history_qs(athlete_id, sport)
     )

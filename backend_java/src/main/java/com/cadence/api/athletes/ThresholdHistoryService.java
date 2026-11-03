@@ -150,6 +150,7 @@ public class ThresholdHistoryService {
 		entry.setSetBy(setBy);
 		entry.setEffectiveFrom(LocalDate.now());
 		entry.setCurrentFrom(LocalDate.now());
+		entry.setKind(ThresholdHistoryKind.MANUAL);
 		if (field == ThresholdField.THRESHOLD_PACE) {
 			entry.setValuePace(valuePace);
 		}
@@ -217,6 +218,7 @@ public class ThresholdHistoryService {
 		entry.setSourceActivity(activityRepository.getReferenceById(candidate.activityId()));
 		entry.setEffectiveFrom(candidate.date());
 		entry.setCurrentFrom(currentFrom);
+		entry.setKind(ThresholdHistoryKind.MEASURED);
 		if (field == ThresholdField.THRESHOLD_PACE) {
 			entry.setValuePace(secondsToMmss(candidate.impliedValue()));
 		}
@@ -262,6 +264,7 @@ public class ThresholdHistoryService {
 			row.setSourceActivity(activityRepository.getReferenceById(entry.activityId()));
 			row.setEffectiveFrom(entry.effectiveFrom());
 			row.setCurrentFrom(entry.currentFrom());
+			row.setKind(ThresholdHistoryKind.MEASURED);
 			if (field == ThresholdField.THRESHOLD_PACE) {
 				row.setValuePace(secondsToMmss(entry.value()));
 			}
@@ -301,20 +304,20 @@ public class ThresholdHistoryService {
 		List<ThresholdHistory> entries =
 				thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field);
 		if (entries.isEmpty()) {
-			return new ThresholdSummaryEntry(null, null, null, null, true, null);
+			return new ThresholdSummaryEntry(null, null, null, null, true, null, null);
 		}
 		ThresholdHistory current = entries.get(0);
 		ThresholdHistory previous = entries.size() > 1 ? entries.get(1) : null;
 		boolean stale = ChronoUnit.DAYS.between(current.getEffectiveFrom(), LocalDate.now()) > athlete.getThresholdWindowDays();
 		return new ThresholdSummaryEntry(valueOf(field, current), previous != null ? valueOf(field, previous) : null,
-				sourceActivityIdOf(current), current.getEffectiveFrom(), stale, setByUserIdOf(current));
+				sourceActivityIdOf(current), current.getEffectiveFrom(), stale, setByUserIdOf(current), current.getKind());
 	}
 
 	/** GET /v1/athletes/{id}/threshold-history?field=... - the full ledger, most recent first. */
 	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field) {
 		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).stream()
 				.map(entry -> new ThresholdHistoryEntryResponse(valueOf(field, entry), sourceActivityIdOf(entry),
-						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry)))
+						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind()))
 				.toList();
 	}
 }

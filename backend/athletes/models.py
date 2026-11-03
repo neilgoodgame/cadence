@@ -27,6 +27,15 @@ THRESHOLD_FIELD_CHOICES = [
     ("threshold_pace", "Threshold pace"),
 ]
 
+# "decayed" isn't written anywhere yet (issue #480's decay core, #485) - this column exists ahead
+# of that so a decayed row can already be told apart from a manual one once decay lands. Until
+# then every row is measured or manual.
+THRESHOLD_HISTORY_KIND_CHOICES = [
+    ("measured", "Measured"),
+    ("manual", "Manual"),
+    ("decayed", "Decayed"),
+]
+
 
 class ZoneSet(models.Model):
     """A set of training zone boundaries for one metric, expressed as percentages
@@ -92,11 +101,15 @@ class ThresholdHistory(models.Model):
     # row wasn't actually in effect until 3+ months later.
     current_from = models.DateField()
     created_at = models.DateTimeField(auto_now_add=True)
+    # Issue #483: previously indistinguishable from "manual" (both have source_activity=None) -
+    # a prerequisite for decay (#485), where a decayed row also has no source_activity.
+    kind = models.CharField(max_length=10, choices=THRESHOLD_HISTORY_KIND_CHOICES, default="measured")
 
     class Meta:
         indexes = [
             models.Index(fields=["athlete", "field", "effective_from"]),
             models.Index(fields=["athlete", "field", "current_from"]),
+            models.Index(fields=["athlete", "field", "kind", "effective_from"]),
         ]
         verbose_name_plural = "threshold history"
 

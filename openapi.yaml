@@ -5127,6 +5127,15 @@ components:
             /v1/athletes/{id}/thresholds/refresh), never silently corrected. True
             with no entry at all.
           example: false
+        kind:
+          type: [string, "null"]
+          enum: [measured, manual, decayed, null]
+          description: >-
+            How this value was determined: measured (the best qualifying effort within the
+            window), manual (set directly via PATCH /v1/athletes/{id}), or decayed (eased down
+            from a measured/manual value that aged out, rather than dropping straight to the
+            next-best effort). Null with no entry at all.
+          example: measured
 
     ThresholdHistoryEntry:
       type: object
@@ -5154,6 +5163,11 @@ components:
             The date this row actually became the recorded current value - can differ from
             effective_from when this row only won later, via an earlier better row aging out of
             its trailing window.
+        kind:
+          type: string
+          enum: [measured, manual, decayed]
+          description: How this row's value was determined - see ThresholdSummaryEntry.kind.
+          example: measured
 
     ThresholdSuggestion:
       type: object

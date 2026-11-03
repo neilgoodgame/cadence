@@ -1174,6 +1174,9 @@ class ThresholdHistoryListViewTests(TestCase):
         self.assertEqual(entries[0]["current_from"], "2026-04-25")
         self.assertEqual(entries[1]["source_activity_id"], better.id)
         self.assertEqual(entries[1]["effective_from"], entries[1]["current_from"])
+        # Issue #483: both rows came from a rebuild replay, i.e. a real activity's effort.
+        self.assertEqual(entries[0]["kind"], "measured")
+        self.assertEqual(entries[1]["kind"], "measured")
 
 
 class RecordManualValueTests(TestCase):
@@ -1192,6 +1195,7 @@ class RecordManualValueTests(TestCase):
         self.assertEqual(entry.value_numeric, 250)
         self.assertIsNone(entry.source_activity)
         self.assertEqual(entry.effective_from, date(2026, 6, 1))
+        self.assertEqual(entry.kind, "manual")  # issue #483
 
     def test_no_op_when_the_value_matches_the_latest_entry(self):
         record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 1))
