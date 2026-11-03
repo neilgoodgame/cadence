@@ -6,6 +6,7 @@ import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.ActivityThresholdHistoryEntry;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryKind;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.support.IntegrationTest;
@@ -103,5 +104,27 @@ class ActivityServiceThresholdHistoryTest extends IntegrationTest {
 		ActivityThresholdHistoryEntry betterEntry = betterResponse.thresholdHistory().get(0);
 		assertThat(betterEntry.sourceActivityId()).isEqualTo(better.getId());
 		assertThat(betterEntry.isCurrent()).isFalse();
+	}
+
+	@Test
+	void aDecayedRowBecomingCurrentIsNotFlaggedAsRevealed() {
+		// Issue #483: a decayed row (#480's decay core, not implemented yet) has no source
+		// activity, same shape as a manual edit - but unlike a manual edit, it shouldn't be
+		// attributed to whichever activity happens to be ingested on the day it took effect.
+		User athlete = newAthlete("threshold-field-decayed@example.cc");
+		Activity trigger = newActivity(athlete, "Run", Instant.parse("2026-06-01T07:00:00Z"));
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(athlete);
+		entry.setField(ThresholdField.THRESHOLD_PACE);
+		entry.setValuePace("4:30");
+		entry.setSourceActivity(null);
+		entry.setEffectiveFrom(LocalDate.of(2026, 5, 1));
+		entry.setCurrentFrom(LocalDate.of(2026, 6, 1));
+		entry.setKind(ThresholdHistoryKind.DECAYED);
+		thresholdHistoryRepository.save(entry);
+
+		ActivityResponse response = activityService.toResponse(trigger);
+
+		assertThat(response.thresholdHistory()).isEmpty();
 	}
 }

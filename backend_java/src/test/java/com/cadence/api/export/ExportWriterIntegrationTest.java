@@ -663,6 +663,7 @@ class ExportWriterIntegrationTest extends IntegrationTest {
 		assertThat(entryNode.get("field").asText()).isEqualTo("ftp");
 		assertThat(entryNode.get("value_numeric").asInt()).isEqualTo(200);
 		assertThat(entryNode.get("source_activity_id").asText()).isEqualTo(activity.getId());
+		assertThat(entryNode.get("kind").asText()).isEqualTo("measured"); // issue #483
 
 		// Re-derivable from the top-level section's own sourceActivityId link, so embedding it
 		// on the per-activity payload too would just be duplicated data.

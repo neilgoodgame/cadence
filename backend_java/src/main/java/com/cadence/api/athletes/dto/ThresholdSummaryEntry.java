@@ -1,5 +1,6 @@
 package com.cadence.api.athletes.dto;
 
+import com.cadence.api.athletes.ThresholdHistoryKind;
 import java.time.LocalDate;
 
 /** One field's current state from GET /v1/athletes/{id}/thresholds - `value`/`previousValue` are
@@ -10,5 +11,5 @@ import java.time.LocalDate;
  * value, the id of whoever set it - equal to this athlete's own id for a self-edit, a different
  * user's id if a coach set it on their behalf. */
 public record ThresholdSummaryEntry(Object value, Object previousValue, String sourceActivityId,
-		LocalDate effectiveFrom, boolean stale, String setByUserId) {
+		LocalDate effectiveFrom, boolean stale, String setByUserId, ThresholdHistoryKind kind) {
 }

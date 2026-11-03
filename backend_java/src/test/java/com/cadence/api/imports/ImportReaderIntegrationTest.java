@@ -14,6 +14,7 @@ import com.cadence.api.activities.TagService;
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryKind;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.athletes.Zone;
 import com.cadence.api.athletes.ZoneSet;
@@ -539,6 +540,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 		entry.setSourceActivity(ride);
 		entry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
 		entry.setCurrentFrom(LocalDate.of(2026, 3, 1));
+		entry.setKind(ThresholdHistoryKind.MEASURED);
 		thresholdHistoryRepository.save(entry);
 
 		Path file = Files.createTempFile("import-threshold-history-roundtrip-test", ".json.gz");
@@ -559,6 +561,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			// to it, which would reintroduce the cascading-expiry bug on the imported copy.
 			assertThat(importedEntries.get(0).getEffectiveFrom()).isEqualTo(LocalDate.of(2026, 1, 1));
 			assertThat(importedEntries.get(0).getCurrentFrom()).isEqualTo(LocalDate.of(2026, 3, 1));
+			assertThat(importedEntries.get(0).getKind()).isEqualTo(ThresholdHistoryKind.MEASURED); // issue #483
 
 			// The target's own live ftp is untouched by the import - only the ledger is populated.
 			User reloadedTarget = userRepository.findById(target.getId()).orElseThrow();
@@ -583,6 +586,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 		entry.setSourceActivity(null);
 		entry.setEffectiveFrom(LocalDate.of(2026, 1, 1));
 		entry.setCurrentFrom(LocalDate.of(2026, 1, 1));
+		entry.setKind(ThresholdHistoryKind.MANUAL);
 		thresholdHistoryRepository.save(entry);
 
 		Path file = Files.createTempFile("import-threshold-manual-roundtrip-test", ".json.gz");
@@ -600,6 +604,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 					.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(target.getId(), ThresholdField.FTP).get(0);
 			assertThat(imported.getValueNumeric()).isEqualTo(260);
 			assertThat(imported.getSourceActivity()).isNull();
+			assertThat(imported.getKind()).isEqualTo(ThresholdHistoryKind.MANUAL); // issue #483
 		}
 		finally {
 			Files.deleteIfExists(file);
@@ -638,7 +643,7 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 				generator.writeEndArray();
 				generator.writeArrayPropertyStart("threshold_history");
 				generator.writePOJO(new com.cadence.api.export.dto.ThresholdHistoryExportEntry(
-						ThresholdField.FTP, 260, "", "act_doesnotexist", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1)));
+						ThresholdField.FTP, 260, "", "act_doesnotexist", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1), null));
 				generator.writeEndArray();
 				generator.writeEndObject();
 			}
@@ -649,6 +654,54 @@ class ImportReaderIntegrationTest extends IntegrationTest {
 			assertThat(counts.itemsSkipped()).isEqualTo(1);
 			assertThat(thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(
 					target.getId(), ThresholdField.FTP)).isEmpty();
+		}
+		finally {
+			Files.deleteIfExists(file);
+		}
+	}
+
+	@Test
+	void aRowFromBeforeKindExistedInfersManualFromAnAbsentSourceActivity() throws Exception {
+		// Issue #483: a file exported before `kind` existed has no such key on this row at all
+		// (distinct from aFileExportedBeforeThisFeatureExistedImportsWithAnEmptyLedger's "no
+		// threshold_history section at all") - must infer the same way V90's backfill did,
+		// not default to "measured" just because the field is missing from the JSON.
+		User target = newUser("threshold-legacy-kind-target@example.cc");
+		Path file = Files.createTempFile("import-threshold-legacy-kind-test", ".json.gz");
+		try {
+			try (JsonGenerator generator = jsonMapper.createGenerator(
+					new GZIPOutputStream(new BufferedOutputStream(Files.newOutputStream(file))), JsonEncoding.UTF8)) {
+				generator.writeStartObject();
+				generator.writeStringProperty("generated_at", Instant.now().toString());
+				generator.writeStringProperty("athlete_id", "usr_doesnotmatter");
+				generator.writeObjectPropertyStart("equipment");
+				generator.writeArrayPropertyStart("bikes");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("shoes");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("components");
+				generator.writeEndArray();
+				generator.writeEndObject();
+				generator.writeArrayPropertyStart("workouts");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("activities");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("races");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("scheduled_workouts");
+				generator.writeEndArray();
+				generator.writeArrayPropertyStart("threshold_history");
+				generator.writePOJO(new com.cadence.api.export.dto.ThresholdHistoryExportEntry(
+						ThresholdField.FTP, 260, "", null, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1), null));
+				generator.writeEndArray();
+				generator.writeEndObject();
+			}
+
+			importReader.read(target.getId(), file);
+
+			ThresholdHistory imported = thresholdHistoryRepository
+					.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(target.getId(), ThresholdField.FTP).get(0);
+			assertThat(imported.getKind()).isEqualTo(ThresholdHistoryKind.MANUAL);
 		}
 		finally {
 			Files.deleteIfExists(file);

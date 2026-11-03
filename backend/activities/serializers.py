@@ -140,9 +140,13 @@ class ActivitySerializer(serializers.ModelSerializer):
             }
 
         own_effort = obj.threshold_history.all()
-        revealed = ThresholdHistory.objects.filter(
-            athlete_id=obj.athlete_id, current_from=obj.start_date.date()
-        ).exclude(source_activity_id=obj.id)
+        revealed = (
+            ThresholdHistory.objects.filter(athlete_id=obj.athlete_id, current_from=obj.start_date.date())
+            .exclude(source_activity_id=obj.id)
+            # A decayed row (issue #480's decay core, #485) becomes current with no source
+            # activity at all, same as a manual edit - it isn't "revealed" by this activity either.
+            .exclude(kind="decayed")
+        )
         return [as_dict(entry) for entry in [*own_effort, *revealed]]
 
 

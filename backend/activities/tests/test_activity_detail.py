@@ -527,3 +527,22 @@ class ActivityThresholdHistoryFieldTests(TestCase):
         self.assertEqual(len(better_entries), 1)
         self.assertEqual(better_entries[0]["source_activity_id"], better.id)
         self.assertFalse(better_entries[0]["is_current"])
+
+    def test_a_decayed_row_becoming_current_is_not_flagged_as_revealed(self):
+        # Issue #483: a decayed row (#480's decay core, not implemented yet) has no source
+        # activity, same shape as a manual edit - but unlike a manual edit, it shouldn't be
+        # attributed to whichever activity happens to be ingested on the day it took effect.
+        trigger = _make_activity(self.athlete, start_date=datetime(2026, 6, 1, 7, 0, tzinfo=UTC))
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=240,
+            source_activity=None,
+            effective_from=date(2026, 5, 1),
+            current_from=date(2026, 6, 1),
+            kind="decayed",
+        )
+
+        response = _bearer_client(self.athlete).get(f"/v1/activities/{trigger.id}")
+
+        self.assertEqual(response.json()["threshold_history"], [])

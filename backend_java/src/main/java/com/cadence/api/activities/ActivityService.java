@@ -5,6 +5,7 @@ import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.ActivityThresholdHistoryEntry;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryKind;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
@@ -141,6 +142,9 @@ public class ActivityService {
 		List<ThresholdHistory> revealed = thresholdHistoryRepository
 				.findByAthleteIdAndCurrentFrom(activity.getAthlete().getId(), activityDate).stream()
 				.filter(entry -> !activity.getId().equals(sourceActivityIdOf(entry)))
+				// A decayed row (issue #480's decay core, #485) becomes current with no source
+				// activity at all, same as a manual edit - it isn't "revealed" by this activity either.
+				.filter(entry -> entry.getKind() != ThresholdHistoryKind.DECAYED)
 				.toList();
 		return Stream.concat(ownEffort.stream(), revealed.stream())
 				.map(entry -> {

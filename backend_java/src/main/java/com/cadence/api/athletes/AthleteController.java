@@ -271,7 +271,8 @@ public class AthleteController {
 		Object value = entry.getField() == ThresholdField.THRESHOLD_PACE ? entry.getValuePace() : entry.getValueNumeric();
 		String sourceActivityId = entry.getSourceActivity() != null ? entry.getSourceActivity().getId() : null;
 		String setByUserId = entry.getSetBy() != null ? entry.getSetBy().getId() : null;
-		return new ThresholdHistoryEntryResponse(value, sourceActivityId, entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserId);
+		return new ThresholdHistoryEntryResponse(
+				value, sourceActivityId, entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserId, entry.getKind());
 	}
 
 	@DeleteMapping("/v1/athletes/{id}/threshold-suggestions/{suggestionId}/accept")

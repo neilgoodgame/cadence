@@ -335,6 +335,7 @@ def _record_candidate(athlete: User, field: str, candidate: Candidate, current_f
         source_activity_id=candidate.activity_id,
         effective_from=candidate.date,
         current_from=current_from,
+        kind="measured",
     )
     setattr(athlete, field, value_pace if field == "threshold_pace" else value_numeric)
     athlete.save(update_fields=[field])
@@ -420,6 +421,7 @@ def record_manual_value(
         set_by=set_by,
         effective_from=effective_as_of,
         current_from=effective_as_of,
+        kind="manual",
     )
     _rerate_activities_from(athlete, field, effective_as_of)
     return True
@@ -483,6 +485,7 @@ def rebuild_history_stream(athlete: User, field: str) -> Iterator[tuple[int, int
             source_activity_id=entry.activity_id,
             effective_from=entry.effective_from,
             current_from=entry.current_from,
+            kind="measured",
         )
         for entry in entries
     )

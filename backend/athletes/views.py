@@ -656,6 +656,7 @@ def threshold_summary_for_field(athlete: User, field: str) -> dict:
             "set_by_user_id": None,
             "effective_from": None,
             "stale": True,
+            "kind": None,
         }
     current, previous = entries[0], entries[1] if len(entries) > 1 else None
 
@@ -669,6 +670,7 @@ def threshold_summary_for_field(athlete: User, field: str) -> dict:
         "set_by_user_id": current.set_by_id,
         "effective_from": current.effective_from,
         "stale": is_stale(athlete, field),
+        "kind": current.kind,
     }
 
 
@@ -708,6 +710,7 @@ class ThresholdHistoryListView(APIView):
                 "set_by_user_id": entry.set_by_id,
                 "effective_from": entry.effective_from,
                 "current_from": entry.current_from,
+                "kind": entry.kind,
             }
             for entry in entries
         ]

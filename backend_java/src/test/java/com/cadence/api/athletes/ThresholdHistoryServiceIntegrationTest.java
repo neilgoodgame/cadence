@@ -283,5 +283,19 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		assertThat(ledger.get(0).currentFrom()).isEqualTo(LocalDate.of(2026, 4, 25));
 		assertThat(ledger.get(1).sourceActivityId()).isEqualTo(better.getId());
 		assertThat(ledger.get(1).effectiveFrom()).isEqualTo(ledger.get(1).currentFrom());
+		// Issue #483: both rows came from a rebuild replay, i.e. a real activity's effort.
+		assertThat(ledger.get(0).kind()).isEqualTo(ThresholdHistoryKind.MEASURED);
+		assertThat(ledger.get(1).kind()).isEqualTo(ThresholdHistoryKind.MEASURED);
+	}
+
+	@Test
+	void recordManualValueSetsKindManual() {
+		User athlete = newAthlete("manual-kind@example.cc");
+
+		thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 250, null);
+
+		ThresholdHistory entry = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
+		assertThat(entry.getKind()).isEqualTo(ThresholdHistoryKind.MANUAL);
 	}
 }
