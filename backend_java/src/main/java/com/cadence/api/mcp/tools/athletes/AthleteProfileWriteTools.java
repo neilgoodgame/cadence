@@ -59,7 +59,7 @@ public class AthleteProfileWriteTools {
 		User setBy = callerSub.equals(athleteId) ? athlete : userService.getById(callerSub);
 		AthleteUpdateRequest request = new AthleteUpdateRequest(null, null, null, ftp, criticalRunPower, threshold_pace,
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, null, null, null, null, null, null, null);
+				null, null, null, null, null, null, null, null, null, null, null, null);
 		athleteService.updateProfile(athlete, request, setBy);
 		return athleteProfileTools.thresholdsSummary(athlete);
 	}
