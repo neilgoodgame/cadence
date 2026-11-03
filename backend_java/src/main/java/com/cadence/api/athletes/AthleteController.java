@@ -92,9 +92,10 @@ public class AthleteController {
 		String callerSub = accessGuard.requireWrite(id);
 		User athlete = userService.getById(id);
 		User setBy = callerSub.equals(id) ? athlete : userService.getById(callerSub);
-		List<ZoneType> recomputed = athleteService.updateProfile(athlete, request, setBy);
-		List<String> recomputedWire = recomputed.stream().map(ZoneType::wireValue).toList();
-		return new AthleteUpdateResponse(userMapper.toResponse(athlete), recomputedWire);
+		AthleteService.Outcome outcome = athleteService.updateProfile(athlete, request, setBy);
+		List<String> recomputedWire = outcome.zonesRecomputed().stream().map(ZoneType::wireValue).toList();
+		return new AthleteUpdateResponse(userMapper.toResponse(athlete), recomputedWire,
+				AthleteUpdateResponse.thresholdEditResultsWireMap(outcome.thresholdResults()));
 	}
 
 	@GetMapping("/v1/athletes/{id}/zones")
@@ -272,7 +273,8 @@ public class AthleteController {
 		String sourceActivityId = entry.getSourceActivity() != null ? entry.getSourceActivity().getId() : null;
 		String setByUserId = entry.getSetBy() != null ? entry.getSetBy().getId() : null;
 		return new ThresholdHistoryEntryResponse(
-				value, sourceActivityId, entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserId, entry.getKind());
+				value, sourceActivityId, entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserId, entry.getKind(),
+				entry.isCorrectionOnly());
 	}
 
 	@DeleteMapping("/v1/athletes/{id}/threshold-suggestions/{suggestionId}/accept")

@@ -1,13 +1,16 @@
 package com.cadence.api.athletes;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
+import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -34,6 +37,10 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 	private ThresholdHistoryRepository thresholdHistoryRepository;
 	@Autowired
 	private ZoneService zoneService;
+	@Autowired
+	private ThresholdHistoryCalculator calculator;
+	@Autowired
+	private TssRecomputeService tssRecomputeService;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -100,9 +107,11 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 	void seedsTheInitialValueWhenNoEntryExists() {
 		User athlete = newAthlete("manual-threshold-seed@example.cc");
 
-		boolean changed = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 250, null);
+		var result = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 250, null);
 
-		assertThat(changed).isTrue();
+		assertThat(result.changed()).isTrue();
+		assertThat(result.becameCurrent()).isTrue();
+		assertThat(result.isCorrectionOnly()).isFalse();
 		ThresholdHistory entry = thresholdHistoryRepository
 				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
 		assertThat(entry.getValueNumeric()).isEqualTo(250);
@@ -116,9 +125,9 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("manual-threshold-noop@example.cc");
 		thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 250, null);
 
-		boolean changed = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 250, null);
+		var result = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 250, null);
 
-		assertThat(changed).isFalse();
+		assertThat(result.changed()).isFalse();
 		assertThat(thresholdHistoryRepository
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(1);
 	}
@@ -130,9 +139,9 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("manual-threshold-decrease@example.cc");
 		thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 300, null);
 
-		boolean changed = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 180, null);
+		var result = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 180, null);
 
-		assertThat(changed).isTrue();
+		assertThat(result.changed()).isTrue();
 		List<ThresholdHistory> entries = thresholdHistoryRepository
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
 		assertThat(entries).hasSize(2);
@@ -143,13 +152,159 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 	void thresholdPaceStoresTheMmssString() {
 		User athlete = newAthlete("manual-threshold-pace@example.cc");
 
-		boolean changed = thresholdHistoryService.recordManualValue(athlete, ThresholdField.THRESHOLD_PACE, null, "4:15");
+		var result = thresholdHistoryService.recordManualValue(athlete, ThresholdField.THRESHOLD_PACE, null, "4:15");
 
-		assertThat(changed).isTrue();
+		assertThat(result.changed()).isTrue();
 		ThresholdHistory entry = thresholdHistoryRepository
 				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.THRESHOLD_PACE).orElseThrow();
 		assertThat(entry.getValuePace()).isEqualTo("4:15");
 		assertThat(entry.getValueNumeric()).isNull();
+	}
+
+	// --- Backdating (issue #493): effectiveFrom, "became current", correction-only rows ---
+
+	@Test
+	void backdatedWithNoLaterRowBecomesCurrentAndRerates() {
+		User athlete = newAthlete("manual-threshold-backdated-current@example.cc");
+		LocalDate backdate = LocalDate.now().minusDays(10);
+		Activity activity = newPowerActivity(athlete, backdate.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(), 185, 11916);
+
+		var result = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 247, null, athlete, backdate, true, false);
+
+		assertThat(result.changed()).isTrue();
+		assertThat(result.becameCurrent()).isTrue();
+		assertThat(result.isCorrectionOnly()).isFalse();
+		assertThat(result.reratedCount()).isEqualTo(1);
+		ThresholdHistory entry = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
+		assertThat(entry.getEffectiveFrom()).isEqualTo(backdate);
+		assertThat(entry.getCurrentFrom()).isEqualTo(backdate);
+		assertThat(entry.isCorrectionOnly()).isFalse();
+		assertThat(athlete.getFtp()).isEqualTo(247);
+		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(reloaded.getIntensity()).isNotNull();
+	}
+
+	@Test
+	void backdatedWithALaterRowIsCorrectionOnly() {
+		User athlete = newAthlete("manual-threshold-backdated-correction@example.cc");
+		thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 255, null); // today, the later row
+
+		var result = thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 247, null, athlete, LocalDate.now().minusDays(10), true, false);
+
+		assertThat(result.changed()).isTrue();
+		assertThat(result.becameCurrent()).isFalse();
+		assertThat(result.isCorrectionOnly()).isTrue();
+		assertThat(athlete.getFtp()).isEqualTo(255); // unchanged - the later row is still current
+		assertThat(thresholdHistoryService.isStale(athlete, ThresholdField.FTP, LocalDate.now())).isFalse();
+	}
+
+	@Test
+	void rerateActivitiesFalseLeavesRatingsUnchangedUntilRecompute() {
+		User athlete = newAthlete("manual-threshold-no-rerate@example.cc");
+		Activity activity = newPowerActivity(athlete, Instant.now(), 185, 11916);
+
+		var result = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 255, null, athlete, null, false, false);
+
+		assertThat(result.changed()).isTrue();
+		assertThat(result.reratedCount()).isEqualTo(0);
+		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(reloaded.getIntensity()).isNull();
+
+		boolean recomputed = tssRecomputeService.rate(reloaded, athlete);
+
+		assertThat(recomputed).isTrue();
+		assertThat(reloaded.getIntensity()).isNotNull();
+	}
+
+	@Test
+	void previewPersistsNothingAndMatchesARealRun() {
+		User athlete = newAthlete("manual-threshold-preview@example.cc");
+		Activity activity = newPowerActivity(athlete, Instant.now(), 185, 11916);
+
+		var previewResult = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 255, null, athlete, null, true, true);
+
+		assertThat(thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).isEmpty();
+		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(reloaded.getIntensity()).isNull();
+		assertThat(previewResult.wouldRerate()).hasSize(1);
+		var diff = previewResult.wouldRerate().get(0);
+		assertThat(diff.activityId()).isEqualTo(activity.getId());
+		assertThat(diff.newIntensity()).isNotNull();
+
+		var realResult = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 255, null, athlete, null, true, false);
+
+		assertThat(realResult.reratedCount()).isEqualTo(1);
+		Activity afterReal = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(afterReal.getIntensity()).isEqualTo(diff.newIntensity());
+	}
+
+	@Test
+	void futureDateIsRejected() {
+		User athlete = newAthlete("manual-threshold-future@example.cc");
+
+		assertThatThrownBy(() -> thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 250, null, athlete, LocalDate.now().plusDays(1), true, false))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void dateBeforeFirstActivityIsRejected() {
+		User athlete = newAthlete("manual-threshold-before-first@example.cc");
+		newPowerActivity(athlete, Instant.now().minus(5, java.time.temporal.ChronoUnit.DAYS), 200, 1200);
+
+		assertThatThrownBy(() -> thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 250, null, athlete, LocalDate.now().minusDays(10), true, false))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void dateOutsideWindowIsAllowedAsCorrectionOnly() {
+		User athlete = newAthlete("manual-threshold-outside-window@example.cc");
+		athlete.setThresholdWindowDays(112);
+		userRepository.save(athlete);
+
+		var result = thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 250, null, athlete, LocalDate.now().minusDays(200), true, false);
+
+		assertThat(result.changed()).isTrue();
+		assertThat(result.becameCurrent()).isFalse();
+		assertThat(result.isCorrectionOnly()).isTrue();
+	}
+
+	@Test
+	void correctionOnlyRowDoesNotBlockALaterLowerActivity() {
+		// Issue #484's fix treats the latest *current* manual row as an anchor a later lower
+		// activity can't replace early - a correction-only row must not get that treatment.
+		User athlete = newAthlete("manual-threshold-correction-anchor@example.cc");
+		athlete.setThresholdWindowDays(112);
+		userRepository.save(athlete);
+		thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 255, null); // the real current anchor
+		thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 250, null, athlete, LocalDate.now().minusDays(200), true, false); // correction-only
+		newPowerActivity(athlete, Instant.now().plus(1, java.time.temporal.ChronoUnit.DAYS), 230, 1200);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.now().plusDays(5));
+
+		assertThat(candidate.activityId()).isNull();
+		assertThat(candidate.impliedValue()).isEqualTo(255);
+	}
+
+	@Test
+	void noOpWhenValueAlreadyInEffectAtTheGivenDate() {
+		User athlete = newAthlete("manual-threshold-noop-backdate@example.cc");
+		thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 250, null, athlete, LocalDate.now().minusDays(60), true, false);
+
+		var result = thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 250, null, athlete, LocalDate.now().minusDays(30), true, false);
+
+		assertThat(result.changed()).isFalse();
+		assertThat(thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(1);
 	}
 
 	@Test

@@ -31,9 +31,29 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	// compares against. Tiebroken by id - see the comment above.
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(String athleteId, ThresholdField field);
 
-	// The full ledger for one field, most recent first - backs the history screen and the
-	// dashboard summary's "current + previous" pair. Tiebroken by id - see the comment above.
+	// As above, but excluding correction-only rows (issue #493 - a backdated manual edit that
+	// never actually took over, because a later row already existed or it was already outside
+	// the window the moment it was saved). This is THE "what's current" lookup - every one of
+	// recordManualValue's own dedup check, isStale, summaryFor, and
+	// ThresholdHistoryCalculator.manualAnchorCandidate (#484's fix) must use this, not the
+	// unfiltered method above, so a correction-only row is never mistaken for the live value.
+	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(
+			String athleteId, ThresholdField field);
+
+	// The full ledger for one field, most recent first - backs the history screen. Tiebroken by
+	// id - see the comment above. Includes correction-only rows (issue #493) - the full ledger
+	// view needs to show them.
 	List<ThresholdHistory> findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(String athleteId, ThresholdField field);
+
+	// As above, but excluding correction-only rows - summaryFor's "current + previous" pair
+	// must not treat one as either.
+	List<ThresholdHistory> findByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(
+			String athleteId, ThresholdField field);
+
+	// recordManualValue's "does a later row already exist" check (issue #493's "became current"
+	// rule, condition 1) - ANY row, correction-only or not; a later correction-only row still
+	// means this one isn't the chronologically latest thing recorded.
+	boolean existsByAthleteIdAndFieldAndEffectiveFromGreaterThan(String athleteId, ThresholdField field, LocalDate effectiveFrom);
 
 	// list_threshold_history MCP tool's optional date-range restriction - `fromDate`/`toDate` are
 	// each independently optional, so a derived "Between" method (which requires both bounds)

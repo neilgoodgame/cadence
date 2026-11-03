@@ -8,17 +8,20 @@ import com.cadence.api.athletes.ThresholdHistoryCalculator.ThresholdHistoryEntry
 import com.cadence.api.athletes.dto.ThresholdHistoryEntryResponse;
 import com.cadence.api.athletes.dto.ThresholdSummaryEntry;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 /**
  * Wires {@link ThresholdHistoryCalculator}'s pure algorithm to persistence: the ingest hook
@@ -29,6 +32,22 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class ThresholdHistoryService {
+
+	/** One activity's before/after intensity+tss from a (real or previewed) re-rate - issue #493. */
+	public record RerateDiff(
+			String activityId, LocalDate date, Double oldIntensity, Double newIntensity, Integer oldTss, Integer newTss) {
+	}
+
+	/** Outcome of {@link #recordManualValue} - issue #493. {@code becameCurrent} is false exactly
+	 * when {@code isCorrectionOnly} is true (see that method's Javadoc for the two reasons why).
+	 * {@code reratedCount} is 0 during a preview (nothing is persisted); {@code wouldRerate} is
+	 * only populated during a preview. */
+	public record ManualEditResult(
+			boolean changed, boolean becameCurrent, boolean isCorrectionOnly, int reratedCount, List<RerateDiff> wouldRerate) {
+		public ManualEditResult(boolean changed, boolean becameCurrent, boolean isCorrectionOnly) {
+			this(changed, becameCurrent, isCorrectionOnly, 0, List.of());
+		}
+	}
 
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final ThresholdHistoryCalculator calculator;
@@ -112,45 +131,93 @@ public class ThresholdHistoryService {
 		return recomputeAndRecord(athlete, field, null);
 	}
 
-	/** Self-edit shorthand (setBy = athlete) - see the 5-arg overload for a coach-on-behalf-of edit. */
+	/** Self-edit shorthand (setBy = athlete), today, re-rating on - see the full overload for
+	 * backdating/opt-out/preview (issue #493). */
 	@Transactional
-	public boolean recordManualValue(User athlete, ThresholdField field, Integer valueNumeric, String valuePace) {
-		return recordManualValue(athlete, field, valueNumeric, valuePace, athlete);
+	public ManualEditResult recordManualValue(User athlete, ThresholdField field, Integer valueNumeric, String valuePace) {
+		return recordManualValue(athlete, field, valueNumeric, valuePace, athlete, null, true, false);
+	}
+
+	/** As the 4-arg overload, with an explicit `setBy` (a coach-on-behalf-of edit) - today,
+	 * re-rating on. */
+	@Transactional
+	public ManualEditResult recordManualValue(User athlete, ThresholdField field, Integer valueNumeric, String valuePace, User setBy) {
+		return recordManualValue(athlete, field, valueNumeric, valuePace, setBy, null, true, false);
 	}
 
 	/** The athlete directly declared this value via their profile (PATCH /v1/athletes/{id}) -
 	 * trusted unconditionally (no sanity-band check, no window search: an explicit choice, not a
-	 * computed candidate), effective from today. Behaves exactly like any other ledger entry from
-	 * here on: ages out after thresholdWindowDays like any other, and can be superseded by a
-	 * later qualifying activity or another manual edit. A no-op if the submitted value matches
-	 * what's already current (e.g. re-saving the profile form without touching this field - the
-	 * frontend always resubmits every field). Doesn't touch the athlete's live field itself - the
-	 * caller (AthleteService.updateProfile) already wrote that as part of the same request.
-	 * `setBy` is the acting principal - equal to `athlete` for a self-edit, a different User for
-	 * a coach acting on the athlete's behalf. */
+	 * computed candidate). Behaves exactly like any other ledger entry from here on: ages out
+	 * after thresholdWindowDays like any other, and can be superseded by a later qualifying
+	 * activity or another manual edit. A no-op if the submitted value already matches what's in
+	 * effect at `effectiveFrom` (e.g. re-saving the profile form without touching this field -
+	 * the frontend always resubmits every field). Owns the athlete's cached field entirely (issue
+	 * #493) - never written by the caller; see the "became current" logic below for why.
+	 *
+	 * <p><code>effectiveFrom</code> (issue #493, null = today) lets the edit be backdated instead
+	 * of always applying from today. The row is always written - it's a legitimate historical
+	 * correction either way - but it only becomes the live/current value ({@code becameCurrent})
+	 * when BOTH (a) no existing row has a later effectiveFrom, and (b) it isn't already outside
+	 * thresholdWindowDays as of today (i.e. it wouldn't be stale the moment it's saved).
+	 * Otherwise it's {@code correctionOnly}: still used by any activity-scoped lookup
+	 * (ZoneService.referenceFor, filtered on currentFrom), just excluded from every "what's
+	 * current" lookup. Throws ValidationException for a future date or a date before the
+	 * athlete's first activity of this field's sport - a date outside the window is allowed
+	 * (that's exactly what makes it correction-only, not an error).
+	 *
+	 * <p>{@code rerateActivities} (default true, matching this method's pre-#493 unconditional
+	 * behavior) re-rates (intensity + tss) every activity of the affected sport on/after
+	 * `effectiveFrom` - see {@link #reRateActivitiesFrom}. {@code preview} runs the whole write
+	 * (ledger row, live-field update, re-rate) against the real code path and then rolls it
+	 * back, so the returned diff is guaranteed identical to a real run's, with nothing persisted.
+	 *
+	 * <p>`setBy` is the acting principal - equal to `athlete` for a self-edit, a different User
+	 * for a coach acting on the athlete's behalf. */
 	@Transactional
-	public boolean recordManualValue(User athlete, ThresholdField field, Integer valueNumeric, String valuePace, User setBy) {
+	public ManualEditResult recordManualValue(User athlete, ThresholdField field, Integer valueNumeric, String valuePace,
+			User setBy, LocalDate effectiveFrom, boolean rerateActivities, boolean preview) {
 		Double implied = field == ThresholdField.THRESHOLD_PACE
 				? mmssToSeconds(valuePace)
 				: (valueNumeric != null ? valueNumeric.doubleValue() : null);
 		if (implied == null || implied == 0) {
-			return false;
+			return new ManualEditResult(false, false, false);
 		}
-		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
-		Double latestValue = latest == null ? null
-				: field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(latest.getValuePace()) : latest.getValueNumeric().doubleValue();
-		if (Objects.equals(latestValue, implied)) {
-			return false;
+
+		LocalDate today = LocalDate.now();
+		LocalDate givenDate = effectiveFrom != null ? effectiveFrom : today;
+		if (givenDate.isAfter(today)) {
+			throw new ValidationException("effectiveFrom must not be in the future.", "effectiveFrom");
 		}
+
+		LocalDate firstActivityDate = activityRepository
+				.findEarliestStartDateForSport(athlete.getId(), sportFor(field))
+				.map(i -> i.atZone(ZoneOffset.UTC).toLocalDate())
+				.orElse(null);
+		if (firstActivityDate != null && givenDate.isBefore(firstActivityDate)) {
+			throw new ValidationException(
+					"effectiveFrom must not be before the athlete's first activity of this sport.", "effectiveFrom");
+		}
+
+		Double existingValue = valueInEffectAt(athlete, field, givenDate);
+		if (Objects.equals(existingValue, implied)) {
+			return new ManualEditResult(false, false, false);
+		}
+
+		boolean hasLaterRow =
+				thresholdHistoryRepository.existsByAthleteIdAndFieldAndEffectiveFromGreaterThan(athlete.getId(), field, givenDate);
+		boolean staleOnArrival = ChronoUnit.DAYS.between(givenDate, today) > athlete.getThresholdWindowDays();
+		boolean correctionOnly = hasLaterRow || staleOnArrival;
+		boolean becameCurrent = !correctionOnly;
+
 		ThresholdHistory entry = new ThresholdHistory();
 		entry.setAthlete(athlete);
 		entry.setField(field);
 		entry.setSourceActivity(null);
 		entry.setSetBy(setBy);
-		entry.setEffectiveFrom(LocalDate.now());
-		entry.setCurrentFrom(LocalDate.now());
+		entry.setEffectiveFrom(givenDate);
+		entry.setCurrentFrom(givenDate);
 		entry.setKind(ThresholdHistoryKind.MANUAL);
+		entry.setCorrectionOnly(correctionOnly);
 		if (field == ThresholdField.THRESHOLD_PACE) {
 			entry.setValuePace(valuePace);
 		}
@@ -158,25 +225,89 @@ public class ThresholdHistoryService {
 			entry.setValueNumeric(valueNumeric);
 		}
 		thresholdHistoryRepository.save(entry);
-		reRateActivitiesFrom(athlete, field, entry.getEffectiveFrom());
-		return true;
+
+		RerateResult rerateResult = reRateActivitiesFrom(athlete, field, givenDate, rerateActivities, preview);
+
+		// Never touched by the caller (unlike pre-#493) - becameCurrent already accounts for
+		// whether this edit is actually the one that should be live, so re-deriving "the" current
+		// row here is always right, including a no-op-looking re-derivation when it isn't this
+		// edit's own row that's current.
+		if (!preview) {
+			ThresholdHistory current = thresholdHistoryRepository
+					.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
+					.orElse(null);
+			switch (field) {
+				case FTP -> athlete.setFtp(current != null ? current.getValueNumeric() : null);
+				case CRITICAL_RUN_POWER -> athlete.setCriticalRunPower(current != null ? current.getValueNumeric() : null);
+				case THRESHOLD_PACE -> athlete.setThresholdPace(current != null ? current.getValuePace() : null);
+			}
+			userRepository.save(athlete);
+		}
+
+		if (preview) {
+			// Rolls back this method's own transaction only - whatever the caller's own
+			// enclosing transaction does for other, unrelated fields in the same request is
+			// untouched (AthleteService.updateProfile calls this per-field, each in this same
+			// nested @Transactional boundary via Spring's REQUIRED propagation default).
+			TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+		}
+
+		return new ManualEditResult(true, becameCurrent, correctionOnly, rerateResult.reratedCount(), rerateResult.diffs());
+	}
+
+	// The ledger value already in effect on `asOf` - the same currentFrom <= date lookup
+	// ZoneService.referenceFor uses for an activity's own date, just keyed on an arbitrary date
+	// instead of an activity's. Unlike the correction-excluding "what's current today" lookup,
+	// this deliberately does NOT exclude correction-only rows - it's used to decide whether a
+	// backdated edit is a no-op (does it match what a ride on that date would already be rated
+	// against), which is exactly what a correction-only row's currentFrom already governs.
+	private Double valueInEffectAt(User athlete, ThresholdField field, LocalDate asOf) {
+		return thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldAndCurrentFromLessThanEqualOrderByCurrentFromDescIdDesc(athlete.getId(), field, asOf)
+				.map(entry -> field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(entry.getValuePace()) : entry.getValueNumeric().doubleValue())
+				.orElse(null);
+	}
+
+	private record RerateResult(int reratedCount, List<RerateDiff> diffs) {
 	}
 
 	/** Re-rates (intensity + tss) every one of the athlete's activities of the affected sport
 	 * dated on/after a manual threshold edit's effective date - otherwise they'd stay scored
 	 * against the now-superseded value until someone happens to press a recompute button (issue
-	 * #481, part 3). Normally a tiny set (today's activities, if any), not a full-history
-	 * rebuild - activities before `effectiveFrom` are correctly left alone, since the previous
-	 * ledger entry is still the one effective for their own date. */
-	private void reRateActivitiesFrom(User athlete, ThresholdField field, LocalDate effectiveFrom) {
+	 * #481, part 3). No upper bound needed, even once effectiveFrom can be backdated (issue
+	 * #493): each activity's own referenceFor lookup (filtered on currentFrom) already stops
+	 * applying this edit once a later ledger row's currentFrom takes over for that date, so an
+	 * activity past that boundary just re-rates to the value it already had - rate() only
+	 * reports a change when something actually did.
+	 *
+	 * <p>`persist` actually saves a changed activity (the real rerateActivities=true path).
+	 * `collectDiff` returns a RerateDiff per changed activity regardless of `persist` (issue
+	 * #493's preview, which wants to know what WOULD change even when the box isn't ticked). */
+	private RerateResult reRateActivitiesFrom(
+			User athlete, ThresholdField field, LocalDate effectiveFrom, boolean persist, boolean collectDiff) {
+		if (!persist && !collectDiff) {
+			return new RerateResult(0, List.of());
+		}
 		Instant start = effectiveFrom.atStartOfDay(ZoneOffset.UTC).toInstant();
 		List<Activity> activities =
 				activityRepository.findForReRateAfterThresholdEdit(athlete.getId(), sportFor(field), start);
+		int reratedCount = 0;
+		List<RerateDiff> diffs = new ArrayList<>();
 		for (Activity activity : activities) {
-			if (tssRecomputeService.rate(activity, athlete)) {
+			Double oldIntensity = activity.getIntensity();
+			int oldTss = activity.getTss();
+			if (!tssRecomputeService.rate(activity, athlete)) {
+				continue;
+			}
+			if (collectDiff) {
+				diffs.add(new RerateDiff(activity.getId(), dateOf(activity), oldIntensity, activity.getIntensity(), oldTss, activity.getTss()));
+			}
+			if (persist) {
 				activityRepository.save(activity);
+				reratedCount++;
 			}
 		}
+		return new RerateResult(reratedCount, diffs);
 	}
 
 	private boolean recomputeAndRecord(User athlete, ThresholdField field, LocalDate asOf) {
@@ -186,7 +317,7 @@ public class ThresholdHistoryService {
 			return false;
 		}
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
 		// "Current" (summaryFor/ledgerFor/isStale) is whichever row has the latest effective_from,
 		// not whichever was inserted most recently - so a candidate dated *before* the existing
 		// current entry could never actually become current, however different its value. Recording
@@ -241,7 +372,7 @@ public class ThresholdHistoryService {
 	public boolean isStale(User athlete, ThresholdField field, LocalDate asOf) {
 		LocalDate effectiveAsOf = asOf != null ? asOf : LocalDate.now();
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
 		if (latest == null) {
 			return true;
 		}
@@ -301,8 +432,10 @@ public class ThresholdHistoryService {
 	/** GET /v1/athletes/{id}/thresholds' per-field entry: current + previous value, and whether
 	 * the current one has aged out of the window. */
 	public ThresholdSummaryEntry summaryFor(User athlete, ThresholdField field) {
-		List<ThresholdHistory> entries =
-				thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field);
+		// Excludes correction-only rows (issue #493 - a backdated manual edit that never
+		// actually took over) from both current and previous.
+		List<ThresholdHistory> entries = thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field);
 		if (entries.isEmpty()) {
 			return new ThresholdSummaryEntry(null, null, null, null, true, null, null);
 		}
@@ -317,7 +450,7 @@ public class ThresholdHistoryService {
 	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field) {
 		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).stream()
 				.map(entry -> new ThresholdHistoryEntryResponse(valueOf(field, entry), sourceActivityIdOf(entry),
-						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind()))
+						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind(), entry.isCorrectionOnly()))
 				.toList();
 	}
 
@@ -326,7 +459,7 @@ public class ThresholdHistoryService {
 	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field, LocalDate from, LocalDate to) {
 		return thresholdHistoryRepository.findByAthleteIdAndFieldInEffectiveFromRange(athlete.getId(), field, from, to).stream()
 				.map(entry -> new ThresholdHistoryEntryResponse(valueOf(field, entry), sourceActivityIdOf(entry),
-						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind()))
+						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind(), entry.isCorrectionOnly()))
 				.toList();
 	}
 }

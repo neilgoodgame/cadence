@@ -1862,10 +1862,41 @@ paths:
                     recorded as a new threshold_history entry unconditionally (no
                     outlier check - an explicit human declaration, not a computed
                     candidate) and ages out after threshold_window_days like any
-                    other entry. A no-op if it matches the latest ledger entry
-                    already, since this form resubmits every field on every save.
+                    other entry. A no-op if it already matches what's in effect at
+                    effective_from. See effective_from/rerate_activities/preview
+                    below for backdating this edit.
                 critical_run_power: { type: integer, description: Critical running power (W). Same threshold_history semantics as ftp. }
                 threshold_pace: { type: string, description: "mm:ss per km. Same threshold_history semantics as ftp." }
+                effective_from:
+                  type: string
+                  format: date
+                  description: >
+                    Backdates whichever of ftp/critical_run_power/threshold_pace is present in
+                    this same request - default today. The ledger row is always written, since
+                    it's a legitimate historical correction either way, but it only becomes the
+                    live value when both no existing row has a later effective_from and it isn't
+                    already outside threshold_window_days as of today (i.e. it wouldn't be stale
+                    the moment it's saved). Otherwise it's correction-only: still used to re-rate
+                    activities in its span (see rerate_activities), excluded from "current"
+                    everywhere else (GET /v1/athletes/{id}/thresholds, is_stale, and the
+                    dashboard). A future date, or a date before the athlete's first activity of
+                    the field's sport, is rejected (400); a date outside threshold_window_days is
+                    allowed (that's exactly what makes it correction-only).
+                rerate_activities:
+                  type: boolean
+                  default: true
+                  description: >
+                    Recomputes intensity and tss for every activity of the affected sport dated
+                    on/after effective_from, so already-ingested rides don't keep stale ratings.
+                    Defaults to true, matching the pre-existing unconditional behavior for a
+                    same-day edit. See `threshold_edit_results.rerated_count` in the response.
+                preview:
+                  type: boolean
+                  default: false
+                  description: >
+                    Computes the same outcome - including which activities would be re-rated and
+                    their current vs. new intensity/tss - without saving anything. See
+                    `threshold_edit_results.would_rerate` in the response.
                 threshold_window_days: { type: integer, description: See the User schema. }
                 threshold_sanity_pct: { type: integer, description: See the User schema. }
                 threshold_warning_days: { type: integer, enum: [14, 21, 28, 0], description: See the User schema. }
@@ -1915,6 +1946,13 @@ paths:
                       zones_recomputed:
                         type: array
                         items: { type: string }
+                      threshold_edit_results:
+                        type: object
+                        description: >
+                          One entry per ftp/critical_run_power/threshold_pace actually present
+                          in the request, keyed by field name. Empty (or omitted) when none was.
+                        additionalProperties:
+                          $ref: "#/components/schemas/ThresholdEditResult"
 
   /v1/athletes/{id}/thresholds:
     parameters:
@@ -5098,7 +5136,9 @@ components:
         One field's current state - the best qualifying effort within the trailing
         threshold_window_days, so a value can drop as an old best effort ages out,
         not just rise. A manually-entered value (see PATCH /v1/athletes/{id})
-        functions the same way from the moment it's set.
+        functions the same way from the moment it's set - unless it was backdated
+        and never became current (see ThresholdHistoryEntry.is_correction_only),
+        in which case it's invisible here, same as every other non-current row.
       properties:
         value:
           oneOf: [{ type: number }, { type: string }, { type: "null" }]
@@ -5168,6 +5208,51 @@ components:
           enum: [measured, manual, decayed]
           description: How this row's value was determined - see ThresholdSummaryEntry.kind.
           example: measured
+        is_correction_only:
+          type: boolean
+          description: >-
+            True for a backdated manual row (see PATCH /v1/athletes/{id}'s effective_from) that
+            never became the live value - a later row already existed, or it was already
+            outside threshold_window_days as of the date it was saved. Still used by any
+            activity-scoped lookup (filtered on current_from, same as any other row) - just
+            excluded from "current" everywhere else.
+          example: false
+
+    ThresholdEditResult:
+      type: object
+      description: >
+        One threshold field's outcome from a manual edit (PATCH /v1/athletes/{id},
+        set_athlete_thresholds) - part of threshold_edit_results.
+      properties:
+        changed:
+          type: boolean
+          description: False if the submitted value already matched what's in effect at effective_from - nothing was written.
+        became_current:
+          type: boolean
+          description: True if this edit is now the live value. False exactly when is_correction_only is true.
+        is_correction_only:
+          type: boolean
+          description: See ThresholdHistoryEntry.is_correction_only.
+        rerated_count:
+          type: integer
+          description: Activities actually re-rated. Populated on a real (non-preview) run; 0 during a preview.
+          example: 2
+        would_rerate:
+          type: array
+          description: Populated only when preview=true - what rerate_activities=true would do, without saving it.
+          items:
+            $ref: "#/components/schemas/RerateDiff"
+
+    RerateDiff:
+      type: object
+      description: One activity's before/after intensity+tss from a (real or previewed) re-rate.
+      properties:
+        activity_id: { type: string, example: act_9f2a7c }
+        date: { type: string, format: date }
+        old_intensity: { type: [number, "null"] }
+        new_intensity: { type: [number, "null"] }
+        old_tss: { type: [integer, "null"] }
+        new_tss: { type: [integer, "null"] }
 
     ThresholdSuggestion:
       type: object

@@ -4,6 +4,7 @@ import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.courses.CourseSections;
+import java.time.LocalDate;
 
 public record AthleteUpdateRequest(
 		String name,
@@ -49,7 +50,14 @@ public record AthleteUpdateRequest(
 		// them, but there was no field here to receive them, so Jackson silently dropped every
 		// edit. Appended at the end for the same reason as above.
 		Integer thresholdWindowDays,
-		Integer thresholdSanityPct) {
+		Integer thresholdSanityPct,
+		// Issue #493: apply to whichever of ftp/criticalRunPower/thresholdPace is present in this
+		// same request. effectiveFrom null means today (unchanged pre-#493 behavior).
+		// rerateActivities null means true (matches this field's pre-#493 unconditional
+		// behavior). preview null means false. Appended at the end for the same reason as above.
+		LocalDate effectiveFrom,
+		Boolean rerateActivities,
+		Boolean preview) {
 
 	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
 	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */

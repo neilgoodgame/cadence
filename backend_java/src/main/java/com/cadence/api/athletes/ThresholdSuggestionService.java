@@ -263,7 +263,8 @@ public class ThresholdSuggestionService {
 		}
 		thresholdHistoryService.recordCandidate(athlete, field, candidate, LocalDate.now());
 		invalidate(athlete.getId());
-		return thresholdHistoryRepository.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
+		return thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
 				.orElse(null);
 	}
 
@@ -283,7 +284,8 @@ public class ThresholdSuggestionService {
 		acceptedRepository.deleteByAthleteIdAndFieldAndActivityId(athlete.getId(), field, activityId);
 		thresholdHistoryRepository.deleteByAthleteIdAndFieldAndSourceActivityId(athlete.getId(), field, activityId);
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
+				.orElse(null);
 		switch (field) {
 			case FTP -> athlete.setFtp(latest != null ? latest.getValueNumeric() : null);
 			case CRITICAL_RUN_POWER -> athlete.setCriticalRunPower(latest != null ? latest.getValueNumeric() : null);

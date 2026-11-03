@@ -29,6 +29,12 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	@Query("select min(a.startDate) from Activity a where a.athlete.id = :athleteId")
 	Optional<Instant> findEarliestStartDate(@Param("athleteId") String athleteId);
 
+	// ThresholdHistoryService.recordManualValue's backdating lower bound (issue #493) - a manual
+	// edit can't be dated before the athlete's first activity of the field's own sport.
+	@Query("select min(a.startDate) from Activity a where a.athlete.id = :athleteId and a.sport = :sport")
+	Optional<Instant> findEarliestStartDateForSport(
+			@Param("athleteId") String athleteId, @Param("sport") com.cadence.api.common.domain.Sport sport);
+
 	@Query("select max(a.startDate) from Activity a where a.athlete.id = :athleteId")
 	Optional<Instant> findLatestStartDate(@Param("athleteId") String athleteId);
 

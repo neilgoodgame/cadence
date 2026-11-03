@@ -21,6 +21,12 @@ public class AthleteService {
 	private static final Set<Integer> RACE_KEY_SESSION_CAP_CHOICES = Set.of(6, 8, 10, 12, 15, 20);
 	private static final int MAX_RACE_BLOCK_WEEK_DEFAULT = 52;
 
+	/** {@link #updateProfile}'s result - the zone types to report as recomputed, plus (issue
+	 * #493) a {@link ThresholdHistoryService.ManualEditResult} per threshold field actually
+	 * present in the request. */
+	public record Outcome(List<ZoneType> zonesRecomputed, Map<ThresholdField, ThresholdHistoryService.ManualEditResult> thresholdResults) {
+	}
+
 	private final UserRepository userRepository;
 	private final ZoneService zoneService;
 	private final ThresholdHistoryService thresholdHistoryService;
@@ -37,21 +43,24 @@ public class AthleteService {
 	/** Applies the patch as a self-edit (setBy = athlete) - see the 3-arg overload for a
 	 * coach-on-behalf-of edit. */
 	@Transactional
-	public List<ZoneType> updateProfile(User athlete, AthleteUpdateRequest request) {
+	public Outcome updateProfile(User athlete, AthleteUpdateRequest request) {
 		return updateProfile(athlete, request, athlete);
 	}
 
-	/** Applies the patch and returns the zone types to report as recomputed - see {@link ZoneService#recomputedZoneTypes}.
-	 * `setBy` is the acting principal threaded into any changed threshold's ledger entry - equal
-	 * to `athlete` for a self-edit, a different User for a coach acting on the athlete's behalf. */
+	/** Applies the patch and returns the zone types to report as recomputed (see
+	 * {@link ZoneService#recomputedZoneTypes}) plus, per threshold field actually present, the
+	 * {@link ThresholdHistoryService.ManualEditResult} (issue #493). `setBy` is the acting
+	 * principal threaded into any changed threshold's ledger entry - equal to `athlete` for a
+	 * self-edit, a different User for a coach acting on the athlete's behalf. */
 	@Transactional
-	public List<ZoneType> updateProfile(User athlete, AthleteUpdateRequest request, User setBy) {
+	public Outcome updateProfile(User athlete, AthleteUpdateRequest request, User setBy) {
 		Set<String> changed = new HashSet<>();
 		// Settings whose change can affect which Threshold suggestions are current (lead time
 		// feeds detection directly) - tracked separately from `changed` (which only maps to zone
 		// recomputation) so the suggestion cache invalidation below covers exactly these plus
 		// ftp/criticalRunPower/thresholdPace, not every unrelated profile field too.
 		boolean suggestionsAffected = false;
+		Map<ThresholdField, ThresholdHistoryService.ManualEditResult> thresholdResults = new HashMap<>();
 		if (request.name() != null) {
 			athlete.setName(request.name());
 			changed.add("name");
@@ -65,25 +74,36 @@ public class AthleteService {
 			changed.add("weightKg");
 		}
 		// A manually-entered threshold functions as an initial value (or a correction) just like
-		// any other ledger entry - see ThresholdHistoryService.recordManualValue. The Preferences
-		// form resubmits every field on every save regardless of whether it was edited, so
-		// recordManualValue's own no-op-if-unchanged check is load-bearing here.
+		// any other ledger entry - see ThresholdHistoryService.recordManualValue, which now owns
+		// the athlete's cached field entirely (issue #493) - never written here, since only it
+		// knows whether this edit actually became the live value (a backdated edit might not).
+		boolean rerateActivities = request.rerateActivities() == null || request.rerateActivities();
+		boolean preview = request.preview() != null && request.preview();
 		if (request.ftp() != null) {
-			athlete.setFtp(request.ftp());
-			changed.add("ftp");
-			thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, request.ftp(), null, setBy);
+			var result = thresholdHistoryService.recordManualValue(
+					athlete, ThresholdField.FTP, request.ftp(), null, setBy, request.effectiveFrom(), rerateActivities, preview);
+			thresholdResults.put(ThresholdField.FTP, result);
+			if (result.becameCurrent()) {
+				changed.add("ftp");
+			}
 			suggestionsAffected = true;
 		}
 		if (request.criticalRunPower() != null) {
-			athlete.setCriticalRunPower(request.criticalRunPower());
-			changed.add("criticalRunPower");
-			thresholdHistoryService.recordManualValue(athlete, ThresholdField.CRITICAL_RUN_POWER, request.criticalRunPower(), null, setBy);
+			var result = thresholdHistoryService.recordManualValue(athlete, ThresholdField.CRITICAL_RUN_POWER,
+					request.criticalRunPower(), null, setBy, request.effectiveFrom(), rerateActivities, preview);
+			thresholdResults.put(ThresholdField.CRITICAL_RUN_POWER, result);
+			if (result.becameCurrent()) {
+				changed.add("criticalRunPower");
+			}
 			suggestionsAffected = true;
 		}
 		if (request.thresholdPace() != null) {
-			athlete.setThresholdPace(request.thresholdPace());
-			changed.add("thresholdPace");
-			thresholdHistoryService.recordManualValue(athlete, ThresholdField.THRESHOLD_PACE, null, request.thresholdPace(), setBy);
+			var result = thresholdHistoryService.recordManualValue(athlete, ThresholdField.THRESHOLD_PACE, null,
+					request.thresholdPace(), setBy, request.effectiveFrom(), rerateActivities, preview);
+			thresholdResults.put(ThresholdField.THRESHOLD_PACE, result);
+			if (result.becameCurrent()) {
+				changed.add("thresholdPace");
+			}
 			suggestionsAffected = true;
 		}
 		if (request.lthr() != null) {
@@ -233,9 +253,12 @@ public class AthleteService {
 			athlete.setRaceBlockWeekDefaults(merged);
 		}
 		userRepository.save(athlete);
-		if (suggestionsAffected) {
+		// Not during a preview (issue #493) - nothing was actually saved, so nothing to
+		// invalidate; threshold_history.py::_apply_threshold_patch mirrors this.
+		if (suggestionsAffected && !preview) {
 			thresholdSuggestionService.invalidate(athlete.getId());
 		}
-		return zoneService.recomputedZoneTypes(athlete, changed);
+		List<ZoneType> zonesRecomputed = preview ? List.of() : zoneService.recomputedZoneTypes(athlete, changed);
+		return new Outcome(zonesRecomputed, thresholdResults);
 	}
 }
