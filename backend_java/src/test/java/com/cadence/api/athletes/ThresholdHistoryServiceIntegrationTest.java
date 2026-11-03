@@ -84,6 +84,18 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		return activity;
 	}
 
+	private ThresholdHistory newEntry(User owner, ThresholdField field, int valueNumeric, LocalDate effectiveFrom, ThresholdHistoryKind kind) {
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(owner);
+		entry.setField(field);
+		entry.setValueNumeric(valueNumeric);
+		entry.setSourceActivity(null);
+		entry.setEffectiveFrom(effectiveFrom);
+		entry.setCurrentFrom(effectiveFrom);
+		entry.setKind(kind);
+		return thresholdHistoryRepository.save(entry);
+	}
+
 	@Test
 	void seedsTheInitialValueWhenNoEntryExists() {
 		User athlete = newAthlete("manual-threshold-seed@example.cc");
@@ -177,6 +189,43 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
 		assertThat(entries).hasSize(1);
 		assertThat(entries.get(0).getValueNumeric()).isEqualTo(255);
+	}
+
+	// Regression test for issue #484: currentWindowValue's activity-only scan couldn't see a
+	// manual row at all, so the first later qualifying activity replaced it immediately, however
+	// low - not "ages out after thresholdWindowDays" as openapi.yaml already documented.
+	@Test
+	void refreshDoesNotReplaceAManualValueWithALaterLowerActivity() {
+		User athlete = newAthlete("refresh-manual-not-replaced@example.cc");
+		newEntry(athlete, ThresholdField.FTP, 255, LocalDate.now().minusDays(20), ThresholdHistoryKind.MANUAL);
+		// 237W best-20min * 0.95 = 225 - lower than the manual 255, but otherwise a perfectly
+		// qualifying candidate, dated after the manual entry and still well within the window.
+		newPowerActivity(athlete, Instant.now().minus(10, java.time.temporal.ChronoUnit.DAYS), 237, 1200);
+
+		boolean changed = thresholdHistoryService.refreshField(athlete, ThresholdField.FTP);
+
+		assertThat(changed).isFalse();
+		List<ThresholdHistory> entries = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
+		assertThat(entries).hasSize(1);
+		assertThat(entries.get(0).getValueNumeric()).isEqualTo(255);
+	}
+
+	@Test
+	void refreshStillReplacesAManualValueWithALaterBetterActivity() {
+		User athlete = newAthlete("refresh-manual-replaced@example.cc");
+		newEntry(athlete, ThresholdField.FTP, 255, LocalDate.now().minusDays(20), ThresholdHistoryKind.MANUAL);
+		Activity later = newPowerActivity(athlete, Instant.now().minus(10, java.time.temporal.ChronoUnit.DAYS), 300, 1200);
+
+		boolean changed = thresholdHistoryService.refreshField(athlete, ThresholdField.FTP);
+
+		assertThat(changed).isTrue();
+		List<ThresholdHistory> entries = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
+		assertThat(entries).hasSize(2);
+		assertThat(entries.get(0).getSourceActivity().getId()).isEqualTo(later.getId());
+		assertThat(entries.get(0).getKind()).isEqualTo(ThresholdHistoryKind.MEASURED);
+		assertThat(entries.get(0).getValueNumeric()).isEqualTo(Math.round(0.95 * 300));
 	}
 
 	// Regression test for a real bug found live: thresholdPace's implied value is a raw,

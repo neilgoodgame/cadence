@@ -1031,6 +1031,90 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         self.assertEqual(candidate.activity_id, faster.id)
         self.assertAlmostEqual(candidate.implied_value, 270, delta=1)
 
+    # --- current_window_value: manual anchor (issue #484) ---
+
+    def test_manual_value_is_not_replaced_by_a_later_lower_activity(self):
+        # record_manual_value's real caller (AthleteUpdateSerializer.save()) already keeps
+        # athlete.ftp in sync with the manual row it creates - mirrored here so the sanity band
+        # below checks against the manual value, not the stale setUp default.
+        self.athlete.ftp = 255
+        self.athlete.save(update_fields=["ftp"])
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=255,
+            source_activity=None,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="manual",
+        )
+        # Implies ~220W - within the 30% sanity band around 255, but lower than it.
+        self._make_power_activity("bike", datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=232)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 3, 1))
+
+        self.assertIsNotNone(candidate)
+        self.assertIsNone(candidate.activity_id)
+        self.assertEqual(candidate.implied_value, 255)
+
+    def test_manual_value_is_replaced_by_a_later_better_activity(self):
+        self.athlete.ftp = 255
+        self.athlete.save(update_fields=["ftp"])
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=255,
+            source_activity=None,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="manual",
+        )
+        better = self._make_power_activity("bike", datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=300)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 3, 1))
+
+        self.assertEqual(candidate.activity_id, better.id)
+        self.assertEqual(candidate.implied_value, round(0.95 * 300))
+
+    def test_manual_value_ages_out_of_window_like_any_other_entry(self):
+        self.athlete.threshold_window_days = 30
+        self.athlete.ftp = 255
+        self.athlete.save(update_fields=["threshold_window_days", "ftp"])
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=255,
+            source_activity=None,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="manual",
+        )
+        lower = self._make_power_activity("bike", datetime(2026, 2, 15, 7, 0, tzinfo=UTC), power=232)
+
+        # More than 30 days after the manual entry - it's left the window, same as a measured one.
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 3, 1))
+
+        self.assertEqual(candidate.activity_id, lower.id)
+
+    def test_a_measured_anchor_is_unaffected_by_the_manual_anchor_fix(self):
+        # The anchor's own source activity is already in the activities scan and wins there on
+        # its own - the manual-anchor candidate must not double-count or otherwise interfere.
+        strong = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=270)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=round(0.95 * 270),
+            source_activity=strong,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="measured",
+        )
+        self._make_power_activity("bike", datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=232)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 3, 1))
+
+        self.assertEqual(candidate.activity_id, strong.id)
+
     # --- replay_full_history ---
 
     def test_replay_builds_ledger_of_changes_over_time(self):
@@ -1355,6 +1439,42 @@ class RefreshFieldTests(TestCase):
         entries = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp")
         self.assertEqual(entries.count(), 1)
         self.assertEqual(entries.get().value_numeric, 255)
+
+    # Regression test for issue #484: current_window_value's activity-only scan couldn't see a
+    # manual row at all, so the first later qualifying activity replaced it immediately, however
+    # low - not "ages out after threshold_window_days" as openapi.yaml already documented.
+    def test_does_not_replace_a_manual_value_with_a_later_lower_activity(self):
+        today = date.today()
+        record_manual_value(self.athlete, "ftp", 255, as_of=today - timedelta(days=20))
+        # 237W best-20min * 0.95 = 225 - lower than the manual 255, but otherwise a perfectly
+        # qualifying candidate, dated after the manual entry and still well within the window.
+        self._make_power_activity(
+            datetime(today.year, today.month, today.day, 7, 0, tzinfo=UTC) - timedelta(days=10), power=237
+        )
+
+        changed = refresh_field(self.athlete, "ftp")
+
+        self.assertFalse(changed)
+        entries = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp")
+        self.assertEqual(entries.count(), 1)
+        self.assertEqual(entries.get().value_numeric, 255)
+
+    def test_a_later_better_activity_still_replaces_a_manual_value(self):
+        today = date.today()
+        record_manual_value(self.athlete, "ftp", 255, as_of=today - timedelta(days=20))
+        later = self._make_power_activity(
+            datetime(today.year, today.month, today.day, 7, 0, tzinfo=UTC) - timedelta(days=10), power=300
+        )
+
+        changed = refresh_field(self.athlete, "ftp")
+
+        self.assertTrue(changed)
+        entries = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp")
+        self.assertEqual(entries.count(), 2)
+        current = entries.order_by("-effective_from").first()
+        self.assertEqual(current.source_activity_id, later.id)
+        self.assertEqual(current.kind, "measured")
+        self.assertEqual(current.value_numeric, round(0.95 * 300))
 
     def test_auto_derived_entry_has_no_set_by(self):
         self._make_power_activity(datetime.now(UTC) - timedelta(days=10), power=230)
