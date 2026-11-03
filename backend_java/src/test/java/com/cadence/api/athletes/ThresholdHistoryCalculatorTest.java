@@ -30,6 +30,8 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 	private ActivityRepository activityRepository;
 	@Autowired
 	private RecordRepository recordRepository;
+	@Autowired
+	private ThresholdHistoryRepository thresholdHistoryRepository;
 
 	private User athlete;
 
@@ -84,6 +86,19 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 			recordRepository.save(record);
 		}
 		return activity;
+	}
+
+	private ThresholdHistory newEntry(
+			User owner, ThresholdField field, Activity source, int valueNumeric, LocalDate effectiveFrom, ThresholdHistoryKind kind) {
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(owner);
+		entry.setField(field);
+		entry.setValueNumeric(valueNumeric);
+		entry.setSourceActivity(source);
+		entry.setEffectiveFrom(effectiveFrom);
+		entry.setCurrentFrom(effectiveFrom);
+		entry.setKind(kind);
+		return thresholdHistoryRepository.save(entry);
 	}
 
 	// --- currentWindowValue ---
@@ -227,6 +242,67 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 				calculator.currentWindowValue(athlete, ThresholdField.CRITICAL_RUN_POWER, LocalDate.of(2026, 2, 15));
 
 		assertThat(candidate).isNull();
+	}
+
+	// --- currentWindowValue: manual anchor (issue #484) ---
+
+	@Test
+	void manualValueIsNotReplacedByALaterLowerActivity() {
+		athlete = newAthlete("threshold-history-manual-not-replaced@example.cc", 255);
+		newEntry(athlete, ThresholdField.FTP, null, 255, LocalDate.of(2026, 1, 1), ThresholdHistoryKind.MANUAL);
+		// Implies ~220W - within the 30% sanity band around 255, but lower than it.
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-02-01T07:00:00Z"), 232, 1200);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 3, 1));
+
+		assertThat(candidate).isNotNull();
+		assertThat(candidate.activityId()).isNull();
+		assertThat(candidate.impliedValue()).isEqualTo(255);
+	}
+
+	@Test
+	void manualValueIsReplacedByALaterBetterActivity() {
+		athlete = newAthlete("threshold-history-manual-replaced@example.cc", 255);
+		newEntry(athlete, ThresholdField.FTP, null, 255, LocalDate.of(2026, 1, 1), ThresholdHistoryKind.MANUAL);
+		Activity better = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-02-01T07:00:00Z"), 300, 1200);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 3, 1));
+
+		assertThat(candidate.activityId()).isEqualTo(better.getId());
+		assertThat(candidate.impliedValue()).isEqualTo(Math.round(0.95 * 300));
+	}
+
+	@Test
+	void manualValueAgesOutOfWindowLikeAnyOtherEntry() {
+		athlete = newAthlete("threshold-history-manual-ages-out@example.cc", 255);
+		athlete.setThresholdWindowDays(30);
+		athlete = userRepository.save(athlete);
+		newEntry(athlete, ThresholdField.FTP, null, 255, LocalDate.of(2026, 1, 1), ThresholdHistoryKind.MANUAL);
+		Activity lower = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-02-15T07:00:00Z"), 232, 1200);
+
+		// More than 30 days after the manual entry - it's left the window, same as a measured one.
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 3, 1));
+
+		assertThat(candidate.activityId()).isEqualTo(lower.getId());
+	}
+
+	@Test
+	void aMeasuredAnchorIsUnaffectedByTheManualAnchorFix() {
+		// The anchor's own source activity is already in the activities scan and wins there on
+		// its own - the manual-anchor candidate must not double-count or otherwise interfere.
+		athlete = newAthlete("threshold-history-measured-anchor@example.cc", 200);
+		Activity strong = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 270, 1200);
+		newEntry(athlete, ThresholdField.FTP, strong, (int) Math.round(0.95 * 270), LocalDate.of(2026, 1, 1),
+				ThresholdHistoryKind.MEASURED);
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-02-01T07:00:00Z"), 232, 1200);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 3, 1));
+
+		assertThat(candidate.activityId()).isEqualTo(strong.getId());
 	}
 
 	// --- replayFullHistory ---

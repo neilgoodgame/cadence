@@ -218,12 +218,32 @@ public class ThresholdHistoryCalculator {
 				.collect(Collectors.toSet());
 	}
 
+	/** A manual value lasts until it's beaten by a later qualifying activity or ages out of the
+	 * window, same as any other ledger entry (issue #484) - currentWindowValue's activity-only
+	 * scan can't see the ledger on its own, so a still-fresh manual row is injected here as a
+	 * candidate with its own value, to compete on equal terms. Returns null for a measured
+	 * anchor: its source activity is already in the activities scan and wins there on its own. */
+	private Candidate manualAnchorCandidate(User athlete, ThresholdField field, LocalDate windowStart) {
+		ThresholdHistory latest = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
+		if (latest == null || latest.getKind() != ThresholdHistoryKind.MANUAL
+				|| latest.getEffectiveFrom().isBefore(windowStart)) {
+			return null;
+		}
+		Double manualValue = field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(latest.getValuePace())
+				: latest.getValueNumeric() == null ? null : latest.getValueNumeric().doubleValue();
+		return manualValue == null ? null : new Candidate(null, latest.getEffectiveFrom(), manualValue);
+	}
+
 	/** The best qualifying candidate among the athlete's activities in the trailing window ending
 	 * asOf (default today) for `field` - cheap, bounded to ~windowDays worth of activities. Used
 	 * by both the ingest hook and the manual-refresh endpoint. Sanity-filters each candidate
 	 * against the athlete's current profile value (not a moving reference - this is a single
 	 * snapshot-in-time scan, not a chronological replay; see replayFullHistory for that), except
-	 * for an explicitly accepted candidate (see acceptedActivityIds), which always qualifies. */
+	 * for an explicitly accepted candidate (see acceptedActivityIds), which always qualifies.
+	 * Also considers the latest manual entry, if still within the window, as a candidate in its
+	 * own right (see manualAnchorCandidate) - otherwise it's invisible here and gets replaced by
+	 * the first later activity regardless of value, however low (issue #484). */
 	public Candidate currentWindowValue(User athlete, ThresholdField field, LocalDate asOf) {
 		LocalDate effectiveAsOf = asOf != null ? asOf : LocalDate.now();
 		LocalDate windowStart = effectiveAsOf.minusDays(athlete.getThresholdWindowDays());
@@ -235,7 +255,7 @@ public class ThresholdHistoryCalculator {
 		List<Activity> activities =
 				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
 
-		Candidate best = null;
+		Candidate best = manualAnchorCandidate(athlete, field, windowStart);
 		for (Activity activity : activities) {
 			Double implied = impliedValue(activity, athlete, field);
 			boolean qualifies = implied != null && (acceptedIds.contains(activity.getId())

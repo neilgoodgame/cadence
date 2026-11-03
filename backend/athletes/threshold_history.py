@@ -185,7 +185,7 @@ def _within_sanity_band(field: str, candidate_value: float, reference_value: flo
 
 @dataclass(frozen=True)
 class Candidate:
-    activity_id: str
+    activity_id: str | None
     date: date
     implied_value: float
 
@@ -214,13 +214,31 @@ def _accepted_activity_ids(athlete: User, field: str) -> set[str]:
     )
 
 
+def _manual_anchor_candidate(athlete: User, field: str, window_start: date) -> Candidate | None:
+    """A manual value lasts until it's beaten by a later qualifying activity or ages out of the
+    window, same as any other ledger entry (issue #484) - current_window_value's activity-only
+    scan can't see the ledger on its own, so a still-fresh manual row is injected here as a
+    candidate with its own value, to compete on equal terms. A no-op for a measured anchor: its
+    source activity is already in the activities scan below and wins there on its own."""
+    latest = _latest_entry(athlete, field)
+    if latest is None or latest.kind != "manual" or latest.effective_from < window_start:
+        return None
+    manual_value = _mmss_to_seconds(latest.value_pace) if field == "threshold_pace" else latest.value_numeric
+    if manual_value is None:
+        return None
+    return Candidate(activity_id=None, date=latest.effective_from, implied_value=manual_value)
+
+
 def current_window_value(athlete: User, field: str, as_of: date | None = None) -> Candidate | None:
     """The best qualifying candidate among the athlete's activities in the trailing window ending
     `as_of` (default today) for `field` - cheap, bounded to ~window_days worth of activities.
     Used by both the ingest hook and the manual-refresh endpoint. Sanity-filters each candidate
     against the athlete's current profile value (not a moving reference - this is a single
     snapshot-in-time scan, not a chronological replay; see replay_full_history for that), except
-    for an explicitly accepted candidate (see _accepted_activity_ids), which always qualifies."""
+    for an explicitly accepted candidate (see _accepted_activity_ids), which always qualifies.
+    Also considers the latest manual entry, if still within the window, as a candidate in its own
+    right (see _manual_anchor_candidate) - otherwise it's invisible here and gets replaced by the
+    first later activity regardless of value, however low (issue #484)."""
     as_of = as_of or date.today()
     window_start = as_of - timedelta(days=athlete.threshold_window_days)
     reference_value = _athlete_reference_value(athlete, field)
@@ -233,7 +251,7 @@ def current_window_value(athlete: User, field: str, as_of: date | None = None) -
         start_date__date__lte=as_of,
     ).order_by("start_date")
 
-    best: Candidate | None = None
+    best: Candidate | None = _manual_anchor_candidate(athlete, field, window_start)
     for activity in activities:
         implied = _implied_value(activity, field)
         if implied is None:
