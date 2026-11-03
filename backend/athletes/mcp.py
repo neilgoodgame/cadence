@@ -17,16 +17,22 @@ from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 
+from .models import ThresholdHistory
+from .threshold_history import candidate_statuses
 from .views import (
     BEST_EFFORT_PERIOD_DAYS,
     LOWER_IS_BETTER_KINDS,
     _apply_threshold_patch,
+    _validate_threshold_field,
     cap_per_window,
     threshold_summary_for_field,
 )
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for
 
 _THRESHOLD_FIELDS = ("ftp", "critical_run_power", "threshold_pace")
+# Real training sports only - multisport/transition are structural FIT-import artifacts, not
+# something an athlete would ever ask for a fitness trend of.
+_FITNESS_TREND_SPORTS = ("bike", "run", "swim", "walk", "row")
 
 
 def _thresholds_summary(athlete: User) -> dict[str, Any]:
@@ -178,14 +184,20 @@ class AthleteMCPTools(ScopedMCPToolset):
             ],
         }
 
-    def get_fitness_trend(self, from_date: str | None = None, to_date: str | None = None) -> dict[str, Any]:
+    def get_fitness_trend(
+        self, from_date: str | None = None, to_date: str | None = None, sport: str | None = None
+    ) -> dict[str, Any]:
         """Get the authenticated athlete's daily CTL (fitness), ATL (fatigue), and TSB (form/
         freshness) trend over a date range - default is the trailing 84 days. Useful for 'am I
-        overtrained' or 'when's my next good taper window' questions."""
+        overtrained' or 'when's my next good taper window' questions. `sport` (bike/run/swim/
+        walk/row), if given, restricts the series to just that sport's activities - e.g. a
+        bike-only CTL to compare against FTP, independent of running load."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
 
+        if sport is not None and sport not in _FITNESS_TREND_SPORTS:
+            raise ValidationError({"sport": "Must be one of bike, run, swim, walk, row."})
         to_d = parse_date(to_date) if to_date else timezone.now().date()
         if to_d is None:
             raise ValidationError({"to_date": "Must be a date in YYYY-MM-DD format."})
@@ -195,9 +207,114 @@ class AthleteMCPTools(ScopedMCPToolset):
         if from_d > to_d:
             raise ValidationError({"from_date": "Must not be after to_date."})
 
-        series = compute_fitness_series(athlete_id, from_d, to_d)
+        series = compute_fitness_series(athlete_id, from_d, to_d, sport)
         # Wrapped in {"data": [...]} rather than returned as a bare list - see
         # activities/mcp.py::get_activity_laps's comment for why.
         return {
             "data": [{"date": p["date"].isoformat(), "ctl": p["ctl"], "atl": p["atl"], "tsb": p["tsb"]} for p in series]
+        }
+
+    def list_threshold_history(
+        self, field: str, from_date: str | None = None, to_date: str | None = None
+    ) -> dict[str, Any]:
+        """Get the full threshold-history ledger for one field, most recent first - every
+        measured, manual, or decayed (see `kind`) entry, not just the current/previous pair
+        get_athlete_thresholds returns. Useful for seeing exactly when the athlete was actually
+        measured (vs. manually set or, once decay ships, eased down), and what a model would
+        have had to predict between those dates. Optionally restricted to entries whose
+        effective_from falls within [from_date, to_date]."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        field = _validate_threshold_field(field)
+        athlete = get_object_or_404(User, pk=athlete_id)
+
+        entries = ThresholdHistory.objects.filter(athlete=athlete, field=field)
+        if from_date is not None:
+            from_d = parse_date(from_date)
+            if from_d is None:
+                raise ValidationError({"from_date": "Must be a date in YYYY-MM-DD format."})
+            entries = entries.filter(effective_from__gte=from_d)
+        if to_date is not None:
+            to_d = parse_date(to_date)
+            if to_d is None:
+                raise ValidationError({"to_date": "Must be a date in YYYY-MM-DD format."})
+            entries = entries.filter(effective_from__lte=to_d)
+        entries = entries.order_by("-effective_from")
+
+        # Wrapped in {"data": [...]} rather than returned as a bare list - see
+        # activities/mcp.py::get_activity_laps's comment for why.
+        return {
+            "field": field,
+            "data": [
+                {
+                    "value": entry.value_pace if field == "threshold_pace" else entry.value_numeric,
+                    "kind": entry.kind,
+                    "source_activity_id": entry.source_activity_id,
+                    "set_by_user_id": entry.set_by_id,
+                    "effective_from": entry.effective_from.isoformat(),
+                    "current_from": entry.current_from.isoformat(),
+                }
+                for entry in entries
+            ],
+        }
+
+    def list_threshold_candidates(self, field: str, from_date: str, to_date: str) -> dict[str, Any]:
+        """For every one of the athlete's activities of `field`'s sport between from_date and
+        to_date, return the implied value it would contribute to the rolling-window algorithm
+        (e.g. 0.95 x best 20-minute power for ftp), the raw pre-transform value, the window
+        label, and its status: 'qualified' (within the sanity band), 'rejected_sanity' (outside
+        it), 'accepted' (explicitly accepted despite failing the band), or 'too_short' (no
+        qualifying effort at all, e.g. too short for the field's window). Classified against the
+        athlete's *current* profile value, a single snapshot rather than a moving reference - see
+        current_window_value's own docstring for that distinction. Useful for seeing what a model
+        would have had to predict between ledger entries, without reconstructing it by hand from
+        stream summaries."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        field = _validate_threshold_field(field)
+        from_d = parse_date(from_date)
+        if from_d is None:
+            raise ValidationError({"from_date": "Must be a date in YYYY-MM-DD format."})
+        to_d = parse_date(to_date)
+        if to_d is None:
+            raise ValidationError({"to_date": "Must be a date in YYYY-MM-DD format."})
+        if from_d > to_d:
+            raise ValidationError({"from_date": "Must not be after to_date."})
+
+        athlete = get_object_or_404(User, pk=athlete_id)
+        candidates = candidate_statuses(athlete, field, from_d, to_d)
+        # Wrapped in {"data": [...]} rather than returned as a bare list - see
+        # activities/mcp.py::get_activity_laps's comment for why.
+        return {
+            "field": field,
+            "data": [
+                {
+                    "activity_id": c.activity_id,
+                    "date": c.date.isoformat(),
+                    "status": c.status,
+                    "implied_value": c.implied_value,
+                    "raw_value": c.raw_value,
+                    "window": c.window,
+                }
+                for c in candidates
+            ],
+        }
+
+    def get_threshold_settings(self) -> dict[str, Any]:
+        """Get the authenticated athlete's threshold-related settings: the trailing window
+        (threshold_window_days) and sanity-band width (threshold_sanity_pct) the rolling-window
+        algorithm uses, and which power-calculation method/source each threshold field is
+        derived from. Useful for knowing which parameters a given ledger was produced under
+        before calibrating anything against it."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        athlete = get_object_or_404(User, pk=athlete_id)
+        return {
+            "threshold_window_days": athlete.threshold_window_days,
+            "threshold_sanity_pct": athlete.threshold_sanity_pct,
+            "ftp_calculation_method": athlete.ftp_calculation_method,
+            "running_power_source": athlete.running_power_source,
         }

@@ -18,6 +18,14 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 			+ "and a.parentActivity is null and a.primaryActivity is null")
 	List<Object[]> findStartDatesAndTssInRange(@Param("athleteId") String athleteId, @Param("start") Instant start, @Param("end") Instant end);
 
+	// FitnessService's per-sport fitness trend (e.g. a bike-only CTL to compare against FTP,
+	// independent of running load) - same multisport/duplicate exclusion as the combined query
+	// above, scoped to one sport.
+	@Query("select a.startDate, a.tss from Activity a where a.athlete.id = :athleteId and a.sport = :sport "
+			+ "and a.startDate >= :start and a.startDate < :end and a.parentActivity is null and a.primaryActivity is null")
+	List<Object[]> findStartDatesAndTssInRangeForSport(@Param("athleteId") String athleteId,
+			@Param("sport") com.cadence.api.common.domain.Sport sport, @Param("start") Instant start, @Param("end") Instant end);
+
 	@Query("select min(a.startDate) from Activity a where a.athlete.id = :athleteId")
 	Optional<Instant> findEarliestStartDate(@Param("athleteId") String athleteId);
 

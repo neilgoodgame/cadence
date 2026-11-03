@@ -52,6 +52,18 @@ public class ThresholdHistoryCalculator {
 	public record RejectedCandidate(String activityId, LocalDate date, double impliedValue, String window, double rawValue) {
 	}
 
+	public enum CandidateStatus {
+		QUALIFIED, REJECTED_SANITY, ACCEPTED, TOO_SHORT
+	}
+
+	/** Every one of an athlete's activities in a date range, classified against their *current*
+	 * profile value - see {@link #candidateStatuses}. {@code impliedValue}/{@code rawValue}/
+	 * {@code window} are null for a {@link CandidateStatus#TOO_SHORT} activity (no qualifying
+	 * effort at all). */
+	public record CandidateStatusEntry(
+			String activityId, LocalDate date, CandidateStatus status, Double impliedValue, Double rawValue, String window) {
+	}
+
 	/** Result of {@link #upcomingDrop} - shape varies with which of the two kinds applies. See
 	 * that method's Javadoc for the suppression rules that decide between them (or neither, via
 	 * a null return). */
@@ -387,6 +399,43 @@ public class ThresholdHistoryCalculator {
 				? java.util.Comparator.comparingDouble(RejectedCandidate::impliedValue)
 				: java.util.Comparator.comparingDouble(RejectedCandidate::impliedValue).reversed());
 		return candidates;
+	}
+
+	/** Every one of the athlete's activities of {@code field}'s sport in [from, to], classified
+	 * against the athlete's *current* profile value - a single snapshot, not a moving reference
+	 * (see {@link #currentWindowValue}'s own Javadoc for that distinction): {@code QUALIFIED}
+	 * (within the sanity band), {@code REJECTED_SANITY} (outside it), {@code ACCEPTED}
+	 * (explicitly accepted despite failing the band - see {@code AcceptedThresholdCandidate}), or
+	 * {@code TOO_SHORT} (no qualifying effort at all, e.g. too short for the field's window).
+	 * Unlike {@link #rejectedCandidates}, returns every activity in range, not just the
+	 * rejected-and-better subset - built for the Threshold suggestions calibration tooling
+	 * (list_threshold_candidates), to see what a model would have had to predict between ledger
+	 * entries. */
+	public List<CandidateStatusEntry> candidateStatuses(User athlete, ThresholdField field, LocalDate from, LocalDate to) {
+		Double referenceValue = athleteReferenceValue(athlete, field);
+		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
+
+		Instant start = from.atStartOfDay(ZoneOffset.UTC).toInstant();
+		Instant end = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+		List<Activity> activities = activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
+
+		List<CandidateStatusEntry> statuses = new ArrayList<>();
+		for (Activity activity : activities) {
+			LocalDate activityDate = dateOf(activity);
+			ImpliedValueDetail detail = impliedValueDetail(activity, athlete, field);
+			if (detail == null) {
+				statuses.add(new CandidateStatusEntry(activity.getId(), activityDate, CandidateStatus.TOO_SHORT, null, null, null));
+			}
+			else {
+				CandidateStatus status = acceptedIds.contains(activity.getId()) ? CandidateStatus.ACCEPTED
+						: withinSanityBand(detail.value(), referenceValue, athlete.getThresholdSanityPct()) ? CandidateStatus.QUALIFIED
+						: CandidateStatus.REJECTED_SANITY;
+				statuses.add(new CandidateStatusEntry(
+						activity.getId(), activityDate, status, detail.value(), detail.rawValue(), detail.window()));
+			}
+			entityManager.clear();
+		}
+		return statuses;
 	}
 
 	/** How many days before a threshold's current source activity ages out of the window the

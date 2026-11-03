@@ -7,7 +7,7 @@ authn/tests.py) with a lightweight fake request carrying just .user/.auth - the 
 core.auth_context's helpers and ScopedMCPToolset actually read.
 """
 
-from datetime import timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -20,6 +20,7 @@ from accounts.tokens import generate_secret, hash_secret, visible_prefix
 from activities.mcp import ActivityMCPTools
 from activities.models import Activity, ActivityTag, Record, Tag
 from athletes.mcp import AthleteMCPTools
+from athletes.models import AcceptedThresholdCandidate, ThresholdHistory
 from authn.oauth_utils import issue_token_pair
 from core.models import generate_id
 from gear.mcp import GearMCPTools
@@ -1049,6 +1050,142 @@ class AthleteToolsTests(TestCase):
 
         with self.assertRaises(ValidationError):
             tools.list_best_efforts(kind="not-a-real-kind")
+
+    def test_list_threshold_history_returns_the_full_ledger_most_recent_first(self) -> None:
+        athlete = User.objects.create_user(email="mcp-threshold-history@example.cc", password="x", name="Athlete")
+        ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=250,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="manual",
+        )
+        ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=260,
+            effective_from=date(2026, 2, 1),
+            current_from=date(2026, 2, 1),
+            kind="manual",
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_threshold_history(field="ftp")
+
+        self.assertEqual(result["field"], "ftp")
+        self.assertEqual([e["value"] for e in result["data"]], [260, 250])
+        self.assertEqual(result["data"][0]["kind"], "manual")
+        self.assertEqual(result["data"][0]["effective_from"], "2026-02-01")
+
+    def test_list_threshold_history_filters_by_date_range(self) -> None:
+        athlete = User.objects.create_user(email="mcp-threshold-history-range@example.cc", password="x", name="Athlete")
+        ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=240,
+            effective_from=date(2025, 1, 1),
+            current_from=date(2025, 1, 1),
+            kind="manual",
+        )
+        in_range = ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=250,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="manual",
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_threshold_history(field="ftp", from_date="2025-06-01", to_date="2026-06-01")
+
+        self.assertEqual(len(result["data"]), 1)
+        self.assertEqual(result["data"][0]["value"], in_range.value_numeric)
+
+    def test_list_threshold_candidates_classifies_each_activity(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-threshold-candidates@example.cc", password="x", name="Athlete", ftp=200
+        )
+
+        def make_ride(name: str, start_date, power: int, duration_seconds: int = 1200) -> Activity:
+            activity = Activity.objects.create(
+                id=generate_id("act"),
+                athlete=athlete,
+                sport="bike",
+                name=name,
+                start_date=start_date,
+                moving_time=duration_seconds,
+            )
+            for t in range(duration_seconds):
+                Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+            return activity
+
+        qualified = make_ride("Qualified", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), 230)
+        rejected = make_ride("Rejected", datetime(2026, 1, 5, 7, 0, tzinfo=UTC), 422)
+        accepted = make_ride("Accepted", datetime(2026, 1, 10, 7, 0, tzinfo=UTC), 422)
+        AcceptedThresholdCandidate.objects.create(athlete=athlete, field="ftp", activity_id=accepted.id)
+        too_short = make_ride("TooShort", datetime(2026, 1, 15, 7, 0, tzinfo=UTC), 230, duration_seconds=600)
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_threshold_candidates(field="ftp", from_date="2026-01-01", to_date="2026-01-31")
+
+        by_id = {c["activity_id"]: c for c in result["data"]}
+        self.assertEqual(by_id[qualified.id]["status"], "qualified")
+        self.assertEqual(by_id[rejected.id]["status"], "rejected_sanity")
+        self.assertEqual(by_id[accepted.id]["status"], "accepted")
+        self.assertEqual(by_id[too_short.id]["status"], "too_short")
+        self.assertIsNone(by_id[too_short.id]["implied_value"])
+
+    def test_get_fitness_trend_sport_filter_excludes_other_sports(self) -> None:
+        athlete = User.objects.create_user(email="mcp-fitness-trend-sport@example.cc", password="x", name="Athlete")
+        today = timezone.now().date()
+        Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Ride",
+            start_date=timezone.now(),
+            tss=100,
+        )
+        Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="run",
+            name="Run",
+            start_date=timezone.now(),
+            tss=50,
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        bike_only = tools.get_fitness_trend(from_date=str(today), to_date=str(today), sport="bike")
+        combined = tools.get_fitness_trend(from_date=str(today), to_date=str(today))
+
+        self.assertLess(bike_only["data"][0]["ctl"], combined["data"][0]["ctl"])
+
+    def test_get_fitness_trend_rejects_an_unknown_sport(self) -> None:
+        athlete = User.objects.create_user(email="mcp-fitness-trend-bad-sport@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.get_fitness_trend(sport="triathlon")
+
+    def test_get_threshold_settings_returns_the_athletes_settings(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-threshold-settings@example.cc",
+            password="x",
+            name="Athlete",
+            threshold_window_days=60,
+            threshold_sanity_pct=20,
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.get_threshold_settings()
+
+        self.assertEqual(result["threshold_window_days"], 60)
+        self.assertEqual(result["threshold_sanity_pct"], 20)
+        self.assertEqual(result["ftp_calculation_method"], athlete.ftp_calculation_method)
+        self.assertEqual(result["running_power_source"], athlete.running_power_source)
 
 
 class GearAndRaceToolsTests(TestCase):

@@ -35,6 +35,23 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	// dashboard summary's "current + previous" pair. Tiebroken by id - see the comment above.
 	List<ThresholdHistory> findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(String athleteId, ThresholdField field);
 
+	// list_threshold_history MCP tool's optional date-range restriction - `fromDate`/`toDate` are
+	// each independently optional, so a derived "Between" method (which requires both bounds)
+	// doesn't fit; mirrors the "(:param is null or ...)" optional-filter shape used elsewhere in
+	// this repository (see findDecouplingBackfillCandidates in ActivityRepository). Named
+	// `fromDate`/`toDate`, not `from`/`to` - the latter are JPQL reserved words (the FROM clause),
+	// so using them as bind parameter names fails to parse. The `cast(... as date)` on the two
+	// `is null` checks works around a Postgres/JDBC limitation, not a JPQL one: with a null-valued
+	// parameter whose only other occurrence is a typed comparison, the driver can still fail to
+	// infer that same type for the `is null` occurrence ("could not determine data type of
+	// parameter") - the explicit cast removes the ambiguity.
+	@Query("select t from ThresholdHistory t where t.athlete.id = :athleteId and t.field = :field "
+			+ "and (cast(:fromDate as date) is null or t.effectiveFrom >= :fromDate) "
+			+ "and (cast(:toDate as date) is null or t.effectiveFrom <= :toDate) "
+			+ "order by t.effectiveFrom desc, t.id desc")
+	List<ThresholdHistory> findByAthleteIdAndFieldInEffectiveFromRange(@Param("athleteId") String athleteId,
+			@Param("field") ThresholdField field, @Param("fromDate") LocalDate fromDate, @Param("toDate") LocalDate toDate);
+
 	// Export - oldest first (chronological), optionally narrowed to the fields a sport filter maps to.
 	List<ThresholdHistory> findByAthleteIdOrderByEffectiveFrom(String athleteId);
 

@@ -320,4 +320,13 @@ public class ThresholdHistoryService {
 						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind()))
 				.toList();
 	}
+
+	/** As {@link #ledgerFor}, but optionally restricted to entries whose effectiveFrom falls
+	 * within [from, to] - either bound may be null. Backs the list_threshold_history MCP tool. */
+	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field, LocalDate from, LocalDate to) {
+		return thresholdHistoryRepository.findByAthleteIdAndFieldInEffectiveFromRange(athlete.getId(), field, from, to).stream()
+				.map(entry -> new ThresholdHistoryEntryResponse(valueOf(field, entry), sourceActivityIdOf(entry),
+						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind()))
+				.toList();
+	}
 }
