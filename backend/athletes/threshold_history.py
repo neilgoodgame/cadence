@@ -18,7 +18,7 @@ from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
-from activities.models import Activity
+from activities.models import Activity, Record
 from races.models import Race
 
 from .models import AcceptedThresholdCandidate, ThresholdHistory
@@ -115,13 +115,25 @@ class ImpliedValueDetail:
     value: float
 
 
-def _implied_value_detail(activity: Activity, field: str) -> ImpliedValueDetail | None:
+def _implied_value_detail(
+    activity: Activity, field: str, records: list[tuple[int, int | None, float | None]] | None = None
+) -> ImpliedValueDetail | None:
     """Like _implied_value, but also returns the window label and the raw pre-transform value
     (e.g. the raw 20-min power before FTP's x0.95 multiplier) - None for the no-qualifying-
     effort case. Used directly by the Threshold suggestions feature's "implies" copy for a
     rejected candidate (threshold_suggestions.py); _implied_value below is a thin wrapper over
-    this for every other, much more numerous caller that only ever wanted the final value."""
-    records = list(activity.records.order_by("t").values_list("t", "power", "distance_km"))
+    this for every other, much more numerous caller that only ever wanted the final value.
+
+    `records` lets a caller scanning many activities in one call (rejected_candidates,
+    candidate_statuses, current_window_value) pass in a batch-fetched (t, power, distance_km)
+    list instead of this method querying per activity - see _batched_records_for's own
+    docstring for why a per-activity query doesn't scale for those callers (issue #500).
+    Omitted (None, not just empty), this activity's own records are fetched here directly - for
+    a caller considering one activity at a time where that's cheap enough on its own
+    (_replay_full_history_into's whole-history replay, upcoming_drop's 14-day recent-match
+    check)."""
+    if records is None:
+        records = list(activity.records.order_by("t").values_list("t", "power", "distance_km"))
     if not records:
         return None
     t_series = [r[0] for r in records]
@@ -170,6 +182,47 @@ def _implied_value(activity: Activity, field: str) -> float | None:
     qualifying effort (e.g. too short for the field's window)."""
     detail = _implied_value_detail(activity, field)
     return detail.value if detail is not None else None
+
+
+# Chunk size for _batched_records_for below - one query per chunk instead of one per activity
+# (issue #500), but still small enough that a chunk's worth of 1 Hz streams held in memory at
+# once stays bounded, rather than fetching a whole multi-hundred-activity request's records in
+# one shot.
+_RECORD_BATCH_SIZE = 20
+
+
+def _chunked(activities: Sequence[Activity], size: int = _RECORD_BATCH_SIZE) -> Iterator[Sequence[Activity]]:
+    for i in range(0, len(activities), size):
+        yield activities[i : i + size]
+
+
+def _batched_records_for(chunk: Sequence[Activity]) -> dict[str, list[tuple[int, int | None, float | None]]]:
+    """One query for every activity in `chunk`'s records, instead of one per activity (issue
+    #500): record is natively range-partitioned on `ts` (see the Record model's own docstring),
+    so a query that filters only by activity_id - no ts bound at all - can't be pruned to any
+    partition and has to fan out across every one of them; a scan over many activities (a whole
+    year of threshold-calibration candidates, for list_threshold_candidates) multiplies that fan-
+    out cost once per activity. Scoping by `chunk`'s own start_date span lets Postgres prune to
+    just the relevant few partitions instead - `chunk` should be one of _chunked's pieces, not a
+    whole request's activities at once, both to keep that span tight and to bound how many
+    activities' streams are held in memory at once (see _RECORD_BATCH_SIZE's own comment)."""
+    if not chunk:
+        return {}
+    activity_ids = [a.id for a in chunk]
+    # chunk is start_date-ordered (every caller below orders activities by start_date before
+    # chunking), so the first/last give the span cheaply - 1 day/2 days of padding on either
+    # edge comfortably covers any single activity's own duration.
+    ts_start = chunk[0].start_date - timedelta(days=1)
+    ts_end = chunk[-1].start_date + timedelta(days=2)
+    rows = (
+        Record.objects.filter(activity_id__in=activity_ids, ts__gte=ts_start, ts__lt=ts_end)
+        .order_by("activity_id", "t")
+        .values_list("activity_id", "t", "power", "distance_km")
+    )
+    batched: dict[str, list[tuple[int, int | None, float | None]]] = {}
+    for activity_id, t, power, distance_km in rows:
+        batched.setdefault(activity_id, []).append((t, power, distance_km))
+    return batched
 
 
 def _is_better(field: str, a: float, b: float) -> bool:
@@ -248,24 +301,29 @@ def current_window_value(athlete: User, field: str, as_of: date | None = None) -
     reference_value = _athlete_reference_value(athlete, field)
     accepted_ids = _accepted_activity_ids(athlete, field)
 
-    activities = Activity.objects.filter(
-        athlete=athlete,
-        sport=FIELD_SPORT[field],
-        start_date__date__gte=window_start,
-        start_date__date__lte=as_of,
-    ).order_by("start_date")
+    activities = list(
+        Activity.objects.filter(
+            athlete=athlete,
+            sport=FIELD_SPORT[field],
+            start_date__date__gte=window_start,
+            start_date__date__lte=as_of,
+        ).order_by("start_date")
+    )
 
     best: Candidate | None = _manual_anchor_candidate(athlete, field, window_start)
-    for activity in activities:
-        implied = _implied_value(activity, field)
-        if implied is None:
-            continue
-        if activity.id not in accepted_ids and not _within_sanity_band(
-            field, implied, reference_value, athlete.threshold_sanity_pct
-        ):
-            continue
-        if best is None or _is_better(field, implied, best.implied_value):
-            best = Candidate(activity_id=activity.id, date=activity.start_date.date(), implied_value=implied)
+    for chunk in _chunked(activities):
+        batched_records = _batched_records_for(chunk)
+        for activity in chunk:
+            detail = _implied_value_detail(activity, field, batched_records.get(activity.id, []))
+            implied = detail.value if detail is not None else None
+            if implied is None:
+                continue
+            if activity.id not in accepted_ids and not _within_sanity_band(
+                field, implied, reference_value, athlete.threshold_sanity_pct
+            ):
+                continue
+            if best is None or _is_better(field, implied, best.implied_value):
+                best = Candidate(activity_id=activity.id, date=activity.start_date.date(), implied_value=implied)
     return best
 
 
@@ -697,35 +755,46 @@ def rejected_candidates(athlete: User, field: str, as_of: date | None = None) ->
     reference_value = _athlete_reference_value(athlete, field)
     accepted_ids = _accepted_activity_ids(athlete, field)
 
-    activities = Activity.objects.filter(
-        athlete=athlete,
-        sport=FIELD_SPORT[field],
-        start_date__date__gte=window_start,
-        start_date__date__lte=as_of,
-    ).order_by("start_date")
+    activities = list(
+        Activity.objects.filter(
+            athlete=athlete,
+            sport=FIELD_SPORT[field],
+            start_date__date__gte=window_start,
+            start_date__date__lte=as_of,
+        ).order_by("start_date")
+    )
 
     candidates: list[RejectedCandidate] = []
-    for activity in activities:
-        if activity.id in accepted_ids:
-            continue
-        detail = _implied_value_detail(activity, field)
-        if detail is None:
-            continue
-        if _within_sanity_band(field, detail.value, reference_value, athlete.threshold_sanity_pct):
-            continue
-        # Reaching here already proves reference_value is a real, non-zero number - the sanity
-        # band above only ever fails when it is (see _within_sanity_band's own None/0 passthrough).
-        if not _is_better(field, detail.value, reference_value):
-            continue
-        candidates.append(
-            RejectedCandidate(
-                activity_id=activity.id,
-                date=activity.start_date.date(),
-                implied_value=detail.value,
-                window=detail.window,
-                raw_value=detail.raw_value,
+    for chunk in _chunked(activities):
+        batched_records = _batched_records_for(chunk)
+        for activity in chunk:
+            if activity.id in accepted_ids:
+                continue
+            try:
+                detail = _implied_value_detail(activity, field, batched_records.get(activity.id, []))
+            except Exception:
+                # One bad activity's stream shouldn't take down the whole suggestions scan - skip
+                # it and keep going (issue #500's class of bug, applied defensively here too even
+                # without a reproduced trigger for it).
+                continue
+            if detail is None:
+                continue
+            if _within_sanity_band(field, detail.value, reference_value, athlete.threshold_sanity_pct):
+                continue
+            # Reaching here already proves reference_value is a real, non-zero number - the
+            # sanity band above only ever fails when it is (see _within_sanity_band's own
+            # None/0 passthrough).
+            if not _is_better(field, detail.value, reference_value):
+                continue
+            candidates.append(
+                RejectedCandidate(
+                    activity_id=activity.id,
+                    date=activity.start_date.date(),
+                    implied_value=detail.value,
+                    window=detail.window,
+                    raw_value=detail.raw_value,
+                )
             )
-        )
 
     candidates.sort(key=lambda c: c.implied_value, reverse=field not in LOWER_IS_BETTER)
     return candidates
@@ -735,10 +804,13 @@ def rejected_candidates(athlete: User, field: str, as_of: date | None = None) ->
 class CandidateStatus:
     activity_id: str
     date: date
-    status: str  # "qualified" | "rejected_sanity" | "accepted" | "too_short"
+    status: str  # "qualified" | "rejected_sanity" | "accepted" | "too_short" | "error"
     implied_value: float | None
     raw_value: float | None
     window: str | None
+    # Set only for status="error" - one activity's implied-value computation raised, surfaced
+    # here instead of failing candidate_statuses' whole call (issue #500).
+    error_reason: str | None = None
 
 
 def candidate_statuses(athlete: User, field: str, from_date: date, to_date: date) -> list[CandidateStatus]:
@@ -750,33 +822,42 @@ def candidate_statuses(athlete: User, field: str, from_date: date, to_date: date
     effort at all, e.g. too short for the field's window). Unlike rejected_candidates, returns
     every activity in range, not just the rejected-and-better subset - built for the Threshold
     suggestions calibration tooling (list_threshold_candidates), to see what a model would have
-    had to predict between ledger entries."""
+    had to predict between ledger entries. A per-activity computation failure is surfaced as
+    status="error" with error_reason set, rather than failing the whole call (issue #500)."""
     reference_value = _athlete_reference_value(athlete, field)
     accepted_ids = _accepted_activity_ids(athlete, field)
 
-    activities = Activity.objects.filter(
-        athlete=athlete,
-        sport=FIELD_SPORT[field],
-        start_date__date__gte=from_date,
-        start_date__date__lte=to_date,
-    ).order_by("start_date")
+    activities = list(
+        Activity.objects.filter(
+            athlete=athlete,
+            sport=FIELD_SPORT[field],
+            start_date__date__gte=from_date,
+            start_date__date__lte=to_date,
+        ).order_by("start_date")
+    )
 
     statuses: list[CandidateStatus] = []
-    for activity in activities:
-        activity_date = activity.start_date.date()
-        detail = _implied_value_detail(activity, field)
-        if detail is None:
-            statuses.append(CandidateStatus(activity.id, activity_date, "too_short", None, None, None))
-            continue
-        if activity.id in accepted_ids:
-            status = "accepted"
-        elif _within_sanity_band(field, detail.value, reference_value, athlete.threshold_sanity_pct):
-            status = "qualified"
-        else:
-            status = "rejected_sanity"
-        statuses.append(
-            CandidateStatus(activity.id, activity_date, status, detail.value, detail.raw_value, detail.window)
-        )
+    for chunk in _chunked(activities):
+        batched_records = _batched_records_for(chunk)
+        for activity in chunk:
+            activity_date = activity.start_date.date()
+            try:
+                detail = _implied_value_detail(activity, field, batched_records.get(activity.id, []))
+            except Exception as e:
+                statuses.append(CandidateStatus(activity.id, activity_date, "error", None, None, None, str(e)))
+                continue
+            if detail is None:
+                statuses.append(CandidateStatus(activity.id, activity_date, "too_short", None, None, None))
+                continue
+            if activity.id in accepted_ids:
+                status = "accepted"
+            elif _within_sanity_band(field, detail.value, reference_value, athlete.threshold_sanity_pct):
+                status = "qualified"
+            else:
+                status = "rejected_sanity"
+            statuses.append(
+                CandidateStatus(activity.id, activity_date, status, detail.value, detail.raw_value, detail.window)
+            )
     return statuses
 
 

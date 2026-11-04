@@ -1137,6 +1137,73 @@ class AthleteToolsTests(TestCase):
         self.assertEqual(by_id[too_short.id]["status"], "too_short")
         self.assertIsNone(by_id[too_short.id]["implied_value"])
 
+    def test_list_threshold_candidates_treats_an_activity_with_no_records_as_too_short(self) -> None:
+        # issue #500: a missing/partial record stream (here, no records at all) must classify as
+        # too_short rather than raising - candidate_statuses now batch-fetches records per chunk
+        # of activities (threshold_history._batched_records_for) instead of one query per
+        # activity, so an activity with literally no rows has to fall back to an empty list, not
+        # a missing-key exception.
+        athlete = User.objects.create_user(
+            email="mcp-threshold-candidates-empty-stream@example.cc", password="x", name="Athlete", ftp=200
+        )
+        no_records = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="No stream",
+            start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC),
+            moving_time=1200,
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_threshold_candidates(field="ftp", from_date="2026-01-01", to_date="2026-01-31")
+
+        self.assertEqual(len(result["data"]), 1)
+        self.assertEqual(result["data"][0]["activity_id"], no_records.id)
+        self.assertEqual(result["data"][0]["status"], "too_short")
+        self.assertIsNone(result["data"][0]["implied_value"])
+
+    def test_list_threshold_candidates_classifies_every_activity_across_multiple_record_batches(self) -> None:
+        # issue #500's actual fix: candidate_statuses batches its record fetch in chunks (see
+        # threshold_history._RECORD_BATCH_SIZE) instead of one query per activity, to avoid
+        # record's ts-partition fanout a per-activity, no-ts-predicate query causes at scale.
+        # More activities than one chunk holds, so this only passes if every activity still gets
+        # its own records correctly - not just the ones in the first chunk.
+        athlete = User.objects.create_user(
+            email="mcp-threshold-candidates-many-batches@example.cc", password="x", name="Athlete", ftp=200
+        )
+
+        def make_ride(name: str, start_date, power: int, duration_seconds: int = 1200) -> Activity:
+            activity = Activity.objects.create(
+                id=generate_id("act"),
+                athlete=athlete,
+                sport="bike",
+                name=name,
+                start_date=start_date,
+                moving_time=duration_seconds,
+            )
+            for t in range(duration_seconds):
+                Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+            return activity
+
+        activity_count = 45
+        activities = [
+            make_ride(f"Ride {i}", datetime(2026, 1, 1, 7, 0, tzinfo=UTC) + timedelta(days=i), 230)
+            for i in range(activity_count)
+        ]
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_threshold_candidates(
+            field="ftp", from_date="2026-01-01", to_date=(date(2026, 1, 1) + timedelta(days=activity_count)).isoformat()
+        )
+
+        by_id = {c["activity_id"]: c for c in result["data"]}
+        self.assertEqual(len(result["data"]), activity_count)
+        for activity in activities:
+            entry = by_id[activity.id]
+            self.assertEqual(entry["status"], "qualified", f"activity {activity.id}")
+            self.assertEqual(entry["implied_value"], round(0.95 * 230))
+
     def test_get_fitness_trend_sport_filter_excludes_other_sports(self) -> None:
         athlete = User.objects.create_user(email="mcp-fitness-trend-sport@example.cc", password="x", name="Athlete")
         today = timezone.now().date()
