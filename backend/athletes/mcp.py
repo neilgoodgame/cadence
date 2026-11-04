@@ -297,6 +297,7 @@ class AthleteMCPTools(ScopedMCPToolset):
                     "effective_from": entry.effective_from.isoformat(),
                     "current_from": entry.current_from.isoformat(),
                     "is_correction_only": entry.is_correction_only,
+                    "created_at": entry.created_at.isoformat(),
                 }
                 for entry in entries
             ],

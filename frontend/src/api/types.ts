@@ -242,6 +242,9 @@ export interface ThresholdHistoryPoint {
    * used by any activity-scoped lookup in its span - just excluded from "current" everywhere
    * else. See PATCH /v1/athletes/{id}'s effective_from. */
   is_correction_only: boolean;
+  /** When this row was actually saved - distinct from effective_from for a backdated manual
+   * row, where the ledger shows both ("effective 1 Nov · entered 3 Nov" - issue #505). */
+  created_at: string;
 }
 
 export interface ThresholdHistoryResponse {

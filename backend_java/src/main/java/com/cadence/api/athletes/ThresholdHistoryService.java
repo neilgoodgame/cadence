@@ -450,7 +450,8 @@ public class ThresholdHistoryService {
 	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field) {
 		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).stream()
 				.map(entry -> new ThresholdHistoryEntryResponse(valueOf(field, entry), sourceActivityIdOf(entry),
-						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind(), entry.isCorrectionOnly()))
+						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind(), entry.isCorrectionOnly(),
+						entry.getCreatedAt()))
 				.toList();
 	}
 
@@ -459,7 +460,8 @@ public class ThresholdHistoryService {
 	public List<ThresholdHistoryEntryResponse> ledgerFor(User athlete, ThresholdField field, LocalDate from, LocalDate to) {
 		return thresholdHistoryRepository.findByAthleteIdAndFieldInEffectiveFromRange(athlete.getId(), field, from, to).stream()
 				.map(entry -> new ThresholdHistoryEntryResponse(valueOf(field, entry), sourceActivityIdOf(entry),
-						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind(), entry.isCorrectionOnly()))
+						entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserIdOf(entry), entry.getKind(), entry.isCorrectionOnly(),
+						entry.getCreatedAt()))
 				.toList();
 	}
 }

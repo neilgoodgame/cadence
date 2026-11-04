@@ -783,6 +783,7 @@ class ThresholdHistoryListView(APIView):
                 "current_from": entry.current_from,
                 "kind": entry.kind,
                 "is_correction_only": entry.is_correction_only,
+                "created_at": entry.created_at,
             }
             for entry in entries
         ]
@@ -931,6 +932,7 @@ class ThresholdSuggestionAcceptView(APIView):
                 "source_activity_id": entry.source_activity_id,
                 "effective_from": entry.effective_from,
                 "current_from": entry.current_from,
+                "created_at": entry.created_at,
             }
         )
 

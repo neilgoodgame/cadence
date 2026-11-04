@@ -473,6 +473,12 @@ export function ThresholdHistoryScreen() {
                   const revealed = entry.effective_from !== entry.current_from;
                   const delta = i < entries.length - 1 ? deltaLabel(active.field as ThresholdFieldName, entry.value, entries[i + 1].value) : null;
                   const barPct = Math.round((days[i] / maxDays) * 100);
+                  // A manual row's "effective from" is always entered deliberately - when it was
+                  // actually saved (created_at) can be a different date than what it's backdated
+                  // to (current_from, which equals effective_from for every manual row - see
+                  // ThresholdHistoryPoint). Worth showing only when they differ; same-day entries
+                  // would just repeat the date already shown (issue #505).
+                  const backdated = entry.set_by_user_id !== null && entry.created_at.slice(0, 10) !== entry.current_from;
                   return (
                     <div
                       key={`${entry.current_from}-${i}`}
@@ -511,7 +517,14 @@ export function ThresholdHistoryScreen() {
                       <span className="mono" style={{ fontSize: 12, color: "var(--ink3)", whiteSpace: "nowrap" }}>
                         {delta ?? "—"}
                       </span>
-                      <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>{fmtShortDate(entry.current_from)}</span>
+                      <span className="mono" style={{ fontSize: 12, color: "var(--ink2)", display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
+                        {fmtShortDate(entry.current_from)}
+                        {backdated && (
+                          <span style={{ color: "var(--ink3)" }} title={`Entered ${fmtShortDate(entry.created_at)}`}>
+                            &middot; entered {fmtShortDateNoYear(entry.created_at)}
+                          </span>
+                        )}
+                      </span>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <div style={{ width: 56, height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden", flexShrink: 0 }}>
                           <div style={{ width: `${barPct}%`, height: "100%", background: "var(--ember)", borderRadius: 3 }} />
