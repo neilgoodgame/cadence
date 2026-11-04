@@ -271,6 +271,13 @@ def _accepted_activity_ids(athlete: User, field: str) -> set[str]:
     )
 
 
+def _row_value(field: str, row: ThresholdHistory) -> float | None:
+    """A ledger row's own value as a plain float, regardless of field (pace is stored as "M:SS",
+    every other field as a plain number) - shared by _manual_anchor_candidate above and
+    _replay_full_history_into's manual-row merge below."""
+    return _mmss_to_seconds(row.value_pace) if field == "threshold_pace" else row.value_numeric
+
+
 def _manual_anchor_candidate(athlete: User, field: str, window_start: date) -> Candidate | None:
     """A manual value lasts until it's beaten by a later qualifying activity or ages out of the
     window, same as any other ledger entry (issue #484) - current_window_value's activity-only
@@ -280,7 +287,7 @@ def _manual_anchor_candidate(athlete: User, field: str, window_start: date) -> C
     latest = _latest_entry(athlete, field)
     if latest is None or latest.kind != "manual" or latest.effective_from < window_start:
         return None
-    manual_value = _mmss_to_seconds(latest.value_pace) if field == "threshold_pace" else latest.value_numeric
+    manual_value = _row_value(field, latest)
     if manual_value is None:
         return None
     return Candidate(activity_id=None, date=latest.effective_from, implied_value=manual_value)
@@ -338,16 +345,46 @@ def _replay_full_history_into(
     monotonic list of not-yet-expired, not-yet-dominated candidates, kept ordered so the front is
     always the current best (mirrors the classic sliding-window-maximum deque trick - candidates
     it dominates can never become the max again while it's still in the window, so they're safe
-    to drop the moment a stronger, more recent one arrives)."""
+    to drop the moment a stronger, more recent one arrives).
+
+    Every still-current (not correction-only) manual row is merged into the same window at its
+    own effective_from, exactly like _manual_anchor_candidate's single as-of snapshot but
+    repeated at every point in the replay (issue #504) - rebuild_history_stream only deletes
+    kind="measured" rows before calling this, so a manual row's own ledger entry is never
+    rewritten here; this only makes sure a *measured* activity dated after it is correctly
+    suppressed/revealed relative to it, the same #484 rule current_window_value already gets via
+    _manual_anchor_candidate. A correction-only row is deliberately excluded from this merge - it
+    never competed to be current, so it shouldn't start winning the window on replay either."""
     activities = list(Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field]).order_by("start_date"))
     total = len(activities)
     accepted_ids = _accepted_activity_ids(athlete, field)
+    manual_rows = list(
+        ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="manual", is_correction_only=False).order_by(
+            "effective_from"
+        )
+    )
+    next_manual_idx = 0
 
     window: list[Candidate] = []
     current_value: float | None = None
 
     for i, activity in enumerate(activities):
         activity_date = activity.start_date.date()
+
+        # Merge in every manual row whose effective_from has arrived as of this activity, before
+        # this activity's own candidacy is decided - it has to compete against (and potentially
+        # be suppressed by) a manual row dated on or before it, same ordering
+        # current_window_value already gets for free from a single as-of snapshot.
+        while next_manual_idx < len(manual_rows) and manual_rows[next_manual_idx].effective_from <= activity_date:
+            manual_row = manual_rows[next_manual_idx]
+            next_manual_idx += 1
+            manual_value = _row_value(field, manual_row)
+            if manual_value is not None:
+                window = [c for c in window if not _is_better(field, manual_value, c.implied_value)]
+                # activity_id None, same as _manual_anchor_candidate - this candidate's ledger
+                # row already exists (it wasn't deleted), so no entry is written for it below.
+                window.append(Candidate(activity_id=None, date=manual_row.effective_from, implied_value=manual_value))
+
         cutoff = activity_date - timedelta(days=athlete.threshold_window_days)
         window = [c for c in window if c.date > cutoff]
 
@@ -365,7 +402,10 @@ def _replay_full_history_into(
         new_value = best.implied_value if best else None
         if new_value != current_value:
             current_value = new_value
-            if best is not None:
+            # Only a measured winner (a real activity) needs a fresh entry - a manual winner's
+            # own row already exists in the ledger untouched (see this function's own
+            # docstring), so writing one here would duplicate it.
+            if best is not None and best.activity_id is not None:
                 # current_from is *this* iteration's activity_date - the date whose recompute
                 # pass discovered best as the new window winner - not best.date (effective_from),
                 # which can be much earlier when best only wins now because a better, more
@@ -696,11 +736,17 @@ def is_stale(athlete: User, field: str, as_of: date | None = None) -> bool:
 
 
 def rebuild_history_stream(athlete: User, field: str) -> Iterator[tuple[int, int]]:
-    """The bulk 'recompute history from oldest' tool - replaces the entire ledger for one field
-    with a fresh replay, then syncs the athlete's cached profile value to the result (or clears
-    it if the athlete has no qualifying activities for this field at all). Yields (current,
-    total) progress after each activity processed, for the SSE bulk-rebuild endpoint."""
-    ThresholdHistory.objects.filter(athlete=athlete, field=field).delete()
+    """The bulk 'recompute history from oldest' tool - replaces the *measured* portion of the
+    ledger for one field with a fresh replay, then syncs the athlete's cached profile value to
+    whatever is now current (or clears it if there's no qualifying row at all). A manual or
+    correction-only row is never deleted or rederived here - it isn't something activities can
+    reconstruct, so wiping it on every rebuild would silently discard a real, intentional
+    correction (issue #504; #493 requires the opposite - "rebuild must keep backdated manual
+    rows"). _replay_full_history_into already merges those surviving rows back into the window
+    at their own effective_from, so measured activities are still correctly suppressed/revealed
+    relative to them - see its own docstring. Yields (current, total) progress after each
+    activity processed, for the SSE bulk-rebuild endpoint."""
+    ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="measured").delete()
     entries: list[ThresholdHistoryEntry] = []
     yield from _replay_full_history_into(athlete, field, entries)
 
@@ -717,11 +763,15 @@ def rebuild_history_stream(athlete: User, field: str) -> Iterator[tuple[int, int
         )
         for entry in entries
     )
-    current = entries[-1].value if entries else None
+    # The current row after the rebuild, not "the replay's last entry" - a still-valid manual
+    # row (kept, not deleted above) can be more recent than any measured row the replay just
+    # wrote, and _latest_entry already excludes a correction-only row from ever being mistaken
+    # for current (same lookup _manual_anchor_candidate/is_stale use).
+    current_row = _latest_entry(athlete, field)
     if field == "threshold_pace":
-        setattr(athlete, field, _seconds_to_mmss(current) if current is not None else "")
+        setattr(athlete, field, current_row.value_pace if current_row is not None else "")
     else:
-        setattr(athlete, field, round(current) if current is not None else None)
+        setattr(athlete, field, current_row.value_numeric if current_row is not None else None)
     athlete.save(update_fields=[field])
 
 

@@ -55,6 +55,13 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	// means this one isn't the chronologically latest thing recorded.
 	boolean existsByAthleteIdAndFieldAndEffectiveFromGreaterThan(String athleteId, ThresholdField field, LocalDate effectiveFrom);
 
+	// ThresholdHistoryCalculator.replayFullHistory's manual-row merge (issue #504) - every
+	// still-current (not correction-only) manual row, oldest first, so a rebuild can re-inject
+	// each one as a window candidate at its own effectiveFrom instead of silently losing it to
+	// the measured-only replay.
+	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(
+			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
+
 	// list_threshold_history MCP tool's optional date-range restriction - `fromDate`/`toDate` are
 	// each independently optional, so a derived "Between" method (which requires both bounds)
 	// doesn't fit; mirrors the "(:param is null or ...)" optional-filter shape used elsewhere in
@@ -105,6 +112,17 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	@Modifying
 	@Query("delete from ThresholdHistory t where t.athlete.id = :athleteId and t.field = :field")
 	void deleteByAthleteIdAndField(@Param("athleteId") String athleteId, @Param("field") ThresholdField field);
+
+	// rebuildHistory's actual delete (issue #504) - a full rebuild replays activities only, so it
+	// must only ever touch MEASURED rows: a manual or correction-only row isn't rederivable from
+	// activities at all (that's the whole point of it), so deleting it here would silently lose a
+	// real, intentional correction on every rebuild. Same bulk-@Modifying reasoning as
+	// deleteByAthleteIdAndField above - entityManager.clear() inside the replay would otherwise
+	// discard a derived deleteBy's unflushed pending removal.
+	@Modifying
+	@Query("delete from ThresholdHistory t where t.athlete.id = :athleteId and t.field = :field and t.kind = :kind")
+	void deleteByAthleteIdAndFieldAndKind(
+			@Param("athleteId") String athleteId, @Param("field") ThresholdField field, @Param("kind") ThresholdHistoryKind kind);
 
 	// Threshold suggestions' undo-accept: removes the ledger row accept() created for this
 	// candidate, so a fresh recompute isn't comparing the sanity band against itself. See

@@ -145,23 +145,48 @@ updated to match.
 
 `rebuild_history_stream` (Django) / `rebuildHistory` (Java) is the bulk
 "recompute history from oldest" tool. It reports progress over SSE. It deletes
-the existing ledger for one field and then replays **every** activity of that
-sport, oldest first:
+only the `measured` rows of the ledger for one field - a manual or
+correction-only row (section 3.3) is never deleted or rederived here, since it
+isn't something activities can reconstruct (issue #504: an earlier version
+deleted the whole ledger, silently discarding any real, intentional
+correction on every rebuild). It then replays **every** activity of that
+sport, oldest first, merging in every still-current (not correction-only)
+manual row at its own `effective_from` as it's reached:
 
 1. Drop candidates older than `activity_date − threshold_window_days` from the
-   window.
-2. Work out this activity's implied value. It qualifies if it was accepted or
+   window - a manual candidate ages out the same way as any other.
+2. Before this activity is considered, merge in any manual row whose
+   `effective_from` has arrived: it unconditionally enters the window (no
+   sanity check, same as an accepted candidate) and removes anything it beats,
+   same as step 3 below. This is section 3.3's "manual value not replaced
+   early by a lower window-best ride" rule (issue #484), generalized from a
+   single as-of snapshot to every point in the replay.
+3. Work out this activity's implied value. It qualifies if it was accepted or
    passes the sanity band against the **current replay value**.
-3. If it qualifies, remove every candidate in the window that it beats, then add
+4. If it qualifies, remove every candidate in the window that it beats, then add
    it. The window is a monotonic list (the standard sliding-window-maximum
    technique), so the front is always the best.
-4. If the front's value differs from the previous value, record an entry with:
+5. If the front's value differs from the previous value, record an entry with:
    - `effective_from` = the date of the winning activity
    - `current_from` = **this** activity's date, which is when the replay
      discovered the new winner
 
-At the end, the athlete's profile field is set to the last entry's value. If
-there is no entry at all, it is cleared.
+   A manual row winning the window doesn't get a fresh entry recorded here -
+   its own row already exists in the ledger, untouched by this rebuild.
+
+At the end, the athlete's profile field is set from the current-row lookup
+(section 3.4's "which row is current," excluding correction-only rows) -
+**not** from the replay's last entry, since a still-valid manual row can be
+more recent than any measured row the replay just wrote. If there is no
+current row at all, the field is cleared.
+
+A correction-only row is preserved too, but is deliberately **not** merged
+into the replay's window - it never competed to be current, so it shouldn't
+start winning on replay either. (The window-max replay doesn't yet use a
+correction-only row as the sanity-band reference during its own span, the
+way section 3.3's proposal for this feature originally envisioned - a
+correction changing which *later* activities qualify. That refinement is
+still open.)
 
 ### 3.3 Values entered by hand
 

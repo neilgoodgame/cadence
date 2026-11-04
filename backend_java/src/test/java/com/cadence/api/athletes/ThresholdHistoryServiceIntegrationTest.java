@@ -458,6 +458,63 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(2);
 	}
 
+	// Issue #504: a rebuild used to delete the *entire* ledger (every kind), then write back only
+	// measured rows from the replay and set the profile field from the replay's last entry - so a
+	// manual or backdated-correction row, and any profile value it implied, was silently lost on
+	// every rebuild. These three cover the fix: a manual row survives and the profile value comes
+	// from the existing current-row lookup, a still-valid manual row correctly suppresses a lower
+	// later activity during the replay (not just in currentWindowValue - issue #484 generalized to
+	// the bulk rebuild), and a correction-only row survives without ever becoming current.
+	@Test
+	void rebuildKeepsAManualRowAndDerivesTheProfileValueFromIt() {
+		User athlete = newAthlete("rebuild-keeps-manual@example.cc");
+		newPowerActivity(athlete, Instant.parse("2024-01-01T00:00:00Z"), 200, 1200);
+		newEntry(athlete, ThresholdField.FTP, 247, LocalDate.of(2024, 6, 1), ThresholdHistoryKind.MANUAL);
+
+		int measuredCount = thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+
+		assertThat(measuredCount).isEqualTo(1);
+		List<ThresholdHistory> ledger = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
+		assertThat(ledger).hasSize(2);
+		assertThat(ledger).anyMatch(e -> e.getKind() == ThresholdHistoryKind.MANUAL);
+		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getFtp()).isEqualTo(247);
+	}
+
+	@Test
+	void rebuildDoesNotLetALowerMeasuredActivityOverrideAStillValidManualRow() {
+		User athlete = newAthlete("rebuild-manual-suppresses-lower@example.cc");
+		newEntry(athlete, ThresholdField.FTP, 247, LocalDate.of(2024, 1, 1), ThresholdHistoryKind.MANUAL);
+		// Within the default 112-day window and the default 30% sanity band either way, so it's
+		// only the manual row's own dominance (issue #484's rule) keeping this from winning -
+		// not sanity filtering or the window aging it out.
+		newPowerActivity(athlete, Instant.parse("2024-02-01T00:00:00Z"), 220, 1200);
+
+		thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+
+		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getFtp()).isEqualTo(247);
+		List<ThresholdHistory> current = thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
+		assertThat(current).hasSize(1);
+		assertThat(current.get(0).getKind()).isEqualTo(ThresholdHistoryKind.MANUAL);
+	}
+
+	@Test
+	void rebuildKeepsACorrectionOnlyRowWithoutLettingItBecomeCurrent() {
+		User athlete = newAthlete("rebuild-keeps-correction-only@example.cc");
+		newPowerActivity(athlete, Instant.parse("2024-01-01T00:00:00Z"), 200, 1200);
+		ThresholdHistory correction = newEntry(athlete, ThresholdField.FTP, 180, LocalDate.of(2023, 1, 1), ThresholdHistoryKind.MANUAL);
+		correction.setCorrectionOnly(true);
+		thresholdHistoryRepository.save(correction);
+
+		thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+
+		List<ThresholdHistory> ledger = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
+		assertThat(ledger).anyMatch(e -> e.getKind() == ThresholdHistoryKind.MANUAL && e.isCorrectionOnly());
+		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getFtp()).isNotEqualTo(180);
+	}
+
 	@Test
 	void recordManualValueDefaultsSetByToTheAthleteItself() {
 		User athlete = newAthlete("manual-threshold-setby-default@example.cc");

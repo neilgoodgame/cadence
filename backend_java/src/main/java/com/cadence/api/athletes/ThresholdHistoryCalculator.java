@@ -301,9 +301,16 @@ public class ThresholdHistoryCalculator {
 				|| latest.getEffectiveFrom().isBefore(windowStart)) {
 			return null;
 		}
-		Double manualValue = field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(latest.getValuePace())
-				: latest.getValueNumeric() == null ? null : latest.getValueNumeric().doubleValue();
+		Double manualValue = rowValue(field, latest);
 		return manualValue == null ? null : new Candidate(null, latest.getEffectiveFrom(), manualValue);
+	}
+
+	/** A ledger row's own value as a plain double, regardless of field (pace is stored as "M:SS",
+	 * every other field as a plain number) - shared by manualAnchorCandidate above and
+	 * replayFullHistory's manual-row merge below. */
+	private static Double rowValue(ThresholdField field, ThresholdHistory row) {
+		return field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(row.getValuePace())
+				: row.getValueNumeric() == null ? null : row.getValueNumeric().doubleValue();
 	}
 
 	/** The best qualifying candidate among the athlete's activities in the trailing window ending
@@ -357,6 +364,15 @@ public class ThresholdHistoryCalculator {
 	 * max again while it's still in the window, so they're safe to drop the moment a stronger,
 	 * more recent one arrives).
 	 *
+	 * <p>Every still-current (not correction-only) manual row is merged into the same window at
+	 * its own effectiveFrom, exactly like manualAnchorCandidate's single as-of snapshot but
+	 * repeated at every point in the replay (issue #504) - rebuildHistory only deletes MEASURED
+	 * rows before calling this, so a manual row's own ledger entry is never rewritten here; this
+	 * only makes sure a *measured* activity dated after it is correctly suppressed/revealed
+	 * relative to it, the same #484 rule currentWindowValue already gets via manualAnchorCandidate.
+	 * A correction-only row is deliberately excluded from this merge - it never competed to be
+	 * current, so it shouldn't start winning the window on replay either.
+	 *
 	 * <p>Used only by the bulk "recompute history from oldest" tool - currentWindowValue is what
 	 * ingest/refresh use day to day. */
 	public List<ThresholdHistoryEntry> replayFullHistory(User athlete, ThresholdField field) {
@@ -369,6 +385,9 @@ public class ThresholdHistoryCalculator {
 	public List<ThresholdHistoryEntry> replayFullHistory(User athlete, ThresholdField field, BiConsumer<Integer, Integer> onProgress) {
 		List<Activity> activities = activityRepository.findByAthleteIdAndSportOrderByStartDate(athlete.getId(), sportFor(field));
 		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
+		List<ThresholdHistory> manualRows = thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(athlete.getId(), field, ThresholdHistoryKind.MANUAL);
+		int nextManualIdx = 0;
 
 		List<ThresholdHistoryEntry> entries = new ArrayList<>();
 		List<Candidate> window = new ArrayList<>();
@@ -378,6 +397,24 @@ public class ThresholdHistoryCalculator {
 
 		for (Activity activity : activities) {
 			LocalDate activityDate = dateOf(activity);
+
+			// Merge in every manual row whose effectiveFrom has arrived as of this activity,
+			// before this activity's own candidacy is decided - it has to compete against (and
+			// potentially be suppressed by) a manual row dated on or before it, same ordering
+			// currentWindowValue already gets for free from a single as-of snapshot.
+			while (nextManualIdx < manualRows.size() && !manualRows.get(nextManualIdx).getEffectiveFrom().isAfter(activityDate)) {
+				ThresholdHistory manualRow = manualRows.get(nextManualIdx++);
+				Double manualValue = rowValue(field, manualRow);
+				if (manualValue != null) {
+					window = window.stream()
+							.filter(c -> !isBetter(field, manualValue, c.impliedValue()))
+							.collect(Collectors.toCollection(ArrayList::new));
+					// activityId null, same as manualAnchorCandidate - this candidate's ledger
+					// row already exists (it wasn't deleted), so no entry is written for it below.
+					window.add(new Candidate(null, manualRow.getEffectiveFrom(), manualValue));
+				}
+			}
+
 			LocalDate cutoff = activityDate.minusDays(athlete.getThresholdWindowDays());
 			window = window.stream().filter(c -> c.date().isAfter(cutoff)).collect(Collectors.toCollection(ArrayList::new));
 
@@ -396,7 +433,10 @@ public class ThresholdHistoryCalculator {
 			Double newValue = best == null ? null : best.impliedValue();
 			if (!Objects.equals(newValue, currentValue)) {
 				currentValue = newValue;
-				if (best != null) {
+				// Only a measured winner (a real activity) needs a fresh entry - a manual
+				// winner's own row already exists in the ledger untouched (see this method's own
+				// Javadoc), so writing one here would duplicate it.
+				if (best != null && best.activityId() != null) {
 					// currentFrom is *this* iteration's activityDate - the date whose recompute
 					// pass discovered best as the new window winner - not best.date
 					// (effectiveFrom), which can be much earlier when best only wins now because
