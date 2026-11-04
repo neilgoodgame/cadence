@@ -92,7 +92,16 @@ public class AthleteController {
 		String callerSub = accessGuard.requireWrite(id);
 		User athlete = userService.getById(id);
 		User setBy = callerSub.equals(id) ? athlete : userService.getById(callerSub);
-		AthleteService.Outcome outcome = athleteService.updateProfile(athlete, request, setBy);
+		AthleteService.Outcome outcome;
+		try {
+			outcome = athleteService.updateProfile(athlete, request, setBy);
+		}
+		catch (PreviewRollbackSignal signal) {
+			// See PreviewRollbackSignal - updateProfile's preview=true transaction is rolled
+			// back (not committed) by the time this is caught; the payload it's carrying was
+			// computed before that rollback and is exactly what a real run would have returned.
+			outcome = signal.outcome();
+		}
 		List<String> recomputedWire = outcome.zonesRecomputed().stream().map(ZoneType::wireValue).toList();
 		return new AthleteUpdateResponse(userMapper.toResponse(athlete), recomputedWire,
 				AthleteUpdateResponse.thresholdEditResultsWireMap(outcome.thresholdResults()));

@@ -259,6 +259,12 @@ public class AthleteService {
 			thresholdSuggestionService.invalidate(athlete.getId());
 		}
 		List<ZoneType> zonesRecomputed = preview ? List.of() : zoneService.recomputedZoneTypes(athlete, changed);
-		return new Outcome(zonesRecomputed, thresholdResults);
+		Outcome outcome = new Outcome(zonesRecomputed, thresholdResults);
+		// See PreviewRollbackSignal - thrown once, here, after every submitted field has been
+		// processed, rather than from recordManualValue itself.
+		if (preview) {
+			throw new PreviewRollbackSignal(outcome);
+		}
+		return outcome;
 	}
 }
