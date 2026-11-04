@@ -89,6 +89,17 @@ public class ThresholdHistory {
 	@Column(name = "kind", nullable = false)
 	private ThresholdHistoryKind kind = ThresholdHistoryKind.MEASURED;
 
+	// Issue #493: a manual entry whose effectiveFrom was backdated but which never became the
+	// live/current value - either a later row already existed, or it was already outside
+	// thresholdWindowDays the moment it was saved. Still a legitimate historical correction -
+	// per-activity rating lookups (ZoneService.referenceFor, filtered on currentFrom) use it
+	// exactly like any other row; it's just excluded from every "what's current" lookup (see
+	// ThresholdHistoryRepository's correction-excluding finder). Orthogonal to kind: a
+	// correction-only row is still kind=MANUAL, this just says it never won the "latest
+	// effectiveFrom" race.
+	@Column(name = "is_correction_only", nullable = false)
+	private boolean correctionOnly = false;
+
 	@jakarta.persistence.PrePersist
 	private void onCreate() {
 		if (createdAt == null) {
@@ -174,5 +185,13 @@ public class ThresholdHistory {
 
 	public void setKind(ThresholdHistoryKind kind) {
 		this.kind = kind;
+	}
+
+	public boolean isCorrectionOnly() {
+		return correctionOnly;
+	}
+
+	public void setCorrectionOnly(boolean correctionOnly) {
+		this.correctionOnly = correctionOnly;
 	}
 }

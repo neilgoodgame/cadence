@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -91,3 +92,47 @@ class SetAthleteThresholdsToolTests(TestCase):
         result = get_tools.get_athlete_thresholds()
 
         self.assertEqual(result["ftp"]["set_by_user_id"], self.athlete.id)
+
+    # --- Backdating (issue #493) ---
+
+    def test_backdated_edit_reports_threshold_edit_results(self):
+        tools = AthleteMCPTools(request=_mcp_request(self.athlete, "activities:read activities:write"))
+        today = date.today()
+
+        result = tools.set_athlete_thresholds(ftp=255, effective_from=(today - timedelta(days=10)).isoformat())
+
+        edit = result["threshold_edit_results"]["ftp"]
+        self.assertTrue(edit["changed"])
+        self.assertTrue(edit["became_current"])
+        self.assertFalse(edit["is_correction_only"])
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertEqual(entry.effective_from, today - timedelta(days=10))
+
+    def test_backdated_edit_with_a_later_row_is_correction_only(self):
+        tools = AthleteMCPTools(request=_mcp_request(self.athlete, "activities:read activities:write"))
+        today = date.today()
+        tools.set_athlete_thresholds(ftp=255)  # today, the later row
+
+        result = tools.set_athlete_thresholds(ftp=247, effective_from=(today - timedelta(days=10)).isoformat())
+
+        edit = result["threshold_edit_results"]["ftp"]
+        self.assertFalse(edit["became_current"])
+        self.assertTrue(edit["is_correction_only"])
+        self.assertEqual(result["ftp"]["value"], 255)  # unchanged - the later row is still current
+
+    def test_preview_does_not_persist(self):
+        tools = AthleteMCPTools(request=_mcp_request(self.athlete, "activities:read activities:write"))
+
+        result = tools.set_athlete_thresholds(ftp=280, preview=True)
+
+        self.assertFalse(ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").exists())
+        edit = result["threshold_edit_results"]["ftp"]
+        self.assertTrue(edit["changed"])
+        self.assertEqual(result["ftp"]["value"], None)  # unaffected - nothing was saved
+
+    def test_future_effective_from_is_rejected(self):
+        tools = AthleteMCPTools(request=_mcp_request(self.athlete, "activities:read activities:write"))
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+        with self.assertRaises(ValidationError):
+            tools.set_athlete_thresholds(ftp=280, effective_from=tomorrow)

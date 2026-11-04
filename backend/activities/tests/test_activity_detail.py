@@ -546,3 +546,24 @@ class ActivityThresholdHistoryFieldTests(TestCase):
         response = _bearer_client(self.athlete).get(f"/v1/activities/{trigger.id}")
 
         self.assertEqual(response.json()["threshold_history"], [])
+
+    def test_a_correction_only_row_is_not_flagged_as_revealed(self):
+        # Issue #493: a correction-only row's current_from matching this activity's date is a
+        # backdating coincidence (both dates are the backdated effective_from) - it wasn't
+        # actually revealed by this activity's own ingest/recompute pass, same reasoning as the
+        # decayed-row exclusion above.
+        trigger = _make_activity(self.athlete, start_date=datetime(2026, 6, 1, 7, 0, tzinfo=UTC))
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=240,
+            source_activity=None,
+            effective_from=date(2026, 6, 1),
+            current_from=date(2026, 6, 1),
+            kind="manual",
+            is_correction_only=True,
+        )
+
+        response = _bearer_client(self.athlete).get(f"/v1/activities/{trigger.id}")
+
+        self.assertEqual(response.json()["threshold_history"], [])

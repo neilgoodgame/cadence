@@ -20,6 +20,7 @@ import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatus;
 import com.cadence.api.athletes.ThresholdHistoryKind;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
+import com.cadence.api.athletes.dto.ThresholdSummaryEntry;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.ValidationException;
@@ -644,11 +645,12 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		User athlete = saveAthlete("mcp-set-thresholds-self@example.cc");
 		authAs(athlete.getId(), "activities:read", "activities:write");
 
-		var result = athleteProfileWriteTools.setAthleteThresholds(280, null, null);
+		var result = athleteProfileWriteTools.setAthleteThresholds(280, null, null, null, null, null);
+		var ftp = (ThresholdSummaryEntry) result.get("ftp");
 
-		assertThat(result.get("ftp").value()).isEqualTo(280);
-		assertThat(result.get("ftp").setByUserId()).isEqualTo(athlete.getId());
-		assertThat(result.get("ftp").sourceActivityId()).isNull();
+		assertThat(ftp.value()).isEqualTo(280);
+		assertThat(ftp.setByUserId()).isEqualTo(athlete.getId());
+		assertThat(ftp.sourceActivityId()).isNull();
 	}
 
 	@Test
@@ -664,10 +666,11 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		AuthContextHolder.set(new AuthContext(coach.getId(), athlete.getId(),
 				Set.of("activities:read", "activities:write"), AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
 
-		var result = athleteProfileWriteTools.setAthleteThresholds(280, null, null);
+		var result = athleteProfileWriteTools.setAthleteThresholds(280, null, null, null, null, null);
+		var ftp = (ThresholdSummaryEntry) result.get("ftp");
 
-		assertThat(result.get("ftp").setByUserId()).isEqualTo(coach.getId());
-		assertThat(result.get("ftp").setByUserId()).isNotEqualTo(athlete.getId());
+		assertThat(ftp.setByUserId()).isEqualTo(coach.getId());
+		assertThat(ftp.setByUserId()).isNotEqualTo(athlete.getId());
 	}
 
 	@Test
@@ -683,7 +686,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		AuthContextHolder.set(new AuthContext(viewer.getId(), athlete.getId(),
 				Set.of("activities:read", "activities:write"), AuthContext.CredentialKind.PERSONAL_ACCESS_TOKEN));
 
-		assertThatThrownBy(() -> athleteProfileWriteTools.setAthleteThresholds(280, null, null))
+		assertThatThrownBy(() -> athleteProfileWriteTools.setAthleteThresholds(280, null, null, null, null, null))
 				.isInstanceOf(ForbiddenException.class);
 	}
 
@@ -692,7 +695,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		User athlete = saveAthlete("mcp-set-thresholds-empty@example.cc");
 		authAs(athlete.getId(), "activities:read", "activities:write");
 
-		assertThatThrownBy(() -> athleteProfileWriteTools.setAthleteThresholds(null, null, null))
+		assertThatThrownBy(() -> athleteProfileWriteTools.setAthleteThresholds(null, null, null, null, null, null))
 				.isInstanceOf(ValidationException.class);
 	}
 

@@ -11,7 +11,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import date, timedelta
+
+from django.db import transaction
+from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
 from activities.models import Activity
@@ -333,7 +337,37 @@ def replay_full_history(athlete: User, field: str) -> list[ThresholdHistoryEntry
 
 
 def _latest_entry(athlete: User, field: str) -> ThresholdHistory | None:
-    return ThresholdHistory.objects.filter(athlete=athlete, field=field).order_by("-effective_from").first()
+    """The row currently treated as "the" value for this field - every "what's current" lookup
+    (is_stale, upcoming_drop, _manual_anchor_candidate, _recompute_and_record's own guard, and
+    this function's own callers below) goes through here, so a correction-only row (issue #493 -
+    a backdated manual edit that never actually took over, because a later row already existed or
+    it was already outside the window the moment it was saved) is excluded once, for all of them.
+    A correction-only row is still a real row - zones.reference_for's activity-scoped lookup
+    (filtered on current_from, not effective_from) finds it like any other - it's just never
+    "the" value here."""
+    return (
+        ThresholdHistory.objects.filter(athlete=athlete, field=field)
+        .exclude(is_correction_only=True)
+        .order_by("-effective_from")
+        .first()
+    )
+
+
+def _value_in_effect_at(athlete: User, field: str, as_of: date) -> float | None:
+    """The ledger value already in effect on `as_of` - the same current_from <= date lookup
+    zones.reference_for uses for an activity's own date, just keyed on an arbitrary date instead
+    of an activity's. Unlike _latest_entry (the "what's current today" rule), this deliberately
+    does NOT exclude correction-only rows - it's used to decide whether a backdated edit is a
+    no-op (does it match what a ride on that date would already be rated against), which is
+    exactly what a correction-only row's current_from already governs."""
+    entry = (
+        ThresholdHistory.objects.filter(athlete=athlete, field=field, current_from__lte=as_of)
+        .order_by("-current_from")
+        .first()
+    )
+    if entry is None:
+        return None
+    return _mmss_to_seconds(entry.value_pace) if field == "threshold_pace" else entry.value_numeric
 
 
 def _record_candidate(athlete: User, field: str, candidate: Candidate, current_from: date) -> None:
@@ -403,68 +437,186 @@ def recompute_for_activity(activity: Activity) -> None:
             _recompute_and_record(athlete, field, as_of=activity.start_date.date())
 
 
+@dataclass(frozen=True)
+class RerateDiff:
+    activity_id: str
+    date: date
+    old_intensity: float | None
+    new_intensity: float | None
+    old_tss: int | None
+    new_tss: int | None
+
+
+@dataclass(frozen=True)
+class ManualValueResult:
+    changed: bool
+    became_current: bool
+    is_correction_only: bool
+    rerated_count: int = 0
+    would_rerate: list[RerateDiff] = dataclass_field(default_factory=list)
+
+
 def record_manual_value(
-    athlete: User, field: str, raw_value: int | str, set_by: User | None = None, as_of: date | None = None
-) -> bool:
+    athlete: User,
+    field: str,
+    raw_value: int | str,
+    set_by: User | None = None,
+    effective_from: date | None = None,
+    rerate_activities: bool = True,
+    preview: bool = False,
+    as_of: date | None = None,
+) -> ManualValueResult:
     """The athlete directly declared this value via their profile (PATCH /v1/athletes/<id>), or
     had it set on their behalf by a coach with write access - trusted unconditionally (no
-    sanity-band check, no window search: an explicit choice, not a computed candidate), effective
-    from today. Behaves exactly like any other ledger entry from here on: ages out after
-    threshold_window_days like any other, and can be superseded by a later qualifying activity or
-    another manual edit. A no-op if the submitted value matches what's already current (e.g.
+    sanity-band check, no window search: an explicit choice, not a computed candidate). Behaves
+    exactly like any other ledger entry from here on: ages out after threshold_window_days like
+    any other, and can be superseded by a later qualifying activity or another manual edit. A
+    no-op if the submitted value already matches what's in effect at `effective_from` (e.g.
     re-saving the profile form without touching this field - the frontend always resubmits every
-    field). Doesn't touch athlete.<field> itself - the caller (AthleteUpdateSerializer.save())
-    already wrote that as part of the same request.
+    field). Owns the athlete's cached <field> value entirely (issue #493) - never written by the
+    caller; see the "became current" logic below for why.
+
+    `effective_from` (issue #493) lets the edit be backdated instead of always applying from
+    today. The row is always written - it's a legitimate historical correction either way - but
+    it only becomes the live/current value (`became_current`) when BOTH (a) no existing row has
+    a later effective_from, and (b) it isn't already outside threshold_window_days as of today
+    (i.e. it wouldn't be stale the moment it's saved). Otherwise it's `is_correction_only`: still
+    used by any activity-scoped lookup (zones.py::reference_for, filtered on current_from), just
+    excluded from every "what's current" lookup (_latest_entry and everything built on it).
+    Raises ValidationError for a future date or a date before the athlete's first activity of
+    this field's sport - a date outside the window is allowed (that's exactly what makes it
+    correction-only, not an error).
+
+    `rerate_activities` (default True, matching this function's pre-#493 unconditional behavior)
+    re-rates (intensity + tss) every activity of the affected sport on/after `effective_from` -
+    see _rerate_activities_from. `preview` runs the whole write (ledger row, live-field update,
+    re-rate) against the real code path and then rolls it back, so the returned diff is
+    guaranteed identical to a real run's, with nothing persisted.
 
     `set_by` is the acting principal - equal to `athlete` for a self-edit, a different User for a
     coach acting on the athlete's behalf, or None only for the auto-derived path (which goes
-    through _record_candidate instead, never through here)."""
+    through _record_candidate instead, never through here). `as_of` overrides what "today" is
+    for this call (test determinism only - real callers never pass it)."""
     implied_value = _mmss_to_seconds(raw_value) if field == "threshold_pace" else raw_value
     if not implied_value:
-        return False
-    latest = _latest_entry(athlete, field)
-    latest_value = None
-    if latest is not None:
-        latest_value = _mmss_to_seconds(latest.value_pace) if field == "threshold_pace" else latest.value_numeric
-    if latest_value == implied_value:
-        return False
-    value_numeric, value_pace = (None, raw_value) if field == "threshold_pace" else (raw_value, "")
-    effective_as_of = as_of or date.today()
-    ThresholdHistory.objects.create(
-        athlete=athlete,
-        field=field,
-        value_numeric=value_numeric,
-        value_pace=value_pace,
-        source_activity=None,
-        set_by=set_by,
-        effective_from=effective_as_of,
-        current_from=effective_as_of,
-        kind="manual",
+        return ManualValueResult(changed=False, became_current=False, is_correction_only=False)
+
+    today = as_of or date.today()
+    given_date = effective_from or today
+    if given_date > today:
+        raise ValidationError({"effective_from": "Must not be in the future."})
+
+    first_activity_start = (
+        Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field])
+        .order_by("start_date")
+        .values_list("start_date", flat=True)
+        .first()
     )
-    _rerate_activities_from(athlete, field, effective_as_of)
-    return True
+    if first_activity_start is not None and given_date < first_activity_start.date():
+        raise ValidationError({"effective_from": "Must not be before the athlete's first activity of this sport."})
+
+    existing_value = _value_in_effect_at(athlete, field, given_date)
+    if existing_value == implied_value:
+        return ManualValueResult(changed=False, became_current=False, is_correction_only=False)
+
+    has_later_row = ThresholdHistory.objects.filter(
+        athlete=athlete, field=field, effective_from__gt=given_date
+    ).exists()
+    stale_on_arrival = (today - given_date).days > athlete.threshold_window_days
+    is_correction_only = has_later_row or stale_on_arrival
+    became_current = not is_correction_only
+
+    value_numeric, value_pace = (None, raw_value) if field == "threshold_pace" else (raw_value, "")
+
+    with transaction.atomic():
+        ThresholdHistory.objects.create(
+            athlete=athlete,
+            field=field,
+            value_numeric=value_numeric,
+            value_pace=value_pace,
+            source_activity=None,
+            set_by=set_by,
+            effective_from=given_date,
+            current_from=given_date,
+            kind="manual",
+            is_correction_only=is_correction_only,
+        )
+
+        rerated_count, would_rerate = _rerate_activities_from(
+            athlete, field, given_date, persist=rerate_activities, collect_diff=preview
+        )
+
+        # Never touched by the caller (unlike pre-#493) - became_current already accounts for
+        # whether this edit is actually the one that should be live, so this is always right,
+        # including a no-op-looking re-derivation when it isn't this edit's row that's current.
+        if not preview:
+            current = _latest_entry(athlete, field)
+            live_value = (
+                current.value_pace
+                if (current and field == "threshold_pace")
+                else (current.value_numeric if current else None)
+            )
+            setattr(athlete, field, live_value)
+            athlete.save(update_fields=[field])
+
+        if preview:
+            # Rolls back to this call's own savepoint only - whatever the caller's own enclosing
+            # transaction does for other, unrelated fields in the same request is untouched.
+            transaction.set_rollback(True)
+
+    return ManualValueResult(
+        changed=True,
+        became_current=became_current,
+        is_correction_only=is_correction_only,
+        rerated_count=rerated_count,
+        would_rerate=would_rerate,
+    )
 
 
-def _rerate_activities_from(athlete: User, field: str, effective_from: date) -> None:
+def _rerate_activities_from(
+    athlete: User, field: str, effective_from: date, *, persist: bool, collect_diff: bool
+) -> tuple[int, list[RerateDiff]]:
     """Re-rates (intensity + tss) every one of the athlete's activities of the affected sport
     dated on/after a manual threshold edit's effective date - otherwise they'd stay scored
     against the now-superseded value until someone happens to press a recompute button (issue
-    #481, part 3). Normally a tiny set (today's activities, if any), not a full-history rebuild -
-    activities before `effective_from` are correctly left alone, since the previous ledger entry
-    is still the one effective for their own date. Same multisport-parent exclusion
+    #481, part 3). No upper bound needed, even once effective_from can be backdated (issue #493):
+    each activity's own reference_for lookup (filtered on current_from) already stops applying
+    this edit once a later ledger row's current_from takes over for that date, so an activity
+    past that boundary just re-rates to the value it already had - rate_activity only reports a
+    change when something actually did. Same multisport-parent exclusion
     athletes.views.RecomputeAthleteTssView already uses - local import to avoid a circular import
     (uploads.processing imports this module at the top level for recompute_for_activity).
+
+    `persist` actually saves a changed activity (the real rerate_activities=True path).
+    `collect_diff` returns a RerateDiff per changed activity regardless of `persist` (issue
+    #493's preview, which wants to know what WOULD change even when the box isn't ticked).
     """
+    if not persist and not collect_diff:
+        return 0, []
+
     from uploads.processing import rate_activity
 
     candidates = Activity.objects.filter(
         athlete=athlete, sport=FIELD_SPORT[field], parent_activity__isnull=True, start_date__date__gte=effective_from
     )
+    rerated_count = 0
+    diffs: list[RerateDiff] = []
     for activity in candidates:
+        old_intensity, old_tss = activity.intensity, activity.tss
         power_series = list(activity.records.order_by("t").values_list("power", flat=True))
         hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
-        if rate_activity(activity, athlete, power_series, hr_series):
+        if not rate_activity(activity, athlete, power_series, hr_series):
+            continue
+        if collect_diff:
+            diffs.append(
+                RerateDiff(
+                    activity.id, activity.start_date.date(), old_intensity, activity.intensity, old_tss, activity.tss
+                )
+            )
+        if persist:
             activity.save(update_fields=["intensity", "tss"])
+            rerated_count += 1
+    return rerated_count, diffs
 
 
 def refresh_field(athlete: User, field: str) -> bool:

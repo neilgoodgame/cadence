@@ -118,19 +118,35 @@ class AthleteMCPTools(ScopedMCPToolset):
         ftp: int | None = None,
         critical_run_power: int | None = None,
         threshold_pace: str | None = None,
+        effective_from: str | None = None,
+        rerate_activities: bool = True,
+        preview: bool = False,
     ) -> dict[str, Any]:
         """Set the athlete's FTP, critical running power, and/or threshold pace directly - e.g.
         from a recent field test, or a coach's assessment. Equivalent to editing these fields in
         Preferences: only the fields you pass are changed, and each changed value is trusted
         unconditionally and recorded in the threshold history ledger (it still ages out and can
         be superseded by a later qualifying activity or another edit, same as any other entry).
-        Pace is "M:SS" per km. Returns the athlete's threshold summary (same shape as
-        get_athlete_thresholds) after applying the change."""
+        Pace is "M:SS" per km.
+
+        `effective_from` (YYYY-MM-DD, default today) backdates the edit - it's always written as
+        a ledger row, but only becomes the live value if no later row already exists and it
+        isn't already outside threshold_window_days as of today (otherwise it's a correction-
+        only row: still used to re-rate past activities, excluded from "what's current").
+        `rerate_activities` (default true) recomputes intensity/TSS for every activity of the
+        affected sport on/after `effective_from`. `preview=true` computes the same outcome
+        (including which activities would be re-rated and their current vs. new intensity/TSS)
+        without saving anything - use it to check the impact before committing.
+
+        Returns the athlete's threshold summary (same shape as get_athlete_thresholds) plus
+        `threshold_edit_results`, keyed by whichever field(s) were passed: `changed`,
+        `became_current`, `is_correction_only`, `rerated_count`, and `would_rerate` (populated
+        only when `preview=true`)."""
         self._require_scope(ACTIVITIES_WRITE)
         athlete_id = self._effective_athlete_id()
         sub = self._require_write(athlete_id)
 
-        data = {}
+        data: dict[str, Any] = {}
         if ftp is not None:
             data["ftp"] = ftp
         if critical_run_power is not None:
@@ -139,11 +155,37 @@ class AthleteMCPTools(ScopedMCPToolset):
             data["threshold_pace"] = threshold_pace
         if not data:
             raise ValidationError({"error": "Pass at least one of ftp, critical_run_power, threshold_pace."})
+        if effective_from is not None:
+            data["effective_from"] = effective_from
+        data["rerate_activities"] = rerate_activities
+        data["preview"] = preview
 
         athlete = get_object_or_404(User, pk=athlete_id)
         set_by = athlete if sub == athlete_id else get_object_or_404(User, pk=sub)
-        _apply_threshold_patch(athlete, data, set_by)
-        return _thresholds_summary(athlete)
+        _, threshold_results = _apply_threshold_patch(athlete, data, set_by)
+
+        result = _thresholds_summary(athlete)
+        result["threshold_edit_results"] = {
+            field: {
+                "changed": r.changed,
+                "became_current": r.became_current,
+                "is_correction_only": r.is_correction_only,
+                "rerated_count": r.rerated_count,
+                "would_rerate": [
+                    {
+                        "activity_id": d.activity_id,
+                        "date": d.date.isoformat(),
+                        "old_intensity": d.old_intensity,
+                        "new_intensity": d.new_intensity,
+                        "old_tss": d.old_tss,
+                        "new_tss": d.new_tss,
+                    }
+                    for d in r.would_rerate
+                ],
+            }
+            for field, r in threshold_results.items()
+        }
+        return result
 
     def list_best_efforts(self, kind: str, period: str = "all") -> dict[str, Any]:
         """Get the authenticated athlete's best efforts for one metric (e.g. best 5-min power
@@ -254,6 +296,7 @@ class AthleteMCPTools(ScopedMCPToolset):
                     "set_by_user_id": entry.set_by_id,
                     "effective_from": entry.effective_from.isoformat(),
                     "current_from": entry.current_from.isoformat(),
+                    "is_correction_only": entry.is_correction_only,
                 }
                 for entry in entries
             ],

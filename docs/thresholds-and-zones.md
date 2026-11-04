@@ -169,11 +169,35 @@ When an athlete edits a threshold in Preferences, or a coach with write access
 edits it for them (`record_manual_value` / `recordManualValue`):
 
 - The value is trusted as given: no sanity band and no window search.
-- `effective_from` and `current_from` are set to today, and `set_by` records who
-  made the change.
-- Re-submitting the value that's already current does nothing.
+- `current_from` is always set equal to `effective_from`, and `set_by` records
+  who made the change.
+- Re-submitting a value that already matches what's in effect at
+  `effective_from` does nothing.
 - From then on it is an ordinary ledger entry. It can leave the window and can
   be beaten by a later qualifying activity.
+
+**Backdating (`effective_from`).** The edit can optionally carry an
+`effective_from` date instead of always applying from today - e.g. correcting
+today an FTP that was actually wrong starting a few days ago. The row is
+**always written**, since it's a legitimate historical correction either way,
+but it only becomes the live value (the cached profile field, and everything
+in 3.4 that reads "current") when **both**:
+
+1. no existing row already has a later `effective_from`, and
+2. it isn't already outside `threshold_window_days` as of today - i.e. it
+   wouldn't be stale the moment it's saved.
+
+If either fails, the row is **correction-only** (`is_correction_only = true`):
+it still governs any activity-scoped lookup in its span (3.4's `current_from`
+rule, unchanged), re-rating past activities if asked to, but it's excluded
+from every "what's current" lookup below. A future `effective_from`, or one
+before the athlete's first activity of the field's sport, is rejected; one
+outside the window is allowed - that's exactly what makes it correction-only.
+
+An edit can also ask to recompute (`rerate_activities`, default true)
+intensity/TSS for every activity of the affected sport on/after
+`effective_from` - reusing the same rating helper issue #481 introduced - or
+to preview that outcome (`preview`) without saving anything.
 
 ### 3.4 The history ledger (`ThresholdHistory`)
 
@@ -184,13 +208,14 @@ edits it for them (`record_manual_value` / `recordManualValue`):
 | `set_by` | Who entered it by hand, if anyone |
 | `effective_from` | The date of the qualifying effort, or of the manual entry |
 | `current_from` | The date this row actually became the current value |
+| `is_correction_only` | True for a backdated manual row that never became current - see 3.3 |
 
 The two dates differ when a lower, older value only becomes current because a
 better, newer value left the window. For example, a 260 W FTP set on 1 March
 might only become current on 10 June when a 270 W FTP from 15 Feb drops out.
 
-**Which row is current:** the row with the latest `effective_from`. Java breaks
-ties by highest id.
+**Which row is current:** the row with the latest `effective_from`, excluding
+any `is_correction_only` row. Java breaks ties by highest id.
 
 **Staleness:** a field is stale when
 `(today − current row's effective_from) > threshold_window_days`, or when there

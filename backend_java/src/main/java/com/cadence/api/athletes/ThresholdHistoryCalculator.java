@@ -237,7 +237,8 @@ public class ThresholdHistoryCalculator {
 	 * anchor: its source activity is already in the activities scan and wins there on its own. */
 	private Candidate manualAnchorCandidate(User athlete, ThresholdField field, LocalDate windowStart) {
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
+				.orElse(null);
 		if (latest == null || latest.getKind() != ThresholdHistoryKind.MANUAL
 				|| latest.getEffectiveFrom().isBefore(windowStart)) {
 			return null;
@@ -462,7 +463,8 @@ public class ThresholdHistoryCalculator {
 		}
 
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
+				.orElse(null);
 		if (latest == null || ChronoUnit.DAYS.between(latest.getEffectiveFrom(), effectiveToday) > athlete.getThresholdWindowDays()) {
 			return null;
 		}

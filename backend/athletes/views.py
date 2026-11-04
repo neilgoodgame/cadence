@@ -30,7 +30,14 @@ from .serializers import (
     ZoneSetSerializer,
 )
 from .tasks import run_best_effort_recompute
-from .threshold_history import FIELD_SPORT, is_stale, rebuild_history_stream, record_manual_value, refresh_field
+from .threshold_history import (
+    FIELD_SPORT,
+    ManualValueResult,
+    is_stale,
+    rebuild_history_stream,
+    record_manual_value,
+    refresh_field,
+)
 from .zones import ZONE_TYPES, get_or_create_zone_set, reference_for, zone_types_affected_by
 
 # Settings whose change can affect which Threshold suggestions are current (window/sanity/warning
@@ -95,31 +102,61 @@ def _require_write(request: Request, athlete_id: str) -> str:
     return sub
 
 
-def _apply_threshold_patch(athlete: User, data: dict, set_by: User) -> AthleteUpdateSerializer:
+def _apply_threshold_patch(
+    athlete: User, data: dict, set_by: User
+) -> tuple[AthleteUpdateSerializer, dict[str, ManualValueResult]]:
     """Validates and applies a partial athlete-profile update, writing a ThresholdHistory entry
     for each changed threshold field - `set_by` is the acting principal (the athlete itself for
     a self-edit, or a coach with write access acting on the athlete's behalf), threaded straight
     into record_manual_value. Also invalidates cached threshold suggestions if anything
     suggestion-affecting changed. Shared by AthleteDetailView.patch and the
     set_athlete_thresholds MCP tool, so both go through identical validation/ledger-write logic -
-    don't duplicate this body at the new call site."""
+    don't duplicate this body at the new call site.
+
+    `effective_from`/`rerate_activities`/`preview` (issue #493) are optional, transient keys in
+    `data` alongside ftp/critical_run_power/threshold_pace - not AthleteUpdateSerializer/User
+    model fields, so they're read directly here rather than via the serializer, and apply to
+    whichever threshold field(s) are present in this same request. ftp/critical_run_power/
+    threshold_pace are popped out of validated_data *after* the serializer validates them (so a
+    bad type/range still gets a clean 400) but *before* serializer.save() runs, so
+    record_manual_value is the sole writer of these 3 fields - it alone knows whether this edit
+    actually became the live value (see its own docstring), and its own preview rollback must be
+    the only thing deciding whether they persist."""
     serializer = AthleteUpdateSerializer(athlete, data=data, partial=True)
     serializer.is_valid(raise_exception=True)
+
+    effective_from = parse_date(data["effective_from"]) if data.get("effective_from") else None
+    if data.get("effective_from") and effective_from is None:
+        raise ValidationError({"effective_from": "Must be a date in YYYY-MM-DD format."})
+    rerate_activities = bool(data.get("rerate_activities", True))
+    preview = bool(data.get("preview", False))
+
+    threshold_values = {f: serializer.validated_data.pop(f) for f in FIELD_SPORT if f in serializer.validated_data}
+    threshold_results: dict[str, ManualValueResult] = {}
     with transaction.atomic():
         serializer.save()
         # A manually-entered threshold functions as an initial value (or a correction) just
         # like any other ledger entry - see threshold_history.py::record_manual_value. The
         # Preferences form resubmits every field on every save regardless of whether it was
         # edited, so record_manual_value's own no-op-if-unchanged check is load-bearing here.
-        for field in FIELD_SPORT:
-            if field in serializer.validated_data:
-                record_manual_value(athlete, field, serializer.validated_data[field], set_by=set_by)
+        for field, value in threshold_values.items():
+            threshold_results[field] = record_manual_value(
+                athlete,
+                field,
+                value,
+                set_by=set_by,
+                effective_from=effective_from,
+                rerate_activities=rerate_activities,
+                preview=preview,
+            )
         # A manual threshold edit above already changes what's current (so suggestions could
         # change too); a change to one of the detection-affecting settings can change the
         # suggestion list even when no threshold value itself was touched this request.
-        if set(serializer.validated_data) & (set(FIELD_SPORT) | _SUGGESTION_AFFECTING_SETTINGS):
+        if (set(threshold_values) | set(serializer.validated_data)) & (
+            set(FIELD_SPORT) | _SUGGESTION_AFFECTING_SETTINGS
+        ) and not preview:
             threshold_suggestions.invalidate(athlete.id)
-    return serializer
+    return serializer, threshold_results
 
 
 class AthleteDetailView(APIView):
@@ -133,13 +170,40 @@ class AthleteDetailView(APIView):
         athlete = get_object_or_404(User, pk=id)
         set_by = athlete if sub == id else get_object_or_404(User, pk=sub)
 
-        serializer = _apply_threshold_patch(athlete, request.data, set_by)
+        serializer, threshold_results = _apply_threshold_patch(athlete, request.data, set_by)
 
-        recomputed = zone_types_affected_by(serializer.validated_data.keys())
+        preview = bool(request.data.get("preview", False))
+        # became_current, not just changed - a correction-only edit (issue #493) doesn't actually
+        # move the live zone reference, so it shouldn't claim a zone was recomputed. Nothing to
+        # report at all during preview - nothing was actually saved.
+        changed_fields = set(serializer.validated_data.keys())
+        if not preview:
+            changed_fields |= {f for f, r in threshold_results.items() if r.became_current}
+        recomputed = [] if preview else zone_types_affected_by(changed_fields)
         existing = set(ZoneSet.objects.filter(athlete=athlete, type__in=recomputed).values_list("type", flat=True))
 
         data = UserSerializer(athlete).data
         data["zones_recomputed"] = [zt for zt in recomputed if zt in existing]
+        data["threshold_edit_results"] = {
+            field: {
+                "changed": result.changed,
+                "became_current": result.became_current,
+                "is_correction_only": result.is_correction_only,
+                "rerated_count": result.rerated_count,
+                "would_rerate": [
+                    {
+                        "activity_id": diff.activity_id,
+                        "date": diff.date.isoformat(),
+                        "old_intensity": diff.old_intensity,
+                        "new_intensity": diff.new_intensity,
+                        "old_tss": diff.old_tss,
+                        "new_tss": diff.new_tss,
+                    }
+                    for diff in result.would_rerate
+                ],
+            }
+            for field, result in threshold_results.items()
+        }
         return Response(data)
 
 
@@ -647,7 +711,14 @@ def _validate_threshold_field(field: str | None) -> str:
 
 
 def threshold_summary_for_field(athlete: User, field: str) -> dict:
-    entries = list(ThresholdHistory.objects.filter(athlete=athlete, field=field).order_by("-effective_from")[:2])
+    # Excludes correction-only rows (issue #493 - a backdated manual edit that never actually
+    # took over) from both current and previous - same exclusion as _latest_entry, just inlined
+    # here since this needs the top 2, not just the top 1.
+    entries = list(
+        ThresholdHistory.objects.filter(athlete=athlete, field=field)
+        .exclude(is_correction_only=True)
+        .order_by("-effective_from")[:2]
+    )
     if not entries:
         return {
             "value": None,
@@ -711,6 +782,7 @@ class ThresholdHistoryListView(APIView):
                 "effective_from": entry.effective_from,
                 "current_from": entry.current_from,
                 "kind": entry.kind,
+                "is_correction_only": entry.is_correction_only,
             }
             for entry in entries
         ]

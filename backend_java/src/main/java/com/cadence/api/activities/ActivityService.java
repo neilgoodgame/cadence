@@ -145,11 +145,16 @@ public class ActivityService {
 				// A decayed row (issue #480's decay core, #485) becomes current with no source
 				// activity at all, same as a manual edit - it isn't "revealed" by this activity either.
 				.filter(entry -> entry.getKind() != ThresholdHistoryKind.DECAYED)
+				// Nor is a correction-only row (issue #493) - its currentFrom matching this
+				// activity's date is a backdating coincidence, not something this activity's own
+				// ingest/recompute pass actually noticed.
+				.filter(entry -> !entry.isCorrectionOnly())
 				.toList();
 		return Stream.concat(ownEffort.stream(), revealed.stream())
 				.map(entry -> {
 					ThresholdHistory latest = thresholdHistoryRepository
-							.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(activity.getAthlete().getId(), entry.getField())
+							.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(
+									activity.getAthlete().getId(), entry.getField())
 							.orElse(null);
 					boolean isCurrent = latest != null && latest.getId().equals(entry.getId());
 					Object value = entry.getField() == ThresholdField.THRESHOLD_PACE ? entry.getValuePace() : entry.getValueNumeric();

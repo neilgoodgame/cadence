@@ -126,6 +126,12 @@ class ActivitySerializer(serializers.ModelSerializer):
         from athletes.models import ThresholdHistory
 
         def is_current(entry: ThresholdHistory) -> bool:
+            # A correction-only row (issue #493 - a backdated manual edit that never actually
+            # took over) is never current - the "no later row exists" check below only catches
+            # the has-a-later-row half of that; a correction-only row that's stale on arrival
+            # instead (no later row at all) needs this explicit check too.
+            if entry.is_correction_only:
+                return False
             return not ThresholdHistory.objects.filter(
                 athlete_id=obj.athlete_id, field=entry.field, effective_from__gt=entry.effective_from
             ).exists()
@@ -146,6 +152,10 @@ class ActivitySerializer(serializers.ModelSerializer):
             # A decayed row (issue #480's decay core, #485) becomes current with no source
             # activity at all, same as a manual edit - it isn't "revealed" by this activity either.
             .exclude(kind="decayed")
+            # Nor is a correction-only row (issue #493) - its current_from matching this
+            # activity's date is a backdating coincidence, not something this activity's own
+            # ingest/recompute pass actually noticed.
+            .exclude(is_correction_only=True)
         )
         return [as_dict(entry) for entry in [*own_effort, *revealed]]
 

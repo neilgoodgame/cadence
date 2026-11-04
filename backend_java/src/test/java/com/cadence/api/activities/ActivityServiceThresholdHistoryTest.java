@@ -127,4 +127,28 @@ class ActivityServiceThresholdHistoryTest extends IntegrationTest {
 
 		assertThat(response.thresholdHistory()).isEmpty();
 	}
+
+	@Test
+	void aCorrectionOnlyRowIsNotFlaggedAsRevealed() {
+		// Issue #493: a correction-only row's currentFrom matching this activity's date is a
+		// backdating coincidence (both dates are the backdated effectiveFrom) - it wasn't
+		// actually revealed by this activity's own ingest/recompute pass, same reasoning as the
+		// decayed-row exclusion above.
+		User athlete = newAthlete("threshold-field-correction-only@example.cc");
+		Activity trigger = newActivity(athlete, "Run", Instant.parse("2026-06-01T07:00:00Z"));
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(athlete);
+		entry.setField(ThresholdField.FTP);
+		entry.setValueNumeric(240);
+		entry.setSourceActivity(null);
+		entry.setEffectiveFrom(LocalDate.of(2026, 6, 1));
+		entry.setCurrentFrom(LocalDate.of(2026, 6, 1));
+		entry.setKind(ThresholdHistoryKind.MANUAL);
+		entry.setCorrectionOnly(true);
+		thresholdHistoryRepository.save(entry);
+
+		ActivityResponse response = activityService.toResponse(trigger);
+
+		assertThat(response.thresholdHistory()).isEmpty();
+	}
 }

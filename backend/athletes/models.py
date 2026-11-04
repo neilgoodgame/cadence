@@ -104,6 +104,14 @@ class ThresholdHistory(models.Model):
     # Issue #483: previously indistinguishable from "manual" (both have source_activity=None) -
     # a prerequisite for decay (#485), where a decayed row also has no source_activity.
     kind = models.CharField(max_length=10, choices=THRESHOLD_HISTORY_KIND_CHOICES, default="measured")
+    # Issue #493: a manual entry whose effective_from was backdated, but which never became the
+    # live/current value - either a later row already existed, or it was already outside
+    # threshold_window_days the moment it was saved. Still a legitimate historical correction
+    # (per-activity rating lookups in zones.py::reference_for, filtered on current_from, use it
+    # exactly like any other row) - just excluded from every "what's current" lookup (see
+    # threshold_history.py::_latest_entry). Orthogonal to `kind`: a correction-only row is still
+    # kind="manual", this just says it never won the "latest effective_from" race.
+    is_correction_only = models.BooleanField(default=False)
 
     class Meta:
         indexes = [

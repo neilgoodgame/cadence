@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 
 from accounts.models import User, UserRelationship
@@ -1272,9 +1273,11 @@ class RecordManualValueTests(TestCase):
         self.athlete = User.objects.create_user(email="manual-threshold@example.cc", password="x", name="Athlete")
 
     def test_seeds_the_initial_value_when_no_entry_exists(self):
-        changed = record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 1))
+        result = record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 1))
 
-        self.assertTrue(changed)
+        self.assertTrue(result.changed)
+        self.assertTrue(result.became_current)
+        self.assertFalse(result.is_correction_only)
         entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
         self.assertEqual(entry.value_numeric, 250)
         self.assertIsNone(entry.source_activity)
@@ -1284,9 +1287,9 @@ class RecordManualValueTests(TestCase):
     def test_no_op_when_the_value_matches_the_latest_entry(self):
         record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 1))
 
-        changed = record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 15))
+        result = record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 6, 15))
 
-        self.assertFalse(changed)
+        self.assertFalse(result.changed)
         self.assertEqual(ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").count(), 1)
 
     def test_records_a_correction_even_though_it_is_a_decrease(self):
@@ -1294,16 +1297,16 @@ class RecordManualValueTests(TestCase):
         # trusted, unlike an automatically-detected candidate that needs outlier protection.
         record_manual_value(self.athlete, "ftp", 300, as_of=date(2026, 6, 1))
 
-        changed = record_manual_value(self.athlete, "ftp", 180, as_of=date(2026, 6, 15))
+        result = record_manual_value(self.athlete, "ftp", 180, as_of=date(2026, 6, 15))
 
-        self.assertTrue(changed)
+        self.assertTrue(result.changed)
         entry = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").order_by("-effective_from").first()
         self.assertEqual(entry.value_numeric, 180)
 
     def test_threshold_pace_stores_the_mmss_string(self):
-        changed = record_manual_value(self.athlete, "threshold_pace", "4:15", as_of=date(2026, 6, 1))
+        result = record_manual_value(self.athlete, "threshold_pace", "4:15", as_of=date(2026, 6, 1))
 
-        self.assertTrue(changed)
+        self.assertTrue(result.changed)
         entry = ThresholdHistory.objects.get(athlete=self.athlete, field="threshold_pace")
         self.assertEqual(entry.value_pace, "4:15")
         self.assertIsNone(entry.value_numeric)
@@ -1395,6 +1398,141 @@ class RecordManualValueTests(TestCase):
 
         self.assertFalse(is_stale(self.athlete, "ftp", as_of=date(2026, 4, 1)))  # 90 days later
         self.assertTrue(is_stale(self.athlete, "ftp", as_of=date(2026, 5, 1)))  # 120 days later
+
+    # --- Backdating (issue #493): effective_from, "became current", correction-only rows ---
+
+    def _make_ride(self, start_date, power=185, duration_seconds=11916, tss=211, intensity=0.798):
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="bike",
+            name="Ride",
+            start_date=start_date,
+            moving_time=duration_seconds,
+            tss=tss,
+            intensity=intensity,
+        )
+        for t in range(duration_seconds):
+            Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+        return activity
+
+    def test_backdated_with_no_later_row_becomes_current_and_rerates(self):
+        activity = self._make_ride(datetime(2026, 11, 1, 7, 0, tzinfo=UTC))
+
+        result = record_manual_value(
+            self.athlete, "ftp", 247, effective_from=date(2026, 11, 1), as_of=date(2026, 11, 3)
+        )
+
+        self.assertTrue(result.changed)
+        self.assertTrue(result.became_current)
+        self.assertFalse(result.is_correction_only)
+        self.assertEqual(result.rerated_count, 1)
+        entry = ThresholdHistory.objects.get(athlete=self.athlete, field="ftp")
+        self.assertEqual(entry.effective_from, date(2026, 11, 1))
+        self.assertEqual(entry.current_from, date(2026, 11, 1))
+        self.assertFalse(entry.is_correction_only)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 247)
+        activity.refresh_from_db()
+        self.assertAlmostEqual(activity.intensity, 185 / 247, delta=0.0005)
+
+    def test_backdated_with_a_later_row_is_correction_only(self):
+        record_manual_value(self.athlete, "ftp", 255, as_of=date(2026, 11, 3))  # the later, current row
+
+        result = record_manual_value(
+            self.athlete, "ftp", 247, effective_from=date(2026, 11, 1), as_of=date(2026, 11, 3)
+        )
+
+        self.assertTrue(result.changed)
+        self.assertFalse(result.became_current)
+        self.assertTrue(result.is_correction_only)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 255)  # unchanged - the later row is still current
+        self.assertFalse(is_stale(self.athlete, "ftp", as_of=date(2026, 11, 3)))
+
+    def test_rerate_activities_false_leaves_ratings_unchanged_until_recompute(self):
+        activity = self._make_ride(datetime(2026, 6, 1, 7, 0, tzinfo=UTC))
+
+        result = record_manual_value(self.athlete, "ftp", 255, as_of=date(2026, 6, 1), rerate_activities=False)
+
+        self.assertTrue(result.changed)
+        self.assertEqual(result.rerated_count, 0)
+        activity.refresh_from_db()
+        self.assertEqual(activity.intensity, 0.798)
+
+        from uploads.processing import rate_activity
+
+        power_series = list(activity.records.order_by("t").values_list("power", flat=True))
+        hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
+        self.assertTrue(rate_activity(activity, self.athlete, power_series, hr_series))
+        self.assertAlmostEqual(activity.intensity, 0.725, delta=0.0005)
+
+    def test_preview_persists_nothing_and_matches_a_real_run(self):
+        activity = self._make_ride(datetime(2026, 6, 1, 7, 0, tzinfo=UTC))
+
+        preview_result = record_manual_value(self.athlete, "ftp", 255, as_of=date(2026, 6, 1), preview=True)
+
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").count(), 0)
+        activity.refresh_from_db()
+        self.assertEqual(activity.intensity, 0.798)
+        self.assertEqual(len(preview_result.would_rerate), 1)
+        diff = preview_result.would_rerate[0]
+        self.assertEqual(diff.activity_id, activity.id)
+        self.assertAlmostEqual(diff.new_intensity, 0.725, delta=0.0005)
+
+        real_result = record_manual_value(self.athlete, "ftp", 255, as_of=date(2026, 6, 1))
+
+        self.assertEqual(real_result.rerated_count, 1)
+        activity.refresh_from_db()
+        self.assertAlmostEqual(activity.intensity, diff.new_intensity, delta=0.0005)
+
+    def test_future_date_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            record_manual_value(self.athlete, "ftp", 250, effective_from=date(2026, 12, 1), as_of=date(2026, 11, 3))
+
+    def test_date_before_first_activity_is_rejected(self):
+        Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="First ride", start_date=datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        )
+
+        with self.assertRaises(ValidationError):
+            record_manual_value(self.athlete, "ftp", 250, effective_from=date(2025, 12, 1), as_of=date(2026, 1, 15))
+
+    def test_date_outside_window_is_allowed_as_correction_only(self):
+        self.athlete.threshold_window_days = 112
+        self.athlete.save(update_fields=["threshold_window_days"])
+
+        result = record_manual_value(
+            self.athlete, "ftp", 250, effective_from=date(2025, 4, 18), as_of=date(2026, 11, 3)
+        )
+
+        self.assertTrue(result.changed)
+        self.assertFalse(result.became_current)
+        self.assertTrue(result.is_correction_only)
+
+    def test_correction_only_row_does_not_block_a_later_lower_activity(self):
+        # Issue #484's fix treats the latest *current* manual row as an anchor a later lower
+        # activity can't replace early - a correction-only row must not get that treatment.
+        self.athlete.threshold_window_days = 112
+        self.athlete.save(update_fields=["threshold_window_days"])
+        record_manual_value(self.athlete, "ftp", 255, as_of=date(2026, 11, 3))  # the real current anchor
+        record_manual_value(
+            self.athlete, "ftp", 250, effective_from=date(2025, 4, 18), as_of=date(2026, 11, 3)
+        )  # correction-only - far outside the window
+
+        self._make_ride(datetime(2026, 11, 10, 7, 0, tzinfo=UTC), power=230, duration_seconds=1200, tss=0, intensity=0)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 11, 15))
+
+        self.assertIsNone(candidate.activity_id)
+        self.assertEqual(candidate.implied_value, 255)
+
+    def test_no_op_when_value_already_in_effect_at_the_given_date(self):
+        record_manual_value(self.athlete, "ftp", 250, as_of=date(2026, 1, 1))
+
+        result = record_manual_value(self.athlete, "ftp", 250, effective_from=date(2026, 2, 1), as_of=date(2026, 11, 3))
+
+        self.assertFalse(result.changed)
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").count(), 1)
 
 
 class RefreshFieldTests(TestCase):
