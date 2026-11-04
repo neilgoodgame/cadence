@@ -1,6 +1,7 @@
 package com.cadence.api.athletes.dto;
 
 import com.cadence.api.athletes.ThresholdHistoryKind;
+import java.time.Instant;
 import java.time.LocalDate;
 
 /** One row in the full ledger for a field - GET /v1/athletes/{id}/threshold-history?field=...
@@ -11,7 +12,9 @@ import java.time.LocalDate;
  * id of whoever set it - equal to this athlete's own id for a self-edit, a different user's id
  * if a coach set it on their behalf. isCorrectionOnly (issue #493) is true for a backdated
  * manual row that never became the live value - see ThresholdHistory.isCorrectionOnly()'s
- * Javadoc. */
+ * Javadoc. createdAt is when this row was actually saved - distinct from effectiveFrom for a
+ * backdated manual row (issue #493/#505: the ledger shows "effective 1 Nov · entered 3 Nov" for
+ * one of those). */
 public record ThresholdHistoryEntryResponse(Object value, String sourceActivityId, LocalDate effectiveFrom,
-		LocalDate currentFrom, String setByUserId, ThresholdHistoryKind kind, boolean isCorrectionOnly) {
+		LocalDate currentFrom, String setByUserId, ThresholdHistoryKind kind, boolean isCorrectionOnly, Instant createdAt) {
 }

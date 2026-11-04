@@ -5217,6 +5217,12 @@ components:
             activity-scoped lookup (filtered on current_from, same as any other row) - just
             excluded from "current" everywhere else.
           example: false
+        created_at:
+          type: string
+          format: date-time
+          description: >-
+            When this row was actually saved - distinct from effective_from for a backdated
+            manual row, where the ledger shows both ("effective 1 Nov · entered 3 Nov").
 
     ThresholdEditResult:
       type: object

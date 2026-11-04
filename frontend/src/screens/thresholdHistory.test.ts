@@ -10,6 +10,7 @@ function point(overrides: Partial<ThresholdHistoryPoint> = {}): ThresholdHistory
     effective_from: "2026-01-01",
     current_from: "2026-01-01",
     is_correction_only: false,
+    created_at: "2026-01-01T00:00:00Z",
     ...overrides,
   };
 }

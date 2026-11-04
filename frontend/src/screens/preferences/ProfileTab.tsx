@@ -466,6 +466,7 @@ export function ProfileTab() {
           label={FIELD_LABELS[backdating]}
           athleteId={user.id}
           currentValue={user[backdating] ?? undefined}
+          thresholdWindowDays={user.threshold_window_days}
           onSaved={(field, value) => setForm((f) => ({ ...f, [field]: value }))}
           onClose={() => setBackdating(null)}
         />

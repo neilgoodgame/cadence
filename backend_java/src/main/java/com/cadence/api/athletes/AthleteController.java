@@ -283,7 +283,7 @@ public class AthleteController {
 		String setByUserId = entry.getSetBy() != null ? entry.getSetBy().getId() : null;
 		return new ThresholdHistoryEntryResponse(
 				value, sourceActivityId, entry.getEffectiveFrom(), entry.getCurrentFrom(), setByUserId, entry.getKind(),
-				entry.isCorrectionOnly());
+				entry.isCorrectionOnly(), entry.getCreatedAt());
 	}
 
 	@DeleteMapping("/v1/athletes/{id}/threshold-suggestions/{suggestionId}/accept")
