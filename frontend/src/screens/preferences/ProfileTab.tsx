@@ -3,7 +3,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deleteAllActivities } from "../../api/activities";
 import { updateAthlete } from "../../api/athletes";
 import { useAuth } from "../../auth/AuthContext";
-import type { AthleteUpdate } from "../../api/types";
+import type { AthleteUpdate, ThresholdFieldName } from "../../api/types";
+import { ThresholdCorrectionModal } from "./ThresholdCorrectionModal";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -32,6 +33,24 @@ function Field({
       </div>
       {children}
     </label>
+  );
+}
+
+const FIELD_LABELS: Record<ThresholdFieldName, string> = {
+  ftp: "FTP",
+  critical_run_power: "Critical run power",
+  threshold_pace: "Threshold pace",
+};
+
+function BackdateLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ border: "none", background: "transparent", color: "var(--ember)", fontSize: 12, fontWeight: 600, padding: 0, cursor: "pointer", marginTop: -4 }}
+    >
+      Backdate a correction…
+    </button>
   );
 }
 
@@ -86,6 +105,7 @@ function DeleteAllActivitiesDialog({ onClose }: { onClose: () => void }) {
 export function ProfileTab() {
   const { user, setUser } = useAuth();
   const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
+  const [backdating, setBackdating] = useState<ThresholdFieldName | null>(null);
   const [form, setForm] = useState<AthleteUpdate>({
     name: user?.name ?? "",
     age: user?.age ?? undefined,
@@ -163,6 +183,7 @@ export function ProfileTab() {
               onChange={(e) => setForm({ ...form, ftp: Number(e.target.value) })}
             />
           </Field>
+          <BackdateLink onClick={() => setBackdating("ftp")} />
           <Field label="FTP calculation method">
             <select
               style={inputStyle}
@@ -184,6 +205,7 @@ export function ProfileTab() {
               onChange={(e) => setForm({ ...form, critical_run_power: Number(e.target.value) })}
             />
           </Field>
+          <BackdateLink onClick={() => setBackdating("critical_run_power")} />
           <Field label="Running power source">
             <select
               style={inputStyle}
@@ -212,6 +234,7 @@ export function ProfileTab() {
               onChange={(e) => setForm({ ...form, threshold_pace: e.target.value })}
             />
           </Field>
+          <BackdateLink onClick={() => setBackdating("threshold_pace")} />
           <Field label="LTHR" unit="bpm">
             <input
               type="number"
@@ -436,6 +459,17 @@ export function ProfileTab() {
       </div>
 
       {confirmingDeleteAll && <DeleteAllActivitiesDialog onClose={() => setConfirmingDeleteAll(false)} />}
+
+      {backdating && (
+        <ThresholdCorrectionModal
+          field={backdating}
+          label={FIELD_LABELS[backdating]}
+          athleteId={user.id}
+          currentValue={user[backdating] ?? undefined}
+          onSaved={(field, value) => setForm((f) => ({ ...f, [field]: value }))}
+          onClose={() => setBackdating(null)}
+        />
+      )}
     </div>
   );
 }
