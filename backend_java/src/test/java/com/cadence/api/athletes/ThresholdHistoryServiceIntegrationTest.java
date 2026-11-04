@@ -9,6 +9,7 @@ import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.TssRecomputeService;
+import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.support.IntegrationTest;
@@ -27,6 +28,8 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private ThresholdHistoryService thresholdHistoryService;
+	@Autowired
+	private AthleteService athleteService;
 	@Autowired
 	private UserRepository userRepository;
 	@Autowired
@@ -218,27 +221,52 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		assertThat(reloaded.getIntensity()).isNotNull();
 	}
 
+	// Goes through AthleteService.updateProfile (not a direct recordManualValue call, unlike
+	// every other test in this class) - preview=true only actually rolls back when it's the
+	// real, owning transaction (AthleteService.updateProfile, one per PATCH /v1/athletes/{id})
+	// that decides to throw PreviewRollbackSignal, not a lone recordManualValue call. Calling
+	// recordManualValue directly here, as this test used to, makes IT the owning transaction -
+	// it would commit normally (nothing left to mark it rollback-only), silently defeating the
+	// very thing this test means to check. See PreviewRollbackSignal's own comment.
 	@Test
 	void previewPersistsNothingAndMatchesARealRun() {
 		User athlete = newAthlete("manual-threshold-preview@example.cc");
 		Activity activity = newPowerActivity(athlete, Instant.now(), 185, 11916);
 
-		var previewResult = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 255, null, athlete, null, true, true);
+		AthleteService.Outcome previewOutcome;
+		try {
+			athleteService.updateProfile(athlete, previewRequest(255, true));
+			throw new AssertionError("Expected PreviewRollbackSignal - preview=true didn't roll back.");
+		}
+		catch (PreviewRollbackSignal signal) {
+			previewOutcome = signal.outcome();
+		}
 
 		assertThat(thresholdHistoryRepository
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).isEmpty();
 		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
 		assertThat(reloaded.getIntensity()).isNull();
+		var previewResult = previewOutcome.thresholdResults().get(ThresholdField.FTP);
 		assertThat(previewResult.wouldRerate()).hasSize(1);
 		var diff = previewResult.wouldRerate().get(0);
 		assertThat(diff.activityId()).isEqualTo(activity.getId());
 		assertThat(diff.newIntensity()).isNotNull();
 
-		var realResult = thresholdHistoryService.recordManualValue(athlete, ThresholdField.FTP, 255, null, athlete, null, true, false);
+		AthleteService.Outcome realOutcome = athleteService.updateProfile(athlete, previewRequest(255, false));
 
+		var realResult = realOutcome.thresholdResults().get(ThresholdField.FTP);
 		assertThat(realResult.reratedCount()).isEqualTo(1);
 		Activity afterReal = activityRepository.findById(activity.getId()).orElseThrow();
 		assertThat(afterReal.getIntensity()).isEqualTo(diff.newIntensity());
+	}
+
+	// null/false for every field but ftp/rerateActivities/preview - matches this test's own
+	// direct recordManualValue(..., effectiveFrom=null, rerateActivities=true, ...) call before
+	// it was rewritten to go through AthleteService.updateProfile.
+	private AthleteUpdateRequest previewRequest(int ftp, boolean preview) {
+		return new AthleteUpdateRequest(null, null, null, ftp, null, null, null, null, null, null, null, null, null, null,
+				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+				null, null, null, null, true, preview);
 	}
 
 	@Test

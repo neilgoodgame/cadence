@@ -21,7 +21,6 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 /**
  * Wires {@link ThresholdHistoryCalculator}'s pure algorithm to persistence: the ingest hook
@@ -244,13 +243,14 @@ public class ThresholdHistoryService {
 			userRepository.save(athlete);
 		}
 
-		if (preview) {
-			// Rolls back this method's own transaction only - whatever the caller's own
-			// enclosing transaction does for other, unrelated fields in the same request is
-			// untouched (AthleteService.updateProfile calls this per-field, each in this same
-			// nested @Transactional boundary via Spring's REQUIRED propagation default).
-			TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
-		}
+		// preview's actual rollback happens once, at the end of the whole request - see
+		// AthleteService.updateProfile/PreviewRollbackSignal. This method's own @Transactional
+		// only ever participates in that outer transaction (Spring's default REQUIRED
+		// propagation), so marking rollback-only here - rather than there - would mark the
+		// shared transaction while this call still returns normally; the owning (real, new)
+		// transaction would then throw UnexpectedRollbackException on its own commit instead of
+		// returning anything, for every multi-field preview too (the first field's own commit
+		// couldn't be deferred until the others ran).
 
 		return new ManualEditResult(true, becameCurrent, correctionOnly, rerateResult.reratedCount(), rerateResult.diffs());
 	}
