@@ -379,14 +379,20 @@ public class ThresholdHistoryService {
 		return ChronoUnit.DAYS.between(latest.getEffectiveFrom(), effectiveAsOf) > athlete.getThresholdWindowDays();
 	}
 
-	/** The bulk "recompute history from oldest" tool - replaces the entire ledger for one field
-	 * with a fresh replay, then syncs the athlete's cached profile value to the result (or clears
-	 * it if the athlete has no qualifying activities for this field at all). Calls
-	 * onProgress(current, total) after each activity considered, for the SSE bulk-rebuild
-	 * endpoint. Returns the final entry count. */
+	/** The bulk "recompute history from oldest" tool - replaces the *measured* portion of the
+	 * ledger for one field with a fresh replay, then syncs the athlete's cached profile value to
+	 * whatever is now current (or clears it if there's no qualifying row at all). A manual or
+	 * correction-only row is never deleted or rederived here - it isn't something activities can
+	 * reconstruct, so wiping it on every rebuild would silently discard a real, intentional
+	 * correction (issue #504; #493 requires the opposite - "rebuild must keep backdated manual
+	 * rows"). calculator.replayFullHistory already merges those surviving rows back into the
+	 * window at their own effectiveFrom, so measured activities are still correctly suppressed/
+	 * revealed relative to them - see its own Javadoc. Calls onProgress(current, total) after
+	 * each activity considered, for the SSE bulk-rebuild endpoint. Returns the final entry
+	 * count (measured rows written, not the ledger's total size). */
 	@Transactional
 	public int rebuildHistory(User athlete, ThresholdField field, BiConsumer<Integer, Integer> onProgress) {
-		thresholdHistoryRepository.deleteByAthleteIdAndField(athlete.getId(), field);
+		thresholdHistoryRepository.deleteByAthleteIdAndFieldAndKind(athlete.getId(), field, ThresholdHistoryKind.MEASURED);
 		List<ThresholdHistoryEntry> entries = calculator.replayFullHistory(athlete, field, onProgress);
 		for (ThresholdHistoryEntry entry : entries) {
 			ThresholdHistory row = new ThresholdHistory();
@@ -405,11 +411,18 @@ public class ThresholdHistoryService {
 			thresholdHistoryRepository.save(row);
 		}
 
-		ThresholdHistoryEntry last = entries.isEmpty() ? null : entries.get(entries.size() - 1);
+		// The current row after the rebuild, not "the replay's last entry" - a still-valid
+		// manual row (kept, not deleted above) can be more recent than any measured row the
+		// replay just wrote, and correctionOnlyFalse already excludes a correction-only row from
+		// ever being mistaken for current (same lookup manualAnchorCandidate/isStale/summaryFor
+		// use).
+		ThresholdHistory current = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
+				.orElse(null);
 		switch (field) {
-			case FTP -> athlete.setFtp(last != null ? (int) Math.round(last.value()) : null);
-			case CRITICAL_RUN_POWER -> athlete.setCriticalRunPower(last != null ? (int) Math.round(last.value()) : null);
-			case THRESHOLD_PACE -> athlete.setThresholdPace(last != null ? secondsToMmss(last.value()) : "");
+			case FTP -> athlete.setFtp(current != null ? current.getValueNumeric() : null);
+			case CRITICAL_RUN_POWER -> athlete.setCriticalRunPower(current != null ? current.getValueNumeric() : null);
+			case THRESHOLD_PACE -> athlete.setThresholdPace(current != null ? current.getValuePace() : "");
 		}
 		userRepository.save(athlete);
 		return entries.size();

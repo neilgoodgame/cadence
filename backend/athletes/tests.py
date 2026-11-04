@@ -1221,6 +1221,81 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         candidate = current_window_value(self.athlete, "critical_run_power", as_of=date(2026, 2, 15))
         self.assertIsNone(candidate)
 
+    # Issue #504: rebuild_history_stream used to delete the *entire* ledger (every kind), then
+    # write back only measured rows from the replay and set the profile field from the replay's
+    # last entry - so a manual or backdated-correction row, and any profile value it implied,
+    # was silently lost on every rebuild. These three cover the fix: a manual row survives and
+    # the profile value comes from the existing current-row lookup, a still-valid manual row
+    # correctly suppresses a lower later activity during the replay (not just in
+    # current_window_value - issue #484 generalized to the bulk rebuild), and a correction-only
+    # row survives without ever becoming current.
+
+    def test_rebuild_keeps_a_manual_row_and_derives_the_profile_value_from_it(self):
+        self._make_power_activity("bike", datetime(2024, 1, 1, 7, 0, tzinfo=UTC), power=200)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=247,
+            source_activity=None,
+            effective_from=date(2024, 6, 1),
+            current_from=date(2024, 6, 1),
+            kind="manual",
+        )
+
+        for _ in rebuild_history_stream(self.athlete, "ftp"):
+            pass
+
+        ledger = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp")
+        self.assertEqual(ledger.count(), 2)
+        self.assertTrue(ledger.filter(kind="manual").exists())
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 247)
+
+    def test_rebuild_does_not_let_a_lower_measured_activity_override_a_still_valid_manual_row(self):
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=247,
+            source_activity=None,
+            effective_from=date(2024, 1, 1),
+            current_from=date(2024, 1, 1),
+            kind="manual",
+        )
+        # Within the default 112-day window and the default 30% sanity band either way, so it's
+        # only the manual row's own dominance (issue #484's rule) keeping this from winning - not
+        # sanity filtering or the window aging it out.
+        self._make_power_activity("bike", datetime(2024, 2, 1, 7, 0, tzinfo=UTC), power=220)
+
+        for _ in rebuild_history_stream(self.athlete, "ftp"):
+            pass
+
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 247)
+        current = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp", is_correction_only=False)
+        self.assertEqual(current.count(), 1)
+        self.assertEqual(current.first().kind, "manual")
+
+    def test_rebuild_keeps_a_correction_only_row_without_letting_it_become_current(self):
+        self._make_power_activity("bike", datetime(2024, 1, 1, 7, 0, tzinfo=UTC), power=200)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=180,
+            source_activity=None,
+            effective_from=date(2023, 1, 1),
+            current_from=date(2023, 1, 1),
+            kind="manual",
+            is_correction_only=True,
+        )
+
+        for _ in rebuild_history_stream(self.athlete, "ftp"):
+            pass
+
+        ledger = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp")
+        self.assertTrue(ledger.filter(kind="manual", is_correction_only=True).exists())
+        self.athlete.refresh_from_db()
+        self.assertNotEqual(self.athlete.ftp, 180)
+
 
 class ThresholdHistoryListViewTests(TestCase):
     """GET /v1/athletes/<id>/threshold-history?field=... exposes current_from distinct from
