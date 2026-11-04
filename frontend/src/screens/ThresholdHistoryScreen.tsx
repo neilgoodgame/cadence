@@ -484,8 +484,19 @@ export function ThresholdHistoryScreen() {
                       }}
                     >
                       <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>{i + 1}</span>
-                      <span className="mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
-                        {formatLedgerValue(active.field as ThresholdFieldName, entry.value)}
+                      <span style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+                        <span className="mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
+                          {formatLedgerValue(active.field as ThresholdFieldName, entry.value)}
+                        </span>
+                        {entry.is_correction_only && (
+                          <span
+                            className="mono"
+                            title="Not used as the current value - outside the window, or a later entry already existed when this was saved."
+                            style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "var(--line)", color: "var(--ink3)", letterSpacing: "0.04em", whiteSpace: "nowrap" }}
+                          >
+                            CORRECTION ONLY
+                          </span>
+                        )}
                       </span>
                       {entry.source_activity_id ? (
                         <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ember)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

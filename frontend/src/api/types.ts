@@ -237,6 +237,11 @@ export interface ThresholdHistoryPoint {
   set_by_user_id: string | null;
   effective_from: string;
   current_from: string;
+  /** True for a backdated manual row that never became the live value - a later row already
+   * existed, or it was already outside threshold_window_days as of the date it was saved. Still
+   * used by any activity-scoped lookup in its span - just excluded from "current" everywhere
+   * else. See PATCH /v1/athletes/{id}'s effective_from. */
+  is_correction_only: boolean;
 }
 
 export interface ThresholdHistoryResponse {
@@ -501,6 +506,41 @@ export interface AthleteUpdate {
   /** Any subset - merged into the athlete's current settings, and the merged result must be
    * within every range (400 otherwise, nothing saved). */
   course_section_settings?: Partial<CourseSectionSettings>;
+  /** Backdates whichever of ftp/critical_run_power/threshold_pace is present in this same
+   * request - default today. See ThresholdEditResult for the became-current/correction-only
+   * outcome this produces. */
+  effective_from?: string;
+  /** Recomputes intensity/tss for every activity of the affected sport on or after
+   * effective_from. Defaults to true, matching the pre-existing same-day-edit behavior. */
+  rerate_activities?: boolean;
+  /** Computes the same outcome - including would_rerate - without saving anything. */
+  preview?: boolean;
+}
+
+/** One activity's before/after intensity+tss from a (real or previewed) re-rate - part of
+ * ThresholdEditResult.would_rerate. */
+export interface RerateDiff {
+  activity_id: string;
+  date: string;
+  old_intensity: number | null;
+  new_intensity: number | null;
+  old_tss: number | null;
+  new_tss: number | null;
+}
+
+/** One threshold field's outcome from a manual edit (PATCH /v1/athletes/{id}) - part of
+ * AthleteUpdateResponse.threshold_edit_results. */
+export interface ThresholdEditResult {
+  /** False if the submitted value already matched what's in effect at effective_from -
+   * nothing was written. */
+  changed: boolean;
+  /** True if this edit is now the live value. False exactly when is_correction_only is true. */
+  became_current: boolean;
+  is_correction_only: boolean;
+  /** Activities actually re-rated. Populated on a real (non-preview) run; 0 during a preview. */
+  rerated_count?: number;
+  /** Populated only when preview=true - what rerate_activities=true would do, without saving it. */
+  would_rerate?: RerateDiff[];
 }
 
 export interface ActivityComment {
@@ -518,6 +558,9 @@ export interface ActivityComment {
 
 export interface AthleteUpdateResponse extends Athlete {
   zones_recomputed: ZoneType[];
+  /** One entry per ftp/critical_run_power/threshold_pace actually present in the request,
+   * keyed by field name. Empty (or omitted) when none was. */
+  threshold_edit_results?: Partial<Record<ThresholdFieldName, ThresholdEditResult>>;
 }
 
 export interface ActivityUpdate {
