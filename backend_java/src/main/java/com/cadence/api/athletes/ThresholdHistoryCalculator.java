@@ -2,7 +2,6 @@ package com.cadence.api.athletes;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
-import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.calc.DurationCurveCalculator;
 import com.cadence.api.activities.calc.PaceBestEffortCalculator;
@@ -12,12 +11,14 @@ import com.cadence.api.races.Race;
 import com.cadence.api.races.RaceRepository;
 import com.cadence.api.users.User;
 import jakarta.persistence.EntityManager;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
@@ -53,15 +54,24 @@ public class ThresholdHistoryCalculator {
 	}
 
 	public enum CandidateStatus {
-		QUALIFIED, REJECTED_SANITY, ACCEPTED, TOO_SHORT
+		QUALIFIED, REJECTED_SANITY, ACCEPTED, TOO_SHORT,
+		// One activity's implied-value computation threw - surfaced as this status with a reason
+		// instead of failing list_threshold_candidates' whole call (issue #500).
+		ERROR
 	}
 
 	/** Every one of an athlete's activities in a date range, classified against their *current*
 	 * profile value - see {@link #candidateStatuses}. {@code impliedValue}/{@code rawValue}/
-	 * {@code window} are null for a {@link CandidateStatus#TOO_SHORT} activity (no qualifying
-	 * effort at all). */
-	public record CandidateStatusEntry(
-			String activityId, LocalDate date, CandidateStatus status, Double impliedValue, Double rawValue, String window) {
+	 * {@code window} are null for a {@link CandidateStatus#TOO_SHORT} or {@link
+	 * CandidateStatus#ERROR} activity (no qualifying effort computed either way).
+	 * {@code errorReason} is null except for {@code ERROR}. */
+	public record CandidateStatusEntry(String activityId, LocalDate date, CandidateStatus status,
+			Double impliedValue, Double rawValue, String window, String errorReason) {
+
+		public CandidateStatusEntry(
+				String activityId, LocalDate date, CandidateStatus status, Double impliedValue, Double rawValue, String window) {
+			this(activityId, date, status, impliedValue, rawValue, window, null);
+		}
 	}
 
 	/** Result of {@link #upcomingDrop} - shape varies with which of the two kinds applies. See
@@ -118,15 +128,27 @@ public class ThresholdHistoryCalculator {
 	private record ImpliedValueDetail(String window, double rawValue, double value) {
 	}
 
+	/** Fetches this one activity's records itself - for a caller considering activities one at a
+	 * time where that's cheap (replayFullHistory's whole-history replay, upcomingDrop's 14-day
+	 * recent-match check): each already bounds how many activities/records it touches on its
+	 * own, so a dedicated per-activity query is fine there. A caller scanning many activities in
+	 * one go (rejectedCandidates, candidateStatuses, currentWindowValue) should batch-fetch with
+	 * {@link #batchedRecordsFor} instead and call the other overload below - see its own Javadoc
+	 * for why a per-activity query doesn't scale the same way. */
 	private ImpliedValueDetail impliedValueDetail(Activity activity, User athlete, ThresholdField field) {
-		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+		return impliedValueDetail(
+				activity, athlete, field, recordRepository.findPowerTimeDistanceByActivityIdOrderByT(activity.getId()));
+	}
+
+	private ImpliedValueDetail impliedValueDetail(
+			Activity activity, User athlete, ThresholdField field, List<? extends RecordRepository.PowerTimeDistance> records) {
 		if (records.isEmpty()) {
 			return null;
 		}
-		List<Integer> powerSeries = RunningPowerSanitizer.sanitize(
-				records.stream().map(Record::getPower).toList(), activity.getSport(), athlete.getMaxRunningPowerWatts());
-		List<Integer> tSeries = records.stream().map(Record::getT).toList();
-		List<Double> distanceKmSeries = records.stream().map(Record::getDistanceKm).toList();
+		List<Integer> powerSeries = RunningPowerSanitizer.sanitize(records.stream()
+				.map(RecordRepository.PowerTimeDistance::getPower).toList(), activity.getSport(), athlete.getMaxRunningPowerWatts());
+		List<Integer> tSeries = records.stream().map(RecordRepository.PowerTimeDistance::getT).toList();
+		List<Double> distanceKmSeries = records.stream().map(RecordRepository.PowerTimeDistance::getDistanceKm).toList();
 
 		return switch (field) {
 			case FTP -> {
@@ -169,6 +191,42 @@ public class ThresholdHistoryCalculator {
 	private Double impliedValue(Activity activity, User athlete, ThresholdField field) {
 		ImpliedValueDetail detail = impliedValueDetail(activity, athlete, field);
 		return detail == null ? null : detail.value();
+	}
+
+	// Chunk size for batchedRecordsFor below - one query per chunk instead of one per activity
+	// (issue #500), but still small enough that a chunk's worth of 1 Hz streams held in memory at
+	// once stays bounded, unlike fetching a whole multi-hundred-activity request's records in one
+	// shot (tried first - OOM'd a test JVM on a real year's worth of this athlete's rides, trading
+	// the per-activity partition-fanout cost for an unbounded batch-memory one instead).
+	private static final int RECORD_BATCH_SIZE = 20;
+
+	private List<List<Activity>> chunked(List<Activity> activities) {
+		List<List<Activity>> chunks = new ArrayList<>();
+		for (int i = 0; i < activities.size(); i += RECORD_BATCH_SIZE) {
+			chunks.add(activities.subList(i, Math.min(i + RECORD_BATCH_SIZE, activities.size())));
+		}
+		return chunks;
+	}
+
+	/** One query for every activity in `chunk`'s records, instead of one per activity (issue
+	 * #500) - see {@link com.cadence.api.activities.RecordRepository#findPowerTimeDistanceByActivityIdInAndTsBetween}
+	 * for why a per-activity query doesn't scale here. `chunk` should be one of {@link #chunked}'s
+	 * pieces, not a whole request's activities at once - the ts bound below is derived from the
+	 * chunk's own (startDate-ordered) activities, both to keep partition pruning tight and to
+	 * bound how many activities' streams are held in memory at once (see {@link
+	 * #RECORD_BATCH_SIZE}'s own Javadoc). */
+	private Map<String, List<RecordRepository.PowerTimeDistanceRow>> batchedRecordsFor(List<Activity> chunk) {
+		if (chunk.isEmpty()) {
+			return Map.of();
+		}
+		List<String> activityIds = chunk.stream().map(Activity::getId).toList();
+		// chunk is startDate-ordered (findForThresholdWindow's own "order by a.startDate"), so the
+		// first/last give the span cheaply - minusDays(1)/plusDays(2) comfortably covers any single
+		// activity's own duration on either edge.
+		Instant chunkStart = chunk.get(0).getStartDate().minus(Duration.ofDays(1));
+		Instant chunkEnd = chunk.get(chunk.size() - 1).getStartDate().plus(Duration.ofDays(2));
+		return recordRepository.findPowerTimeDistanceByActivityIdInAndTsBetween(activityIds, chunkStart, chunkEnd).stream()
+				.collect(Collectors.groupingBy(RecordRepository.PowerTimeDistanceRow::getActivityId));
 	}
 
 	/** Whether candidate value `a` beats existing value `b` for this field. */
@@ -269,18 +327,23 @@ public class ThresholdHistoryCalculator {
 				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
 
 		Candidate best = manualAnchorCandidate(athlete, field, windowStart);
-		for (Activity activity : activities) {
-			Double implied = impliedValue(activity, athlete, field);
-			boolean qualifies = implied != null && (acceptedIds.contains(activity.getId())
-					|| withinSanityBand(implied, referenceValue, athlete.getThresholdSanityPct()));
-			if (qualifies && (best == null || isBetter(field, implied, best.impliedValue()))) {
-				best = new Candidate(activity.getId(), dateOf(activity), implied);
+		for (List<Activity> chunk : chunked(activities)) {
+			Map<String, List<RecordRepository.PowerTimeDistanceRow>> batchedRecords = batchedRecordsFor(chunk);
+			for (Activity activity : chunk) {
+				ImpliedValueDetail detail = impliedValueDetail(
+						activity, athlete, field, batchedRecords.getOrDefault(activity.getId(), List.of()));
+				Double implied = detail == null ? null : detail.value();
+				boolean qualifies = implied != null && (acceptedIds.contains(activity.getId())
+						|| withinSanityBand(implied, referenceValue, athlete.getThresholdSanityPct()));
+				if (qualifies && (best == null || isBetter(field, implied, best.impliedValue()))) {
+					best = new Candidate(activity.getId(), dateOf(activity), implied);
+				}
+				// Load-bearing, not cosmetic (see ExportWriter's Javadoc for the same pattern):
+				// Hibernate's persistence context pins every Activity loaded here for the life of
+				// the enclosing transaction. Bounded to ~windowDays worth of activities, but a
+				// prolific athlete's trailing window can still be large enough to matter.
+				entityManager.clear();
 			}
-			// Load-bearing, not cosmetic (see ExportWriter's Javadoc for the same pattern):
-			// Hibernate's persistence context pins every Activity and Record loaded here for the
-			// life of the enclosing transaction. Bounded to ~windowDays worth of activities, but
-			// a prolific athlete's trailing window can still be large enough to matter.
-			entityManager.clear();
 		}
 		return best;
 	}
@@ -381,19 +444,32 @@ public class ThresholdHistoryCalculator {
 				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
 
 		List<RejectedCandidate> candidates = new ArrayList<>();
-		for (Activity activity : activities) {
-			if (!acceptedIds.contains(activity.getId())) {
-				ImpliedValueDetail detail = impliedValueDetail(activity, athlete, field);
-				if (detail != null && !withinSanityBand(detail.value(), referenceValue, athlete.getThresholdSanityPct())
-						// Reaching here already proves referenceValue is a real, non-zero number -
-						// the sanity band above only ever fails when it is (see withinSanityBand's
-						// own null/0 passthrough).
-						&& isBetter(field, detail.value(), referenceValue)) {
-					candidates.add(new RejectedCandidate(
-							activity.getId(), dateOf(activity), detail.value(), detail.window(), detail.rawValue()));
+		for (List<Activity> chunk : chunked(activities)) {
+			Map<String, List<RecordRepository.PowerTimeDistanceRow>> batchedRecords = batchedRecordsFor(chunk);
+			for (Activity activity : chunk) {
+				if (!acceptedIds.contains(activity.getId())) {
+					ImpliedValueDetail detail;
+					try {
+						detail = impliedValueDetail(
+								activity, athlete, field, batchedRecords.getOrDefault(activity.getId(), List.of()));
+					}
+					catch (Exception e) {
+						// One bad activity's stream shouldn't take down the whole suggestions scan
+						// - skip it and keep going (issue #500's class of bug, applied defensively
+						// here too even without a reproduced trigger for it).
+						detail = null;
+					}
+					if (detail != null && !withinSanityBand(detail.value(), referenceValue, athlete.getThresholdSanityPct())
+							// Reaching here already proves referenceValue is a real, non-zero
+							// number - the sanity band above only ever fails when it is (see
+							// withinSanityBand's own null/0 passthrough).
+							&& isBetter(field, detail.value(), referenceValue)) {
+						candidates.add(new RejectedCandidate(
+								activity.getId(), dateOf(activity), detail.value(), detail.window(), detail.rawValue()));
+					}
 				}
+				entityManager.clear();
 			}
-			entityManager.clear();
 		}
 		boolean lowerIsBetter = LOWER_IS_BETTER.contains(field);
 		candidates.sort(lowerIsBetter
@@ -411,7 +487,8 @@ public class ThresholdHistoryCalculator {
 	 * Unlike {@link #rejectedCandidates}, returns every activity in range, not just the
 	 * rejected-and-better subset - built for the Threshold suggestions calibration tooling
 	 * (list_threshold_candidates), to see what a model would have had to predict between ledger
-	 * entries. */
+	 * entries. A per-activity computation failure is surfaced as {@code CandidateStatus.ERROR}
+	 * with {@code errorReason} set, rather than failing the whole call (issue #500). */
 	public List<CandidateStatusEntry> candidateStatuses(User athlete, ThresholdField field, LocalDate from, LocalDate to) {
 		Double referenceValue = athleteReferenceValue(athlete, field);
 		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
@@ -421,20 +498,32 @@ public class ThresholdHistoryCalculator {
 		List<Activity> activities = activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
 
 		List<CandidateStatusEntry> statuses = new ArrayList<>();
-		for (Activity activity : activities) {
-			LocalDate activityDate = dateOf(activity);
-			ImpliedValueDetail detail = impliedValueDetail(activity, athlete, field);
-			if (detail == null) {
-				statuses.add(new CandidateStatusEntry(activity.getId(), activityDate, CandidateStatus.TOO_SHORT, null, null, null));
+		for (List<Activity> chunk : chunked(activities)) {
+			Map<String, List<RecordRepository.PowerTimeDistanceRow>> batchedRecords = batchedRecordsFor(chunk);
+			for (Activity activity : chunk) {
+				LocalDate activityDate = dateOf(activity);
+				ImpliedValueDetail detail;
+				try {
+					detail = impliedValueDetail(activity, athlete, field, batchedRecords.getOrDefault(activity.getId(), List.of()));
+				}
+				catch (Exception e) {
+					statuses.add(new CandidateStatusEntry(
+							activity.getId(), activityDate, CandidateStatus.ERROR, null, null, null, e.toString()));
+					entityManager.clear();
+					continue;
+				}
+				if (detail == null) {
+					statuses.add(new CandidateStatusEntry(activity.getId(), activityDate, CandidateStatus.TOO_SHORT, null, null, null));
+				}
+				else {
+					CandidateStatus status = acceptedIds.contains(activity.getId()) ? CandidateStatus.ACCEPTED
+							: withinSanityBand(detail.value(), referenceValue, athlete.getThresholdSanityPct()) ? CandidateStatus.QUALIFIED
+							: CandidateStatus.REJECTED_SANITY;
+					statuses.add(new CandidateStatusEntry(
+							activity.getId(), activityDate, status, detail.value(), detail.rawValue(), detail.window()));
+				}
+				entityManager.clear();
 			}
-			else {
-				CandidateStatus status = acceptedIds.contains(activity.getId()) ? CandidateStatus.ACCEPTED
-						: withinSanityBand(detail.value(), referenceValue, athlete.getThresholdSanityPct()) ? CandidateStatus.QUALIFIED
-						: CandidateStatus.REJECTED_SANITY;
-				statuses.add(new CandidateStatusEntry(
-						activity.getId(), activityDate, status, detail.value(), detail.rawValue(), detail.window()));
-			}
-			entityManager.clear();
 		}
 		return statuses;
 	}

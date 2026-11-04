@@ -70,8 +70,10 @@ import com.cadence.api.workouts.WorkoutTagRepository;
 import com.cadence.api.workouts.dto.WorkoutMatchComparisonResponse;
 import com.cadence.api.workouts.dto.WorkoutResponse;
 import com.cadence.api.workouts.dto.WorkoutTagAttachResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
@@ -799,6 +801,64 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		assertThat(byId.get(accepted.getId()).status()).isEqualTo(CandidateStatus.ACCEPTED);
 		assertThat(byId.get(tooShort.getId()).status()).isEqualTo(CandidateStatus.TOO_SHORT);
 		assertThat(byId.get(tooShort.getId()).impliedValue()).isNull();
+	}
+
+	@Test
+	void listThresholdCandidatesTreatsAnActivityWithNoRecordsAsTooShort() {
+		// issue #500: a missing/partial record stream (here, no records at all) must classify as
+		// TOO_SHORT rather than throwing - candidateStatuses now batch-fetches records per chunk
+		// of activities (see ThresholdHistoryCalculator#batchedRecordsFor) instead of one query
+		// per activity, so an activity absent from that batch's result (because it has literally
+		// no rows) has to fall back to an empty list, not a missing-key exception.
+		User athlete = saveAthlete("mcp-threshold-candidates-empty-stream@example.cc");
+		athlete.setFtp(200);
+		userRepository.save(athlete);
+		Activity noRecords = new Activity();
+		noRecords.setAthlete(athlete);
+		noRecords.setSport(Sport.BIKE);
+		noRecords.setName("No stream");
+		noRecords.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
+		noRecords.setMovingTime(1200);
+		activityRepository.save(noRecords);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.listThresholdCandidates("ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
+
+		assertThat(result).hasSize(1);
+		assertThat(result.get(0).status()).isEqualTo(CandidateStatus.TOO_SHORT);
+		assertThat(result.get(0).impliedValue()).isNull();
+	}
+
+	@Test
+	void listThresholdCandidatesClassifiesEveryActivityAcrossMultipleRecordBatches() {
+		// issue #500's actual fix: candidateStatuses batches its record fetch in chunks (see
+		// ThresholdHistoryCalculator#RECORD_BATCH_SIZE) instead of one query per activity, to
+		// avoid record's ts-partition fanout a per-activity, no-ts-predicate query causes at
+		// scale. More activities than one chunk holds, so this only passes if every activity
+		// still gets its own records correctly - not just the ones in the first chunk.
+		User athlete = saveAthlete("mcp-threshold-candidates-many-batches@example.cc");
+		athlete.setFtp(200);
+		userRepository.save(athlete);
+		int activityCount = 45;
+		List<Activity> activities = new ArrayList<>();
+		for (int i = 0; i < activityCount; i++) {
+			activities.add(newBikeActivity(athlete, "Ride " + i, Instant.parse("2026-01-01T07:00:00Z").plus(Duration.ofDays(i)), 230, 1200));
+		}
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.listThresholdCandidates(
+				"ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1).plusDays(activityCount));
+
+		var byId = result.stream().collect(java.util.stream.Collectors.toMap(
+				com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatusEntry::activityId, c -> c));
+		assertThat(result).hasSize(activityCount);
+		for (Activity activity : activities) {
+			var entry = byId.get(activity.getId());
+			assertThat(entry.status())
+					.describedAs("activity %s (every activity has the same real power stream)", activity.getId())
+					.isEqualTo(CandidateStatus.QUALIFIED);
+			assertThat(entry.impliedValue()).isEqualTo(Math.round(0.95 * 230));
+		}
 	}
 
 	@Test

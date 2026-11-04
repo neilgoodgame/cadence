@@ -1,6 +1,7 @@
 package com.cadence.api.activities;
 
 import jakarta.persistence.QueryHint;
+import java.time.Instant;
 import java.util.List;
 import java.util.stream.Stream;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -37,6 +38,46 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 
 	@Query("select r.t as t, r.distanceKm as distanceKm from Record r where r.id.activityId = :activityId order by r.t")
 	List<TimeDistance> findTimeDistanceByActivityIdOrderByT(@Param("activityId") String activityId);
+
+	/** Just (t, power, distance_km), as scalars rather than managed Record entities - for
+	 * ThresholdHistoryCalculator, which scans every one of an athlete's activities in a window
+	 * (up to a whole year for the calibration tooling's list_threshold_candidates) inside one
+	 * request. Loading full Record entities there (as findByActivityIdOrderByT does) means every
+	 * entity from every activity's full 1 Hz stream stays in the persistence context for the
+	 * whole request - the same full-entity-materialization cost already called out above and on
+	 * StreamRow below as having taken the backend OOM elsewhere, just reached by scanning many
+	 * activities in one call instead of one huge one. */
+	interface PowerTimeDistance {
+		int getT();
+
+		Integer getPower();
+
+		Double getDistanceKm();
+	}
+
+	@Query("select r.t as t, r.power as power, r.distanceKm as distanceKm from Record r "
+			+ "where r.id.activityId = :activityId order by r.t")
+	List<PowerTimeDistance> findPowerTimeDistanceByActivityIdOrderByT(@Param("activityId") String activityId);
+
+	/** Same three columns, but for *every* activity in `activityIds` at once, scoped by
+	 * `[tsStart, tsEnd)` - one query instead of one per activity (see issue #500: a threshold-
+	 * calibration scan over a whole year of activities timed out/502'd, because each per-activity
+	 * findByActivityIdOrderByT-style call has no ts predicate to prune on, so it fans out across
+	 * every one of record's ~126 monthly partitions - cheap once, ruinous once per activity in a
+	 * ~100-200-activity request). Callers pad tsEnd past the activity window's own end (an
+	 * activity starting right at the edge can still have records running past it) - generous
+	 * padding still prunes to a handful of partitions, nowhere near all of them. Grouped by
+	 * activity id in application code; ordered by t within each activity for callers (durations/
+	 * best-effort scans) that need it in series order. */
+	interface PowerTimeDistanceRow extends PowerTimeDistance {
+		String getActivityId();
+	}
+
+	@Query("select r.id.activityId as activityId, r.t as t, r.power as power, r.distanceKm as distanceKm "
+			+ "from Record r where r.id.activityId in :activityIds and r.id.ts >= :tsStart and r.id.ts < :tsEnd "
+			+ "order by r.id.activityId, r.t")
+	List<PowerTimeDistanceRow> findPowerTimeDistanceByActivityIdInAndTsBetween(
+			@Param("activityIds") List<String> activityIds, @Param("tsStart") Instant tsStart, @Param("tsEnd") Instant tsEnd);
 
 	/** Just (distance_km, altitude), as scalars - ActivitySectionsService builds an activity's
 	 * elevation series from these without loading whole Record entities (see TimeDistance). */
