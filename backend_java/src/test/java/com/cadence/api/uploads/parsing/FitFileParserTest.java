@@ -3,12 +3,16 @@ package com.cadence.api.uploads.parsing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cadence.api.activities.Environment;
 import com.garmin.fit.DateTime;
 import com.garmin.fit.File;
 import com.garmin.fit.FileEncoder;
 import com.garmin.fit.FileIdMesg;
 import com.garmin.fit.Fit;
 import com.garmin.fit.Manufacturer;
+import com.garmin.fit.RecordMesg;
+import com.garmin.fit.SessionMesg;
+import com.garmin.fit.Sport;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -95,6 +99,68 @@ class FitFileParserTest {
 				}
 			});
 			assertThat(result.samples()).anySatisfy(s -> assertThat(s.coreTemp()).isNotNull());
+		}
+	}
+
+	@Test
+	void zwiftRideIsIndoorDespiteItsVirtualGpsTrack() throws IOException {
+		// Issue #498: Zwift's GPS track is virtual (a rendered route), not a real position
+		// fix - confirmed this fixture has lat/long records (hasGps), yet it must still
+		// classify as indoor so the environment filter isn't broken by every Zwift ride
+		// looking outdoor. has_gps stays true regardless, so the virtual route still renders.
+		try (InputStream in = getClass().getClassLoader().getResourceAsStream("fit-fixtures/indoor_ride_zwift_core_sensor.fit")) {
+			assertThat(in).isNotNull();
+			var parsed = FitFileParser.parse(in);
+
+			ParsedActivity result = parsed.get(0);
+			assertThat(result.hasGps()).isTrue();
+			assertThat(result.environment()).isEqualTo(Environment.INDOOR);
+		}
+	}
+
+	@Test
+	void garminOutdoorRideWithRealGpsStaysOutdoor() throws IOException {
+		// Regression: a real (non-virtual) GPS fix must still classify as outdoor - the
+		// Zwift/virtual_activity check must not swallow ordinary outdoor rides.
+		try (InputStream in = getClass().getClassLoader().getResourceAsStream("fit-fixtures/running_outdoor_marathon.fit")) {
+			assertThat(in).isNotNull();
+			var parsed = FitFileParser.parse(in);
+
+			ParsedActivity result = parsed.get(0);
+			assertThat(result.hasGps()).isTrue();
+			assertThat(result.environment()).isEqualTo(Environment.OUTDOOR);
+		}
+	}
+
+	@Test
+	void garminIndoorTrainerRideWithNoGpsIsIndoor(@TempDir Path tempDir) throws IOException {
+		// A synthetic, non-Zwift, no-GPS trainer ride - must still be INDOOR via the
+		// pre-existing hasGps fallback, not just the new Zwift/virtual_activity check.
+		Path fit = tempDir.resolve("indoor_trainer.fit");
+		FileEncoder encoder = new FileEncoder(fit.toFile(), Fit.ProtocolVersion.V2_0);
+		FileIdMesg fileId = new FileIdMesg();
+		fileId.setType(File.ACTIVITY);
+		fileId.setManufacturer(Manufacturer.GARMIN);
+		fileId.setTimeCreated(new DateTime(0));
+		encoder.write(fileId);
+
+		SessionMesg session = new SessionMesg();
+		session.setSport(Sport.CYCLING);
+		session.setStartTime(new DateTime(0L));
+		encoder.write(session);
+
+		RecordMesg record = new RecordMesg();
+		record.setTimestamp(new DateTime(0L));
+		record.setPower(200);
+		encoder.write(record);
+		encoder.close();
+
+		try (InputStream in = new ByteArrayInputStream(Files.readAllBytes(fit))) {
+			var parsed = FitFileParser.parse(in);
+
+			ParsedActivity result = parsed.get(0);
+			assertThat(result.hasGps()).isFalse();
+			assertThat(result.environment()).isEqualTo(Environment.INDOOR);
 		}
 	}
 

@@ -133,12 +133,18 @@ def _session_meta(message) -> dict:
     return {
         "sport": sport,
         "start_time": ensure_utc(message.get_value("start_time")),
+        "is_virtual": raw_sub == "virtual_activity",
         # Garmin's Firstbeat-derived training load, 0.0-5.0. Standard FIT
         # session fields (not developer fields) - only present on Garmin
         # devices that run that analytics.
         "aerobic_training_effect": message.get_value("total_training_effect"),
         "anaerobic_training_effect": message.get_value("total_anaerobic_training_effect"),
     }
+
+
+def _is_zwift_manufacturer(fit_file: FitFile) -> bool:
+    file_id = next(iter(fit_file.get_messages("file_id")), None)
+    return file_id is not None and file_id.get_value("manufacturer") == "zwift"
 
 
 def parse_fit(path: str) -> list[ParsedActivity]:
@@ -150,6 +156,10 @@ def parse_fit(path: str) -> list[ParsedActivity]:
     fit_file = FitFile(path)
     dev_field_scales = _developer_field_scales(fit_file)
     device = _device_name(fit_file)
+    # Zwift FITs carry a virtual GPS track, so has_gps alone would call every Zwift ride
+    # outdoor. Manufacturer is a file-level fact (file_id); sub_sport is set per session, but
+    # Zwift also stamps every session virtual_activity, so either signal catches it.
+    zwift_manufacturer = _is_zwift_manufacturer(fit_file)
 
     sessions = [_session_meta(m) for m in fit_file.get_messages("session")]
 
@@ -163,7 +173,7 @@ def parse_fit(path: str) -> list[ParsedActivity]:
     if len(sport_sessions) <= 1:
         sport = sessions[0]["sport"] if sessions else "bike"
         te = sessions[0] if sessions else {}
-        return [_build_activity(records, laps, sport, te, dev_field_scales, device)]
+        return [_build_activity(records, laps, sport, te, dev_field_scales, device, zwift_manufacturer)]
 
     # Multisport. Sessions partition the record stream into chained windows: each session's
     # window runs from its start_time to the next session's start_time (start_time has only
@@ -173,7 +183,9 @@ def parse_fit(path: str) -> list[ParsedActivity]:
     #
     # TE accumulates over the whole session on the device, so the last non-transition
     # session carries the total for the parent.
-    result = [_build_activity(records, laps, "multisport", sport_sessions[-1], dev_field_scales, device)]
+    result = [
+        _build_activity(records, laps, "multisport", sport_sessions[-1], dev_field_scales, device, zwift_manufacturer)
+    ]
     for i, session in enumerate(ordered):
         window_start = session["start_time"]
         window_end = ordered[i + 1]["start_time"] if i + 1 < len(ordered) else None
@@ -190,12 +202,16 @@ def parse_fit(path: str) -> list[ParsedActivity]:
         if not slice_records:
             continue
         slice_laps = [lap for lap in laps if in_window(lap)]
-        result.append(_build_activity(slice_records, slice_laps, session["sport"], session, dev_field_scales, device))
+        result.append(
+            _build_activity(
+                slice_records, slice_laps, session["sport"], session, dev_field_scales, device, zwift_manufacturer
+            )
+        )
     return result
 
 
 def _build_activity(
-    records, laps, sport: str, session_meta: dict, dev_field_scales: dict, device: str
+    records, laps, sport: str, session_meta: dict, dev_field_scales: dict, device: str, zwift_manufacturer: bool
 ) -> ParsedActivity:
     start_time = ensure_utc(records[0].get_value("timestamp"))
     if start_time is None:
@@ -292,9 +308,13 @@ def _build_activity(
             }
         )
 
+    is_virtual = zwift_manufacturer or bool(session_meta.get("is_virtual"))
     return {
         "sport": sport,
-        "environment": "outdoor" if has_gps else "indoor",
+        # Zwift's GPS track is virtual (a rendered route, not a real position fix), so a
+        # virtual_activity/Zwift file is always indoor regardless of has_gps - but has_gps
+        # stays true either way, so the virtual route still renders.
+        "environment": "indoor" if is_virtual or not has_gps else "outdoor",
         "has_gps": has_gps,
         "start_date": start_time,
         "source": "fit",
