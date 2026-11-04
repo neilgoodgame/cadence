@@ -216,6 +216,15 @@ class RealFitFixtureParserTests(SimpleTestCase):
         (result,) = parse_fit(str(FIXTURES_DIR / "cycling_with_scaled_core_sensor_fields.fit"))
         self.assertEqual(result["device"], "Zwift")
 
+    def test_zwift_ride_is_indoor_despite_its_virtual_gps_track(self):
+        # Issue #498: Zwift's GPS track is virtual (a rendered route), not a real position
+        # fix - this fixture has lat/long records (has_gps), yet must still classify as
+        # indoor so the environment filter isn't broken by every Zwift ride looking
+        # outdoor. has_gps stays true regardless, so the virtual route still renders.
+        (result,) = parse_fit(str(FIXTURES_DIR / "cycling_with_scaled_core_sensor_fields.fit"))
+        self.assertTrue(result["has_gps"])
+        self.assertEqual(result["environment"], "indoor")
+
     def test_running_treadmill_has_both_stryd_and_core_fields(self):
         (result,) = parse_fit(str(FIXTURES_DIR / "running_treadmill.fit"))
         self.assertTrue(all(s["air_temp"] is not None for s in result["samples"]))

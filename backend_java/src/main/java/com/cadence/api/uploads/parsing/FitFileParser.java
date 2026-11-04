@@ -57,6 +57,11 @@ public final class FitFileParser {
 		broadcaster.run(inputStream);
 
 		String device = deviceName(fileIds.isEmpty() ? null : fileIds.get(0));
+		// Zwift FITs carry a virtual GPS track, so hasGps alone would call every Zwift ride
+		// outdoor. Manufacturer is a file-level fact (file_id); sub_sport is set per session,
+		// but Zwift also stamps every session virtual_activity, so either signal catches it.
+		boolean zwiftManufacturer = !fileIds.isEmpty() && fileIds.get(0).getManufacturer() != null
+				&& fileIds.get(0).getManufacturer() == Manufacturer.ZWIFT;
 
 		if (records.isEmpty()) {
 			throw new NoActivityDataException("No record messages found in FIT file.");
@@ -68,8 +73,10 @@ public final class FitFileParser {
 				.toList();
 		long sportSessionCount = ordered.stream().filter(s -> mapSport(s.getSport(), s.getSubSport()) != Sport.TRANSITION).count();
 		if (sportSessionCount <= 1) {
-			Sport sport = sessions.isEmpty() ? Sport.BIKE : mapSport(sessions.get(0).getSport(), sessions.get(0).getSubSport());
-			return List.of(buildActivity(records, laps, sport, trainingEffects(sessions.isEmpty() ? null : sessions.get(0)), device));
+			SessionMesg onlySession = sessions.isEmpty() ? null : sessions.get(0);
+			Sport sport = onlySession == null ? Sport.BIKE : mapSport(onlySession.getSport(), onlySession.getSubSport());
+			return List.of(buildActivity(records, laps, sport, trainingEffects(onlySession), device,
+					isVirtual(onlySession, zwiftManufacturer)));
 		}
 
 		// Multisport. Sessions partition the record stream into chained windows: each session's
@@ -86,7 +93,8 @@ public final class FitFileParser {
 				lastSport = session;
 			}
 		}
-		result.add(buildActivity(records, laps, Sport.MULTISPORT, trainingEffects(lastSport), device));
+		result.add(buildActivity(records, laps, Sport.MULTISPORT, trainingEffects(lastSport), device,
+				isVirtual(lastSport, zwiftManufacturer)));
 
 		for (int i = 0; i < ordered.size(); i++) {
 			SessionMesg session = ordered.get(i);
@@ -102,13 +110,18 @@ public final class FitFileParser {
 			List<LapMesg> sliceLaps = laps.stream()
 					.filter(l -> l.getStartTime() != null && inWindow(l.getStartTime().getDate().getTime(), windowStart, windowEnd))
 					.toList();
-			result.add(buildActivity(sliceRecords, sliceLaps, mapSport(session.getSport(), session.getSubSport()), trainingEffects(session), device));
+			result.add(buildActivity(sliceRecords, sliceLaps, mapSport(session.getSport(), session.getSubSport()), trainingEffects(session), device,
+					isVirtual(session, zwiftManufacturer)));
 		}
 		return result;
 	}
 
 	private static boolean inWindow(long millis, long start, long end) {
 		return millis >= start && millis < end;
+	}
+
+	private static boolean isVirtual(SessionMesg session, boolean zwiftManufacturer) {
+		return zwiftManufacturer || (session != null && session.getSubSport() == com.garmin.fit.SubSport.VIRTUAL_ACTIVITY);
 	}
 
 	private static Double[] trainingEffects(SessionMesg session) {
@@ -171,7 +184,7 @@ public final class FitFileParser {
 		return result.toString();
 	}
 
-	private static ParsedActivity buildActivity(List<RecordMesg> records, List<LapMesg> laps, Sport sport, Double[] trainingEffects, String device) {
+	private static ParsedActivity buildActivity(List<RecordMesg> records, List<LapMesg> laps, Sport sport, Double[] trainingEffects, String device, boolean isVirtual) {
 		long startMillis = records.get(0).getTimestamp().getDate().getTime();
 		Instant startDate = Instant.ofEpochMilli(startMillis);
 		boolean hasGps = records.stream().anyMatch(r -> r.getPositionLat() != null && r.getPositionLong() != null);
@@ -262,7 +275,10 @@ public final class FitFileParser {
 			lapSummaries.add(new ParsedActivity.LapSummary(index++, duration, distanceKm, avgHr, avgPower));
 		}
 
-		Environment environment = hasGps ? Environment.OUTDOOR : Environment.INDOOR;
+		// Zwift's GPS track is virtual (a rendered route, not a real position fix), so a
+		// virtual_activity/Zwift file is always indoor regardless of hasGps - but hasGps stays
+		// true either way, so the virtual route still renders.
+		Environment environment = isVirtual || !hasGps ? Environment.INDOOR : Environment.OUTDOOR;
 		DistanceSource distanceSource = hasGps ? DistanceSource.GPS : DistanceSource.TRAINER;
 
 		return new ParsedActivity(
