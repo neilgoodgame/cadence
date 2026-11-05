@@ -312,6 +312,7 @@ def current_window_value(athlete: User, field: str, as_of: date | None = None) -
         Activity.objects.filter(
             athlete=athlete,
             sport=FIELD_SPORT[field],
+            primary_activity__isnull=True,
             start_date__date__gte=window_start,
             start_date__date__lte=as_of,
         ).order_by("start_date")
@@ -355,7 +356,11 @@ def _replay_full_history_into(
     suppressed/revealed relative to it, the same #484 rule current_window_value already gets via
     _manual_anchor_candidate. A correction-only row is deliberately excluded from this merge - it
     never competed to be current, so it shouldn't start winning the window on replay either."""
-    activities = list(Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field]).order_by("start_date"))
+    activities = list(
+        Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field], primary_activity__isnull=True).order_by(
+            "start_date"
+        )
+    )
     total = len(activities)
     accepted_ids = _accepted_activity_ids(athlete, field)
     manual_rows = list(
@@ -809,6 +814,7 @@ def rejected_candidates(athlete: User, field: str, as_of: date | None = None) ->
         Activity.objects.filter(
             athlete=athlete,
             sport=FIELD_SPORT[field],
+            primary_activity__isnull=True,
             start_date__date__gte=window_start,
             start_date__date__lte=as_of,
         ).order_by("start_date")
@@ -881,6 +887,7 @@ def candidate_statuses(athlete: User, field: str, from_date: date, to_date: date
         Activity.objects.filter(
             athlete=athlete,
             sport=FIELD_SPORT[field],
+            primary_activity__isnull=True,
             start_date__date__gte=from_date,
             start_date__date__lte=to_date,
         ).order_by("start_date")
@@ -965,7 +972,11 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
     if current_value is not None and current_value != 0:
         recent_start = today - timedelta(days=14)
         recent_activities = Activity.objects.filter(
-            athlete=athlete, sport=FIELD_SPORT[field], start_date__date__gte=recent_start, start_date__date__lte=today
+            athlete=athlete,
+            sport=FIELD_SPORT[field],
+            primary_activity__isnull=True,
+            start_date__date__gte=recent_start,
+            start_date__date__lte=today,
         )
         for activity in recent_activities:
             implied = _implied_value(activity, field)

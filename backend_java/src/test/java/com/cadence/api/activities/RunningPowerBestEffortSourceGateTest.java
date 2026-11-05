@@ -59,7 +59,7 @@ class RunningPowerBestEffortSourceGateTest extends IntegrationTest {
 		bestEffortComputeService.computeForActivity(
 				activity, athlete, powerSeries(), List.of(), List.of(), List.of());
 
-		assertThat(bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(
+		assertThat(bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
 				athlete.getId(), BestEffortKind.RUNNING_POWER)).isEmpty();
 	}
 
@@ -71,7 +71,7 @@ class RunningPowerBestEffortSourceGateTest extends IntegrationTest {
 		bestEffortComputeService.computeForActivity(
 				activity, athlete, powerSeries(), List.of(), List.of(), List.of());
 
-		assertThat(bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(
+		assertThat(bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
 				athlete.getId(), BestEffortKind.RUNNING_POWER)).isNotEmpty();
 	}
 
@@ -84,7 +84,7 @@ class RunningPowerBestEffortSourceGateTest extends IntegrationTest {
 		bestEffortComputeService.computeForActivity(
 				activity, athlete, powerSeries(), List.of(), List.of(), List.of());
 
-		assertThat(bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(
+		assertThat(bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
 				athlete.getId(), BestEffortKind.RUNNING_POWER)).isNotEmpty();
 	}
 }

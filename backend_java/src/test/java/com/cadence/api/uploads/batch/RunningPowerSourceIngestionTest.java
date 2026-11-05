@@ -75,7 +75,7 @@ class RunningPowerSourceIngestionTest extends IntegrationTest {
 		assertThat(recordRepository.findByActivityIdOrderByT(activity.getId()))
 				.anySatisfy(r -> assertThat(r.getPower()).isNotNull());
 		assertThat(activity.getNormPower()).isNotNull();
-		assertThat(bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(
+		assertThat(bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
 				athlete.getId(), BestEffortKind.RUNNING_POWER)).isNotEmpty();
 	}
 
@@ -89,7 +89,7 @@ class RunningPowerSourceIngestionTest extends IntegrationTest {
 		assertThat(recordRepository.findByActivityIdOrderByT(activity.getId()))
 				.allSatisfy(r -> assertThat(r.getPower()).isNull());
 		assertThat(activity.getNormPower()).isNull();
-		assertThat(bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(
+		assertThat(bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
 				athlete.getId(), BestEffortKind.RUNNING_POWER)).isEmpty();
 		assertThat(zoneService.referenceFor(athlete, ZoneType.RUN_POWER, activity)).isNull();
 	}

@@ -18,7 +18,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from accounts.models import PersonalAccessToken, User, UserRelationship
 from accounts.tokens import generate_secret, hash_secret, visible_prefix
 from activities.mcp import ActivityMCPTools
-from activities.models import Activity, ActivityTag, Record, Tag
+from activities.models import Activity, ActivityTag, BestEffort, Record, Tag
 from athletes.mcp import AthleteMCPTools
 from athletes.models import AcceptedThresholdCandidate, ThresholdHistory
 from authn.oauth_utils import issue_token_pair
@@ -1216,6 +1216,42 @@ class AthleteToolsTests(TestCase):
         with self.assertRaises(ValidationError):
             tools.list_best_efforts(kind="not-a-real-kind")
 
+    def test_list_best_efforts_excludes_a_duplicate_marked_activity(self) -> None:
+        # Issue #498: a same-ride-twice duplicate's own best-effort row must never be listed.
+        athlete = User.objects.create_user(email="mcp-best-efforts-dup@example.cc", password="x", name="Athlete")
+        primary = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Primary",
+            start_date=timezone.now(),
+            moving_time=300,
+        )
+        duplicate = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Duplicate",
+            start_date=timezone.now(),
+            moving_time=300,
+            primary_activity=primary,
+        )
+        BestEffort.objects.create(
+            athlete=athlete,
+            kind="cycling_power",
+            window="1min",
+            value=999,
+            unit="watts",
+            date=date.today(),
+            activity=duplicate,
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_best_efforts(kind="cycling_power")
+
+        windows = {e["window"] for e in result["data"]}
+        self.assertNotIn("1min", windows)
+
     def test_list_threshold_history_returns_the_full_ledger_most_recent_first(self) -> None:
         athlete = User.objects.create_user(email="mcp-threshold-history@example.cc", password="x", name="Athlete")
         ThresholdHistory.objects.create(
@@ -1301,6 +1337,38 @@ class AthleteToolsTests(TestCase):
         self.assertEqual(by_id[accepted.id]["status"], "accepted")
         self.assertEqual(by_id[too_short.id]["status"], "too_short")
         self.assertIsNone(by_id[too_short.id]["implied_value"])
+
+    def test_list_threshold_candidates_excludes_a_duplicate_marked_activity(self) -> None:
+        # Issue #498: a same-ride-twice duplicate shouldn't appear at all - not even as a
+        # classified ("qualified"/"rejected_sanity") row, since it's not a real second effort.
+        athlete = User.objects.create_user(
+            email="mcp-threshold-candidates-dup@example.cc", password="x", name="Athlete", ftp=200
+        )
+
+        def make_ride(name: str, start_date, power: int, duration_seconds: int = 1200) -> Activity:
+            activity = Activity.objects.create(
+                id=generate_id("act"),
+                athlete=athlete,
+                sport="bike",
+                name=name,
+                start_date=start_date,
+                moving_time=duration_seconds,
+            )
+            for t in range(duration_seconds):
+                Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+            return activity
+
+        primary = make_ride("Primary", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), 230)
+        duplicate = make_ride("Duplicate", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), 230)
+        duplicate.primary_activity = primary
+        duplicate.save(update_fields=["primary_activity"])
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_threshold_candidates(field="ftp", from_date="2026-01-01", to_date="2026-01-31")
+
+        activity_ids = {c["activity_id"] for c in result["data"]}
+        self.assertIn(primary.id, activity_ids)
+        self.assertNotIn(duplicate.id, activity_ids)
 
     def test_list_threshold_candidates_treats_an_activity_with_no_records_as_too_short(self) -> None:
         # issue #500: a missing/partial record stream (here, no records at all) must classify as

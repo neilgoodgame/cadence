@@ -136,8 +136,8 @@ public class BestEffortComputeService {
 			boolean lowerIsBetter, int topN) {
 		if (topN == 0) return; // 0 = keep all
 		List<BestEffort> ranked = lowerIsBetter
-				? bestEffortRepository.findByAthleteIdAndKindAndWindowOrderByValueAsc(athleteId, kind, window)
-				: bestEffortRepository.findByAthleteIdAndKindAndWindowOrderByValueDesc(athleteId, kind, window);
+				? bestEffortRepository.findByAthleteIdAndKindAndWindowAndActivityPrimaryActivityIsNullOrderByValueAsc(athleteId, kind, window)
+				: bestEffortRepository.findByAthleteIdAndKindAndWindowAndActivityPrimaryActivityIsNullOrderByValueDesc(athleteId, kind, window);
 		if (ranked.size() <= topN) return;
 
 		Set<Long> keeperIds = new HashSet<>();

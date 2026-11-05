@@ -383,7 +383,7 @@ public class ThresholdHistoryCalculator {
 	 * total)} after each activity is considered - what the bulk rebuild endpoint's SSE progress
 	 * reads. */
 	public List<ThresholdHistoryEntry> replayFullHistory(User athlete, ThresholdField field, BiConsumer<Integer, Integer> onProgress) {
-		List<Activity> activities = activityRepository.findByAthleteIdAndSportOrderByStartDate(athlete.getId(), sportFor(field));
+		List<Activity> activities = activityRepository.findByAthleteIdAndSportAndPrimaryActivityIsNullOrderByStartDate(athlete.getId(), sportFor(field));
 		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
 		List<ThresholdHistory> manualRows = thresholdHistoryRepository
 				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(athlete.getId(), field, ThresholdHistoryKind.MANUAL);

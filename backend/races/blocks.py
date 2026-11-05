@@ -492,7 +492,11 @@ def _top3_activity_ids(athlete_id: str, start: date, end: date) -> dict[str, dat
     top 3 by value among ALL of the athlete's best efforts for that kind/window, where
     the effort's own date falls in [start, end]. Reuses cap_per_window directly rather
     than re-deriving the ranking rule ActivityBestEffortRanksView already encodes."""
-    all_efforts = list(BestEffort.objects.filter(athlete_id=athlete_id).select_related("activity"))
+    all_efforts = list(
+        BestEffort.objects.filter(athlete_id=athlete_id, activity__primary_activity__isnull=True).select_related(
+            "activity"
+        )
+    )
     by_kind: dict[str, list[BestEffort]] = {}
     for e in all_efforts:
         by_kind.setdefault(e.kind, []).append(e)

@@ -63,7 +63,7 @@ class BestEffortComputeServiceIntegrationTest extends IntegrationTest {
 	}
 
 	private List<Long> survivorIds(User athlete, String window) {
-		return bestEffortRepository.findByAthleteIdAndKindAndWindowOrderByValueAsc(
+		return bestEffortRepository.findByAthleteIdAndKindAndWindowAndActivityPrimaryActivityIsNullOrderByValueAsc(
 						athlete.getId(), BestEffortKind.RUNNING_PACE, window)
 				.stream().map(BestEffort::getId).collect(Collectors.toList());
 	}
@@ -80,6 +80,26 @@ class BestEffortComputeServiceIntegrationTest extends IntegrationTest {
 		bestEffortComputeService.trim(athlete.getId(), BestEffortKind.RUNNING_PACE, "10km", true, TOP_N);
 
 		assertThat(survivorIds(athlete, "10km")).containsExactlyInAnyOrder(old1.getId(), old2.getId(), recent.getId());
+	}
+
+	@Test
+	void aDuplicateMarkedActivitysRowDoesNotEvictARealRecord() {
+		// Issue #498: a duplicate's row must not compete for (or occupy) a kept slot - otherwise
+		// it could evict a genuinely different activity's record purely because it's a faster
+		// copy of the exact same ride. Excluded from trim's own query entirely, so it also
+		// survives untouched regardless of its value - same "keep the hidden copy, don't delete
+		// it" reversibility the activity row itself gets.
+		User athlete = newAthlete("trim-dup-excluded@example.cc");
+		BestEffort real = makeEffort(athlete, 200.0, 10, "10km");
+		BestEffort otherReal = makeEffort(athlete, 210.0, 9, "10km");
+		BestEffort duplicate = makeEffort(athlete, 50.0, 10, "10km");
+		duplicate.getActivity().setPrimaryActivity(real.getActivity());
+		activityRepository.save(duplicate.getActivity());
+
+		bestEffortComputeService.trim(athlete.getId(), BestEffortKind.RUNNING_PACE, "10km", true, TOP_N);
+
+		List<Long> allIds = bestEffortRepository.findByAthleteId(athlete.getId()).stream().map(BestEffort::getId).toList();
+		assertThat(allIds).containsExactlyInAnyOrder(real.getId(), otherReal.getId(), duplicate.getId());
 	}
 
 	@Test

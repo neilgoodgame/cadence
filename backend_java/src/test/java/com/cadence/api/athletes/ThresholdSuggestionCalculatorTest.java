@@ -136,6 +136,19 @@ class ThresholdSuggestionCalculatorTest extends IntegrationTest {
 	}
 
 	@Test
+	void rejectedCandidatesExcludesADuplicateMarkedActivity() {
+		User athlete = newAthlete("threshold-sug-dup-excluded@example.cc", 200);
+		Activity high = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-01T07:00:00Z"), 500, 1200);
+		Activity duplicate = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-15T07:00:00Z"), 550, 1200);
+		duplicate.setPrimaryActivity(high);
+		activityRepository.save(duplicate);
+
+		List<RejectedCandidate> candidates = calculator.rejectedCandidates(athlete, ThresholdField.FTP, LocalDate.of(2026, 6, 1));
+
+		assertThat(candidates).extracting(RejectedCandidate::activityId).containsExactly(high.getId());
+	}
+
+	@Test
 	void rejectedCandidatesExcludesAnAcceptedOne() {
 		User athlete = newAthlete("threshold-sug-accepted-excluded@example.cc", 200);
 		Activity activity = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-01T07:00:00Z"), 500, 1200);
@@ -264,6 +277,25 @@ class ThresholdSuggestionCalculatorTest extends IntegrationTest {
 				Math.round(985 / 0.95f), 1200);
 
 		assertThat(calculator.upcomingDrop(athlete, ThresholdField.FTP, today)).isNull();
+	}
+
+	@Test
+	void upcomingDropNearMatchRuleIgnoresADuplicateMarkedActivity() {
+		// Same setup as the near-match test above, but the near-match activity is marked as a
+		// duplicate of another activity - it must no longer suppress the warning (issue #498).
+		User athlete = newAthlete("threshold-sug-near-match-dup@example.cc", 1000);
+		LocalDate today = LocalDate.of(2026, 6, 1);
+		int lead = ThresholdHistoryCalculator.warningLeadDays(athlete);
+		LocalDate effectiveFrom = today.minusDays(athlete.getThresholdWindowDays() + 1L - lead);
+		newLedgerEntry(athlete, ThresholdField.FTP, 1000, null, effectiveFrom);
+		Activity primary = newPowerActivity(athlete, Sport.BIKE, today.minusDays(30).atStartOfDay(ZoneOffset.UTC).toInstant(),
+				600, 1200);
+		Activity nearMatch = newPowerActivity(athlete, Sport.BIKE, today.minusDays(2).atStartOfDay(ZoneOffset.UTC).toInstant(),
+				Math.round(985 / 0.95f), 1200);
+		nearMatch.setPrimaryActivity(primary);
+		activityRepository.save(nearMatch);
+
+		assertThat(calculator.upcomingDrop(athlete, ThresholdField.FTP, today)).isNotNull();
 	}
 
 	@Test

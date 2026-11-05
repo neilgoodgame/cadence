@@ -11,9 +11,16 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 	Optional<BestEffort> findByAthleteIdAndKindAndWindowAndActivityId(
 			String athleteId, BestEffortKind kind, String window, String activityId);
 
-	/** RaceBlockService's "best effort" key-session candidates - every effort for the athlete,
-	 * re-capped via BestEffortController#capPerWindow against the race block's own date range. */
+	/** Used by ExportWriter#writeBestEfforts for the unfiltered ("all sports") export - a full
+	 * data export must include every row, duplicate-sourced or not, same reasoning as
+	 * ActivityRepository#findByAthleteIdOrderByStartDate. */
 	List<BestEffort> findByAthleteId(String athleteId);
+
+	/** RaceBlockService's "best effort" key-session candidates - every effort for the athlete,
+	 * re-capped via BestEffortController#capPerWindow against the race block's own date range.
+	 * Unlike findByAthleteId above, a duplicate recording's row is excluded (issue #498) - it
+	 * would otherwise let the same ride's effort count as a "key session" twice. */
+	List<BestEffort> findByAthleteIdAndActivityPrimaryActivityIsNull(String athleteId);
 
 	/** Used by ExportWriter#writeBestEfforts for a sport-filtered export - filtered on the
 	 * linked activity's own sport (not the kind's cycling/running prefix) so a filtered
@@ -25,18 +32,28 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 
 	long countByAthleteIdAndActivitySport(String athleteId, com.cadence.api.common.domain.Sport sport);
 
-	/** All records for a window, best-first (for higher-is-better kinds: power, HR). */
-	List<BestEffort> findByAthleteIdAndKindAndWindowOrderByValueDesc(
+	/** All records for a window, best-first (for higher-is-better kinds: power, HR). A
+	 * duplicate recording's row is excluded (issue #498), same as the ranking queries below -
+	 * otherwise it could rank ahead of and evict a genuinely different activity's row from the
+	 * trimmed top-N, since both are copies of the exact same ride and so carry nearly identical
+	 * values. Left un-deleted rather than filtered out of existence: same "keep the hidden copy,
+	 * don't delete it" reversibility the activity row itself gets. */
+	List<BestEffort> findByAthleteIdAndKindAndWindowAndActivityPrimaryActivityIsNullOrderByValueDesc(
 			String athleteId, BestEffortKind kind, String window);
 
-	/** All records for a window, best-first for pace (lower value = faster). */
-	List<BestEffort> findByAthleteIdAndKindAndWindowOrderByValueAsc(
+	/** All records for a window, best-first for pace (lower value = faster). Same duplicate
+	 * exclusion as the Desc variant above. */
+	List<BestEffort> findByAthleteIdAndKindAndWindowAndActivityPrimaryActivityIsNullOrderByValueAsc(
 			String athleteId, BestEffortKind kind, String window);
 
-	List<BestEffort> findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindowAscValueDesc(
+	/** Issue #498: a duplicate recording's row is excluded from every best-effort ranking/listing
+	 * query (this one and the two below) - it's the same ride as its primary, so it shouldn't
+	 * compete for or occupy a ranked slot a genuinely different activity's effort could hold. */
+	List<BestEffort> findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(
 			String athleteId, BestEffortKind kind, LocalDate since);
 
-	List<BestEffort> findByAthleteIdAndKindOrderByWindowAscValueDesc(String athleteId, BestEffortKind kind);
+	List<BestEffort> findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
+			String athleteId, BestEffortKind kind);
 
 	/** Used by {@code BestEffortController#activityBestEffortRanks} to find which (kind, window)
 	 * pairs a caller-supplied batch of activities actually holds a row for - see its Javadoc. */

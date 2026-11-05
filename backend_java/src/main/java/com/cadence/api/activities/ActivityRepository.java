@@ -114,11 +114,20 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 
 	// Rolling-window threshold determination's cheap day-to-day scan (ThresholdHistoryCalculator.
 	// currentWindowValue) - bounded to the trailing window rather than the athlete's full history.
+	// A duplicate recording is excluded, same reasoning as findStartDatesAndTssInRange above - a
+	// same-ride-twice copy shouldn't get a second shot at becoming/suppressing a threshold
+	// candidate the primary already represents (issue #498).
 	@Query("select a from Activity a where a.athlete.id = :athleteId and a.sport = :sport "
-			+ "and a.startDate >= :start and a.startDate < :end order by a.startDate")
+			+ "and a.primaryActivity is null and a.startDate >= :start and a.startDate < :end order by a.startDate")
 	List<Activity> findForThresholdWindow(@Param("athleteId") String athleteId,
 			@Param("sport") com.cadence.api.common.domain.Sport sport,
 			@Param("start") Instant start, @Param("end") Instant end);
+
+	// ThresholdHistoryCalculator.replayFullHistory's full-history scan - same duplicate exclusion
+	// as findForThresholdWindow above, but deliberately a SEPARATE method from
+	// findByAthleteIdAndSportOrderByStartDate (export's finder, which must include every row).
+	List<Activity> findByAthleteIdAndSportAndPrimaryActivityIsNullOrderByStartDate(
+			String athleteId, com.cadence.api.common.domain.Sport sport);
 
 	@Query("select a.id from Activity a where a.parentActivity.id = :parentId order by a.startDate")
 	List<String> findChildIds(@Param("parentId") String parentId);
