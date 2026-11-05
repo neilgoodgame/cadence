@@ -203,7 +203,9 @@ class AthleteMCPTools(ScopedMCPToolset):
         if period not in ("4w", "3m", "16w", "1y", "all"):
             raise ValidationError({"period": "Must be one of 4w, 3m, 16w, 1y, all."})
 
-        qs = BestEffort.objects.filter(athlete_id=athlete_id, kind=kind).order_by("window", "-value")
+        qs = BestEffort.objects.filter(
+            athlete_id=athlete_id, kind=kind, activity__primary_activity__isnull=True
+        ).order_by("window", "-value")
         if period in BEST_EFFORT_PERIOD_DAYS:
             cutoff = timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
             qs = qs.filter(date__gte=cutoff)

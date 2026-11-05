@@ -509,7 +509,7 @@ public class RaceBlockService {
 	 * Reuses BestEffortController#capPerWindow directly rather than re-deriving the ranking
 	 * rule the best-efforts-ranks endpoint already encodes. */
 	private Set<String> top3ActivityIds(String athleteId, LocalDate start, LocalDate end) {
-		List<BestEffort> allEfforts = bestEffortRepository.findByAthleteId(athleteId);
+		List<BestEffort> allEfforts = bestEffortRepository.findByAthleteIdAndActivityPrimaryActivityIsNull(athleteId);
 		Map<BestEffortKind, List<BestEffort>> byKind = allEfforts.stream().collect(Collectors.groupingBy(BestEffort::getKind));
 		Set<String> result = new java.util.HashSet<>();
 		for (var entry : byKind.entrySet()) {

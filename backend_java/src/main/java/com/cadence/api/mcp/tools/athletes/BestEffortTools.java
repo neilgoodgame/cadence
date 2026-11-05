@@ -62,8 +62,8 @@ public class BestEffortTools {
 			default -> null;
 		};
 		List<BestEffort> efforts = since != null
-				? bestEffortRepository.findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindowAscValueDesc(athleteId, effectiveKind, since)
-				: bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(athleteId, effectiveKind);
+				? bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(athleteId, effectiveKind, since)
+				: bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(athleteId, effectiveKind);
 
 		int topN = userService.getById(athleteId).getBestEffortTopN();
 		List<BestEffort> capped = BestEffortController.capPerWindow(efforts, effectiveKind == BestEffortKind.RUNNING_PACE, topN);

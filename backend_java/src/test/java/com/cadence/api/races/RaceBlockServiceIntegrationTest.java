@@ -6,6 +6,9 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.ActivityTag;
 import com.cadence.api.activities.ActivityTagRepository;
+import com.cadence.api.activities.BestEffort;
+import com.cadence.api.activities.BestEffortKind;
+import com.cadence.api.activities.BestEffortRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
@@ -22,6 +25,7 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +48,8 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 	private ActivityTagRepository activityTagRepository;
 	@Autowired
 	private RecordRepository recordRepository;
+	@Autowired
+	private BestEffortRepository bestEffortRepository;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -294,6 +300,52 @@ class RaceBlockServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(result.keySessions().totalCandidates()).isGreaterThanOrEqualTo(4);
 		assertThat(result.keySessions().items()).hasSize(result.keySessions().totalCandidates());
+	}
+
+	/** Issue #498: a same-ride-twice duplicate's best-effort row must not make it a key
+	 * session candidate in its own right. */
+	@Test
+	void aDuplicatesBestEffortIsNotOfferedAsAKeySession() {
+		User athlete = newAthlete("block-key-sessions-dup@example.cc");
+		Race race = newRace(athlete, "Goal Marathon", LocalDate.of(2026, 10, 12), RacePriority.A);
+		race.setSport(Sport.RUN);
+		race.setDistanceKm(42.2);
+		raceRepository.save(race);
+
+		Activity primary = new Activity();
+		primary.setAthlete(athlete);
+		primary.setSport(Sport.RUN);
+		primary.setName("Primary run");
+		primary.setStartDate(Instant.parse("2026-09-05T07:00:00Z"));
+		primary.setDistanceKm(5.0);
+		primary.setMovingTime(1800);
+		primary = activityRepository.save(primary);
+
+		Activity duplicate = new Activity();
+		duplicate.setAthlete(athlete);
+		duplicate.setSport(Sport.RUN);
+		duplicate.setName("Duplicate run");
+		duplicate.setStartDate(Instant.parse("2026-09-05T07:00:00Z"));
+		duplicate.setDistanceKm(5.0);
+		duplicate.setMovingTime(1800);
+		duplicate.setPrimaryActivity(primary);
+		duplicate = activityRepository.save(duplicate);
+
+		BestEffort effort = new BestEffort();
+		effort.setAthlete(athlete);
+		effort.setKind(BestEffortKind.RUNNING_PACE);
+		effort.setWindow("5km");
+		effort.setValue(999.0);
+		effort.setUnit("sec_per_km");
+		effort.setDate(LocalDate.of(2026, 9, 5));
+		effort.setActivity(duplicate);
+		bestEffortRepository.save(effort);
+
+		RaceBlockResponse result = raceBlockService.getRaceBlock(race);
+
+		Set<String> ids = result.keySessions().items().stream()
+				.map(RaceBlockResponse.KeySessionItem::activityId).collect(Collectors.toSet());
+		assertThat(ids).doesNotContain(duplicate.getId());
 	}
 
 	/** Each key session item carries its own sport, independent of the race's sport - the

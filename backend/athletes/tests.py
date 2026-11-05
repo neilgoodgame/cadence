@@ -725,6 +725,33 @@ class BestEffortListViewTests(TestCase):
         response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power")
         self.assertEqual(response.status_code, 403)
 
+    def test_a_duplicates_best_effort_is_excluded(self):
+        # Issue #498: a same-ride-twice duplicate's own best-effort row must never be listed.
+        primary = Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Primary Ride", start_date=timezone.now(), moving_time=300
+        )
+        duplicate = Activity.objects.create(
+            athlete=self.athlete,
+            sport="bike",
+            name="Duplicate Ride",
+            start_date=timezone.now(),
+            moving_time=300,
+            primary_activity=primary,
+        )
+        BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="cycling_power",
+            window="1min",
+            value=999,
+            unit="watts",
+            date=date.today(),
+            activity=duplicate,
+        )
+
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power")
+        windows = {e["window"] for e in response.json()["data"]}
+        self.assertNotIn("1min", windows)
+
 
 class ActivityBestEffortRanksViewTests(TestCase):
     """Backs the Dashboard "Top efforts this week" card - see ActivityBestEffortRanksView's
@@ -793,6 +820,37 @@ class ActivityBestEffortRanksViewTests(TestCase):
 
         self.assertEqual(len(data), 3)
         self.assertEqual({e["value"] for e in data}, {400, 390, 380})
+
+    def test_a_duplicates_best_effort_does_not_count_against_the_ranking(self):
+        # Issue #498: a duplicate-marked activity's best effort must not occupy a ranked slot -
+        # otherwise its artificially-fast value (same ride as its primary) could push a
+        # genuinely different activity's effort out of the top 3.
+        primary = self._make_effort("cycling_power", "5min", 300, "w", days_ago=1, sport="bike")
+        duplicate_activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="bike",
+            name="Duplicate",
+            start_date=timezone.now() - timedelta(days=1),
+            primary_activity=primary.activity,
+        )
+        BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="cycling_power",
+            window="5min",
+            value=1000,
+            unit="w",
+            date=date.today() - timedelta(days=1),
+            activity=duplicate_activity,
+        )
+        efforts = [
+            self._make_effort("cycling_power", "5min", v, "w", days_ago=1, sport="bike") for v in (400, 390, 380)
+        ]
+
+        response = self._get(self.athlete, *(e.activity_id for e in efforts))
+        data = response.json()["data"]
+
+        self.assertEqual({e["value"] for e in data}, {400, 390, 380})
+        self.assertEqual({e["ranks"]["all"] for e in data}, {1, 2, 3})
 
     def test_an_activity_not_included_in_the_request_is_never_returned_even_if_it_would_rank_1(self):
         self._make_effort("running_power", "5min", 999, "w", days_ago=1)
@@ -968,6 +1026,20 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
 
         self.assertIsNone(candidate)
+
+    def test_excludes_a_duplicate_marked_activity(self):
+        # Issue #498: a same-ride-twice duplicate shouldn't get a second shot at becoming a
+        # threshold candidate the primary already represents - the stronger (250W) effort here
+        # is marked as a duplicate, so the weaker (230W) one should win instead.
+        primary = self._make_power_activity("bike", datetime(2026, 5, 1, 7, 0, tzinfo=UTC), power=230)
+        duplicate = self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=250)
+        duplicate.primary_activity = primary
+        duplicate.save(update_fields=["primary_activity"])
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertEqual(candidate.activity_id, primary.id)
+        self.assertEqual(candidate.implied_value, round(0.95 * 230))
 
     def test_short_activity_does_not_qualify(self):
         # 10 minutes - shorter than the 20-minute FTP test window.
@@ -1274,6 +1346,23 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         current = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp", is_correction_only=False)
         self.assertEqual(current.count(), 1)
         self.assertEqual(current.first().kind, "manual")
+
+    def test_rebuild_excludes_a_duplicate_marked_activity(self):
+        # Issue #498: the stronger (260W) effort is marked as a duplicate of the weaker (220W)
+        # one - the replay must never let it contribute a ledger row at all.
+        primary = self._make_power_activity("bike", datetime(2024, 1, 1, 7, 0, tzinfo=UTC), power=220)
+        duplicate = self._make_power_activity("bike", datetime(2024, 1, 1, 7, 0, tzinfo=UTC), power=260)
+        duplicate.primary_activity = primary
+        duplicate.save(update_fields=["primary_activity"])
+
+        for _ in rebuild_history_stream(self.athlete, "ftp"):
+            pass
+
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, round(0.95 * 220))
+        self.assertFalse(
+            ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp", source_activity=duplicate).exists()
+        )
 
     def test_rebuild_keeps_a_correction_only_row_without_letting_it_become_current(self):
         self._make_power_activity("bike", datetime(2024, 1, 1, 7, 0, tzinfo=UTC), power=200)
@@ -1877,6 +1966,16 @@ class ThresholdSuggestionAlgorithmTests(TestCase):
 
         self.assertEqual([c.activity_id for c in candidates], [stronger.id, weaker.id])
 
+    def test_rejected_candidates_excludes_a_duplicate_marked_activity(self):
+        high = self._make_power_activity("bike", datetime(2026, 5, 1, 7, 0, tzinfo=UTC), power=500)
+        duplicate = self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=550)
+        duplicate.primary_activity = high
+        duplicate.save(update_fields=["primary_activity"])
+
+        candidates = rejected_candidates(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertEqual([c.activity_id for c in candidates], [high.id])
+
     def test_rejected_candidates_excludes_an_accepted_one(self):
         activity = self._make_power_activity("bike", datetime(2026, 5, 1, 7, 0, tzinfo=UTC), power=500)
         AcceptedThresholdCandidate.objects.create(athlete=self.athlete, field="ftp", activity=activity)
@@ -1977,6 +2076,24 @@ class ThresholdSuggestionAlgorithmTests(TestCase):
         result = upcoming_drop(self.athlete, "ftp", today=today)
 
         self.assertIsNone(result)
+
+    def test_upcoming_drop_near_match_rule_ignores_a_duplicate_marked_activity(self):
+        # Same setup as the near-match test above, but the near-match activity is marked as a
+        # duplicate of another activity - it must no longer suppress the warning (issue #498).
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self.athlete.ftp = 1000
+        self.athlete.save(update_fields=["ftp"])
+        self._ledger_entry("ftp", value_numeric=1000, effective_from=effective_from)
+        primary = self._make_power_activity("bike", self._at_7am(today - timedelta(days=30)), power=600)
+        near_match = self._make_power_activity("bike", self._at_7am(today - timedelta(days=2)), power=round(985 / 0.95))
+        near_match.primary_activity = primary
+        near_match.save(update_fields=["primary_activity"])
+
+        result = upcoming_drop(self.athlete, "ftp", today=today)
+
+        self.assertIsNotNone(result)
 
     def test_upcoming_drop_pace_small_drop_uses_the_pace_specific_threshold(self):
         today = date(2026, 6, 1)

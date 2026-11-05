@@ -143,6 +143,24 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 	}
 
 	@Test
+	void excludesADuplicateMarkedActivity() {
+		// Issue #498: a same-ride-twice duplicate shouldn't get a second shot at becoming a
+		// threshold candidate the primary already represents - the stronger (250W) effort here
+		// is marked as a duplicate, so the weaker (230W) one should win instead.
+		athlete = newAthlete("threshold-history-dup@example.cc", 200);
+		Activity primary = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-01T07:00:00Z"), 230, 1200);
+		Activity duplicate = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-15T07:00:00Z"), 250, 1200);
+		duplicate.setPrimaryActivity(primary);
+		activityRepository.save(duplicate);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 6, 1));
+
+		assertThat(candidate.activityId()).isEqualTo(primary.getId());
+		assertThat(candidate.impliedValue()).isEqualTo(Math.round(0.95 * 230));
+	}
+
+	@Test
 	void shortActivityDoesNotQualify() {
 		athlete = newAthlete("threshold-history-short@example.cc", 200);
 		// 10 minutes - shorter than the 20-minute FTP test window.
@@ -321,6 +339,41 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 		assertThat(entries.get(0).value()).isEqualTo(Math.round(0.95 * 210));
 		assertThat(entries.get(1).activityId()).isEqualTo(second.getId());
 		assertThat(entries.get(1).value()).isEqualTo(Math.round(0.95 * 230));
+	}
+
+	@Test
+	void candidateStatusesExcludesADuplicateMarkedActivity() {
+		// Issue #498: a same-ride-twice duplicate shouldn't appear at all - not even as a
+		// classified (QUALIFIED/REJECTED_SANITY) row, since it's not a real second effort.
+		athlete = newAthlete("threshold-history-statuses-dup@example.cc", 200);
+		Activity primary = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 230, 1200);
+		Activity duplicate = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 230, 1200);
+		duplicate.setPrimaryActivity(primary);
+		activityRepository.save(duplicate);
+
+		List<ThresholdHistoryCalculator.CandidateStatusEntry> statuses =
+				calculator.candidateStatuses(athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
+
+		assertThat(statuses).extracting(ThresholdHistoryCalculator.CandidateStatusEntry::activityId)
+				.containsExactly(primary.getId());
+	}
+
+	@Test
+	void replayExcludesADuplicateMarkedActivity() {
+		// Issue #498: the stronger (260W) effort is marked as a duplicate of the weaker (220W)
+		// one - the replay must never let it contribute a ledger entry at all.
+		athlete = newAthlete("threshold-history-replay-dup@example.cc", 200);
+		Activity primary = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 220, 1200);
+		Activity duplicate = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 260, 1200);
+		duplicate.setPrimaryActivity(primary);
+		activityRepository.save(duplicate);
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> entries =
+				calculator.replayFullHistory(athlete, ThresholdField.FTP);
+
+		assertThat(entries).extracting(ThresholdHistoryCalculator.ThresholdHistoryEntry::activityId)
+				.containsExactly(primary.getId());
+		assertThat(entries.get(0).value()).isEqualTo(Math.round(0.95 * 220));
 	}
 
 	@Test

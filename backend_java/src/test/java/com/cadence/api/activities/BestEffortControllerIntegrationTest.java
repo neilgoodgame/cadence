@@ -156,6 +156,43 @@ class BestEffortControllerIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void listBestEffortsExcludesADuplicateMarkedActivity() {
+		// Issue #498: a same-ride-twice duplicate's own best-effort row must never be listed.
+		User athlete = newAthlete("best-efforts-dup-excluded@example.cc", 10);
+		BestEffort primary = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "1min", 300, 1);
+		BestEffort duplicate = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "1min", 999, 1);
+		duplicate.getActivity().setPrimaryActivity(primary.getActivity());
+		activityRepository.save(duplicate.getActivity());
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		BestEffortListResponse response = bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, "all");
+
+		assertThat(response.data()).extracting(BestEffortResponse::value).containsExactly(300.0);
+	}
+
+	@Test
+	void activityBestEffortRanksExcludesADuplicateMarkedActivityFromTheRankingPool() {
+		// Issue #498: a duplicate-marked activity's best effort must not occupy a ranked slot -
+		// otherwise its artificially-fast value (same ride as its primary) could push a
+		// genuinely different activity's effort out of the top 3.
+		User athlete = newAthlete("recent-top-dup-excluded@example.cc", 10);
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		BestEffort primary = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 300, 1);
+		BestEffort duplicate = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 1000, 1);
+		duplicate.getActivity().setPrimaryActivity(primary.getActivity());
+		activityRepository.save(duplicate.getActivity());
+		BestEffort a = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 400, 1);
+		BestEffort b = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 390, 1);
+		BestEffort c = makeEffort(athlete, BestEffortKind.CYCLING_POWER, Sport.BIKE, "5min", 380, 1);
+		String ids = String.join(",", a.getActivity().getId(), b.getActivity().getId(), c.getActivity().getId());
+
+		RecentTopEffortsListResponse response = bestEffortController.activityBestEffortRanks(athlete.getId(), ids);
+
+		assertThat(response.data()).extracting(RecentTopEffortResponse::value)
+				.containsExactlyInAnyOrder(400.0, 390.0, 380.0);
+	}
+
+	@Test
 	void activityBestEffortRanksRejectsAnOutsider() {
 		User athlete = newAthlete("recent-top-athlete@example.cc", 10);
 		User outsider = newAthlete("recent-top-outsider@example.cc", 10);

@@ -145,6 +145,35 @@ class BestEffortTrimPeriodTests(TestCase):
 
         self.assertNotIn(recent.id, self._survivor_ids())
 
+    def test_a_duplicate_marked_activitys_row_does_not_evict_a_real_record(self):
+        # Issue #498: a duplicate's row must not compete for (or occupy) a kept slot - otherwise
+        # it could evict a genuinely different activity's record purely because it's a faster
+        # copy of the exact same ride. Excluded from trim's own query entirely, so it also
+        # survives untouched regardless of its value - same "keep the hidden copy, don't delete
+        # it" reversibility the activity row itself gets.
+        real = self._make(200.0, days_ago=10)
+        other_real = self._make(210.0, days_ago=9)
+        duplicate_activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Duplicate",
+            start_date=datetime.now(UTC) - timedelta(days=10),
+            primary_activity=real.activity,
+        )
+        duplicate = BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window="10km",
+            value=50.0,
+            unit="sec_per_km",
+            date=date.today() - timedelta(days=10),
+            activity=duplicate_activity,
+        )
+
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, self.top_n)
+
+        self.assertEqual(self._survivor_ids(), {real.id, other_real.id, duplicate.id})
+
     def test_trim_bound_respects_top_n_times_period_count(self):
         # One pair of rows per tracked period, deliberately slower the more recent the band -
         # so each period's own top-2 are exactly that band's two rows, none of which intrude on

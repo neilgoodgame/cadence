@@ -1074,7 +1074,14 @@ def _trim_kind_window(athlete_id: str, kind: str, window: str, lower_is_better: 
     """
     if top_n == 0:
         return
-    qs = BestEffort.objects.filter(athlete_id=athlete_id, kind=kind, window=window)
+    # issue #498: a duplicate-sourced row is excluded here too, not just from the read-side
+    # listing queries - otherwise it could rank ahead of and evict a genuinely different
+    # activity's row from the top-N, since both are dupes of the exact same ride and so always
+    # carry nearly identical values. Left un-deleted rather than filtered out of existence: same
+    # "keep the hidden copy, don't delete it" reversibility the activity row itself gets.
+    qs = BestEffort.objects.filter(
+        athlete_id=athlete_id, kind=kind, window=window, activity__primary_activity__isnull=True
+    )
     order = "value" if lower_is_better else "-value"
     ranked = list(qs.order_by(order).values_list("id", "date"))
     if len(ranked) <= top_n:

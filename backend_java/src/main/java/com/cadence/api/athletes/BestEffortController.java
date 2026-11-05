@@ -93,8 +93,8 @@ public class BestEffortController {
 			default -> null;
 		};
 		List<BestEffort> efforts = since != null
-				? bestEffortRepository.findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, since)
-				: bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(id, kind);
+				? bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, since)
+				: bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(id, kind);
 
 		int topN = userService.getById(id).getBestEffortTopN();
 		List<BestEffort> capped = capPerWindow(efforts, kind == BestEffortKind.RUNNING_PACE, topN);
@@ -200,8 +200,8 @@ public class BestEffortController {
 			for (String period : RECENT_TOP_EFFORT_PERIODS) {
 				LocalDate periodSince = recentTopEffortPeriodCutoff(period);
 				List<BestEffort> efforts = periodSince != null
-						? bestEffortRepository.findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, periodSince)
-						: bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(id, kind);
+						? bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, periodSince)
+						: bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(id, kind);
 				List<BestEffort> capped = capPerWindow(efforts, lowerIsBetter, athlete.getBestEffortTopN());
 
 				Map<String, List<BestEffort>> byWindow = capped.stream()

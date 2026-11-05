@@ -256,7 +256,9 @@ class BestEffortListView(APIView):
         if period not in ("4w", "3m", "16w", "1y", "all"):
             raise ValidationError({"period": "Must be one of 4w, 3m, 16w, 1y, all."})
 
-        qs = BestEffort.objects.filter(athlete_id=id, kind=kind).order_by("window", "-value")
+        qs = BestEffort.objects.filter(athlete_id=id, kind=kind, activity__primary_activity__isnull=True).order_by(
+            "window", "-value"
+        )
         if period in BEST_EFFORT_PERIOD_DAYS:
             cutoff = timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
             qs = qs.filter(date__gte=cutoff)
@@ -523,7 +525,9 @@ class ActivityBestEffortRanksView(APIView):
         for kind, windows_needed in windows_by_kind.items():
             lower_is_better = kind in LOWER_IS_BETTER_KINDS
             for period in RECENT_TOP_EFFORT_PERIODS:
-                qs = BestEffort.objects.filter(athlete_id=id, kind=kind).select_related("activity")
+                qs = BestEffort.objects.filter(
+                    athlete_id=id, kind=kind, activity__primary_activity__isnull=True
+                ).select_related("activity")
                 if period in BEST_EFFORT_PERIOD_DAYS:
                     cutoff = timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
                     qs = qs.filter(date__gte=cutoff)

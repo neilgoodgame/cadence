@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 from django.test import TestCase
 
 from accounts.models import User
-from activities.models import ActivityTag, Tag
+from activities.models import ActivityTag, BestEffort, Tag
 from activities.tests.helpers import _make_activity
 from races.blocks import (
     a_race_block_range,
@@ -237,6 +237,47 @@ class KeySessionsTests(TestCase):
         result = key_sessions(race, window_start, window_end)
         self.assertGreaterEqual(result["total_candidates"], 4)  # 4 "long" candidates kept at most
         self.assertEqual(len(result["items"]), result["total_candidates"])
+
+    def test_a_duplicates_best_effort_is_not_offered_as_a_key_session(self):
+        # Issue #498: a same-ride-twice duplicate's best-effort row must not make it a key
+        # session candidate in its own right.
+        race = Race.objects.create(
+            athlete=self.athlete,
+            name="Goal Marathon",
+            date=date(2026, 10, 12),
+            priority="A",
+            sport="run",
+            distance_km=42.2,
+        )
+        primary = _make_activity(
+            self.athlete,
+            name="Primary run",
+            start_date=datetime(2026, 9, 5, 7, 0, tzinfo=UTC),
+            distance_km=5.0,
+            sport="run",
+        )
+        duplicate = _make_activity(
+            self.athlete,
+            name="Duplicate run",
+            start_date=datetime(2026, 9, 5, 7, 0, tzinfo=UTC),
+            distance_km=5.0,
+            sport="run",
+            primary_activity=primary,
+        )
+        BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window="5km",
+            value=999.0,
+            unit="sec_per_km",
+            date=date(2026, 9, 5),
+            activity=duplicate,
+        )
+
+        result = key_sessions(race, date(2026, 9, 1), date(2026, 10, 11))
+
+        ids = {item["activity_id"] for item in result["items"]}
+        self.assertNotIn(duplicate.id, ids)
 
     def test_races_in_window_are_always_included(self):
         race = Race.objects.create(
