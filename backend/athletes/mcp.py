@@ -377,3 +377,27 @@ class AthleteMCPTools(ScopedMCPToolset):
             "ftp_calculation_method": athlete.ftp_calculation_method,
             "running_power_source": athlete.running_power_source,
         }
+
+    def get_import_settings(self) -> dict[str, Any]:
+        """Get the authenticated athlete's duplicate-detection import settings:
+        overlap_handling (off/flag/mark/merge) - the default applied whenever an upload or
+        Garmin sync doesn't specify its own on_overlap override (issue #498). merge is accepted
+        but not yet implemented (#501) - it currently behaves like flag."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        athlete = get_object_or_404(User, pk=athlete_id)
+        return {"overlap_handling": athlete.overlap_handling}
+
+    def update_import_settings(self, overlap_handling: str) -> dict[str, Any]:
+        """Set the athlete's overlap_handling default (off/flag/mark/merge) - the default
+        applied whenever an upload or Garmin sync doesn't specify its own on_overlap override
+        (issue #498). merge is accepted but not yet implemented (#501) - it currently behaves
+        like flag."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        sub = self._require_write(athlete_id)
+        athlete = get_object_or_404(User, pk=athlete_id)
+        set_by = athlete if sub == athlete_id else get_object_or_404(User, pk=sub)
+        _apply_threshold_patch(athlete, {"overlap_handling": overlap_handling}, set_by)
+        return {"overlap_handling": athlete.overlap_handling}

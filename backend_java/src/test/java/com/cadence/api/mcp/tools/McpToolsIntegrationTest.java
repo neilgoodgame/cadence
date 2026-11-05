@@ -18,6 +18,7 @@ import com.cadence.api.activities.dto.ActivitySplitsResponse;
 import com.cadence.api.athletes.AcceptedThresholdCandidate;
 import com.cadence.api.athletes.AcceptedThresholdCandidateRepository;
 import com.cadence.api.athletes.FitnessPoint;
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatus;
@@ -995,6 +996,39 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		assertThat(result.get("threshold_sanity_pct")).isEqualTo(20);
 		assertThat(result.get("ftp_calculation_method")).isEqualTo(athlete.getFtpCalculationMethod());
 		assertThat(result.get("running_power_source")).isEqualTo(athlete.getRunningPowerSource());
+	}
+
+	@Test
+	void getImportSettingsReturnsTheAthletesOverlapHandling() {
+		User athlete = saveAthlete("mcp-import-settings@example.cc");
+		athlete.setOverlapHandling(OverlapHandling.MARK);
+		userRepository.save(athlete);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.getImportSettings();
+
+		assertThat(result.get("overlap_handling")).isEqualTo(OverlapHandling.MARK);
+	}
+
+	@Test
+	void updateImportSettingsChangesTheAthletesOverlapHandling() {
+		User athlete = saveAthlete("mcp-import-settings-update@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var result = athleteProfileWriteTools.updateImportSettings("flag");
+
+		assertThat(result.get("overlap_handling")).isEqualTo(OverlapHandling.FLAG);
+		User reloaded = userRepository.findById(athlete.getId()).orElseThrow();
+		assertThat(reloaded.getOverlapHandling()).isEqualTo(OverlapHandling.FLAG);
+	}
+
+	@Test
+	void updateImportSettingsRejectsAnUnknownValue() {
+		User athlete = saveAthlete("mcp-import-settings-bad@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> athleteProfileWriteTools.updateImportSettings("not-a-real-mode"))
+				.isInstanceOf(ValidationException.class);
 	}
 
 	@Test

@@ -1,6 +1,7 @@
 package com.cadence.api.mcp.tools.athletes;
 
 import com.cadence.api.athletes.AthleteService;
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.athletes.dto.AthleteUpdateResponse;
 import com.cadence.api.common.error.ValidationException;
@@ -84,5 +85,35 @@ public class AthleteProfileWriteTools {
 		result.putAll(athleteProfileTools.thresholdsSummary(athlete));
 		result.put("thresholdEditResults", AthleteUpdateResponse.thresholdEditResultsWireMap(outcome.thresholdResults()));
 		return result;
+	}
+
+	@McpTool(name = "update_import_settings", description = "Set the athlete's overlap_handling "
+			+ "default (off/flag/mark/merge) - the default applied whenever an upload or Garmin "
+			+ "sync doesn't specify its own onOverlap override (issue #498). merge is accepted but "
+			+ "not yet implemented (#501) - it currently behaves like flag.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public Map<String, Object> updateImportSettings(
+			@McpToolParam(description = "off, flag, mark, or merge", required = true) String overlapHandling) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		String athleteId = accessGuard.effectiveAthleteId();
+		String callerSub = accessGuard.requireWrite(athleteId);
+		OverlapHandling parsed;
+		try {
+			parsed = OverlapHandling.fromWireValue(overlapHandling);
+		}
+		catch (IllegalArgumentException e) {
+			throw new ValidationException("overlapHandling must be one of: off, flag, mark, merge.");
+		}
+
+		User athlete = userService.getById(athleteId);
+		User setBy = callerSub.equals(athleteId) ? athlete : userService.getById(callerSub);
+		AthleteUpdateRequest request = new AthleteUpdateRequest(
+				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+				null, null, null, null, parsed);
+		athleteService.updateProfile(athlete, request, setBy);
+
+		return Map.of("overlap_handling", athlete.getOverlapHandling());
 	}
 }

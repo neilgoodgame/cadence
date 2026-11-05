@@ -1644,6 +1644,33 @@ class AthleteToolsTests(TestCase):
         self.assertEqual(result["ftp_calculation_method"], athlete.ftp_calculation_method)
         self.assertEqual(result["running_power_source"], athlete.running_power_source)
 
+    def test_get_import_settings_returns_the_athletes_overlap_handling(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-import-settings@example.cc", password="x", name="Athlete", overlap_handling="mark"
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.get_import_settings()
+
+        self.assertEqual(result, {"overlap_handling": "mark"})
+
+    def test_update_import_settings_changes_the_athletes_overlap_handling(self) -> None:
+        athlete = User.objects.create_user(email="mcp-import-settings-update@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.update_import_settings(overlap_handling="flag")
+
+        self.assertEqual(result, {"overlap_handling": "flag"})
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.overlap_handling, "flag")
+
+    def test_update_import_settings_rejects_an_unknown_value(self) -> None:
+        athlete = User.objects.create_user(email="mcp-import-settings-bad@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.update_import_settings(overlap_handling="not-a-real-mode")
+
 
 class GearAndRaceToolsTests(TestCase):
     def test_list_bikes_wraps_empty_result_in_data_key(self) -> None:
