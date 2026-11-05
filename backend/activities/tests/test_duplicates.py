@@ -4,6 +4,7 @@ from django.test import TestCase
 
 from accounts.models import User
 from core.derived import _daily_tss
+from gear.models import Bike
 
 from ..models import Activity
 from .helpers import _bearer_client, _make_activity
@@ -96,3 +97,30 @@ class DuplicateLinkTests(TestCase):
         self._link(self.duplicate, self.primary.id)
         detail = _bearer_client(self.athlete).get(f"/v1/activities/{self.duplicate.id}")
         self.assertEqual(detail.json()["duplicate_activity_ids"], [])
+
+    def test_marking_a_duplicate_retracts_its_gear_mileage(self):
+        # Issue #498: a duplicate's distance must not double-count on its bike's mileage total
+        # alongside its primary's.
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7", distance_km=142)
+        self.duplicate.bike = bike
+        self.duplicate.distance_km = 42.0
+        self.duplicate.save(update_fields=["bike", "distance_km"])
+
+        self._link(self.duplicate, self.primary.id)
+
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 100)
+
+    def test_unmarking_a_duplicate_restores_its_gear_mileage(self):
+        bike = Bike.objects.create(athlete=self.athlete, name="Tarmac SL7", distance_km=100)
+        self.duplicate.bike = bike
+        self.duplicate.distance_km = 42.0
+        self.duplicate.save(update_fields=["bike", "distance_km"])
+        self._link(self.duplicate, self.primary.id)
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 58)
+
+        self._link(self.duplicate, None)
+
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 100)

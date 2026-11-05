@@ -230,6 +230,38 @@ class ActivityServiceGearLinkTest extends IntegrationTest {
 	}
 
 	@Test
+	void markingADuplicateRetractsItsGearMileage() {
+		// Issue #498: a duplicate's distance must not double-count on its bike's mileage total
+		// alongside its primary's.
+		User athlete = newAthlete("gear-mileage-mark-duplicate@example.cc");
+		Bike bike = newBike(athlete, "Tarmac SL7", 142);
+		Activity primary = newActivity(athlete, Sport.BIKE, 100.0);
+		Activity duplicate = newActivity(athlete, Sport.BIKE, 42.0);
+		duplicate.setBike(bike);
+		duplicate = activityRepository.save(duplicate);
+
+		activityService.updateActivity(duplicate, Map.of("primary_activity_id", primary.getId()));
+
+		assertThat(bikeRepository.findById(bike.getId()).orElseThrow().getDistanceKm()).isEqualTo(100);
+	}
+
+	@Test
+	void unmarkingADuplicateRestoresItsGearMileage() {
+		User athlete = newAthlete("gear-mileage-unmark-duplicate@example.cc");
+		Bike bike = newBike(athlete, "Tarmac SL7", 100);
+		Activity primary = newActivity(athlete, Sport.BIKE, 100.0);
+		Activity duplicate = newActivity(athlete, Sport.BIKE, 42.0);
+		duplicate.setBike(bike);
+		duplicate = activityRepository.save(duplicate);
+		activityService.updateActivity(duplicate, Map.of("primary_activity_id", primary.getId()));
+		duplicate = activityRepository.findById(duplicate.getId()).orElseThrow();
+
+		activityService.updateActivity(duplicate, Collections.singletonMap("primary_activity_id", null));
+
+		assertThat(bikeRepository.findById(bike.getId()).orElseThrow().getDistanceKm()).isEqualTo(100);
+	}
+
+	@Test
 	void linkingShoeAddsActivityDistanceToShoeMileage() {
 		User athlete = newAthlete("gear-mileage-link-shoe@example.cc");
 		Activity activity = newActivity(athlete, Sport.RUN, 10.4);

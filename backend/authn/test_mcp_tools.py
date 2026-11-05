@@ -24,6 +24,7 @@ from athletes.models import AcceptedThresholdCandidate, ThresholdHistory
 from authn.oauth_utils import issue_token_pair
 from core.models import generate_id
 from gear.mcp import GearMCPTools
+from gear.models import Bike
 from races.mcp import RaceMCPTools
 from scheduling.mcp import SchedulingMCPTools
 from scheduling.models import ScheduledWorkout
@@ -996,6 +997,23 @@ class ActivityToolsTests(TestCase):
         self.assertEqual(duplicate.primary_activity_id, primary.id)
         self.assertIn(duplicate.id, list(primary.duplicate_activities.values_list("id", flat=True)))
 
+    def test_mark_duplicate_retracts_its_gear_mileage(self) -> None:
+        # Issue #498: a duplicate's distance must not double-count on its bike's mileage total
+        # alongside its primary's.
+        athlete = User.objects.create_user(email="mcp-mark-duplicate-mileage@example.cc", password="x", name="Athlete")
+        bike = Bike.objects.create(athlete=athlete, name="Tarmac SL7", distance_km=142)
+        primary = self._new_activity(athlete)
+        duplicate = self._new_activity(athlete)
+        duplicate.bike = bike
+        duplicate.distance_km = 42.0
+        duplicate.save(update_fields=["bike", "distance_km"])
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        tools.mark_duplicate(activity_id=duplicate.id, primary_id=primary.id)
+
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 100)
+
     def test_mark_duplicate_rejects_self_link(self) -> None:
         athlete = User.objects.create_user(email="mcp-mark-duplicate-self@example.cc", password="x", name="Athlete")
         activity = self._new_activity(athlete)
@@ -1031,6 +1049,26 @@ class ActivityToolsTests(TestCase):
         duplicate.refresh_from_db()
         self.assertIsNone(duplicate.primary_activity_id)
 
+    def test_unmark_duplicate_restores_its_gear_mileage(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-unmark-duplicate-mileage@example.cc", password="x", name="Athlete"
+        )
+        bike = Bike.objects.create(athlete=athlete, name="Tarmac SL7", distance_km=100)
+        primary = self._new_activity(athlete)
+        duplicate = self._new_activity(athlete)
+        duplicate.bike = bike
+        duplicate.distance_km = 42.0
+        duplicate.save(update_fields=["bike", "distance_km"])
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        tools.mark_duplicate(activity_id=duplicate.id, primary_id=primary.id)
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 58)
+
+        tools.unmark_duplicate(activity_id=duplicate.id)
+
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 100)
+
     def test_unmark_duplicate_is_a_no_op_when_not_a_duplicate(self) -> None:
         athlete = User.objects.create_user(email="mcp-unmark-duplicate-noop@example.cc", password="x", name="Athlete")
         activity = self._new_activity(athlete)
@@ -1058,6 +1096,29 @@ class ActivityToolsTests(TestCase):
         duplicate_b.refresh_from_db()
         self.assertEqual(primary.primary_activity_id, duplicate_a.id)
         self.assertEqual(duplicate_b.primary_activity_id, duplicate_a.id)
+
+    def test_set_primary_swaps_gear_mileage_between_old_and_new_primary(self) -> None:
+        # Issue #498: promoting a duplicate to primary must restore its own gear mileage and
+        # retract the (now-demoted) old primary's.
+        athlete = User.objects.create_user(email="mcp-set-primary-mileage@example.cc", password="x", name="Athlete")
+        bike = Bike.objects.create(athlete=athlete, name="Tarmac SL7", distance_km=142)
+        primary = self._new_activity(athlete)
+        primary.bike = bike
+        primary.distance_km = 40.0
+        primary.save(update_fields=["bike", "distance_km"])
+        duplicate = self._new_activity(athlete)
+        duplicate.bike = bike
+        duplicate.distance_km = 42.0
+        duplicate.save(update_fields=["bike", "distance_km"])
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        tools.mark_duplicate(activity_id=duplicate.id, primary_id=primary.id)
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 100)
+
+        tools.set_primary(activity_id=duplicate.id)
+
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 102)
 
     def test_set_primary_rejects_an_activity_that_is_already_primary(self) -> None:
         athlete = User.objects.create_user(email="mcp-set-primary-already@example.cc", password="x", name="Athlete")
