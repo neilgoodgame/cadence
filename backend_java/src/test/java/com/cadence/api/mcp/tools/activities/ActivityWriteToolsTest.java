@@ -136,6 +136,111 @@ class ActivityWriteToolsTest extends IntegrationTest {
 				.isInstanceOf(ForbiddenException.class);
 	}
 
+	@Test
+	void markDuplicateLinksItAndThePrimarysDuplicateListPicksItUp() {
+		User athlete = newUser("write-tool-mark-duplicate-athlete@example.cc");
+		Activity primary = newActivity(athlete);
+		Activity duplicate = newActivity(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var response = activityWriteTools.markDuplicate(duplicate.getId(), primary.getId());
+
+		assertThat(response.primaryActivityId()).isEqualTo(primary.getId());
+		assertThat(activityRepository.findById(duplicate.getId()).orElseThrow().getPrimaryActivity().getId())
+				.isEqualTo(primary.getId());
+	}
+
+	@Test
+	void markDuplicateRejectsSelfLink() {
+		User athlete = newUser("write-tool-mark-duplicate-self-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> activityWriteTools.markDuplicate(activity.getId(), activity.getId()))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void markDuplicateRejectsAnOutsiderWithNoShare() {
+		User athlete = newUser("write-tool-mark-duplicate-outsider-athlete@example.cc");
+		Activity primary = newActivity(athlete);
+		Activity duplicate = newActivity(athlete);
+		User outsider = newUser("write-tool-mark-duplicate-outsider@example.cc");
+		authAs(outsider.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> activityWriteTools.markDuplicate(duplicate.getId(), primary.getId()))
+				.isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void unmarkDuplicateClearsTheLink() {
+		User athlete = newUser("write-tool-unmark-duplicate-athlete@example.cc");
+		Activity primary = newActivity(athlete);
+		Activity duplicate = newActivity(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		activityWriteTools.markDuplicate(duplicate.getId(), primary.getId());
+
+		var response = activityWriteTools.unmarkDuplicate(duplicate.getId());
+
+		assertThat(response.primaryActivityId()).isNull();
+		assertThat(activityRepository.findById(duplicate.getId()).orElseThrow().getPrimaryActivity()).isNull();
+	}
+
+	@Test
+	void unmarkDuplicateIsANoOpWhenNotADuplicate() {
+		User athlete = newUser("write-tool-unmark-duplicate-noop-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var response = activityWriteTools.unmarkDuplicate(activity.getId());
+
+		assertThat(response.primaryActivityId()).isNull();
+	}
+
+	@Test
+	void setPrimarySwapsRolesAndRepointsOtherSiblings() {
+		User athlete = newUser("write-tool-set-primary-athlete@example.cc");
+		Activity primary = newActivity(athlete);
+		Activity duplicateA = newActivity(athlete);
+		Activity duplicateB = newActivity(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		activityWriteTools.markDuplicate(duplicateA.getId(), primary.getId());
+		duplicateB.setPrimaryActivity(primary);
+		activityRepository.save(duplicateB);
+
+		var response = activityWriteTools.setPrimary(duplicateA.getId());
+
+		assertThat(response.primaryActivityId()).isNull();
+		assertThat(response.duplicateActivityIds()).containsExactlyInAnyOrder(primary.getId(), duplicateB.getId());
+		assertThat(activityRepository.findById(primary.getId()).orElseThrow().getPrimaryActivity().getId())
+				.isEqualTo(duplicateA.getId());
+		assertThat(activityRepository.findById(duplicateB.getId()).orElseThrow().getPrimaryActivity().getId())
+				.isEqualTo(duplicateA.getId());
+	}
+
+	@Test
+	void setPrimaryRejectsAnActivityThatIsAlreadyPrimary() {
+		User athlete = newUser("write-tool-set-primary-already-athlete@example.cc");
+		Activity activity = newActivity(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> activityWriteTools.setPrimary(activity.getId()))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void setPrimaryRejectsAnOutsiderWithNoShare() {
+		User athlete = newUser("write-tool-set-primary-outsider-athlete@example.cc");
+		Activity primary = newActivity(athlete);
+		Activity duplicate = newActivity(athlete);
+		duplicate.setPrimaryActivity(primary);
+		activityRepository.save(duplicate);
+		User outsider = newUser("write-tool-set-primary-outsider@example.cc");
+		authAs(outsider.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> activityWriteTools.setPrimary(duplicate.getId())).isInstanceOf(ForbiddenException.class);
+	}
+
 	private Tag newTag(User athlete, String name) {
 		Tag tag = new Tag();
 		tag.setAthlete(athlete);

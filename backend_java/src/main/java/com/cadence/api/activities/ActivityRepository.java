@@ -126,6 +126,10 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	@Query("select a.id from Activity a where a.primaryActivity.id = :primaryId order by a.startDate")
 	List<String> findDuplicateIds(@Param("primaryId") String primaryId);
 
+	// ActivityService.setPrimary's sibling re-pointing (issue #498's MCP write tools) - unlike
+	// findDuplicateIds above, this needs full entities to mutate and save, not just ids.
+	List<Activity> findByPrimaryActivityId(String primaryActivityId);
+
 	boolean existsByPrimaryActivityId(String primaryActivityId);
 
 	// One bulk statement rather than a derived deleteBy (which would load and delete row by
