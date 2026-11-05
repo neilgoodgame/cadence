@@ -57,6 +57,16 @@ export function ActivityCard({
                 Indoor
               </span>
             )}
+            {activity.duplicate_activity_ids.length > 0 && (
+              <span
+                title="A duplicate recording (e.g. a second device) is linked to this activity and excluded from training load"
+                style={{ fontSize: 11, color: "var(--ink3)", background: "var(--elev)", padding: "1px 6px", borderRadius: 6 }}
+              >
+                {activity.duplicate_activity_ids.length === 1
+                  ? "1 duplicate linked"
+                  : `${activity.duplicate_activity_ids.length} duplicates linked`}
+              </span>
+            )}
           </div>
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{activity.name}</div>
           <div style={{ fontSize: 13, color: "var(--ink2)" }}>{summary}</div>
