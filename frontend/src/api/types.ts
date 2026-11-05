@@ -470,6 +470,34 @@ export interface Activity {
   duplicate_activity_ids: string[];
 }
 
+/** One side of a GET /v1/activities/overlaps pair - see OverlapPair. */
+export interface OverlapActivitySummary {
+  id: string;
+  name: string;
+  sport: Sport;
+  device: string;
+  start_date: string;
+  /** Wall-clock duration (includes pauses), falling back to moving_time where not captured. */
+  elapsed_seconds: number | null;
+  avg_power: number | null;
+}
+
+/** One row of GET /v1/activities/overlaps. `anchor`/`other` are an arbitrary pair labelling,
+ * not "the real one" and "the duplicate" - when `activityId` is passed, anchor is pinned to it. */
+export interface OverlapPair {
+  anchor: OverlapActivitySummary;
+  other: OverlapActivitySummary;
+  overlap_seconds: number;
+  overlap_pct: number;
+  start_delta_seconds: number;
+  duration_delta_pct: number | null;
+  /** other / anchor. Null whenever either side has no avg_power. */
+  avg_power_ratio: number | null;
+  /** `duplicate` when one side's primary_activity_id already points at the other. `merged` is
+   * reserved for #501 (not yet produced by this endpoint). */
+  status: "unresolved" | "duplicate" | "merged";
+}
+
 export interface AthleteUpdate {
   name?: string;
   age?: number;

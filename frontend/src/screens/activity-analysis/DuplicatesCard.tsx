@@ -1,14 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getActivity, listActivities, updateActivity } from "../../api/activities";
+import { getActivity, listActivityOverlaps, updateActivity } from "../../api/activities";
 import type { Activity } from "../../api/types";
 import { Card } from "../../components/Card";
 import { formatDuration } from "../../lib/format";
-
-// A candidate duplicate is another recording of the same session, so it starts
-// within this window of the viewed activity.
-const CANDIDATE_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 /** Banner shown on a duplicate recording's own page: points at the primary and
  * can promote this recording to be the one that counts for training load. */
@@ -81,17 +77,15 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
 
   const duplicateIds = activity.duplicate_activity_ids;
 
-  const candidatesQuery = useQuery({
-    queryKey: ["duplicate-candidates", activity.id, activity.sport],
-    queryFn: () => listActivities({ sport: activity.sport, limit: 50 }),
+  // Issue #498's overlap-detection backbone: pins this activity as anchor and returns every
+  // other activity whose recorded interval overlaps it, already excluding resolved pairs
+  // (includeResolved defaults to false) - so everything back is a genuine "maybe a duplicate"
+  // candidate, not just a same-day guess.
+  const overlapsQuery = useQuery({
+    queryKey: ["duplicate-candidates", activity.id],
+    queryFn: () => listActivityOverlaps({ activityId: activity.id, limit: 20 }),
   });
-  const activityStart = new Date(activity.start_date).getTime();
-  const candidates = (candidatesQuery.data?.data ?? []).filter(
-    (a) =>
-      a.id !== activity.id &&
-      a.duplicate_activity_ids.length === 0 &&
-      Math.abs(new Date(a.start_date).getTime() - activityStart) <= CANDIDATE_WINDOW_MS,
-  );
+  const candidatePairs = overlapsQuery.data?.data ?? [];
 
   const { data: duplicates } = useQuery({
     queryKey: ["duplicates", activity.id, duplicateIds.join()],
@@ -136,7 +130,7 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
       await updateActivity(activity.id, { primary_activity_id: duplicateId });
     });
 
-  if (duplicateIds.length === 0 && candidates.length === 0) {
+  if (duplicateIds.length === 0 && candidatePairs.length === 0) {
     return null;
   }
 
@@ -188,28 +182,33 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
         </div>
       )}
 
-      {candidates.length > 0 && (
+      {candidatePairs.length > 0 && (
         <div style={{ marginTop: duplicateIds.length > 0 ? 14 : 0 }}>
           <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 6 }}>
-            Same-day {activity.sport} activities that may be duplicates of this one
+            Overlapping activities that may be duplicates of this one
           </div>
-          {candidates.map((candidate) => (
-            <div key={candidate.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0" }}>
-              <Link
-                to={`/activities/${candidate.id}`}
-                style={{ flex: 1, fontSize: 13, color: "var(--ink2)" }}
-              >
-                {candidate.name}
-              </Link>
-              <span style={{ fontSize: 12, color: "var(--ink3)" }}>
-                {candidate.device || candidate.source || "unknown source"} · {formatDuration(candidate.moving_time)} ·
-                TSS {candidate.tss}
-              </span>
-              <button style={buttonStyle} disabled={busy} onClick={() => linkDuplicate(candidate.id)}>
-                Link as duplicate
-              </button>
-            </div>
-          ))}
+          {candidatePairs.map((pair) => {
+            const candidate = pair.other;
+            const details = [
+              candidate.device || "unknown source",
+              candidate.elapsed_seconds != null ? formatDuration(candidate.elapsed_seconds) : null,
+              `${Math.round(pair.overlap_pct)}% overlap`,
+              pair.avg_power_ratio != null ? `${pair.avg_power_ratio.toFixed(2)}x power` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <div key={candidate.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0" }}>
+                <Link to={`/activities/${candidate.id}`} style={{ flex: 1, fontSize: 13, color: "var(--ink2)" }}>
+                  {candidate.name}
+                </Link>
+                <span style={{ fontSize: 12, color: "var(--ink3)" }}>{details}</span>
+                <button style={buttonStyle} disabled={busy} onClick={() => linkDuplicate(candidate.id)}>
+                  Link as duplicate
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 

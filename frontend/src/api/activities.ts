@@ -10,6 +10,7 @@ import type {
   DurationCurve,
   Lap,
   List,
+  OverlapPair,
   SplitsMode,
   StreamsResponse,
   Tag,
@@ -64,6 +65,31 @@ export async function listAllActivities(params: Omit<ListActivitiesParams, "limi
 
 export function getActivity(id: string): Promise<Activity> {
   return apiFetch<Activity>(`/v1/activities/${id}`);
+}
+
+export interface ListActivityOverlapsParams {
+  activityId?: string;
+  sport?: string;
+  crossSport?: boolean;
+  device?: string;
+  otherDevice?: string;
+  environment?: string;
+  from?: string;
+  to?: string;
+  minOverlapPct?: number;
+  maxStartDeltaSeconds?: number;
+  minDurationSeconds?: number;
+  includeResolved?: boolean;
+  limit?: number;
+  cursor?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+/** Issue #498's detection backbone - pairs of the athlete's activities whose recorded
+ * intervals overlap (the same ride recorded twice, e.g. Zwift + a head unit, but also any
+ * genuinely overlapping pair). Used by DuplicatesCard's "maybe a duplicate" candidate search. */
+export function listActivityOverlaps(params: ListActivityOverlapsParams): Promise<List<OverlapPair>> {
+  return apiFetch<List<OverlapPair>>(`/v1/activities/overlaps${toQueryString(params)}`);
 }
 
 /** Runs, walks and rides only (422 otherwise). `preview` overrides the owner's section settings
