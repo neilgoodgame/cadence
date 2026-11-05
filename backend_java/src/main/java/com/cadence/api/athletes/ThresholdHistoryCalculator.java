@@ -530,12 +530,23 @@ public class ThresholdHistoryCalculator {
 	 * entries. A per-activity computation failure is surfaced as {@code CandidateStatus.ERROR}
 	 * with {@code errorReason} set, rather than failing the whole call (issue #500). */
 	public List<CandidateStatusEntry> candidateStatuses(User athlete, ThresholdField field, LocalDate from, LocalDate to) {
+		return candidateStatuses(athlete, field, from, to, false);
+	}
+
+	/** As {@link #candidateStatuses(User, ThresholdField, LocalDate, LocalDate)}, but
+	 * {@code includeDuplicates} (issue #498) can also classify a same-ride-twice duplicate copy -
+	 * only the MCP list_threshold_candidates tool's ad-hoc inspection exposes this; every other
+	 * caller leaves it at the default, which excludes a duplicate exactly like currentWindowValue/
+	 * rejectedCandidates do. */
+	public List<CandidateStatusEntry> candidateStatuses(
+			User athlete, ThresholdField field, LocalDate from, LocalDate to, boolean includeDuplicates) {
 		Double referenceValue = athleteReferenceValue(athlete, field);
 		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
 
 		Instant start = from.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant end = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-		List<Activity> activities = activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
+		List<Activity> activities =
+				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end, includeDuplicates);
 
 		List<CandidateStatusEntry> statuses = new ArrayList<>();
 		for (List<Activity> chunk : chunked(activities)) {

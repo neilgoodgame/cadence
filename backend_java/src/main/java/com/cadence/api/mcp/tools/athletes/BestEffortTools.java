@@ -41,18 +41,23 @@ public class BestEffortTools {
 	@McpTool(name = "list_best_efforts", description = "Get the authenticated athlete's best "
 			+ "efforts for one metric (e.g. best 5-min power ever recorded) across all tracked "
 			+ "durations, optionally restricted to a recent period. Useful for 'what's my best "
-			+ "20-minute power' or judging whether a recent activity set a new PR.",
+			+ "20-minute power' or judging whether a recent activity set a new PR. "
+			+ "includeDuplicates (default false) also considers same-ride-twice duplicate copies' "
+			+ "own best-effort rows, which are otherwise excluded entirely (issue #498).",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public BestEffortListResponse listBestEfforts(
 			@McpToolParam(description = "cycling_hr, cycling_power, running_hr, running_pace, or "
 					+ "running_power", required = true) String kind,
-			@McpToolParam(description = "all (default), 4w, 3m, 16w, or 1y", required = false) String period) {
+			@McpToolParam(description = "all (default), 4w, 3m, 16w, or 1y", required = false) String period,
+			@McpToolParam(description = "Also consider same-ride-twice duplicate copies' best "
+					+ "efforts, which are excluded by default (default false)", required = false) Boolean includeDuplicates) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		BestEffortKind effectiveKind = parseKind(kind);
 		String effectivePeriod = period != null ? period : "all";
+		boolean effectiveIncludeDuplicates = Boolean.TRUE.equals(includeDuplicates);
 
 		LocalDate since = switch (effectivePeriod) {
 			case "4w" -> LocalDate.now().minusDays(28);
@@ -62,8 +67,10 @@ public class BestEffortTools {
 			default -> null;
 		};
 		List<BestEffort> efforts = since != null
-				? bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(athleteId, effectiveKind, since)
-				: bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(athleteId, effectiveKind);
+				? bestEffortRepository.findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindowAscValueDesc(
+						athleteId, effectiveKind, since, effectiveIncludeDuplicates)
+				: bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(
+						athleteId, effectiveKind, effectiveIncludeDuplicates);
 
 		int topN = userService.getById(athleteId).getBestEffortTopN();
 		List<BestEffort> capped = BestEffortController.capPerWindow(efforts, effectiveKind == BestEffortKind.RUNNING_PACE, topN);

@@ -13,18 +13,23 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 
 	// Multisport children are excluded: the parent already carries the sum of its legs' TSS,
 	// so counting both would double the training load. Duplicate recordings are excluded for
-	// the same reason: only the designated primary counts.
+	// the same reason: only the designated primary counts - unless includeDuplicates overrides
+	// that (issue #498's MCP get_fitness_trend ad-hoc inspection; every other caller passes
+	// false).
 	@Query("select a.startDate, a.tss from Activity a where a.athlete.id = :athleteId and a.startDate >= :start and a.startDate < :end "
-			+ "and a.parentActivity is null and a.primaryActivity is null")
-	List<Object[]> findStartDatesAndTssInRange(@Param("athleteId") String athleteId, @Param("start") Instant start, @Param("end") Instant end);
+			+ "and a.parentActivity is null and (:includeDuplicates = true or a.primaryActivity is null)")
+	List<Object[]> findStartDatesAndTssInRange(@Param("athleteId") String athleteId, @Param("start") Instant start,
+			@Param("end") Instant end, @Param("includeDuplicates") boolean includeDuplicates);
 
 	// FitnessService's per-sport fitness trend (e.g. a bike-only CTL to compare against FTP,
 	// independent of running load) - same multisport/duplicate exclusion as the combined query
 	// above, scoped to one sport.
 	@Query("select a.startDate, a.tss from Activity a where a.athlete.id = :athleteId and a.sport = :sport "
-			+ "and a.startDate >= :start and a.startDate < :end and a.parentActivity is null and a.primaryActivity is null")
+			+ "and a.startDate >= :start and a.startDate < :end and a.parentActivity is null "
+			+ "and (:includeDuplicates = true or a.primaryActivity is null)")
 	List<Object[]> findStartDatesAndTssInRangeForSport(@Param("athleteId") String athleteId,
-			@Param("sport") com.cadence.api.common.domain.Sport sport, @Param("start") Instant start, @Param("end") Instant end);
+			@Param("sport") com.cadence.api.common.domain.Sport sport, @Param("start") Instant start,
+			@Param("end") Instant end, @Param("includeDuplicates") boolean includeDuplicates);
 
 	@Query("select min(a.startDate) from Activity a where a.athlete.id = :athleteId")
 	Optional<Instant> findEarliestStartDate(@Param("athleteId") String athleteId);
@@ -122,6 +127,18 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	List<Activity> findForThresholdWindow(@Param("athleteId") String athleteId,
 			@Param("sport") com.cadence.api.common.domain.Sport sport,
 			@Param("start") Instant start, @Param("end") Instant end);
+
+	// ThresholdHistoryCalculator.candidateStatuses (issue #498's MCP list_threshold_candidates
+	// tool) only: includeDuplicates can override the exclusion above for ad-hoc inspection of a
+	// same-ride-twice pair. currentWindowValue and the upcomingDrop near-match rule keep using
+	// the always-excluding overload above instead.
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.sport = :sport "
+			+ "and (:includeDuplicates = true or a.primaryActivity is null) "
+			+ "and a.startDate >= :start and a.startDate < :end order by a.startDate")
+	List<Activity> findForThresholdWindow(@Param("athleteId") String athleteId,
+			@Param("sport") com.cadence.api.common.domain.Sport sport,
+			@Param("start") Instant start, @Param("end") Instant end,
+			@Param("includeDuplicates") boolean includeDuplicates);
 
 	// ThresholdHistoryCalculator.replayFullHistory's full-history scan - same duplicate exclusion
 	// as findForThresholdWindow above, but deliberately a SEPARATE method from

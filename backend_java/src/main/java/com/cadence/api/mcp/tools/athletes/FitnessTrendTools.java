@@ -35,7 +35,10 @@ public class FitnessTrendTools {
 	@McpTool(name = "get_fitness_trend", description = "Get the authenticated athlete's daily "
 			+ "CTL (fitness), ATL (fatigue), and TSB (form/freshness) trend over a date range - "
 			+ "default is the trailing 84 days. Useful for 'am I overtrained' or 'when's my next "
-			+ "good taper window' questions.",
+			+ "good taper window' questions. includeDuplicates (default false) counts same-ride-"
+			+ "twice duplicate copies' TSS too, which otherwise never counts towards the trend "
+			+ "(issue #498) - useful for seeing how inflated the trend used to be before a pair "
+			+ "was resolved, not for everyday use.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public List<FitnessPoint> getFitnessTrend(
@@ -43,14 +46,17 @@ public class FitnessTrendTools {
 			@McpToolParam(description = "End date (YYYY-MM-DD), default today", required = false) LocalDate to,
 			@McpToolParam(description = "Restrict to one sport (bike, run, swim, walk, row) - e.g. a "
 					+ "bike-only CTL to compare against FTP, independent of running load. Default: "
-					+ "all sports combined.", required = false) String sport) {
+					+ "all sports combined.", required = false) String sport,
+			@McpToolParam(description = "Also count same-ride-twice duplicate copies' TSS, which are "
+					+ "excluded by default (default false)", required = false) Boolean includeDuplicates) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		Sport effectiveSport = parseSport(sport);
 		LocalDate effectiveTo = to != null ? to : LocalDate.now();
 		LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(84);
-		return fitnessService.computeFitnessSeries(athleteId, effectiveFrom, effectiveTo, effectiveSport);
+		return fitnessService.computeFitnessSeries(
+				athleteId, effectiveFrom, effectiveTo, effectiveSport, Boolean.TRUE.equals(includeDuplicates));
 	}
 
 	private Sport parseSport(String sport) {

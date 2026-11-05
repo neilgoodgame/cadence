@@ -178,13 +178,27 @@ public class ActivityService {
 	public CursorPage<ActivityResponse> list(String athleteId, String q, Sport sportFilter, Environment environmentFilter,
 			String tagFilter, LocalDate after, LocalDate before, String cursor, int limit,
 			String bikeIdFilter, String shoeIdFilter) {
+		return list(athleteId, q, sportFilter, environmentFilter, tagFilter, after, before, cursor, limit, bikeIdFilter,
+				shoeIdFilter, false);
+	}
+
+	/** As {@link #list(String, String, Sport, Environment, String, LocalDate, LocalDate, String,
+	 * int, String, String)}, but {@code includeDuplicates} (issue #498) can surface same-ride-
+	 * twice duplicate copies that are otherwise hidden entirely - only the MCP list_activities
+	 * tool exposes this; the REST endpoint always leaves it at the default. */
+	public CursorPage<ActivityResponse> list(String athleteId, String q, Sport sportFilter, Environment environmentFilter,
+			String tagFilter, LocalDate after, LocalDate before, String cursor, int limit,
+			String bikeIdFilter, String shoeIdFilter, boolean includeDuplicates) {
 		// Multisport children are reachable via their parent's child_activity_ids, not the list -
 		// showing legs alongside the parent would present the same session twice. Duplicate
-		// recordings are likewise reachable only via their primary's duplicate_activity_ids.
+		// recordings are likewise reachable only via their primary's duplicate_activity_ids,
+		// unless includeDuplicates overrides that.
 		Specification<Activity> spec = (root, query, cb) -> cb.and(
 				cb.equal(root.get("athlete").get("id"), athleteId),
-				cb.isNull(root.get("parentActivity")),
-				cb.isNull(root.get("primaryActivity")));
+				cb.isNull(root.get("parentActivity")));
+		if (!includeDuplicates) {
+			spec = spec.and((root, query, cb) -> cb.isNull(root.get("primaryActivity")));
+		}
 		Sort.Order primaryOrder = Sort.Order.desc("startDate");
 
 		if (q != null && !q.isBlank()) {

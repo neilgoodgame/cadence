@@ -151,19 +151,24 @@ public class AthleteProfileTools {
 			+ "effort at all, e.g. too short for the field's window). Classified against the "
 			+ "athlete's *current* profile value, a single snapshot rather than a moving "
 			+ "reference. Useful for seeing what a model would have had to predict between "
-			+ "ledger entries, without reconstructing it by hand from stream summaries.",
+			+ "ledger entries, without reconstructing it by hand from stream summaries. "
+			+ "includeDuplicates (default false) also classifies same-ride-twice duplicate copies, "
+			+ "which are otherwise excluded entirely (issue #498).",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public List<CandidateStatusEntry> listThresholdCandidates(
 			@McpToolParam(description = "ftp, critical_run_power, or threshold_pace", required = true) String field,
 			@McpToolParam(description = "Start date (YYYY-MM-DD)", required = true) LocalDate from,
-			@McpToolParam(description = "End date (YYYY-MM-DD)", required = true) LocalDate to) {
+			@McpToolParam(description = "End date (YYYY-MM-DD)", required = true) LocalDate to,
+			@McpToolParam(description = "Also classify same-ride-twice duplicate copies, which are "
+					+ "excluded by default (default false)", required = false) Boolean includeDuplicates) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		ThresholdField effectiveField = parseField(field);
 		User athlete = userService.getById(athleteId);
-		return thresholdHistoryCalculator.candidateStatuses(athlete, effectiveField, from, to);
+		return thresholdHistoryCalculator.candidateStatuses(
+				athlete, effectiveField, from, to, Boolean.TRUE.equals(includeDuplicates));
 	}
 
 	@McpTool(name = "get_threshold_settings", description = "Get the authenticated athlete's "

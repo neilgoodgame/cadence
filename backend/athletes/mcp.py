@@ -187,11 +187,12 @@ class AthleteMCPTools(ScopedMCPToolset):
         }
         return result
 
-    def list_best_efforts(self, kind: str, period: str = "all") -> dict[str, Any]:
+    def list_best_efforts(self, kind: str, period: str = "all", include_duplicates: bool = False) -> dict[str, Any]:
         """Get the authenticated athlete's best efforts for one metric (e.g. best 5-min power
         ever recorded) across all tracked durations, optionally restricted to a recent period.
         Useful for 'what's my best 20-minute power' or judging whether a recent activity set a
-        new PR."""
+        new PR. `include_duplicates` (default false) also considers same-ride-twice duplicate
+        copies' own best-effort rows, which are otherwise excluded entirely (issue #498)."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
@@ -203,9 +204,10 @@ class AthleteMCPTools(ScopedMCPToolset):
         if period not in ("4w", "3m", "16w", "1y", "all"):
             raise ValidationError({"period": "Must be one of 4w, 3m, 16w, 1y, all."})
 
-        qs = BestEffort.objects.filter(
-            athlete_id=athlete_id, kind=kind, activity__primary_activity__isnull=True
-        ).order_by("window", "-value")
+        qs = BestEffort.objects.filter(athlete_id=athlete_id, kind=kind)
+        if not include_duplicates:
+            qs = qs.filter(activity__primary_activity__isnull=True)
+        qs = qs.order_by("window", "-value")
         if period in BEST_EFFORT_PERIOD_DAYS:
             cutoff = timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
             qs = qs.filter(date__gte=cutoff)
@@ -229,13 +231,20 @@ class AthleteMCPTools(ScopedMCPToolset):
         }
 
     def get_fitness_trend(
-        self, from_date: str | None = None, to_date: str | None = None, sport: str | None = None
+        self,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        sport: str | None = None,
+        include_duplicates: bool = False,
     ) -> dict[str, Any]:
         """Get the authenticated athlete's daily CTL (fitness), ATL (fatigue), and TSB (form/
         freshness) trend over a date range - default is the trailing 84 days. Useful for 'am I
         overtrained' or 'when's my next good taper window' questions. `sport` (bike/run/swim/
         walk/row), if given, restricts the series to just that sport's activities - e.g. a
-        bike-only CTL to compare against FTP, independent of running load."""
+        bike-only CTL to compare against FTP, independent of running load. `include_duplicates`
+        (default false) counts same-ride-twice duplicate copies' TSS too, which otherwise never
+        counts towards the trend (issue #498) - useful for seeing how inflated the trend used to
+        be before a pair was resolved, not for everyday use."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
@@ -251,7 +260,7 @@ class AthleteMCPTools(ScopedMCPToolset):
         if from_d > to_d:
             raise ValidationError({"from_date": "Must not be after to_date."})
 
-        series = compute_fitness_series(athlete_id, from_d, to_d, sport)
+        series = compute_fitness_series(athlete_id, from_d, to_d, sport, include_duplicates=include_duplicates)
         # Wrapped in {"data": [...]} rather than returned as a bare list - see
         # activities/mcp.py::get_activity_laps's comment for why.
         return {
@@ -305,7 +314,9 @@ class AthleteMCPTools(ScopedMCPToolset):
             ],
         }
 
-    def list_threshold_candidates(self, field: str, from_date: str, to_date: str) -> dict[str, Any]:
+    def list_threshold_candidates(
+        self, field: str, from_date: str, to_date: str, include_duplicates: bool = False
+    ) -> dict[str, Any]:
         """For every one of the athlete's activities of `field`'s sport between from_date and
         to_date, return the implied value it would contribute to the rolling-window algorithm
         (e.g. 0.95 x best 20-minute power for ftp), the raw pre-transform value, the window
@@ -315,7 +326,9 @@ class AthleteMCPTools(ScopedMCPToolset):
         athlete's *current* profile value, a single snapshot rather than a moving reference - see
         current_window_value's own docstring for that distinction. Useful for seeing what a model
         would have had to predict between ledger entries, without reconstructing it by hand from
-        stream summaries."""
+        stream summaries. `include_duplicates` (default false) also classifies same-ride-twice
+        duplicate copies, which are otherwise excluded entirely (issue #498) - useful for
+        inspecting a specific duplicate pair rather than everyday candidate review."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
@@ -330,7 +343,7 @@ class AthleteMCPTools(ScopedMCPToolset):
             raise ValidationError({"from_date": "Must not be after to_date."})
 
         athlete = get_object_or_404(User, pk=athlete_id)
-        candidates = candidate_statuses(athlete, field, from_d, to_d)
+        candidates = candidate_statuses(athlete, field, from_d, to_d, include_duplicates=include_duplicates)
         # Wrapped in {"data": [...]} rather than returned as a bare list - see
         # activities/mcp.py::get_activity_laps's comment for why.
         return {

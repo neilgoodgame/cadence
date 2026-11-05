@@ -172,6 +172,7 @@ class ActivityMCPTools(ScopedMCPToolset):
         before: str | None = None,
         limit: int = 20,
         cursor: str | None = None,
+        include_duplicates: bool = False,
     ) -> dict[str, Any]:
         """List the authenticated athlete's activities, most recent first, optionally filtered
         by sport and/or date range. Returns compact summaries (name, sport, date, duration,
@@ -179,12 +180,17 @@ class ActivityMCPTools(ScopedMCPToolset):
         heat strain/core temp/skin temp, and - when weigh-ins were recorded - start/end weight
         and fluids consumed) - use get_activity for the full detail on one activity. `query` also
         supports filtering on these fields, e.g. "avg_heat_strain > 5 and date > 2026-06-01" to
-        find high-heat-strain sessions in a date range. Paginated via next_cursor."""
+        find high-heat-strain sessions in a date range. Paginated via next_cursor.
+        `include_duplicates` (default false) also lists same-ride-twice duplicate copies, which
+        are otherwise hidden entirely (issue #498) - useful for finding a specific duplicate to
+        resolve with mark_duplicate/unmark_duplicate/set_primary, not for everyday browsing."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
 
-        qs = Activity.objects.filter(athlete_id=athlete_id, parent_activity__isnull=True, primary_activity__isnull=True)
+        qs = Activity.objects.filter(athlete_id=athlete_id, parent_activity__isnull=True)
+        if not include_duplicates:
+            qs = qs.filter(primary_activity__isnull=True)
 
         if query:
             result = parse(query)

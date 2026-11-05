@@ -869,7 +869,9 @@ class CandidateStatus:
     error_reason: str | None = None
 
 
-def candidate_statuses(athlete: User, field: str, from_date: date, to_date: date) -> list[CandidateStatus]:
+def candidate_statuses(
+    athlete: User, field: str, from_date: date, to_date: date, include_duplicates: bool = False
+) -> list[CandidateStatus]:
     """Every one of the athlete's activities of `field`'s sport in [from_date, to_date],
     classified against the athlete's *current* profile value - a single snapshot, not a moving
     reference (see current_window_value's own docstring for that distinction): 'qualified'
@@ -879,19 +881,22 @@ def candidate_statuses(athlete: User, field: str, from_date: date, to_date: date
     every activity in range, not just the rejected-and-better subset - built for the Threshold
     suggestions calibration tooling (list_threshold_candidates), to see what a model would have
     had to predict between ledger entries. A per-activity computation failure is surfaced as
-    status="error" with error_reason set, rather than failing the whole call (issue #500)."""
+    status="error" with error_reason set, rather than failing the whole call (issue #500).
+    `include_duplicates` (issue #498) is for ad-hoc inspection of a same-ride-twice pair via
+    list_threshold_candidates only - every other caller leaves it at the default, which excludes
+    a duplicate-marked activity exactly like current_window_value/rejected_candidates do."""
     reference_value = _athlete_reference_value(athlete, field)
     accepted_ids = _accepted_activity_ids(athlete, field)
 
-    activities = list(
-        Activity.objects.filter(
-            athlete=athlete,
-            sport=FIELD_SPORT[field],
-            primary_activity__isnull=True,
-            start_date__date__gte=from_date,
-            start_date__date__lte=to_date,
-        ).order_by("start_date")
+    qs = Activity.objects.filter(
+        athlete=athlete,
+        sport=FIELD_SPORT[field],
+        start_date__date__gte=from_date,
+        start_date__date__lte=to_date,
     )
+    if not include_duplicates:
+        qs = qs.filter(primary_activity__isnull=True)
+    activities = list(qs.order_by("start_date"))
 
     statuses: list[CandidateStatus] = []
     for chunk in _chunked(activities):

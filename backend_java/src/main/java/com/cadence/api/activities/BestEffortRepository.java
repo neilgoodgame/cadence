@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 
@@ -54,6 +56,24 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 
 	List<BestEffort> findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
 			String athleteId, BestEffortKind kind);
+
+	/** Issue #498's MCP list_best_efforts tool only: {@code includeDuplicates} can override the
+	 * default exclusion above for ad-hoc inspection of a same-ride-twice pair. The REST
+	 * BestEffortController and every other caller keep using the always-excluding finders
+	 * above instead. */
+	@Query("select be from BestEffort be where be.athlete.id = :athleteId and be.kind = :kind "
+			+ "and (:includeDuplicates = true or be.activity.primaryActivity is null) "
+			+ "and be.date >= :since order by be.window asc, be.value desc")
+	List<BestEffort> findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindowAscValueDesc(
+			@Param("athleteId") String athleteId, @Param("kind") BestEffortKind kind,
+			@Param("since") LocalDate since, @Param("includeDuplicates") boolean includeDuplicates);
+
+	@Query("select be from BestEffort be where be.athlete.id = :athleteId and be.kind = :kind "
+			+ "and (:includeDuplicates = true or be.activity.primaryActivity is null) "
+			+ "order by be.window asc, be.value desc")
+	List<BestEffort> findByAthleteIdAndKindOrderByWindowAscValueDesc(
+			@Param("athleteId") String athleteId, @Param("kind") BestEffortKind kind,
+			@Param("includeDuplicates") boolean includeDuplicates);
 
 	/** Used by {@code BestEffortController#activityBestEffortRanks} to find which (kind, window)
 	 * pairs a caller-supplied batch of activities actually holds a row for - see its Javadoc. */
