@@ -66,7 +66,10 @@ public class ActivityReadTools {
 			+ "weigh-ins were recorded - start/end weight and fluids consumed) - use get_activity for "
 			+ "the full detail on one activity. `query` also supports filtering on these fields, e.g. "
 			+ "\"avg_heat_strain > 5 and date > 2026-06-01\" to find high-heat-strain sessions in a "
-			+ "date range. Paginated via next_cursor.",
+			+ "date range. Paginated via next_cursor. `includeDuplicates` (default false) also lists "
+			+ "same-ride-twice duplicate copies, which are otherwise hidden entirely (issue #498) - "
+			+ "useful for finding a specific duplicate to resolve with mark_duplicate/unmark_duplicate/"
+			+ "set_primary, not for everyday browsing.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = false, openWorldHint = false))
 	public McpActivityPage listActivities(
@@ -76,12 +79,15 @@ public class ActivityReadTools {
 			@McpToolParam(description = "Only activities on/after this date (YYYY-MM-DD)", required = false) LocalDate after,
 			@McpToolParam(description = "Only activities on/before this date (YYYY-MM-DD)", required = false) LocalDate before,
 			@McpToolParam(description = "Max results, default 20, capped at 100", required = false) Integer limit,
-			@McpToolParam(description = "Pass the previous response's next_cursor to get the next page", required = false) String cursor) {
+			@McpToolParam(description = "Pass the previous response's next_cursor to get the next page", required = false) String cursor,
+			@McpToolParam(description = "Also list same-ride-twice duplicate copies, which are hidden by "
+					+ "default (default false)", required = false) Boolean includeDuplicates) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		int effectiveLimit = Math.max(1, Math.min(limit != null ? limit : 20, 100));
-		var page = activityService.list(athleteId, query, parseSport(sport), null, null, after, before, cursor, effectiveLimit, null, null);
+		var page = activityService.list(athleteId, query, parseSport(sport), null, null, after, before, cursor,
+				effectiveLimit, null, null, Boolean.TRUE.equals(includeDuplicates));
 		return new McpActivityPage(page.hasMore(), page.nextCursor(), page.data().stream().map(McpActivitySummary::from).toList());
 	}
 

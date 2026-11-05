@@ -199,7 +199,7 @@ public class RaceBlockService {
 		if (start.isAfter(to)) return Map.of();
 		Instant startInstant = start.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant endInstant = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-		List<Object[]> rows = activityRepository.findStartDatesAndTssInRange(athleteId, startInstant, endInstant);
+		List<Object[]> rows = activityRepository.findStartDatesAndTssInRange(athleteId, startInstant, endInstant, false);
 		Map<LocalDate, Integer> result = new HashMap<>();
 		for (Object[] row : rows) {
 			Instant startDate = (Instant) row[0];

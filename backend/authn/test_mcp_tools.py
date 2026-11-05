@@ -723,6 +723,35 @@ class ActivityToolsTests(TestCase):
         self.assertEqual(len(result["data"]), 1)
         self.assertEqual(result["data"][0]["name"], "Mine")
 
+    def test_list_activities_include_duplicates_overrides_the_default_exclusion(self) -> None:
+        # Issue #498: a same-ride-twice duplicate is hidden by default, but include_duplicates
+        # surfaces it - e.g. to find a specific pair to resolve.
+        athlete = User.objects.create_user(email="mcp-list-activities-dup@example.cc", password="x", name="Athlete")
+        primary = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Primary",
+            start_date=timezone.now(),
+            moving_time=100,
+        )
+        duplicate = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Duplicate",
+            start_date=timezone.now(),
+            moving_time=100,
+            primary_activity=primary,
+        )
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_activities()
+        self.assertEqual({a["id"] for a in result["data"]}, {primary.id})
+
+        result_with_dup = tools.list_activities(include_duplicates=True)
+        self.assertEqual({a["id"] for a in result_with_dup["data"]}, {primary.id, duplicate.id})
+
     def test_list_activities_query_filters_and_returns_heat_strain_stats(self) -> None:
         # This is the motivating case: an MCP client asking "which sessions had the highest
         # heat strain" needs both the CQL filter AND the actual value back in one call, not a
@@ -1313,6 +1342,43 @@ class AthleteToolsTests(TestCase):
         windows = {e["window"] for e in result["data"]}
         self.assertNotIn("1min", windows)
 
+    def test_list_best_efforts_include_duplicates_overrides_the_default_exclusion(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-best-efforts-include-dup@example.cc", password="x", name="Athlete"
+        )
+        primary = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Primary",
+            start_date=timezone.now(),
+            moving_time=300,
+        )
+        duplicate = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Duplicate",
+            start_date=timezone.now(),
+            moving_time=300,
+            primary_activity=primary,
+        )
+        BestEffort.objects.create(
+            athlete=athlete,
+            kind="cycling_power",
+            window="1min",
+            value=999,
+            unit="watts",
+            date=date.today(),
+            activity=duplicate,
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_best_efforts(kind="cycling_power", include_duplicates=True)
+
+        windows = {e["window"] for e in result["data"]}
+        self.assertIn("1min", windows)
+
     def test_list_threshold_history_returns_the_full_ledger_most_recent_first(self) -> None:
         athlete = User.objects.create_user(email="mcp-threshold-history@example.cc", password="x", name="Athlete")
         ThresholdHistory.objects.create(
@@ -1431,6 +1497,11 @@ class AthleteToolsTests(TestCase):
         self.assertIn(primary.id, activity_ids)
         self.assertNotIn(duplicate.id, activity_ids)
 
+        result_with_dup = tools.list_threshold_candidates(
+            field="ftp", from_date="2026-01-01", to_date="2026-01-31", include_duplicates=True
+        )
+        self.assertIn(duplicate.id, {c["activity_id"] for c in result_with_dup["data"]})
+
     def test_list_threshold_candidates_treats_an_activity_with_no_records_as_too_short(self) -> None:
         # issue #500: a missing/partial record stream (here, no records at all) must classify as
         # too_short rather than raising - candidate_statuses now batch-fetches records per chunk
@@ -1523,6 +1594,31 @@ class AthleteToolsTests(TestCase):
         combined = tools.get_fitness_trend(from_date=str(today), to_date=str(today))
 
         self.assertLess(bike_only["data"][0]["ctl"], combined["data"][0]["ctl"])
+
+    def test_get_fitness_trend_include_duplicates_counts_the_duplicates_tss_too(self) -> None:
+        # Issue #498: a same-ride-twice duplicate's TSS never counts by default; include_duplicates
+        # is an ad-hoc override, e.g. to see how inflated the trend used to look before a pair
+        # was resolved.
+        athlete = User.objects.create_user(email="mcp-fitness-trend-dup@example.cc", password="x", name="Athlete")
+        today = timezone.now().date()
+        primary = Activity.objects.create(
+            id=generate_id("act"), athlete=athlete, sport="bike", name="Primary", start_date=timezone.now(), tss=100
+        )
+        Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Duplicate",
+            start_date=timezone.now(),
+            tss=85,
+            primary_activity=primary,
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        default_result = tools.get_fitness_trend(from_date=str(today), to_date=str(today))
+        with_dup_result = tools.get_fitness_trend(from_date=str(today), to_date=str(today), include_duplicates=True)
+
+        self.assertLess(default_result["data"][0]["ctl"], with_dup_result["data"][0]["ctl"])
 
     def test_get_fitness_trend_rejects_an_unknown_sport(self) -> None:
         athlete = User.objects.create_user(email="mcp-fitness-trend-bad-sport@example.cc", password="x", name="Athlete")

@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.BestEffort;
+import com.cadence.api.activities.BestEffortKind;
+import com.cadence.api.activities.BestEffortRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
@@ -107,6 +110,12 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private FitnessTrendTools fitnessTrendTools;
+
+	@Autowired
+	private com.cadence.api.mcp.tools.athletes.BestEffortTools bestEffortTools;
+
+	@Autowired
+	private BestEffortRepository bestEffortRepository;
 
 	@Autowired
 	private ThresholdHistoryRepository thresholdHistoryRepository;
@@ -792,7 +801,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		Activity tooShort = newBikeActivity(athlete, "TooShort", Instant.parse("2026-01-15T07:00:00Z"), 230, 600);
 		authAs(athlete.getId(), "activities:read");
 
-		var result = athleteProfileTools.listThresholdCandidates("ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
+		var result = athleteProfileTools.listThresholdCandidates("ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31), null);
 
 		var byId = result.stream().collect(java.util.stream.Collectors.toMap(
 				com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatusEntry::activityId, c -> c));
@@ -822,7 +831,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		activityRepository.save(noRecords);
 		authAs(athlete.getId(), "activities:read");
 
-		var result = athleteProfileTools.listThresholdCandidates("ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
+		var result = athleteProfileTools.listThresholdCandidates("ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31), null);
 
 		assertThat(result).hasSize(1);
 		assertThat(result.get(0).status()).isEqualTo(CandidateStatus.TOO_SHORT);
@@ -847,7 +856,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		authAs(athlete.getId(), "activities:read");
 
 		var result = athleteProfileTools.listThresholdCandidates(
-				"ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1).plusDays(activityCount));
+				"ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1).plusDays(activityCount), null);
 
 		var byId = result.stream().collect(java.util.stream.Collectors.toMap(
 				com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatusEntry::activityId, c -> c));
@@ -881,8 +890,8 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		authAs(athlete.getId(), "activities:read");
 		LocalDate today = LocalDate.now();
 
-		List<FitnessPoint> bikeOnly = fitnessTrendTools.getFitnessTrend(today, today, "bike");
-		List<FitnessPoint> combined = fitnessTrendTools.getFitnessTrend(today, today, null);
+		List<FitnessPoint> bikeOnly = fitnessTrendTools.getFitnessTrend(today, today, "bike", null);
+		List<FitnessPoint> combined = fitnessTrendTools.getFitnessTrend(today, today, null, null);
 
 		assertThat(bikeOnly.get(0).ctl()).isLessThan(combined.get(0).ctl());
 	}
@@ -892,8 +901,84 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		User athlete = saveAthlete("mcp-fitness-trend-bad-sport@example.cc");
 		authAs(athlete.getId(), "activities:read");
 
-		assertThatThrownBy(() -> fitnessTrendTools.getFitnessTrend(null, null, "triathlon"))
+		assertThatThrownBy(() -> fitnessTrendTools.getFitnessTrend(null, null, "triathlon", null))
 				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void getFitnessTrendIncludeDuplicatesCountsTheDuplicatesTssToo() {
+		// Issue #498: a same-ride-twice duplicate's TSS never counts by default; includeDuplicates
+		// is an ad-hoc override, e.g. to see how inflated the trend used to look before a pair
+		// was resolved.
+		User athlete = saveAthlete("mcp-fitness-trend-dup@example.cc");
+		Activity primary = new Activity();
+		primary.setAthlete(athlete);
+		primary.setSport(Sport.BIKE);
+		primary.setName("Primary");
+		primary.setStartDate(Instant.now());
+		primary.setTss(100);
+		activityRepository.save(primary);
+		Activity duplicate = new Activity();
+		duplicate.setAthlete(athlete);
+		duplicate.setSport(Sport.BIKE);
+		duplicate.setName("Duplicate");
+		duplicate.setStartDate(Instant.now());
+		duplicate.setTss(85);
+		duplicate.setPrimaryActivity(primary);
+		activityRepository.save(duplicate);
+		authAs(athlete.getId(), "activities:read");
+		LocalDate today = LocalDate.now();
+
+		List<FitnessPoint> defaultResult = fitnessTrendTools.getFitnessTrend(today, today, null, null);
+		List<FitnessPoint> withDup = fitnessTrendTools.getFitnessTrend(today, today, null, true);
+
+		assertThat(defaultResult.get(0).ctl()).isLessThan(withDup.get(0).ctl());
+	}
+
+	@Test
+	void listThresholdCandidatesIncludeDuplicatesClassifiesADuplicateMarkedActivity() {
+		User athlete = saveAthlete("mcp-threshold-candidates-dup@example.cc");
+		athlete.setFtp(200);
+		userRepository.save(athlete);
+		Activity primary = newBikeActivity(athlete, "Primary", Instant.parse("2026-01-01T07:00:00Z"), 230, 1200);
+		Activity duplicate = newBikeActivity(athlete, "Duplicate", Instant.parse("2026-01-01T07:00:00Z"), 230, 1200);
+		duplicate.setPrimaryActivity(primary);
+		activityRepository.save(duplicate);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.listThresholdCandidates("ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31), null);
+		assertThat(result.stream().map(com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatusEntry::activityId))
+				.doesNotContain(duplicate.getId());
+
+		var resultWithDup = athleteProfileTools.listThresholdCandidates(
+				"ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31), true);
+		assertThat(resultWithDup.stream().map(com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatusEntry::activityId))
+				.contains(duplicate.getId());
+	}
+
+	@Test
+	void listBestEffortsIncludeDuplicatesOverridesTheDefaultExclusion() {
+		User athlete = saveAthlete("mcp-best-efforts-dup@example.cc");
+		Activity primary = newBikeActivity(athlete, "Primary", Instant.parse("2026-01-01T07:00:00Z"), 230, 1200);
+		Activity duplicate = newBikeActivity(athlete, "Duplicate", Instant.parse("2026-01-01T07:00:00Z"), 230, 1200);
+		duplicate.setPrimaryActivity(primary);
+		activityRepository.save(duplicate);
+		BestEffort effort = new BestEffort();
+		effort.setAthlete(athlete);
+		effort.setKind(BestEffortKind.CYCLING_POWER);
+		effort.setWindow("1min");
+		effort.setValue(999);
+		effort.setUnit("watts");
+		effort.setDate(LocalDate.of(2026, 1, 1));
+		effort.setActivity(duplicate);
+		bestEffortRepository.save(effort);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = bestEffortTools.listBestEfforts("cycling_power", "all", null);
+		assertThat(result.data()).extracting(r -> r.window()).doesNotContain("1min");
+
+		var resultWithDup = bestEffortTools.listBestEfforts("cycling_power", "all", true);
+		assertThat(resultWithDup.data()).extracting(r -> r.window()).contains("1min");
 	}
 
 	@Test

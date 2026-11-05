@@ -10,20 +10,26 @@ DEFAULT_FITNESS_WINDOW_DAYS = 84
 COMPLIANCE_WINDOW_DAYS = 28
 
 
-def _daily_tss(athlete_id: str, start_date: date, end_date: date, sport: str | None = None) -> dict[date, int]:
+def _daily_tss(
+    athlete_id: str, start_date: date, end_date: date, sport: str | None = None, include_duplicates: bool = False
+) -> dict[date, int]:
     from activities.models import Activity
 
     qs = (
         # Multisport children are excluded: the parent already carries the sum of its
-        # legs' TSS, so counting both would double the training load. Duplicate
-        # recordings are excluded for the same reason: only the primary counts.
+        # legs' TSS, so counting both would double the training load.
         Activity.objects.filter(
             athlete_id=athlete_id,
             start_date__date__range=(start_date, end_date),
             parent_activity__isnull=True,
-            primary_activity__isnull=True,
         )
     )
+    if not include_duplicates:
+        # Duplicate recordings are excluded for the same reason as multisport children: only
+        # the primary counts. `include_duplicates` (issue #498) exists only for the MCP
+        # get_fitness_trend tool's ad-hoc "what if I counted this duplicate" inspection - every
+        # other caller leaves it at the default.
+        qs = qs.filter(primary_activity__isnull=True)
     if sport is not None:
         qs = qs.filter(sport=sport)
     rows = qs.values("start_date__date").annotate(total_tss=Sum("tss"))
@@ -31,7 +37,7 @@ def _daily_tss(athlete_id: str, start_date: date, end_date: date, sport: str | N
 
 
 def compute_fitness_series(
-    athlete_id: str, from_date: date, to_date: date, sport: str | None = None
+    athlete_id: str, from_date: date, to_date: date, sport: str | None = None, include_duplicates: bool = False
 ) -> list[dict[str, Any]]:
     """Daily CTL (42-day EWMA)/ATL (7-day EWMA)/TSB (CTL-ATL) of TSS.
 
@@ -40,6 +46,7 @@ def compute_fitness_series(
     returning only the days in [from_date, to_date]. `sport`, if given,
     restricts the series to just that sport's activities (e.g. a bike-only
     fitness trend) - every other caller's combined-sport series is unaffected.
+    `include_duplicates` is the same ad-hoc override _daily_tss documents.
     """
     from activities.models import Activity
 
@@ -53,7 +60,7 @@ def compute_fitness_series(
     if start > to_date:
         return []
 
-    tss_by_day = _daily_tss(athlete_id, start, to_date, sport)
+    tss_by_day = _daily_tss(athlete_id, start, to_date, sport, include_duplicates)
 
     ctl = 0.0
     atl = 0.0

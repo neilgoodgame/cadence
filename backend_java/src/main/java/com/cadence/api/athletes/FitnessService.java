@@ -38,6 +38,15 @@ public class FitnessService {
 	 * FTP, independent of running load) - every other caller's combined-sport series is
 	 * unaffected. */
 	public List<FitnessPoint> computeFitnessSeries(String athleteId, LocalDate from, LocalDate to, Sport sport) {
+		return computeFitnessSeries(athleteId, from, to, sport, false);
+	}
+
+	/** As {@link #computeFitnessSeries(String, LocalDate, LocalDate, Sport)}, but
+	 * {@code includeDuplicates} (issue #498) can count a same-ride-twice duplicate copy's TSS
+	 * too - only the MCP get_fitness_trend tool's ad-hoc inspection exposes this; every other
+	 * caller leaves it at the default. */
+	public List<FitnessPoint> computeFitnessSeries(String athleteId, LocalDate from, LocalDate to, Sport sport,
+			boolean includeDuplicates) {
 		LocalDate start = activityRepository.findEarliestStartDate(athleteId)
 				.map(i -> i.atZone(ZoneOffset.UTC).toLocalDate())
 				.map(earliest -> earliest.isBefore(from) ? earliest : from)
@@ -46,7 +55,7 @@ public class FitnessService {
 			return List.of();
 		}
 
-		Map<LocalDate, Integer> tssByDay = dailyTss(athleteId, start, to, sport);
+		Map<LocalDate, Integer> tssByDay = dailyTss(athleteId, start, to, sport, includeDuplicates);
 
 		double ctl = 0;
 		double atl = 0;
@@ -69,12 +78,12 @@ public class FitnessService {
 		return series.isEmpty() ? new FitnessPoint(asOf, 0, 0, 0) : series.get(0);
 	}
 
-	private Map<LocalDate, Integer> dailyTss(String athleteId, LocalDate start, LocalDate to, Sport sport) {
+	private Map<LocalDate, Integer> dailyTss(String athleteId, LocalDate start, LocalDate to, Sport sport, boolean includeDuplicates) {
 		Instant startInstant = start.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant endInstant = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 		List<Object[]> rows = sport != null
-				? activityRepository.findStartDatesAndTssInRangeForSport(athleteId, sport, startInstant, endInstant)
-				: activityRepository.findStartDatesAndTssInRange(athleteId, startInstant, endInstant);
+				? activityRepository.findStartDatesAndTssInRangeForSport(athleteId, sport, startInstant, endInstant, includeDuplicates)
+				: activityRepository.findStartDatesAndTssInRange(athleteId, startInstant, endInstant, includeDuplicates);
 		Map<LocalDate, Integer> result = new HashMap<>();
 		for (Object[] row : rows) {
 			Instant startDate = (Instant) row[0];

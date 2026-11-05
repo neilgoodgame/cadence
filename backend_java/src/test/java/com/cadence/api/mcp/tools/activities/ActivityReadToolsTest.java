@@ -143,7 +143,7 @@ class ActivityReadToolsTest extends IntegrationTest {
 
 		authAs(athlete.getId(), "activities:read");
 
-		var result = activityReadTools.listActivities("max_heat_strain>3", null, null, null, null, null);
+		var result = activityReadTools.listActivities("max_heat_strain>3", null, null, null, null, null, null);
 
 		assertThat(result.data()).hasSize(1);
 		assertThat(result.data().get(0).name()).isEqualTo("Severe");
@@ -212,10 +212,37 @@ class ActivityReadToolsTest extends IntegrationTest {
 
 		authAs(athlete.getId(), "activities:read");
 
-		var result = activityReadTools.listActivities("fluids_ml>500", null, null, null, null, null);
+		var result = activityReadTools.listActivities("fluids_ml>500", null, null, null, null, null, null);
 
 		assertThat(result.data()).hasSize(1);
 		assertThat(result.data().get(0).name()).isEqualTo("Chugged");
+	}
+
+	@Test
+	void listActivitiesIncludeDuplicatesOverridesTheDefaultExclusion() {
+		// Issue #498: a same-ride-twice duplicate is hidden by default, but includeDuplicates
+		// surfaces it - e.g. to find a specific pair to resolve.
+		User athlete = newUser("read-tool-list-dup-athlete@example.cc");
+		Activity primary = new Activity();
+		primary.setAthlete(athlete);
+		primary.setSport(Sport.BIKE);
+		primary.setName("Primary");
+		primary.setStartDate(Instant.parse("2026-01-01T08:00:00Z"));
+		activityRepository.save(primary);
+		Activity duplicate = new Activity();
+		duplicate.setAthlete(athlete);
+		duplicate.setSport(Sport.BIKE);
+		duplicate.setName("Duplicate");
+		duplicate.setStartDate(Instant.parse("2026-01-01T08:00:00Z"));
+		duplicate.setPrimaryActivity(primary);
+		activityRepository.save(duplicate);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = activityReadTools.listActivities(null, null, null, null, null, null, null);
+		assertThat(result.data()).extracting(r -> r.id()).containsExactly(primary.getId());
+
+		var resultWithDup = activityReadTools.listActivities(null, null, null, null, null, null, true);
+		assertThat(resultWithDup.data()).extracting(r -> r.id()).containsExactlyInAnyOrder(primary.getId(), duplicate.getId());
 	}
 
 	@Test
