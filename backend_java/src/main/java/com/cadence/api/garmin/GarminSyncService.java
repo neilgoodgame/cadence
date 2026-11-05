@@ -165,7 +165,9 @@ public class GarminSyncService {
 		}
 
 		UploadBatch batch = staged.isEmpty() ? null
-				: uploadService.createBatchUpload(owner, staged, "garmin-sync", OnDuplicate.SKIP, details);
+				// No per-sync onOverlap override exists (a scheduled sync has no request to carry
+				// one) - null falls back to the athlete's own overlapHandling default.
+				: uploadService.createBatchUpload(owner, staged, "garmin-sync", OnDuplicate.SKIP, null, details);
 		for (ActivitySummary summary : stagedFrom) {
 			try {
 				syncedRepository.save(new GarminSyncedActivity(owner, summary.activityId(), summary.startTime(), run.getId()));

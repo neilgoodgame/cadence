@@ -10,6 +10,7 @@ class UploadSerializer(serializers.ModelSerializer):
     object = serializers.SerializerMethodField()
     error = serializers.SerializerMethodField()
     activity_sport = serializers.SerializerMethodField()
+    overlap_action = serializers.SerializerMethodField()
 
     class Meta:
         model = Upload
@@ -24,6 +25,8 @@ class UploadSerializer(serializers.ModelSerializer):
             "error",
             "received_at",
             "completed_at",
+            "overlap_other_activity_id",
+            "overlap_action",
         ]
 
     def get_object(self, obj: Upload) -> str:
@@ -36,6 +39,11 @@ class UploadSerializer(serializers.ModelSerializer):
 
     def get_activity_sport(self, obj: Upload) -> str | None:
         return obj.activity.sport if obj.activity_id and obj.activity else None
+
+    def get_overlap_action(self, obj: Upload) -> str | None:
+        # "" (the model default, DJ001's blank-not-null convention) means detection didn't run
+        # or found nothing - the wire contract documents this as null, not an empty string.
+        return obj.overlap_action or None
 
 
 class UploadBatchSerializer(serializers.ModelSerializer):

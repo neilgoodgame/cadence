@@ -147,6 +147,17 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
         ("native", "Native (e.g. Garmin Running Power)"),
     ]
     running_power_source = models.CharField(max_length=10, choices=RUNNING_POWER_SOURCE_CHOICES, default="stryd")
+    # Issue #498: what on-ingest overlap detection should do with this athlete's uploads by
+    # default, whenever a request doesn't specify on_overlap itself - including scheduled Garmin
+    # syncs, which have no request to carry the option at all. Defaults to "off" so existing
+    # import behaviour is unchanged until the athlete opts in.
+    OVERLAP_HANDLING_CHOICES = [
+        ("off", "Off"),
+        ("flag", "Flag"),
+        ("mark", "Mark"),
+        ("merge", "Merge"),
+    ]
+    overlap_handling = models.CharField(max_length=10, choices=OVERLAP_HANDLING_CHOICES, default="off")
     # Auto-match naming preferences (uploads/processing.py's attempt_workout_match) - both
     # default off so existing device-derived activity names are untouched unless opted in.
     # append_match_date_to_name only has an effect when rename_matched_activities is also on.

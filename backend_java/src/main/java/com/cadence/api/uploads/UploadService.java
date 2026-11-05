@@ -1,5 +1,6 @@
 package com.cadence.api.uploads;
 
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.config.CadenceProperties;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -72,23 +73,24 @@ public class UploadService {
 	public record SessionDetails(Double weightBeforeKg, Double weightAfterKg, Integer fluidsMl, Shoe shoe) {
 	}
 
-	public UploadBatch createBatchUpload(User athlete, MultipartFile zipFile, OnDuplicate onDuplicate) throws IOException {
-		return createBatchUpload(athlete, readZipEntries(zipFile), zipFile.getOriginalFilename(), onDuplicate);
+	public UploadBatch createBatchUpload(User athlete, MultipartFile zipFile, OnDuplicate onDuplicate,
+			OverlapHandling onOverlap) throws IOException {
+		return createBatchUpload(athlete, readZipEntries(zipFile), zipFile.getOriginalFilename(), onDuplicate, onOverlap);
 	}
 
 	/** For callers that already hold the files (e.g. the Garmin sync), skipping the zip round trip. */
 	public UploadBatch createBatchUpload(User athlete, List<UploadIngestService.StagedFile> entries, String filename,
-			OnDuplicate onDuplicate) {
-		return createBatchUpload(athlete, entries, filename, onDuplicate, null);
+			OnDuplicate onDuplicate, OverlapHandling onOverlap) {
+		return createBatchUpload(athlete, entries, filename, onDuplicate, onOverlap, null);
 	}
 
 	public UploadBatch createBatchUpload(User athlete, List<UploadIngestService.StagedFile> entries, String filename,
-			OnDuplicate onDuplicate, SessionDetails details) {
+			OnDuplicate onDuplicate, OverlapHandling onOverlap, SessionDetails details) {
 		if (entries.isEmpty()) {
 			throw new ValidationException("The archive contained no supported files.", "file");
 		}
 
-		UploadBatch batch = createBatch(athlete, filename, onDuplicate);
+		UploadBatch batch = createBatch(athlete, filename, onDuplicate, onOverlap);
 		List<Upload> children = new ArrayList<>();
 		for (UploadIngestService.StagedFile entry : entries) {
 			Upload upload = details == null
@@ -112,11 +114,15 @@ public class UploadService {
 	// Plain save (not @Transactional) - this is a self-invoked private call, so a Spring AOP
 	// transaction boundary here would be silently ineffective anyway; SimpleJpaRepository.save()
 	// already runs in its own transaction, which is all a single insert needs.
-	private UploadBatch createBatch(User athlete, String filename, OnDuplicate onDuplicate) {
+	private UploadBatch createBatch(User athlete, String filename, OnDuplicate onDuplicate, OverlapHandling onOverlap) {
 		UploadBatch batch = new UploadBatch();
 		batch.setAthlete(athlete);
 		batch.setFilename(filename != null ? filename : "");
 		batch.setOnDuplicate(onDuplicate != null ? onDuplicate : OnDuplicate.SKIP);
+		// No per-request value (the controller's own param is optional; Garmin sync's scheduled
+		// calls have no request to carry one at all) falls back to the athlete's own default -
+		// see OverlapHandling's and User.overlapHandling's Javadoc.
+		batch.setOverlapHandling(onOverlap != null ? onOverlap : athlete.getOverlapHandling());
 		batch.setStatus(UploadBatchStatus.PROCESSING);
 		return uploadBatchRepository.save(batch);
 	}

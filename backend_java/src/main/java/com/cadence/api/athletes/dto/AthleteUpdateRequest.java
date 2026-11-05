@@ -2,6 +2,7 @@ package com.cadence.api.athletes.dto;
 
 import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.LapSource;
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.courses.CourseSections;
 import java.time.LocalDate;
@@ -57,7 +58,10 @@ public record AthleteUpdateRequest(
 		// behavior). preview null means false. Appended at the end for the same reason as above.
 		LocalDate effectiveFrom,
 		Boolean rerateActivities,
-		Boolean preview) {
+		Boolean preview,
+		// Issue #498: the athlete's default for on-ingest overlap detection. Appended at the end
+		// for the same reason as above.
+		OverlapHandling overlapHandling) {
 
 	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
 	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */

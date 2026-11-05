@@ -10,6 +10,7 @@ from django.utils import timezone
 from accounts.models import User
 from activities.match_preferences import apply_match_rename, apply_match_side_effects
 from activities.models import Activity, ActivityDurability, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
+from activities.overlap_detection import detect_and_resolve_overlap
 from athletes import threshold_suggestions
 from athletes.threshold_history import recompute_for_activity
 from athletes.zones import get_or_create_zone_set, reference_for
@@ -1311,11 +1312,17 @@ def ingest_upload(upload: Upload) -> Activity:
 
     athlete = upload.athlete
     multisport = parsed_activities[0]["sport"] == "multisport"
+    # Issue #498: resolved once per upload (not per request) at batch-creation time for a batch
+    # upload - UploadBatch.on_overlap is never None past that point - or read straight off the
+    # athlete for a single-file upload, which has no per-request override.
+    overlap_mode = upload.batch.on_overlap if upload.batch_id else athlete.overlap_handling
 
-    primary = _ingest_activity(upload, parsed_activities[0], athlete, parent=None, multisport=multisport)
+    primary = _ingest_activity(
+        upload, parsed_activities[0], athlete, parent=None, multisport=multisport, overlap_mode=overlap_mode
+    )
     if multisport:
         children = [
-            _ingest_activity(upload, parsed, athlete, parent=primary, multisport=True)
+            _ingest_activity(upload, parsed, athlete, parent=primary, multisport=True, overlap_mode=overlap_mode)
             for parsed in parsed_activities[1:]
         ]
         # The parent's training load is the sum of its legs' - computing TSS over the
@@ -1326,7 +1333,7 @@ def ingest_upload(upload: Upload) -> Activity:
 
 
 def _ingest_activity(
-    upload: Upload, parsed: dict, athlete: User, parent: Activity | None, multisport: bool
+    upload: Upload, parsed: dict, athlete: User, parent: Activity | None, multisport: bool, overlap_mode: str = "off"
 ) -> Activity:
     samples = parsed["samples"]
     laps = parsed.get("laps", [])
@@ -1554,5 +1561,15 @@ def _ingest_activity(
         update_fields.extend(["intensity", "tss"])
 
     activity.save(update_fields=update_fields)
+
+    # Issue #498: only ever meaningful for a single-activity upload in practice - a multisport
+    # parent/leg is excluded inside the detection itself (see _is_multisport_linked there). At
+    # most one pair is kept on the upload (see MAX_PAIRS_PER_ACTIVITY's own comment for why more
+    # than one is already a rare edge case worth bounding, not fully reporting).
+    overlaps = detect_and_resolve_overlap(activity, overlap_mode)
+    if overlaps:
+        upload.overlap_other_activity_id = overlaps[0]["other_activity_id"]
+        upload.overlap_action = overlaps[0]["action"]
+        upload.save(update_fields=["overlap_other_activity", "overlap_action"])
 
     return activity
