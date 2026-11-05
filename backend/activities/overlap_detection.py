@@ -81,6 +81,19 @@ def _mark(activity: Activity, other_id: str) -> bool:
     return True
 
 
+def resolve_pair(activity_id: str, other_activity_id: str, mode: str) -> OverlapResolution:
+    """Resolves one already-found unresolved pair - shared by detect_and_resolve_overlap
+    (anchored to one newly-ingested activity) and the issue #498 backfill command
+    (backfill_overlaps), which instead walks every unresolved pair the overlap query returns for
+    an athlete's whole history."""
+    activity = Activity.objects.get(pk=activity_id)
+    if mode == "mark" and _mark(activity, other_activity_id):
+        return {"other_activity_id": other_activity_id, "action": "marked"}
+    # FLAG, or MERGE falling back to FLAG (see module docstring) - also where MARK lands when the
+    # pair turned out not to be linkable (see _can_link).
+    return {"other_activity_id": other_activity_id, "action": "flagged"}
+
+
 def detect_and_resolve_overlap(activity: Activity, mode: str) -> list[OverlapResolution]:
     if mode == "off" or _is_multisport_linked(activity):
         return []
@@ -96,11 +109,5 @@ def detect_and_resolve_overlap(activity: Activity, mode: str) -> list[OverlapRes
         if pair["status"] != "unresolved":
             continue
         # activity_id pins the anchor to `activity` itself, so the other side is always `other`.
-        other_id = pair["other"]["id"]
-        if mode == "mark" and _mark(activity, other_id):
-            results.append({"other_activity_id": other_id, "action": "marked"})
-        else:
-            # FLAG, or MERGE falling back to FLAG (see module docstring) - also where MARK lands
-            # when the pair turned out not to be linkable (see _can_link).
-            results.append({"other_activity_id": other_id, "action": "flagged"})
+        results.append(resolve_pair(activity.id, pair["other"]["id"], mode))
     return results

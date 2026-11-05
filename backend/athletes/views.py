@@ -592,22 +592,9 @@ class RecomputeAthleteTssView(APIView):
             raise PermissionDenied("You do not have write access to that athlete's data.")
         athlete = get_object_or_404(User, pk=id)
 
-        from activities.models import Activity
-        from uploads.processing import rate_activity
+        from uploads.processing import recompute_tss_for_athlete
 
-        candidates = Activity.objects.filter(
-            athlete_id=id,
-            parent_activity__isnull=True,
-        ).exclude(sport__in=("multisport", "transition"))
-
-        updated = 0
-        for activity in candidates:
-            power_series = list(activity.records.order_by("t").values_list("power", flat=True))
-            hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
-            if rate_activity(activity, athlete, power_series, hr_series):
-                activity.save(update_fields=["intensity", "tss"])
-                updated += 1
-
+        updated = recompute_tss_for_athlete(athlete)
         return Response({"updated": updated})
 
 

@@ -61,17 +61,29 @@ public class ActivityOverlapDetectionService {
 				continue; // already duplicate/merged - nothing new to do
 			}
 			// activityId pins the anchor to `activity` itself, so the other side is always `other`.
-			String otherId = pair.other().id();
-			if (mode == OverlapHandling.MARK && mark(activity, otherId)) {
-				results.add(new OverlapResolution(otherId, OverlapAction.MARKED));
-			}
-			else {
-				// FLAG, or MERGE falling back to FLAG (see class Javadoc) - also where MARK lands
-				// when the pair turned out not to be linkable (see canLink).
-				results.add(new OverlapResolution(otherId, OverlapAction.FLAGGED));
-			}
+			results.add(resolvePair(activity, pair.other().id(), mode));
 		}
 		return results;
+	}
+
+	/** Resolves one already-found unresolved pair - shared by {@link #detectAndResolve} (anchored
+	 * to one newly-ingested activity) and the issue #498 backfill job ({@code
+	 * OverlapBackfillRunner}/{@code --backfill-overlaps}), which instead walks every unresolved
+	 * pair the overlap query returns for an athlete's whole history. */
+	@Transactional
+	public OverlapResolution resolvePair(String activityId, String otherActivityId, OverlapHandling mode) {
+		Activity activity = activityRepository.findById(activityId)
+				.orElseThrow(() -> new IllegalStateException("No such activity: " + activityId));
+		return resolvePair(activity, otherActivityId, mode);
+	}
+
+	private OverlapResolution resolvePair(Activity activity, String otherId, OverlapHandling mode) {
+		if (mode == OverlapHandling.MARK && mark(activity, otherId)) {
+			return new OverlapResolution(otherId, OverlapAction.MARKED);
+		}
+		// FLAG, or MERGE falling back to FLAG (see class Javadoc) - also where MARK lands when the
+		// pair turned out not to be linkable (see canLink).
+		return new OverlapResolution(otherId, OverlapAction.FLAGGED);
 	}
 
 	/** @return true if {@code activity} and {@code other} were linked (one of them saved as the
