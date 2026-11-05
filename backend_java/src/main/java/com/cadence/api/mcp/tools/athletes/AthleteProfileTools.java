@@ -191,6 +191,21 @@ public class AthleteProfileTools {
 				"running_power_source", athlete.getRunningPowerSource());
 	}
 
+	@McpTool(name = "get_import_settings", description = "Get the authenticated athlete's "
+			+ "duplicate-detection import settings: overlap_handling (off/flag/mark/merge) - the "
+			+ "default applied whenever an upload or Garmin sync doesn't specify its own onOverlap "
+			+ "override (issue #498). merge is accepted but not yet implemented (#501) - it "
+			+ "currently behaves like flag.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public Map<String, Object> getImportSettings() {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireRead(athleteId);
+		User athlete = userService.getById(athleteId);
+		return Map.of("overlap_handling", athlete.getOverlapHandling());
+	}
+
 	// Shared by getAthleteThresholds and AthleteProfileWriteTools.setAthleteThresholds, so both
 	// return the identical shape.
 	Map<String, ThresholdSummaryEntry> thresholdsSummary(User athlete) {
