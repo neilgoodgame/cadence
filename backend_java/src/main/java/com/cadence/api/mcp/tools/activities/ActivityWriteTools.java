@@ -73,6 +73,59 @@ public class ActivityWriteTools {
 		return activityService.toResponse(updated);
 	}
 
+	@McpTool(name = "mark_duplicate", description = "Issue #498: marks activityId as a duplicate "
+			+ "recording of primaryId (from list_overlapping_activities/list_activities) - "
+			+ "activityId is hidden from TSS/CTL, threshold candidates and best efforts from now "
+			+ "on, only primaryId counts. Both must belong to the same athlete, neither may "
+			+ "already be linked some other way, and neither may be a multisport session or leg. "
+			+ "Rebuilds the athlete's threshold history and re-rates affected activities' TSS/"
+			+ "intensity before returning, since a duplicate-sourced best effort may no longer "
+			+ "qualify as a threshold candidate.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public ActivityResponse markDuplicate(
+			@McpToolParam(description = "The activity to hide, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
+			@McpToolParam(description = "The activity it duplicates, which stays visible and keeps "
+					+ "counting toward training load", required = true) String primaryId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		Activity updated = activityService.markDuplicate(activityId, primaryId);
+		return activityService.toResponse(updated);
+	}
+
+	@McpTool(name = "unmark_duplicate", description = "Issue #498: reverses mark_duplicate - "
+			+ "activityId counts toward TSS/CTL and threshold candidates again. A no-op (not an "
+			+ "error) if it wasn't marked as a duplicate of anything. Rebuilds the athlete's "
+			+ "threshold history and re-rates affected activities' TSS/intensity before returning.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public ActivityResponse unmarkDuplicate(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		Activity updated = activityService.unmarkDuplicate(activityId);
+		return activityService.toResponse(updated);
+	}
+
+	@McpTool(name = "set_primary", description = "Issue #498: swaps which copy of a duplicate "
+			+ "pair (or larger group) is primary - activityId, currently hidden as a duplicate, "
+			+ "becomes the visible primary, and the activity it used to duplicate becomes the "
+			+ "duplicate instead. Fails if activityId is already the primary (nothing to swap). "
+			+ "Rebuilds the athlete's threshold history and re-rates affected activities' TSS/"
+			+ "intensity before returning.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
+	public ActivityResponse setPrimary(
+			@McpToolParam(description = "The currently-hidden activity to promote, e.g. act_xxxxxxxxxxxx", required = true) String activityId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		Activity updated = activityService.setPrimary(activityId);
+		return activityService.toResponse(updated);
+	}
+
 	@McpTool(name = "tag_activity", description = "Attach a tag to an activity (from "
 			+ "list_activities/get_activity) by name - creates the tag if the athlete doesn't "
 			+ "already have one with this name (case-insensitive), matching the web app's tag "

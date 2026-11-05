@@ -12,6 +12,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from athletes.threshold_history import rebuild_history_stream
 from core.auth_context import get_effective_athlete_id
 from core.cql import compile_ast_to_q, parse, resolve_order_by
 from core.exceptions import ConflictError, UnprocessableEntityError
@@ -24,6 +25,7 @@ from uploads.processing import (
     backfill_extended_stats,
     compute_decoupling_and_durability_for_activity,
     rate_activity,
+    recompute_tss_for_athlete,
     training_effect_label,
 )
 from uploads.serializers import UploadSerializer
@@ -177,6 +179,65 @@ def _resolve_primary_activity(activity: Activity, primary_id: str) -> Activity:
             {"primary_activity_id": "Multisport sessions and their legs cannot be linked as duplicates."}
         )
     return primary
+
+
+def _recompute_after_duplicate_change(athlete) -> None:
+    """Shared by mark_duplicate/unmark_duplicate/set_primary - same cascade the overlap backfill
+    command's apply mode runs per affected athlete: rebuild every threshold field's ledger
+    (duplicate-sourced best efforts are no longer, or newly are, eligible candidates), then
+    re-rate TSS/intensity against the rebuilt ledger. The fitness trend reads Activity.tss live
+    and already excludes duplicates, so there's no separate series to rebuild."""
+    for field in ("ftp", "critical_run_power", "threshold_pace"):
+        for _ in rebuild_history_stream(athlete, field):
+            pass
+    recompute_tss_for_athlete(athlete)
+
+
+def mark_duplicate(activity_id: str, primary_id: str) -> Activity:
+    """Issue #498's MCP write-tool equivalent of PATCH .../primary_activity_id - reuses
+    _resolve_primary_activity's exact validation, then runs the same post-resolution recompute
+    the overlap backfill command uses, since a manual link can retroactively disqualify a
+    duplicate-sourced best effort from the threshold ledger just like an automatic one does."""
+    activity = get_object_or_404(Activity, pk=activity_id)
+    primary = _resolve_primary_activity(activity, primary_id)
+    activity.primary_activity = primary
+    activity.save(update_fields=["primary_activity"])
+    _recompute_after_duplicate_change(activity.athlete)
+    return activity
+
+
+def unmark_duplicate(activity_id: str) -> Activity:
+    """Reverses mark_duplicate - a no-op (not an error) if `activity_id` isn't currently a
+    duplicate of anything."""
+    activity = get_object_or_404(Activity, pk=activity_id)
+    if activity.primary_activity_id is None:
+        return activity
+    activity.primary_activity = None
+    activity.save(update_fields=["primary_activity"])
+    _recompute_after_duplicate_change(activity.athlete)
+    return activity
+
+
+def set_primary(activity_id: str) -> Activity:
+    """Swaps which copy of a group is primary: `activity_id` - currently a duplicate - becomes
+    the primary, and the old primary becomes its duplicate instead. Any *other* sibling still
+    pointing at the old primary is re-pointed at the new one too, rather than left pointing at an
+    activity that's now itself a duplicate - the same chain-prevention invariant
+    _resolve_primary_activity enforces one link at a time."""
+    activity = get_object_or_404(Activity, pk=activity_id)
+    old_primary = activity.primary_activity
+    if old_primary is None:
+        raise ValidationError({"activity_id": "Activity is already the primary; nothing to swap."})
+    for sibling in old_primary.duplicate_activities.all():
+        if sibling.pk != activity.pk:
+            sibling.primary_activity = activity
+            sibling.save(update_fields=["primary_activity"])
+    old_primary.primary_activity = activity
+    old_primary.save(update_fields=["primary_activity"])
+    activity.primary_activity = None
+    activity.save(update_fields=["primary_activity"])
+    _recompute_after_duplicate_change(activity.athlete)
+    return activity
 
 
 class ActivityCursorPagination(CadenceCursorPagination):

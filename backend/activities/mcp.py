@@ -33,6 +33,9 @@ from .serializers import ActivityCommentSerializer
 from .splits import get_custom_activity_splits
 from .tag_management import rename_tag as tag_rename
 from .views import _combined_tag_count
+from .views import mark_duplicate as mark_activity_duplicate
+from .views import set_primary as set_activity_primary
+from .views import unmark_duplicate as unmark_activity_duplicate
 
 ACTIVITY_FIELD_MAP = {
     "date": "start_date",
@@ -104,6 +107,26 @@ def _activity_summary(activity: Activity) -> dict[str, Any]:
         "start_weight_kg": activity.start_weight_kg,
         "end_weight_kg": activity.end_weight_kg,
         "fluids_ml": activity.fluids_ml,
+    }
+
+
+def _duplicate_link_summary(activity: Activity) -> dict[str, Any]:
+    """mark_duplicate/unmark_duplicate/set_primary's return shape - unlike get_activity's
+    trimmed dict (which deliberately drops duplicate linkage - rarely relevant to a
+    conversational assistant), these tools exist specifically to show it. Mirrors
+    ActivitySerializer.get_duplicate_activity_ids exactly: a duplicate can never itself be a
+    primary (chains are rejected on update), so skip the lookup for anything already linked to a
+    primary."""
+    duplicate_ids = (
+        []
+        if activity.primary_activity_id
+        else list(activity.duplicate_activities.order_by("start_date").values_list("id", flat=True))
+    )
+    return {
+        "id": activity.id,
+        "name": activity.name,
+        "primary_activity_id": activity.primary_activity_id,
+        "duplicate_activity_ids": duplicate_ids,
     }
 
 
@@ -455,6 +478,43 @@ class ActivityMCPTools(ScopedMCPToolset):
         )
         ActivityTag.objects.get_or_create(activity=activity, tag=tag)
         return self.get_activity(activity_id)
+
+    def mark_duplicate(self, activity_id: str, primary_id: str) -> dict[str, Any]:
+        """Issue #498: marks activity_id as a duplicate recording of primary_id (from
+        list_overlapping_activities/list_activities) - activity_id is hidden from TSS/CTL,
+        threshold candidates and best efforts from now on, only primary_id counts. Both must
+        belong to the same athlete, neither may already be linked some other way, and neither
+        may be a multisport session or leg. Rebuilds the athlete's threshold history and
+        re-rates affected activities' TSS/intensity before returning, since a duplicate-sourced
+        best effort may no longer qualify as a threshold candidate."""
+        self._require_scope(ACTIVITIES_WRITE)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        updated = mark_activity_duplicate(activity_id, primary_id)
+        return _duplicate_link_summary(updated)
+
+    def unmark_duplicate(self, activity_id: str) -> dict[str, Any]:
+        """Issue #498: reverses mark_duplicate - activity_id counts toward TSS/CTL and threshold
+        candidates again. A no-op (not an error) if it wasn't marked as a duplicate of anything.
+        Rebuilds the athlete's threshold history and re-rates affected activities' TSS/intensity
+        before returning."""
+        self._require_scope(ACTIVITIES_WRITE)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        updated = unmark_activity_duplicate(activity_id)
+        return _duplicate_link_summary(updated)
+
+    def set_primary(self, activity_id: str) -> dict[str, Any]:
+        """Issue #498: swaps which copy of a duplicate pair (or larger group) is primary -
+        activity_id, currently hidden as a duplicate, becomes the visible primary, and the
+        activity it used to duplicate becomes the duplicate instead. Fails if activity_id is
+        already the primary (nothing to swap). Rebuilds the athlete's threshold history and
+        re-rates affected activities' TSS/intensity before returning."""
+        self._require_scope(ACTIVITIES_WRITE)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        updated = set_activity_primary(activity_id)
+        return _duplicate_link_summary(updated)
 
     def list_tags(self) -> dict[str, Any]:
         """List the authenticated athlete's tags with how many activities and workouts carry

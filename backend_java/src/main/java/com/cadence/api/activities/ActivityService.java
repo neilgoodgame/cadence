@@ -7,6 +7,7 @@ import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryKind;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
+import com.cadence.api.athletes.ThresholdHistoryService;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -20,6 +21,7 @@ import com.cadence.api.gear.BikeRepository;
 import com.cadence.api.gear.GearMileageService;
 import com.cadence.api.gear.Shoe;
 import com.cadence.api.gear.ShoeRepository;
+import com.cadence.api.users.User;
 import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutService;
 import java.time.Instant;
@@ -48,13 +50,16 @@ public class ActivityService {
 	private final BikeRepository bikeRepository;
 	private final ShoeRepository shoeRepository;
 	private final GearMileageService gearMileageService;
+	private final ThresholdHistoryService thresholdHistoryService;
+	private final TssRecomputeService tssRecomputeService;
 	private final ActivityFieldMap fieldMap = new ActivityFieldMap();
 
 	public ActivityService(ActivityRepository activityRepository, ActivityTagRepository activityTagRepository,
 			RecordRepository recordRepository, ActivityCursorPagination pagination, WorkoutService workoutService,
 			ThresholdHistoryRepository thresholdHistoryRepository, WorkoutMatchPreferenceService matchPreferenceService,
 			ActivityDurabilityRepository durabilityRepository, BikeRepository bikeRepository, ShoeRepository shoeRepository,
-			GearMileageService gearMileageService) {
+			GearMileageService gearMileageService, ThresholdHistoryService thresholdHistoryService,
+			TssRecomputeService tssRecomputeService) {
 		this.activityRepository = activityRepository;
 		this.activityTagRepository = activityTagRepository;
 		this.recordRepository = recordRepository;
@@ -66,6 +71,8 @@ public class ActivityService {
 		this.bikeRepository = bikeRepository;
 		this.shoeRepository = shoeRepository;
 		this.gearMileageService = gearMileageService;
+		this.thresholdHistoryService = thresholdHistoryService;
+		this.tssRecomputeService = tssRecomputeService;
 	}
 
 	public Activity getActivity(String id) {
@@ -396,6 +403,74 @@ public class ActivityService {
 			throw new ValidationException("Multisport sessions and their legs cannot be linked as duplicates.");
 		}
 		return primary;
+	}
+
+	/** Issue #498's MCP write-tool equivalent of {@code PATCH .../primary_activity_id} - reuses
+	 * {@link #resolvePrimaryActivity}'s exact validation, then runs the same post-resolution
+	 * recompute the overlap backfill command uses: a manual link can retroactively disqualify a
+	 * duplicate-sourced best effort from the threshold ledger just like an automatic one does, so
+	 * {@link #recomputeAfterDuplicateChange} rebuilds it and re-rates TSS/intensity too. */
+	@Transactional
+	public Activity markDuplicate(String activityId, String primaryId) {
+		Activity activity = getActivity(activityId);
+		Activity primary = resolvePrimaryActivity(activity, primaryId);
+		activity.setPrimaryActivity(primary);
+		Activity saved = activityRepository.save(activity);
+		recomputeAfterDuplicateChange(activity.getAthlete());
+		return saved;
+	}
+
+	/** Reverses {@link #markDuplicate} - a no-op (not an error) if {@code activityId} isn't
+	 * currently a duplicate of anything. */
+	@Transactional
+	public Activity unmarkDuplicate(String activityId) {
+		Activity activity = getActivity(activityId);
+		if (activity.getPrimaryActivity() == null) {
+			return activity;
+		}
+		activity.setPrimaryActivity(null);
+		Activity saved = activityRepository.save(activity);
+		recomputeAfterDuplicateChange(activity.getAthlete());
+		return saved;
+	}
+
+	/** Swaps which copy of a group is primary: {@code activityId} - currently a duplicate -
+	 * becomes the primary, and the old primary becomes its duplicate instead. Any *other*
+	 * sibling still pointing at the old primary is re-pointed at the new one too, rather than
+	 * left pointing at an activity that's now itself a duplicate - the same chain-prevention
+	 * invariant {@link #resolvePrimaryActivity} enforces one link at a time. */
+	@Transactional
+	public Activity setPrimary(String activityId) {
+		Activity activity = getActivity(activityId);
+		Activity oldPrimary = activity.getPrimaryActivity();
+		if (oldPrimary == null) {
+			throw new ValidationException("Activity is already the primary; nothing to swap.");
+		}
+		for (Activity sibling : activityRepository.findByPrimaryActivityId(oldPrimary.getId())) {
+			if (!sibling.getId().equals(activity.getId())) {
+				sibling.setPrimaryActivity(activity);
+				activityRepository.save(sibling);
+			}
+		}
+		oldPrimary.setPrimaryActivity(activity);
+		activityRepository.save(oldPrimary);
+		activity.setPrimaryActivity(null);
+		Activity saved = activityRepository.save(activity);
+		recomputeAfterDuplicateChange(activity.getAthlete());
+		return saved;
+	}
+
+	/** Shared by markDuplicate/unmarkDuplicate/setPrimary - same cascade
+	 * OverlapBackfillRunner's apply mode runs per affected athlete: rebuild every threshold
+	 * field's ledger (duplicate-sourced best efforts are no longer, or newly are, eligible
+	 * candidates), then re-rate TSS/intensity against the rebuilt ledger. The fitness trend reads
+	 * Activity.tss live and already excludes duplicates, so there's no separate series to
+	 * rebuild. */
+	private void recomputeAfterDuplicateChange(User athlete) {
+		for (ThresholdField field : ThresholdField.values()) {
+			thresholdHistoryService.rebuildHistory(athlete, field, (current, total) -> { });
+		}
+		tssRecomputeService.recomputeForAthlete(athlete);
 	}
 
 	private boolean isMultisportLinked(Activity activity) {

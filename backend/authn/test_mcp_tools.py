@@ -983,6 +983,104 @@ class ActivityToolsTests(TestCase):
         with self.assertRaises(PermissionDenied):
             tools.tag_activity(activity_id=activity.id, name="VO2 max")
 
+    def test_mark_duplicate_links_it_and_the_primarys_duplicate_list_picks_it_up(self) -> None:
+        athlete = User.objects.create_user(email="mcp-mark-duplicate@example.cc", password="x", name="Athlete")
+        primary = self._new_activity(athlete)
+        duplicate = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.mark_duplicate(activity_id=duplicate.id, primary_id=primary.id)
+
+        self.assertEqual(result["primary_activity_id"], primary.id)
+        duplicate.refresh_from_db()
+        self.assertEqual(duplicate.primary_activity_id, primary.id)
+        self.assertIn(duplicate.id, list(primary.duplicate_activities.values_list("id", flat=True)))
+
+    def test_mark_duplicate_rejects_self_link(self) -> None:
+        athlete = User.objects.create_user(email="mcp-mark-duplicate-self@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.mark_duplicate(activity_id=activity.id, primary_id=activity.id)
+
+    def test_mark_duplicate_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-mark-duplicate-outsider-athlete@example.cc", password="x", name="Athlete"
+        )
+        outsider = User.objects.create_user(
+            email="mcp-mark-duplicate-outsider@example.cc", password="x", name="Outsider"
+        )
+        primary = self._new_activity(athlete)
+        duplicate = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.mark_duplicate(activity_id=duplicate.id, primary_id=primary.id)
+
+    def test_unmark_duplicate_clears_the_link(self) -> None:
+        athlete = User.objects.create_user(email="mcp-unmark-duplicate@example.cc", password="x", name="Athlete")
+        primary = self._new_activity(athlete)
+        duplicate = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        tools.mark_duplicate(activity_id=duplicate.id, primary_id=primary.id)
+
+        result = tools.unmark_duplicate(activity_id=duplicate.id)
+
+        self.assertIsNone(result["primary_activity_id"])
+        duplicate.refresh_from_db()
+        self.assertIsNone(duplicate.primary_activity_id)
+
+    def test_unmark_duplicate_is_a_no_op_when_not_a_duplicate(self) -> None:
+        athlete = User.objects.create_user(email="mcp-unmark-duplicate-noop@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.unmark_duplicate(activity_id=activity.id)
+
+        self.assertIsNone(result["primary_activity_id"])
+
+    def test_set_primary_swaps_roles_and_repoints_other_siblings(self) -> None:
+        athlete = User.objects.create_user(email="mcp-set-primary@example.cc", password="x", name="Athlete")
+        primary = self._new_activity(athlete)
+        duplicate_a = self._new_activity(athlete)
+        duplicate_b = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        tools.mark_duplicate(activity_id=duplicate_a.id, primary_id=primary.id)
+        duplicate_b.primary_activity = primary
+        duplicate_b.save(update_fields=["primary_activity"])
+
+        result = tools.set_primary(activity_id=duplicate_a.id)
+
+        self.assertIsNone(result["primary_activity_id"])
+        self.assertCountEqual(result["duplicate_activity_ids"], [primary.id, duplicate_b.id])
+        primary.refresh_from_db()
+        duplicate_b.refresh_from_db()
+        self.assertEqual(primary.primary_activity_id, duplicate_a.id)
+        self.assertEqual(duplicate_b.primary_activity_id, duplicate_a.id)
+
+    def test_set_primary_rejects_an_activity_that_is_already_primary(self) -> None:
+        athlete = User.objects.create_user(email="mcp-set-primary-already@example.cc", password="x", name="Athlete")
+        activity = self._new_activity(athlete)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.set_primary(activity_id=activity.id)
+
+    def test_set_primary_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-set-primary-outsider-athlete@example.cc", password="x", name="Athlete"
+        )
+        outsider = User.objects.create_user(email="mcp-set-primary-outsider@example.cc", password="x", name="Outsider")
+        primary = self._new_activity(athlete)
+        duplicate = self._new_activity(athlete)
+        duplicate.primary_activity = primary
+        duplicate.save(update_fields=["primary_activity"])
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.set_primary(activity_id=duplicate.id)
+
     def test_list_tags_includes_usage_counts(self) -> None:
         athlete = User.objects.create_user(email="mcp-list-tags@example.cc", password="x", name="Athlete")
         tag = Tag.objects.create(athlete=athlete, name="Race")
