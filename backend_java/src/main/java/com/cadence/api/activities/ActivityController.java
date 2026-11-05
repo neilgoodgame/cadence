@@ -2,6 +2,7 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.ActivityWorkoutMatchCandidateResponse;
+import com.cadence.api.activities.dto.OverlapPairResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.CursorPage;
@@ -29,15 +30,17 @@ public class ActivityController {
 	private final TssRecomputeService tssRecomputeService;
 	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
 	private final WorkoutMatchScanService workoutMatchScanService;
+	private final ActivityOverlapService activityOverlapService;
 	private final AccessGuard accessGuard;
 
 	public ActivityController(ActivityService activityService, TssRecomputeService tssRecomputeService,
 			DerivedStatsRecomputeService derivedStatsRecomputeService, WorkoutMatchScanService workoutMatchScanService,
-			AccessGuard accessGuard) {
+			ActivityOverlapService activityOverlapService, AccessGuard accessGuard) {
 		this.activityService = activityService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
 		this.workoutMatchScanService = workoutMatchScanService;
+		this.activityOverlapService = activityOverlapService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -59,6 +62,33 @@ public class ActivityController {
 		int effectiveLimit = Math.max(1, Math.min(limit, 200));
 		String effectiveQuery = mergeSortIntoQuery(q, sort);
 		return activityService.list(athleteId, effectiveQuery, sport, environment, tag, after, before, cursor, effectiveLimit, bikeId, shoeId);
+	}
+
+	/** Issue #498's detection backbone: pairs of this athlete's activities whose recorded
+	 * intervals intersect - see {@link ActivityOverlapRepository}'s Javadoc for the full design. */
+	@GetMapping("/v1/activities/overlaps")
+	public CursorPage<OverlapPairResponse> listOverlaps(
+			@RequestParam(name = "activityId", required = false) String activityId,
+			@RequestParam(required = false) Sport sport,
+			@RequestParam(name = "crossSport", defaultValue = "false") boolean crossSport,
+			@RequestParam(required = false) String device,
+			@RequestParam(name = "otherDevice", required = false) String otherDevice,
+			@RequestParam(required = false) Environment environment,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+			@RequestParam(name = "minDurationSeconds", required = false) Integer minDurationSeconds,
+			@RequestParam(name = "otherHas", required = false) List<String> otherHas,
+			@RequestParam(name = "minOverlapPct", required = false) Double minOverlapPct,
+			@RequestParam(name = "maxStartDeltaSeconds", required = false) Long maxStartDeltaSeconds,
+			@RequestParam(name = "includeResolved", defaultValue = "false") boolean includeResolved,
+			@RequestParam(defaultValue = "50") int limit,
+			@RequestParam(required = false) String cursor) {
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireRead(athleteId);
+		int effectiveLimit = Math.max(1, Math.min(limit, 200));
+		return activityOverlapService.findOverlaps(athleteId, activityId, sport, crossSport, device, otherDevice,
+				environment, from, to, minDurationSeconds, otherHas != null ? otherHas : List.of(), minOverlapPct,
+				maxStartDeltaSeconds, includeResolved, cursor, effectiveLimit);
 	}
 
 	@GetMapping("/v1/activities/{id}")

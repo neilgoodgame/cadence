@@ -22,7 +22,12 @@ public record ParsedActivity(
 		// Garmin's Firstbeat-derived training load, from a FIT session message - FIT-only
 		// (no GPX/TCX equivalent), so always null from those parsers.
 		Double aerobicTrainingEffect,
-		Double anaerobicTrainingEffect) {
+		Double anaerobicTrainingEffect,
+		// Wall-clock elapsed time (includes pauses), from the FIT session message's own
+		// total_elapsed_time - FIT-only, so always null from GPX/TCX. Null also means the FIT
+		// session simply didn't carry it; either way, callers fall back to the record stream's
+		// own span (UploadCalculations.movingTime) rather than treating null as zero.
+		Integer elapsedSeconds) {
 
 	/**
 	 * One 1 Hz record. {@code t} is the offset in seconds from {@link #startDate}.

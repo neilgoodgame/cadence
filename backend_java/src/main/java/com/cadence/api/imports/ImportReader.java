@@ -581,6 +581,9 @@ public class ImportReader {
 		activity.setSource(ar.source());
 		activity.setDevice(ar.device());
 		activity.setMovingTime(ar.movingTime());
+		// The export format predates elapsed_seconds, so there's nothing better to restore
+		// from than movingTime - same fallback as any other ingest path lacking it.
+		activity.setElapsedSeconds(ar.movingTime());
 		activity.setDistanceKm(ar.distanceKm());
 		activity.setDistanceSource(ar.distanceSource());
 		activity.setPowerSource(ar.powerSource());

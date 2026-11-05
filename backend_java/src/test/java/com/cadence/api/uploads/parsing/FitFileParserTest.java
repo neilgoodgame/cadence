@@ -165,6 +165,44 @@ class FitFileParserTest {
 	}
 
 	@Test
+	void elapsedSecondsComesFromTheSessionsTotalElapsedTimeNotJustTheRecordSpan(@TempDir Path tempDir) throws IOException {
+		// Issue #498: a device that auto-paused during the ride reports a total_elapsed_time
+		// (wall clock, includes the paused gap) larger than the recorded sample span (no
+		// samples exist for the paused interval) - elapsedSeconds must reflect the former.
+		Path fit = tempDir.resolve("with_pause.fit");
+		FileEncoder encoder = new FileEncoder(fit.toFile(), Fit.ProtocolVersion.V2_0);
+		FileIdMesg fileId = new FileIdMesg();
+		fileId.setType(File.ACTIVITY);
+		fileId.setManufacturer(Manufacturer.GARMIN);
+		fileId.setTimeCreated(new DateTime(0));
+		encoder.write(fileId);
+
+		SessionMesg session = new SessionMesg();
+		session.setSport(Sport.CYCLING);
+		session.setStartTime(new DateTime(0L));
+		session.setTotalElapsedTime(130.0f); // 130s wall clock, despite only 2 recorded samples.
+		encoder.write(session);
+
+		RecordMesg r1 = new RecordMesg();
+		r1.setTimestamp(new DateTime(0L));
+		r1.setPower(200);
+		encoder.write(r1);
+		RecordMesg r2 = new RecordMesg();
+		r2.setTimestamp(new DateTime(1L));
+		r2.setPower(205);
+		encoder.write(r2);
+		encoder.close();
+
+		try (InputStream in = new ByteArrayInputStream(Files.readAllBytes(fit))) {
+			var parsed = FitFileParser.parse(in);
+
+			ParsedActivity result = parsed.get(0);
+			assertThat(result.samples()).hasSize(2);
+			assertThat(result.elapsedSeconds()).isEqualTo(130);
+		}
+	}
+
+	@Test
 	void leftBalancePctConvertsRightFlaggedValueToLeftPercent() {
 		// 0x80 (right flag) | 62 (62% right) -> 38% left.
 		assertThat(FitFileParser.leftBalancePct((short) (0x80 | 62))).isEqualTo(38.0);

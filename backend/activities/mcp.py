@@ -10,6 +10,7 @@ inherited scope/ownership helpers are underscore-prefixed instead.
 """
 
 import base64
+from datetime import date
 from typing import Any
 
 from django.db.models import Exists, F, Min, OuterRef, Q
@@ -27,6 +28,7 @@ from core.units import parse_distance_meters
 
 from .comments import resolve_parent_comment
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Tag
+from .overlaps import find_overlaps
 from .serializers import ActivityCommentSerializer
 from .splits import get_custom_activity_splits
 from .tag_management import rename_tag as tag_rename
@@ -197,6 +199,65 @@ class ActivityMCPTools(ScopedMCPToolset):
             "next_cursor": _encode_cursor(rows[-1]) if has_more and rows else None,
             "data": [_activity_summary(a) for a in rows],
         }
+
+    def list_overlapping_activities(
+        self,
+        activity_id: str | None = None,
+        sport: str | None = None,
+        cross_sport: bool = False,
+        device: str | None = None,
+        other_device: str | None = None,
+        environment: str | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        min_duration_seconds: int | None = None,
+        other_has: list[str] | None = None,
+        min_overlap_pct: float | None = None,
+        max_start_delta_seconds: int | None = None,
+        include_resolved: bool = False,
+        cursor: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Issue #498's detection backbone: pairs of the athlete's activities whose recorded
+        intervals intersect - the same ride uploaded twice from two devices (e.g. Zwift +
+        Garmin), but also any genuinely overlapping pair. `anchor`/`other` are an arbitrary
+        pair labelling (see GET /v1/activities/overlaps' own description for exactly how); pass
+        `activity_id` to pin a specific activity as anchor and list only its overlaps (the
+        "what else overlaps this one" / merge-candidate use case). `other_has` (repeatable:
+        power, heartrate, cadence, core_temp) requires the other side to have all of the given
+        fields. `status` on each pair is 'unresolved', 'duplicate' (one side's
+        primary_activity_id already points at the other), or 'merged' (reserved for #501, not
+        yet produced). Paginated via next_cursor."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+
+        def _parse_date(value: str | None, param: str) -> date | None:
+            if value is None:
+                return None
+            try:
+                return date.fromisoformat(value)
+            except ValueError as exc:
+                raise ValidationError({param: "Expected ISO date (YYYY-MM-DD)."}) from exc
+
+        return find_overlaps(
+            athlete_id,
+            activity_id=activity_id,
+            sport=sport,
+            cross_sport=cross_sport,
+            device=device,
+            other_device=other_device,
+            environment=environment,
+            from_date=_parse_date(from_date, "from_date"),
+            to_date=_parse_date(to_date, "to_date"),
+            min_duration_seconds=min_duration_seconds,
+            other_has=other_has,
+            min_overlap_pct=min_overlap_pct,
+            max_start_delta_seconds=max_start_delta_seconds,
+            include_resolved=include_resolved,
+            cursor=cursor,
+            limit=max(1, min(limit or 50, 200)),
+        )
 
     def get_activity(self, activity_id: str) -> dict[str, Any]:
         """Get full detail on a single activity by id (from list_activities' results) - name,

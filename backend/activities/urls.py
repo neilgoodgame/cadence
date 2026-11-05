@@ -7,6 +7,7 @@ from .views import (
     ActivityCommentListView,
     ActivityDetailView,
     ActivityListView,
+    ActivityOverlapListView,
     ActivityRecomputeElevationView,
     ActivitySectionsView,
     ActivitySplitsView,
@@ -27,6 +28,7 @@ from .views import (
 urlpatterns = [
     path("v1/activities", ActivityListView.as_view(), name="activity-list"),
     path("v1/activities/batch", ActivityBatchUploadView.as_view(), name="activity-batch-upload"),
+    path("v1/activities/overlaps", ActivityOverlapListView.as_view(), name="activity-overlaps"),
     path("v1/activities/<str:id>", ActivityDetailView.as_view(), name="activity-detail"),
     path("v1/activities/<str:id>/recompute-tss", RecomputeActivityTssView.as_view(), name="activity-recompute-tss"),
     path(

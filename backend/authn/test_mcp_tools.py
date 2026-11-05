@@ -513,6 +513,73 @@ class ActivityToolsTests(TestCase):
         with self.assertRaises(PermissionDenied):
             tools.get_activity(activity_id=activity.id)
 
+    def test_list_overlapping_activities_detects_a_same_ride_twice_pair(self) -> None:
+        athlete = User.objects.create_user(email="mcp-overlap@example.cc", password="x", name="Athlete")
+        start = timezone.now()
+        zwift = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            device="Zwift",
+            name="Zwift",
+            start_date=start,
+            moving_time=3600,
+            elapsed_seconds=3600,
+            distance_km=30,
+        )
+        garmin = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            device="Garmin",
+            name="Garmin",
+            start_date=start + timedelta(seconds=5),
+            moving_time=3600,
+            elapsed_seconds=3600,
+            distance_km=30,
+        )
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.list_overlapping_activities()
+
+        self.assertEqual(len(result["data"]), 1)
+        pair = result["data"][0]
+        self.assertEqual({pair["anchor"]["id"], pair["other"]["id"]}, {zwift.id, garmin.id})
+        self.assertEqual(pair["status"], "unresolved")
+
+    def test_list_overlapping_activities_activity_id_pins_the_anchor(self) -> None:
+        athlete = User.objects.create_user(email="mcp-overlap-pin@example.cc", password="x", name="Athlete")
+        start = timezone.now()
+        zwift = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            device="Zwift",
+            name="Zwift",
+            start_date=start,
+            moving_time=3600,
+            elapsed_seconds=3600,
+            distance_km=30,
+        )
+        garmin = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            device="Garmin",
+            name="Garmin",
+            start_date=start + timedelta(seconds=5),
+            moving_time=3600,
+            elapsed_seconds=3600,
+            distance_km=30,
+        )
+
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+        result = tools.list_overlapping_activities(activity_id=garmin.id)
+
+        self.assertEqual(len(result["data"]), 1)
+        self.assertEqual(result["data"][0]["anchor"]["id"], garmin.id)
+        self.assertEqual(result["data"][0]["other"]["id"], zwift.id)
+
     def test_get_activity_includes_average_air_temperature_and_humidity(self) -> None:
         athlete = User.objects.create_user(email="mcp-activity-env@example.cc", password="x", name="Athlete")
         activity = Activity.objects.create(

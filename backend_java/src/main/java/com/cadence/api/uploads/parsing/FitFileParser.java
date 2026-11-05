@@ -76,7 +76,7 @@ public final class FitFileParser {
 			SessionMesg onlySession = sessions.isEmpty() ? null : sessions.get(0);
 			Sport sport = onlySession == null ? Sport.BIKE : mapSport(onlySession.getSport(), onlySession.getSubSport());
 			return List.of(buildActivity(records, laps, sport, trainingEffects(onlySession), device,
-					isVirtual(onlySession, zwiftManufacturer)));
+					isVirtual(onlySession, zwiftManufacturer), elapsedSeconds(onlySession)));
 		}
 
 		// Multisport. Sessions partition the record stream into chained windows: each session's
@@ -93,8 +93,12 @@ public final class FitFileParser {
 				lastSport = session;
 			}
 		}
+		// elapsedSeconds is deliberately not threaded from lastSport here, unlike trainingEffects
+		// above - TE is cumulative over the whole device session, but total_elapsed_time is each
+		// session's own span, so lastSport's would only cover its own leg. Passing null lets the
+		// caller fall back to the full record stream's own span, which is already file-wide.
 		result.add(buildActivity(records, laps, Sport.MULTISPORT, trainingEffects(lastSport), device,
-				isVirtual(lastSport, zwiftManufacturer)));
+				isVirtual(lastSport, zwiftManufacturer), null));
 
 		for (int i = 0; i < ordered.size(); i++) {
 			SessionMesg session = ordered.get(i);
@@ -111,7 +115,7 @@ public final class FitFileParser {
 					.filter(l -> l.getStartTime() != null && inWindow(l.getStartTime().getDate().getTime(), windowStart, windowEnd))
 					.toList();
 			result.add(buildActivity(sliceRecords, sliceLaps, mapSport(session.getSport(), session.getSubSport()), trainingEffects(session), device,
-					isVirtual(session, zwiftManufacturer)));
+					isVirtual(session, zwiftManufacturer), elapsedSeconds(session)));
 		}
 		return result;
 	}
@@ -122,6 +126,13 @@ public final class FitFileParser {
 
 	private static boolean isVirtual(SessionMesg session, boolean zwiftManufacturer) {
 		return zwiftManufacturer || (session != null && session.getSubSport() == com.garmin.fit.SubSport.VIRTUAL_ACTIVITY);
+	}
+
+	/** Wall-clock elapsed time (includes pauses) straight from the device, in whole seconds -
+	 * see issue #498: the record stream's own span (used as the fallback wherever this is null)
+	 * understates it whenever the device auto-paused recording. */
+	private static Integer elapsedSeconds(SessionMesg session) {
+		return session != null && session.getTotalElapsedTime() != null ? Math.round(session.getTotalElapsedTime()) : null;
 	}
 
 	private static Double[] trainingEffects(SessionMesg session) {
@@ -184,7 +195,7 @@ public final class FitFileParser {
 		return result.toString();
 	}
 
-	private static ParsedActivity buildActivity(List<RecordMesg> records, List<LapMesg> laps, Sport sport, Double[] trainingEffects, String device, boolean isVirtual) {
+	private static ParsedActivity buildActivity(List<RecordMesg> records, List<LapMesg> laps, Sport sport, Double[] trainingEffects, String device, boolean isVirtual, Integer elapsedSeconds) {
 		long startMillis = records.get(0).getTimestamp().getDate().getTime();
 		Instant startDate = Instant.ofEpochMilli(startMillis);
 		boolean hasGps = records.stream().anyMatch(r -> r.getPositionLat() != null && r.getPositionLong() != null);
@@ -283,7 +294,7 @@ public final class FitFileParser {
 
 		return new ParsedActivity(
 				sport, environment, hasGps, startDate, "fit", device, distanceSource, samples, lapSummaries,
-				trainingEffects[0], trainingEffects[1]);
+				trainingEffects[0], trainingEffects[1], elapsedSeconds);
 	}
 
 	private static double semicirclesToDegrees(int semicircles) {
