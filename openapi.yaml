@@ -650,6 +650,13 @@ paths:
                   enum: [skip, replace]
                   default: skip
                   description: What to do when a file matches an existing activity.
+                on_overlap:
+                  type: string
+                  enum: [off, flag, mark, merge]
+                  description: >-
+                    Overrides the athlete's `overlap_handling` default (see the `User` schema)
+                    for this batch only - see GET /v1/activities/overlaps for what each value
+                    does. Omit to use the athlete's own default.
       responses:
         "202":
           description: Archive accepted and being unpacked; files queued individually.
@@ -4333,6 +4340,24 @@ components:
             algorithms tend to read meaningfully higher than Stryd for the same effort, so the
             non-selected source is completely ignored, not used as a fallback.
           example: stryd
+        overlap_handling:
+          type: string
+          enum: [off, flag, mark, merge]
+          default: off
+          description: >-
+            What on-ingest overlap detection should do by default when a newly-imported activity
+            turns out to overlap one this athlete already has (e.g. the same ride uploaded once
+            from Zwift and once from Garmin) - see GET /v1/activities/overlaps. Used whenever a
+            request doesn't specify its own `on_overlap` on POST /v1/activities/batch, including
+            scheduled Garmin syncs, which have no request to carry the option at all. `off`
+            disables detection entirely (the default, so existing import behaviour is unchanged
+            until an athlete opts in); `flag` detects and leaves the pair visible as `unresolved`
+            through the overlap query, without changing anything; `mark` additionally sets the
+            lower-ranked copy's `primary_activity_id`, picking the Zwift copy as primary when one
+            side is from Zwift, otherwise the side with more populated sensor fields. `merge` is
+            accepted but not yet implemented (issue #501) - it currently behaves exactly like
+            `flag`.
+          example: off
         threshold_pace: { type: string, example: "4:00" }
         threshold_window_days:
           type: integer
@@ -4914,6 +4939,21 @@ components:
             message: { type: string, example: "Unreadable FIT header at byte 0." }
         received_at: { type: string, format: date-time }
         completed_at: { type: [string, "null"], format: date-time }
+        overlap_other_activity_id:
+          type: [string, "null"]
+          description: >-
+            Set when on-ingest overlap detection (issue #498) found this upload's activity
+            overlapping an existing one and overlap_handling wasn't off - the other activity's
+            id. Null whenever detection didn't run or found nothing.
+          example: null
+        overlap_action:
+          type: [string, "null"]
+          enum: [flagged, marked, merged, merge_skipped_low_score, null]
+          description: >-
+            What detection did about overlap_other_activity_id, if set - see the `overlap_handling`
+            description on the `User` schema. merged/merge_skipped_low_score are reserved for #501
+            and unused until it ships.
+          example: null
 
     Lap:
       type: object

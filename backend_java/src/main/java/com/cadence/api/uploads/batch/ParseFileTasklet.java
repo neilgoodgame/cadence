@@ -1,12 +1,14 @@
 package com.cadence.api.uploads.batch;
 
 import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityOverlapDetectionService;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.DistanceSource;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.calc.EnvironmentSanitizer;
 import com.cadence.api.activities.calc.RunningPowerSanitizer;
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.config.CadenceProperties;
 import com.cadence.api.common.domain.Sport;
@@ -60,16 +62,18 @@ public class ParseFileTasklet implements Tasklet {
 	private final LapRepository lapRepository;
 	private final CadenceProperties properties;
 	private final GearMileageService gearMileageService;
+	private final ActivityOverlapDetectionService overlapDetectionService;
 
 	public ParseFileTasklet(UploadJobContextRegistry contextRegistry, UploadRepository uploadRepository,
 			ActivityRepository activityRepository, LapRepository lapRepository, CadenceProperties properties,
-			GearMileageService gearMileageService) {
+			GearMileageService gearMileageService, ActivityOverlapDetectionService overlapDetectionService) {
 		this.contextRegistry = contextRegistry;
 		this.uploadRepository = uploadRepository;
 		this.activityRepository = activityRepository;
 		this.lapRepository = lapRepository;
 		this.properties = properties;
 		this.gearMileageService = gearMileageService;
+		this.overlapDetectionService = overlapDetectionService;
 	}
 
 	@Override
@@ -115,6 +119,12 @@ public class ParseFileTasklet implements Tasklet {
 		// it was actually worn for (a single-activity upload keeps all of them, as before).
 		boolean multisport = parsedActivities.size() > 1;
 		Activity parent = null;
+		// Issue #498: resolved once per upload (not per request) at batch-creation time for a
+		// batch upload - UploadBatch.overlapHandling is never null past that point - or read
+		// straight off the athlete for a single-file upload, which has no per-request override.
+		OverlapHandling overlapMode = upload.getBatch() != null
+				? upload.getBatch().getOverlapHandling()
+				: upload.getAthlete().getOverlapHandling();
 		for (ParsedActivity rawParsed : parsedActivities) {
 			// Dropped here, before a Record is ever written, rather than left for a later
 			// recompute to clean up - see RunningPowerSanitizer's Javadoc for the failure mode
@@ -175,6 +185,18 @@ public class ParseFileTasklet implements Tasklet {
 				parent = activity;
 			}
 
+			// Only ever meaningful for a single-activity upload in practice - a multisport
+			// parent/leg is excluded inside the service itself (see isMultisportLinked there).
+			// Reported on the upload below; at most one pair is kept (see MAX_PAIRS_PER_ACTIVITY's
+			// own Javadoc for why more than one is already a rare edge case worth bounding, not
+			// fully reporting).
+			var overlaps = overlapDetectionService.detectAndResolve(activity, overlapMode);
+			if (!overlaps.isEmpty()) {
+				var first = overlaps.get(0);
+				upload.setOverlapOtherActivityId(first.otherActivityId());
+				upload.setOverlapAction(first.action());
+			}
+
 			for (ParsedActivity.LapSummary lapSummary : parsed.laps()) {
 				Lap lap = new Lap();
 				lap.setActivity(activity);
@@ -188,6 +210,7 @@ public class ParseFileTasklet implements Tasklet {
 
 			context.addSegment(parsed, activity.getId());
 		}
+		uploadRepository.save(upload);
 		return RepeatStatus.FINISHED;
 	}
 

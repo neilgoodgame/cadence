@@ -1,5 +1,6 @@
 package com.cadence.api.uploads;
 
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.uploads.dto.UploadBatchResponse;
 import com.cadence.api.uploads.dto.UploadHistoryPurgeResponse;
@@ -60,12 +61,13 @@ public class UploadController {
 	@PostMapping(value = "/v1/activities/batch", consumes = "multipart/form-data")
 	public ResponseEntity<UploadBatchResponse> uploadActivityBatch(
 			@RequestPart("file") MultipartFile file,
-			@RequestParam(name = "on_duplicate", defaultValue = "skip") OnDuplicate onDuplicate) throws IOException {
+			@RequestParam(name = "on_duplicate", defaultValue = "skip") OnDuplicate onDuplicate,
+			@RequestParam(name = "on_overlap", required = false) OverlapHandling onOverlap) throws IOException {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		User athlete = userService.getById(athleteId);
 
-		UploadBatch batch = uploadService.createBatchUpload(athlete, file, onDuplicate);
+		UploadBatch batch = uploadService.createBatchUpload(athlete, file, onDuplicate, onOverlap);
 		var children = uploadService.getBatchChildren(batch.getId());
 		UploadBatchResponse body = uploadMapper.toResponse(batch, children);
 

@@ -1,5 +1,6 @@
 package com.cadence.api.uploads;
 
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import com.cadence.api.users.User;
 import jakarta.persistence.Column;
@@ -24,6 +25,12 @@ public class UploadBatch extends PrefixedIdEntity {
 
 	@Column(name = "on_duplicate", nullable = false)
 	private OnDuplicate onDuplicate = OnDuplicate.SKIP;
+
+	/** Resolved once at batch creation (the request's own {@code on_overlap} if it gave one,
+	 * else the athlete's {@code overlapHandling} default) - see {@code UploadService.createBatch}.
+	 * Never null past that point, so nothing downstream needs to re-resolve a default. */
+	@Column(name = "on_overlap", nullable = false)
+	private OverlapHandling overlapHandling = OverlapHandling.OFF;
 
 	@Column(nullable = false)
 	private UploadBatchStatus status = UploadBatchStatus.PROCESSING;
@@ -74,6 +81,14 @@ public class UploadBatch extends PrefixedIdEntity {
 
 	public void setOnDuplicate(OnDuplicate onDuplicate) {
 		this.onDuplicate = onDuplicate;
+	}
+
+	public OverlapHandling getOverlapHandling() {
+		return overlapHandling;
+	}
+
+	public void setOverlapHandling(OverlapHandling overlapHandling) {
+		this.overlapHandling = overlapHandling;
 	}
 
 	public UploadBatchStatus getStatus() {

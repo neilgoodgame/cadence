@@ -19,7 +19,8 @@ public class UploadMapper {
 				upload.getId(), upload.getStatus(), upload.getProgress(), upload.getFilename(),
 				activity != null ? activity.getId() : null,
 				activity != null ? activity.getSport() : null,
-				error, upload.getReceivedAt(), upload.getCompletedAt());
+				error, upload.getReceivedAt(), upload.getCompletedAt(),
+				upload.getOverlapOtherActivityId(), upload.getOverlapAction());
 	}
 
 	public UploadBatchResponse toResponse(UploadBatch batch, List<Upload> children) {

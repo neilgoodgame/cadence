@@ -2,6 +2,7 @@ package com.cadence.api.users;
 
 import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.LapSource;
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import com.cadence.api.courses.CourseSections;
@@ -200,6 +201,13 @@ public class User extends PrefixedIdEntity {
 	 * missing. */
 	@Column(name = "running_power_source", nullable = false)
 	private RunningPowerSource runningPowerSource = RunningPowerSource.STRYD;
+
+	/** Issue #498: what on-ingest overlap detection should do with this athlete's uploads by
+	 * default, whenever a request doesn't specify {@code on_overlap} itself - including scheduled
+	 * Garmin syncs, which have no request to carry the option at all. Deliberately defaults to
+	 * {@code OFF} so existing import behaviour is unchanged until the athlete opts in. */
+	@Column(name = "overlap_handling", nullable = false)
+	private OverlapHandling overlapHandling = OverlapHandling.OFF;
 
 	@Column(name = "is_coach", nullable = false)
 	private boolean coach = false;
@@ -538,6 +546,14 @@ public class User extends PrefixedIdEntity {
 
 	public void setRunningPowerSource(RunningPowerSource runningPowerSource) {
 		this.runningPowerSource = runningPowerSource;
+	}
+
+	public OverlapHandling getOverlapHandling() {
+		return overlapHandling;
+	}
+
+	public void setOverlapHandling(OverlapHandling overlapHandling) {
+		this.overlapHandling = overlapHandling;
 	}
 
 	public boolean isCoach() {

@@ -1,6 +1,7 @@
 package com.cadence.api.uploads;
 
 import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.OverlapAction;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import com.cadence.api.gear.Shoe;
 import com.cadence.api.users.User;
@@ -42,6 +43,15 @@ public class Upload extends PrefixedIdEntity {
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "activity_id")
 	private Activity activity;
+
+	/** Issue #498: set when {@code ActivityOverlapDetectionService} found this upload's resulting
+	 * activity overlapping an existing one and the resolved {@code OverlapHandling} mode wasn't
+	 * {@code OFF}. Null whenever detection didn't run or found nothing. */
+	@Column(name = "overlap_other_activity_id")
+	private String overlapOtherActivityId;
+
+	@Column(name = "overlap_action")
+	private OverlapAction overlapAction;
 
 	@Column(name = "error_code", nullable = false)
 	private String errorCode = "";
@@ -142,6 +152,22 @@ public class Upload extends PrefixedIdEntity {
 
 	public void setActivity(Activity activity) {
 		this.activity = activity;
+	}
+
+	public String getOverlapOtherActivityId() {
+		return overlapOtherActivityId;
+	}
+
+	public void setOverlapOtherActivityId(String overlapOtherActivityId) {
+		this.overlapOtherActivityId = overlapOtherActivityId;
+	}
+
+	public OverlapAction getOverlapAction() {
+		return overlapAction;
+	}
+
+	public void setOverlapAction(OverlapAction overlapAction) {
+		this.overlapAction = overlapAction;
 	}
 
 	public String getErrorCode() {

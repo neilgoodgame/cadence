@@ -76,7 +76,8 @@ public class AthleteProfileWriteTools {
 		User setBy = callerSub.equals(athleteId) ? athlete : userService.getById(callerSub);
 		AthleteUpdateRequest request = new AthleteUpdateRequest(null, null, null, ftp, criticalRunPower, threshold_pace,
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, null, null, null, null, null, null, null, null, null, effectiveFrom, rerateActivities, preview);
+				null, null, null, null, null, null, null, null, null, null, null, null, effectiveFrom, rerateActivities, preview,
+				null);
 		AthleteService.Outcome outcome = athleteService.updateProfile(athlete, request, setBy);
 
 		Map<String, Object> result = new LinkedHashMap<>();

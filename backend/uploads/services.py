@@ -98,6 +98,10 @@ def create_activity_batch_upload(request: Request, athlete_id: str) -> tuple[Upl
     if on_duplicate not in ("skip", "replace"):
         raise ValidationError({"on_duplicate": "Must be 'skip' or 'replace'."})
 
+    on_overlap = request.data.get("on_overlap")
+    if on_overlap is not None and on_overlap not in ("off", "flag", "mark", "merge"):
+        raise ValidationError({"on_overlap": "Must be one of 'off', 'flag', 'mark', 'merge'."})
+
     if archive.size > MAX_BATCH_BYTES:
         raise ValidationError({"file": "Archive exceeds the 200 MB limit."})
 
@@ -113,7 +117,7 @@ def create_activity_batch_upload(request: Request, athlete_id: str) -> tuple[Upl
         raise ValidationError({"file": f"Archive exceeds the {MAX_BATCH_FILES}-file limit."})
 
     files = ((name, zf.read(name)) for name in names)
-    batch = create_batch_from_files(athlete_id, archive.name, on_duplicate, files)
+    batch = create_batch_from_files(athlete_id, archive.name, on_duplicate, files, on_overlap=on_overlap)
     return batch, 202
 
 
@@ -123,14 +127,28 @@ def create_batch_from_files(
     on_duplicate: str,
     files: Iterable[tuple[str, bytes]],
     session: dict[str, Any] | None = None,
+    on_overlap: str | None = None,
 ) -> UploadBatch:
     """Stage and queue each (name, content) as its own upload under one new batch. Takes an
     iterable so a caller unpacking a big archive can stay lazy. Also used by the Garmin sync,
     which already holds the files and so skips the zip round trip. ``session`` (weight_before_kg,
-    weight_after_kg, fluids_ml, shoe_id) is applied to every upload, as for a single-file upload."""
+    weight_after_kg, fluids_ml, shoe_id) is applied to every upload, as for a single-file upload.
+
+    ``on_overlap`` (issue #498) overrides the athlete's own ``overlap_handling`` default for this
+    batch only - None (no per-request value at all; Garmin sync's scheduled calls have no request
+    to carry one) falls back to that default, resolved once here so it's never None past this
+    point - see activities.overlap_detection."""
+    if on_overlap is None:
+        from accounts.models import User
+
+        on_overlap = User.objects.values_list("overlap_handling", flat=True).get(pk=athlete_id)
     session = session or {}
     batch = UploadBatch.objects.create(
-        athlete_id=athlete_id, filename=filename, on_duplicate=on_duplicate, status="processing"
+        athlete_id=athlete_id,
+        filename=filename,
+        on_duplicate=on_duplicate,
+        on_overlap=on_overlap,
+        status="processing",
     )
 
     for name, content in files:

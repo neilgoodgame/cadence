@@ -201,6 +201,10 @@ public class AthleteService {
 			athlete.setRunningPowerSource(request.runningPowerSource());
 			changed.add("runningPowerSource");
 		}
+		if (request.overlapHandling() != null) {
+			athlete.setOverlapHandling(request.overlapHandling());
+			changed.add("overlapHandling");
+		}
 		if (request.renameMatchedActivities() != null) {
 			athlete.setRenameMatchedActivities(request.renameMatchedActivities());
 		}

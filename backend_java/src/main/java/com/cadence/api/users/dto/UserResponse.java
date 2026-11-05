@@ -2,6 +2,7 @@ package com.cadence.api.users.dto;
 
 import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.LapSource;
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.courses.CourseSections;
 import java.util.Map;
@@ -36,6 +37,7 @@ public record UserResponse(
 		int maxRunningPowerWatts,
 		FtpCalculationMethod ftpCalculationMethod,
 		RunningPowerSource runningPowerSource,
+		OverlapHandling overlapHandling,
 		boolean isCoach,
 		boolean isAdmin,
 		boolean renameMatchedActivities,
