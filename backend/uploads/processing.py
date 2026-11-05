@@ -849,6 +849,28 @@ def rate_activity(
     return changed
 
 
+def recompute_tss_for_athlete(athlete: User) -> int:
+    """Bulk equivalent of rate_activity - re-rates every one of the athlete's activities (same
+    candidate set athletes.views.RecomputeAthleteTssView already uses) and returns how many
+    actually changed. Shared so the overlap backfill command's post-apply recompute (issue #498 -
+    a rebuilt threshold history can shift which value was in effect on a given date) can't drift
+    from the "Recompute TSS" action it reuses, same reason rate_activity itself is a shared
+    helper (issue #481)."""
+    from activities.models import Activity
+
+    candidates = Activity.objects.filter(athlete=athlete, parent_activity__isnull=True).exclude(
+        sport__in=("multisport", "transition")
+    )
+    updated = 0
+    for activity in candidates:
+        power_series = list(activity.records.order_by("t").values_list("power", flat=True))
+        hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
+        if rate_activity(activity, athlete, power_series, hr_series):
+            activity.save(update_fields=["intensity", "tss"])
+            updated += 1
+    return updated
+
+
 def compute_edwards_trimp(athlete: User, heartrate_series: Sequence[float | None]) -> float | None:
     """Edwards' TRIMP: sum over HR zones of (minutes in zone * zone number 1-5). Chosen
     over Banister's original formula because it needs no resting-HR baseline - it reuses
