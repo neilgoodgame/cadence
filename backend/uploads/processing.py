@@ -1361,7 +1361,11 @@ def _ingest_activity(
         start_date=parsed["start_date"],
         source=parsed.get("source", ""),
         device=parsed.get("device", ""),
-        moving_time=_moving_time(samples),
+        moving_time=(moving_time := _moving_time(samples)),
+        # Prefer the device's own wall-clock elapsed time (includes pauses) - falls back to
+        # the record stream's own span when the file didn't carry one (GPX/TCX, or a FIT
+        # with no session message at all) - see fit.py's _session_meta docstring.
+        elapsed_seconds=parsed.get("elapsed_seconds") or moving_time,
         distance_km=_total_distance_km(samples, laps),
         distance_source=parsed.get("distance_source", "gps" if parsed["has_gps"] else "manual"),
         power_source=power_source,

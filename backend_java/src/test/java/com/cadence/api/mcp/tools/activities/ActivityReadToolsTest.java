@@ -241,4 +241,72 @@ class ActivityReadToolsTest extends IntegrationTest {
 
 		assertThat(result).extracting(TagResponse::name, TagResponse::count).containsExactly(tuple("Race", 1L));
 	}
+
+	@Test
+	void listOverlappingActivitiesDetectsASameRideTwicePair() {
+		User athlete = newUser("mcp-overlap-athlete@example.cc");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity zwift = new Activity();
+		zwift.setAthlete(athlete);
+		zwift.setSport(Sport.BIKE);
+		zwift.setName("Zwift");
+		zwift.setDevice("Zwift");
+		zwift.setStartDate(start);
+		zwift.setElapsedSeconds(3600);
+		zwift.setMovingTime(3600);
+		zwift = activityRepository.save(zwift);
+
+		Activity garmin = new Activity();
+		garmin.setAthlete(athlete);
+		garmin.setSport(Sport.BIKE);
+		garmin.setName("Garmin");
+		garmin.setDevice("Garmin");
+		garmin.setStartDate(start.plusSeconds(5));
+		garmin.setElapsedSeconds(3600);
+		garmin.setMovingTime(3600);
+		garmin = activityRepository.save(garmin);
+		authAs(athlete.getId(), "activities:read");
+
+		var page = activityReadTools.listOverlappingActivities(
+				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+		assertThat(page.data()).hasSize(1);
+		var pair = page.data().get(0);
+		assertThat(java.util.List.of(pair.anchor().id(), pair.other().id()))
+				.containsExactlyInAnyOrder(zwift.getId(), garmin.getId());
+		assertThat(pair.status()).isEqualTo("unresolved");
+	}
+
+	@Test
+	void listOverlappingActivitiesActivityIdPinsTheAnchor() {
+		User athlete = newUser("mcp-overlap-pin-athlete@example.cc");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity zwift = new Activity();
+		zwift.setAthlete(athlete);
+		zwift.setSport(Sport.BIKE);
+		zwift.setName("Zwift");
+		zwift.setDevice("Zwift");
+		zwift.setStartDate(start);
+		zwift.setElapsedSeconds(3600);
+		zwift.setMovingTime(3600);
+		zwift = activityRepository.save(zwift);
+
+		Activity garmin = new Activity();
+		garmin.setAthlete(athlete);
+		garmin.setSport(Sport.BIKE);
+		garmin.setName("Garmin");
+		garmin.setDevice("Garmin");
+		garmin.setStartDate(start.plusSeconds(5));
+		garmin.setElapsedSeconds(3600);
+		garmin.setMovingTime(3600);
+		garmin = activityRepository.save(garmin);
+		authAs(athlete.getId(), "activities:read");
+
+		var page = activityReadTools.listOverlappingActivities(
+				garmin.getId(), null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+		assertThat(page.data()).hasSize(1);
+		assertThat(page.data().get(0).anchor().id()).isEqualTo(garmin.getId());
+		assertThat(page.data().get(0).other().id()).isEqualTo(zwift.getId());
+	}
 }

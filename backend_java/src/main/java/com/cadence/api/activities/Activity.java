@@ -53,6 +53,13 @@ public class Activity extends PrefixedIdEntity {
 	@Column(name = "moving_time", nullable = false)
 	private int movingTime;
 
+	/** Wall-clock elapsed time (includes pauses) - see issue #498. Nullable because historical
+	 * rows backfilled before this column existed, and any future ingest path that doesn't set
+	 * it explicitly, have no better source than movingTime; readers should fall back to
+	 * movingTime rather than treat null as zero. */
+	@Column(name = "elapsed_seconds")
+	private Integer elapsedSeconds;
+
 	@Column(name = "distance_km", nullable = false)
 	private double distanceKm;
 
@@ -346,6 +353,14 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setMovingTime(int movingTime) {
 		this.movingTime = movingTime;
+	}
+
+	public Integer getElapsedSeconds() {
+		return elapsedSeconds;
+	}
+
+	public void setElapsedSeconds(Integer elapsedSeconds) {
+		this.elapsedSeconds = elapsedSeconds;
 	}
 
 	public double getDistanceKm() {

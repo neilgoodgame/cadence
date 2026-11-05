@@ -128,6 +128,35 @@ class FitParserMockedTests(SimpleTestCase):
         self.assertEqual(len(result["laps"]), 1)
         self.assertEqual(result["laps"][0]["avg_power"], 203)
 
+    @patch("uploads.parsers.fit.FitFile")
+    def test_elapsed_seconds_comes_from_the_sessions_total_elapsed_time_not_just_the_record_span(
+        self, mock_fitfile_cls
+    ):
+        # Issue #498: a device that auto-paused during the ride reports a total_elapsed_time
+        # (wall clock, includes the paused gap) larger than the recorded sample span (no
+        # samples exist for the paused interval) - elapsed_seconds must reflect the former.
+        start = datetime(2026, 6, 1, 8, 0, 0)
+        records = [
+            _fit_msg(timestamp=start, power=200),
+            _fit_msg(timestamp=start + timedelta(seconds=1), power=205),
+        ]
+        sessions = [_fit_msg(sport="cycling", total_elapsed_time=130.0)]
+
+        instance = MagicMock()
+        instance.get_messages.side_effect = lambda name: {
+            "record": records,
+            "lap": [],
+            "session": sessions,
+            "field_description": [],
+            "file_id": [],
+        }[name]
+        mock_fitfile_cls.return_value = instance
+
+        (result,) = parse_fit("/fake/path.fit")
+
+        self.assertEqual(len(result["samples"]), 2)
+        self.assertEqual(result["elapsed_seconds"], 130)
+
 
 class LeftBalancePctTests(SimpleTestCase):
     def test_right_flag_set_converts_to_left_pct(self):

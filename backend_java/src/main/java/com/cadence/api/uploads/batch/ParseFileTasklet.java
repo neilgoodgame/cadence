@@ -136,7 +136,12 @@ public class ParseFileTasklet implements Tasklet {
 			activity.setStartDate(parsed.startDate());
 			activity.setSource(parsed.source() != null ? parsed.source() : "");
 			activity.setDevice(parsed.device() != null ? parsed.device() : "");
-			activity.setMovingTime(UploadCalculations.movingTime(parsed.samples()));
+			int movingTime = UploadCalculations.movingTime(parsed.samples());
+			activity.setMovingTime(movingTime);
+			// Prefer the device's own wall-clock elapsed time (includes pauses) - falls back to
+			// the record stream's own span when the file didn't carry one (GPX/TCX, or a FIT
+			// with no session message at all) - see ParsedActivity#elapsedSeconds's Javadoc.
+			activity.setElapsedSeconds(parsed.elapsedSeconds() != null ? parsed.elapsedSeconds() : movingTime);
 			activity.setDistanceKm(UploadCalculations.totalDistanceKm(parsed.samples(), parsed.laps()));
 			activity.setDistanceSource(parsed.distanceSource() != null
 					? parsed.distanceSource()
@@ -216,7 +221,7 @@ public class ParseFileTasklet implements Tasklet {
 		}
 		return new ParsedActivity(parsed.sport(), parsed.environment(), parsed.hasGps(), parsed.startDate(),
 				parsed.source(), parsed.device(), parsed.distanceSource(), samples, parsed.laps(),
-				parsed.aerobicTrainingEffect(), parsed.anaerobicTrainingEffect());
+				parsed.aerobicTrainingEffect(), parsed.anaerobicTrainingEffect(), parsed.elapsedSeconds());
 	}
 
 	private static ParsedActivity sanitizeRunningPower(ParsedActivity parsed, int maxRunningPowerWatts) {
@@ -234,7 +239,7 @@ public class ParseFileTasklet implements Tasklet {
 		}
 		return new ParsedActivity(parsed.sport(), parsed.environment(), parsed.hasGps(), parsed.startDate(),
 				parsed.source(), parsed.device(), parsed.distanceSource(), samples, parsed.laps(),
-				parsed.aerobicTrainingEffect(), parsed.anaerobicTrainingEffect());
+				parsed.aerobicTrainingEffect(), parsed.anaerobicTrainingEffect(), parsed.elapsedSeconds());
 	}
 
 	/** Applies {@link EnvironmentSanitizer} to the in-memory samples before a Record row or any
@@ -258,6 +263,6 @@ public class ParseFileTasklet implements Tasklet {
 		}
 		return new ParsedActivity(parsed.sport(), parsed.environment(), parsed.hasGps(), parsed.startDate(),
 				parsed.source(), parsed.device(), parsed.distanceSource(), samples, parsed.laps(),
-				parsed.aerobicTrainingEffect(), parsed.anaerobicTrainingEffect());
+				parsed.aerobicTrainingEffect(), parsed.anaerobicTrainingEffect(), parsed.elapsedSeconds());
 	}
 }

@@ -381,6 +381,10 @@ def _import_activities(
                     source=ar.get("source") or "",
                     device=ar.get("device") or "",
                     moving_time=ar.get("moving_time") or 0,
+                    # The export format predates elapsed_seconds, so there's nothing better to
+                    # restore from than moving_time - same fallback as any other ingest path
+                    # lacking it.
+                    elapsed_seconds=ar.get("elapsed_seconds") or ar.get("moving_time") or 0,
                     distance_km=ar.get("distance_km") or 0,
                     distance_source=ar.get("distance_source") or "gps",
                     power_source=ar.get("power_source") or "",

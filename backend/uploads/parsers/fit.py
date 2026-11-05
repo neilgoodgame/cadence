@@ -130,10 +130,14 @@ def _session_meta(message) -> dict:
     raw_sport = str(message.get_value("sport") or "").lower()
     raw_sub = str(message.get_value("sub_sport") or "").lower()
     sport = SUB_SPORT_MAP.get((raw_sport, raw_sub)) or SPORT_MAP.get(raw_sport, "bike")
+    total_elapsed_time = message.get_value("total_elapsed_time")
     return {
         "sport": sport,
         "start_time": ensure_utc(message.get_value("start_time")),
         "is_virtual": raw_sub == "virtual_activity",
+        # Wall-clock elapsed time (includes pauses) - see issue #498. None when the session
+        # message didn't carry it; callers fall back to the record stream's own span.
+        "elapsed_seconds": round(total_elapsed_time) if total_elapsed_time is not None else None,
         # Garmin's Firstbeat-derived training load, 0.0-5.0. Standard FIT
         # session fields (not developer fields) - only present on Garmin
         # devices that run that analytics.
@@ -182,10 +186,11 @@ def parse_fit(path: str) -> list[ParsedActivity]:
     # double-assign boundary records). The last window is open-ended.
     #
     # TE accumulates over the whole session on the device, so the last non-transition
-    # session carries the total for the parent.
-    result = [
-        _build_activity(records, laps, "multisport", sport_sessions[-1], dev_field_scales, device, zwift_manufacturer)
-    ]
+    # session carries the total for the parent - but elapsed_seconds does NOT accumulate the
+    # same way (it's each session's own span), so that one key is overridden back to None,
+    # letting the parent fall back to the full record stream's own (already file-wide) span.
+    parent_meta = {**sport_sessions[-1], "elapsed_seconds": None}
+    result = [_build_activity(records, laps, "multisport", parent_meta, dev_field_scales, device, zwift_manufacturer)]
     for i, session in enumerate(ordered):
         window_start = session["start_time"]
         window_end = ordered[i + 1]["start_time"] if i + 1 < len(ordered) else None
@@ -324,4 +329,5 @@ def _build_activity(
         "distance_source": "gps" if has_gps else "trainer",
         "aerobic_training_effect": session_meta.get("aerobic_training_effect"),
         "anaerobic_training_effect": session_meta.get("anaerobic_training_effect"),
+        "elapsed_seconds": session_meta.get("elapsed_seconds"),
     }

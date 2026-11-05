@@ -1,8 +1,10 @@
 package com.cadence.api.mcp.tools.activities;
 
 import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityOverlapService;
 import com.cadence.api.activities.ActivityService;
 import com.cadence.api.activities.ActivitySplitsService;
+import com.cadence.api.activities.Environment;
 import com.cadence.api.activities.LapMapper;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.TagService;
@@ -18,6 +20,7 @@ import com.cadence.api.mcp.dto.McpActivityDetail;
 import com.cadence.api.mcp.dto.McpActivityPage;
 import com.cadence.api.mcp.dto.McpActivitySummary;
 import com.cadence.api.mcp.dto.McpCustomSplitStepInput;
+import com.cadence.api.mcp.dto.McpOverlapPage;
 import com.cadence.api.security.AccessGuard;
 import java.time.LocalDate;
 import java.util.List;
@@ -39,17 +42,19 @@ public class ActivityReadTools {
 	private final LapMapper lapMapper;
 	private final TagService tagService;
 	private final ActivitySplitsService splitsService;
+	private final ActivityOverlapService overlapService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityReadTools(ActivityService activityService, LapRepository lapRepository, LapMapper lapMapper,
-			TagService tagService, ActivitySplitsService splitsService, AccessGuard accessGuard,
-			McpToolAuthorizer authorizer) {
+			TagService tagService, ActivitySplitsService splitsService, ActivityOverlapService overlapService,
+			AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
 		this.lapMapper = lapMapper;
 		this.tagService = tagService;
 		this.splitsService = splitsService;
+		this.overlapService = overlapService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -95,6 +100,61 @@ public class ActivityReadTools {
 		} catch (IllegalArgumentException e) {
 			throw new ValidationException("sport must be one of: bike, run, swim, walk, row, multisport, transition.", "sport");
 		}
+	}
+
+	private Environment parseEnvironment(String environment) {
+		if (environment == null || environment.isBlank()) {
+			return null;
+		}
+		try {
+			return Environment.fromWireValue(environment.trim());
+		} catch (IllegalArgumentException e) {
+			throw new ValidationException("environment must be one of: outdoor, indoor.", "environment");
+		}
+	}
+
+	@McpTool(name = "list_overlapping_activities", description = "Issue #498's detection backbone: pairs "
+			+ "of the athlete's activities whose recorded intervals intersect - the same ride uploaded "
+			+ "twice from two devices (e.g. Zwift + Garmin), but also any genuinely overlapping pair. "
+			+ "`anchor`/`other` are an arbitrary pair labelling (see GET /v1/activities/overlaps' own "
+			+ "description for exactly how); pass activityId to pin a specific activity as anchor and "
+			+ "list only its overlaps (the \"what else overlaps this one\" / merge-candidate use case). "
+			+ "otherHas (repeatable: power, heartrate, cadence, core_temp) requires the other side to "
+			+ "have all of the given fields. status on each pair is 'unresolved', 'duplicate' (one "
+			+ "side's primary_activity_id already points at the other), or 'merged' (reserved for #501, "
+			+ "not yet produced). Paginated via next_cursor.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = false, openWorldHint = false))
+	public McpOverlapPage listOverlappingActivities(
+			@McpToolParam(description = "Only this activity's overlaps", required = false) String activityId,
+			@McpToolParam(description = "Filter to one sport: bike, run, swim, walk, row, multisport, or "
+					+ "transition", required = false) String sport,
+			@McpToolParam(description = "When true, sport only constrains the anchor side, not other", required = false) Boolean crossSport,
+			@McpToolParam(description = "Case-insensitive prefix match on the anchor's device, e.g. "
+					+ "\"zwift\"", required = false) String device,
+			@McpToolParam(description = "Case-insensitive prefix match on the other side's device, e.g. "
+					+ "\"garmin\"", required = false) String otherDevice,
+			@McpToolParam(description = "outdoor or indoor, applied to both sides", required = false) String environment,
+			@McpToolParam(description = "Inclusive lower bound on the anchor's start date (YYYY-MM-DD)", required = false) LocalDate from,
+			@McpToolParam(description = "Inclusive upper bound on the anchor's start date (YYYY-MM-DD)", required = false) LocalDate to,
+			@McpToolParam(description = "Ignore activities shorter than this on either side", required = false) Integer minDurationSeconds,
+			@McpToolParam(description = "Repeatable: power, heartrate, cadence, core_temp - the other side "
+					+ "must have all of these", required = false) List<String> otherHas,
+			@McpToolParam(description = "Minimum overlap as a % of the shorter activity's duration, default 50", required = false) Double minOverlapPct,
+			@McpToolParam(description = "Only pairs whose start times are within this many seconds of each "
+					+ "other. No limit by default", required = false) Long maxStartDeltaSeconds,
+			@McpToolParam(description = "Include pairs already linked as a duplicate, default false", required = false) Boolean includeResolved,
+			@McpToolParam(description = "Max results, default 50, capped at 200", required = false) Integer limit,
+			@McpToolParam(description = "Pass the previous response's next_cursor to get the next page", required = false) String cursor) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireRead(athleteId);
+		int effectiveLimit = Math.max(1, Math.min(limit != null ? limit : 50, 200));
+		var page = overlapService.findOverlaps(athleteId, activityId, parseSport(sport),
+				crossSport != null && crossSport, device, otherDevice, parseEnvironment(environment), from, to,
+				minDurationSeconds, otherHas != null ? otherHas : List.of(), minOverlapPct, maxStartDeltaSeconds,
+				includeResolved != null && includeResolved, cursor, effectiveLimit);
+		return new McpOverlapPage(page.hasMore(), page.nextCursor(), page.data());
 	}
 
 	@McpTool(name = "get_activity", description = "Get full detail on a single activity by id "

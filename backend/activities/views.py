@@ -1,5 +1,6 @@
 import json
 from collections import defaultdict
+from datetime import date
 from typing import Any
 
 from django.db.models import Count, Exists, F, FloatField, Min, OuterRef, Q, Value
@@ -36,6 +37,7 @@ from .elevation import SECTION_SPORTS, ensure_elevation, rebuild_elevation, sect
 from .lap_derivation import replace_laps_with_derived
 from .match_preferences import apply_match_rename, apply_match_side_effects
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Record, Tag
+from .overlaps import find_overlaps
 from .serializers import (
     ActivityCommentCreateSerializer,
     ActivityCommentSerializer,
@@ -321,6 +323,64 @@ class ActivityListView(APIView):
         Record.objects.filter(activity__athlete_id=athlete_id).delete()
         Activity.objects.filter(athlete_id=athlete_id).delete()
         return Response(status=204)
+
+
+class ActivityOverlapListView(APIView):
+    """Issue #498's detection backbone: pairs of this athlete's activities whose recorded
+    intervals intersect - see overlaps.find_overlaps's docstring for the full design."""
+
+    def get(self, request: Request) -> Response:
+        _, athlete_id = get_effective_athlete_id(request)
+        _require_read(request, athlete_id)
+        qp = request.query_params
+
+        sport = qp.get("sport")
+        if sport and sport not in dict(Activity.SPORT_CHOICES):
+            raise ValidationError({"sport": f"Unknown sport '{sport}'."})
+        environment = qp.get("environment")
+        if environment and environment not in dict(Activity.ENVIRONMENT_CHOICES):
+            raise ValidationError({"environment": f"Unknown environment '{environment}'."})
+
+        def _bool(name: str) -> bool:
+            return qp.get(name, "false").lower() == "true"
+
+        def _int(name: str) -> int | None:
+            value = qp.get(name)
+            return int(value) if value is not None else None
+
+        def _float(name: str) -> float | None:
+            value = qp.get(name)
+            return float(value) if value is not None else None
+
+        def _date(name: str) -> date | None:
+            value = qp.get(name)
+            if value is None:
+                return None
+            try:
+                return date.fromisoformat(value)
+            except ValueError as exc:
+                raise ValidationError({name: "Expected ISO date (YYYY-MM-DD)."}) from exc
+
+        limit = max(1, min(_int("limit") or 50, 200))
+        result = find_overlaps(
+            athlete_id,
+            activity_id=qp.get("activityId"),
+            sport=sport,
+            cross_sport=_bool("crossSport"),
+            device=qp.get("device"),
+            other_device=qp.get("otherDevice"),
+            environment=environment,
+            from_date=_date("from"),
+            to_date=_date("to"),
+            min_duration_seconds=_int("minDurationSeconds"),
+            other_has=qp.getlist("otherHas"),
+            min_overlap_pct=_float("minOverlapPct"),
+            max_start_delta_seconds=_int("maxStartDeltaSeconds"),
+            include_resolved=_bool("includeResolved"),
+            cursor=qp.get("cursor"),
+            limit=limit,
+        )
+        return Response(result)
 
 
 class ActivityDetailView(APIView):

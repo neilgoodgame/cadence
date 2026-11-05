@@ -510,6 +510,111 @@ paths:
         "204":
           description: All activities deleted.
 
+  /v1/activities/overlaps:
+    get:
+      tags: [Activities]
+      summary: Find activities whose recorded intervals overlap
+      operationId: listActivityOverlaps
+      description: >
+        Issue #498's detection backbone for the same ride recorded twice (e.g. Zwift
+        + a head unit), but also any genuinely overlapping pair. An activity's
+        interval is `[start_date, start_date + elapsed_seconds]` (falling back to
+        `moving_time` where `elapsed_seconds` wasn't captured), so this catches
+        partial overlaps too, not just near-simultaneous starts.
+
+
+        `anchor`/`other` are an arbitrary pair labelling, not "the real one" and
+        "the duplicate": when `activityId` is given, anchor is pinned to it;
+        otherwise anchor is whichever side has the lexicographically smaller id,
+        purely to avoid returning each unordered pair twice — except when an
+        asymmetric filter (`crossSport`, `device` vs. `otherDevice`, `otherHas`)
+        means only one direction qualifies at all, in which case that direction is
+        kept regardless of id order. `from`/`to`/`device` only constrain the
+        anchor side; `otherDevice`/`otherHas` only constrain the other side;
+        `environment`/`minDurationSeconds`/`sport` (unless `crossSport=true`)
+        constrain both.
+      parameters:
+        - name: activityId
+          in: query
+          description: Only this activity's overlaps — the "Merge with…" candidate list use case.
+          schema: { type: string }
+        - name: sport
+          in: query
+          schema:
+            $ref: "#/components/schemas/Sport"
+        - name: crossSport
+          in: query
+          description: When true, `sport` only constrains the anchor side, not other.
+          schema: { type: boolean, default: false }
+        - name: device
+          in: query
+          description: Case-insensitive prefix match on the anchor's device, e.g. `zwift`.
+          schema: { type: string }
+        - name: otherDevice
+          in: query
+          description: Case-insensitive prefix match on the other side's device, e.g. `garmin`.
+          schema: { type: string }
+        - name: environment
+          in: query
+          schema:
+            type: string
+            enum: [outdoor, indoor]
+        - name: from
+          in: query
+          description: Inclusive lower bound on the anchor's start date.
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: Inclusive upper bound on the anchor's start date.
+          schema: { type: string, format: date }
+        - name: minOverlapPct
+          in: query
+          description: Minimum overlap as a % of the shorter activity's duration.
+          schema: { type: number, default: 50 }
+        - name: maxStartDeltaSeconds
+          in: query
+          description: Only pairs whose start times are within this many seconds of each other. No limit by default.
+          schema: { type: integer }
+        - name: minDurationSeconds
+          in: query
+          description: Ignore activities shorter than this on either side.
+          schema: { type: integer }
+        - name: otherHas
+          in: query
+          description: Repeatable. The other side must have all of the given fields.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items: { type: string, enum: [power, heartrate, cadence, core_temp] }
+        - name: includeResolved
+          in: query
+          description: Include pairs already linked as a duplicate (or merged, once #501 ships).
+          schema: { type: boolean, default: false }
+        - name: limit
+          in: query
+          description: Page size, max 200.
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of overlapping activity pairs.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/List"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/OverlapPair"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
   /v1/activities/batch:
     post:
       tags: [Activities]
@@ -4614,6 +4719,43 @@ components:
             The ids of duplicate recordings linked to this activity, in start
             order. Empty unless this activity is the primary of a duplicate group.
           example: []
+
+    OverlapActivitySummary:
+      type: object
+      description: One side of an overlapping-activity pair — see OverlapPair.
+      properties:
+        id: { type: string }
+        name: { type: string }
+        sport: { $ref: "#/components/schemas/Sport" }
+        device: { type: string }
+        start_date: { type: string, format: date-time }
+        elapsed_seconds:
+          type: [integer, "null"]
+          description: Wall-clock duration (includes pauses), falling back to moving_time where not captured.
+        avg_power: { type: [integer, "null"] }
+
+    OverlapPair:
+      type: object
+      description: One row of GET /v1/activities/overlaps — see that endpoint's description for anchor/other.
+      properties:
+        anchor: { $ref: "#/components/schemas/OverlapActivitySummary" }
+        other: { $ref: "#/components/schemas/OverlapActivitySummary" }
+        overlap_seconds: { type: integer }
+        overlap_pct: { type: number }
+        start_delta_seconds: { type: integer }
+        duration_delta_pct:
+          type: [number, "null"]
+          description: "abs(anchor - other) / anchor * 100 - relative to the anchor's own duration."
+        avg_power_ratio:
+          type: [number, "null"]
+          description: other / anchor. Null whenever either side has no avg_power.
+        status:
+          type: string
+          enum: [unresolved, duplicate, merged]
+          description: >
+            `duplicate` when one side's primary_activity_id already points at the
+            other. `merged` is reserved for #501 (not yet produced by this
+            endpoint).
 
     RaceSplits:
       description: GET /v1/races/{id}/splits, and its public equivalent.

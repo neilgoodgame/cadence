@@ -56,6 +56,10 @@ class Activity(PrefixedIDModel):
     # "Garmin Edge 830". Empty when the format doesn't carry it (GPX/TCX).
     device = models.CharField(max_length=100, blank=True, default="")
     moving_time = models.IntegerField(default=0)
+    # Wall-clock elapsed time (includes pauses) - see issue #498. Null for historical rows
+    # backfilled before this field existed and any future ingest path that doesn't set it
+    # explicitly; callers should fall back to moving_time rather than treat null as zero.
+    elapsed_seconds = models.IntegerField(null=True, blank=True)
     distance_km = models.FloatField(default=0)
     distance_source = models.CharField(max_length=10, choices=DISTANCE_SOURCE_CHOICES, default="gps")
     power_source = models.CharField(max_length=10, choices=POWER_SOURCE_CHOICES, blank=True, default="")
