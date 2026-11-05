@@ -41,3 +41,20 @@ def apply_shoe_change(old_shoe_id: str | None, new_shoe_id: str | None, distance
     delta = round(distance_km)
     _apply_shoe_delta(old_shoe_id, -delta)
     _apply_shoe_delta(new_shoe_id, delta)
+
+
+def apply_duplicate_change(activity, was_duplicate: bool, is_duplicate: bool) -> None:
+    """Issue #498: a duplicate-marked activity's distance must not double-count on its bike/
+    shoe's mileage total alongside its primary's. Mirrors clearing bike_id/shoe_id for mileage
+    purposes when an activity becomes a duplicate, and restoring them when it stops being one -
+    but the link itself is left untouched, so un-marking restores the exact same bike/shoe
+    without the caller re-specifying it. A no-op if duplicate status didn't actually change
+    (e.g. unmark_duplicate called on an activity that wasn't a duplicate)."""
+    if was_duplicate == is_duplicate:
+        return
+    if is_duplicate:
+        apply_bike_change(activity.bike_id, None, activity.distance_km)
+        apply_shoe_change(activity.shoe_id, None, activity.distance_km)
+    else:
+        apply_bike_change(None, activity.bike_id, activity.distance_km)
+        apply_shoe_change(None, activity.shoe_id, activity.distance_km)

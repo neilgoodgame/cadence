@@ -4,6 +4,7 @@ import com.cadence.api.activities.dto.OverlapPairResponse;
 import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.paging.CursorPage;
+import com.cadence.api.gear.GearMileageService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -36,10 +37,13 @@ public class ActivityOverlapDetectionService {
 
 	private final ActivityOverlapService overlapService;
 	private final ActivityRepository activityRepository;
+	private final GearMileageService gearMileageService;
 
-	public ActivityOverlapDetectionService(ActivityOverlapService overlapService, ActivityRepository activityRepository) {
+	public ActivityOverlapDetectionService(ActivityOverlapService overlapService, ActivityRepository activityRepository,
+			GearMileageService gearMileageService) {
 		this.overlapService = overlapService;
 		this.activityRepository = activityRepository;
+		this.gearMileageService = gearMileageService;
 	}
 
 	public record OverlapResolution(String otherActivityId, OverlapAction action) {
@@ -101,7 +105,10 @@ public class ActivityOverlapDetectionService {
 			return false;
 		}
 		duplicate.setPrimaryActivity(primary);
-		activityRepository.save(duplicate);
+		Activity saved = activityRepository.save(duplicate);
+		String bikeId = saved.getBike() == null ? null : saved.getBike().getId();
+		String shoeId = saved.getShoe() == null ? null : saved.getShoe().getId();
+		gearMileageService.applyDuplicateChange(bikeId, shoeId, saved.getDistanceKm(), false, true);
 		return true;
 	}
 

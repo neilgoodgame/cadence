@@ -13,6 +13,8 @@ import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
+import com.cadence.api.gear.Bike;
+import com.cadence.api.gear.BikeRepository;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.support.IntegrationTest;
@@ -42,6 +44,9 @@ class ActivityWriteToolsTest extends IntegrationTest {
 	@Autowired
 	private ActivityTagRepository activityTagRepository;
 
+	@Autowired
+	private BikeRepository bikeRepository;
+
 	@AfterEach
 	void clearAuthContext() {
 		AuthContextHolder.clear();
@@ -62,6 +67,14 @@ class ActivityWriteToolsTest extends IntegrationTest {
 		activity.setName("Morning Run");
 		activity.setStartDate(Instant.parse("2026-01-01T07:00:00Z"));
 		return activityRepository.save(activity);
+	}
+
+	private Bike newBike(User athlete, int distanceKm) {
+		Bike bike = new Bike();
+		bike.setAthlete(athlete);
+		bike.setName("Tarmac SL7");
+		bike.setDistanceKm(distanceKm);
+		return bikeRepository.save(bike);
 	}
 
 	private void authAs(String userId, String... scopes) {
@@ -151,6 +164,24 @@ class ActivityWriteToolsTest extends IntegrationTest {
 	}
 
 	@Test
+	void markDuplicateRetractsItsGearMileage() {
+		// Issue #498: a duplicate's distance must not double-count on its bike's mileage total
+		// alongside its primary's.
+		User athlete = newUser("write-tool-mark-duplicate-mileage-athlete@example.cc");
+		Bike bike = newBike(athlete, 142);
+		Activity primary = newActivity(athlete);
+		Activity duplicate = newActivity(athlete);
+		duplicate.setBike(bike);
+		duplicate.setDistanceKm(42.0);
+		activityRepository.save(duplicate);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		activityWriteTools.markDuplicate(duplicate.getId(), primary.getId());
+
+		assertThat(bikeRepository.findById(bike.getId()).orElseThrow().getDistanceKm()).isEqualTo(100);
+	}
+
+	@Test
 	void markDuplicateRejectsSelfLink() {
 		User athlete = newUser("write-tool-mark-duplicate-self-athlete@example.cc");
 		Activity activity = newActivity(athlete);
@@ -187,6 +218,24 @@ class ActivityWriteToolsTest extends IntegrationTest {
 	}
 
 	@Test
+	void unmarkDuplicateRestoresItsGearMileage() {
+		User athlete = newUser("write-tool-unmark-duplicate-mileage-athlete@example.cc");
+		Bike bike = newBike(athlete, 100);
+		Activity primary = newActivity(athlete);
+		Activity duplicate = newActivity(athlete);
+		duplicate.setBike(bike);
+		duplicate.setDistanceKm(42.0);
+		activityRepository.save(duplicate);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		activityWriteTools.markDuplicate(duplicate.getId(), primary.getId());
+		assertThat(bikeRepository.findById(bike.getId()).orElseThrow().getDistanceKm()).isEqualTo(58);
+
+		activityWriteTools.unmarkDuplicate(duplicate.getId());
+
+		assertThat(bikeRepository.findById(bike.getId()).orElseThrow().getDistanceKm()).isEqualTo(100);
+	}
+
+	@Test
 	void unmarkDuplicateIsANoOpWhenNotADuplicate() {
 		User athlete = newUser("write-tool-unmark-duplicate-noop-athlete@example.cc");
 		Activity activity = newActivity(athlete);
@@ -216,6 +265,29 @@ class ActivityWriteToolsTest extends IntegrationTest {
 				.isEqualTo(duplicateA.getId());
 		assertThat(activityRepository.findById(duplicateB.getId()).orElseThrow().getPrimaryActivity().getId())
 				.isEqualTo(duplicateA.getId());
+	}
+
+	@Test
+	void setPrimarySwapsGearMileageBetweenOldAndNewPrimary() {
+		// Issue #498: promoting a duplicate to primary must restore its own gear mileage and
+		// retract the (now-demoted) old primary's.
+		User athlete = newUser("write-tool-set-primary-mileage-athlete@example.cc");
+		Bike bike = newBike(athlete, 142);
+		Activity primary = newActivity(athlete);
+		primary.setBike(bike);
+		primary.setDistanceKm(40.0);
+		activityRepository.save(primary);
+		Activity duplicate = newActivity(athlete);
+		duplicate.setBike(bike);
+		duplicate.setDistanceKm(42.0);
+		activityRepository.save(duplicate);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		activityWriteTools.markDuplicate(duplicate.getId(), primary.getId());
+		assertThat(bikeRepository.findById(bike.getId()).orElseThrow().getDistanceKm()).isEqualTo(100);
+
+		activityWriteTools.setPrimary(duplicate.getId());
+
+		assertThat(bikeRepository.findById(bike.getId()).orElseThrow().getDistanceKm()).isEqualTo(102);
 	}
 
 	@Test

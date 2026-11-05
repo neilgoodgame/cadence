@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from django.test import TestCase
 
 from accounts.models import User
+from gear.models import Bike
 
 from ..overlap_detection import choose_primary, detect_and_resolve_overlap
 from .helpers import _make_activity
@@ -66,6 +67,18 @@ class OverlapDetectionTests(TestCase):
         zwift.refresh_from_db()
         self.assertEqual(garmin.primary_activity_id, zwift.id)
         self.assertIsNone(zwift.primary_activity_id)
+
+    def test_mark_mode_retracts_the_marked_duplicates_gear_mileage(self):
+        # Issue #498: the Garmin copy's distance must not double-count on the bike's mileage
+        # total alongside the Zwift copy's once it's marked as a duplicate.
+        bike = Bike.objects.create(athlete=self.athlete, name="Kickr bike", distance_km=142)
+        self._bike(device="Zwift", start_date=self.start, distance_km=42.0, bike=bike)
+        garmin = self._bike(device="Garmin", start_date=self.start + timedelta(seconds=5), distance_km=42.0, bike=bike)
+
+        detect_and_resolve_overlap(garmin, "mark")
+
+        bike.refresh_from_db()
+        self.assertEqual(bike.distance_km, 100)
 
     def test_mark_mode_picks_the_zwift_copy_as_primary_even_when_the_zwift_copy_is_the_newly_ingested_one(self):
         # Order of arrival shouldn't matter - the Garmin copy often arrives first (e.g. an

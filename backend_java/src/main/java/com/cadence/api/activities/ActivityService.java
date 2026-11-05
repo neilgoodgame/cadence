@@ -299,7 +299,9 @@ public class ActivityService {
 			oldShoeId = activity.getShoe() == null ? null : activity.getShoe().getId();
 			activity.setShoe(value == null ? null : resolveShoe(activity.getAthlete().getId(), (String) value));
 		}
-		if (body.containsKey("primary_activity_id")) {
+		boolean primaryActivityChanged = body.containsKey("primary_activity_id");
+		boolean wasDuplicate = activity.getPrimaryActivity() != null;
+		if (primaryActivityChanged) {
 			Object value = body.get("primary_activity_id");
 			activity.setPrimaryActivity(value == null ? null : resolvePrimaryActivity(activity, (String) value));
 		}
@@ -346,6 +348,9 @@ public class ActivityService {
 		if (shoeChanged) {
 			String newShoeId = saved.getShoe() == null ? null : saved.getShoe().getId();
 			gearMileageService.applyShoeChange(oldShoeId, newShoeId, saved.getDistanceKm());
+		}
+		if (primaryActivityChanged) {
+			applyDuplicateGearMileageChange(saved, wasDuplicate, saved.getPrimaryActivity() != null);
 		}
 		if (newlyMatchedWorkout != null) {
 			matchPreferenceService.applySideEffects(saved, newlyMatchedWorkout, saved.getAthlete());
@@ -416,6 +421,7 @@ public class ActivityService {
 		Activity primary = resolvePrimaryActivity(activity, primaryId);
 		activity.setPrimaryActivity(primary);
 		Activity saved = activityRepository.save(activity);
+		applyDuplicateGearMileageChange(saved, false, true);
 		recomputeAfterDuplicateChange(activity.getAthlete());
 		return saved;
 	}
@@ -430,6 +436,7 @@ public class ActivityService {
 		}
 		activity.setPrimaryActivity(null);
 		Activity saved = activityRepository.save(activity);
+		applyDuplicateGearMileageChange(saved, true, false);
 		recomputeAfterDuplicateChange(activity.getAthlete());
 		return saved;
 	}
@@ -453,11 +460,22 @@ public class ActivityService {
 			}
 		}
 		oldPrimary.setPrimaryActivity(activity);
-		activityRepository.save(oldPrimary);
+		Activity savedOldPrimary = activityRepository.save(oldPrimary);
 		activity.setPrimaryActivity(null);
 		Activity saved = activityRepository.save(activity);
+		applyDuplicateGearMileageChange(savedOldPrimary, false, true);
+		applyDuplicateGearMileageChange(saved, true, false);
 		recomputeAfterDuplicateChange(activity.getAthlete());
 		return saved;
+	}
+
+	/** Issue #498: shared by markDuplicate/unmarkDuplicate/setPrimary and updateActivity's own
+	 * primary_activity_id branch - a duplicate-marked activity's distance must not double-count
+	 * on its bike/shoe's mileage total alongside its primary's. */
+	private void applyDuplicateGearMileageChange(Activity activity, boolean wasDuplicate, boolean isDuplicate) {
+		String bikeId = activity.getBike() == null ? null : activity.getBike().getId();
+		String shoeId = activity.getShoe() == null ? null : activity.getShoe().getId();
+		gearMileageService.applyDuplicateChange(bikeId, shoeId, activity.getDistanceKm(), wasDuplicate, isDuplicate);
 	}
 
 	/** Shared by markDuplicate/unmarkDuplicate/setPrimary - same cascade

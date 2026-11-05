@@ -8,6 +8,8 @@ the two in sync when changing either.
 
 from typing import TypedDict
 
+from gear.mileage import apply_duplicate_change
+
 from .models import Activity
 from .overlaps import find_overlaps
 
@@ -78,6 +80,7 @@ def _mark(activity: Activity, other_id: str) -> bool:
         return False
     duplicate.primary_activity = primary
     duplicate.save(update_fields=["primary_activity"])
+    apply_duplicate_change(duplicate, was_duplicate=False, is_duplicate=True)
     return True
 
 

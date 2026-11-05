@@ -59,4 +59,27 @@ public class GearMileageService {
 		applyShoeDelta(oldShoeId, -delta);
 		applyShoeDelta(newShoeId, delta);
 	}
+
+	/** Issue #498: a duplicate-marked activity's distance must not double-count on its bike/
+	 * shoe's mileage total alongside its primary's. Mirrors clearing the bike/shoe link for
+	 * mileage purposes when an activity becomes a duplicate, and restoring it when it stops
+	 * being one - but the link itself is left untouched, so un-marking restores the exact same
+	 * bike/shoe without the caller re-specifying it. A no-op if duplicate status didn't
+	 * actually change (e.g. unmarkDuplicate called on an activity that wasn't a duplicate).
+	 * Takes the raw bike/shoe ids and distance rather than an Activity, matching
+	 * applyBikeChange/applyShoeChange above - keeps this service from depending on the
+	 * activities package. */
+	public void applyDuplicateChange(String bikeId, String shoeId, double distanceKm, boolean wasDuplicate, boolean isDuplicate) {
+		if (wasDuplicate == isDuplicate) {
+			return;
+		}
+		if (isDuplicate) {
+			applyBikeChange(bikeId, null, distanceKm);
+			applyShoeChange(shoeId, null, distanceKm);
+		}
+		else {
+			applyBikeChange(null, bikeId, distanceKm);
+			applyShoeChange(null, shoeId, distanceKm);
+		}
+	}
 }

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.cadence.api.activities.ActivityOverlapDetectionService.OverlapResolution;
 import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.gear.Bike;
+import com.cadence.api.gear.BikeRepository;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -26,6 +28,9 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 	@Autowired
 	private UserRepository userRepository;
 
+	@Autowired
+	private BikeRepository bikeRepository;
+
 	private User newUser(String email) {
 		User user = new User();
 		user.setEmail(email);
@@ -35,6 +40,10 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 	}
 
 	private Activity newActivity(User athlete, String device, Instant startDate, int elapsedSeconds) {
+		return newActivity(athlete, device, startDate, elapsedSeconds, null, 0);
+	}
+
+	private Activity newActivity(User athlete, String device, Instant startDate, int elapsedSeconds, Bike bike, double distanceKm) {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
 		activity.setSport(Sport.BIKE);
@@ -43,7 +52,17 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 		activity.setStartDate(startDate);
 		activity.setElapsedSeconds(elapsedSeconds);
 		activity.setMovingTime(elapsedSeconds);
+		activity.setBike(bike);
+		activity.setDistanceKm(distanceKm);
 		return activityRepository.save(activity);
+	}
+
+	private Bike newBike(User athlete, int distanceKm) {
+		Bike bike = new Bike();
+		bike.setAthlete(athlete);
+		bike.setName("Kickr bike");
+		bike.setDistanceKm(distanceKm);
+		return bikeRepository.save(bike);
 	}
 
 	@Test
@@ -104,6 +123,21 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 		assertThat(reloadedGarmin.getPrimaryActivity()).isNotNull();
 		assertThat(reloadedGarmin.getPrimaryActivity().getId()).isEqualTo(zwift.getId());
 		assertThat(activityRepository.findById(zwift.getId()).orElseThrow().getPrimaryActivity()).isNull();
+	}
+
+	@Test
+	void markModeRetractsTheMarkedDuplicatesGearMileage() {
+		// Issue #498: the Garmin copy's distance must not double-count on the bike's mileage
+		// total alongside the Zwift copy's once it's marked as a duplicate.
+		User athlete = newUser("overlap-mark-mileage@example.cc");
+		Bike bike = newBike(athlete, 142);
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		newActivity(athlete, "Zwift", start, 3600, bike, 42.0);
+		Activity garmin = newActivity(athlete, "Garmin", start.plusSeconds(5), 3600, bike, 42.0);
+
+		detectionService.detectAndResolve(garmin, OverlapHandling.MARK);
+
+		assertThat(bikeRepository.findById(bike.getId()).orElseThrow().getDistanceKm()).isEqualTo(100);
 	}
 
 	@Test

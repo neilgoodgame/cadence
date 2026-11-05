@@ -19,7 +19,7 @@ from core.exceptions import ConflictError, UnprocessableEntityError
 from core.pagination import CadenceCursorPagination
 from core.permissions import user_may_read, user_may_write
 from courses.views import preview_settings
-from gear.mileage import apply_bike_change, apply_shoe_change
+from gear.mileage import apply_bike_change, apply_duplicate_change, apply_shoe_change
 from gear.models import Bike, Shoe
 from uploads.processing import (
     backfill_extended_stats,
@@ -202,6 +202,7 @@ def mark_duplicate(activity_id: str, primary_id: str) -> Activity:
     primary = _resolve_primary_activity(activity, primary_id)
     activity.primary_activity = primary
     activity.save(update_fields=["primary_activity"])
+    apply_duplicate_change(activity, was_duplicate=False, is_duplicate=True)
     _recompute_after_duplicate_change(activity.athlete)
     return activity
 
@@ -214,6 +215,7 @@ def unmark_duplicate(activity_id: str) -> Activity:
         return activity
     activity.primary_activity = None
     activity.save(update_fields=["primary_activity"])
+    apply_duplicate_change(activity, was_duplicate=True, is_duplicate=False)
     _recompute_after_duplicate_change(activity.athlete)
     return activity
 
@@ -236,6 +238,8 @@ def set_primary(activity_id: str) -> Activity:
     old_primary.save(update_fields=["primary_activity"])
     activity.primary_activity = None
     activity.save(update_fields=["primary_activity"])
+    apply_duplicate_change(old_primary, was_duplicate=False, is_duplicate=True)
+    apply_duplicate_change(activity, was_duplicate=True, is_duplicate=False)
     _recompute_after_duplicate_change(activity.athlete)
     return activity
 
@@ -505,8 +509,10 @@ class ActivityDetailView(APIView):
             )
             new_shoe_id = activity.shoe_id
             update_fields.append("shoe")
+        old_primary_activity_id = None
         if "primary_activity_id" in data:
             primary_id = data["primary_activity_id"]
+            old_primary_activity_id = activity.primary_activity_id
             activity.primary_activity = None if primary_id is None else _resolve_primary_activity(activity, primary_id)
             update_fields.append("primary_activity")
         if "start_weight_kg" in data:
@@ -549,6 +555,12 @@ class ActivityDetailView(APIView):
             apply_bike_change(old_bike_id, new_bike_id, activity.distance_km)
         if "shoe_id" in data:
             apply_shoe_change(old_shoe_id, new_shoe_id, activity.distance_km)
+        if "primary_activity_id" in data:
+            apply_duplicate_change(
+                activity,
+                was_duplicate=old_primary_activity_id is not None,
+                is_duplicate=activity.primary_activity_id is not None,
+            )
         if newly_matched_workout is not None:
             apply_match_side_effects(activity, newly_matched_workout, activity.athlete)
         return Response(ActivitySerializer(activity).data)
