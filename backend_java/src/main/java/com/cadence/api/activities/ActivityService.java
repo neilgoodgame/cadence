@@ -492,14 +492,15 @@ public class ActivityService {
 		gearMileageService.applyDuplicateChange(bikeId, shoeId, activity.getDistanceKm(), wasDuplicate, isDuplicate);
 	}
 
-	/** Shared by markDuplicate/unmarkDuplicate/setPrimary (and, package-visible,
-	 * DuplicateResolutionBatchService's resolveDuplicatesBatch/undoBatch) - same cascade
+	/** Shared by markDuplicate/unmarkDuplicate/setPrimary, DuplicateResolutionBatchService's
+	 * resolveDuplicatesBatch/undoBatch, and the uploads.batch package's own ingest-time and
+	 * batch-finalize auto-mark paths (ParseFileTasklet, UploadBatchFinalizer) - same cascade
 	 * OverlapBackfillRunner's apply mode runs per affected athlete: rebuild every threshold
 	 * field's ledger (duplicate-sourced best efforts are no longer, or newly are, eligible
 	 * candidates), then re-rate TSS/intensity against the rebuilt ledger. The fitness trend reads
 	 * Activity.tss live and already excludes duplicates, so there's no separate series to
-	 * rebuild. */
-	void recomputeAfterDuplicateChange(User athlete) {
+	 * rebuild. Public rather than package-visible since uploads.batch is a different package. */
+	public void recomputeAfterDuplicateChange(User athlete) {
 		for (ThresholdField field : ThresholdField.values()) {
 			thresholdHistoryService.rebuildHistory(athlete, field, (current, total) -> { });
 		}

@@ -3,6 +3,8 @@ package com.cadence.api.uploads.batch;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityOverlapDetectionService;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.OverlapAction;
 import com.cadence.api.activities.DistanceSource;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
@@ -63,10 +65,12 @@ public class ParseFileTasklet implements Tasklet {
 	private final CadenceProperties properties;
 	private final GearMileageService gearMileageService;
 	private final ActivityOverlapDetectionService overlapDetectionService;
+	private final ActivityService activityService;
 
 	public ParseFileTasklet(UploadJobContextRegistry contextRegistry, UploadRepository uploadRepository,
 			ActivityRepository activityRepository, LapRepository lapRepository, CadenceProperties properties,
-			GearMileageService gearMileageService, ActivityOverlapDetectionService overlapDetectionService) {
+			GearMileageService gearMileageService, ActivityOverlapDetectionService overlapDetectionService,
+			ActivityService activityService) {
 		this.contextRegistry = contextRegistry;
 		this.uploadRepository = uploadRepository;
 		this.activityRepository = activityRepository;
@@ -74,6 +78,7 @@ public class ParseFileTasklet implements Tasklet {
 		this.properties = properties;
 		this.gearMileageService = gearMileageService;
 		this.overlapDetectionService = overlapDetectionService;
+		this.activityService = activityService;
 	}
 
 	@Override
@@ -195,6 +200,13 @@ public class ParseFileTasklet implements Tasklet {
 				var first = overlaps.get(0);
 				upload.setOverlapOtherActivityId(first.otherActivityId());
 				upload.setOverlapAction(first.action());
+				// A duplicate auto-marked here can retroactively disqualify a best effort from
+				// the threshold ledger just like a manual markDuplicate does - skip for a batch
+				// child; UploadBatchFinalizer runs this once for the whole batch instead of once
+				// per file.
+				if (first.action() == OverlapAction.MARKED && upload.getBatch() == null) {
+					activityService.recomputeAfterDuplicateChange(upload.getAthlete());
+				}
 			}
 
 			for (ParsedActivity.LapSummary lapSummary : parsed.laps()) {

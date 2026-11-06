@@ -7,7 +7,7 @@ from activities.serializers import ActivitySerializer
 from webhooks.events import fire_event
 
 from .models import Upload, UploadBatch
-from .processing import UploadProcessingError, ingest_upload
+from .processing import UploadProcessingError, ingest_upload, recompute_after_duplicate_change
 from .serializers import UploadBatchSerializer
 
 
@@ -47,6 +47,11 @@ def _maybe_finalize_batch(batch_id: str) -> None:
     batch = UploadBatch.objects.get(pk=batch_id)
     if batch.uploads.filter(status__in=["queued", "processing"]).exists():
         return
+    # Issue #498: runs once for the whole batch, rather than once per marked file (see
+    # processing.ingest_upload's own call site, skipped for a batch child precisely so this is
+    # the one place it happens).
+    if batch.uploads.filter(overlap_action="marked").exists():
+        recompute_after_duplicate_change(batch.athlete)
     batch.status = "completed"
     batch.completed_at = timezone.now()
     batch.save(update_fields=["status", "completed_at"])

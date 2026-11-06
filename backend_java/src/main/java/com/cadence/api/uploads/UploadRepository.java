@@ -1,5 +1,6 @@
 package com.cadence.api.uploads;
 
+import com.cadence.api.activities.OverlapAction;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -28,6 +29,8 @@ public interface UploadRepository extends JpaRepository<Upload, String> {
 	List<Upload> findByBatchIdWithActivity(@Param("batchId") String batchId);
 
 	long countByBatchIdAndStatusIn(String batchId, List<UploadStatus> statuses);
+
+	boolean existsByBatchIdAndOverlapAction(String batchId, OverlapAction overlapAction);
 
 	@Query("SELECT u.storedPath FROM Upload u WHERE u.athlete.id = :athleteId AND (u.status <> com.cadence.api.uploads.UploadStatus.READY OR u.activity IS NULL)")
 	List<String> findPurgeableStoredPathsByAthleteId(@Param("athleteId") String athleteId);
