@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -7,6 +8,8 @@ from accounts.models import User
 from activities.models import Activity
 
 from ..fixtures_helpers import build_tcx, build_zip
+from ..models import Upload, UploadBatch
+from ..tasks import _maybe_finalize_batch
 from .helpers import _bearer_client
 
 
@@ -186,3 +189,90 @@ class OverlapOnSingleUploadTests(TestCase):
         self.assertIsNone(poll["overlap_action"])
         for activity in Activity.objects.filter(athlete=athlete):
             self.assertIsNone(activity.primary_activity_id)
+
+
+class RecomputeAfterIngestTimeMarkTests(TestCase):
+    """Issue #498: an ingest-time auto-mark must trigger the same post-mark recompute cascade
+    (processing.recompute_after_duplicate_change) that mark_duplicate/unmark_duplicate/
+    set_primary and resolve_duplicates_batch already run - otherwise a duplicate-sourced best
+    effort stays an eligible threshold candidate, and TSS/intensity elsewhere stays stale, until
+    something else happens to trigger a rebuild. Patches the cascade itself rather than building
+    a full threshold-ledger scenario - its own correctness (what it rebuilds, and why) is covered
+    directly by activities/tests/test_duplicate_batches.py and athletes/tests.py's own
+    rebuild_history_stream tests; this only proves every auto-mark path reaches it, exactly once
+    per upload or batch."""
+
+    def setUp(self):
+        self.start = datetime(2026, 6, 1, 18, 0, 0, tzinfo=UTC)
+
+    @patch("uploads.processing.recompute_after_duplicate_change")
+    def test_single_upload_auto_mark_triggers_the_cascade(self, mock_recompute):
+        athlete = User.objects.create_user(
+            email="e2e-single-overlap-recompute@example.cc", password="x", overlap_handling="mark"
+        )
+        client = _bearer_client(athlete)
+        client.post(
+            "/v1/activities",
+            {"file": SimpleUploadedFile("a.tcx", build_tcx(self.start, duration_s=60, power=200))},
+            format="multipart",
+        )
+        mock_recompute.assert_not_called()  # nothing to overlap with yet
+
+        second = client.post(
+            "/v1/activities",
+            {"file": SimpleUploadedFile("b.tcx", build_tcx(self.start, duration_s=60, power=205, hr=150))},
+            format="multipart",
+        )
+        poll = client.get(f"/v1/uploads/{second.json()['id']}").json()
+        self.assertEqual(poll["overlap_action"], "marked")
+        mock_recompute.assert_called_once_with(athlete)
+
+    @patch("uploads.processing.recompute_after_duplicate_change")
+    def test_flag_only_mode_never_triggers_the_cascade(self, mock_recompute):
+        athlete = User.objects.create_user(
+            email="e2e-single-overlap-recompute-flag@example.cc", password="x", overlap_handling="flag"
+        )
+        client = _bearer_client(athlete)
+        client.post(
+            "/v1/activities",
+            {"file": SimpleUploadedFile("a.tcx", build_tcx(self.start, duration_s=60, power=200))},
+            format="multipart",
+        )
+        second = client.post(
+            "/v1/activities",
+            {"file": SimpleUploadedFile("b.tcx", build_tcx(self.start, duration_s=60, power=205, hr=150))},
+            format="multipart",
+        )
+        poll = client.get(f"/v1/uploads/{second.json()['id']}").json()
+
+        self.assertEqual(poll["overlap_action"], "flagged")
+        mock_recompute.assert_not_called()
+
+    # Exercises _maybe_finalize_batch directly against a batch already settled in the DB,
+    # rather than through the real HTTP/Celery ingest pipeline: with CELERY_ALWAYS_EAGER (as in
+    # tests), create_batch_from_files' own loop creates and eagerly processes each upload one at
+    # a time, so _maybe_finalize_batch can see a transient "no queued/processing siblings" state
+    # for a batch whose later files simply haven't been created yet - a timing artifact specific
+    # to synchronous-task tests (a real deployment enqueues every file before any worker starts
+    # on the first one), not something this fix needs to paper over. Testing the function's own
+    # logic directly - once settled, recompute exactly once no matter how many children were
+    # marked - sidesteps that artifact entirely.
+    @patch("uploads.tasks.recompute_after_duplicate_change")
+    def test_batch_finalize_runs_the_cascade_once_regardless_of_how_many_uploads_were_marked(self, mock_recompute):
+        athlete = User.objects.create_user(email="e2e-batch-overlap-recompute@example.cc", password="x")
+        batch = UploadBatch.objects.create(
+            athlete=athlete, filename="dupes.zip", on_duplicate="skip", on_overlap="mark", status="processing"
+        )
+        for i in range(4):
+            Upload.objects.create(
+                athlete=athlete,
+                batch=batch,
+                filename=f"f{i}.tcx",
+                file_hash=f"hash{i}",
+                status="ready",
+                overlap_action="marked" if i in (1, 3) else "",
+            )
+
+        _maybe_finalize_batch(batch.id)
+
+        mock_recompute.assert_called_once_with(athlete)

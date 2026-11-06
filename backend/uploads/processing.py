@@ -12,7 +12,7 @@ from activities.match_preferences import apply_match_rename, apply_match_side_ef
 from activities.models import Activity, ActivityDurability, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
 from activities.overlap_detection import detect_and_resolve_overlap
 from athletes import threshold_suggestions
-from athletes.threshold_history import recompute_for_activity
+from athletes.threshold_history import rebuild_history_stream, recompute_for_activity
 from athletes.zones import get_or_create_zone_set, reference_for
 from gear.mileage import apply_shoe_change
 from scheduling.models import ScheduledWorkout
@@ -871,6 +871,24 @@ def recompute_tss_for_athlete(athlete: User) -> int:
     return updated
 
 
+def recompute_after_duplicate_change(athlete: User) -> None:
+    """Issue #498: shared by mark_duplicate/unmark_duplicate/set_primary (activities/views.py),
+    resolve_duplicates_batch/undo_batch (activities/duplicate_batches.py), and this module's own
+    ingest-time and batch-finalize auto-mark paths below - the same cascade the overlap backfill
+    command's apply mode runs per affected athlete: rebuild every threshold field's ledger
+    (duplicate-sourced best efforts are no longer, or newly are, eligible candidates), then
+    re-rate TSS/intensity against the rebuilt ledger. The fitness trend reads Activity.tss live
+    and already excludes duplicates, so there's no separate series to rebuild.
+
+    Lives here rather than in activities/views.py (where it originated) because this module
+    needs it too, and activities/views.py already imports recompute_tss_for_athlete from here -
+    the reverse import would be circular."""
+    for field in ("ftp", "critical_run_power", "threshold_pace"):
+        for _ in rebuild_history_stream(athlete, field):
+            pass
+    recompute_tss_for_athlete(athlete)
+
+
 def compute_edwards_trimp(athlete: User, heartrate_series: Sequence[float | None]) -> float | None:
     """Edwards' TRIMP: sum over HR zones of (minutes in zone * zone number 1-5). Chosen
     over Banister's original formula because it needs no resting-HR baseline - it reuses
@@ -1601,5 +1619,11 @@ def _ingest_activity(
         upload.overlap_other_activity_id = overlaps[0]["other_activity_id"]
         upload.overlap_action = overlaps[0]["action"]
         upload.save(update_fields=["overlap_other_activity", "overlap_action"])
+        # A duplicate auto-marked here can retroactively disqualify a best effort from the
+        # threshold ledger just like a manual mark_duplicate does (see
+        # recompute_after_duplicate_change) - skip for a batch child; uploads/tasks.py's
+        # _maybe_finalize_batch runs this once for the whole batch instead of once per file.
+        if overlaps[0]["action"] == "marked" and not upload.batch_id:
+            recompute_after_duplicate_change(athlete)
 
     return activity

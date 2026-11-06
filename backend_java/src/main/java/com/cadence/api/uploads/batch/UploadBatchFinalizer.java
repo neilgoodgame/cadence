@@ -1,5 +1,7 @@
 package com.cadence.api.uploads.batch;
 
+import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.OverlapAction;
 import com.cadence.api.uploads.UploadBatch;
 import com.cadence.api.uploads.UploadBatchRepository;
 import com.cadence.api.uploads.UploadBatchStatus;
@@ -24,12 +26,14 @@ public class UploadBatchFinalizer {
 	private final UploadRepository uploadRepository;
 	private final UploadBatchRepository uploadBatchRepository;
 	private final ApplicationEventPublisher eventPublisher;
+	private final ActivityService activityService;
 
 	public UploadBatchFinalizer(UploadRepository uploadRepository, UploadBatchRepository uploadBatchRepository,
-			ApplicationEventPublisher eventPublisher) {
+			ApplicationEventPublisher eventPublisher, ActivityService activityService) {
 		this.uploadRepository = uploadRepository;
 		this.uploadBatchRepository = uploadBatchRepository;
 		this.eventPublisher = eventPublisher;
+		this.activityService = activityService;
 	}
 
 	@Transactional
@@ -41,6 +45,12 @@ public class UploadBatchFinalizer {
 		UploadBatch batch = uploadBatchRepository.findById(batchId).orElse(null);
 		if (batch == null || batch.getStatus() == UploadBatchStatus.COMPLETED) {
 			return;
+		}
+		// Issue #498: runs once for the whole batch, rather than once per marked file (see
+		// ParseFileTasklet's own call site, skipped for a batch child precisely so this is the
+		// one place it happens).
+		if (uploadRepository.existsByBatchIdAndOverlapAction(batchId, OverlapAction.MARKED)) {
+			activityService.recomputeAfterDuplicateChange(batch.getAthlete());
 		}
 		batch.setStatus(UploadBatchStatus.COMPLETED);
 		batch.setCompletedAt(Instant.now());

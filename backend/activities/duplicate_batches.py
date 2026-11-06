@@ -14,11 +14,11 @@ from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
 from gear.mileage import apply_duplicate_change
+from uploads.processing import recompute_after_duplicate_change
 
 from .models import Activity, DuplicateResolutionBatch, DuplicateResolutionEntry
 from .overlap_detection import preview_resolution, resolve_pair
 from .overlaps import find_overlaps
-from .views import _recompute_after_duplicate_change
 
 # A deliberately bounded, one-shot action - unlike the backfill command (meant to walk an
 # athlete's entire history unattended), this keeps a single MCP call's cost, and the undo
@@ -182,7 +182,7 @@ def resolve_duplicates_batch(
             affected = True
 
     if affected:
-        _recompute_after_duplicate_change(athlete)
+        recompute_after_duplicate_change(athlete)
 
     return {"dry_run": False, "batch_id": batch.id, "results": results}
 
@@ -215,6 +215,6 @@ def undo_batch(athlete: User, batch_id: str) -> dict[str, Any]:
     batch.save(update_fields=["undone_at"])
 
     if affected:
-        _recompute_after_duplicate_change(athlete)
+        recompute_after_duplicate_change(athlete)
 
     return {"batch_id": batch.id, "reverted_count": reverted, "skipped_count": skipped}
