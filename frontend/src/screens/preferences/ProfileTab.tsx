@@ -130,6 +130,7 @@ export function ProfileTab() {
     decoupling_hot_air_temp: user?.decoupling_hot_air_temp ?? 30.0,
     decoupling_hot_skin_temp: user?.decoupling_hot_skin_temp ?? 34.0,
     default_shoe_limit_km: user?.default_shoe_limit_km ?? 800,
+    overlap_handling: user?.overlap_handling ?? "off",
   });
 
   const mutation = useMutation({
@@ -423,6 +424,31 @@ export function ProfileTab() {
           <p style={{ fontSize: 12, color: "var(--ink3)", margin: "-6px 0 0", lineHeight: 1.5 }}>
             Applied to a new shoe's wear limit whenever one isn't set explicitly - both the "Add
             shoes" form and a gear CSV import. Doesn't change any shoe you've already added.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>Import</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Field label="Overlapping activities">
+            <select
+              style={inputStyle}
+              value={form.overlap_handling ?? "off"}
+              onChange={(e) => setForm({ ...form, overlap_handling: e.target.value as AthleteUpdate["overlap_handling"] })}
+            >
+              <option value="off">Off</option>
+              <option value="flag">Flag only</option>
+              <option value="mark">Mark the duplicate</option>
+              <option value="merge">Merge (coming soon — currently behaves like Flag)</option>
+            </select>
+          </Field>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: "-6px 0 0", lineHeight: 1.5 }}>
+            Default for a new import when the same ride is uploaded twice (e.g. once from Zwift,
+            once from Garmin) - see GET /v1/activities/overlaps. "Flag only" leaves both
+            activities as-is but marks the pair unresolved; "Mark the duplicate" additionally
+            hides the lower-ranked copy's stats from totals. Each import can override this on
+            its own, under Import settings.
           </p>
         </div>
       </div>
