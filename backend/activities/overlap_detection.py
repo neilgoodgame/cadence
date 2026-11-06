@@ -21,6 +21,7 @@ MAX_PAIRS_PER_ACTIVITY = 10
 class OverlapResolution(TypedDict):
     other_activity_id: str
     action: str  # "flagged" | "marked"
+    primary_activity_id: str | None
 
 
 def _is_multisport_linked(activity: Activity) -> bool:
@@ -69,32 +70,49 @@ def _can_link(duplicate: Activity, primary: Activity) -> bool:
     return not duplicate.duplicate_activities.exists()
 
 
-def _mark(activity: Activity, other_id: str) -> bool:
+def _mark(activity: Activity, other_id: str) -> Activity | None:
+    """Returns the primary if the pair was successfully linked, None if it couldn't be
+    (see _can_link) or `other_id` no longer exists."""
     try:
         other = Activity.objects.get(pk=other_id)
     except Activity.DoesNotExist:
-        return False
+        return None
     primary = choose_primary(activity, other)
     duplicate = other if primary is activity else activity
     if not _can_link(duplicate, primary):
-        return False
+        return None
     duplicate.primary_activity = primary
     duplicate.save(update_fields=["primary_activity"])
     apply_duplicate_change(duplicate, was_duplicate=False, is_duplicate=True)
-    return True
+    return primary
 
 
 def resolve_pair(activity_id: str, other_activity_id: str, mode: str) -> OverlapResolution:
     """Resolves one already-found unresolved pair - shared by detect_and_resolve_overlap
-    (anchored to one newly-ingested activity) and the issue #498 backfill command
-    (backfill_overlaps), which instead walks every unresolved pair the overlap query returns for
-    an athlete's whole history."""
+    (anchored to one newly-ingested activity), the issue #498 backfill command
+    (backfill_overlaps), and resolve_duplicates_batch, which instead walk every unresolved pair
+    the overlap query returns for an athlete's whole history or a bounded batch respectively."""
     activity = Activity.objects.get(pk=activity_id)
-    if mode == "mark" and _mark(activity, other_activity_id):
-        return {"other_activity_id": other_activity_id, "action": "marked"}
+    if mode == "mark":
+        primary = _mark(activity, other_activity_id)
+        if primary is not None:
+            return {"other_activity_id": other_activity_id, "action": "marked", "primary_activity_id": primary.id}
     # FLAG, or MERGE falling back to FLAG (see module docstring) - also where MARK lands when the
     # pair turned out not to be linkable (see _can_link).
-    return {"other_activity_id": other_activity_id, "action": "flagged"}
+    return {"other_activity_id": other_activity_id, "action": "flagged", "primary_activity_id": None}
+
+
+def preview_resolution(activity_id: str, other_activity_id: str, mode: str) -> OverlapResolution:
+    """Non-mutating counterpart to resolve_pair - the exact same choose_primary/_can_link
+    decision, without writing anything. Used by resolve_duplicates_batch's dry_run mode."""
+    activity = Activity.objects.get(pk=activity_id)
+    other = Activity.objects.get(pk=other_activity_id)
+    if mode == "mark":
+        primary = choose_primary(activity, other)
+        duplicate = other if primary is activity else activity
+        if _can_link(duplicate, primary):
+            return {"other_activity_id": other_activity_id, "action": "marked", "primary_activity_id": primary.id}
+    return {"other_activity_id": other_activity_id, "action": "flagged", "primary_activity_id": None}
 
 
 def detect_and_resolve_overlap(activity: Activity, mode: str) -> list[OverlapResolution]:

@@ -581,6 +581,82 @@ class ActivityToolsTests(TestCase):
         self.assertEqual(result["data"][0]["anchor"]["id"], garmin.id)
         self.assertEqual(result["data"][0]["other"]["id"], zwift.id)
 
+    def test_resolve_duplicates_batch_dry_run_previews_without_mutating_anything(self) -> None:
+        athlete = User.objects.create_user(email="mcp-batch-dry-run@example.cc", password="x", name="Athlete")
+        start = timezone.now()
+        zwift = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            device="Zwift",
+            name="Zwift",
+            start_date=start,
+            moving_time=3600,
+            elapsed_seconds=3600,
+            distance_km=30,
+        )
+        garmin = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            device="Garmin",
+            name="Garmin",
+            start_date=start + timedelta(seconds=5),
+            moving_time=3600,
+            elapsed_seconds=3600,
+            distance_km=30,
+        )
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.resolve_duplicates_batch(action="mark", pairs=[[garmin.id, zwift.id]])
+
+        self.assertTrue(result["dry_run"])
+        self.assertIsNone(result["batch_id"])
+        self.assertEqual(result["results"][0]["action"], "marked")
+        self.assertEqual(result["results"][0]["primary_activity_id"], zwift.id)
+        garmin.refresh_from_db()
+        self.assertIsNone(garmin.primary_activity_id)
+
+    def test_resolve_duplicates_batch_apply_marks_and_undo_batch_reverses_it(self) -> None:
+        athlete = User.objects.create_user(email="mcp-batch-apply@example.cc", password="x", name="Athlete")
+        start = timezone.now()
+        zwift = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            device="Zwift",
+            name="Zwift",
+            start_date=start,
+            moving_time=3600,
+            elapsed_seconds=3600,
+            distance_km=30,
+        )
+        garmin = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            device="Garmin",
+            name="Garmin",
+            start_date=start + timedelta(seconds=5),
+            moving_time=3600,
+            elapsed_seconds=3600,
+            distance_km=30,
+        )
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.resolve_duplicates_batch(action="mark", pairs=[[garmin.id, zwift.id]], dry_run=False)
+
+        self.assertFalse(result["dry_run"])
+        self.assertIsNotNone(result["batch_id"])
+        garmin.refresh_from_db()
+        self.assertEqual(garmin.primary_activity_id, zwift.id)
+
+        undo_result = tools.undo_batch(batch_id=result["batch_id"])
+
+        self.assertEqual(undo_result["reverted_count"], 1)
+        garmin.refresh_from_db()
+        self.assertIsNone(garmin.primary_activity_id)
+
     def test_get_activity_includes_average_air_temperature_and_humidity(self) -> None:
         athlete = User.objects.create_user(email="mcp-activity-env@example.cc", password="x", name="Athlete")
         activity = Activity.objects.create(

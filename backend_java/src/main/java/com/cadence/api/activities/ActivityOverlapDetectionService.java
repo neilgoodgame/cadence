@@ -46,7 +46,7 @@ public class ActivityOverlapDetectionService {
 		this.gearMileageService = gearMileageService;
 	}
 
-	public record OverlapResolution(String otherActivityId, OverlapAction action) {
+	public record OverlapResolution(String otherActivityId, OverlapAction action, String primaryActivityId) {
 	}
 
 	@Transactional
@@ -82,34 +82,56 @@ public class ActivityOverlapDetectionService {
 	}
 
 	private OverlapResolution resolvePair(Activity activity, String otherId, OverlapHandling mode) {
-		if (mode == OverlapHandling.MARK && mark(activity, otherId)) {
-			return new OverlapResolution(otherId, OverlapAction.MARKED);
+		if (mode == OverlapHandling.MARK) {
+			Activity primary = mark(activity, otherId);
+			if (primary != null) {
+				return new OverlapResolution(otherId, OverlapAction.MARKED, primary.getId());
+			}
 		}
 		// FLAG, or MERGE falling back to FLAG (see class Javadoc) - also where MARK lands when the
 		// pair turned out not to be linkable (see canLink).
-		return new OverlapResolution(otherId, OverlapAction.FLAGGED);
+		return new OverlapResolution(otherId, OverlapAction.FLAGGED, null);
 	}
 
-	/** @return true if {@code activity} and {@code other} were linked (one of them saved as the
-	 * other's duplicate); false if the pair couldn't be safely linked (see {@link #canLink}), in
-	 * which case the caller reports it as merely flagged instead. */
-	private boolean mark(Activity activity, String otherId) {
+	/** @return the primary if {@code activity} and {@code other} were linked (one of them saved
+	 * as the other's duplicate); null if the pair couldn't be safely linked (see {@link
+	 * #canLink}), in which case the caller reports it as merely flagged instead. */
+	private Activity mark(Activity activity, String otherId) {
 		Activity other = activityRepository.findById(otherId).orElse(null);
 		if (other == null) {
-			return false;
+			return null;
 		}
 		boolean activityIsPrimary = choosePrimary(activity, other) == activity;
 		Activity primary = activityIsPrimary ? activity : other;
 		Activity duplicate = activityIsPrimary ? other : activity;
 		if (!canLink(duplicate, primary)) {
-			return false;
+			return null;
 		}
 		duplicate.setPrimaryActivity(primary);
 		Activity saved = activityRepository.save(duplicate);
 		String bikeId = saved.getBike() == null ? null : saved.getBike().getId();
 		String shoeId = saved.getShoe() == null ? null : saved.getShoe().getId();
 		gearMileageService.applyDuplicateChange(bikeId, shoeId, saved.getDistanceKm(), false, true);
-		return true;
+		return primary;
+	}
+
+	/** Non-mutating counterpart to {@link #resolvePair} - the exact same {@link #choosePrimary}/
+	 * {@link #canLink} decision, without writing anything. Used by
+	 * {@code DuplicateResolutionBatchService}'s dry-run mode. */
+	public OverlapResolution previewResolution(String activityId, String otherId, OverlapHandling mode) {
+		Activity activity = activityRepository.findById(activityId)
+				.orElseThrow(() -> new IllegalStateException("No such activity: " + activityId));
+		Activity other = activityRepository.findById(otherId)
+				.orElseThrow(() -> new IllegalStateException("No such activity: " + otherId));
+		if (mode == OverlapHandling.MARK) {
+			boolean activityIsPrimary = choosePrimary(activity, other) == activity;
+			Activity primary = activityIsPrimary ? activity : other;
+			Activity duplicate = activityIsPrimary ? other : activity;
+			if (canLink(duplicate, primary)) {
+				return new OverlapResolution(otherId, OverlapAction.MARKED, primary.getId());
+			}
+		}
+		return new OverlapResolution(otherId, OverlapAction.FLAGGED, null);
 	}
 
 	/** Mirrors {@code ActivityService.resolvePrimaryActivity}'s validation for the manual
