@@ -96,7 +96,7 @@ class UploadConcurrencyIntegrationTest extends IntegrationTest {
 					go.await();
 					MockMultipartFile file = new MockMultipartFile(
 							"file", "running_outdoor_marathon.fit", "application/octet-stream", fitBytes);
-					Upload upload = uploadService.createSingleUpload(athlete, file, null, null, null, null);
+					Upload upload = uploadService.createSingleUpload(athlete, file, null, null, null, null, null);
 					uploadIds.add(upload.getId());
 				}
 				catch (Exception e) {

@@ -95,3 +95,94 @@ class OverlapOnImportTests(TestCase):
         self.assertEqual(with_action[0]["overlap_action"], "flagged")
         for activity in Activity.objects.filter(athlete=athlete):
             self.assertIsNone(activity.primary_activity_id)
+
+
+class OverlapOnSingleUploadTests(TestCase):
+    """Same wiring as OverlapOnImportTests, for the single (non-batch) POST /v1/activities
+    upload - a pre-existing gap this issue's own "on_overlap on the single-file upload
+    endpoint" item closes: a lone file had no way to carry a per-request override at all,
+    always falling back to the athlete's overlap_handling default."""
+
+    def setUp(self):
+        self.start = datetime(2026, 6, 1, 18, 0, 0, tzinfo=UTC)
+
+    def test_on_overlap_mark_on_the_request_marks_the_new_upload_against_an_existing_activity(self):
+        athlete = User.objects.create_user(
+            email="e2e-single-overlap-mark@example.cc", password="x", overlap_handling="off"
+        )
+        client = _bearer_client(athlete)
+        first = client.post(
+            "/v1/activities",
+            {"file": SimpleUploadedFile("a.tcx", build_tcx(self.start, duration_s=60, power=200))},
+            format="multipart",
+        )
+        first_activity_id = client.get(f"/v1/uploads/{first.json()['id']}").json()["activity_id"]
+
+        second = client.post(
+            "/v1/activities",
+            {
+                "file": SimpleUploadedFile("b.tcx", build_tcx(self.start, duration_s=60, power=205, hr=150)),
+                "on_overlap": "mark",
+            },
+            format="multipart",
+        )
+        self.assertEqual(second.status_code, 202)
+        poll = client.get(f"/v1/uploads/{second.json()['id']}").json()
+        self.assertEqual(poll["overlap_action"], "marked")
+        self.assertEqual(poll["overlap_other_activity_id"], first_activity_id)
+
+        activities = list(Activity.objects.filter(athlete=athlete).order_by("id"))
+        self.assertEqual(len(activities), 2)
+        primaries = [a for a in activities if a.primary_activity_id is None]
+        duplicates = [a for a in activities if a.primary_activity_id is not None]
+        self.assertEqual(len(primaries), 1)
+        self.assertEqual(len(duplicates), 1)
+        self.assertEqual(duplicates[0].primary_activity_id, primaries[0].id)
+
+    def test_no_request_override_falls_back_to_the_athletes_own_overlap_handling_default(self):
+        athlete = User.objects.create_user(
+            email="e2e-single-overlap-default@example.cc", password="x", overlap_handling="mark"
+        )
+        client = _bearer_client(athlete)
+        client.post(
+            "/v1/activities",
+            {"file": SimpleUploadedFile("a.tcx", build_tcx(self.start, duration_s=60, power=200))},
+            format="multipart",
+        )
+
+        second = client.post(
+            "/v1/activities",
+            # No on_overlap in the request at all.
+            {"file": SimpleUploadedFile("b.tcx", build_tcx(self.start, duration_s=60, power=205, hr=150))},
+            format="multipart",
+        )
+        poll = client.get(f"/v1/uploads/{second.json()['id']}").json()
+
+        self.assertEqual(poll["overlap_action"], "marked")
+        duplicates = [a for a in Activity.objects.filter(athlete=athlete) if a.primary_activity_id is not None]
+        self.assertEqual(len(duplicates), 1)
+
+    def test_on_overlap_off_on_the_request_overrides_an_athlete_default_of_mark(self):
+        athlete = User.objects.create_user(
+            email="e2e-single-overlap-off-override@example.cc", password="x", overlap_handling="mark"
+        )
+        client = _bearer_client(athlete)
+        client.post(
+            "/v1/activities",
+            {"file": SimpleUploadedFile("a.tcx", build_tcx(self.start, duration_s=60, power=200))},
+            format="multipart",
+        )
+
+        second = client.post(
+            "/v1/activities",
+            {
+                "file": SimpleUploadedFile("b.tcx", build_tcx(self.start, duration_s=60, power=205, hr=150)),
+                "on_overlap": "off",
+            },
+            format="multipart",
+        )
+        poll = client.get(f"/v1/uploads/{second.json()['id']}").json()
+
+        self.assertIsNone(poll["overlap_action"])
+        for activity in Activity.objects.filter(athlete=athlete):
+            self.assertIsNone(activity.primary_activity_id)

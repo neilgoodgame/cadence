@@ -2,6 +2,7 @@ package com.cadence.api.uploads;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.OverlapAction;
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.id.PrefixedIdEntity;
 import com.cadence.api.gear.Shoe;
 import com.cadence.api.users.User;
@@ -52,6 +53,15 @@ public class Upload extends PrefixedIdEntity {
 
 	@Column(name = "overlap_action")
 	private OverlapAction overlapAction;
+
+	/** Issue #498: this single (non-batch) upload's own on_overlap override, null when the
+	 * request didn't specify one - resolution then falls back to the batch's own
+	 * overlapHandling (for a batch child) or the athlete's overlapHandling default (see
+	 * ParseFileTasklet). UploadBatch.overlapHandling is always resolved to a concrete value at
+	 * creation time instead, since every file in a batch needs the exact same, already-settled
+	 * mode. */
+	@Column(name = "on_overlap")
+	private OverlapHandling onOverlap;
 
 	@Column(name = "error_code", nullable = false)
 	private String errorCode = "";
@@ -168,6 +178,14 @@ public class Upload extends PrefixedIdEntity {
 
 	public void setOverlapAction(OverlapAction overlapAction) {
 		this.overlapAction = overlapAction;
+	}
+
+	public OverlapHandling getOnOverlap() {
+		return onOverlap;
+	}
+
+	public void setOnOverlap(OverlapHandling onOverlap) {
+		this.onOverlap = onOverlap;
 	}
 
 	public String getErrorCode() {

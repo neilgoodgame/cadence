@@ -113,3 +113,7 @@ class GarminSyncRequestSerializer(serializers.Serializer):
     weight_after_kg = serializers.FloatField(required=False, allow_null=True)
     fluids_ml = serializers.IntegerField(required=False, allow_null=True)
     shoe_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    # Issue #498: overrides the athlete's overlap_handling default for this sync run only -
+    # same meaning as POST /v1/activities/batch's own on_overlap, threaded down to the same
+    # create_batch_from_files call this sync uses under the hood.
+    on_overlap = serializers.ChoiceField(choices=["off", "flag", "mark", "merge"], required=False)

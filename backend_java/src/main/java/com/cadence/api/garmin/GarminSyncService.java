@@ -1,5 +1,6 @@
 package com.cadence.api.garmin;
 
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.config.CadenceProperties;
 import com.cadence.api.common.error.ApiException;
 import com.cadence.api.common.error.ConflictException;
@@ -112,7 +113,7 @@ public class GarminSyncService {
 		run.setStartedAt(Instant.now());
 		run = runRepository.save(run);
 		try {
-			return doSync(owner, connection, run, limit, windowStart, latestOnly, details);
+			return doSync(owner, connection, run, limit, windowStart, latestOnly, details, request.onOverlap());
 		}
 		catch (ApiException e) {
 			// Record why it failed (a message we wrote - never the key), then let the caller see it too.
@@ -125,7 +126,7 @@ public class GarminSyncService {
 	}
 
 	private Result doSync(User owner, GarminConnection connection, GarminSyncRun run, int limit, LocalDate windowStart,
-			boolean latestOnly, SessionDetails details) {
+			boolean latestOnly, SessionDetails details, OverlapHandling onOverlap) {
 		String token = client.exchangeKey(cipher.decrypt(connection.getApiKeyEncrypted(), owner.getId()));
 		List<ActivitySummary> window = new ArrayList<>(
 				latestOnly ? client.latest(token) : client.listSince(token, windowStart));
@@ -165,9 +166,7 @@ public class GarminSyncService {
 		}
 
 		UploadBatch batch = staged.isEmpty() ? null
-				// No per-sync onOverlap override exists (a scheduled sync has no request to carry
-				// one) - null falls back to the athlete's own overlapHandling default.
-				: uploadService.createBatchUpload(owner, staged, "garmin-sync", OnDuplicate.SKIP, null, details);
+				: uploadService.createBatchUpload(owner, staged, "garmin-sync", OnDuplicate.SKIP, onOverlap, details);
 		for (ActivitySummary summary : stagedFrom) {
 			try {
 				syncedRepository.save(new GarminSyncedActivity(owner, summary.activityId(), summary.startTime(), run.getId()));

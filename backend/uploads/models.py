@@ -71,6 +71,12 @@ class Upload(PrefixedIDModel):
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
     progress = models.FloatField(default=0.0)
     activity = models.ForeignKey(Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="uploads")
+    # Issue #498: this single (non-batch) upload's own on_overlap override, blank when the
+    # request didn't specify one - resolution then falls back to the batch's own on_overlap
+    # (for a batch child) or the athlete's overlap_handling default (see uploads/processing.py).
+    # UploadBatch.on_overlap is always resolved to a concrete value at creation time instead,
+    # since every file in a batch needs the exact same, already-settled mode.
+    on_overlap = models.CharField(max_length=10, choices=UploadBatch.OVERLAP_HANDLING_CHOICES, blank=True, default="")
     # Issue #498: set when on-ingest overlap detection found this upload's activity overlapping
     # an existing one and on_overlap wasn't off. Null whenever detection didn't run or found
     # nothing.

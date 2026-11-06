@@ -122,6 +122,20 @@ class GarminSyncTests(TestCase):
         self.assertEqual((body["found"], body["already_synced"], body["requested"]), (3, 3, 0))
         self.assertIsNone(body["batch"])
 
+    def test_on_overlap_on_the_sync_request_overrides_the_athletes_default(self):
+        # Issue #498: a per-sync on_overlap override, same meaning as POST /v1/activities/
+        # batch's own field - previously a sync had no way to carry one at all and always fell
+        # back to the athlete's stored overlap_handling default.
+        athlete, client = self._connected("garmin-sync-on-overlap@example.cc")
+        athlete.overlap_handling = "off"
+        athlete.save(update_fields=["overlap_handling"])
+
+        response = client.post("/v1/garmin/sync", {"on_overlap": "mark"}, format="json")
+
+        self.assertEqual(response.status_code, 202)
+        batch = UploadBatch.objects.get(pk=response.json()["batch"]["id"])
+        self.assertEqual(batch.on_overlap, "mark")
+
     def test_a_deleted_activity_is_not_brought_back_by_the_next_sync(self):
         athlete, client = self._connected("garmin-sync-deleted@example.cc")
         first = client.post("/v1/garmin/sync", {}, format="json")
