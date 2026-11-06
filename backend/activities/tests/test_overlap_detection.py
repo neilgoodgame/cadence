@@ -39,7 +39,7 @@ class OverlapDetectionTests(TestCase):
 
         results = detect_and_resolve_overlap(garmin, "flag")
 
-        self.assertEqual(results, [{"other_activity_id": zwift.id, "action": "flagged"}])
+        self.assertEqual(results, [{"other_activity_id": zwift.id, "action": "flagged", "primary_activity_id": None}])
         garmin.refresh_from_db()
         zwift.refresh_from_db()
         self.assertIsNone(garmin.primary_activity_id)
@@ -62,7 +62,9 @@ class OverlapDetectionTests(TestCase):
 
         results = detect_and_resolve_overlap(garmin, "mark")
 
-        self.assertEqual(results, [{"other_activity_id": zwift.id, "action": "marked"}])
+        self.assertEqual(
+            results, [{"other_activity_id": zwift.id, "action": "marked", "primary_activity_id": zwift.id}]
+        )
         garmin.refresh_from_db()
         zwift.refresh_from_db()
         self.assertEqual(garmin.primary_activity_id, zwift.id)
@@ -88,7 +90,9 @@ class OverlapDetectionTests(TestCase):
 
         results = detect_and_resolve_overlap(zwift, "mark")
 
-        self.assertEqual(results, [{"other_activity_id": garmin.id, "action": "marked"}])
+        self.assertEqual(
+            results, [{"other_activity_id": garmin.id, "action": "marked", "primary_activity_id": zwift.id}]
+        )
         garmin.refresh_from_db()
         self.assertEqual(garmin.primary_activity_id, zwift.id)
 
@@ -100,7 +104,10 @@ class OverlapDetectionTests(TestCase):
 
         results = detect_and_resolve_overlap(few_sensors, "mark")
 
-        self.assertEqual(results, [{"other_activity_id": many_sensors.id, "action": "marked"}])
+        self.assertEqual(
+            results,
+            [{"other_activity_id": many_sensors.id, "action": "marked", "primary_activity_id": many_sensors.id}],
+        )
         few_sensors.refresh_from_db()
         self.assertEqual(few_sensors.primary_activity_id, many_sensors.id)
 
@@ -113,7 +120,7 @@ class OverlapDetectionTests(TestCase):
 
         results = detect_and_resolve_overlap(zwift, "mark")
 
-        self.assertEqual(results, [{"other_activity_id": garmin.id, "action": "flagged"}])
+        self.assertEqual(results, [{"other_activity_id": garmin.id, "action": "flagged", "primary_activity_id": None}])
         zwift.refresh_from_db()
         self.assertIsNone(zwift.primary_activity_id)
 

@@ -19,6 +19,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
+from accounts.models import User
 from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
 from core.auth_context import get_effective_athlete_id
@@ -27,6 +28,8 @@ from core.cql.parser import parse
 from core.units import parse_distance_meters
 
 from .comments import resolve_parent_comment
+from .duplicate_batches import resolve_duplicates_batch as resolve_duplicates_batch_action
+from .duplicate_batches import undo_batch as undo_batch_action
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Tag
 from .overlaps import find_overlaps
 from .serializers import ActivityCommentSerializer
@@ -128,6 +131,17 @@ def _duplicate_link_summary(activity: Activity) -> dict[str, Any]:
         "primary_activity_id": activity.primary_activity_id,
         "duplicate_activity_ids": duplicate_ids,
     }
+
+
+def _parse_overlap_date(value: str | None, param: str) -> date | None:
+    """Shared by list_overlapping_activities and resolve_duplicates_batch - both take the same
+    from_date/to_date filter on the overlap query."""
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValidationError({param: "Expected ISO date (YYYY-MM-DD)."}) from exc
 
 
 def _encode_cursor(activity: Activity) -> str:
@@ -261,14 +275,6 @@ class ActivityMCPTools(ScopedMCPToolset):
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
 
-        def _parse_date(value: str | None, param: str) -> date | None:
-            if value is None:
-                return None
-            try:
-                return date.fromisoformat(value)
-            except ValueError as exc:
-                raise ValidationError({param: "Expected ISO date (YYYY-MM-DD)."}) from exc
-
         return find_overlaps(
             athlete_id,
             activity_id=activity_id,
@@ -277,8 +283,8 @@ class ActivityMCPTools(ScopedMCPToolset):
             device=device,
             other_device=other_device,
             environment=environment,
-            from_date=_parse_date(from_date, "from_date"),
-            to_date=_parse_date(to_date, "to_date"),
+            from_date=_parse_overlap_date(from_date, "from_date"),
+            to_date=_parse_overlap_date(to_date, "to_date"),
             min_duration_seconds=min_duration_seconds,
             other_has=other_has,
             min_overlap_pct=min_overlap_pct,
@@ -521,6 +527,79 @@ class ActivityMCPTools(ScopedMCPToolset):
         self._require_write(activity.athlete_id)
         updated = set_activity_primary(activity_id)
         return _duplicate_link_summary(updated)
+
+    def resolve_duplicates_batch(
+        self,
+        action: str,
+        pairs: list[list[str]] | None = None,
+        activity_id: str | None = None,
+        sport: str | None = None,
+        cross_sport: bool = False,
+        device: str | None = None,
+        other_device: str | None = None,
+        environment: str | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        min_duration_seconds: int | None = None,
+        other_has: list[str] | None = None,
+        min_overlap_pct: float | None = None,
+        max_start_delta_seconds: int | None = None,
+        limit: int | None = None,
+        dry_run: bool = True,
+    ) -> dict[str, Any]:
+        """Issue #498: applies `action` ("mark" or "merge" - merge currently falls back to flag
+        everywhere, same as every other overlap path, until #501 ships) to many overlap pairs at
+        once - either an explicit `pairs` list of [activity_id, other_activity_id], or every
+        unresolved pair the overlap query's own filters find (same parameters as
+        list_overlapping_activities: activity_id pins an anchor, sport/device/other_device/
+        environment/from_date/to_date/min_duration_seconds/other_has/min_overlap_pct/
+        max_start_delta_seconds narrow it). Pass exactly one of pairs or the filter kwargs. At
+        most 100 pairs per call either way.
+
+        `dry_run` (default true) only reports what would happen for each pair - which side
+        would become primary, or that it would just be flagged - without writing anything.
+        `dry_run=false` actually resolves every pair, recomputes the athlete's threshold history
+        and TSS once at the end (not once per pair), and returns a `batch_id` you can pass to
+        undo_batch to reverse the whole thing later."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        sub = self._require_write(athlete_id)
+        athlete = get_object_or_404(User, pk=athlete_id)
+        set_by = athlete if sub == athlete_id else get_object_or_404(User, pk=sub)
+
+        return resolve_duplicates_batch_action(
+            athlete,
+            action,
+            pairs=pairs,
+            activity_id=activity_id,
+            sport=sport,
+            cross_sport=cross_sport,
+            device=device,
+            other_device=other_device,
+            environment=environment,
+            from_date=_parse_overlap_date(from_date, "from_date"),
+            to_date=_parse_overlap_date(to_date, "to_date"),
+            min_duration_seconds=min_duration_seconds,
+            other_has=other_has,
+            min_overlap_pct=min_overlap_pct,
+            max_start_delta_seconds=max_start_delta_seconds,
+            limit=limit,
+            dry_run=dry_run,
+            set_by=set_by,
+        )
+
+    def undo_batch(self, batch_id: str) -> dict[str, Any]:
+        """Issue #498: reverses a resolve_duplicates_batch(..., dry_run=false) call - unmarks
+        every pair it actually marked (a flagged pair never changed anything, so there's nothing
+        to reverse for it), restoring their gear mileage and recomputing the athlete's threshold
+        history and TSS once at the end. A pair re-resolved or hand-edited since the batch
+        applied is skipped rather than clobbered - see `skipped_count` in the result. Fails if
+        this batch was already undone."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        self._require_write(athlete_id)
+        athlete = get_object_or_404(User, pk=athlete_id)
+        return undo_batch_action(athlete, batch_id)
 
     def list_tags(self) -> dict[str, Any]:
         """List the authenticated athlete's tags with how many activities and workouts carry

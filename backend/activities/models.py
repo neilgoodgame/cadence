@@ -444,3 +444,55 @@ class ActivityElevation(models.Model):
 
     def __str__(self) -> str:
         return f"{self.activity_id} elevation ({self.elevation_quality})"
+
+
+class DuplicateResolutionBatch(PrefixedIDModel):
+    """Issue #498's MCP resolve_duplicates_batch(..., dry_run=False) - one call that actually
+    applied an action to many overlap pairs at once, recorded so undo_batch can reverse the
+    whole thing later. Never created for a dry run (nothing happened, nothing to undo). Always
+    scoped to one athlete, same as every other duplicate-resolution path - a batch never spans
+    athletes."""
+
+    id_prefix = "drb"
+
+    ACTION_CHOICES = [
+        ("mark", "Mark"),
+        ("merge", "Merge"),
+    ]
+
+    athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="duplicate_resolution_batches")
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    # The acting principal - the athlete itself for a self-triggered batch, a different User
+    # for a coach acting on their behalf. Informational only; nothing currently reads it back.
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    undone_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.athlete_id} batch {self.id} ({self.action})"
+
+
+class DuplicateResolutionEntry(models.Model):
+    """One pair resolved by a DuplicateResolutionBatch. `outcome` mirrors
+    OverlapResolution's own vocabulary ("marked" | "flagged") - never "merged" today, since
+    resolve_pair doesn't produce that yet (#501). `primary_activity` is set only when
+    outcome="marked" - undo_batch's own check that `activity.primary_activity_id` still equals
+    it before reverting, so a pair re-resolved (or hand-edited) since this batch applied is
+    never silently clobbered."""
+
+    OUTCOME_CHOICES = [
+        ("marked", "Marked"),
+        ("flagged", "Flagged"),
+    ]
+
+    batch = models.ForeignKey(DuplicateResolutionBatch, on_delete=models.CASCADE, related_name="entries")
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="+")
+    other_activity = models.ForeignKey(Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    outcome = models.CharField(max_length=10, choices=OUTCOME_CHOICES)
+    primary_activity = models.ForeignKey(Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    def __str__(self) -> str:
+        return f"{self.batch_id}: {self.activity_id} {self.outcome}"

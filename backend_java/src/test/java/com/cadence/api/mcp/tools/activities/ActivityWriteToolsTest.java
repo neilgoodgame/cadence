@@ -313,6 +313,56 @@ class ActivityWriteToolsTest extends IntegrationTest {
 		assertThatThrownBy(() -> activityWriteTools.setPrimary(duplicate.getId())).isInstanceOf(ForbiddenException.class);
 	}
 
+	private Activity newOverlapActivity(User athlete, String device, Instant startDate) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName(device + " ride");
+		activity.setDevice(device);
+		activity.setStartDate(startDate);
+		activity.setElapsedSeconds(3600);
+		activity.setMovingTime(3600);
+		return activityRepository.save(activity);
+	}
+
+	@Test
+	void resolveDuplicatesBatchDryRunPreviewsWithoutMutatingAnything() {
+		User athlete = newUser("write-tool-batch-dry-run@example.cc");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity zwift = newOverlapActivity(athlete, "Zwift", start);
+		Activity garmin = newOverlapActivity(athlete, "Garmin", start.plusSeconds(5));
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var result = activityWriteTools.resolveDuplicatesBatch("mark", java.util.List.of(java.util.List.of(garmin.getId(), zwift.getId())),
+				null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+		assertThat(result.get("dry_run")).isEqualTo(true);
+		assertThat(result.get("batch_id")).isNull();
+		assertThat(activityRepository.findById(garmin.getId()).orElseThrow().getPrimaryActivity()).isNull();
+	}
+
+	@Test
+	void resolveDuplicatesBatchApplyMarksAndUndoBatchReversesIt() {
+		User athlete = newUser("write-tool-batch-apply@example.cc");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity zwift = newOverlapActivity(athlete, "Zwift", start);
+		Activity garmin = newOverlapActivity(athlete, "Garmin", start.plusSeconds(5));
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var result = activityWriteTools.resolveDuplicatesBatch("mark", java.util.List.of(java.util.List.of(garmin.getId(), zwift.getId())),
+				null, null, null, null, null, null, null, null, null, null, null, null, null, false);
+
+		assertThat(result.get("dry_run")).isEqualTo(false);
+		assertThat(result.get("batch_id")).isNotNull();
+		assertThat(activityRepository.findById(garmin.getId()).orElseThrow().getPrimaryActivity().getId())
+				.isEqualTo(zwift.getId());
+
+		var undoResult = activityWriteTools.undoBatch((String) result.get("batch_id"));
+
+		assertThat(undoResult.get("reverted_count")).isEqualTo(1);
+		assertThat(activityRepository.findById(garmin.getId()).orElseThrow().getPrimaryActivity()).isNull();
+	}
+
 	private Tag newTag(User athlete, String name) {
 		Tag tag = new Tag();
 		tag.setAthlete(athlete);

@@ -118,7 +118,7 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 		List<OverlapResolution> results = detectionService.detectAndResolve(garmin, OverlapHandling.MARK);
 
 		assertThat(results).hasSize(1);
-		assertThat(results.get(0)).isEqualTo(new OverlapResolution(zwift.getId(), OverlapAction.MARKED));
+		assertThat(results.get(0)).isEqualTo(new OverlapResolution(zwift.getId(), OverlapAction.MARKED, zwift.getId()));
 		Activity reloadedGarmin = activityRepository.findById(garmin.getId()).orElseThrow();
 		assertThat(reloadedGarmin.getPrimaryActivity()).isNotNull();
 		assertThat(reloadedGarmin.getPrimaryActivity().getId()).isEqualTo(zwift.getId());
@@ -153,7 +153,7 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 		List<OverlapResolution> results = detectionService.detectAndResolve(zwift, OverlapHandling.MARK);
 
 		assertThat(results).hasSize(1);
-		assertThat(results.get(0)).isEqualTo(new OverlapResolution(garmin.getId(), OverlapAction.MARKED));
+		assertThat(results.get(0)).isEqualTo(new OverlapResolution(garmin.getId(), OverlapAction.MARKED, zwift.getId()));
 		assertThat(activityRepository.findById(garmin.getId()).orElseThrow().getPrimaryActivity().getId())
 				.isEqualTo(zwift.getId());
 	}
@@ -174,7 +174,7 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 		List<OverlapResolution> results = detectionService.detectAndResolve(fewSensors, OverlapHandling.MARK);
 
 		assertThat(results).hasSize(1);
-		assertThat(results.get(0)).isEqualTo(new OverlapResolution(manySensors.getId(), OverlapAction.MARKED));
+		assertThat(results.get(0)).isEqualTo(new OverlapResolution(manySensors.getId(), OverlapAction.MARKED, manySensors.getId()));
 		assertThat(activityRepository.findById(fewSensors.getId()).orElseThrow().getPrimaryActivity().getId())
 				.isEqualTo(manySensors.getId());
 	}
@@ -195,7 +195,7 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 		List<OverlapResolution> results = detectionService.detectAndResolve(zwift, OverlapHandling.MARK);
 
 		assertThat(results).hasSize(1);
-		assertThat(results.get(0)).isEqualTo(new OverlapResolution(garmin.getId(), OverlapAction.FLAGGED));
+		assertThat(results.get(0)).isEqualTo(new OverlapResolution(garmin.getId(), OverlapAction.FLAGGED, null));
 		assertThat(activityRepository.findById(zwift.getId()).orElseThrow().getPrimaryActivity()).isNull();
 	}
 
