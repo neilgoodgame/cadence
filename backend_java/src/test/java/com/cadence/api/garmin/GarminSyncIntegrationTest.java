@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.tokens.AccessTokenService;
 import com.cadence.api.tokens.dto.CreateAccessTokenRequest;
@@ -225,6 +226,25 @@ class GarminSyncIntegrationTest extends IntegrationTest {
 				.andExpect(jsonPath("$.already_synced").value(3))
 				.andExpect(jsonPath("$.requested").value(0))
 				.andExpect(jsonPath("$.batch").value(nullValue()));
+	}
+
+	@Test
+	void onOverlapOnTheSyncRequestOverridesTheAthletesDefault() throws Exception {
+		// Issue #498: a per-sync on_overlap override, same meaning as POST /v1/activities/batch's
+		// own field - previously a sync had no way to carry one at all and always fell back to
+		// the athlete's stored overlapHandling default.
+		User athlete = connectedAthlete("garmin-sync-on-overlap@example.cc", GOOD_KEY);
+		athlete.setOverlapHandling(OverlapHandling.OFF);
+		userRepository.save(athlete);
+
+		MvcResult result = mockMvc.perform(post("/v1/garmin/sync").header("Authorization", bearer(athlete))
+						.contentType(MediaType.APPLICATION_JSON).content("{\"on_overlap\":\"mark\"}"))
+				.andExpect(status().isAccepted())
+				.andReturn();
+		String batchId = result.getResponse().getContentAsString()
+				.replaceAll("(?s).*\"batch\":\\{\"id\":\"([^\"]+)\".*", "$1");
+
+		assertThat(uploadService.getUploadBatch(batchId).getOverlapHandling()).isEqualTo(OverlapHandling.MARK);
 	}
 
 	@Test

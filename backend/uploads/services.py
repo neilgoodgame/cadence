@@ -63,6 +63,10 @@ def create_activity_upload(request: Request, athlete_id: str) -> tuple[Upload, i
     if shoe_id and not Shoe.objects.filter(pk=shoe_id, athlete_id=athlete_id).exists():
         raise ValidationError({"shoe_id": f"Unknown shoe '{shoe_id}'."})
 
+    on_overlap = request.data.get("on_overlap") or ""
+    if on_overlap and on_overlap not in dict(UploadBatch.OVERLAP_HANDLING_CHOICES):
+        raise ValidationError({"on_overlap": "Must be one of 'off', 'flag', 'mark', 'merge'."})
+
     file_hash = _hash_fileobj(file_obj)
     existing = _existing_ready_upload(athlete_id, file_hash)
 
@@ -74,6 +78,7 @@ def create_activity_upload(request: Request, athlete_id: str) -> tuple[Upload, i
         weight_after_kg=_to_float(request.data.get("weight_after_kg")),
         fluids_ml=_to_int(request.data.get("fluids_ml")),
         shoe_id=shoe_id,
+        on_overlap=on_overlap,
     )
 
     if existing:

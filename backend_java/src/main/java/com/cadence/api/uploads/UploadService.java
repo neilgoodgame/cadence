@@ -50,10 +50,10 @@ public class UploadService {
 	}
 
 	public Upload createSingleUpload(User athlete, MultipartFile file, Double weightBeforeKg, Double weightAfterKg,
-			Integer fluidsMl, String shoeId) throws IOException {
+			Integer fluidsMl, String shoeId, OverlapHandling onOverlap) throws IOException {
 		Shoe shoe = resolveShoe(athlete, shoeId);
 		var staged = ingestService.readAndValidate(file.getOriginalFilename(), file.getBytes());
-		Upload upload = ingestService.stageUpload(athlete, null, staged, weightBeforeKg, weightAfterKg, fluidsMl, shoe);
+		Upload upload = ingestService.stageUpload(athlete, null, staged, weightBeforeKg, weightAfterKg, fluidsMl, shoe, onOverlap);
 		if (upload.getStatus() == UploadStatus.QUEUED) {
 			jobLauncher.launch(upload.getId());
 		}
@@ -94,9 +94,9 @@ public class UploadService {
 		List<Upload> children = new ArrayList<>();
 		for (UploadIngestService.StagedFile entry : entries) {
 			Upload upload = details == null
-					? ingestService.stageUpload(athlete, batch, entry, null, null, null, null)
+					? ingestService.stageUpload(athlete, batch, entry, null, null, null, null, null)
 					: ingestService.stageUpload(athlete, batch, entry, details.weightBeforeKg(), details.weightAfterKg(),
-							details.fluidsMl(), details.shoe());
+							details.fluidsMl(), details.shoe(), null);
 			children.add(upload);
 		}
 		for (Upload upload : children) {

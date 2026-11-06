@@ -69,6 +69,7 @@ class GarminSyncView(APIView):
             data.get("since"),
             latest=data["latest"],
             session={k: data.get(k) for k in sync.SESSION_FIELDS},
+            on_overlap=data.get("on_overlap"),
         )
         run = result.run
         response = Response(

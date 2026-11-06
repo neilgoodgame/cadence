@@ -65,7 +65,7 @@ class ThresholdHistoryIngestionTest extends IntegrationTest {
 		}
 		MockMultipartFile file = new MockMultipartFile(
 				"file", "running_outdoor_marathon.fit", "application/octet-stream", fitBytes);
-		Upload upload = uploadService.createSingleUpload(athlete, file, null, null, null, null);
+		Upload upload = uploadService.createSingleUpload(athlete, file, null, null, null, null, null);
 
 		Activity activity = awaitReadyActivity(upload.getId());
 		assertThat(activity.getSport()).isEqualTo(Sport.RUN);

@@ -41,12 +41,13 @@ public class UploadController {
 			@RequestParam(name = "weight_before_kg", required = false) Double weightBeforeKg,
 			@RequestParam(name = "weight_after_kg", required = false) Double weightAfterKg,
 			@RequestParam(name = "fluids_ml", required = false) Integer fluidsMl,
-			@RequestParam(name = "shoe_id", required = false) String shoeId) throws IOException {
+			@RequestParam(name = "shoe_id", required = false) String shoeId,
+			@RequestParam(name = "on_overlap", required = false) OverlapHandling onOverlap) throws IOException {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireWrite(athleteId);
 		User athlete = userService.getById(athleteId);
 
-		Upload upload = uploadService.createSingleUpload(athlete, file, weightBeforeKg, weightAfterKg, fluidsMl, shoeId);
+		Upload upload = uploadService.createSingleUpload(athlete, file, weightBeforeKg, weightAfterKg, fluidsMl, shoeId, onOverlap);
 		UploadResponse body = uploadMapper.toResponse(upload);
 
 		if (upload.getStatus() == UploadStatus.DUPLICATE) {

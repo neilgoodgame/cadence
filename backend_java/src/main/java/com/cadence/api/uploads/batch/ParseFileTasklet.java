@@ -120,11 +120,11 @@ public class ParseFileTasklet implements Tasklet {
 		boolean multisport = parsedActivities.size() > 1;
 		Activity parent = null;
 		// Issue #498: resolved once per upload (not per request) at batch-creation time for a
-		// batch upload - UploadBatch.overlapHandling is never null past that point - or read
-		// straight off the athlete for a single-file upload, which has no per-request override.
+		// batch upload - UploadBatch.overlapHandling is never null past that point. A single-file
+		// upload instead falls back from its own per-request override to the athlete's default.
 		OverlapHandling overlapMode = upload.getBatch() != null
 				? upload.getBatch().getOverlapHandling()
-				: upload.getAthlete().getOverlapHandling();
+				: (upload.getOnOverlap() != null ? upload.getOnOverlap() : upload.getAthlete().getOverlapHandling());
 		for (ParsedActivity rawParsed : parsedActivities) {
 			// Dropped here, before a Record is ever written, rather than left for a later
 			// recompute to clean up - see RunningPowerSanitizer's Javadoc for the failure mode

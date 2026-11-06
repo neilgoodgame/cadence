@@ -50,6 +50,7 @@ def sync(
     since: date | None,
     latest: bool = False,
     session: dict | None = None,
+    on_overlap: str | None = None,
 ) -> SyncResult:
     connection = GarminConnection.objects.filter(owner=owner).first()
     if connection is None:
@@ -82,7 +83,7 @@ def sync(
 
     run = GarminSyncRun.objects.create(owner=owner, started_at=timezone.now())
     try:
-        return _do_sync(owner, connection, run, limit, window_start, latest, session)
+        return _do_sync(owner, connection, run, limit, window_start, latest, session, on_overlap)
     except APIException as exc:
         # Record why it failed (a message we wrote - never the key), then let the caller see it too.
         run.error = str(exc.detail)
@@ -107,6 +108,7 @@ def _do_sync(
     window_start: date,
     latest: bool,
     session: dict,
+    on_overlap: str | None = None,
 ) -> SyncResult:
     token = client.exchange_key(crypto.decrypt(connection.api_key_encrypted, owner.id))
     found = client.latest(token) if latest else client.list_since(token, window_start)
@@ -138,7 +140,11 @@ def _do_sync(
     if taken and not staged:
         raise client.GarminUpstreamError(f"None of the {len(taken)} activities could be downloaded from Garmin.")
 
-    batch = create_batch_from_files(owner.id, "garmin-sync", "skip", staged, session) if staged else None
+    batch = (
+        create_batch_from_files(owner.id, "garmin-sync", "skip", staged, session, on_overlap=on_overlap)
+        if staged
+        else None
+    )
     for summary in staged_from:
         try:
             with transaction.atomic():

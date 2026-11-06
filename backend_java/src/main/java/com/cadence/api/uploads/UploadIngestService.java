@@ -1,5 +1,6 @@
 package com.cadence.api.uploads;
 
+import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.config.CadenceProperties;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.gear.Shoe;
@@ -57,7 +58,7 @@ public class UploadIngestService {
 	/** {@code null} batch/weight/fluids/shoe args are all valid - this single-file path is also used per-entry from a batch zip. */
 	@Transactional
 	public Upload stageUpload(User athlete, UploadBatch batch, StagedFile file,
-			Double weightBeforeKg, Double weightAfterKg, Integer fluidsMl, Shoe shoe) {
+			Double weightBeforeKg, Double weightAfterKg, Integer fluidsMl, Shoe shoe, OverlapHandling onOverlap) {
 		String hash = sha256Hex(file.bytes());
 
 		Optional<Upload> existingReady = uploadRepository
@@ -88,6 +89,7 @@ public class UploadIngestService {
 		upload.setWeightAfterKg(weightAfterKg);
 		upload.setFluidsMl(fluidsMl);
 		upload.setShoe(shoe);
+		upload.setOnOverlap(onOverlap);
 		return uploadRepository.save(upload);
 	}
 

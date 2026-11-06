@@ -1341,10 +1341,11 @@ def ingest_upload(upload: Upload) -> Activity:
 
     athlete = upload.athlete
     multisport = parsed_activities[0]["sport"] == "multisport"
-    # Issue #498: resolved once per upload (not per request) at batch-creation time for a batch
-    # upload - UploadBatch.on_overlap is never None past that point - or read straight off the
-    # athlete for a single-file upload, which has no per-request override.
-    overlap_mode = upload.batch.on_overlap if upload.batch_id else athlete.overlap_handling
+    # Issue #498: a batch upload resolves its on_overlap once at batch-creation time -
+    # UploadBatch.on_overlap is never blank past that point. A single-file upload instead
+    # carries its own optional on_overlap (blank unless the request set one), falling back to
+    # the athlete's overlap_handling default when it didn't.
+    overlap_mode = upload.batch.on_overlap if upload.batch_id else (upload.on_overlap or athlete.overlap_handling)
 
     primary = _ingest_activity(
         upload, parsed_activities[0], athlete, parent=None, multisport=multisport, overlap_mode=overlap_mode

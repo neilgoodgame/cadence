@@ -61,7 +61,7 @@ class RunningPowerSourceIngestionTest extends IntegrationTest {
 		}
 		MockMultipartFile file = new MockMultipartFile(
 				"file", "running_outdoor_marathon.fit", "application/octet-stream", fitBytes);
-		Upload upload = uploadService.createSingleUpload(athlete, file, null, null, null, null);
+		Upload upload = uploadService.createSingleUpload(athlete, file, null, null, null, null, null);
 		return awaitReadyActivity(upload.getId());
 	}
 
