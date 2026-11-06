@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
 import { clearUploadHistory, uploadActivity, uploadActivityBatch, type UploadHistoryPurge, type UploadMetadata } from "../api/uploads";
 import { ApiError } from "../api/types";
-import type { Upload, UploadBatch } from "../api/types";
+import type { OverlapHandling, Upload, UploadBatch } from "../api/types";
 import { BatchStatus } from "./import/BatchStatus";
 import { GarminSyncCard } from "./import/GarminSyncCard";
+import { OverlapOverrideField } from "./import/OverlapOverrideField";
 import { SessionDetailsFields } from "./import/SessionDetailsFields";
 import { emptySessionDetails, toUploadMetadata, type SessionDetailsDraft } from "./import/sessionDetails";
 import { UploadStatus } from "./import/UploadStatus";
@@ -12,6 +13,7 @@ export function ImportScreen() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [details, setDetails] = useState<SessionDetailsDraft>(emptySessionDetails);
+  const [onOverlap, setOnOverlap] = useState<OverlapHandling | "">("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadResult, setUploadResult] = useState<{ data: Upload; retryAfterSeconds: number | null } | null>(null);
@@ -38,10 +40,10 @@ export function ImportScreen() {
     setError(null);
     try {
       if (file.name.toLowerCase().endsWith(".zip")) {
-        setBatchResult(await uploadActivityBatch(file));
+        setBatchResult(await uploadActivityBatch(file, "skip", onOverlap || undefined));
       }
       else {
-        const metadata: UploadMetadata = toUploadMetadata(details);
+        const metadata: UploadMetadata = { ...toUploadMetadata(details), onOverlap: onOverlap || undefined };
         setUploadResult(await uploadActivity(file, metadata));
       }
       setFile(null);
@@ -113,6 +115,13 @@ export function ImportScreen() {
         </div>
         <div style={{ fontSize: 12, color: "var(--ink3)" }}>Also accepts .tcx, .gpx, and .zip (bulk import)</div>
       </div>
+
+      {file && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Import settings</h3>
+          <OverlapOverrideField value={onOverlap} onChange={setOnOverlap} />
+        </div>
+      )}
 
       {file && !isZip && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

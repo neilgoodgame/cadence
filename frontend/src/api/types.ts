@@ -18,6 +18,14 @@ export type RunningPowerSource = "stryd" | "native";
  * activities. */
 export type LapSource = "matched_workout" | "original";
 
+/** What on-ingest overlap detection does by default when a newly-imported activity turns out to
+ * overlap one this athlete already has (e.g. the same ride uploaded once from Zwift and once
+ * from Garmin) - see GET /v1/activities/overlaps. A per-request `on_overlap` on POST
+ * /v1/activities, POST /v1/activities/batch, or POST /v1/garmin/sync overrides this for just
+ * that import. "merge" is accepted but not yet implemented (issue #501) - it currently behaves
+ * exactly like "flag". */
+export type OverlapHandling = "off" | "flag" | "mark" | "merge";
+
 export interface Athlete {
   id: string;
   name: string;
@@ -80,6 +88,7 @@ export interface Athlete {
    * activity. Independent of the naming preferences above. */
   copy_matched_workout_tags: boolean;
   lap_source: LapSource;
+  overlap_handling: OverlapHandling;
   /** Applied as a new shoe's limit_km whenever one isn't given explicitly - both the single
    * "Add shoe" form and the gear CSV import. */
   default_shoe_limit_km: number;
@@ -528,6 +537,7 @@ export interface AthleteUpdate {
   append_match_date_to_name?: boolean;
   copy_matched_workout_tags?: boolean;
   lap_source?: LapSource;
+  overlap_handling?: OverlapHandling;
   default_shoe_limit_km?: number;
   race_block_weeks?: number;
   /** Any subset of the per-distance-bucket keys, merged into the athlete's current
@@ -1646,6 +1656,7 @@ export interface GarminSyncParams {
   weight_after_kg?: number;
   fluids_ml?: number;
   shoe_id?: string;
+  on_overlap?: OverlapHandling;
 }
 
 export type GarminWorkoutOpKind = "upsert_workout" | "schedule" | "reschedule" | "unschedule";

@@ -1,5 +1,5 @@
 import { apiFetch, apiFetchWithHeaders } from "./client";
-import type { Upload, UploadBatch } from "./types";
+import type { OverlapHandling, Upload, UploadBatch } from "./types";
 
 export interface UploadHistoryPurge {
   uploads_deleted: number;
@@ -11,6 +11,7 @@ export interface UploadMetadata {
   weightAfterKg?: number;
   fluidsMl?: number;
   shoeId?: string;
+  onOverlap?: OverlapHandling;
 }
 
 function buildFormData(file: File, metadata: UploadMetadata): FormData {
@@ -20,6 +21,7 @@ function buildFormData(file: File, metadata: UploadMetadata): FormData {
   if (metadata.weightAfterKg != null) form.set("weight_after_kg", String(metadata.weightAfterKg));
   if (metadata.fluidsMl != null) form.set("fluids_ml", String(metadata.fluidsMl));
   if (metadata.shoeId) form.set("shoe_id", metadata.shoeId);
+  if (metadata.onOverlap) form.set("on_overlap", metadata.onOverlap);
   return form;
 }
 
@@ -37,10 +39,12 @@ export function getUpload(id: string): Promise<{ data: Upload; retryAfterSeconds
 export async function uploadActivityBatch(
   file: File,
   onDuplicate: "skip" | "replace" = "skip",
+  onOverlap?: OverlapHandling,
 ): Promise<{ data: UploadBatch; retryAfterSeconds: number | null }> {
   const form = new FormData();
   form.set("file", file);
   form.set("on_duplicate", onDuplicate);
+  if (onOverlap) form.set("on_overlap", onOverlap);
   return apiFetchWithHeaders<UploadBatch>("/v1/activities/batch", { method: "POST", body: form });
 }
 

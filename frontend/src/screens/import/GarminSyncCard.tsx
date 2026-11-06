@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getGarminConnection, listGarminSyncs, syncGarmin } from "../../api/garmin";
-import type { GarminSyncParams, GarminSyncResult, GarminSyncRun } from "../../api/types";
+import type { GarminSyncParams, GarminSyncResult, GarminSyncRun, OverlapHandling } from "../../api/types";
 import { formatDateTime } from "../../lib/format";
 import { BatchStatus } from "./BatchStatus";
+import { OverlapOverrideField } from "./OverlapOverrideField";
 import { SessionDetailsFields } from "./SessionDetailsFields";
 import { emptySessionDetails, toUploadMetadata, type SessionDetailsDraft } from "./sessionDetails";
 
@@ -88,6 +89,7 @@ export function GarminSyncCard() {
   const [error, setError] = useState<string | null>(null);
   const [latestOpen, setLatestOpen] = useState(false);
   const [details, setDetails] = useState<SessionDetailsDraft>(emptySessionDetails);
+  const [onOverlap, setOnOverlap] = useState<OverlapHandling | "">("");
   const [lastWasLatest, setLastWasLatest] = useState(false);
 
   const syncMutation = useMutation({
@@ -131,7 +133,12 @@ export function GarminSyncCard() {
       weight_after_kg: m.weightAfterKg,
       fluids_ml: m.fluidsMl,
       shoe_id: m.shoeId,
+      on_overlap: onOverlap || undefined,
     });
+  }
+
+  function syncAll() {
+    syncMutation.mutate({ on_overlap: onOverlap || undefined });
   }
 
   return (
@@ -166,7 +173,7 @@ export function GarminSyncCard() {
             Latest only…
           </button>
           <button
-            onClick={() => syncMutation.mutate({})}
+            onClick={syncAll}
             disabled={!canSync}
             style={{
               padding: "8px 16px",
@@ -185,6 +192,8 @@ export function GarminSyncCard() {
           </button>
         </div>
       </div>
+
+      {!expired && <OverlapOverrideField value={onOverlap} onChange={setOnOverlap} />}
 
       {latestOpen && !expired && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
