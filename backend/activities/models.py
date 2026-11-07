@@ -525,6 +525,14 @@ class Merge(PrefixedIDModel):
     # {field_name: {"copied": n, "kept_original": n, "nulled": n}}, straight from
     # FieldRewriteCounts/merge_apply.apply_merge_fields's own return value.
     field_counts = models.JSONField()
+    # {field_name: value} - the target's own value for each requested *activity-level* field,
+    # captured immediately before apply_merge_fields overwrote it. unmerge_service.undo_merge
+    # restores from this rather than re-deriving it (e.g. regenerating `name` from sport+date),
+    # so a legitimate edit made between the merge and its later undo is never silently
+    # discarded. Stream fields aren't snapshotted here - undo restores those by re-parsing the
+    # target's own stored upload file instead, which would make snapshotting them here pure
+    # redundant storage.
+    previous_activity_values = models.JSONField(default=dict, blank=True)
     source_hidden = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     undone_at = models.DateTimeField(null=True, blank=True)

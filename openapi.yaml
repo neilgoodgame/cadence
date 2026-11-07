@@ -1179,6 +1179,34 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/activities/{id}/unmerge:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Undo this activity's latest merge
+      operationId: unmergeActivity
+      description: >-
+        Issue #501. Reverses the activity's own latest active (not already undone) merge:
+        restores its stream fields by re-parsing its own stored upload file, restores its
+        activity-level fields from the snapshot the merge itself recorded, and un-hides the
+        source if the merge had hidden it as a #498 duplicate (unless something else has since
+        re-resolved that source - then it's left alone). Disallowed - 422 - when there's no
+        active merge, more than one active merge is stacked on this activity (undo isn't
+        supported for a merge chain), or the activity's own upload row has no stored file.
+      responses:
+        "200":
+          description: The activity with its merge undone.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Activity" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: No active merge, a merge chain, or no stored file to restore from.
+
   /v1/activities/{id}/splits:
     parameters:
       - $ref: "#/components/parameters/ActivityId"

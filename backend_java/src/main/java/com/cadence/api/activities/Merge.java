@@ -52,6 +52,20 @@ public class Merge extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private Map<String, ActivityMergeApplyService.FieldRewriteCounts> fieldCounts;
 
+	/** The target's own value for each requested *activity-level* field, captured immediately
+	 * before {@link ActivityMergeApplyService#applyMergeFields} overwrote it.
+	 * {@link ActivityUnmergeService} restores from this rather than re-deriving it (e.g.
+	 * regenerating {@code name} from sport+date), so a legitimate edit made between the merge
+	 * and its later undo is never silently discarded. Values are plain JSON-safe types - in
+	 * particular bikeId/shoeId are stored as their id string, not the entity, since the entity
+	 * itself isn't a sensible JSON value (see ActivityMergeApplyService's own snapshot helpers).
+	 * Stream fields aren't snapshotted here - undo restores those by re-parsing the target's own
+	 * stored upload file instead, which would make snapshotting them here pure redundant
+	 * storage. */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(nullable = false)
+	private Map<String, Object> previousActivityValues;
+
 	@Column(nullable = false)
 	private boolean sourceHidden;
 
@@ -126,6 +140,14 @@ public class Merge extends PrefixedIdEntity {
 
 	public void setFieldCounts(Map<String, ActivityMergeApplyService.FieldRewriteCounts> fieldCounts) {
 		this.fieldCounts = fieldCounts;
+	}
+
+	public Map<String, Object> getPreviousActivityValues() {
+		return previousActivityValues;
+	}
+
+	public void setPreviousActivityValues(Map<String, Object> previousActivityValues) {
+		this.previousActivityValues = previousActivityValues;
 	}
 
 	public boolean isSourceHidden() {

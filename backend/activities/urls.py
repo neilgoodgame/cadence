@@ -13,6 +13,7 @@ from .views import (
     ActivitySectionsView,
     ActivitySplitsView,
     ActivityTagView,
+    ActivityUnmergeView,
     ActivityUntagView,
     ActivityWorkoutMatchCandidatesView,
     CurvesView,
@@ -38,6 +39,7 @@ urlpatterns = [
         name="activity-recompute-stats",
     ),
     path("v1/activities/<str:id>/merge", ActivityMergeView.as_view(), name="activity-merge"),
+    path("v1/activities/<str:id>/unmerge", ActivityUnmergeView.as_view(), name="activity-unmerge"),
     path("v1/activities/<str:id>/laps", LapListView.as_view(), name="activity-laps"),
     path(
         "v1/activities/<str:id>/regenerate-laps",

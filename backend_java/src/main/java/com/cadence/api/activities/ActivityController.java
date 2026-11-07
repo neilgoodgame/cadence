@@ -34,18 +34,20 @@ public class ActivityController {
 	private final WorkoutMatchScanService workoutMatchScanService;
 	private final ActivityOverlapService activityOverlapService;
 	private final ActivityMergeService activityMergeService;
+	private final ActivityUnmergeService activityUnmergeService;
 	private final AccessGuard accessGuard;
 
 	public ActivityController(ActivityService activityService, TssRecomputeService tssRecomputeService,
 			DerivedStatsRecomputeService derivedStatsRecomputeService, WorkoutMatchScanService workoutMatchScanService,
 			ActivityOverlapService activityOverlapService, ActivityMergeService activityMergeService,
-			AccessGuard accessGuard) {
+			ActivityUnmergeService activityUnmergeService, AccessGuard accessGuard) {
 		this.activityService = activityService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
 		this.workoutMatchScanService = workoutMatchScanService;
 		this.activityOverlapService = activityOverlapService;
 		this.activityMergeService = activityMergeService;
+		this.activityUnmergeService = activityUnmergeService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -183,6 +185,16 @@ public class ActivityController {
 			// computed before that rollback and is exactly what a real run would have returned.
 			return signal.result();
 		}
+	}
+
+	/** Issue #501 (phase 1): undoes {@code id}'s own latest active merge. See
+	 * {@link ActivityUnmergeService#undoMerge} for the orchestration. */
+	@PostMapping("/v1/activities/{id}/unmerge")
+	public ActivityResponse unmergeActivity(@PathVariable String id) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		activityUnmergeService.undoMerge(id);
+		return activityService.toResponse(activityService.getActivity(id));
 	}
 
 	@DeleteMapping("/v1/activities/{id}")

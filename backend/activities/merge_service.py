@@ -104,6 +104,9 @@ def run_merge(
 
     resolved_offset, score = _resolve_offset(target, source, offset_seconds)
     before = _summarize(target)
+    # Snapshot each requested activity-level field's value before apply_merge_fields
+    # overwrites it - see Merge.previous_activity_values' own docstring for why.
+    previous_activity_values = {f: getattr(target, f) for f in fields if f in ACTIVITY_FIELDS}
     merge_row: Merge | None = None
 
     with transaction.atomic():
@@ -135,6 +138,7 @@ def run_merge(
                 offset_seconds=resolved_offset,
                 alignment_score=score,
                 field_counts=_counts_as_dict(counts),
+                previous_activity_values=previous_activity_values,
                 source_hidden=hide_source,
             )
 

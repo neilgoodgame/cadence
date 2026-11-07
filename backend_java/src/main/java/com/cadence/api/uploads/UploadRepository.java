@@ -30,6 +30,11 @@ public interface UploadRepository extends JpaRepository<Upload, String> {
 
 	long countByBatchIdAndStatusIn(String batchId, List<UploadStatus> statuses);
 
+	/** Issue #501 (phase 1, part 5): the upload that created this activity, for
+	 * ActivityUnmergeService to re-parse. ingestUpload links Upload.activity only to the
+	 * parent/sole activity, never a multisport leg, so this is unambiguous when it's non-empty. */
+	Optional<Upload> findByActivityId(String activityId);
+
 	boolean existsByBatchIdAndOverlapAction(String batchId, OverlapAction overlapAction);
 
 	@Query("SELECT u.storedPath FROM Upload u WHERE u.athlete.id = :athleteId AND (u.status <> com.cadence.api.uploads.UploadStatus.READY OR u.activity IS NULL)")
