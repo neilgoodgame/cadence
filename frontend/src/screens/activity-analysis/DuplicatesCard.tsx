@@ -5,6 +5,7 @@ import { getActivity, listActivityOverlaps, updateActivity } from "../../api/act
 import type { Activity } from "../../api/types";
 import { Card } from "../../components/Card";
 import { formatDuration } from "../../lib/format";
+import { MergeDialog } from "./MergeDialog";
 
 /** Banner shown on a duplicate recording's own page: points at the primary and
  * can promote this recording to be the one that counts for training load. */
@@ -74,8 +75,15 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mergeSourceId, setMergeSourceId] = useState<string | null>(null);
 
   const duplicateIds = activity.duplicate_activity_ids;
+
+  const mergeSourceQuery = useQuery({
+    queryKey: ["activity", mergeSourceId],
+    queryFn: () => getActivity(mergeSourceId!),
+    enabled: mergeSourceId != null,
+  });
 
   // Issue #498's overlap-detection backbone: pins this activity as anchor and returns every
   // other activity whose recorded interval overlaps it, already excluding resolved pairs
@@ -173,6 +181,9 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
                 <button style={buttonStyle} disabled={busy} onClick={() => makePrimary(id)}>
                   Make primary
                 </button>
+                <button style={buttonStyle} disabled={busy} onClick={() => setMergeSourceId(id)}>
+                  Merge with…
+                </button>
                 <button style={buttonStyle} disabled={busy} onClick={() => unlinkDuplicate(id)}>
                   Unlink
                 </button>
@@ -203,6 +214,9 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
                   {candidate.name}
                 </Link>
                 <span style={{ fontSize: 12, color: "var(--ink3)" }}>{details}</span>
+                <button style={buttonStyle} disabled={busy} onClick={() => setMergeSourceId(candidate.id)}>
+                  Merge with…
+                </button>
                 <button style={buttonStyle} disabled={busy} onClick={() => linkDuplicate(candidate.id)}>
                   Link as duplicate
                 </button>
@@ -214,6 +228,15 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
 
       {error && (
         <div style={{ marginTop: 10, fontSize: 12, color: "var(--danger, #c0392b)" }}>{error}</div>
+      )}
+
+      {mergeSourceQuery.data && (
+        <MergeDialog
+          target={activity}
+          source={mergeSourceQuery.data}
+          defaultHideSource
+          onClose={() => setMergeSourceId(null)}
+        />
       )}
     </Card>
   );

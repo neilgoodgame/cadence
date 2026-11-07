@@ -10,6 +10,8 @@ import type {
   DurationCurve,
   Lap,
   List,
+  MergeActivityParams,
+  MergeResult,
   OverlapPair,
   SplitsMode,
   StreamsResponse,
@@ -111,6 +113,16 @@ export function getActivitySplits(id: string, mode: SplitsMode): Promise<Activit
 
 export function updateActivity(id: string, patch: ActivityUpdate): Promise<Activity> {
   return apiFetch<Activity>(`/v1/activities/${id}`, { method: "PATCH", body: patch });
+}
+
+/** Issue #501. `params.preview` computes and returns the result without writing anything. */
+export function mergeActivity(targetId: string, params: MergeActivityParams): Promise<MergeResult> {
+  return apiFetch<MergeResult>(`/v1/activities/${targetId}/merge`, { method: "POST", body: params });
+}
+
+/** Reverses targetId's own latest active merge. 422 if there's none, or it's a merge chain. */
+export function unmergeActivity(targetId: string): Promise<Activity> {
+  return apiFetch<Activity>(`/v1/activities/${targetId}/unmerge`, { method: "POST" });
 }
 
 export function deleteActivity(id: string): Promise<void> {
