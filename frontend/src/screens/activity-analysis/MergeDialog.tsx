@@ -199,16 +199,13 @@ export function MergeDialog({
         style={{
           background: "var(--card)",
           borderRadius: 14,
-          padding: 24,
           width: 640,
           maxHeight: "90vh",
-          overflowY: "auto",
           display: "flex",
           flexDirection: "column",
-          gap: 16,
         }}
       >
-        <div>
+        <div style={{ padding: "24px 24px 0" }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 4px" }}>Merge with another recording</h2>
           <p style={{ margin: 0, fontSize: 13, color: "var(--ink2)" }}>
             Copies the selected fields from <strong>{source.name}</strong> ({source.device || source.source || "unknown source"})
@@ -216,102 +213,112 @@ export function MergeDialog({
           </p>
         </div>
 
-        {applied ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ fontSize: 13, color: "var(--ink2)" }}>Merged.</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 12, background: "var(--elev)", borderRadius: 8 }}>
-              <SummaryRow label="Avg power" before={applied.before.avg_power} after={applied.after.avg_power} unit="w" />
-              <SummaryRow label="Normalized power" before={applied.before.norm_power} after={applied.after.norm_power} unit="w" />
-              <SummaryRow label="TSS" before={applied.before.tss} after={applied.after.tss} unit="" />
-            </div>
-            {undoMutation.isError && <div style={{ fontSize: 13, color: "var(--danger, #c0392b)" }}>{errorMessage(undoMutation.error)}</div>}
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+        {/* minHeight: 0 lets this scroll instead of growing the flex column past maxHeight - the
+            header and footer stay put either way, so the Merge/Undo button never needs the
+            field-picker/chart's own height scrolled past to reach it. */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {applied ? (
+            <>
+              <div style={{ fontSize: 13, color: "var(--ink2)" }}>Merged.</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 12, background: "var(--elev)", borderRadius: 8 }}>
+                <SummaryRow label="Avg power" before={applied.before.avg_power} after={applied.after.avg_power} unit="w" />
+                <SummaryRow label="Normalized power" before={applied.before.norm_power} after={applied.after.norm_power} unit="w" />
+                <SummaryRow label="TSS" before={applied.before.tss} after={applied.after.tss} unit="" />
+              </div>
+              {undoMutation.isError && <div style={{ fontSize: 13, color: "var(--danger, #c0392b)" }}>{errorMessage(undoMutation.error)}</div>}
+            </>
+          ) : (
+            <>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink3)", marginBottom: 6 }}>Stream fields</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  {MERGE_STREAM_FIELDS.map((f: MergeStreamField) => (
+                    <FieldCheckbox key={f} field={f} label={FIELD_LABELS[f]} checked={fields.has(f)} onChange={toggleField} />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink3)", marginBottom: 6 }}>Activity-level fields</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  {MERGE_ACTIVITY_FIELDS.map((f: MergeActivityField) => (
+                    <FieldCheckbox key={f} field={f} label={FIELD_LABELS[f]} checked={fields.has(f)} onChange={toggleField} />
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 20 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <input
+                    type="radio"
+                    checked={nullPolicy === "keep_original"}
+                    onChange={() => setNullPolicy("keep_original")}
+                  />
+                  Keep original where the source has no data
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <input type="radio" checked={nullPolicy === "overwrite"} onChange={() => setNullPolicy("overwrite")} />
+                  Copy gaps too
+                </label>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                <span style={{ color: "var(--ink2)" }}>Offset</span>
+                <button style={{ ...SECONDARY_BUTTON, padding: "4px 10px" }} onClick={() => setOffsetOverride(effectiveOffset - 1)}>
+                  −1s
+                </button>
+                <span style={{ fontFamily: "var(--mono, monospace)", minWidth: 50, textAlign: "center" }}>{effectiveOffset}s</span>
+                <button style={{ ...SECONDARY_BUTTON, padding: "4px 10px" }} onClick={() => setOffsetOverride(effectiveOffset + 1)}>
+                  +1s
+                </button>
+                {offsetOverride != null && (
+                  <button style={{ ...SECONDARY_BUTTON, padding: "4px 10px" }} onClick={() => setOffsetOverride(null)}>
+                    Auto
+                  </button>
+                )}
+                {result?.alignment_score != null && (
+                  <span style={{ color: "var(--ink3)" }}>Alignment score: {result.alignment_score.toFixed(2)}</span>
+                )}
+              </div>
+
+              <MergeOverlayChart target={target} source={source} offsetSeconds={effectiveOffset} />
+
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink2)" }}>
+                <input type="checkbox" checked={hideSource} onChange={(e) => setHideSource(e.target.checked)} />
+                Hide the source as a duplicate of this activity
+              </label>
+
+              {fieldsArray.length === 0 && (
+                <div style={{ fontSize: 13, color: "var(--ink3)" }}>Pick at least one field to preview the merge.</div>
+              )}
+
+              {result && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 12, background: "var(--elev)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink3)" }}>Preview</div>
+                  <SummaryRow label="Avg power" before={result.before.avg_power} after={result.after.avg_power} unit="w" />
+                  <SummaryRow label="Normalized power" before={result.before.norm_power} after={result.after.norm_power} unit="w" />
+                  <SummaryRow label="TSS" before={result.before.tss} after={result.after.tss} unit="" />
+                </div>
+              )}
+
+              {mergeMutation.isError && <div style={{ fontSize: 13, color: "var(--danger, #c0392b)" }}>{errorMessage(mergeMutation.error)}</div>}
+              {previewQuery.isError && <div style={{ fontSize: 13, color: "var(--danger, #c0392b)" }}>{errorMessage(previewQuery.error)}</div>}
+            </>
+          )}
+        </div>
+
+        <div style={{ padding: "16px 24px 24px", borderTop: "1px solid var(--line)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          {applied ? (
+            <>
               <button style={SECONDARY_BUTTON} disabled={undoMutation.isPending} onClick={() => undoMutation.mutate()}>
                 {undoMutation.isPending ? "Undoing…" : "Undo"}
               </button>
               <button style={PRIMARY_BUTTON} onClick={onClose}>
                 Done
               </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink3)", marginBottom: 6 }}>Stream fields</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                {MERGE_STREAM_FIELDS.map((f: MergeStreamField) => (
-                  <FieldCheckbox key={f} field={f} label={FIELD_LABELS[f]} checked={fields.has(f)} onChange={toggleField} />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink3)", marginBottom: 6 }}>Activity-level fields</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                {MERGE_ACTIVITY_FIELDS.map((f: MergeActivityField) => (
-                  <FieldCheckbox key={f} field={f} label={FIELD_LABELS[f]} checked={fields.has(f)} onChange={toggleField} />
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 20 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                <input
-                  type="radio"
-                  checked={nullPolicy === "keep_original"}
-                  onChange={() => setNullPolicy("keep_original")}
-                />
-                Keep original where the source has no data
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                <input type="radio" checked={nullPolicy === "overwrite"} onChange={() => setNullPolicy("overwrite")} />
-                Copy gaps too
-              </label>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-              <span style={{ color: "var(--ink2)" }}>Offset</span>
-              <button style={{ ...SECONDARY_BUTTON, padding: "4px 10px" }} onClick={() => setOffsetOverride(effectiveOffset - 1)}>
-                −1s
-              </button>
-              <span style={{ fontFamily: "var(--mono, monospace)", minWidth: 50, textAlign: "center" }}>{effectiveOffset}s</span>
-              <button style={{ ...SECONDARY_BUTTON, padding: "4px 10px" }} onClick={() => setOffsetOverride(effectiveOffset + 1)}>
-                +1s
-              </button>
-              {offsetOverride != null && (
-                <button style={{ ...SECONDARY_BUTTON, padding: "4px 10px" }} onClick={() => setOffsetOverride(null)}>
-                  Auto
-                </button>
-              )}
-              {result?.alignment_score != null && (
-                <span style={{ color: "var(--ink3)" }}>Alignment score: {result.alignment_score.toFixed(2)}</span>
-              )}
-            </div>
-
-            <MergeOverlayChart target={target} source={source} offsetSeconds={effectiveOffset} />
-
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--ink2)" }}>
-              <input type="checkbox" checked={hideSource} onChange={(e) => setHideSource(e.target.checked)} />
-              Hide the source as a duplicate of this activity
-            </label>
-
-            {fieldsArray.length === 0 && (
-              <div style={{ fontSize: 13, color: "var(--ink3)" }}>Pick at least one field to preview the merge.</div>
-            )}
-
-            {result && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 12, background: "var(--elev)", borderRadius: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink3)" }}>Preview</div>
-                <SummaryRow label="Avg power" before={result.before.avg_power} after={result.after.avg_power} unit="w" />
-                <SummaryRow label="Normalized power" before={result.before.norm_power} after={result.after.norm_power} unit="w" />
-                <SummaryRow label="TSS" before={result.before.tss} after={result.after.tss} unit="" />
-              </div>
-            )}
-
-            {mergeMutation.isError && <div style={{ fontSize: 13, color: "var(--danger, #c0392b)" }}>{errorMessage(mergeMutation.error)}</div>}
-            {previewQuery.isError && <div style={{ fontSize: 13, color: "var(--danger, #c0392b)" }}>{errorMessage(previewQuery.error)}</div>}
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            </>
+          ) : (
+            <>
               <button style={SECONDARY_BUTTON} onClick={onClose}>
                 Cancel
               </button>
@@ -322,9 +329,9 @@ export function MergeDialog({
               >
                 {mergeMutation.isPending ? "Merging…" : "Merge"}
               </button>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
