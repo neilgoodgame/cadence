@@ -507,6 +507,74 @@ export interface OverlapPair {
   status: "unresolved" | "duplicate" | "merged";
 }
 
+/** Stream fields selectable for POST /v1/activities/{id}/merge. */
+export const MERGE_STREAM_FIELDS = [
+  "power",
+  "heartrate",
+  "cadence",
+  "altitude",
+  "lat",
+  "lng",
+  "speed",
+  "distance_km",
+  "air_temp",
+  "humidity",
+  "skin_temp",
+  "core_temp",
+  "heat_strain",
+] as const;
+export type MergeStreamField = (typeof MERGE_STREAM_FIELDS)[number];
+
+/** Activity-level fields selectable for POST /v1/activities/{id}/merge. */
+export const MERGE_ACTIVITY_FIELDS = [
+  "name",
+  "avg_left_balance_pct",
+  "start_weight_kg",
+  "end_weight_kg",
+  "fluids_ml",
+  "bike_id",
+  "shoe_id",
+] as const;
+export type MergeActivityField = (typeof MERGE_ACTIVITY_FIELDS)[number];
+
+export type MergeNullPolicy = "overwrite" | "keep_original";
+
+export interface MergeActivityParams {
+  source_id: string;
+  fields: string[];
+  null_policy: MergeNullPolicy;
+  offset_seconds?: number | null;
+  hide_source?: boolean;
+  preview?: boolean;
+}
+
+export interface MergeFieldCount {
+  copied: number;
+  kept_original: number;
+  nulled: number;
+}
+
+/** The target's own derived summary, before/after a (real or previewed) merge. */
+export interface MergeActivitySummary {
+  avg_power: number | null;
+  norm_power: number | null;
+  intensity: number | null;
+  tss: number;
+}
+
+/** POST /v1/activities/{id}/merge's response - same shape for a real merge and a preview. */
+export interface MergeResult {
+  /** Null for a preview - nothing was recorded. */
+  merge_id: string | null;
+  offset_seconds: number;
+  /** Null when offset_seconds was given explicitly in the request. */
+  alignment_score: number | null;
+  field_counts: Record<string, MergeFieldCount>;
+  before: MergeActivitySummary;
+  after: MergeActivitySummary;
+  source_hidden: boolean;
+}
+
 export interface AthleteUpdate {
   name?: string;
   age?: number;
