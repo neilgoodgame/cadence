@@ -1,18 +1,25 @@
 package com.cadence.api.mcp.tools.activities;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityMergeApplyService.NullPolicy;
+import com.cadence.api.activities.ActivityMergeService;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.ActivityTag;
 import com.cadence.api.activities.ActivityTagRepository;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
+import com.cadence.api.activities.Record;
+import com.cadence.api.activities.RecordId;
+import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagRepository;
 import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ForbiddenException;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.support.IntegrationTest;
@@ -25,6 +32,8 @@ import com.cadence.api.workouts.Workout;
 import com.cadence.api.workouts.WorkoutRepository;
 import com.cadence.api.workouts.WorkoutStep;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -52,6 +61,12 @@ class ActivityReadToolsTest extends IntegrationTest {
 
 	@Autowired
 	private ActivityTagRepository activityTagRepository;
+
+	@Autowired
+	private ActivityMergeService activityMergeService;
+
+	@Autowired
+	private RecordRepository recordRepository;
 
 	@AfterEach
 	void clearAuthContext() {
@@ -115,6 +130,67 @@ class ActivityReadToolsTest extends IntegrationTest {
 
 		assertThat(laps).hasSize(1);
 		assertThat(laps.get(0).stepKind()).isEqualTo(StepKind.BLOCK);
+	}
+
+	private Activity newActivityWithRecords(User athlete, Instant start, int count, int power) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName("Bike ride");
+		activity.setStartDate(start);
+		activity = activityRepository.save(activity);
+		List<Record> records = new ArrayList<>();
+		for (int t = 0; t < count; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(power);
+			records.add(record);
+		}
+		recordRepository.saveAll(records);
+		return activity;
+	}
+
+	@Test
+	void getMergeReturnsTheActiveMergeRecord() {
+		User athlete = newUser("read-tool-get-merge-athlete@example.cc");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity target = newActivityWithRecords(athlete, start, 10, 100);
+		Activity source = newActivityWithRecords(athlete, start, 10, 250);
+		source.setName("Source ride");
+		activityRepository.save(source);
+		activityMergeService.runMerge(target.getId(), source.getId(), List.of("power"), NullPolicy.OVERWRITE, 0, true, false);
+		authAs(athlete.getId(), "activities:read");
+
+		var merge = activityReadTools.getMerge(target.getId());
+
+		assertThat(merge).isNotNull();
+		assertThat(merge.mergeId()).isNotNull();
+		assertThat(merge.sourceId()).isEqualTo(source.getId());
+		assertThat(merge.sourceName()).isEqualTo("Source ride");
+		assertThat(merge.fields()).containsExactly("power");
+		assertThat(merge.nullPolicy()).isEqualTo(NullPolicy.OVERWRITE);
+		assertThat(merge.sourceHidden()).isTrue();
+	}
+
+	@Test
+	void getMergeReturnsNullWhenThereIsNoActiveMerge() {
+		User athlete = newUser("read-tool-get-merge-none-athlete@example.cc");
+		Activity activity = newActivityWithRecords(athlete, Instant.parse("2026-06-01T18:00:00Z"), 10, 100);
+		authAs(athlete.getId(), "activities:read");
+
+		assertThat(activityReadTools.getMerge(activity.getId())).isNull();
+	}
+
+	@Test
+	void getMergeRejectsAnOutsiderWithNoShare() {
+		User athlete = newUser("read-tool-get-merge-outsider-athlete@example.cc");
+		Activity activity = newActivityWithRecords(athlete, Instant.parse("2026-06-01T18:00:00Z"), 10, 100);
+		User outsider = newUser("read-tool-get-merge-outsider@example.cc");
+		authAs(outsider.getId(), "activities:read");
+
+		assertThatThrownBy(() -> activityReadTools.getMerge(activity.getId())).isInstanceOf(ForbiddenException.class);
 	}
 
 	@Test

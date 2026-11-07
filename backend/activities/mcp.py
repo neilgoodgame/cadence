@@ -30,11 +30,14 @@ from core.units import parse_distance_meters
 from .comments import resolve_parent_comment
 from .duplicate_batches import resolve_duplicates_batch as resolve_duplicates_batch_action
 from .duplicate_batches import undo_batch as undo_batch_action
-from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Tag
+from .merge_apply import NullPolicy
+from .merge_service import MergeResult, run_merge
+from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Merge, Tag
 from .overlaps import find_overlaps
 from .serializers import ActivityCommentSerializer
 from .splits import get_custom_activity_splits
 from .tag_management import rename_tag as tag_rename
+from .unmerge_service import undo_merge
 from .views import _combined_tag_count
 from .views import mark_duplicate as mark_activity_duplicate
 from .views import set_primary as set_activity_primary
@@ -142,6 +145,33 @@ def _parse_overlap_date(value: str | None, param: str) -> date | None:
         return date.fromisoformat(value)
     except ValueError as exc:
         raise ValidationError({param: "Expected ISO date (YYYY-MM-DD)."}) from exc
+
+
+def _parse_null_policy(value: str | None) -> NullPolicy:
+    """merge_activities' `nulls` param - defaults to keep_original, matching the feature's own
+    documented default, rather than requiring every call to spell it out."""
+    if value is None:
+        return "keep_original"
+    if value not in ("overwrite", "keep_original"):
+        raise ValidationError({"nulls": "nulls must be 'keep_original' or 'overwrite'."})
+    return value
+
+
+def _merge_record_summary(merge: Merge) -> dict[str, Any]:
+    """get_merge's return shape - the merge record itself, not the before/after summary
+    merge_activities/run_merge returns (MergeResult is for an in-progress call's own outcome)."""
+    return {
+        "merge_id": merge.id,
+        "source_id": merge.source_activity_id,
+        "source_name": merge.source_activity.name if merge.source_activity_id else None,
+        "fields": merge.fields,
+        "null_policy": merge.null_policy,
+        "offset_seconds": merge.offset_seconds,
+        "alignment_score": merge.alignment_score,
+        "field_counts": merge.field_counts,
+        "source_hidden": merge.source_hidden,
+        "created_at": merge.created_at.isoformat(),
+    }
 
 
 def _encode_cursor(activity: Activity) -> str:
@@ -527,6 +557,77 @@ class ActivityMCPTools(ScopedMCPToolset):
         self._require_write(activity.athlete_id)
         updated = set_activity_primary(activity_id)
         return _duplicate_link_summary(updated)
+
+    def merge_activities(
+        self,
+        target_id: str,
+        source_id: str,
+        fields: list[str],
+        nulls: str | None = None,
+        hide_source: bool = False,
+        offset_seconds: int | None = None,
+        preview: bool = True,
+    ) -> MergeResult:
+        """Issue #501: copies fields from source_id into target_id - the target's timeline is
+        authoritative, no stream rows are created or deleted. Resolves offset_seconds
+        automatically (cross-correlating cadence, falling back to power, over a window around
+        the two activities' start_date delta) unless offset_seconds overrides it. fields is any
+        mix of stream fields (power, heartrate, cadence, altitude, lat, lng, speed, distance_km,
+        air_temp, humidity, skin_temp, core_temp, heat_strain) and activity-level fields (name,
+        avg_left_balance_pct, start_weight_kg, end_weight_kg, fluids_ml, bike_id, shoe_id). nulls
+        controls what happens to a stream field where the source has no data for a second:
+        "keep_original" (default) keeps the target's own value there; "overwrite" nulls it out
+        to mirror the source exactly. hide_source (default false) also marks source_id as a
+        hidden #498 duplicate of target_id. preview defaults to true here (the opposite of the
+        web app's own default) - it computes and returns the exact result, including the
+        resolved offset/alignment score and before/after summary, without writing anything; call
+        again with preview=false once you're happy with it to actually apply the merge."""
+        self._require_scope(ACTIVITIES_WRITE)
+        target = get_object_or_404(Activity, pk=target_id)
+        self._require_write(target.athlete_id)
+        source = get_object_or_404(Activity, pk=source_id)
+        self._require_write(source.athlete_id)
+        return run_merge(
+            target_id=target_id,
+            source_id=source_id,
+            fields=fields,
+            null_policy=_parse_null_policy(nulls),
+            offset_seconds=offset_seconds,
+            hide_source=hide_source,
+            preview=preview,
+        )
+
+    def unmerge_activity(self, activity_id: str) -> dict[str, Any]:
+        """Issue #501: reverses activity_id's own latest active merge (from merge_activities) -
+        restores its stream fields by re-parsing its own stored upload file, restores its
+        activity-level fields from the snapshot the merge itself recorded, and un-hides the
+        source if the merge had hidden it (unless something else has since re-resolved that
+        source, which is left alone). Fails if there's no active merge, more than one is stacked
+        on this activity (a merge chain - undo isn't supported for that), or the activity's own
+        upload row has no stored file."""
+        self._require_scope(ACTIVITIES_WRITE)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        undo_merge(activity_id)
+        return self.get_activity(activity_id)
+
+    def get_merge(self, activity_id: str) -> dict[str, Any] | None:
+        """Issue #501: the merge record for activity_id's currently active merge (from
+        merge_activities), if any - which activity it was merged from, the fields copied, the
+        null policy, the offset/alignment score used, per-field copied/kept_original/nulled
+        counts, whether the source was hidden, and when it happened. Returns null if activity_id
+        has no active merge (never merged, or its merge was already undone). source_id/
+        source_name are null if the source activity has since been deleted outright."""
+        self._require_scope(ACTIVITIES_READ)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_read(activity.athlete_id)
+        merge = (
+            Merge.objects.filter(target_activity_id=activity_id, undone_at__isnull=True)
+            .order_by("-created_at")
+            .select_related("source_activity")
+            .first()
+        )
+        return _merge_record_summary(merge) if merge else None
 
     def resolve_duplicates_batch(
         self,

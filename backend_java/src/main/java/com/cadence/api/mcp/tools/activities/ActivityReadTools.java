@@ -1,6 +1,7 @@
 package com.cadence.api.mcp.tools.activities;
 
 import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityMergeService;
 import com.cadence.api.activities.ActivityOverlapService;
 import com.cadence.api.activities.ActivityService;
 import com.cadence.api.activities.ActivitySplitsService;
@@ -43,18 +44,20 @@ public class ActivityReadTools {
 	private final TagService tagService;
 	private final ActivitySplitsService splitsService;
 	private final ActivityOverlapService overlapService;
+	private final ActivityMergeService mergeService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityReadTools(ActivityService activityService, LapRepository lapRepository, LapMapper lapMapper,
 			TagService tagService, ActivitySplitsService splitsService, ActivityOverlapService overlapService,
-			AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			ActivityMergeService mergeService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
 		this.lapMapper = lapMapper;
 		this.tagService = tagService;
 		this.splitsService = splitsService;
 		this.overlapService = overlapService;
+		this.mergeService = mergeService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -180,6 +183,23 @@ public class ActivityReadTools {
 		Activity activity = activityService.getActivity(activityId);
 		accessGuard.requireRead(activity.getAthlete().getId());
 		return McpActivityDetail.from(activityService.toResponse(activity));
+	}
+
+	@McpTool(name = "get_merge", description = "Issue #501: the merge record for activityId's "
+			+ "currently active merge (from merge_activities), if any - which activity it was "
+			+ "merged from, the fields copied, the null policy, the offset/alignment score used, "
+			+ "per-field copied/kept_original/nulled counts, whether the source was hidden, and "
+			+ "when it happened. Returns null if activityId has no active merge (never merged, or "
+			+ "its merge was already undone). sourceId/sourceName are null if the source activity "
+			+ "has since been deleted outright.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public ActivityMergeService.MergeRecord getMerge(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return mergeService.getActiveMerge(activityId);
 	}
 
 	@McpTool(name = "get_activity_laps", description = "Get the lap/interval splits recorded "

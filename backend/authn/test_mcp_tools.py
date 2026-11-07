@@ -22,6 +22,7 @@ from activities.models import Activity, ActivityTag, BestEffort, Record, Tag
 from athletes.mcp import AthleteMCPTools
 from athletes.models import AcceptedThresholdCandidate, ThresholdHistory
 from authn.oauth_utils import issue_token_pair
+from core.exceptions import UnprocessableEntityError
 from core.models import generate_id
 from gear.mcp import GearMCPTools
 from gear.models import Bike
@@ -580,6 +581,176 @@ class ActivityToolsTests(TestCase):
         self.assertEqual(len(result["data"]), 1)
         self.assertEqual(result["data"][0]["anchor"]["id"], garmin.id)
         self.assertEqual(result["data"][0]["other"]["id"], zwift.id)
+
+    def _activity_with_records(self, athlete: User, start: datetime, count: int, power: int) -> Activity:
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Bike ride",
+            start_date=start,
+            moving_time=count,
+            distance_km=0,
+        )
+        for t in range(count):
+            Record.objects.create(activity=activity, t=t, ts=start + timedelta(seconds=t), power=power)
+        return activity
+
+    def test_merge_activities_preview_defaults_true_and_writes_nothing(self) -> None:
+        athlete = User.objects.create_user(email="mcp-merge-preview-default@example.cc", password="x", name="A")
+        start = timezone.now()
+        target = self._activity_with_records(athlete, start, 10, 100)
+        source = self._activity_with_records(athlete, start, 10, 250)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        # preview omitted entirely - the tool's own default (True) must apply, the opposite of
+        # the REST endpoint's own default (False).
+        result = tools.merge_activities(target_id=target.id, source_id=source.id, fields=["power"], offset_seconds=0)
+
+        self.assertIsNone(result["merge_id"])
+        self.assertEqual(result["after"]["avg_power"], 250)
+        target.refresh_from_db()
+        self.assertIsNone(target.avg_power)  # nothing actually written - preview rolled back
+
+    def test_merge_activities_applies_and_records_an_audit_row_when_preview_is_false(self) -> None:
+        athlete = User.objects.create_user(email="mcp-merge-apply@example.cc", password="x", name="A")
+        start = timezone.now()
+        target = self._activity_with_records(athlete, start, 10, 100)
+        source = self._activity_with_records(athlete, start, 10, 250)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.merge_activities(
+            target_id=target.id,
+            source_id=source.id,
+            fields=["power"],
+            nulls="overwrite",
+            hide_source=True,
+            offset_seconds=0,
+            preview=False,
+        )
+
+        self.assertIsNotNone(result["merge_id"])
+        self.assertTrue(result["source_hidden"])
+        target.refresh_from_db()
+        self.assertEqual(target.avg_power, 250)
+        source.refresh_from_db()
+        self.assertEqual(source.primary_activity_id, target.id)
+
+    def test_merge_activities_defaults_nulls_to_keep_original(self) -> None:
+        athlete = User.objects.create_user(email="mcp-merge-nulls-default@example.cc", password="x", name="A")
+        start = timezone.now()
+        target = self._activity_with_records(athlete, start, 10, 100)
+        source = self._activity_with_records(athlete, start, 5, 250)  # Only 5 of 10 seconds have source data.
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        # nulls omitted - the tool's own default (keep_original) must apply.
+        result = tools.merge_activities(
+            target_id=target.id,
+            source_id=source.id,
+            fields=["power"],
+            offset_seconds=0,
+            preview=True,
+        )
+
+        self.assertEqual(result["field_counts"]["power"]["kept_original"], 5)
+        self.assertEqual(result["field_counts"]["power"]["nulled"], 0)
+
+    def test_merge_activities_rejects_an_invalid_nulls_value(self) -> None:
+        athlete = User.objects.create_user(email="mcp-merge-bad-nulls@example.cc", password="x", name="A")
+        start = timezone.now()
+        target = self._activity_with_records(athlete, start, 10, 100)
+        source = self._activity_with_records(athlete, start, 10, 250)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.merge_activities(
+                target_id=target.id,
+                source_id=source.id,
+                fields=["power"],
+                nulls="bogus",
+                offset_seconds=0,
+            )
+
+    def test_merge_activities_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(email="mcp-merge-outsider-owner@example.cc", password="x", name="A")
+        outsider = User.objects.create_user(email="mcp-merge-outsider@example.cc", password="x", name="O")
+        start = timezone.now()
+        target = self._activity_with_records(athlete, start, 10, 100)
+        source = self._activity_with_records(athlete, start, 10, 250)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.merge_activities(target_id=target.id, source_id=source.id, fields=["power"], offset_seconds=0)
+
+    def test_unmerge_activity_delegates_to_the_service_and_surfaces_its_error(self) -> None:
+        # No stored Upload file on this hand-built fixture, so undo can never actually complete -
+        # confirms the tool wires the real failure through rather than swallowing it. Full
+        # undo-mechanics coverage lives in activities/tests/test_unmerge_service.py.
+        athlete = User.objects.create_user(email="mcp-unmerge-no-file@example.cc", password="x", name="A")
+        start = timezone.now()
+        target = self._activity_with_records(athlete, start, 10, 100)
+        source = self._activity_with_records(athlete, start, 10, 250)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        tools.merge_activities(
+            target_id=target.id,
+            source_id=source.id,
+            fields=["power"],
+            nulls="overwrite",
+            offset_seconds=0,
+            preview=False,
+        )
+
+        with self.assertRaises(UnprocessableEntityError):
+            tools.unmerge_activity(activity_id=target.id)
+
+    def test_unmerge_activity_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(email="mcp-unmerge-outsider-owner@example.cc", password="x", name="A")
+        outsider = User.objects.create_user(email="mcp-unmerge-outsider@example.cc", password="x", name="O")
+        target = self._activity_with_records(athlete, timezone.now(), 10, 100)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read activities:write"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.unmerge_activity(activity_id=target.id)
+
+    def test_get_merge_returns_the_active_merge_record(self) -> None:
+        athlete = User.objects.create_user(email="mcp-get-merge@example.cc", password="x", name="A")
+        start = timezone.now()
+        target = self._activity_with_records(athlete, start, 10, 100)
+        source = self._activity_with_records(athlete, start, 10, 250)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        tools.merge_activities(
+            target_id=target.id,
+            source_id=source.id,
+            fields=["power"],
+            nulls="overwrite",
+            hide_source=True,
+            offset_seconds=0,
+            preview=False,
+        )
+
+        merge = tools.get_merge(activity_id=target.id)
+
+        self.assertIsNotNone(merge)
+        self.assertEqual(merge["source_id"], source.id)
+        self.assertEqual(merge["fields"], ["power"])
+        self.assertEqual(merge["null_policy"], "overwrite")
+        self.assertTrue(merge["source_hidden"])
+
+    def test_get_merge_returns_none_when_there_is_no_active_merge(self) -> None:
+        athlete = User.objects.create_user(email="mcp-get-merge-none@example.cc", password="x", name="A")
+        activity = self._activity_with_records(athlete, timezone.now(), 10, 100)
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        self.assertIsNone(tools.get_merge(activity_id=activity.id))
+
+    def test_get_merge_rejects_an_outsider_with_no_share(self) -> None:
+        athlete = User.objects.create_user(email="mcp-get-merge-outsider-owner@example.cc", password="x", name="A")
+        outsider = User.objects.create_user(email="mcp-get-merge-outsider@example.cc", password="x", name="O")
+        activity = self._activity_with_records(athlete, timezone.now(), 10, 100)
+        tools = ActivityMCPTools(request=_mcp_request(outsider, "activities:read"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.get_merge(activity_id=activity.id)
 
     def test_resolve_duplicates_batch_dry_run_previews_without_mutating_anything(self) -> None:
         athlete = User.objects.create_user(email="mcp-batch-dry-run@example.cc", password="x", name="Athlete")

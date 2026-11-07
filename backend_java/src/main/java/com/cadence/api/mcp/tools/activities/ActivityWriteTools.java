@@ -1,8 +1,12 @@
 package com.cadence.api.mcp.tools.activities;
 
 import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityMergeApplyService.NullPolicy;
+import com.cadence.api.activities.ActivityMergeOrchestrator;
+import com.cadence.api.activities.ActivityMergeService;
 import com.cadence.api.activities.ActivityService;
 import com.cadence.api.activities.ActivityTagRepository;
+import com.cadence.api.activities.ActivityUnmergeService;
 import com.cadence.api.activities.DuplicateResolutionBatchService;
 import com.cadence.api.activities.DuplicateResolutionBatchService.ExplicitPair;
 import com.cadence.api.activities.DuplicateResolutionBatchService.OverlapQueryFilters;
@@ -46,6 +50,8 @@ public class ActivityWriteTools {
 
 	private final ActivityService activityService;
 	private final DuplicateResolutionBatchService duplicateResolutionBatchService;
+	private final ActivityMergeOrchestrator activityMergeOrchestrator;
+	private final ActivityUnmergeService activityUnmergeService;
 	private final TagService tagService;
 	private final TagMapper tagMapper;
 	private final ActivityTagRepository activityTagRepository;
@@ -55,11 +61,15 @@ public class ActivityWriteTools {
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityWriteTools(ActivityService activityService,
-			DuplicateResolutionBatchService duplicateResolutionBatchService, TagService tagService, TagMapper tagMapper,
-			ActivityTagRepository activityTagRepository, WorkoutTagRepository workoutTagRepository,
-			UserService userService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			DuplicateResolutionBatchService duplicateResolutionBatchService,
+			ActivityMergeOrchestrator activityMergeOrchestrator, ActivityUnmergeService activityUnmergeService,
+			TagService tagService, TagMapper tagMapper, ActivityTagRepository activityTagRepository,
+			WorkoutTagRepository workoutTagRepository, UserService userService, AccessGuard accessGuard,
+			McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.duplicateResolutionBatchService = duplicateResolutionBatchService;
+		this.activityMergeOrchestrator = activityMergeOrchestrator;
+		this.activityUnmergeService = activityUnmergeService;
 		this.tagService = tagService;
 		this.tagMapper = tagMapper;
 		this.activityTagRepository = activityTagRepository;
@@ -139,6 +149,76 @@ public class ActivityWriteTools {
 		accessGuard.requireWrite(activity.getAthlete().getId());
 		Activity updated = activityService.setPrimary(activityId);
 		return activityService.toResponse(updated);
+	}
+
+	@McpTool(name = "merge_activities", description = "Issue #501: copies fields from sourceId into "
+			+ "targetId - the target's timeline is authoritative, no stream rows are created or "
+			+ "deleted. Resolves offsetSeconds automatically (cross-correlating cadence, falling "
+			+ "back to power, over a window around the two activities' start_date delta) unless "
+			+ "offsetSeconds overrides it. fields is any mix of stream fields (power, heartrate, "
+			+ "cadence, altitude, lat, lng, speed, distance_km, air_temp, humidity, skin_temp, "
+			+ "core_temp, heat_strain) and activity-level fields (name, avg_left_balance_pct, "
+			+ "start_weight_kg, end_weight_kg, fluids_ml, bike_id, shoe_id). nulls controls what "
+			+ "happens to a stream field where the source has no data for a second: "
+			+ "'keep_original' (default) keeps the target's own value there; 'overwrite' nulls it "
+			+ "out to mirror the source exactly. hideSource (default false) also marks sourceId as "
+			+ "a hidden #498 duplicate of targetId. preview defaults to true here (the opposite of "
+			+ "the web app's own default) - it computes and returns the exact result, including the "
+			+ "resolved offset/alignment score and before/after summary, without writing anything; "
+			+ "call again with preview=false once you're happy with it to actually apply the merge.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
+	public ActivityMergeService.MergeResult mergeActivities(
+			@McpToolParam(description = "The activity to merge into, e.g. act_xxxxxxxxxxxx", required = true) String targetId,
+			@McpToolParam(description = "The activity to copy fields from, e.g. act_xxxxxxxxxxxx "
+					+ "(from list_overlapping_activities)", required = true) String sourceId,
+			@McpToolParam(description = "Fields to copy - see the tool description for the full list",
+					required = true) List<String> fields,
+			@McpToolParam(description = "'keep_original' (default) or 'overwrite'", required = false) String nulls,
+			@McpToolParam(description = "Also mark sourceId as a hidden #498 duplicate of targetId, default false",
+					required = false) Boolean hideSource,
+			@McpToolParam(description = "Overrides automatic time-alignment - positive means the source "
+					+ "started this many seconds after the target. Omit to resolve one automatically",
+					required = false) Integer offsetSeconds,
+			@McpToolParam(description = "Compute and return the result without writing anything, default true "
+					+ "(opposite of the REST/web default)", required = false) Boolean preview) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		Activity target = activityService.getActivity(targetId);
+		accessGuard.requireWrite(target.getAthlete().getId());
+		Activity source = activityService.getActivity(sourceId);
+		accessGuard.requireWrite(source.getAthlete().getId());
+		return activityMergeOrchestrator.merge(targetId, sourceId, fields, parseNullPolicy(nulls),
+				offsetSeconds, Boolean.TRUE.equals(hideSource), preview == null || preview);
+	}
+
+	@McpTool(name = "unmerge_activity", description = "Issue #501: reverses activityId's own latest "
+			+ "active merge (from merge_activities) - restores its stream fields by re-parsing its "
+			+ "own stored upload file, restores its activity-level fields from the snapshot the "
+			+ "merge itself recorded, and un-hides the source if the merge had hidden it (unless "
+			+ "something else has since re-resolved that source, which is left alone). Fails if "
+			+ "there's no active merge, more than one is stacked on this activity (a merge chain - "
+			+ "undo isn't supported for that), or the activity's own upload row has no stored file.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
+	public ActivityResponse unmergeActivity(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		activityUnmergeService.undoMerge(activityId);
+		return activityService.toResponse(activityService.getActivity(activityId));
+	}
+
+	private NullPolicy parseNullPolicy(String nulls) {
+		if (nulls == null || nulls.isBlank()) {
+			return NullPolicy.KEEP_ORIGINAL;
+		}
+		try {
+			return NullPolicy.fromWireValue(nulls.trim());
+		}
+		catch (IllegalArgumentException e) {
+			throw new ValidationException("nulls must be 'keep_original' or 'overwrite'.", "nulls");
+		}
 	}
 
 	@McpTool(name = "resolve_duplicates_batch", description = "Issue #498: applies action ('mark' "

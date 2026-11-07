@@ -9,6 +9,8 @@ import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +40,14 @@ public class ActivityMergeService {
 	public record MergeResult(String mergeId, int offsetSeconds, Double alignmentScore,
 			Map<String, FieldRewriteCounts> fieldCounts, ActivitySummary before, ActivitySummary after,
 			boolean sourceHidden) {
+	}
+
+	/** Issue #501 (phase 3): a target's currently active merge, for {@code get_merge}. {@code sourceId}/
+	 * {@code sourceName} are null if the source activity has since been deleted outright (the {@link
+	 * Merge#getSourceActivity} association is SET_NULL, not CASCADE - see that field's own Javadoc). */
+	public record MergeRecord(String mergeId, String sourceId, String sourceName, List<String> fields,
+			NullPolicy nullPolicy, int offsetSeconds, Double alignmentScore,
+			Map<String, FieldRewriteCounts> fieldCounts, boolean sourceHidden, Instant createdAt) {
 	}
 
 	private final ActivityRepository activityRepository;
@@ -170,5 +180,28 @@ public class ActivityMergeService {
 
 		return new MergeResult(merge.getId(), offset.offsetSeconds(), offset.score(), counts, before, after,
 				hideSource);
+	}
+
+	/** Issue #501 (phase 3): the target's current active merge, if any - for {@code get_merge}.
+	 * Unlike {@link ActivityUnmergeService}'s own undo-time lookup, this never throws on a merge
+	 * chain (more than one active merge) - it just reports the most recently applied one, since a
+	 * read has no "which one wins" ambiguity to protect against the way an undo does.
+	 * {@code @Transactional} keeps the session open for {@code source.getName()} below - see
+	 * backend_java/CLAUDE.md's lazy-association gotcha. */
+	@Transactional(readOnly = true)
+	public MergeRecord getActiveMerge(String targetId) {
+		List<Merge> active = mergeRepository.findByTargetActivityId(targetId).stream()
+				.filter(m -> m.getUndoneAt() == null)
+				.sorted(Comparator.comparing(Merge::getCreatedAt).reversed())
+				.toList();
+		if (active.isEmpty()) {
+			return null;
+		}
+		Merge merge = active.get(0);
+		Activity source = merge.getSourceActivity();
+		return new MergeRecord(merge.getId(), source != null ? source.getId() : null,
+				source != null ? source.getName() : null, merge.getFields(), merge.getNullPolicy(),
+				merge.getOffsetSeconds(), merge.getAlignmentScore(), merge.getFieldCounts(), merge.isSourceHidden(),
+				merge.getCreatedAt());
 	}
 }
