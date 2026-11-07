@@ -2,7 +2,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from .models import Activity, ActivityComment, ActivityDurability, BestEffort, DurationCurve, Lap, Tag
+from .models import Activity, ActivityComment, ActivityDurability, BestEffort, DurationCurve, Lap, Merge, Tag
 
 
 class ActivityDurabilitySerializer(serializers.ModelSerializer):
@@ -174,6 +174,15 @@ class ActivityUpdateSerializer(serializers.Serializer):
     avg_humidity = serializers.IntegerField(required=False, allow_null=True)
     aerobic_training_effect = serializers.FloatField(required=False, allow_null=True, min_value=0.0, max_value=5.0)
     anaerobic_training_effect = serializers.FloatField(required=False, allow_null=True, min_value=0.0, max_value=5.0)
+
+
+class MergeActivitiesSerializer(serializers.Serializer):
+    source_id = serializers.CharField()
+    fields = serializers.ListField(child=serializers.CharField(), allow_empty=False)
+    null_policy = serializers.ChoiceField(choices=Merge.NULL_POLICY_CHOICES)
+    offset_seconds = serializers.IntegerField(required=False, allow_null=True, default=None)
+    hide_source = serializers.BooleanField(required=False, default=False)
+    preview = serializers.BooleanField(required=False, default=False)
 
 
 class LapSerializer(serializers.ModelSerializer):

@@ -7,6 +7,7 @@ from .views import (
     ActivityCommentListView,
     ActivityDetailView,
     ActivityListView,
+    ActivityMergeView,
     ActivityOverlapListView,
     ActivityRecomputeElevationView,
     ActivitySectionsView,
@@ -36,6 +37,7 @@ urlpatterns = [
         RecomputeActivityStatsView.as_view(),
         name="activity-recompute-stats",
     ),
+    path("v1/activities/<str:id>/merge", ActivityMergeView.as_view(), name="activity-merge"),
     path("v1/activities/<str:id>/laps", LapListView.as_view(), name="activity-laps"),
     path(
         "v1/activities/<str:id>/regenerate-laps",

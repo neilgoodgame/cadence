@@ -2,12 +2,14 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.ActivityWorkoutMatchCandidateResponse;
+import com.cadence.api.activities.dto.MergeActivitiesRequest;
 import com.cadence.api.activities.dto.OverlapPairResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.CursorPage;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.workouts.WorkoutMatchScanService;
+import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -31,16 +33,19 @@ public class ActivityController {
 	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
 	private final WorkoutMatchScanService workoutMatchScanService;
 	private final ActivityOverlapService activityOverlapService;
+	private final ActivityMergeService activityMergeService;
 	private final AccessGuard accessGuard;
 
 	public ActivityController(ActivityService activityService, TssRecomputeService tssRecomputeService,
 			DerivedStatsRecomputeService derivedStatsRecomputeService, WorkoutMatchScanService workoutMatchScanService,
-			ActivityOverlapService activityOverlapService, AccessGuard accessGuard) {
+			ActivityOverlapService activityOverlapService, ActivityMergeService activityMergeService,
+			AccessGuard accessGuard) {
 		this.activityService = activityService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
 		this.workoutMatchScanService = workoutMatchScanService;
 		this.activityOverlapService = activityOverlapService;
+		this.activityMergeService = activityMergeService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -153,6 +158,31 @@ public class ActivityController {
 		accessGuard.requireWrite(activity.getAthlete().getId());
 		derivedStatsRecomputeService.recomputeForActivity(id);
 		return activityService.toResponse(activityService.getActivity(id));
+	}
+
+	/** Issue #501 (phase 1): {@code id} is the merge target. See
+	 * {@link ActivityMergeService#runMerge} for the orchestration; {@code preview=true} runs the
+	 * real merge inside a rolled-back transaction, so its result can never disagree with a later
+	 * real merge of the same request. Returns the service's own result record directly rather
+	 * than a dedicated dto - its shape already is the API response. */
+	@PostMapping("/v1/activities/{id}/merge")
+	public ActivityMergeService.MergeResult mergeActivity(@PathVariable String id,
+			@Valid @RequestBody MergeActivitiesRequest request) {
+		Activity target = activityService.getActivity(id);
+		accessGuard.requireWrite(target.getAthlete().getId());
+		Activity source = activityService.getActivity(request.sourceId());
+		accessGuard.requireWrite(source.getAthlete().getId());
+
+		try {
+			return activityMergeService.runMerge(id, request.sourceId(), request.fields(), request.nullPolicy(),
+					request.offsetSeconds(), request.hideSourceOrDefault(), request.previewOrDefault());
+		}
+		catch (MergePreviewRollbackSignal signal) {
+			// See MergePreviewRollbackSignal - runMerge's preview=true transaction is rolled
+			// back (not committed) by the time this is caught; the payload it's carrying was
+			// computed before that rollback and is exactly what a real run would have returned.
+			return signal.result();
+		}
 	}
 
 	@DeleteMapping("/v1/activities/{id}")

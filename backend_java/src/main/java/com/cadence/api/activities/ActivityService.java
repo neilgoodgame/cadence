@@ -483,10 +483,12 @@ public class ActivityService {
 		return saved;
 	}
 
-	/** Issue #498: shared by markDuplicate/unmarkDuplicate/setPrimary and updateActivity's own
-	 * primary_activity_id branch - a duplicate-marked activity's distance must not double-count
-	 * on its bike/shoe's mileage total alongside its primary's. */
-	private void applyDuplicateGearMileageChange(Activity activity, boolean wasDuplicate, boolean isDuplicate) {
+	/** Issue #498: shared by markDuplicate/unmarkDuplicate/setPrimary, updateActivity's own
+	 * primary_activity_id branch, and (issue #501) ActivityMergeService's hideSource - a
+	 * duplicate-marked activity's distance must not double-count on its bike/shoe's mileage
+	 * total alongside its primary's. Package-private rather than private so ActivityMergeService
+	 * (same package) can reuse it directly instead of re-deriving the mileage-adjustment logic. */
+	void applyDuplicateGearMileageChange(Activity activity, boolean wasDuplicate, boolean isDuplicate) {
 		String bikeId = activity.getBike() == null ? null : activity.getBike().getId();
 		String shoeId = activity.getShoe() == null ? null : activity.getShoe().getId();
 		gearMileageService.applyDuplicateChange(bikeId, shoeId, activity.getDistanceKm(), wasDuplicate, isDuplicate);

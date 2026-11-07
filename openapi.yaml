@@ -1107,6 +1107,78 @@ paths:
         "422":
           description: The activity isn't a run, walk or ride.
 
+  /v1/activities/{id}/merge:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Merge another activity's fields into this one
+      operationId: mergeActivity
+      description: >-
+        Issue #501. Rewrites the selected fields on this activity (the target) from
+        source_id's own data - the target's timeline is authoritative; no Record rows are
+        ever created or deleted. Uses offset_seconds if given, otherwise resolves one by
+        cross-correlating cadence (falling back to power) over a search window around the
+        two activities' start_date delta. Then runs the same shared post-processing chain an
+        upload does (derived stats, decoupling/durability, duration curve, best efforts, the
+        threshold ledger/TSS cascade, workout matching), and optionally hides source_id as a
+        #498 duplicate. preview=true computes and returns the exact same result without
+        writing anything - it can never disagree with a later real merge of the same request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_id, fields, null_policy]
+              properties:
+                source_id:
+                  type: string
+                  description: The activity to copy fields from. Must belong to the same athlete.
+                fields:
+                  type: array
+                  items: { type: string }
+                  description: >-
+                    Stream fields (power, heartrate, cadence, altitude, lat, lng, speed,
+                    distance_km, air_temp, humidity, skin_temp, core_temp, heat_strain)
+                    and/or activity-level fields (name, avg_left_balance_pct,
+                    start_weight_kg, end_weight_kg, fluids_ml, bike_id, shoe_id) to copy.
+                    Unrecognized names are rejected.
+                  example: [power]
+                null_policy:
+                  type: string
+                  enum: [overwrite, keep_original]
+                  description: >-
+                    keep_original keeps the target's own stream value for a second where the
+                    source has none; overwrite nulls it out instead, mirroring the source
+                    exactly. Only affects stream fields, not activity-level ones.
+                offset_seconds:
+                  type: integer
+                  nullable: true
+                  description: >-
+                    Overrides automatic time-alignment - positive means the source started
+                    this many seconds after the target. Omit to resolve one automatically.
+                hide_source:
+                  type: boolean
+                  default: false
+                  description: Marks source_id as a hidden #498 duplicate of this (target) activity.
+                preview:
+                  type: boolean
+                  default: false
+                  description: Compute and return the result without writing anything.
+      responses:
+        "200":
+          description: The merge's outcome.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MergeResult" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/activities/{id}/splits:
     parameters:
       - $ref: "#/components/parameters/ActivityId"
@@ -5455,6 +5527,42 @@ components:
         new_intensity: { type: [number, "null"] }
         old_tss: { type: [integer, "null"] }
         new_tss: { type: [integer, "null"] }
+
+    MergeResult:
+      type: object
+      description: POST /v1/activities/{id}/merge's response - the actual outcome for both a real merge and a preview.
+      properties:
+        merge_id:
+          type: [string, "null"]
+          description: Null for a preview - nothing was recorded.
+          example: mrg_9f2a7c
+        offset_seconds:
+          type: integer
+          description: The offset actually used - either the request's own override, or the one alignment resolved.
+        alignment_score:
+          type: [number, "null"]
+          description: Null when offset_seconds was given explicitly in the request, since nothing was correlated.
+        field_counts:
+          type: object
+          description: Per requested field - how many target seconds were copied/kept_original/nulled. Activity-level fields report copied=1,nulled=0 or copied=0,nulled=1 (kept_original is always 0 for them).
+          additionalProperties:
+            type: object
+            properties:
+              copied: { type: integer }
+              kept_original: { type: integer }
+              nulled: { type: integer }
+        before: { $ref: "#/components/schemas/MergeActivitySummary" }
+        after: { $ref: "#/components/schemas/MergeActivitySummary" }
+        source_hidden: { type: boolean }
+
+    MergeActivitySummary:
+      type: object
+      description: The target's own derived summary, before and after a merge.
+      properties:
+        avg_power: { type: [integer, "null"] }
+        norm_power: { type: [integer, "null"] }
+        intensity: { type: [number, "null"] }
+        tss: { type: integer }
 
     ThresholdSuggestion:
       type: object
