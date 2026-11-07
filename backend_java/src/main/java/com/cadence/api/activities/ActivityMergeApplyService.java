@@ -101,6 +101,64 @@ public class ActivityMergeApplyService {
 		return RECORD_FIELDS.containsKey(field) || ACTIVITY_FIELDS.containsKey(field);
 	}
 
+	/** Issue #501 (phase 1, part 5): true for an *activity-level* field (name, fluidsMl, ...),
+	 * as opposed to a per-second Record stream field - ActivityMergeService's pre-merge undo
+	 * snapshot only needs the former (see Merge.previousActivityValues' own Javadoc). */
+	public static boolean isActivityLevelField(String field) {
+		return ACTIVITY_FIELDS.containsKey(field);
+	}
+
+	/** Issue #501 (phase 1, part 5): true for a per-second Record stream field, as opposed to
+	 * an activity-level one - ActivityUnmergeService restores these by re-parsing the target's
+	 * stored upload file, not from a snapshot. */
+	public static boolean isStreamField(String field) {
+		return RECORD_FIELDS.containsKey(field);
+	}
+
+	/** Issue #501 (phase 1, part 5): writes an already-typed value onto one Record stream
+	 * field, by the same field name a merge request uses - ActivityUnmergeService's restore-
+	 * from-re-parsed-file counterpart to {@link #computeStreamField}. No-op for a field outside
+	 * RECORD_FIELDS. */
+	public static void setRecordFieldValue(Record record, String field, Object value) {
+		RecordFieldAccessor accessor = RECORD_FIELDS.get(field);
+		if (accessor != null) {
+			accessor.setter().accept(record, value);
+		}
+	}
+
+	/** Issue #501 (phase 1, part 5): a JSON-safe snapshot of one *activity-level* field's
+	 * current value, for ActivityMergeService's pre-merge undo snapshot (see Merge's own
+	 * Javadoc). bikeId/shoeId return the entity's own id, not the entity - a Bike/Shoe isn't a
+	 * sensible JSON value and ActivityUnmergeService re-resolves the id back to an entity
+	 * itself. Returns null for a field outside ACTIVITY_FIELDS (the caller already validated
+	 * the field list via isKnownField). */
+	public static Object getActivityFieldValueForSnapshot(Activity activity, String field) {
+		ActivityFieldAccessor accessor = ACTIVITY_FIELDS.get(field);
+		if (accessor == null) {
+			return null;
+		}
+		Object value = accessor.getter().apply(activity);
+		if (value instanceof Bike bike) {
+			return bike.getId();
+		}
+		if (value instanceof Shoe shoe) {
+			return shoe.getId();
+		}
+		return value;
+	}
+
+	/** Issue #501 (phase 1, part 5): writes an already-resolved value onto one *activity-level*
+	 * field - the inverse of {@link #getActivityFieldValueForSnapshot}, used by
+	 * ActivityUnmergeService to restore a merge's snapshot. {@code value} must already be the
+	 * right type for the field (a Bike/Shoe entity for bikeId/shoeId, not an id string - the
+	 * caller resolves that). No-op for a field outside ACTIVITY_FIELDS. */
+	public static void setActivityFieldValue(Activity activity, String field, Object value) {
+		ActivityFieldAccessor accessor = ACTIVITY_FIELDS.get(field);
+		if (accessor != null) {
+			accessor.setter().accept(activity, value);
+		}
+	}
+
 	private final ActivityService activityService;
 	private final ActivityRepository activityRepository;
 	private final RecordRepository recordRepository;

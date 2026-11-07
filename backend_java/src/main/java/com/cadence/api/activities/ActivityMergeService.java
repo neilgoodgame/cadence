@@ -9,6 +9,7 @@ import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -123,6 +124,14 @@ public class ActivityMergeService {
 
 		OffsetResolution offset = resolveOffset(target, source, offsetSecondsOverride);
 		ActivitySummary before = summarize(target);
+		// Snapshot each requested activity-level field's value before applyMergeFields
+		// overwrites it - see Merge.previousActivityValues' own Javadoc for why.
+		Map<String, Object> previousActivityValues = new LinkedHashMap<>();
+		for (String field : fields) {
+			if (ActivityMergeApplyService.isActivityLevelField(field)) {
+				previousActivityValues.put(field, ActivityMergeApplyService.getActivityFieldValueForSnapshot(target, field));
+			}
+		}
 
 		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(targetId, sourceId, fields,
 				nullPolicy, offset.offsetSeconds());
@@ -155,6 +164,7 @@ public class ActivityMergeService {
 		merge.setOffsetSeconds(offset.offsetSeconds());
 		merge.setAlignmentScore(offset.score());
 		merge.setFieldCounts(counts);
+		merge.setPreviousActivityValues(previousActivityValues);
 		merge.setSourceHidden(hideSource);
 		merge = mergeRepository.save(merge);
 
