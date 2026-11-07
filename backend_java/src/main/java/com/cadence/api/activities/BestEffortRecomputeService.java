@@ -2,6 +2,7 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.calc.RunningPowerSanitizer;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.util.List;
@@ -68,6 +69,17 @@ public class BestEffortRecomputeService {
 			if (onProgress != null) onProgress.accept(i + 1, ids.size());
 		}
 		return ids.size();
+	}
+
+	/** Issue #501: on-demand recompute for one activity, every kind - reused by
+	 * ActivityMergePostProcessingService after a merge rewrites this activity's Record stream.
+	 * Unlike {@link #recomputeAll}, does NOT delete the athlete's existing BestEffort rows first -
+	 * {@link BestEffortComputeService#computeForActivity} already upserts just this activity's own
+	 * rows and trims the window, so every other activity's rows are left untouched. */
+	public void recomputeForActivity(String activityId) {
+		Activity activity = activityRepository.findById(activityId)
+				.orElseThrow(() -> new NotFoundException("No such activity."));
+		processById(activityId, activity.getAthlete().getId(), null);
 	}
 
 	/** Recompute a single kind for the athlete. Calls onProgress(current, total) after each activity. */

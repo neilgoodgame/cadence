@@ -44,13 +44,15 @@ public class DurationCurveRecomputeService {
 						.map(Activity::getId).toList());
 		if (ids == null) return 0;
 		for (int i = 0; i < ids.size(); i++) {
-			processById(ids.get(i));
+			recomputeForActivity(ids.get(i));
 			if (onProgress != null) onProgress.accept(i + 1, ids.size());
 		}
 		return ids.size();
 	}
 
-	private void processById(String activityId) {
+	/** Issue #501: on-demand single-activity recompute, reused by
+	 * ActivityMergePostProcessingService after a merge rewrites this activity's Record stream. */
+	public void recomputeForActivity(String activityId) {
 		tx.execute(status -> {
 			Activity activity = activityRepository.findById(activityId).orElse(null);
 			if (activity == null) return null;
