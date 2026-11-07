@@ -496,3 +496,41 @@ class DuplicateResolutionEntry(models.Model):
 
     def __str__(self) -> str:
         return f"{self.batch_id}: {self.activity_id} {self.outcome}"
+
+
+class Merge(PrefixedIDModel):
+    """Issue #501: records one applied merge, so it's auditable and - when the target's upload
+    file is still stored - reversible via merge_service.unmerge. Never created for a preview;
+    nothing happened, nothing to record. ``source_activity`` is nullable/SET_NULL rather than
+    CASCADE: a merge that hid its source (merge_laps aside) leaves the source as a real,
+    undeleted activity (same "keep the hidden copy, don't delete it" reversibility #498's own
+    duplicate rows get), but if an athlete deletes it outright anyway, this audit row survives
+    as a record of what happened even though undo is no longer possible."""
+
+    id_prefix = "mrg"
+
+    NULL_POLICY_CHOICES = [
+        ("overwrite", "Overwrite"),
+        ("keep_original", "Keep original"),
+    ]
+
+    target_activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="merges_into")
+    source_activity = models.ForeignKey(
+        Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="merges_from"
+    )
+    fields = models.JSONField()
+    null_policy = models.CharField(max_length=20, choices=NULL_POLICY_CHOICES)
+    offset_seconds = models.IntegerField()
+    alignment_score = models.FloatField(null=True, blank=True)
+    # {field_name: {"copied": n, "kept_original": n, "nulled": n}}, straight from
+    # FieldRewriteCounts/merge_apply.apply_merge_fields's own return value.
+    field_counts = models.JSONField()
+    source_hidden = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    undone_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.id}: {self.source_activity_id} -> {self.target_activity_id}"

@@ -2,6 +2,8 @@ package com.cadence.api.activities;
 
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.Shoe;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -30,7 +32,27 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ActivityMergeApplyService {
 
-	public enum NullPolicy { OVERWRITE, KEEP_ORIGINAL }
+	/** Wire value is lowercase ({@code overwrite}/{@code keep_original}) - {@code
+	 * property-naming-strategy: SNAKE_CASE} (application.yml) only renames JSON property keys,
+	 * not enum constant values, so this needs its own @JsonValue/@JsonCreator pair just like
+	 * every other wire-facing enum in this codebase (OverlapHandling, LapSource, ...). Missing
+	 * this 400'd every real POST .../merge request, caught by
+	 * ActivityMergeControllerIntegrationTest - a NullPolicy passed directly between Java callers
+	 * (as every other test in this module does) never exercises Jackson's (de)serialization at
+	 * all, so it wouldn't have caught this either. */
+	public enum NullPolicy {
+		OVERWRITE, KEEP_ORIGINAL;
+
+		@JsonValue
+		public String wireValue() {
+			return name().toLowerCase();
+		}
+
+		@JsonCreator
+		public static NullPolicy fromWireValue(String value) {
+			return NullPolicy.valueOf(value.toUpperCase());
+		}
+	}
 
 	public record FieldRewriteCounts(int copied, int keptOriginal, int nulled) {
 	}
@@ -70,9 +92,14 @@ public class ActivityMergeApplyService {
 			"shoe_id", new ActivityFieldAccessor(Activity::getShoe, (a, v) -> a.setShoe((Shoe) v)));
 
 	// Any field name outside RECORD_FIELDS/ACTIVITY_FIELDS is silently ignored rather than
-	// throwing - this service has no API endpoint yet to validate request input against, and
-	// the two maps above are themselves the whitelist a future endpoint's request DTO will
-	// validate against.
+	// throwing here - ActivityMergeService validates the request against isKnownField before
+	// ever calling applyMergeFields/previewMergeFields.
+
+	/** Issue #501 (phase 1, part 4): the whitelist ActivityMergeService validates a merge
+	 * request's field list against. */
+	public static boolean isKnownField(String field) {
+		return RECORD_FIELDS.containsKey(field) || ACTIVITY_FIELDS.containsKey(field);
+	}
 
 	private final ActivityService activityService;
 	private final ActivityRepository activityRepository;

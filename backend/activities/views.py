@@ -37,6 +37,7 @@ from .comments import resolve_parent_comment
 from .elevation import SECTION_SPORTS, ensure_elevation, rebuild_elevation, sections_payload
 from .lap_derivation import replace_laps_with_derived
 from .match_preferences import apply_match_rename, apply_match_side_effects
+from .merge_service import run_merge
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Record, Tag
 from .overlaps import find_overlaps
 from .serializers import (
@@ -46,6 +47,7 @@ from .serializers import (
     ActivityUpdateSerializer,
     DurationCurveSerializer,
     LapSerializer,
+    MergeActivitiesSerializer,
     TagAttachSerializer,
     TagNameSerializer,
     TagSerializer,
@@ -593,6 +595,39 @@ class RecomputeActivityStatsView(APIView):
         if activity.sport in ("bike", "run"):
             compute_decoupling_and_durability_for_activity(activity, activity.athlete)
         return Response(ActivitySerializer(activity).data)
+
+
+class ActivityMergeView(APIView):
+    """Issue #501 (phase 1): POST .../merge, targeting the activity in the URL. See
+    merge_service.run_merge for the actual orchestration - this view only handles auth and
+    request/response shape. ``preview=true`` runs the real merge inside a rolled-back
+    transaction, so its result can never disagree with a later real merge of the same request.
+    """
+
+    def post(self, request: Request, id: str) -> Response:
+        target = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, target.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        serializer = MergeActivitiesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        source = get_object_or_404(Activity, pk=data["source_id"])
+        if not user_may_write(sub, source.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        result = run_merge(
+            target_id=id,
+            source_id=data["source_id"],
+            fields=data["fields"],
+            null_policy=data["null_policy"],
+            offset_seconds=data["offset_seconds"],
+            hide_source=data["hide_source"],
+            preview=data["preview"],
+        )
+        return Response(result)
 
 
 class LapListView(APIView):
