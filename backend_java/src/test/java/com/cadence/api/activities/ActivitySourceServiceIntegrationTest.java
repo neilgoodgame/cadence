@@ -512,7 +512,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 
 	@Test
 	void compareStreamsRejectsTheSameSourceOnBothSides() {
-		User athlete = newAthlete("compare-same-source@example.cc");
+		User athlete = newAthlete("compare-identical-source@example.cc");
 		Activity activity = newActivity(athlete, "Activity", "Edge 530");
 		addFieldRecordsSeries(activity, 40, "power", 200);
 
@@ -523,7 +523,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 
 	@Test
 	void compareStreamsRejectsTooFewOverlappingSamples() {
-		User athlete = newAthlete("compare-too-few-samples@example.cc");
+		User athlete = newAthlete("compare-too-few-points@example.cc");
 		Activity target = newActivity(athlete, "Target", "Edge 530");
 		Activity source = newActivity(athlete, "Source", "Favero Assioma");
 		addFieldRecordsSeries(target, 10, "power", 200); // below MIN_OVERLAP_SAMPLES (30)
