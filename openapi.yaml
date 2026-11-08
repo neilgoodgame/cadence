@@ -1166,12 +1166,96 @@ paths:
                   type: boolean
                   default: false
                   description: Compute and return the result without writing anything.
+                copy_mode:
+                  type: string
+                  enum: [overwrite, attach]
+                  default: overwrite
+                  description: >-
+                    Issue #503 (phase 1). overwrite (default, the only behavior before this
+                    field existed) rewrites the target's own stream rows per null_policy, as
+                    described above. attach - power only, any other field is rejected - never
+                    touches the target's existing power stream; instead it stores source's
+                    power stream alongside it as a new, non-primary ActivitySource/
+                    ActivityStream (see GET .../sources and POST .../primary-source), so
+                    neither recording is lost and either can be made primary later.
       responses:
         "200":
           description: The merge's outcome.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MergeResult" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/activities/{id}/sources:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Activities]
+      summary: List this activity's non-primary stored streams
+      operationId: listActivitySources
+      description: >-
+        Issue #503 (phase 1). Every non-primary stream kept alongside this activity - e.g. a
+        Garmin/pedal power recording attached onto a Zwift ride without overwriting the Zwift
+        copy (POST .../merge's attach copy_mode). The activity's own current primary stream is
+        never listed here - it's whatever's already on the activity itself (GET
+        /v1/activities/{id}); is_primary on a listed source instead tells you whether that
+        source's own device classification matches the current primary, i.e. whether POST
+        .../primary-source has nothing to do for it. Phase 1 only ever lists power sources.
+        Returns an empty list if nothing has ever been attached or swapped for this activity.
+      responses:
+        "200":
+          description: The activity's stored non-primary sources, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ActivitySource" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/activities/{id}/primary-source:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Swap this activity's primary stream for a stored source
+      operationId: setActivityPrimarySource
+      description: >-
+        Issue #503 (phase 1). Swaps this activity's current primary stream for field with the
+        named source_id's stream (from GET .../sources) - e.g. switching a ride's power back
+        to its Garmin/pedal reading after a Zwift copy became primary. The stream being
+        replaced is itself kept as a new source (never lost), so this can always be reversed by
+        calling it again with the other source's id. Reruns the same recompute cascade a merge
+        triggers, so TSS/FTP-candidate data reflects the new primary immediately. Phase 1 only
+        supports field=power.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [field, source_id]
+              properties:
+                field:
+                  type: string
+                  description: "'power' - phase 1 only supports power sources."
+                  example: power
+                source_id:
+                  type: string
+                  description: The source id to promote (from GET .../sources).
+      responses:
+        "200":
+          description: The activity with its primary stream swapped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Activity" }
         "400":
           $ref: "#/components/responses/BadRequest"
         "403":
@@ -4454,6 +4538,18 @@ components:
             algorithms tend to read meaningfully higher than Stryd for the same effort, so the
             non-selected source is completely ignored, not used as a fallback.
           example: stryd
+        bike_power_source:
+          type: string
+          enum: [pedals, trainer, any]
+          default: any
+          description: >-
+            Issue #503 (phase 1). Which bike power reading should become primary when a
+            Zwift/trainer and a Garmin/pedal recording of the same ride both exist as sources
+            on an activity (see POST .../merge's attach copy_mode and POST .../primary-source) -
+            consulted at attach time and as an FTP-candidate filter, not re-resolved
+            retroactively for activities already imported. any (default) means no preference -
+            attach never auto-swaps, and FTP candidates aren't filtered by it.
+          example: any
         overlap_handling:
           type: string
           enum: [off, flag, mark, merge]
@@ -5582,6 +5678,12 @@ components:
         before: { $ref: "#/components/schemas/MergeActivitySummary" }
         after: { $ref: "#/components/schemas/MergeActivitySummary" }
         source_hidden: { type: boolean }
+        attached_source_id:
+          type: [string, "null"]
+          description: >-
+            Issue #503 (phase 1). Set only when copy_mode=attach actually attached a stream
+            (never on a preview, which attaches nothing). Null for every overwrite merge.
+          example: src_9f2a7c
 
     MergeActivitySummary:
       type: object
@@ -5591,6 +5693,41 @@ components:
         norm_power: { type: [integer, "null"] }
         intensity: { type: [number, "null"] }
         tss: { type: integer }
+
+    ActivitySource:
+      type: object
+      description: >-
+        Issue #503 (phase 1). A non-primary stream kept alongside an activity - see GET
+        /v1/activities/{id}/sources. The primary stream itself is never represented here - it
+        stays in the activity's own stream data.
+      properties:
+        id:
+          type: string
+          example: src_9f2a7c
+        label:
+          type: string
+          description: The source activity's own name, at the time it was attached or swapped away.
+        device:
+          type: [string, "null"]
+        sensor_kind:
+          type: string
+          description: Which field this source provides a stream for. Phase 1 only ever creates "power".
+          example: power
+        origin:
+          type: string
+          enum: [file, attached]
+          description: >-
+            file - this activity's own original upload, snapshotted the first time its primary
+            stream was swapped away. attached - added via POST .../merge's attach copy_mode.
+        created_at:
+          type: string
+          format: date-time
+        is_primary:
+          type: boolean
+          description: >-
+            Whether this source's own device classification already matches the activity's
+            current primary reading for sensor_kind - i.e. whether POST .../primary-source has
+            nothing to do for it.
 
     ThresholdSuggestion:
       type: object

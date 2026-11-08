@@ -376,6 +376,7 @@ class AthleteMCPTools(ScopedMCPToolset):
             "threshold_sanity_pct": athlete.threshold_sanity_pct,
             "ftp_calculation_method": athlete.ftp_calculation_method,
             "running_power_source": athlete.running_power_source,
+            "bike_power_source": athlete.bike_power_source,
         }
 
     def get_import_settings(self) -> dict[str, Any]:

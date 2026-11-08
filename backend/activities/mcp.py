@@ -27,11 +27,11 @@ from core.cql.compiler import compile_ast_to_q
 from core.cql.parser import parse
 from core.units import parse_distance_meters
 
-from . import merge_rule_service
+from . import activity_source_service, merge_rule_service
 from .comments import resolve_parent_comment
 from .duplicate_batches import resolve_duplicates_batch as resolve_duplicates_batch_action
 from .duplicate_batches import undo_batch as undo_batch_action
-from .merge_apply import NullPolicy
+from .merge_apply import CopyMode, NullPolicy
 from .merge_service import MergeResult, run_merge
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Merge, Tag
 from .overlaps import find_overlaps
@@ -155,6 +155,16 @@ def _parse_null_policy(value: str | None) -> NullPolicy:
         return "keep_original"
     if value not in ("overwrite", "keep_original"):
         raise ValidationError({"nulls": "nulls must be 'keep_original' or 'overwrite'."})
+    return value
+
+
+def _parse_copy_mode(value: str | None) -> CopyMode:
+    """merge_activities' `copy_mode` param (issue #503 phase 1) - defaults to overwrite, today's
+    only prior behavior, so every existing caller is unaffected."""
+    if value is None:
+        return "overwrite"
+    if value not in ("overwrite", "attach"):
+        raise ValidationError({"copy_mode": "copy_mode must be 'overwrite' or 'attach'."})
     return value
 
 
@@ -581,6 +591,7 @@ class ActivityMCPTools(ScopedMCPToolset):
         hide_source: bool = False,
         offset_seconds: int | None = None,
         preview: bool = True,
+        copy_mode: str | None = None,
     ) -> MergeResult:
         """Issue #501: copies fields from source_id into target_id - the target's timeline is
         authoritative, no stream rows are created or deleted. Resolves offset_seconds
@@ -595,7 +606,11 @@ class ActivityMCPTools(ScopedMCPToolset):
         hidden #498 duplicate of target_id. preview defaults to true here (the opposite of the
         web app's own default) - it computes and returns the exact result, including the
         resolved offset/alignment score and before/after summary, without writing anything; call
-        again with preview=false once you're happy with it to actually apply the merge."""
+        again with preview=false once you're happy with it to actually apply the merge.
+        copy_mode (issue #503 phase 1) defaults to "overwrite" (today's only prior behavior);
+        "attach" is for power only - keeps target's existing power stream untouched and stores
+        source's power stream alongside it as a non-primary source (see list_activity_sources/
+        set_primary_source) instead of overwriting one with the other."""
         self._require_scope(ACTIVITIES_WRITE)
         target = get_object_or_404(Activity, pk=target_id)
         self._require_write(target.athlete_id)
@@ -609,6 +624,7 @@ class ActivityMCPTools(ScopedMCPToolset):
             offset_seconds=offset_seconds,
             hide_source=hide_source,
             preview=preview,
+            copy_mode=_parse_copy_mode(copy_mode),
         )
 
     def unmerge_activity(self, activity_id: str) -> dict[str, Any]:
@@ -623,6 +639,34 @@ class ActivityMCPTools(ScopedMCPToolset):
         activity = get_object_or_404(Activity, pk=activity_id)
         self._require_write(activity.athlete_id)
         undo_merge(activity_id)
+        return self.get_activity(activity_id)
+
+    def list_activity_sources(self, activity_id: str) -> list[dict[str, Any]]:
+        """Issue #503 (phase 1): every non-primary stream kept alongside activity_id - e.g. a
+        Garmin/pedal power recording attached onto a Zwift ride without overwriting the Zwift
+        copy (merge_activities' attach copy_mode). The activity's own current primary stream is
+        never listed here - it's whatever's already on the activity itself (get_activity);
+        is_primary on a listed source instead tells you whether that source's own device
+        classification matches the current primary, i.e. whether set_primary_source has nothing
+        to do for it. Phase 1 only ever lists power sources. Returns an empty list if nothing has
+        ever been attached or swapped for this activity."""
+        self._require_scope(ACTIVITIES_READ)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_read(activity.athlete_id)
+        return [summary._asdict() for summary in activity_source_service.list_sources(activity_id)]
+
+    def set_primary_source(self, activity_id: str, field: str, source_id: str) -> dict[str, Any]:
+        """Issue #503 (phase 1): swaps activity_id's current primary stream for field with the
+        named source_id's stream (from list_activity_sources) - e.g. switching a ride's power
+        back to its Garmin/pedal reading after a Zwift copy became primary. The stream being
+        replaced is itself kept as a new source (never lost), so this can always be reversed by
+        calling it again with the other source's id. Reruns the same recompute cascade a merge
+        triggers, so TSS/FTP-candidate data reflects the new primary immediately. Phase 1 only
+        supports field="power"."""
+        self._require_scope(ACTIVITIES_WRITE)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        activity_source_service.set_primary_source(activity_id, field, source_id)
         return self.get_activity(activity_id)
 
     def set_merge_rule(

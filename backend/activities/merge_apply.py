@@ -18,6 +18,14 @@ from django.db import transaction
 from .models import Activity, Record
 
 NullPolicy = Literal["overwrite", "keep_original"]
+# Issue #503 (phase 1): how POST .../merge copies a field from source onto target. "overwrite"
+# (the default, and the only mode before this issue) rewrites the target's own Record rows in
+# place, per null_policy - apply_merge_fields above. "attach" doesn't touch the target's existing
+# primary stream at all; it keeps the source's stream alongside as a non-primary ActivitySource/
+# ActivityStream, which set_primary_source can promote later - see
+# activity_source_service.attach_power_stream. Phase 1 only supports "attach" for the "power"
+# field; any other field with copy_mode="attach" is rejected.
+CopyMode = Literal["overwrite", "attach"]
 
 # Per-second channels on Record - copying any of these rewrites the target's existing rows
 # (the target's timeline is authoritative; no new rows are ever created or deleted).

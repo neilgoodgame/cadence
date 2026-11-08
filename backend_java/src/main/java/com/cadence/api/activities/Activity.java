@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.id.PrefixedIdEntity;
@@ -75,6 +76,15 @@ public class Activity extends PrefixedIdEntity {
 	// this is a record of what was true about the file, not a frozen policy snapshot.
 	@Column(name = "power_source")
 	private RunningPowerSource powerSource;
+
+	// Issue #499/#503 phase 1. Which of pedals/trainer this bike activity's primary power
+	// stream was last attached from, if any - set only when an attach (ActivityMergeApplyService's
+	// attach copyMode) or a set_primary_source swap chose a stream. Null for an activity that's
+	// never had a second power source attached (the common case - just a single file's own
+	// reading, with nothing to prefer between). Unlike powerSource, this isn't set at parse time
+	// (a single FIT file has no such ambiguity to record - only two separate recordings do).
+	@Column(name = "bike_power_source")
+	private BikePowerSource bikePowerSource;
 
 	@Column(name = "avg_power")
 	private Integer avgPower;
@@ -396,6 +406,22 @@ public class Activity extends PrefixedIdEntity {
 	 * Record.power for a run. */
 	public boolean matchesRunningPowerPreference(User athlete) {
 		return powerSource == null || powerSource == athlete.getRunningPowerSource();
+	}
+
+	public BikePowerSource getBikePowerSource() {
+		return bikePowerSource;
+	}
+
+	public void setBikePowerSource(BikePowerSource bikePowerSource) {
+		this.bikePowerSource = bikePowerSource;
+	}
+
+	/** Same shape as matchesRunningPowerPreference, plus: the athlete's preference itself can be
+	 * ANY (unlike runningPowerSource, which has no "no preference" value), which always matches
+	 * regardless of this activity's own bikePowerSource. */
+	public boolean matchesBikePowerPreference(User athlete) {
+		return athlete.getBikePowerSource() == BikePowerSource.ANY || bikePowerSource == null
+				|| bikePowerSource == athlete.getBikePowerSource();
 	}
 
 	public Integer getAvgPower() {

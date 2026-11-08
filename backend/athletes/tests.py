@@ -975,7 +975,9 @@ class ThresholdHistoryAlgorithmTests(TestCase):
             email="threshold-history@example.cc", password="x", name="Athlete", ftp=200
         )
 
-    def _make_power_activity(self, sport, start_date, power, duration_seconds=1200, name="Ride", power_source=""):
+    def _make_power_activity(
+        self, sport, start_date, power, duration_seconds=1200, name="Ride", power_source="", bike_power_source=""
+    ):
         activity = Activity.objects.create(
             athlete=self.athlete,
             sport=sport,
@@ -983,6 +985,7 @@ class ThresholdHistoryAlgorithmTests(TestCase):
             start_date=start_date,
             moving_time=duration_seconds,
             power_source=power_source,
+            bike_power_source=bike_power_source,
         )
         for t in range(duration_seconds):
             Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
@@ -1292,6 +1295,36 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         )
         candidate = current_window_value(self.athlete, "critical_run_power", as_of=date(2026, 2, 15))
         self.assertIsNone(candidate)
+
+    def test_ftp_excludes_an_activity_whose_bike_power_source_disagrees_with_preference(self):
+        self.athlete.bike_power_source = "pedals"
+        self.athlete.save(update_fields=["bike_power_source"])
+        self._make_power_activity(
+            "bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=240, bike_power_source="trainer"
+        )
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+        self.assertIsNone(candidate)
+
+    def test_ftp_includes_an_activity_whose_bike_power_source_matches_preference(self):
+        self.athlete.bike_power_source = "pedals"
+        self.athlete.save(update_fields=["bike_power_source"])
+        self._make_power_activity(
+            "bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=240, bike_power_source="pedals"
+        )
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.implied_value, round(0.95 * 240))
+
+    def test_ftp_includes_an_unattached_activity_regardless_of_preference(self):
+        # The common case: bike_power_source is only ever set by an attach/swap (issue #503
+        # phase 1) - an activity that's never had a second source attached has a blank
+        # bike_power_source, which must always match, or every FTP candidate would vanish the
+        # moment an athlete sets a preference without ever actually attaching anything.
+        self.athlete.bike_power_source = "pedals"
+        self.athlete.save(update_fields=["bike_power_source"])
+        self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=240)
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+        self.assertIsNotNone(candidate)
 
     # Issue #504: rebuild_history_stream used to delete the *entire* ledger (every kind), then
     # write back only measured rows from the replay and set the profile field from the replay's

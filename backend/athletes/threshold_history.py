@@ -141,6 +141,13 @@ def _implied_value_detail(
     distance_km_series = [r[2] for r in records]
 
     if field == "ftp":
+        # Issue #499/#503 (phase 1): excluded if this activity's attached-primary power source
+        # disagrees with the athlete's *current* bike_power_source preference - same
+        # re-check-on-every-recompute pattern as critical_run_power below, but "any" (the
+        # default) always matches, and an unset bike_power_source (never had a second source
+        # attached - the common case) also always matches.
+        if not activity.matches_bike_power_preference(activity.athlete):
+            return None
         if activity.athlete.ftp_calculation_method == "sixty_min_direct":
             best_60min = _sliding_window_best_avg(power_series, RUNNING_THRESHOLD_WINDOW_SECONDS)
             return ImpliedValueDetail("60min", best_60min, round(best_60min)) if best_60min is not None else None

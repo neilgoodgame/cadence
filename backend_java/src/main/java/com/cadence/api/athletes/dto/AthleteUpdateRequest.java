@@ -1,5 +1,6 @@
 package com.cadence.api.athletes.dto;
 
+import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.OverlapHandling;
@@ -61,7 +62,10 @@ public record AthleteUpdateRequest(
 		Boolean preview,
 		// Issue #498: the athlete's default for on-ingest overlap detection. Appended at the end
 		// for the same reason as above.
-		OverlapHandling overlapHandling) {
+		OverlapHandling overlapHandling,
+		// Issue #499/#503 phase 1: mirrors runningPowerSource above. Appended at the end for the
+		// same reason as above.
+		BikePowerSource bikePowerSource) {
 
 	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
 	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */

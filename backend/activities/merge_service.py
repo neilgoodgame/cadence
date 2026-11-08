@@ -18,8 +18,9 @@ from rest_framework.exceptions import ValidationError
 
 from gear.mileage import apply_duplicate_change
 
+from .activity_source_service import attach_power_stream
 from .merge_alignment import align
-from .merge_apply import ACTIVITY_FIELDS, STREAM_FIELDS, FieldRewriteCounts, NullPolicy, apply_merge_fields
+from .merge_apply import ACTIVITY_FIELDS, STREAM_FIELDS, CopyMode, FieldRewriteCounts, NullPolicy, apply_merge_fields
 from .merge_postprocess import recompute_after_merge
 from .models import Activity, Merge
 
@@ -41,6 +42,9 @@ class MergeResult(TypedDict):
     before: ActivitySummary
     after: ActivitySummary
     source_hidden: bool
+    # Issue #503 (phase 1): set only when copy_mode="attach" actually attached a stream (never
+    # on a preview, which attaches nothing). None for every "overwrite" merge.
+    attached_source_id: str | None
 
 
 def _is_multisport_linked(activity: Activity) -> bool:
@@ -89,6 +93,51 @@ def _counts_as_dict(counts: dict[str, FieldRewriteCounts]) -> dict[str, dict[str
     return {k: {"copied": v.copied, "kept_original": v.kept_original, "nulled": v.nulled} for k, v in counts.items()}
 
 
+def _run_attach(
+    target_id: str,
+    source_id: str,
+    fields: list[str],
+    offset_seconds: int | None,
+    hide_source: bool,
+    preview: bool,
+) -> MergeResult:
+    """Issue #503 (phase 1): copy_mode="attach" - never touches the target's existing primary
+    stream; delegates the actual computation/writing to activity_source_service.attach_power_stream.
+    preview's own rollback is still wrapped in a transaction for symmetry with the overwrite path
+    (and so hide_source's side effects roll back together with it), but - unlike overwrite -
+    attach_power_stream itself writes nothing at all when preview=True, so there's nothing that
+    specifically needs rolling back from attach's own writes."""
+    target = get_object_or_404(Activity, pk=target_id)
+    source = get_object_or_404(Activity, pk=source_id)
+    _validate(target, source, fields, hide_source)
+    if fields != ["power"]:
+        raise ValidationError({"fields": "copy_mode=attach only supports the 'power' field."})
+    before = _summarize(target)
+
+    with transaction.atomic():
+        result = attach_power_stream(target_id, source_id, offset_seconds, preview)
+        if not preview and hide_source:
+            source.primary_activity = target
+            source.save(update_fields=["primary_activity"])
+            apply_duplicate_change(source, was_duplicate=False, is_duplicate=True)
+        target.refresh_from_db()
+        after = _summarize(target)
+        if preview:
+            transaction.set_rollback(True)
+
+    counts = {"power": FieldRewriteCounts(copied=result.copied, kept_original=0, nulled=result.nulled)}
+    return {
+        "merge_id": None,
+        "offset_seconds": result.offset_seconds,
+        "alignment_score": result.alignment_score,
+        "field_counts": _counts_as_dict(counts),
+        "before": before,
+        "after": after,
+        "source_hidden": hide_source and not preview,
+        "attached_source_id": result.source_id,
+    }
+
+
 def run_merge(
     target_id: str,
     source_id: str,
@@ -97,7 +146,11 @@ def run_merge(
     offset_seconds: int | None = None,
     hide_source: bool = False,
     preview: bool = False,
+    copy_mode: CopyMode = "overwrite",
 ) -> MergeResult:
+    if copy_mode == "attach":
+        return _run_attach(target_id, source_id, fields, offset_seconds, hide_source, preview)
+
     target = get_object_or_404(Activity, pk=target_id)
     source = get_object_or_404(Activity, pk=source_id)
     _validate(target, source, fields, hide_source)
@@ -150,4 +203,5 @@ def run_merge(
         "before": before,
         "after": after,
         "source_hidden": hide_source,
+        "attached_source_id": None,
     }

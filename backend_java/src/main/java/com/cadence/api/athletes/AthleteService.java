@@ -201,6 +201,15 @@ public class AthleteService {
 			athlete.setRunningPowerSource(request.runningPowerSource());
 			changed.add("runningPowerSource");
 		}
+		if (request.bikePowerSource() != null) {
+			// Mirrors runningPowerSource just above (issue #503 phase 1) - also doesn't
+			// retroactively touch already-attached ActivitySource/ActivityStream rows; it only
+			// changes which source attachPowerStream auto-swaps to on the *next* attach. Switching
+			// an already-merged activity's current primary back and forth is set_primary_source's
+			// job, not this setting's.
+			athlete.setBikePowerSource(request.bikePowerSource());
+			changed.add("bikePowerSource");
+		}
 		if (request.overlapHandling() != null) {
 			athlete.setOverlapHandling(request.overlapHandling());
 			changed.add("overlapHandling");

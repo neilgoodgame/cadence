@@ -3,6 +3,7 @@ package com.cadence.api.activities;
 import com.cadence.api.activities.MergeRuleService.ResolvedRule;
 import com.cadence.api.activities.MergeRuleService.TargetSource;
 import com.cadence.api.activities.dto.OverlapPairResponse;
+import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
@@ -26,8 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>{@code MARK} picks a primary with {@link #choosePrimary}: the issue's own rule is "the Zwift
  * copy wins; otherwise prefer the athlete's power-source setting (#499), then more sensor
- * channels" - #499 doesn't exist yet, so this only implements the Zwift and sensor-channel steps,
- * with a deterministic (start date, then id) tie-break after that so the choice is never random.
+ * channels", with a deterministic (start date, then id) tie-break after that so the choice is
+ * never random. See {@link #choosePrimary}'s own Javadoc for why the power-source step is wired
+ * up but currently inert under phase 1's device classification.
  *
  * <p>{@code MERGE} (issue #501 phase 4): consults {@link MergeRuleService} for the athlete's
  * saved-or-built-in rule for the pair's sport. No rule, or neither activity matches either side
@@ -157,7 +159,8 @@ public class ActivityOverlapDetectionService {
 		}
 		try {
 			ActivityMergeService.MergeResult preview = mergeOrchestrator.merge(assignment.target().getId(),
-					assignment.source().getId(), rule.fields(), rule.nullPolicy(), null, true, true);
+					assignment.source().getId(), rule.fields(), rule.nullPolicy(), null, true, true,
+					MergeCopyMode.OVERWRITE);
 			if (preview.alignmentScore() == null || preview.alignmentScore() < MERGE_ALIGNMENT_THRESHOLD) {
 				return new OverlapResolution(otherId, OverlapAction.MERGE_SKIPPED_LOW_SCORE, null);
 			}
@@ -165,7 +168,8 @@ public class ActivityOverlapDetectionService {
 				return new OverlapResolution(otherId, OverlapAction.MERGED, assignment.target().getId());
 			}
 			ActivityMergeService.MergeResult result = mergeOrchestrator.merge(assignment.target().getId(),
-					assignment.source().getId(), rule.fields(), rule.nullPolicy(), null, true, false);
+					assignment.source().getId(), rule.fields(), rule.nullPolicy(), null, true, false,
+					MergeCopyMode.OVERWRITE);
 			return new OverlapResolution(otherId, OverlapAction.MERGED, assignment.target().getId(), result.mergeId());
 		}
 		catch (ValidationException e) {
@@ -249,14 +253,32 @@ public class ActivityOverlapDetectionService {
 
 	/** @return whichever of the two should survive as the primary. Zwift wins outright (it
 	 * carries the route, virtual GPS track, distance/speed and elevation - see issue #498); failing
-	 * that, the side with more populated sensor summary fields (power/HR/cadence/core temp) wins;
-	 * failing that, the earlier start date, then the lower id, so the result is always
-	 * deterministic rather than depending on which copy happened to import first. */
+	 * that, the athlete's {@code bikePowerSource} setting (#499/#503 phase 1), if it's not {@code
+	 * ANY} and the two devices classify differently; failing that, the side with more populated
+	 * sensor summary fields (power/HR/cadence/core temp) wins; failing that, the earlier start
+	 * date, then the lower id, so the result is always deterministic rather than depending on
+	 * which copy happened to import first.
+	 *
+	 * <p>The {@code bikePowerSource} step is currently inert in practice: phase 1's own device
+	 * classification ({@code ActivitySourceService#classify}) is the exact same Zwift-vs-not
+	 * signal as {@code isZwift} above, so by the time this step runs, both activities already
+	 * classify the same way (the Zwift check already returned otherwise). It's wired up now, in
+	 * the order the issue itself specifies, so a later phase's real ANT+ device-type
+	 * classification (distinguishing two non-Zwift devices by sensor type, not just by name) makes
+	 * it live with no further change here. */
 	static Activity choosePrimary(Activity a, Activity b) {
 		boolean aZwift = isZwift(a);
 		boolean bZwift = isZwift(b);
 		if (aZwift != bZwift) {
 			return aZwift ? a : b;
+		}
+		BikePowerSource preference = a.getAthlete().getBikePowerSource();
+		if (preference != null && preference != BikePowerSource.ANY) {
+			BikePowerSource aSource = ActivitySourceService.classify(a.getDevice());
+			BikePowerSource bSource = ActivitySourceService.classify(b.getDevice());
+			if (aSource != bSource) {
+				return aSource == preference ? a : b;
+			}
 		}
 		int aSensors = sensorChannelCount(a);
 		int bSensors = sensorChannelCount(b);

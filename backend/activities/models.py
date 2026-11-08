@@ -1,3 +1,4 @@
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
 from accounts.models import User
@@ -42,6 +43,15 @@ class Activity(PrefixedIDModel):
         ("stryd", "Stryd"),
         ("native", "Native"),
     ]
+    # Issue #503 (phase 1): which source (pedals/trainer) this bike activity's current primary
+    # power stream was last attached/swapped from, if any - unlike power_source above, never set
+    # at parse time (a single FIT file has no such ambiguity; only two separate recordings do).
+    # Blank for the common case (never had a second source attached), which always matches the
+    # athlete's bike_power_source preference - see matches_bike_power_preference below.
+    BIKE_POWER_SOURCE_CHOICES = [
+        ("pedals", "Pedals"),
+        ("trainer", "Trainer"),
+    ]
 
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="activities")
     sport = models.CharField(max_length=10, choices=SPORT_CHOICES)
@@ -63,6 +73,7 @@ class Activity(PrefixedIDModel):
     distance_km = models.FloatField(default=0)
     distance_source = models.CharField(max_length=10, choices=DISTANCE_SOURCE_CHOICES, default="gps")
     power_source = models.CharField(max_length=10, choices=POWER_SOURCE_CHOICES, blank=True, default="")
+    bike_power_source = models.CharField(max_length=10, choices=BIKE_POWER_SOURCE_CHOICES, blank=True, default="")
     avg_power = models.IntegerField(null=True, blank=True)
     norm_power = models.IntegerField(null=True, blank=True)
     intensity = models.FloatField(null=True, blank=True)
@@ -194,6 +205,16 @@ class Activity(PrefixedIDModel):
         uploads/processing.py::_select_running_power_source for where power_source itself
         gets set."""
         return not self.power_source or self.power_source == athlete.running_power_source
+
+    def matches_bike_power_preference(self, athlete: User) -> bool:
+        """Same shape as matches_running_power_preference, plus: the athlete's preference itself
+        can be "any" (no preference), which always matches regardless of this activity's own
+        bike_power_source."""
+        return (
+            athlete.bike_power_source == "any"
+            or not self.bike_power_source
+            or self.bike_power_source == athlete.bike_power_source
+        )
 
 
 class Lap(models.Model):
@@ -578,3 +599,66 @@ class MergeRule(PrefixedIDModel):
 
     def __str__(self) -> str:
         return f"{self.athlete_id}: {self.sport}"
+
+
+class ActivitySource(PrefixedIDModel):
+    """Issue #503 (phase 1): a non-primary recorded stream kept alongside an activity - e.g. the
+    Garmin/pedal power copy of a ride whose Zwift/Kickr copy is primary. The primary stream
+    itself is never represented here - it stays in Record's own columns, so every existing
+    calculator/curve/best-effort/threshold path is unchanged. One row per stream (not one row per
+    second) to keep storage small - see the issue's own sizing rationale. Mirrors backend_java's
+    ActivitySource entity - keep the two in sync.
+
+    origin="file" is the activity's own original upload, snapshotted the first time its primary
+    stream is swapped away (activity_source_service.set_primary_source), so the original is
+    never lost - not created at parse time itself. origin="attached" is one added via POST
+    .../merge's attach copy_mode."""
+
+    id_prefix = "src"
+
+    ORIGIN_CHOICES = [
+        ("file", "File"),
+        ("attached", "Attached"),
+    ]
+
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="sources")
+    label = models.CharField(max_length=200, blank=True, default="")
+    device = models.CharField(max_length=100, blank=True, default="")
+    # Which field this source provides a stream for, e.g. "power" - phase 1 only ever creates
+    # "power" sources; stored as a plain string (not a fields-whitelist choice) for the same
+    # reason merge's own `fields` list is, so a later phase (HR, cadence) needs no schema change.
+    sensor_kind = models.CharField(max_length=20)
+    origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.id}: {self.activity_id} {self.sensor_kind}"
+
+
+class ActivityStream(models.Model):
+    """One stored stream, belonging to an ActivitySource - see that model's own docstring. Not
+    fetched by its own id, so it uses a plain BigAutoField per the core.models.PrefixedIDModel
+    convention. primary_of is always False for a row here today - a primary stream lives in
+    Record instead, never here; the column exists so a future phase can represent "this is the
+    primary" uniformly across Record/ActivityStream without a schema change, per the issue's own
+    design."""
+
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="streams")
+    field = models.CharField(max_length=20)
+    source = models.ForeignKey(ActivitySource, on_delete=models.CASCADE, related_name="streams")
+    t0 = models.IntegerField()
+    # Element is nullable - a second with no source data at that offset - same "missing sample,
+    # not a 0" convention Record's own nullable stream columns use.
+    values = ArrayField(models.SmallIntegerField(null=True))
+    primary_of = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["activity", "field", "source"], name="unique_activity_stream_source"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.activity_id} {self.field} <- {self.source_id}"

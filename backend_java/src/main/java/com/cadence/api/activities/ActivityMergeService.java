@@ -40,7 +40,15 @@ public class ActivityMergeService {
 
 	public record MergeResult(String mergeId, int offsetSeconds, Double alignmentScore,
 			Map<String, FieldRewriteCounts> fieldCounts, ActivitySummary before, ActivitySummary after,
-			boolean sourceHidden) {
+			boolean sourceHidden, String attachedSourceId) {
+
+		// Pre-#503 callers/tests never pass attachedSourceId (only ever non-null for a real,
+		// non-preview copyMode=ATTACH) - keeps every existing positional construction valid.
+		public MergeResult(String mergeId, int offsetSeconds, Double alignmentScore,
+				Map<String, FieldRewriteCounts> fieldCounts, ActivitySummary before, ActivitySummary after,
+				boolean sourceHidden) {
+			this(mergeId, offsetSeconds, alignmentScore, fieldCounts, before, after, sourceHidden, null);
+		}
 	}
 
 	/** Issue #501 (phase 3): a target's currently active merge, for {@code get_merge}. {@code sourceId}/
@@ -57,15 +65,18 @@ public class ActivityMergeService {
 	private final ActivityService activityService;
 	private final ActivityMergeApplyService mergeApplyService;
 	private final ActivityMergePostProcessingService postProcessingService;
+	private final ActivitySourceService sourceService;
 
 	public ActivityMergeService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			MergeRepository mergeRepository, ActivityService activityService,
-			ActivityMergeApplyService mergeApplyService, ActivityMergePostProcessingService postProcessingService) {
+			ActivityMergeApplyService mergeApplyService, ActivityMergePostProcessingService postProcessingService,
+			ActivitySourceService sourceService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.mergeRepository = mergeRepository;
 		this.activityService = activityService;
 		this.mergeApplyService = mergeApplyService;
+		this.sourceService = sourceService;
 		this.postProcessingService = postProcessingService;
 	}
 
@@ -142,6 +153,22 @@ public class ActivityMergeService {
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public MergeResult runMerge(String targetId, String sourceId, List<String> fields, NullPolicy nullPolicy,
 			Integer offsetSecondsOverride, boolean hideSource, boolean preview) {
+		return runMerge(targetId, sourceId, fields, nullPolicy, offsetSecondsOverride, hideSource, preview,
+				MergeCopyMode.OVERWRITE);
+	}
+
+	/** Issue #503 (phase 1): {@code copyMode=ATTACH} delegates to {@link ActivitySourceService}
+	 * instead of {@link ActivityMergeApplyService} - target's existing Record rows are never
+	 * touched, so there's no rollback-signal trick needed for attach's own preview (see {@link
+	 * ActivitySourceService#attachPowerStream}'s own Javadoc). Still runs inside this method's
+	 * own {@code REQUIRES_NEW} transaction (same reasoning as the class Javadoc's REQUIRES_NEW
+	 * note - a caller like {@code ActivityOverlapDetectionService} is itself transactional). */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public MergeResult runMerge(String targetId, String sourceId, List<String> fields, NullPolicy nullPolicy,
+			Integer offsetSecondsOverride, boolean hideSource, boolean preview, MergeCopyMode copyMode) {
+		if (copyMode == MergeCopyMode.ATTACH) {
+			return runAttach(targetId, sourceId, fields, offsetSecondsOverride, hideSource, preview);
+		}
 		Activity target = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
 		Activity source = activityRepository.findById(sourceId)
@@ -219,5 +246,35 @@ public class ActivityMergeService {
 				source != null ? source.getName() : null, merge.getFields(), merge.getNullPolicy(),
 				merge.getOffsetSeconds(), merge.getAlignmentScore(), merge.getFieldCounts(), merge.isSourceHidden(),
 				merge.getCreatedAt());
+	}
+
+	private MergeResult runAttach(String targetId, String sourceId, List<String> fields, Integer offsetSecondsOverride,
+			boolean hideSource, boolean preview) {
+		if (!List.of("power").equals(fields)) {
+			throw new ValidationException("copyMode=attach only supports fields=[\"power\"] in this release.", "fields");
+		}
+		Activity target = activityRepository.findById(targetId)
+				.orElseThrow(() -> new NotFoundException("No such activity."));
+		Activity source = activityRepository.findById(sourceId)
+				.orElseThrow(() -> new NotFoundException("No such activity."));
+		validate(target, source, fields, hideSource);
+
+		ActivitySummary before = summarize(target);
+		ActivitySourceService.AttachResult attach = sourceService.attachPowerStream(targetId, sourceId, offsetSecondsOverride, preview);
+
+		if (!preview && hideSource) {
+			source.setPrimaryActivity(target);
+			activityRepository.save(source);
+			activityService.applyDuplicateGearMileageChange(source, false, true);
+		}
+
+		Activity reloadedTarget = activityRepository.findById(targetId)
+				.orElseThrow(() -> new NotFoundException("No such activity."));
+		ActivitySummary after = attach.becamePrimary() ? summarize(reloadedTarget) : before;
+
+		Map<String, FieldRewriteCounts> counts = Map.of("power",
+				new FieldRewriteCounts(attach.copied(), 0, attach.nulled()));
+		return new MergeResult(null, attach.offsetSeconds(), attach.alignmentScore(), counts, before, after,
+				!preview && hideSource, attach.sourceId());
 	}
 }

@@ -364,7 +364,7 @@ class ActivityWriteToolsTest extends IntegrationTest {
 		// preview omitted entirely - the tool's own default (true) must apply, the opposite of
 		// the REST endpoint's default (false).
 		ActivityMergeService.MergeResult result = activityWriteTools.mergeActivities(
-				target.getId(), source.getId(), List.of("power"), null, null, 0, null);
+				target.getId(), source.getId(), List.of("power"), null, null, 0, null, null);
 
 		assertThat(result.mergeId()).isNull();
 		assertThat(result.after().avgPower()).isEqualTo(250); // the preview still reports the would-be outcome
@@ -383,7 +383,7 @@ class ActivityWriteToolsTest extends IntegrationTest {
 		authAs(athlete.getId(), "activities:read", "activities:write");
 
 		ActivityMergeService.MergeResult result = activityWriteTools.mergeActivities(
-				target.getId(), source.getId(), List.of("power"), "overwrite", true, 0, false);
+				target.getId(), source.getId(), List.of("power"), "overwrite", true, 0, false, null);
 
 		assertThat(result.mergeId()).isNotNull();
 		assertThat(result.sourceHidden()).isTrue();
@@ -402,7 +402,7 @@ class ActivityWriteToolsTest extends IntegrationTest {
 
 		// nulls omitted - the tool's own default (keep_original) must apply.
 		ActivityMergeService.MergeResult result = activityWriteTools.mergeActivities(
-				target.getId(), source.getId(), List.of("power"), null, null, 0, true);
+				target.getId(), source.getId(), List.of("power"), null, null, 0, true, null);
 
 		assertThat(result.fieldCounts().get("power").keptOriginal()).isEqualTo(5);
 		assertThat(result.fieldCounts().get("power").nulled()).isZero();
@@ -417,7 +417,7 @@ class ActivityWriteToolsTest extends IntegrationTest {
 		authAs(athlete.getId(), "activities:read", "activities:write");
 
 		assertThatThrownBy(() -> activityWriteTools.mergeActivities(
-				target.getId(), source.getId(), List.of("power"), "bogus", null, 0, true))
+				target.getId(), source.getId(), List.of("power"), "bogus", null, 0, true, null))
 				.isInstanceOf(ValidationException.class);
 	}
 
@@ -431,7 +431,7 @@ class ActivityWriteToolsTest extends IntegrationTest {
 		authAs(outsider.getId(), "activities:read", "activities:write");
 
 		assertThatThrownBy(() -> activityWriteTools.mergeActivities(
-				target.getId(), source.getId(), List.of("power"), null, null, 0, true))
+				target.getId(), source.getId(), List.of("power"), null, null, 0, true, null))
 				.isInstanceOf(ForbiddenException.class);
 	}
 
@@ -446,7 +446,7 @@ class ActivityWriteToolsTest extends IntegrationTest {
 		Activity target = newActivityWithRecords(athlete, start, 10, 100);
 		Activity source = newActivityWithRecords(athlete, start, 10, 250);
 		authAs(athlete.getId(), "activities:read", "activities:write");
-		activityWriteTools.mergeActivities(target.getId(), source.getId(), List.of("power"), "overwrite", null, 0, false);
+		activityWriteTools.mergeActivities(target.getId(), source.getId(), List.of("power"), "overwrite", null, 0, false, null);
 
 		assertThatThrownBy(() -> activityWriteTools.unmergeActivity(target.getId()))
 				.isInstanceOf(UnprocessableEntityException.class);

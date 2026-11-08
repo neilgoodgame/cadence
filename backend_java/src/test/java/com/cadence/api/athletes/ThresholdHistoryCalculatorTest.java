@@ -262,6 +262,54 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 		assertThat(candidate).isNull();
 	}
 
+	@Test
+	void ftpExcludesAnActivityWhoseBikePowerSourceDisagreesWithPreference() {
+		athlete = newAthlete("threshold-history-bike-power-mismatch@example.cc", 200);
+		athlete.setBikePowerSource(com.cadence.api.athletes.BikePowerSource.PEDALS);
+		athlete = userRepository.save(athlete);
+		Activity activity = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-15T07:00:00Z"), 240, 1200);
+		activity.setBikePowerSource(com.cadence.api.athletes.BikePowerSource.TRAINER);
+		activityRepository.save(activity);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 6, 1));
+
+		assertThat(candidate).isNull();
+	}
+
+	@Test
+	void ftpIncludesAnActivityWhoseBikePowerSourceMatchesPreference() {
+		athlete = newAthlete("threshold-history-bike-power-match@example.cc", 200);
+		athlete.setBikePowerSource(com.cadence.api.athletes.BikePowerSource.PEDALS);
+		athlete = userRepository.save(athlete);
+		Activity activity = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-15T07:00:00Z"), 240, 1200);
+		activity.setBikePowerSource(com.cadence.api.athletes.BikePowerSource.PEDALS);
+		activityRepository.save(activity);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 6, 1));
+
+		assertThat(candidate).isNotNull();
+		assertThat(candidate.impliedValue()).isEqualTo(Math.round(0.95 * 240));
+	}
+
+	@Test
+	void ftpIncludesAnUnattachedActivityRegardlessOfPreference() {
+		// The common case: bikePowerSource is only ever set by an attach/swap (issue #503 phase
+		// 1) - an activity that's never had a second source attached has a null bikePowerSource,
+		// which must always match, or every FTP candidate would vanish the moment an athlete sets
+		// a preference without ever actually attaching anything.
+		athlete = newAthlete("threshold-history-bike-power-unattached@example.cc", 200);
+		athlete.setBikePowerSource(com.cadence.api.athletes.BikePowerSource.PEDALS);
+		athlete = userRepository.save(athlete);
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-15T07:00:00Z"), 240, 1200);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 6, 1));
+
+		assertThat(candidate).isNotNull();
+	}
+
 	// --- currentWindowValue: manual anchor (issue #484) ---
 
 	@Test

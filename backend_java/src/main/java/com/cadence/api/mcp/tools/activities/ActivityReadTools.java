@@ -4,6 +4,7 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityMergeService;
 import com.cadence.api.activities.ActivityOverlapService;
 import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.ActivitySourceService;
 import com.cadence.api.activities.ActivitySplitsService;
 import com.cadence.api.activities.Environment;
 import com.cadence.api.activities.LapMapper;
@@ -50,13 +51,14 @@ public class ActivityReadTools {
 	private final ActivityOverlapService overlapService;
 	private final ActivityMergeService mergeService;
 	private final MergeRuleService mergeRuleService;
+	private final ActivitySourceService sourceService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityReadTools(ActivityService activityService, LapRepository lapRepository, LapMapper lapMapper,
 			TagService tagService, ActivitySplitsService splitsService, ActivityOverlapService overlapService,
-			ActivityMergeService mergeService, MergeRuleService mergeRuleService, AccessGuard accessGuard,
-			McpToolAuthorizer authorizer) {
+			ActivityMergeService mergeService, MergeRuleService mergeRuleService, ActivitySourceService sourceService,
+			AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
 		this.lapMapper = lapMapper;
@@ -65,6 +67,7 @@ public class ActivityReadTools {
 		this.overlapService = overlapService;
 		this.mergeService = mergeService;
 		this.mergeRuleService = mergeRuleService;
+		this.sourceService = sourceService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -207,6 +210,25 @@ public class ActivityReadTools {
 		Activity activity = activityService.getActivity(activityId);
 		accessGuard.requireRead(activity.getAthlete().getId());
 		return mergeService.getActiveMerge(activityId);
+	}
+
+	@McpTool(name = "list_activity_sources", description = "Issue #503 (phase 1): every non-primary "
+			+ "stream kept alongside activityId - e.g. a Garmin/pedal power recording attached onto "
+			+ "a Zwift ride without overwriting the Zwift copy (merge_activities' attach copy mode). "
+			+ "The activity's own current primary stream is never listed here - it's whatever's "
+			+ "already on the activity itself (get_activity); isPrimary on a listed source instead "
+			+ "tells you whether that source's own device classification matches the current "
+			+ "primary, i.e. whether set_primary_source has nothing to do for it. Phase 1 only ever "
+			+ "lists power sources. Returns an empty list if nothing has ever been attached or "
+			+ "swapped for this activity.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public List<ActivitySourceService.SourceSummary> listActivitySources(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return sourceService.listSources(activityId);
 	}
 
 	@McpTool(name = "get_merge_rules", description = "Issue #501 (phase 4): the automatic-merge "

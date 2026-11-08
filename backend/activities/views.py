@@ -33,6 +33,7 @@ from workouts.inference import infer_workout
 from workouts.match_scan import DURATION_TOLERANCE_SECONDS, rank_workouts_for_activity
 from workouts.models import Workout
 
+from . import activity_source_service
 from .comments import resolve_parent_comment
 from .elevation import SECTION_SPORTS, ensure_elevation, rebuild_elevation, sections_payload
 from .lap_derivation import replace_laps_with_derived
@@ -48,6 +49,7 @@ from .serializers import (
     DurationCurveSerializer,
     LapSerializer,
     MergeActivitiesSerializer,
+    SetPrimarySourceSerializer,
     TagAttachSerializer,
     TagNameSerializer,
     TagSerializer,
@@ -627,6 +629,7 @@ class ActivityMergeView(APIView):
             offset_seconds=data["offset_seconds"],
             hide_source=data["hide_source"],
             preview=data["preview"],
+            copy_mode=data["copy_mode"],
         )
         return Response(result)
 
@@ -641,6 +644,39 @@ class ActivityUnmergeView(APIView):
         if not user_may_write(sub, activity.athlete_id):
             raise PermissionDenied("You do not have write access to that athlete's data.")
         undo_merge(id)
+        activity.refresh_from_db()
+        return Response(ActivitySerializer(activity).data)
+
+
+class ActivitySourcesView(APIView):
+    """Issue #503 (phase 1): GET .../sources - every non-primary stream kept alongside the
+    activity. See activity_source_service.list_sources for the actual lookup."""
+
+    def get(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have read access to that athlete's data.")
+        sources = activity_source_service.list_sources(id)
+        return Response([summary._asdict() for summary in sources])
+
+
+class ActivityPrimarySourceView(APIView):
+    """Issue #503 (phase 1): POST .../primary-source - swaps the activity's current primary
+    stream for field with the named source's. See activity_source_service.set_primary_source for
+    the actual orchestration."""
+
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        serializer = SetPrimarySourceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        activity_source_service.set_primary_source(id, data["field"], data["source_id"])
         activity.refresh_from_db()
         return Response(ActivitySerializer(activity).data)
 

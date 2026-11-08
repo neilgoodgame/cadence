@@ -9,8 +9,10 @@ from .views import (
     ActivityListView,
     ActivityMergeView,
     ActivityOverlapListView,
+    ActivityPrimarySourceView,
     ActivityRecomputeElevationView,
     ActivitySectionsView,
+    ActivitySourcesView,
     ActivitySplitsView,
     ActivityTagView,
     ActivityUnmergeView,
@@ -40,6 +42,12 @@ urlpatterns = [
     ),
     path("v1/activities/<str:id>/merge", ActivityMergeView.as_view(), name="activity-merge"),
     path("v1/activities/<str:id>/unmerge", ActivityUnmergeView.as_view(), name="activity-unmerge"),
+    path("v1/activities/<str:id>/sources", ActivitySourcesView.as_view(), name="activity-sources"),
+    path(
+        "v1/activities/<str:id>/primary-source",
+        ActivityPrimarySourceView.as_view(),
+        name="activity-primary-source",
+    ),
     path("v1/activities/<str:id>/laps", LapListView.as_view(), name="activity-laps"),
     path(
         "v1/activities/<str:id>/regenerate-laps",

@@ -78,7 +78,7 @@ public class AthleteProfileWriteTools {
 		AthleteUpdateRequest request = new AthleteUpdateRequest(null, null, null, ftp, criticalRunPower, threshold_pace,
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
 				null, null, null, null, null, null, null, null, null, null, null, null, effectiveFrom, rerateActivities, preview,
-				null);
+				null, null);
 		AthleteService.Outcome outcome = athleteService.updateProfile(athlete, request, setBy);
 
 		Map<String, Object> result = new LinkedHashMap<>();
@@ -111,7 +111,7 @@ public class AthleteProfileWriteTools {
 		AthleteUpdateRequest request = new AthleteUpdateRequest(
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, null, parsed);
+				null, null, null, null, parsed, null);
 		athleteService.updateProfile(athlete, request, setBy);
 
 		return Map.of("overlap_handling", athlete.getOverlapHandling());

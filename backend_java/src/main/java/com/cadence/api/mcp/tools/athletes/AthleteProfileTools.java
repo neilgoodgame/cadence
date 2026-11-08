@@ -188,7 +188,8 @@ public class AthleteProfileTools {
 				"threshold_window_days", athlete.getThresholdWindowDays(),
 				"threshold_sanity_pct", athlete.getThresholdSanityPct(),
 				"ftp_calculation_method", athlete.getFtpCalculationMethod(),
-				"running_power_source", athlete.getRunningPowerSource());
+				"running_power_source", athlete.getRunningPowerSource(),
+				"bike_power_source", athlete.getBikePowerSource());
 	}
 
 	@McpTool(name = "get_import_settings", description = "Get the authenticated athlete's "
