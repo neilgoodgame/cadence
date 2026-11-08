@@ -1233,6 +1233,65 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/activities/{id}/streams/compare:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Activities]
+      summary: Agreement statistics between two of this activity's stored streams
+      operationId: compareActivityStreams
+      description: >-
+        Issue #503 (phase 4). Aligns two of this activity's streams for field (already sharing
+        the activity's own timeline, so no re-alignment is needed) and reports bias (mean of b
+        minus a), MAE, RMSE, Pearson r, Bland-Altman limits of agreement, the percent of seconds
+        within a tolerance (5bpm for heartrate, 3% of a's value otherwise), and a residual lag
+        from cross-correlation (e.g. wrist heartrate trailing a chest strap by a few seconds).
+        For field=power only, also fits a scale+offset between the two meters plus the ratio of
+        their means (the drivetrain-loss estimate). a/b each accept either "primary" (the
+        activity's current live stream) or a real source id from GET .../sources - they must
+        differ. zone_breakdown (default false) adds a per-zone bias/MAE/RMSE breakdown, bucketed
+        by a's own value against the athlete's zone boundaries - not supported for
+        field=cadence, which has no zone type. 400 if the two streams have fewer than 30
+        overlapping, non-null seconds.
+      parameters:
+        - name: field
+          in: query
+          required: true
+          schema:
+            type: string
+            description: "'power', 'heartrate', or 'cadence'."
+            example: heartrate
+        - name: a
+          in: query
+          required: true
+          schema:
+            type: string
+            description: "\"primary\" or a source id from GET .../sources."
+        - name: b
+          in: query
+          required: true
+          schema:
+            type: string
+            description: "\"primary\" or a source id from GET .../sources; must differ from a."
+        - name: zone_breakdown
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: The comparison result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamComparison" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/activities/{id}/primary-source:
     parameters:
       - $ref: "#/components/parameters/ActivityId"
@@ -1246,8 +1305,8 @@ paths:
         to its Garmin/pedal reading after a Zwift copy became primary. The stream being
         replaced is itself kept as a new source (never lost), so this can always be reversed by
         calling it again with the other source's id. Reruns the same recompute cascade a merge
-        triggers, so TSS/FTP-candidate data reflects the new primary immediately. Phase 1 only
-        supports field=power.
+        triggers, so TSS/FTP-candidate data reflects the new primary immediately. Supports all
+        three fields - power, heartrate, and cadence (generalized in phase 3).
       requestBody:
         required: true
         content:
@@ -5829,6 +5888,104 @@ components:
             sensor_kind - by device classification for a bike power source, by source_kind vs
             the matching Activity field (power_source for running, hr_source, cadence_source)
             otherwise - i.e. whether POST .../primary-source has nothing to do for it.
+
+    StreamComparison:
+      type: object
+      description: Issue #503 (phase 4). See GET /v1/activities/{id}/streams/compare.
+      properties:
+        field:
+          type: string
+          example: heartrate
+        source_a:
+          type: string
+          description: "\"primary\" or a source id - echoes the request's a."
+        source_b:
+          type: string
+          description: "\"primary\" or a source id - echoes the request's b."
+        comparison:
+          type: object
+          properties:
+            overlap_seconds:
+              type: integer
+              description: Paired, non-null seconds the statistics below are computed over.
+            bias:
+              type: number
+              description: Mean of (b - a).
+            mae:
+              type: number
+            rmse:
+              type: number
+            pearson_r:
+              type: number
+            loa_lower:
+              type: number
+              description: Bland-Altman lower limit of agreement (bias - 1.96 * SD of differences).
+            loa_upper:
+              type: number
+              description: Bland-Altman upper limit of agreement (bias + 1.96 * SD of differences).
+            within_tolerance_pct:
+              type: number
+              description: "% of paired seconds within tolerance (5bpm absolute for heartrate, 3% of a's value otherwise)."
+        lag:
+          type: [object, "null"]
+          description: >-
+            A residual lag, found by cross-correlation (not a clock-offset search - both streams
+            already share this activity's own timeline) - null only if no candidate lag in
+            [-30s, 30s] had enough overlap to score, which can't happen when comparison succeeded
+            (lag=0 always has at least as much overlap as the Bland-Altman statistics above).
+          properties:
+            lag_seconds:
+              type: integer
+              description: Positive means b trails a by this many seconds (e.g. wrist HR behind a chest strap).
+            correlation:
+              type: number
+              description: The Pearson correlation at the winning lag.
+        power_fit:
+          type: [object, "null"]
+          description: field=power only - null for heartrate/cadence.
+          properties:
+            scale:
+              type: number
+              description: Least-squares fit of b = scale*a + offset.
+            offset:
+              type: number
+            ratio_of_means:
+              type: number
+              description: mean(b) / mean(a).
+        zone_breakdown:
+          type: [array, "null"]
+          description: >-
+            Present only when the request's zone_breakdown=true; null if not requested, empty if
+            requested but the athlete has no effective threshold to bucket by yet.
+          items:
+            type: object
+            properties:
+              zone_name:
+                type: string
+              sample_count:
+                type: integer
+              bias:
+                type: [number, "null"]
+                description: Null when sample_count is 0.
+              mae:
+                type: [number, "null"]
+              rmse:
+                type: [number, "null"]
+        points:
+          type: array
+          description: >-
+            The raw paired, overlapping seconds the statistics above were computed from - one
+            entry per second, so the frontend's overlay/difference/Bland-Altman charts don't
+            need a second request.
+          items:
+            type: object
+            properties:
+              t:
+                type: integer
+              a:
+                type: integer
+              b:
+                type: integer
 
     ThresholdSuggestion:
       type: object

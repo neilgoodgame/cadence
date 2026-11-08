@@ -3,6 +3,7 @@ surfaces built on top of them. Mirrors backend_java's ActivitySourceServiceInteg
 
 from datetime import UTC, datetime, timedelta
 
+from django.http import Http404
 from django.test import TestCase
 from rest_framework.exceptions import ValidationError
 
@@ -31,6 +32,15 @@ class ActivitySourceServiceTests(TestCase):
         for t in range(count):
             Record.objects.create(
                 activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), **{field: value}
+            )
+
+    def _add_field_records_series(self, activity, count, field, base_value):
+        """Writes a linearly-varying series (base_value + t) instead of a constant one - needed
+        for the phase-4 comparison tests, since a constant series has zero variance and can't
+        exercise Pearson r meaningfully."""
+        for t in range(count):
+            Record.objects.create(
+                activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), **{field: base_value + t}
             )
 
     def test_attach_creates_a_non_primary_source_without_touching_the_targets_primary(self):
@@ -423,6 +433,202 @@ class ActivitySourceServiceTests(TestCase):
                 "copy_mode": "attach",
             },
             format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_compare_streams_computes_agreement_statistics_between_primary_and_an_attached_source(self):
+        athlete = self._athlete("compare-basic-stats@example.cc")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records_series(target, 40, "heartrate", 140)  # 140..179
+        self._add_field_records_series(source, 40, "heartrate", 150)  # 150..189, a constant +10 over target
+        attach = activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="strap"
+        )
+
+        result = activity_source_service.compare_streams(
+            target.id, "heartrate", activity_source_service.PRIMARY_SOURCE_REF, attach.source_id
+        )
+
+        self.assertEqual(result.field, "heartrate")
+        self.assertEqual(result.comparison.overlap_seconds, 40)
+        self.assertAlmostEqual(result.comparison.bias, 10.0, places=3)
+        self.assertAlmostEqual(result.comparison.mae, 10.0, places=3)
+        self.assertAlmostEqual(result.comparison.rmse, 10.0, places=3)
+        self.assertAlmostEqual(result.comparison.pearson_r, 1.0, places=3)
+        self.assertAlmostEqual(result.comparison.loa_lower, 10.0, places=3)
+        self.assertAlmostEqual(result.comparison.loa_upper, 10.0, places=3)
+        # heartrate's tolerance is +/-5bpm absolute - a constant 10bpm bias is outside it entirely.
+        self.assertAlmostEqual(result.comparison.within_tolerance_pct, 0.0, places=3)
+        self.assertIsNotNone(result.lag)
+        self.assertIsNone(result.power_fit)  # power-only
+        self.assertIsNone(result.zone_breakdown)  # not requested
+
+    def test_compare_streams_fits_a_scale_and_offset_for_power_only(self):
+        athlete = self._athlete("compare-power-fit@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_field_records_series(target, 40, "power", 200)  # 200..239
+        self._add_field_records_series(source, 40, "power", 220)  # 220..259 - scale 1.0, offset +20
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        result = activity_source_service.compare_streams(
+            target.id, "power", activity_source_service.PRIMARY_SOURCE_REF, attach.source_id
+        )
+
+        self.assertIsNotNone(result.power_fit)
+        self.assertAlmostEqual(result.power_fit.scale, 1.0, places=1)
+        self.assertAlmostEqual(result.power_fit.offset, 20.0, delta=0.5)
+        self.assertGreater(result.power_fit.ratio_of_means, 1.0)
+
+    def test_compare_streams_rejects_zone_breakdown_for_cadence(self):
+        athlete = self._athlete("compare-cadence-no-zone@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_field_records_series(target, 40, "cadence", 80)
+        self._add_field_records_series(source, 40, "cadence", 85)
+        attach = activity_source_service.attach_stream(
+            target.id, source.id, "cadence", offset_seconds=0, preview=False, source_kind="pedals"
+        )
+
+        with self.assertRaises(ValidationError):
+            activity_source_service.compare_streams(
+                target.id,
+                "cadence",
+                activity_source_service.PRIMARY_SOURCE_REF,
+                attach.source_id,
+                zone_breakdown=True,
+            )
+
+    def test_compare_streams_rejects_the_same_source_on_both_sides(self):
+        athlete = self._athlete("compare-same-source@example.cc")
+        activity = self._activity(athlete, "Edge 530", name="Activity")
+        self._add_field_records_series(activity, 40, "power", 200)
+
+        with self.assertRaises(ValidationError):
+            activity_source_service.compare_streams(
+                activity.id,
+                "power",
+                activity_source_service.PRIMARY_SOURCE_REF,
+                activity_source_service.PRIMARY_SOURCE_REF,
+            )
+
+    def test_compare_streams_rejects_too_few_overlapping_samples(self):
+        athlete = self._athlete("compare-too-few-samples@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_field_records_series(target, 10, "power", 200)  # below MIN_OVERLAP_SAMPLES (30)
+        self._add_field_records_series(source, 10, "power", 220)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        with self.assertRaises(ValidationError):
+            activity_source_service.compare_streams(
+                target.id, "power", activity_source_service.PRIMARY_SOURCE_REF, attach.source_id
+            )
+
+    def test_compare_streams_rejects_an_unknown_source_id(self):
+        athlete = self._athlete("compare-unknown-source@example.cc")
+        activity = self._activity(athlete, "Activity", name="Activity")
+        self._add_field_records_series(activity, 40, "power", 200)
+
+        with self.assertRaises(Http404):
+            activity_source_service.compare_streams(
+                activity.id, "power", activity_source_service.PRIMARY_SOURCE_REF, "src_doesnotexist"
+            )
+
+    def test_compare_streams_zone_breakdown_buckets_by_stream_a_with_a_threshold_set(self):
+        athlete = self._athlete("compare-zone-breakdown@example.cc", lthr=150)
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records_series(target, 40, "heartrate", 140)  # 140..179, spans multiple bands
+        self._add_field_records_series(source, 40, "heartrate", 145)
+        attach = activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="strap"
+        )
+
+        result = activity_source_service.compare_streams(
+            target.id,
+            "heartrate",
+            activity_source_service.PRIMARY_SOURCE_REF,
+            attach.source_id,
+            zone_breakdown=True,
+        )
+
+        self.assertIsNotNone(result.zone_breakdown)
+        self.assertEqual(len(result.zone_breakdown), 5)  # DEFAULT_ZONES has 5 bands
+        self.assertEqual(sum(bucket.sample_count for bucket in result.zone_breakdown), 40)
+
+    def test_compare_streams_zone_breakdown_is_empty_without_a_threshold_set(self):
+        athlete = self._athlete("compare-zone-no-threshold@example.cc")  # lthr never set
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records_series(target, 40, "heartrate", 140)
+        self._add_field_records_series(source, 40, "heartrate", 145)
+        attach = activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="strap"
+        )
+
+        result = activity_source_service.compare_streams(
+            target.id,
+            "heartrate",
+            activity_source_service.PRIMARY_SOURCE_REF,
+            attach.source_id,
+            zone_breakdown=True,
+        )
+
+        self.assertEqual(result.zone_breakdown, [])
+
+    def test_list_sources_includes_source_kind_in_the_response(self):
+        athlete = self._athlete("source-list-includes-source-kind@example.cc")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records(target, 10, "heartrate", 140)
+        self._add_field_records(source, 10, "heartrate", 150)
+        activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="strap"
+        )
+
+        summaries = activity_source_service.list_sources(target.id)
+
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(summaries[0].source_kind, "strap")
+
+    def test_streams_compare_endpoint_returns_agreement_statistics(self):
+        athlete = self._athlete("rest-compare-basic@example.cc")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records_series(target, 40, "heartrate", 140)
+        self._add_field_records_series(source, 40, "heartrate", 150)
+        attach = activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="strap"
+        )
+
+        response = _bearer_client(athlete).get(
+            f"/v1/activities/{target.id}/streams/compare",
+            {"field": "heartrate", "a": "primary", "b": attach.source_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["field"], "heartrate")
+        self.assertAlmostEqual(body["comparison"]["bias"], 10.0, places=3)
+        self.assertIsNone(body["power_fit"])
+        self.assertIsNone(body["zone_breakdown"])
+
+    def test_streams_compare_endpoint_rejects_zone_breakdown_for_cadence(self):
+        athlete = self._athlete("rest-compare-cadence-no-zone@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_field_records_series(target, 40, "cadence", 80)
+        self._add_field_records_series(source, 40, "cadence", 85)
+        attach = activity_source_service.attach_stream(
+            target.id, source.id, "cadence", offset_seconds=0, preview=False, source_kind="pedals"
+        )
+
+        response = _bearer_client(athlete).get(
+            f"/v1/activities/{target.id}/streams/compare",
+            {"field": "cadence", "a": "primary", "b": attach.source_id, "zone_breakdown": "true"},
         )
 
         self.assertEqual(response.status_code, 400)

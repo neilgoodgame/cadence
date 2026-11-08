@@ -662,6 +662,25 @@ class ActivitySourcesView(APIView):
         return Response([summary._asdict() for summary in sources])
 
 
+class StreamComparisonView(APIView):
+    """Issue #503 (phase 4): GET .../streams/compare - agreement statistics between two of the
+    activity's stored streams for field. See activity_source_service.compare_streams for the
+    actual computation."""
+
+    def get(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have read access to that athlete's data.")
+
+        field = request.query_params.get("field", "")
+        source_a = request.query_params.get("a", "")
+        source_b = request.query_params.get("b", "")
+        zone_breakdown = request.query_params.get("zone_breakdown", "false").lower() == "true"
+        result = activity_source_service.compare_streams(id, field, source_a, source_b, zone_breakdown)
+        return Response(activity_source_service.compare_streams_response(result))
+
+
 class ActivityPrimarySourceView(APIView):
     """Issue #503 (phase 1): POST .../primary-source - swaps the activity's current primary
     stream for field with the named source's. See activity_source_service.set_primary_source for

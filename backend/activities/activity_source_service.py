@@ -7,6 +7,7 @@ support exactly three fields - "power", "heartrate", "cadence" - see VALID_FIELD
 backend_java's ActivitySourceService.java - keep the two in sync when changing either.
 """
 
+import dataclasses
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -14,11 +15,19 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
+from athletes.zones import get_or_create_zone_set, reference_for
+
+from . import stream_comparison
 from .merge_alignment import align
 from .merge_postprocess import recompute_after_merge
 from .models import Activity, ActivitySource, ActivityStream, Record
 
 VALID_FIELDS = ("power", "heartrate", "cadence")
+
+# The literal a/b value meaning "the activity's current primary stream for this field" -
+# ActivitySource deliberately never represents the primary (it always lives in Record), so
+# comparing against it needs a sentinel rather than a real source id.
+PRIMARY_SOURCE_REF = "primary"
 
 
 @dataclass(frozen=True)
@@ -39,6 +48,7 @@ class SourceSummary(NamedTuple):
     origin: str
     created_at: object
     is_primary: bool
+    source_kind: str
 
 
 def classify(device: str | None) -> str:
@@ -356,6 +366,118 @@ def list_sources(activity_id: str) -> list[SourceSummary]:
             origin=source.origin,
             created_at=source.created_at,
             is_primary=_is_primary_for_field(source, activity),
+            source_kind=source.source_kind,
         )
         for source in activity.sources.order_by("created_at")
     ]
+
+
+class ComparisonPoint(NamedTuple):
+    """One paired, overlapping second - the raw data the comparison statistics were computed
+    from, included so the frontend's overlay/difference/Bland-Altman charts don't need a second
+    request."""
+
+    t: int
+    a: int
+    b: int
+
+
+@dataclass(frozen=True)
+class CompareStreamsResult:
+    field: str
+    source_a: str
+    source_b: str
+    comparison: stream_comparison.ComparisonResult
+    lag: stream_comparison.LagResult | None
+    power_fit: stream_comparison.PowerFit | None
+    zone_breakdown: list[stream_comparison.ZoneBucketResult] | None
+    points: list[ComparisonPoint]
+
+
+def _load_field_series(activity: Activity, field: str, source_ref: str) -> dict[int, int]:
+    """Resolves source_ref (PRIMARY_SOURCE_REF or a real ActivitySource id) to an ordered
+    {t: value} series for field on activity."""
+    if source_ref == PRIMARY_SOURCE_REF:
+        return {row.t: getattr(row, field) for row in activity.records.order_by("t") if getattr(row, field) is not None}
+    stream = get_object_or_404(ActivityStream, activity_id=activity.id, field=field, source_id=source_ref)
+    return {stream.t0 + i: value for i, value in enumerate(stream.values) if value is not None}
+
+
+def compare_streams(
+    activity_id: str, field: str, source_a: str, source_b: str, zone_breakdown: bool = False
+) -> CompareStreamsResult:
+    """Issue #503 (phase 4): compares two already-stored streams for field on the same activity -
+    either side may be PRIMARY_SOURCE_REF (the activity's current primary, read live off Record)
+    or a real ActivitySource id (a stored alternate, read off its ActivityStream).
+    zone_breakdown=True is rejected for field="cadence", which has no zone type to bucket by. All
+    the actual statistics are computed by the pure stream_comparison module - this function's job
+    is just resolving both sides to a series and picking the right zone type/tolerance for the
+    field."""
+    _validate_field(field)
+    if source_a == source_b:
+        raise ValidationError({"b": "a and b must refer to two different sources."})
+    if zone_breakdown and field == "cadence":
+        raise ValidationError(
+            {"zone_breakdown": "zone_breakdown is not supported for field 'cadence' (cadence has no zone type)."}
+        )
+
+    activity = get_object_or_404(Activity, pk=activity_id)
+    series_a = _load_field_series(activity, field, source_a)
+    series_b = _load_field_series(activity, field, source_b)
+
+    tolerance = (
+        stream_comparison.Tolerance.of_absolute(5.0)
+        if field == "heartrate"
+        else stream_comparison.Tolerance.of_relative_pct(3.0)
+    )
+    comparison = stream_comparison.compare(series_a, series_b, tolerance)
+    if comparison is None:
+        raise ValidationError(
+            {
+                "b": f"Not enough overlapping samples between the two sources to compare (need at least "
+                f"{stream_comparison.MIN_OVERLAP_SAMPLES})."
+            }
+        )
+    lag = stream_comparison.find_lag(series_a, series_b)
+    power_fit = stream_comparison.fit_power_scale_offset(series_a, series_b) if field == "power" else None
+
+    zone_results = None
+    if zone_breakdown:
+        zone_type = "heart_rate" if field == "heartrate" else ("run_power" if activity.sport == "run" else "bike_power")
+        athlete = activity.athlete
+        zone_set = get_or_create_zone_set(athlete, zone_type)
+        reference = reference_for(athlete, zone_type, activity)
+        zone_results = (
+            [] if reference is None else stream_comparison.zone_breakdown(series_a, series_b, zone_set.zones, reference)
+        )
+
+    points = [ComparisonPoint(t, series_a[t], series_b[t]) for t in sorted(series_a) if t in series_b]
+
+    return CompareStreamsResult(
+        field=field,
+        source_a=source_a,
+        source_b=source_b,
+        comparison=comparison,
+        lag=lag,
+        power_fit=power_fit,
+        zone_breakdown=zone_results,
+        points=points,
+    )
+
+
+def compare_streams_response(result: CompareStreamsResult) -> dict:
+    """JSON-serializable shape of a CompareStreamsResult - shared by the REST view and the MCP
+    tool, since dataclasses.asdict alone mishandles the NamedTuple zone_breakdown/points entries
+    (it preserves them as namedtuples rather than converting to plain dicts)."""
+    return {
+        "field": result.field,
+        "source_a": result.source_a,
+        "source_b": result.source_b,
+        "comparison": dataclasses.asdict(result.comparison),
+        "lag": dataclasses.asdict(result.lag) if result.lag is not None else None,
+        "power_fit": dataclasses.asdict(result.power_fit) if result.power_fit is not None else None,
+        "zone_breakdown": [bucket._asdict() for bucket in result.zone_breakdown]
+        if result.zone_breakdown is not None
+        else None,
+        "points": [point._asdict() for point in result.points],
+    }

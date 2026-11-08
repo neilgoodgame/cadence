@@ -24,6 +24,7 @@ from .views import (
     RecomputeActivityStatsView,
     RecomputeActivityTssView,
     RegenerateActivityLapsView,
+    StreamComparisonView,
     StreamsView,
     TagDetailView,
     TagListView,
@@ -68,6 +69,11 @@ urlpatterns = [
         name="activity-recompute-elevation",
     ),
     path("v1/activities/<str:id>/streams", StreamsView.as_view(), name="activity-streams"),
+    path(
+        "v1/activities/<str:id>/streams/compare",
+        StreamComparisonView.as_view(),
+        name="activity-streams-compare",
+    ),
     path("v1/activities/<str:id>/curves", CurvesView.as_view(), name="activity-curves"),
     path("v1/activities/<str:id>/comments", ActivityCommentListView.as_view(), name="activity-comments"),
     path(

@@ -211,6 +211,19 @@ public class ActivityController {
 		return activitySourceService.listSources(id);
 	}
 
+	/** Issue #503 (phase 4): agreement statistics between two of {@code id}'s stored streams for
+	 * {@code field} - either side may be {@code "primary"} (the activity's current live stream)
+	 * or a real source id from {@link #listActivitySources}. See {@link
+	 * ActivitySourceService#compareStreams}. */
+	@GetMapping("/v1/activities/{id}/streams/compare")
+	public ActivitySourceService.CompareStreamsResult compareStreams(@PathVariable String id,
+			@RequestParam String field, @RequestParam String a, @RequestParam String b,
+			@RequestParam(name = "zone_breakdown", defaultValue = "false") boolean zoneBreakdown) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return activitySourceService.compareStreams(id, field, a, b, zoneBreakdown);
+	}
+
 	/** Issue #503 (phase 1): swaps {@code id}'s current primary stream for {@code field} with the
 	 * named source's. See {@link ActivitySourceService#setPrimarySource}. */
 	@PostMapping("/v1/activities/{id}/primary-source")

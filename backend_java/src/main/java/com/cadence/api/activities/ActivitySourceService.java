@@ -3,10 +3,14 @@ package com.cadence.api.activities;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator.AlignmentResult;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator.Sample;
+import com.cadence.api.activities.calc.StreamComparisonCalculator;
 import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.CadenceSource;
 import com.cadence.api.athletes.HrSource;
 import com.cadence.api.athletes.RunningPowerSource;
+import com.cadence.api.athletes.ZoneService;
+import com.cadence.api.athletes.ZoneSet;
+import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -14,6 +18,7 @@ import com.cadence.api.users.User;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,15 +47,17 @@ public class ActivitySourceService {
 	private final ActivitySourceRepository sourceRepository;
 	private final ActivityStreamRepository streamRepository;
 	private final ActivityMergePostProcessingService postProcessingService;
+	private final ZoneService zoneService;
 
 	public ActivitySourceService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			ActivitySourceRepository sourceRepository, ActivityStreamRepository streamRepository,
-			ActivityMergePostProcessingService postProcessingService) {
+			ActivityMergePostProcessingService postProcessingService, ZoneService zoneService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.sourceRepository = sourceRepository;
 		this.streamRepository = streamRepository;
 		this.postProcessingService = postProcessingService;
+		this.zoneService = zoneService;
 	}
 
 	public record AttachResult(String sourceId, int offsetSeconds, Double alignmentScore, boolean becamePrimary,
@@ -409,7 +416,7 @@ public class ActivitySourceService {
 	}
 
 	public record SourceSummary(String id, String label, String device, String sensorKind, String origin,
-			Instant createdAt, boolean isPrimary) {
+			Instant createdAt, boolean isPrimary, String sourceKind) {
 	}
 
 	/** {@code isPrimary} reflects whether this source matches the activity's *current* primary
@@ -424,7 +431,7 @@ public class ActivitySourceService {
 		return sourceRepository.findByActivityIdOrderByCreatedAtAsc(activityId).stream()
 				.map(source -> new SourceSummary(source.getId(), source.getLabel(), source.getDevice(),
 						source.getSensorKind(), source.getOrigin().wireValue(), source.getCreatedAt(),
-						isPrimaryForField(source, activity)))
+						isPrimaryForField(source, activity), source.getSourceKind()))
 				.toList();
 	}
 
@@ -440,5 +447,106 @@ public class ActivitySourceService {
 					&& CadenceSource.fromWireValue(source.getSourceKind()) == activity.getCadenceSource();
 			default -> false;
 		};
+	}
+
+	/** The literal {@code a}/{@code b} value meaning "the activity's current primary stream for
+	 * this field" - {@link ActivitySource} deliberately never represents the primary (it always
+	 * lives in {@link Record}), so comparing against it needs a sentinel rather than a real
+	 * source id. */
+	public static final String PRIMARY_SOURCE_REF = "primary";
+
+	/** One paired, overlapping second - the raw data the comparison statistics were computed
+	 * from, included so the frontend's overlay/difference/Bland-Altman charts don't need a
+	 * second request. */
+	public record ComparisonPoint(int t, int a, int b) {
+	}
+
+	public record CompareStreamsResult(String field, String sourceA, String sourceB,
+			StreamComparisonCalculator.ComparisonResult comparison, StreamComparisonCalculator.LagResult lag,
+			StreamComparisonCalculator.PowerFit powerFit, List<StreamComparisonCalculator.ZoneBucketResult> zoneBreakdown,
+			List<ComparisonPoint> points) {
+	}
+
+	/** Issue #503 (phase 4): compares two already-stored streams for the same field on the same
+	 * activity - either side may be {@link #PRIMARY_SOURCE_REF} (the activity's current primary,
+	 * read live off {@link Record}) or a real {@link ActivitySource} id (a stored alternate, read
+	 * off its {@link ActivityStream}). {@code zoneBreakdown=true} is rejected for {@code
+	 * field="cadence"}, which has no {@link ZoneType} to bucket by. All the actual statistics are
+	 * computed by the pure {@link StreamComparisonCalculator} - this method's job is just
+	 * resolving both sides to a series and picking the right zone type/tolerance for the field. */
+	@Transactional
+	public CompareStreamsResult compareStreams(String activityId, String field, String sourceA, String sourceB,
+			boolean zoneBreakdown) {
+		validateField(field);
+		if (sourceA.equals(sourceB)) {
+			throw new ValidationException("a and b must refer to two different sources.", "b");
+		}
+		if (zoneBreakdown && field.equals("cadence")) {
+			throw new ValidationException("zone_breakdown is not supported for field 'cadence' (cadence has no zone type).",
+					"zone_breakdown");
+		}
+		Activity activity = activityRepository.findById(activityId)
+				.orElseThrow(() -> new NotFoundException("No such activity."));
+		Map<Integer, Integer> seriesA = loadFieldSeries(activity, field, sourceA);
+		Map<Integer, Integer> seriesB = loadFieldSeries(activity, field, sourceB);
+
+		StreamComparisonCalculator.Tolerance tolerance = field.equals("heartrate")
+				? StreamComparisonCalculator.Tolerance.absolute(5.0)
+				: StreamComparisonCalculator.Tolerance.relativePct(3.0);
+		StreamComparisonCalculator.ComparisonResult comparison = StreamComparisonCalculator.compare(seriesA, seriesB, tolerance);
+		if (comparison == null) {
+			throw new ValidationException("Not enough overlapping samples between the two sources to compare (need at "
+					+ "least " + StreamComparisonCalculator.MIN_OVERLAP_SAMPLES + ").", "b");
+		}
+		StreamComparisonCalculator.LagResult lag = StreamComparisonCalculator.findLag(seriesA, seriesB);
+		StreamComparisonCalculator.PowerFit powerFit = field.equals("power")
+				? StreamComparisonCalculator.fitPowerScaleOffset(seriesA, seriesB) : null;
+
+		List<StreamComparisonCalculator.ZoneBucketResult> zoneResults = null;
+		if (zoneBreakdown) {
+			ZoneType type = field.equals("heartrate") ? ZoneType.HEART_RATE
+					: activity.getSport() == Sport.RUN ? ZoneType.RUN_POWER : ZoneType.BIKE_POWER;
+			User athlete = activity.getAthlete();
+			ZoneSet zoneSet = zoneService.getOrCreate(athlete, type);
+			Double reference = zoneService.referenceFor(athlete, type, activity);
+			zoneResults = reference == null ? List.of()
+					: StreamComparisonCalculator.zoneBreakdown(seriesA, seriesB, zoneSet.getZones(), reference);
+		}
+
+		List<ComparisonPoint> points = new ArrayList<>();
+		for (Map.Entry<Integer, Integer> entry : new java.util.TreeMap<>(seriesA).entrySet()) {
+			Integer bValue = seriesB.get(entry.getKey());
+			if (bValue != null) {
+				points.add(new ComparisonPoint(entry.getKey(), entry.getValue(), bValue));
+			}
+		}
+
+		return new CompareStreamsResult(field, sourceA, sourceB, comparison, lag, powerFit, zoneResults, points);
+	}
+
+	/** Resolves {@code sourceRef} ({@link #PRIMARY_SOURCE_REF} or a real {@link ActivitySource}
+	 * id) to an ordered {@code t -> value} series for {@code field} on {@code activity}. */
+	private Map<Integer, Integer> loadFieldSeries(Activity activity, String field, String sourceRef) {
+		if (PRIMARY_SOURCE_REF.equals(sourceRef)) {
+			Map<Integer, Integer> series = new HashMap<>();
+			for (Record row : recordRepository.findByActivityIdOrderByT(activity.getId())) {
+				Integer value = (Integer) ActivityMergeApplyService.getRecordFieldValue(row, field);
+				if (value != null) {
+					series.put(row.getT(), value);
+				}
+			}
+			return series;
+		}
+		ActivityStream stream = streamRepository.findByActivityIdAndFieldAndSourceId(activity.getId(), field, sourceRef)
+				.orElseThrow(() -> new NotFoundException("No such source for this activity/field."));
+		Short[] values = stream.getStreamValues();
+		int t0 = stream.getT0();
+		Map<Integer, Integer> series = new HashMap<>();
+		for (int i = 0; i < values.length; i++) {
+			if (values[i] != null) {
+				series.put(t0 + i, values[i].intValue());
+			}
+		}
+		return series;
 	}
 }

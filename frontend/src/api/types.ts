@@ -731,6 +731,73 @@ export interface DurationCurve {
   points: Record<string, number>;
 }
 
+/** GET /v1/activities/{id}/sources - a non-primary stream kept alongside the activity (issue
+ * #503). The activity's own current primary stream is never represented here. */
+export interface ActivitySourceSummary {
+  id: string;
+  label: string;
+  device: string | null;
+  sensor_kind: "power" | "heartrate" | "cadence";
+  origin: "file" | "attached";
+  source_kind: string | null;
+  created_at: string;
+  is_primary: boolean;
+}
+
+export type StreamComparisonField = "power" | "heartrate" | "cadence";
+
+export interface StreamComparisonStats {
+  overlap_seconds: number;
+  bias: number;
+  mae: number;
+  rmse: number;
+  pearson_r: number;
+  loa_lower: number;
+  loa_upper: number;
+  within_tolerance_pct: number;
+}
+
+export interface StreamComparisonLag {
+  lag_seconds: number;
+  correlation: number;
+}
+
+export interface StreamComparisonPowerFit {
+  scale: number;
+  offset: number;
+  ratio_of_means: number;
+}
+
+export interface ZoneBucketResult {
+  zone_name: string;
+  sample_count: number;
+  bias: number | null;
+  mae: number | null;
+  rmse: number | null;
+}
+
+export interface StreamComparisonPoint {
+  t: number;
+  a: number;
+  b: number;
+}
+
+/** GET /v1/activities/{id}/streams/compare (issue #503, phase 4). */
+export interface StreamComparison {
+  field: StreamComparisonField;
+  source_a: string;
+  source_b: string;
+  comparison: StreamComparisonStats;
+  lag: StreamComparisonLag | null;
+  /** Non-null only for field="power". */
+  power_fit: StreamComparisonPowerFit | null;
+  /** Null unless requested via zone_breakdown=true; empty if requested but the athlete has no
+   * effective threshold to bucket by yet. */
+  zone_breakdown: ZoneBucketResult[] | null;
+  /** The raw paired, overlapping seconds the stats above were computed from. */
+  points: StreamComparisonPoint[];
+}
+
 export interface BestEffort {
   window: string;
   value: number;

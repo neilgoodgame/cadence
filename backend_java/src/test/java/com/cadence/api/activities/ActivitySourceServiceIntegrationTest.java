@@ -80,6 +80,22 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		recordRepository.saveAll(records);
 	}
 
+	/** Writes a linearly-varying series ({@code baseValue + t} for {@code t} in {@code [0,count)})
+	 * instead of a constant one - needed for the phase-4 comparison tests, since a constant
+	 * series has zero variance and can't exercise Pearson r/the lag search meaningfully. */
+	private void addFieldRecordsSeries(Activity activity, int count, String field, int baseValue) {
+		List<Record> records = new ArrayList<>();
+		for (int t = 0; t < count; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), START.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			ActivityMergeApplyService.setRecordFieldValue(record, field, baseValue + t);
+			records.add(record);
+		}
+		recordRepository.saveAll(records);
+	}
+
 	private Activity newRunActivity(User athlete, RunningPowerSource powerSource) {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
@@ -426,5 +442,160 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 
 		assertThatThrownBy(() -> sourceService.setPrimarySource(activity.getId(), "altitude", "src_doesnotexist"))
 				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void compareStreamsComputesAgreementStatisticsBetweenPrimaryAndAnAttachedSource() {
+		User athlete = newAthlete("compare-basic-stats@example.cc");
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addFieldRecordsSeries(target, 40, "heartrate", 140); // 140..179
+		addFieldRecordsSeries(source, 40, "heartrate", 150); // 150..189, a constant +10 over target
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"heartrate", 0, false, "strap");
+
+		ActivitySourceService.CompareStreamsResult result = sourceService.compareStreams(target.getId(), "heartrate",
+				ActivitySourceService.PRIMARY_SOURCE_REF, attach.sourceId(), false);
+
+		assertThat(result.field()).isEqualTo("heartrate");
+		assertThat(result.comparison().overlapSeconds()).isEqualTo(40);
+		assertThat(result.comparison().bias()).isEqualTo(10.0, org.assertj.core.data.Offset.offset(0.001));
+		assertThat(result.comparison().mae()).isEqualTo(10.0, org.assertj.core.data.Offset.offset(0.001));
+		assertThat(result.comparison().rmse()).isEqualTo(10.0, org.assertj.core.data.Offset.offset(0.001));
+		assertThat(result.comparison().pearsonR()).isEqualTo(1.0, org.assertj.core.data.Offset.offset(0.001));
+		assertThat(result.comparison().loaLower()).isEqualTo(10.0, org.assertj.core.data.Offset.offset(0.001));
+		assertThat(result.comparison().loaUpper()).isEqualTo(10.0, org.assertj.core.data.Offset.offset(0.001));
+		// heartrate's tolerance is +/-5bpm absolute - a constant 10bpm bias is outside it entirely.
+		assertThat(result.comparison().withinTolerancePct()).isEqualTo(0.0, org.assertj.core.data.Offset.offset(0.001));
+		// Both series here are linear ramps, which are perfectly correlated at *every* lag - this
+		// fixture exercises the comparison stats, not the lag search itself (see
+		// StreamComparisonCalculatorTest for a fixture built specifically to pin down lag).
+		assertThat(result.lag()).isNotNull();
+		assertThat(result.lag().correlation()).isEqualTo(1.0, org.assertj.core.data.Offset.offset(0.001));
+		assertThat(result.powerFit()).isNull(); // power-only
+		assertThat(result.zoneBreakdown()).isNull(); // not requested
+	}
+
+	@Test
+	void compareStreamsFitsAScaleAndOffsetForPowerOnly() {
+		User athlete = newAthlete("compare-power-fit@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Favero Assioma");
+		addFieldRecordsSeries(target, 40, "power", 200); // 200..239
+		addFieldRecordsSeries(source, 40, "power", 220); // 220..259 - scale 1.0, offset +20
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"power", 0, false, null);
+
+		ActivitySourceService.CompareStreamsResult result = sourceService.compareStreams(target.getId(), "power",
+				ActivitySourceService.PRIMARY_SOURCE_REF, attach.sourceId(), false);
+
+		assertThat(result.powerFit()).isNotNull();
+		assertThat(result.powerFit().scale()).isEqualTo(1.0, org.assertj.core.data.Offset.offset(0.01));
+		assertThat(result.powerFit().offset()).isEqualTo(20.0, org.assertj.core.data.Offset.offset(0.5));
+		assertThat(result.powerFit().ratioOfMeans()).isGreaterThan(1.0);
+	}
+
+	@Test
+	void compareStreamsRejectsZoneBreakdownForCadence() {
+		User athlete = newAthlete("compare-cadence-no-zone@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Favero Assioma");
+		addFieldRecordsSeries(target, 40, "cadence", 80);
+		addFieldRecordsSeries(source, 40, "cadence", 85);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"cadence", 0, false, "pedals");
+
+		assertThatThrownBy(() -> sourceService.compareStreams(target.getId(), "cadence",
+				ActivitySourceService.PRIMARY_SOURCE_REF, attach.sourceId(), true))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void compareStreamsRejectsTheSameSourceOnBothSides() {
+		User athlete = newAthlete("compare-same-source@example.cc");
+		Activity activity = newActivity(athlete, "Activity", "Edge 530");
+		addFieldRecordsSeries(activity, 40, "power", 200);
+
+		assertThatThrownBy(() -> sourceService.compareStreams(activity.getId(), "power",
+				ActivitySourceService.PRIMARY_SOURCE_REF, ActivitySourceService.PRIMARY_SOURCE_REF, false))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void compareStreamsRejectsTooFewOverlappingSamples() {
+		User athlete = newAthlete("compare-too-few-samples@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Favero Assioma");
+		addFieldRecordsSeries(target, 10, "power", 200); // below MIN_OVERLAP_SAMPLES (30)
+		addFieldRecordsSeries(source, 10, "power", 220);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"power", 0, false, null);
+
+		assertThatThrownBy(() -> sourceService.compareStreams(target.getId(), "power",
+				ActivitySourceService.PRIMARY_SOURCE_REF, attach.sourceId(), false))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void compareStreamsRejectsAnUnknownSourceId() {
+		User athlete = newAthlete("compare-unknown-source@example.cc");
+		Activity activity = newActivity(athlete, "Activity", "Edge 530");
+		addFieldRecordsSeries(activity, 40, "power", 200);
+
+		assertThatThrownBy(() -> sourceService.compareStreams(activity.getId(), "power",
+				ActivitySourceService.PRIMARY_SOURCE_REF, "src_doesnotexist", false))
+				.isInstanceOf(com.cadence.api.common.error.NotFoundException.class);
+	}
+
+	@Test
+	void compareStreamsZoneBreakdownBucketsByStreamAWithAThresholdSet() {
+		User athlete = newAthlete("compare-zone-breakdown@example.cc");
+		athlete.setLthr(150);
+		athlete = userRepository.save(athlete);
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addFieldRecordsSeries(target, 40, "heartrate", 140); // 140..179, spans multiple %-of-150 bands
+		addFieldRecordsSeries(source, 40, "heartrate", 145);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"heartrate", 0, false, "strap");
+
+		ActivitySourceService.CompareStreamsResult result = sourceService.compareStreams(target.getId(), "heartrate",
+				ActivitySourceService.PRIMARY_SOURCE_REF, attach.sourceId(), true);
+
+		assertThat(result.zoneBreakdown()).isNotNull();
+		assertThat(result.zoneBreakdown()).hasSize(5); // ZoneService.DEFAULT_ZONES has 5 bands
+		int totalBucketed = result.zoneBreakdown().stream()
+				.mapToInt(com.cadence.api.activities.calc.StreamComparisonCalculator.ZoneBucketResult::sampleCount).sum();
+		assertThat(totalBucketed).isEqualTo(40);
+	}
+
+	@Test
+	void compareStreamsZoneBreakdownIsEmptyWithoutAThresholdSet() {
+		User athlete = newAthlete("compare-zone-no-threshold@example.cc"); // lthr never set
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addFieldRecordsSeries(target, 40, "heartrate", 140);
+		addFieldRecordsSeries(source, 40, "heartrate", 145);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"heartrate", 0, false, "strap");
+
+		ActivitySourceService.CompareStreamsResult result = sourceService.compareStreams(target.getId(), "heartrate",
+				ActivitySourceService.PRIMARY_SOURCE_REF, attach.sourceId(), true);
+
+		assertThat(result.zoneBreakdown()).isEmpty();
+	}
+
+	@Test
+	void listSourcesIncludesSourceKindInTheResponse() {
+		User athlete = newAthlete("source-list-includes-source-kind@example.cc");
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addFieldRecords(target, 10, "heartrate", 140);
+		addFieldRecords(source, 10, "heartrate", 150);
+		sourceService.attachStream(target.getId(), source.getId(), "heartrate", 0, false, "strap");
+
+		List<ActivitySourceService.SourceSummary> summaries = sourceService.listSources(target.getId());
+
+		assertThat(summaries).singleElement().satisfies(s -> assertThat(s.sourceKind()).isEqualTo("strap"));
 	}
 }

@@ -663,6 +663,25 @@ class ActivityMCPTools(ScopedMCPToolset):
         self._require_read(activity.athlete_id)
         return [summary._asdict() for summary in activity_source_service.list_sources(activity_id)]
 
+    def compare_streams(
+        self, activity_id: str, field: str, source_a: str, source_b: str, zone_breakdown: bool = False
+    ) -> dict[str, Any]:
+        """Issue #503 (phase 4): agreement statistics between two of activity_id's stored streams
+        for field - bias (mean of b minus a), MAE, RMSE, Pearson r, Bland-Altman limits of
+        agreement, percent of seconds within a tolerance (5bpm for heartrate, 3% of a's value
+        otherwise), a residual lag from cross-correlation (e.g. wrist heartrate trailing a chest
+        strap by a few seconds), and - for field="power" only - a fitted scale+offset between
+        the two meters plus the ratio of their means (the drivetrain-loss estimate). source_a/
+        source_b each accept either "primary" (the activity's current live stream) or a real
+        source id from list_activity_sources. zone_breakdown (default false) adds a per-zone
+        bias/MAE/RMSE breakdown, bucketed by source a's own value against the athlete's zone
+        boundaries - not supported for field="cadence", which has no zone type."""
+        self._require_scope(ACTIVITIES_READ)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_read(activity.athlete_id)
+        result = activity_source_service.compare_streams(activity_id, field, source_a, source_b, zone_breakdown)
+        return activity_source_service.compare_streams_response(result)
+
     def set_primary_source(self, activity_id: str, field: str, source_id: str) -> dict[str, Any]:
         """Issue #503 (phases 1-3): swaps activity_id's current primary stream for field with the
         named source_id's stream (from list_activity_sources) - e.g. switching a ride's power
