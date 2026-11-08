@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.ActivitySourceOrigin;
+import com.cadence.api.activities.ActivitySourceRepository;
 import com.cadence.api.activities.BestEffortKind;
 import com.cadence.api.activities.BestEffortRepository;
 import com.cadence.api.activities.RecordRepository;
@@ -43,6 +45,8 @@ class RunningPowerSourceIngestionTest extends IntegrationTest {
 	private BestEffortRepository bestEffortRepository;
 	@Autowired
 	private ZoneService zoneService;
+	@Autowired
+	private ActivitySourceRepository sourceRepository;
 
 	private User newAthlete(String email, RunningPowerSource runningPowerSource) {
 		User user = new User();
@@ -92,6 +96,32 @@ class RunningPowerSourceIngestionTest extends IntegrationTest {
 		assertThat(bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
 				athlete.getId(), BestEffortKind.RUNNING_POWER)).isEmpty();
 		assertThat(zoneService.referenceFor(athlete, ZoneType.RUN_POWER, activity)).isNull();
+	}
+
+	/** Issue #503 (phase 2): running_outdoor_marathon.fit is Stryd-only - there's genuinely no
+	 * native candidate in this file. Under the "stryd" preference (stryd primary, native is "the
+	 * other" candidate), createParseTimeRunningPowerSource must not create anything - the file
+	 * never had the other candidate at all (see its own Javadoc, "no-op if the other candidate
+	 * has no data at all"). Under "native" preference, though, stryd itself becomes "the other"
+	 * candidate - and the file DOES have that - so a source/stream must be created, even though
+	 * native (now primary) has no data of its own (see nativePreferenceIgnoresThisStrydOnlyFiles
+	 * PowerEntirely above for that half). */
+	@Test
+	void parseTimeDualKeepCreatesNothingWhenTheOtherCandidateIsEntirelyAbsentButSomethingWhenItIsnt() throws Exception {
+		User strydPreferenceAthlete = newAthlete("power-source-dual-keep-stryd@example.cc", RunningPowerSource.STRYD);
+		User nativePreferenceAthlete = newAthlete("power-source-dual-keep-native@example.cc", RunningPowerSource.NATIVE);
+
+		Activity strydPreferenceActivity = uploadStrydOnlyFixture(strydPreferenceAthlete);
+		Activity nativePreferenceActivity = uploadStrydOnlyFixture(nativePreferenceAthlete);
+
+		// stryd preference: native is "the other" candidate, and this file never had it.
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(strydPreferenceActivity.getId())).isEmpty();
+
+		// native preference: stryd is "the other" candidate, and this file DOES have it.
+		var sources = sourceRepository.findByActivityIdOrderByCreatedAtAsc(nativePreferenceActivity.getId());
+		assertThat(sources).hasSize(1);
+		assertThat(sources.get(0).getRunningPowerKind()).isEqualTo("stryd");
+		assertThat(sources.get(0).getOrigin()).isEqualTo(ActivitySourceOrigin.FILE);
 	}
 
 	private Activity awaitReadyActivity(String uploadId) throws InterruptedException {

@@ -4,6 +4,7 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityOverlapDetectionService;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.ActivitySourceService;
 import com.cadence.api.activities.OverlapAction;
 import com.cadence.api.activities.DistanceSource;
 import com.cadence.api.activities.Lap;
@@ -66,11 +67,12 @@ public class ParseFileTasklet implements Tasklet {
 	private final GearMileageService gearMileageService;
 	private final ActivityOverlapDetectionService overlapDetectionService;
 	private final ActivityService activityService;
+	private final ActivitySourceService activitySourceService;
 
 	public ParseFileTasklet(UploadJobContextRegistry contextRegistry, UploadRepository uploadRepository,
 			ActivityRepository activityRepository, LapRepository lapRepository, CadenceProperties properties,
 			GearMileageService gearMileageService, ActivityOverlapDetectionService overlapDetectionService,
-			ActivityService activityService) {
+			ActivityService activityService, ActivitySourceService activitySourceService) {
 		this.contextRegistry = contextRegistry;
 		this.uploadRepository = uploadRepository;
 		this.activityRepository = activityRepository;
@@ -79,6 +81,7 @@ public class ParseFileTasklet implements Tasklet {
 		this.gearMileageService = gearMileageService;
 		this.overlapDetectionService = overlapDetectionService;
 		this.activityService = activityService;
+		this.activitySourceService = activitySourceService;
 	}
 
 	@Override
@@ -134,10 +137,12 @@ public class ParseFileTasklet implements Tasklet {
 			// Dropped here, before a Record is ever written, rather than left for a later
 			// recompute to clean up - see RunningPowerSanitizer's Javadoc for the failure mode
 			// (an implausible single-sample power spike a footpod occasionally emits).
-			// selectRunningPowerSource runs first: it collapses the two power candidates
-			// (native/Stryd) into the one the athlete actually trusts, so
+			// selectRunningPowerSource runs first: it resolves the two power candidates
+			// (native/Stryd) down to the one the athlete actually trusts for Record.power, so
 			// sanitizeRunningPower's spike-clipping below applies to whichever source was
-			// actually chosen, not always the native field.
+			// actually chosen, not always the native field. The other candidate isn't lost -
+			// see the ActivitySourceService#createParseTimeRunningPowerSource call below, which
+			// keeps it (raw, unsanitized) once this activity is saved.
 			ParsedActivity selected = selectRunningPowerSource(rawParsed, upload.getAthlete());
 			ParsedActivity parsed = sanitizeEnvironment(sanitizeRunningPower(selected, upload.getAthlete().getMaxRunningPowerWatts()));
 			boolean isChild = multisport && parent != null;
@@ -183,6 +188,19 @@ public class ParseFileTasklet implements Tasklet {
 				activity.setShoe(upload.getShoe());
 			}
 			activityRepository.save(activity);
+			// Issue #503 (phase 2): rawParsed (not parsed/selected) still carries both the
+			// native (Sample.power) and Stryd (Sample.powerStryd) readings untouched -
+			// selectRunningPowerSource above builds a *new* ParsedActivity rather than mutating
+			// this one. Keep whichever one the athlete's current preference didn't select, so a
+			// later preference change can re-designate it instead of only filtering this run out.
+			if (activity.getSport() == Sport.RUN && "fit".equals(parsed.source())) {
+				boolean preferNative = upload.getAthlete().getRunningPowerSource() == RunningPowerSource.NATIVE;
+				List<Integer> tSeries = rawParsed.samples().stream().map(ParsedActivity.Sample::t).toList();
+				List<Integer> otherValues = rawParsed.samples().stream()
+						.map(preferNative ? ParsedActivity.Sample::powerStryd : ParsedActivity.Sample::power).toList();
+				activitySourceService.createParseTimeRunningPowerSource(activity, tSeries, otherValues,
+						preferNative ? RunningPowerSource.STRYD : RunningPowerSource.NATIVE);
+			}
 			if (activity.getShoe() != null) {
 				gearMileageService.applyShoeChange(null, activity.getShoe().getId(), activity.getDistanceKm());
 			}
@@ -233,11 +251,16 @@ public class ParseFileTasklet implements Tasklet {
 	 * skewed average; only the per-second series consumers (best efforts, duration curves,
 	 * normalized power, threshold history, the activity chart) are protected. */
 	/** Resolves each running sample's power to *only* the athlete's preferred source
-	 * (User.getRunningPowerSource()) - the other candidate is completely ignored, not used as a
-	 * fallback for a momentary gap. FitFileParser keeps both {@code power} (native) and
-	 * {@code powerStryd} (Stryd's own developer field) distinct through parsing specifically
-	 * because it has no athlete context to choose between them; this is where that choice
-	 * actually happens, now that {@code athlete} is in scope.
+	 * (User.getRunningPowerSource()) for {@code Record.power}/this activity's own stats - the
+	 * other candidate isn't used as a fallback for a momentary gap, and isn't touched by this
+	 * method at all (it builds a new {@link ParsedActivity}, leaving the one passed in
+	 * untouched). FitFileParser keeps both {@code power} (native) and {@code powerStryd}
+	 * (Stryd's own developer field) distinct through parsing specifically because it has no
+	 * athlete context to choose between them; this is where that choice actually happens, now
+	 * that {@code athlete} is in scope. Issue #503 (phase 2): the caller separately keeps the
+	 * *other* candidate too, reading it from the original (this method's own parameter, not its
+	 * return value) - see the {@code ActivitySourceService#createParseTimeRunningPowerSource}
+	 * call right after this activity is saved.
 	 *
 	 * <p>Only meaningful for FIT files, where the ambiguity exists at all - a TCX/GPX file has
 	 * a single power field with no source to distinguish, so this passes those through

@@ -3,12 +3,14 @@ package com.cadence.api.activities;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cadence.api.athletes.BikePowerSource;
+import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,6 +62,16 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 			records.add(record);
 		}
 		recordRepository.saveAll(records);
+	}
+
+	private Activity newRunActivity(User athlete, RunningPowerSource powerSource) {
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.RUN);
+		activity.setName("Run");
+		activity.setStartDate(START);
+		activity.setPowerSource(powerSource);
+		return activityRepository.save(activity);
 	}
 
 	@Test
@@ -166,6 +178,100 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 
 		List<ActivitySourceService.SourceSummary> summariesAfterSwap = sourceService.listSources(target.getId());
 		assertThat(summariesAfterSwap).filteredOn(s -> s.id().equals(attach.sourceId()))
+				.singleElement().satisfies(s -> assertThat(s.isPrimary()).isTrue());
+	}
+
+	@Test
+	void parseTimeDualKeepCreatesANonPrimarySourceWhenBothCandidatesArePresent() {
+		User athlete = newAthlete("source-parse-time-both-present@example.cc");
+		Activity activity = newRunActivity(athlete, RunningPowerSource.STRYD);
+		addRecords(activity, 5, 200); // the primary (Stryd) stream, already written to Record
+
+		List<Integer> tSeries = List.of(0, 1, 2, 3, 4);
+		List<Integer> otherValues = Arrays.asList(250, 251, null, 253, 254); // native, the other candidate
+
+		sourceService.createParseTimeRunningPowerSource(activity, tSeries, otherValues, RunningPowerSource.NATIVE);
+
+		List<ActivitySource> sources = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId());
+		assertThat(sources).hasSize(1);
+		ActivitySource source = sources.get(0);
+		assertThat(source.getOrigin()).isEqualTo(ActivitySourceOrigin.FILE);
+		assertThat(source.getSensorKind()).isEqualTo("power");
+		assertThat(source.getRunningPowerKind()).isEqualTo("native");
+
+		ActivityStream stream = streamRepository
+				.findByActivityIdAndFieldAndSourceId(activity.getId(), "power", source.getId()).orElseThrow();
+		assertThat(stream.isPrimaryOf()).isFalse();
+		assertThat(stream.getStreamValues()).containsExactly((short) 250, (short) 251, null, (short) 253, (short) 254);
+
+		// The primary (Stryd) Record values are completely untouched.
+		assertThat(recordRepository.findByActivityIdOrderByT(activity.getId()))
+				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(200));
+	}
+
+	@Test
+	void parseTimeDualKeepCreatesNothingWhenTheOtherCandidateIsEntirelyAbsent() {
+		User athlete = newAthlete("source-parse-time-other-absent@example.cc");
+		Activity activity = newRunActivity(athlete, RunningPowerSource.STRYD);
+		addRecords(activity, 5, 200);
+
+		List<Integer> tSeries = List.of(0, 1, 2, 3, 4);
+		List<Integer> otherValues = Arrays.asList(null, null, null, null, null); // native never present
+
+		sourceService.createParseTimeRunningPowerSource(activity, tSeries, otherValues, RunningPowerSource.NATIVE);
+
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId())).isEmpty();
+	}
+
+	@Test
+	void setPrimarySourceOnARunStampsPowerSourceFromTheStoredRunningPowerKind() {
+		User athlete = newAthlete("source-run-set-primary@example.cc");
+		Activity activity = newRunActivity(athlete, RunningPowerSource.STRYD);
+		addRecords(activity, 5, 200); // Stryd primary
+		sourceService.createParseTimeRunningPowerSource(activity, List.of(0, 1, 2, 3, 4),
+				List.of(250, 251, 252, 253, 254), RunningPowerSource.NATIVE);
+		ActivitySource nativeSource = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId()).get(0);
+
+		sourceService.setPrimarySource(activity.getId(), "power", nativeSource.getId());
+
+		List<Record> rowsAfterSwap = recordRepository.findByActivityIdOrderByT(activity.getId());
+		assertThat(rowsAfterSwap).extracting(Record::getPower).containsExactly(250, 251, 252, 253, 254);
+		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(reloaded.getPowerSource()).isEqualTo(RunningPowerSource.NATIVE);
+
+		// The original (Stryd, 200) primary was itself snapshotted as a new source, tagged with
+		// its own running-power kind - not left blank/device-classified the way bike's is.
+		ActivitySource strydSnapshot = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId()).stream()
+				.filter(s -> !s.getId().equals(nativeSource.getId()))
+				.findFirst().orElseThrow();
+		assertThat(strydSnapshot.getRunningPowerKind()).isEqualTo("stryd");
+
+		// And it's reversible, the same as bike's.
+		sourceService.setPrimarySource(activity.getId(), "power", strydSnapshot.getId());
+		Activity reloadedAfterSwapBack = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(reloadedAfterSwapBack.getPowerSource()).isEqualTo(RunningPowerSource.STRYD);
+		assertThat(recordRepository.findByActivityIdOrderByT(activity.getId()))
+				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(200));
+	}
+
+	@Test
+	void listSourcesIsPrimaryForARunUsesPowerSourceNotDeviceClassification() {
+		User athlete = newAthlete("source-run-list-is-primary@example.cc");
+		Activity activity = newRunActivity(athlete, RunningPowerSource.STRYD);
+		addRecords(activity, 5, 200);
+		sourceService.createParseTimeRunningPowerSource(activity, List.of(0, 1, 2, 3, 4),
+				List.of(250, 251, 252, 253, 254), RunningPowerSource.NATIVE);
+		ActivitySource nativeSource = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId()).get(0);
+
+		List<ActivitySourceService.SourceSummary> summaries = sourceService.listSources(activity.getId());
+		assertThat(summaries).hasSize(1);
+		// The stored native source doesn't match the activity's current (Stryd) primary yet.
+		assertThat(summaries.get(0).isPrimary()).isFalse();
+
+		sourceService.setPrimarySource(activity.getId(), "power", nativeSource.getId());
+
+		List<ActivitySourceService.SourceSummary> summariesAfterSwap = sourceService.listSources(activity.getId());
+		assertThat(summariesAfterSwap).filteredOn(s -> s.id().equals(nativeSource.getId()))
 				.singleElement().satisfies(s -> assertThat(s.isPrimary()).isTrue());
 	}
 }

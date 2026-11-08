@@ -39,6 +39,15 @@ public class ActivitySource extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private ActivitySourceOrigin origin;
 
+	/** Issue #503 (phase 2): for a {@code sensorKind == "power"} source on a RUN activity only -
+	 * which running-power candidate ({@code RunningPowerSource.NATIVE}/{@code STRYD}'s own wire
+	 * value) this stream holds. Null for every bike-sourced row (bike distinguishes pedals from
+	 * trainer by {@link #device} via {@code ActivitySourceService#classify} instead - a run's two
+	 * candidates come from the *same* device, so there's nothing to classify by device string)
+	 * and for any non-power sensorKind. */
+	@Column(name = "running_power_kind")
+	private String runningPowerKind;
+
 	@Column(nullable = false)
 	private Instant createdAt;
 
@@ -96,5 +105,13 @@ public class ActivitySource extends PrefixedIdEntity {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	public String getRunningPowerKind() {
+		return runningPowerKind;
+	}
+
+	public void setRunningPowerKind(String runningPowerKind) {
+		this.runningPowerKind = runningPowerKind;
 	}
 }

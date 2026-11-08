@@ -16,6 +16,7 @@ from . import threshold_suggestions
 from .models import (
     AcceptedThresholdCandidate,
     BestEffortRecomputeJob,
+    RunningPowerSourceRecomputeJob,
     ThresholdHistory,
     ZoneSet,
 )
@@ -1927,6 +1928,93 @@ class BestEffortRecomputeJobViewTests(TestCase):
 
         job = BestEffortRecomputeJob.objects.create(athlete=self.athlete)
         poll = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/best-efforts/recompute/{job.id}")
+        self.assertEqual(poll.status_code, 403)
+
+
+class RunningPowerSourceRecomputeJobViewTests(TestCase):
+    """Issue #503 (phase 2): mirrors BestEffortRecomputeJobViewTests' own structure exactly -
+    same Celery job + polling shape, same CELERY_TASK_ALWAYS_EAGER reasoning (see that class's
+    own docstring). Exercises the real end-to-end path (view -> task -> DB), not a mocked one."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(
+            email="rpr-athlete@example.cc", password="x", name="Athlete", running_power_source="native"
+        )
+        self.outsider = User.objects.create_user(email="rpr-outsider@example.cc", password="x", name="Outsider")
+        self.start = datetime(2026, 6, 1, 18, 0, 0, tzinfo=UTC)
+
+    def _run_activity(self, name, power_source):
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name=name,
+            start_date=self.start,
+            moving_time=5,
+            power_source=power_source,
+        )
+        for t in range(5):
+            Record.objects.create(activity=activity, t=t, ts=self.start + timedelta(seconds=t), power=200)
+        return activity
+
+    def test_start_returns_202_and_swaps_every_mismatched_run_with_a_stored_alternate(self):
+        from activities.activity_source_service import create_parse_time_running_power_source
+        from activities.models import ActivitySource
+
+        mismatched_with_alternate = self._run_activity("Run A", "stryd")
+        create_parse_time_running_power_source(
+            mismatched_with_alternate, [0, 1, 2, 3, 4], [250, 251, 252, 253, 254], "native"
+        )
+        mismatched_without_alternate = self._run_activity("Run B", "stryd")
+        already_matching = self._run_activity("Run C", "native")
+
+        response = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/running-power-source/recompute")
+
+        self.assertEqual(response.status_code, 202)
+        body = response.json()
+        self.assertEqual(body["object"], "running_power_source_recompute_job")
+        self.assertIn("Location", response.headers)
+
+        job = RunningPowerSourceRecomputeJob.objects.get(pk=body["id"])
+        self.assertEqual(job.status, "ready")
+        self.assertEqual(job.swapped_items, 1)
+        self.assertEqual(job.skipped_items, 1)
+        self.assertIsNotNone(job.completed_at)
+
+        mismatched_with_alternate.refresh_from_db()
+        self.assertEqual(mismatched_with_alternate.power_source, "native")
+        self.assertEqual([r.power for r in mismatched_with_alternate.records.order_by("t")], [250, 251, 252, 253, 254])
+        # The original stryd primary was snapshotted, tagged with its own kind.
+        stryd_snapshot = ActivitySource.objects.exclude(
+            pk=ActivitySource.objects.get(activity=mismatched_with_alternate, running_power_kind="native").pk
+        ).get(activity=mismatched_with_alternate)
+        self.assertEqual(stryd_snapshot.running_power_kind, "stryd")
+
+        mismatched_without_alternate.refresh_from_db()
+        self.assertEqual(mismatched_without_alternate.power_source, "stryd")  # untouched - nothing to swap to
+
+        already_matching.refresh_from_db()
+        self.assertEqual(already_matching.power_source, "native")  # untouched - never a candidate
+
+    def test_polling_the_job_returns_its_current_state(self):
+        start = _bearer_client(self.athlete).post(f"/v1/athletes/{self.athlete.id}/running-power-source/recompute")
+        job_id = start.json()["id"]
+
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/running-power-source/recompute/{job_id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ready")
+        self.assertEqual(response.json()["swapped_items"], 0)
+        self.assertNotIn("Retry-After", response.headers)
+
+    def test_outsider_cannot_start_or_poll(self):
+        start = _bearer_client(self.outsider).post(f"/v1/athletes/{self.athlete.id}/running-power-source/recompute")
+        self.assertEqual(start.status_code, 403)
+
+        job = RunningPowerSourceRecomputeJob.objects.create(athlete=self.athlete)
+        poll = _bearer_client(self.outsider).get(
+            f"/v1/athletes/{self.athlete.id}/running-power-source/recompute/{job.id}"
+        )
         self.assertEqual(poll.status_code, 403)
 
 

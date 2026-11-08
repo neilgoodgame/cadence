@@ -1,9 +1,11 @@
-"""Issue #503 (phase 1): keeps a second power stream alongside an activity instead of #501's
+"""Issue #503 (phases 1-2): keeps a second power stream alongside an activity instead of #501's
 merge overwriting one copy with the other - ``attach_power_stream`` (the ``attach`` merge
-``copy_mode``, called from merge_service.run_merge) and ``set_primary_source`` (swap which stream
-is primary, callable any time afterward, not just right after an attach). Phase 1 only ever
-creates/swaps "power" sources - see the field validation in both functions. Mirrors
-backend_java's ActivitySourceService.java - keep the two in sync when changing either.
+``copy_mode``, called from merge_service.run_merge, bike only),
+``create_parse_time_running_power_source`` (a run's non-preferred native/Stryd candidate, kept
+at parse time, phase 2), and ``set_primary_source`` (swap which stream is primary, callable any
+time afterward for either sport). Phase 1/2 only ever create/swap "power" sources - see the
+field validation in ``set_primary_source``. Mirrors backend_java's ActivitySourceService.java -
+keep the two in sync when changing either.
 """
 
 from dataclasses import dataclass
@@ -131,13 +133,63 @@ def attach_power_stream(
     return AttachResult(activity_source.id, resolved_offset, score, became_primary, copied, nulled)
 
 
+def create_parse_time_running_power_source(
+    activity: Activity, t_series: list[int], other_values_raw: list[int | None], other_kind: str
+) -> None:
+    """Issue #503 (phase 2): stores a run's non-preferred native/Stryd candidate (the one
+    uploads.processing._select_running_power_source didn't pick) as a new, non-primary
+    FILE-origin source/stream, so a later running_power_source preference change can re-designate
+    it instead of only filtering the activity out via Activity.matches_running_power_preference.
+    No-op if the other candidate has no data at all in this file (nothing to keep) - matches
+    Activity.power_source's own "blank when there's no such choice to record" convention. Called
+    once per RUN/FIT activity right after it's saved. Unlike attach_power_stream, there is no
+    alignment step - both candidates already share the activity's own single parsed timeline
+    (same t series, same order), so t_series/other_values_raw are zipped by index directly."""
+    if not any(v is not None for v in other_values_raw):
+        return
+    t0 = t_series[0] if t_series else 0
+    t_max = t_series[-1] if t_series else t0
+    values: list[int | None] = [None] * (t_max - t0 + 1)
+    for t, value in zip(t_series, other_values_raw, strict=True):
+        if value is not None:
+            values[t - t0] = value
+
+    with transaction.atomic():
+        source = ActivitySource.objects.create(
+            activity=activity,
+            label=activity.name,
+            device=activity.device,
+            sensor_kind="power",
+            origin="file",
+            running_power_kind=other_kind,
+        )
+        ActivityStream.objects.create(
+            activity=activity, field="power", source=source, t0=t0, values=values, primary_of=False
+        )
+
+
 def set_primary_source(activity_id: str, field: str, source_id: str) -> Activity:
-    """Swaps field on activity_id with the named ActivityStream's values - the activity's
-    *current* primary values (today, always living in Record) are themselves saved as a new
-    ActivitySource/ActivityStream pair first (origin "file" - they came from this activity's own
-    upload, not an attach), so swapping never loses data either direction. Reruns the shared
-    post-merge recompute cascade afterward - same cascade a real #501 merge or #498 primary swap
-    already triggers."""
+    """Swaps field on activity_id with the named ActivityStream's values, then reruns the shared
+    post-merge recompute cascade - same cascade a real #501 merge or #498 primary swap already
+    triggers. See _swap_primary_stream for the data-only half this wraps."""
+    with transaction.atomic():
+        activity = _swap_primary_stream(activity_id, field, source_id)
+        recompute_after_merge(activity_id)
+    activity.refresh_from_db()
+    return activity
+
+
+def _swap_primary_stream(activity_id: str, field: str, source_id: str) -> Activity:
+    """The data-only half of set_primary_source - everything except the recompute cascade. Besides
+    set_primary_source itself, only athletes.tasks.recompute_running_power_source's bulk loop
+    calls this directly, deferring the athlete-wide cascade (merge_postprocess
+    .recompute_after_duplicate_change's own full-ledger rebuild) to run once per athlete instead
+    of once per swapped activity, which would otherwise be quadratic in the athlete's activity
+    count - see recompute_activity_level_only's own docstring.
+
+    The activity's *current* primary values (today, always living in Record) are themselves
+    saved as a new ActivitySource/ActivityStream pair first (origin "file" - they came from this
+    activity's own upload, not an attach), so swapping never loses data either direction."""
     if field != "power":
         raise ValidationError({"field": "field must be 'power' - phase 1 only supports power sources."})
     activity = get_object_or_404(Activity, pk=activity_id)
@@ -149,7 +201,12 @@ def set_primary_source(activity_id: str, field: str, source_id: str) -> Activity
         # Snapshot the activity's current primary (Record.power) as its own attached source -
         # unconditionally, so swapping back later is always possible.
         original_source = ActivitySource.objects.create(
-            activity=activity, label=activity.name, device=activity.device, sensor_kind=field, origin="file"
+            activity=activity,
+            label=activity.name,
+            device=activity.device,
+            sensor_kind=field,
+            origin="file",
+            running_power_kind=(activity.power_source if activity.sport == "run" else ""),
         )
         t0 = min((row.t for row in rows), default=0)
         t_max = max((row.t for row in rows), default=t0)
@@ -170,23 +227,32 @@ def set_primary_source(activity_id: str, field: str, source_id: str) -> Activity
             changed_rows.append(row)
         Record.objects.bulk_update(changed_rows, ["power"])
 
-        activity.bike_power_source = classify(new_primary_stream.source.device or activity.device)
-        activity.save(update_fields=["bike_power_source"])
+        new_source = new_primary_stream.source
+        if activity.sport == "bike":
+            activity.bike_power_source = classify(new_source.device or activity.device)
+            activity.save(update_fields=["bike_power_source"])
+        elif activity.sport == "run" and new_source.running_power_kind:
+            activity.power_source = new_source.running_power_kind
+            activity.save(update_fields=["power_source"])
 
-        recompute_after_merge(activity_id)
-
-    activity.refresh_from_db()
     return activity
 
 
+def _is_primary_power(source: ActivitySource, activity: Activity) -> bool:
+    """is_primary reflects whether this source matches the activity's *current* primary reading
+    for its field - bike by device classification (_current_primary_source), running by
+    comparing the source's own running_power_kind against Activity.power_source. It's a derived
+    read, not a stored flag, since the primary stream itself always lives in Record, never in an
+    ActivitySource row (see this module's own docstring)."""
+    if source.sensor_kind != "power":
+        return False
+    if activity.sport == "run":
+        return bool(source.running_power_kind) and source.running_power_kind == activity.power_source
+    return classify(source.device) == _current_primary_source(activity)
+
+
 def list_sources(activity_id: str) -> list[SourceSummary]:
-    """isPrimary reflects whether this source's own device classification matches the activity's
-    *current* primary reading for its field - phase 1 only ever has "power" sources, so this is
-    always a _current_primary_source comparison; it's a derived read, not a stored flag, since
-    the primary stream itself always lives in Record, never in an ActivitySource row (see this
-    module's own docstring)."""
     activity = get_object_or_404(Activity, pk=activity_id)
-    primary = _current_primary_source(activity)
     return [
         SourceSummary(
             id=source.id,
@@ -195,7 +261,7 @@ def list_sources(activity_id: str) -> list[SourceSummary]:
             sensor_kind=source.sensor_kind,
             origin=source.origin,
             created_at=source.created_at,
-            is_primary=source.sensor_kind == "power" and classify(source.device) == primary,
+            is_primary=_is_primary_power(source, activity),
         )
         for source in activity.sources.order_by("created_at")
     ]

@@ -2307,6 +2307,36 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/ThresholdHistoryEntry" }
 
+  /v1/athletes/{id}/recompute-running-power-source:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    post:
+      tags: [Athletes & zones]
+      summary: Retroactively re-designate every run's primary power source
+      operationId: recomputeRunningPowerSource
+      description: >-
+        Issue #503 (phase 2). PATCHing running_power_source alone never retroactively changes an
+        already-imported run - call this afterward to find every run whose stored power_source
+        no longer matches the athlete's current preference and, for each one that has the other
+        candidate stored (see GET .../sources), swap it to primary and recompute. A run whose
+        file never had the other candidate is left untouched (reported as skipped, not an
+        error). Streamed as Server-Sent Events, same shape as the (undocumented pre-existing)
+        recompute-stats/recompute-threshold-history endpoints: periodic progress events
+        (`{"current":n,"total":n}`), then one final `done` event
+        (`{"swapped":n,"skipped":n}`). 409s if a recompute is already running for this athlete.
+      responses:
+        "200":
+          description: >-
+            text/event-stream - progress events followed by a final `done` event carrying
+            `{"swapped": <integer>, "skipped": <integer>}`.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: A running-power-source recompute is already running for this athlete.
+
   /v1/athletes/{id}/threshold-suggestions:
     parameters:
       - $ref: "#/components/parameters/AthleteId"
@@ -4536,7 +4566,11 @@ components:
             Which running-power reading to trust when a FIT file carries both a watch's own
             native estimate (e.g. Garmin Running Power) and a Stryd footpod reading - native
             algorithms tend to read meaningfully higher than Stryd for the same effort, so the
-            non-selected source is completely ignored, not used as a fallback.
+            non-selected source isn't used for the run's own power/stats. Issue #503 (phase 2):
+            both readings are kept (see the ActivitySource schema's running_power_kind), so
+            changing this value doesn't retroactively apply to already-imported runs by itself -
+            call POST /v1/athletes/{id}/recompute-running-power-source afterward to re-designate
+            every existing run whose stored primary no longer matches.
           example: stryd
         bike_power_source:
           type: string
@@ -4771,10 +4805,13 @@ components:
           type: [string, "null"]
           enum: [stryd, native, null]
           description: >-
-            Which of the two candidate running-power readings this run's power was actually
+            Which of the two candidate running-power readings this run's power is currently
             resolved from (native vs Stryd) - null for every non-FIT/non-run activity, where
             there's no such ambiguity to record. See the athlete's running_power_source
-            preference.
+            preference. Issue #503 (phase 2): no longer fixed at ingest - GET .../sources lists
+            the non-primary candidate (if the file had one), and POST .../primary-source or
+            POST /v1/athletes/{id}/recompute-running-power-source can re-designate which one
+            this reflects.
           example: stryd
         avg_power: { type: [integer, "null"] }
         norm_power: { type: [integer, "null"] }
@@ -5697,7 +5734,7 @@ components:
     ActivitySource:
       type: object
       description: >-
-        Issue #503 (phase 1). A non-primary stream kept alongside an activity - see GET
+        Issue #503 (phases 1-2). A non-primary stream kept alongside an activity - see GET
         /v1/activities/{id}/sources. The primary stream itself is never represented here - it
         stays in the activity's own stream data.
       properties:
@@ -5711,22 +5748,33 @@ components:
           type: [string, "null"]
         sensor_kind:
           type: string
-          description: Which field this source provides a stream for. Phase 1 only ever creates "power".
+          description: Which field this source provides a stream for. Phase 1/2 only ever create "power".
           example: power
         origin:
           type: string
           enum: [file, attached]
           description: >-
-            file - this activity's own original upload, snapshotted the first time its primary
-            stream was swapped away. attached - added via POST .../merge's attach copy_mode.
+            file - either this activity's own original upload, snapshotted the first time its
+            primary stream was swapped away (phase 1), or - for a run whose FIT file carried
+            both a native and a Stryd power reading - the non-preferred candidate kept at parse
+            time (phase 2). attached - added via POST .../merge's attach copy_mode (bike only).
+        running_power_kind:
+          type: [string, "null"]
+          enum: [native, stryd, null]
+          description: >-
+            Issue #503 (phase 2). For a running power source only - null for a bike source
+            (which distinguishes pedals/trainer by device instead, since a run's two candidates
+            come from the same device). Which candidate this stream holds, so POST
+            .../primary-source can re-designate a run's primary without a device heuristic.
         created_at:
           type: string
           format: date-time
         is_primary:
           type: boolean
           description: >-
-            Whether this source's own device classification already matches the activity's
-            current primary reading for sensor_kind - i.e. whether POST .../primary-source has
+            Whether this source already matches the activity's current primary reading for
+            sensor_kind - by device classification for bike, by running_power_kind vs the
+            activity's power_source for running - i.e. whether POST .../primary-source has
             nothing to do for it.
 
     ThresholdSuggestion:

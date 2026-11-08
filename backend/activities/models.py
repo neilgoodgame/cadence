@@ -602,17 +602,20 @@ class MergeRule(PrefixedIDModel):
 
 
 class ActivitySource(PrefixedIDModel):
-    """Issue #503 (phase 1): a non-primary recorded stream kept alongside an activity - e.g. the
-    Garmin/pedal power copy of a ride whose Zwift/Kickr copy is primary. The primary stream
+    """Issue #503 (phases 1-2): a non-primary recorded stream kept alongside an activity - e.g.
+    the Garmin/pedal power copy of a ride whose Zwift/Kickr copy is primary. The primary stream
     itself is never represented here - it stays in Record's own columns, so every existing
     calculator/curve/best-effort/threshold path is unchanged. One row per stream (not one row per
     second) to keep storage small - see the issue's own sizing rationale. Mirrors backend_java's
     ActivitySource entity - keep the two in sync.
 
-    origin="file" is the activity's own original upload, snapshotted the first time its primary
-    stream is swapped away (activity_source_service.set_primary_source), so the original is
-    never lost - not created at parse time itself. origin="attached" is one added via POST
-    .../merge's attach copy_mode."""
+    origin="attached" is one added via POST .../merge's attach copy_mode (bike only). origin="file"
+    covers two cases, both from the activity's own single upload rather than a second activity: a
+    former primary snapshotted lazily by activity_source_service.set_primary_source the first
+    time it's swapped away (phase 1), and - for a run whose FIT file carries both a native and a
+    Stryd power reading - the non-preferred candidate kept at parse time (phase 2, see
+    activity_source_service.create_parse_time_running_power_source), so a later preference
+    change can re-designate it instead of only filtering activities out."""
 
     id_prefix = "src"
 
@@ -620,15 +623,25 @@ class ActivitySource(PrefixedIDModel):
         ("file", "File"),
         ("attached", "Attached"),
     ]
+    RUNNING_POWER_KIND_CHOICES = [
+        ("stryd", "Stryd"),
+        ("native", "Native"),
+    ]
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="sources")
     label = models.CharField(max_length=200, blank=True, default="")
     device = models.CharField(max_length=100, blank=True, default="")
-    # Which field this source provides a stream for, e.g. "power" - phase 1 only ever creates
+    # Which field this source provides a stream for, e.g. "power" - phase 1/2 only ever create
     # "power" sources; stored as a plain string (not a fields-whitelist choice) for the same
     # reason merge's own `fields` list is, so a later phase (HR, cadence) needs no schema change.
     sensor_kind = models.CharField(max_length=20)
     origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES)
+    # Issue #503 (phase 2): for a sensor_kind="power" source on a RUN activity only - which
+    # running-power candidate (native/stryd) this stream holds. Blank for every bike-sourced row
+    # (bike distinguishes pedals from trainer by `device` via activity_source_service.classify
+    # instead - a run's two candidates come from the *same* device, so there's nothing to
+    # classify by device string) and for any non-power sensor_kind.
+    running_power_kind = models.CharField(max_length=10, choices=RUNNING_POWER_KIND_CHOICES, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

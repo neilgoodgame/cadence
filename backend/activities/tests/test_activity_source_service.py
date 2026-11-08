@@ -167,3 +167,88 @@ class ActivitySourceServiceTests(TestCase):
         self.assertEqual(swap_response.status_code, 200)
         target.refresh_from_db()
         self.assertEqual(target.bike_power_source, "trainer")
+
+    def _run_activity(self, athlete, power_source):
+        return _make_activity(athlete, sport="run", start_date=self.start, moving_time=600, power_source=power_source)
+
+    def test_parse_time_dual_keep_creates_a_non_primary_source_when_both_candidates_present(self):
+        athlete = self._athlete("source-parse-time-both-present@example.cc")
+        activity = self._run_activity(athlete, power_source="stryd")
+        self._add_records(activity, 5, power=200)  # the primary (stryd) stream, already in Record
+
+        t_series = [0, 1, 2, 3, 4]
+        other_values = [250, 251, None, 253, 254]  # native, the other candidate
+
+        activity_source_service.create_parse_time_running_power_source(activity, t_series, other_values, "native")
+
+        sources = list(ActivitySource.objects.filter(activity=activity))
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0].origin, "file")
+        self.assertEqual(sources[0].sensor_kind, "power")
+        self.assertEqual(sources[0].running_power_kind, "native")
+
+        stream = sources[0].streams.get(field="power")
+        self.assertFalse(stream.primary_of)
+        self.assertEqual(stream.values, [250, 251, None, 253, 254])
+
+        # The primary (stryd) Record values are completely untouched.
+        for record in activity.records.all():
+            self.assertEqual(record.power, 200)
+
+    def test_parse_time_dual_keep_creates_nothing_when_the_other_candidate_is_entirely_absent(self):
+        athlete = self._athlete("source-parse-time-other-absent@example.cc")
+        activity = self._run_activity(athlete, power_source="stryd")
+        self._add_records(activity, 5, power=200)
+
+        activity_source_service.create_parse_time_running_power_source(
+            activity, [0, 1, 2, 3, 4], [None, None, None, None, None], "native"
+        )
+
+        self.assertFalse(ActivitySource.objects.filter(activity=activity).exists())
+
+    def test_set_primary_source_on_a_run_stamps_power_source_from_running_power_kind(self):
+        athlete = self._athlete("source-run-set-primary@example.cc")
+        activity = self._run_activity(athlete, power_source="stryd")
+        self._add_records(activity, 5, power=200)  # stryd primary
+        activity_source_service.create_parse_time_running_power_source(
+            activity, [0, 1, 2, 3, 4], [250, 251, 252, 253, 254], "native"
+        )
+        native_source = ActivitySource.objects.get(activity=activity)
+
+        activity_source_service.set_primary_source(activity.id, "power", native_source.id)
+
+        self.assertEqual([r.power for r in activity.records.order_by("t")], [250, 251, 252, 253, 254])
+        activity.refresh_from_db()
+        self.assertEqual(activity.power_source, "native")
+
+        # The original (stryd, 200) primary was itself snapshotted as a new source, tagged with
+        # its own running-power kind - not left blank/device-classified the way bike's is.
+        stryd_snapshot = ActivitySource.objects.exclude(pk=native_source.pk).get(activity=activity)
+        self.assertEqual(stryd_snapshot.running_power_kind, "stryd")
+
+        # And it's reversible, the same as bike's.
+        activity_source_service.set_primary_source(activity.id, "power", stryd_snapshot.id)
+        activity.refresh_from_db()
+        self.assertEqual(activity.power_source, "stryd")
+        for record in activity.records.all():
+            self.assertEqual(record.power, 200)
+
+    def test_list_sources_is_primary_for_a_run_uses_power_source_not_device(self):
+        athlete = self._athlete("source-run-list-is-primary@example.cc")
+        activity = self._run_activity(athlete, power_source="stryd")
+        self._add_records(activity, 5, power=200)
+        activity_source_service.create_parse_time_running_power_source(
+            activity, [0, 1, 2, 3, 4], [250, 251, 252, 253, 254], "native"
+        )
+        native_source = ActivitySource.objects.get(activity=activity)
+
+        summaries = activity_source_service.list_sources(activity.id)
+        self.assertEqual(len(summaries), 1)
+        # The stored native source doesn't match the activity's current (stryd) primary yet.
+        self.assertFalse(summaries[0].is_primary)
+
+        activity_source_service.set_primary_source(activity.id, "power", native_source.id)
+
+        summaries_after_swap = activity_source_service.list_sources(activity.id)
+        matching = next(s for s in summaries_after_swap if s.id == native_source.id)
+        self.assertTrue(matching.is_primary)

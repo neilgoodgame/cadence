@@ -4,7 +4,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 from accounts.models import User
-from activities.models import Activity, BestEffort, DurationCurve, Lap, Record
+from activities.models import Activity, ActivitySource, BestEffort, DurationCurve, Lap, Record
 from athletes.models import ThresholdHistory
 from athletes.zones import reference_for
 
@@ -244,6 +244,34 @@ class RealFitIngestionTests(TestCase):
         self.assertIsNone(activity.norm_power)
         self.assertFalse(BestEffort.objects.filter(athlete=self.athlete, kind="running_power").exists())
         self.assertIsNone(reference_for(self.athlete, "run_power", activity))
+
+    def test_parse_time_dual_keep_creates_nothing_when_the_other_candidate_is_entirely_absent_but_something_when_it_isnt(
+        self,
+    ):
+        # running_treadmill.fit is Stryd-only - there's genuinely no native candidate in this
+        # file. Under the "stryd" preference (stryd primary, native is "the other" candidate),
+        # create_parse_time_running_power_source must not create anything - the file never had
+        # the other candidate at all. Under "native" preference, though, stryd itself becomes
+        # "the other" candidate - and the file DOES have that - so a source/stream must be
+        # created, even though native (now primary) has no data of its own (see the preceding
+        # test for that half).
+        stryd_preference_activity = self._upload_fixture("running_treadmill.fit")
+        self.assertFalse(ActivitySource.objects.filter(activity=stryd_preference_activity).exists())
+
+        # A separate athlete, not the same one re-uploading - the same file twice for one
+        # athlete would trip #498's overlap detection (409), unrelated to what's under test here.
+        self.athlete = User.objects.create_user(
+            email="realfit-native-preference@example.cc",
+            password="x",
+            name="Native Preference Athlete",
+            running_power_source="native",
+        )
+        native_preference_activity = self._upload_fixture("running_treadmill.fit")
+
+        sources = list(ActivitySource.objects.filter(activity=native_preference_activity))
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0].running_power_kind, "stryd")
+        self.assertEqual(sources[0].origin, "file")
 
     def test_patch_avg_air_temp_ignored_after_stryd_ingestion(self):
         activity = self._upload_fixture("running_treadmill.fit")

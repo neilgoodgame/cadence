@@ -4,6 +4,8 @@ import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator.AlignmentResult;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator.Sample;
 import com.cadence.api.athletes.BikePowerSource;
+import com.cadence.api.athletes.RunningPowerSource;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.users.User;
@@ -13,18 +15,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Issue #503 (phase 1): keeps a second power stream alongside an activity instead of #501's
+ * Issue #503 (phases 1-2): keeps a second power stream alongside an activity instead of #501's
  * merge overwriting one copy with the other - {@link #attachPowerStream} (the {@code attach}
- * merge {@code copyMode}, called from {@link ActivityMergeService#runMerge}) and {@link
- * #setPrimarySource} (swap which stream is primary, callable any time afterward, not just right
- * after an attach). Phase 1 only ever creates/swaps {@code power} sources - see the field
- * validation in both methods. Mirrors backend's activities/activity_source_service.py - keep
- * the two in sync when changing either.
+ * merge {@code copyMode}, called from {@link ActivityMergeService#runMerge}, bike only),
+ * {@link #createParseTimeRunningPowerSource} (a run's non-preferred native/Stryd candidate, kept
+ * at parse time, phase 2), and {@link #setPrimarySource} (swap which stream is primary, callable
+ * any time afterward for either sport). Phase 1/2 only ever create/swap {@code power} sources -
+ * see the field validation in {@code setPrimarySource}. Mirrors backend's
+ * activities/activity_source_service.py - keep the two in sync when changing either.
  */
 @Service
 public class ActivitySourceService {
@@ -165,6 +169,51 @@ public class ActivitySourceService {
 		return new AttachResult(activitySource.getId(), offsetSeconds, alignmentScore, becamePrimary, copied, nulled);
 	}
 
+	/** Issue #503 (phase 2): stores a run's non-preferred native/Stryd candidate (the one {@code
+	 * ParseFileTasklet}'s power-source resolution didn't pick) as a new, non-primary FILE-origin
+	 * source/stream, so a later {@code runningPowerSource} preference change can re-designate it
+	 * instead of only filtering the activity out via {@code matchesRunningPowerPreference}. No-op
+	 * if the other candidate has no data at all in this file (nothing to keep) - matches {@code
+	 * Activity.powerSource}'s own "blank when there's no such choice to record" convention.
+	 * Called once per RUN/FIT activity right after it's persisted. Unlike {@link
+	 * #attachPowerStream}, there is no alignment step - both candidates already share the
+	 * activity's own single parsed timeline (same {@code t} series, same order), so {@code
+	 * tSeries}/{@code otherValuesRaw} can be zipped by index directly. */
+	@Transactional
+	public void createParseTimeRunningPowerSource(Activity activity, List<Integer> tSeries,
+			List<Integer> otherValuesRaw, RunningPowerSource otherKind) {
+		if (otherValuesRaw.stream().allMatch(Objects::isNull)) {
+			return;
+		}
+		int t0 = tSeries.isEmpty() ? 0 : tSeries.get(0);
+		int tMax = tSeries.isEmpty() ? t0 : tSeries.get(tSeries.size() - 1);
+		Short[] values = new Short[tMax - t0 + 1];
+		for (int i = 0; i < tSeries.size(); i++) {
+			Integer v = otherValuesRaw.get(i);
+			if (v != null) {
+				values[tSeries.get(i) - t0] = v.shortValue();
+			}
+		}
+
+		ActivitySource source = new ActivitySource();
+		source.setActivity(activity);
+		source.setLabel(activity.getName());
+		source.setDevice(activity.getDevice());
+		source.setSensorKind("power");
+		source.setOrigin(ActivitySourceOrigin.FILE);
+		source.setRunningPowerKind(otherKind.wireValue());
+		source = sourceRepository.save(source);
+
+		ActivityStream stream = new ActivityStream();
+		stream.setActivity(activity);
+		stream.setField("power");
+		stream.setSource(source);
+		stream.setT0(t0);
+		stream.setStreamValues(values);
+		stream.setPrimaryOf(false);
+		streamRepository.save(stream);
+	}
+
 	/** Swaps {@code field} on {@code activityId} with the named {@link ActivityStream}'s values -
 	 * the activity's *current* primary values (today, always living in {@link Record}) are
 	 * themselves saved as a new {@code ActivitySource}/{@code ActivityStream} pair first (origin
@@ -173,6 +222,19 @@ public class ActivitySourceService {
 	 * same cascade a real #501 merge or #498 primary swap already triggers. */
 	@Transactional
 	public Activity setPrimarySource(String activityId, String field, String sourceId) {
+		Activity activity = swapPrimaryStream(activityId, field, sourceId);
+		postProcessingService.recomputeAfterMerge(activityId);
+		return activityRepository.findById(activityId).orElseThrow(() -> new NotFoundException("No such activity."));
+	}
+
+	/** The data-only half of {@link #setPrimarySource} - everything except the recompute
+	 * cascade. Package-visible: besides {@code setPrimarySource} itself, only {@code
+	 * RunningPowerSourceRecomputeService}'s bulk loop calls this directly, deferring the
+	 * athlete-wide cascade ({@code ActivityMergePostProcessingService#recomputeAfterMerge}'s own
+	 * full-ledger rebuild) to run once per athlete instead of once per swapped activity, which
+	 * would otherwise be quadratic in the athlete's activity count. */
+	@Transactional
+	Activity swapPrimaryStream(String activityId, String field, String sourceId) {
 		if (!"power".equals(field)) {
 			throw new ValidationException("field must be 'power' - phase 1 only supports power sources.", "field");
 		}
@@ -192,6 +254,9 @@ public class ActivitySourceService {
 		originalSource.setDevice(activity.getDevice());
 		originalSource.setSensorKind(field);
 		originalSource.setOrigin(ActivitySourceOrigin.FILE);
+		if (activity.getSport() == Sport.RUN && activity.getPowerSource() != null) {
+			originalSource.setRunningPowerKind(activity.getPowerSource().wireValue());
+		}
 		originalSource = sourceRepository.save(originalSource);
 
 		int t0 = rows.stream().mapToInt(Record::getT).min().orElse(0);
@@ -226,11 +291,15 @@ public class ActivitySourceService {
 		}
 		recordRepository.saveAll(changedRows);
 
-		activity.setBikePowerSource(classify(
-				newPrimaryStream.getSource().getDevice() != null ? newPrimaryStream.getSource().getDevice() : activity.getDevice()));
+		ActivitySource newSource = newPrimaryStream.getSource();
+		if (activity.getSport() == Sport.BIKE) {
+			activity.setBikePowerSource(
+					classify(newSource.getDevice() != null ? newSource.getDevice() : activity.getDevice()));
+		}
+		else if (activity.getSport() == Sport.RUN && newSource.getRunningPowerKind() != null) {
+			activity.setPowerSource(RunningPowerSource.fromWireValue(newSource.getRunningPowerKind()));
+		}
 		activityRepository.save(activity);
-
-		postProcessingService.recomputeAfterMerge(activityId);
 
 		return activityRepository.findById(activityId).orElseThrow(() -> new NotFoundException("No such activity."));
 	}
@@ -239,19 +308,30 @@ public class ActivitySourceService {
 			Instant createdAt, boolean isPrimary) {
 	}
 
-	/** {@code isPrimary} reflects whether this source's own device classification matches the
-	 * activity's *current* primary reading for its field - phase 1 only ever has "power" sources,
-	 * so this is always a {@link #currentPrimarySource} comparison; it's a derived read, not a
-	 * stored flag, since the primary stream itself always lives in {@link Record}, never in a
-	 * {@link ActivitySource} row (see this class's own Javadoc). */
+	/** {@code isPrimary} reflects whether this source matches the activity's *current* primary
+	 * reading for its field - bike by device classification ({@link #currentPrimarySource}),
+	 * running by comparing the source's own {@code runningPowerKind} against {@code
+	 * Activity.powerSource}. It's a derived read, not a stored flag, since the primary stream
+	 * itself always lives in {@link Record}, never in a {@link ActivitySource} row (see this
+	 * class's own Javadoc). */
 	public List<SourceSummary> listSources(String activityId) {
 		Activity activity = activityRepository.findById(activityId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
-		BikePowerSource primary = currentPrimarySource(activity);
 		return sourceRepository.findByActivityIdOrderByCreatedAtAsc(activityId).stream()
 				.map(source -> new SourceSummary(source.getId(), source.getLabel(), source.getDevice(),
 						source.getSensorKind(), source.getOrigin().wireValue(), source.getCreatedAt(),
-						"power".equals(source.getSensorKind()) && classify(source.getDevice()) == primary))
+						isPrimaryPower(source, activity)))
 				.toList();
+	}
+
+	private static boolean isPrimaryPower(ActivitySource source, Activity activity) {
+		if (!"power".equals(source.getSensorKind())) {
+			return false;
+		}
+		if (activity.getSport() == Sport.RUN) {
+			return source.getRunningPowerKind() != null
+					&& RunningPowerSource.fromWireValue(source.getRunningPowerKind()) == activity.getPowerSource();
+		}
+		return classify(source.getDevice()) == currentPrimarySource(activity);
 	}
 }

@@ -3,6 +3,7 @@ package com.cadence.api.athletes;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.DerivedStatsRecomputeService;
+import com.cadence.api.activities.RunningPowerSourceRecomputeService;
 import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.athletes.dto.AthleteUpdateResponse;
@@ -55,6 +56,7 @@ public class AthleteController {
 	private final FitnessService fitnessService;
 	private final TssRecomputeService tssRecomputeService;
 	private final DerivedStatsRecomputeService derivedStatsRecomputeService;
+	private final RunningPowerSourceRecomputeService runningPowerSourceRecomputeService;
 	private final ThresholdHistoryService thresholdHistoryService;
 	private final ThresholdSuggestionService thresholdSuggestionService;
 	private final ActivityRepository activityRepository;
@@ -64,7 +66,9 @@ public class AthleteController {
 
 	public AthleteController(UserService userService, UserMapper userMapper, AthleteService athleteService,
 			ZoneService zoneService, FitnessService fitnessService, TssRecomputeService tssRecomputeService,
-			DerivedStatsRecomputeService derivedStatsRecomputeService, ThresholdHistoryService thresholdHistoryService,
+			DerivedStatsRecomputeService derivedStatsRecomputeService,
+			RunningPowerSourceRecomputeService runningPowerSourceRecomputeService,
+			ThresholdHistoryService thresholdHistoryService,
 			ThresholdSuggestionService thresholdSuggestionService, ActivityRepository activityRepository,
 			AccessGuard accessGuard, RecomputeLockRegistry lockRegistry) {
 		this.userService = userService;
@@ -74,6 +78,7 @@ public class AthleteController {
 		this.fitnessService = fitnessService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
+		this.runningPowerSourceRecomputeService = runningPowerSourceRecomputeService;
 		this.thresholdHistoryService = thresholdHistoryService;
 		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.activityRepository = activityRepository;
@@ -181,6 +186,43 @@ public class AthleteController {
 			// Client disconnected, or the emitter already completed some other way - either
 			// way nothing here should interrupt the recompute loop still in progress.
 		}
+	}
+
+	/** Issue #503 (phase 2): retroactively re-designates every run whose stored powerSource no
+	 * longer matches the athlete's *current* runningPowerSource preference - PATCHing the
+	 * preference itself never does this automatically (see
+	 * RunningPowerSourceRecomputeService's own Javadoc for why: there's no precedent in this
+	 * codebase for a settings-only preference change auto-triggering bulk per-activity work, and
+	 * this is unbounded - every historical run - unlike the one existing precedent that's bounded
+	 * to activities on/after an effective_from date). Same lock/heartbeat/SSE shape as
+	 * recomputeStats above. */
+	@PostMapping(value = "/v1/athletes/{id}/recompute-running-power-source", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public SseEmitter recomputeRunningPowerSource(@PathVariable String id) {
+		accessGuard.requireWrite(id);
+		if (!lockRegistry.tryAcquire("running-power-source", id)) {
+			throw new ConflictException("A running-power-source recompute is already running for this athlete.");
+		}
+		User athlete = userService.getById(id);
+		SseEmitter emitter = new SseEmitter(0L);
+		SseHeartbeat heartbeat = new SseHeartbeat(
+				() -> emitter.send(SseEmitter.event().name("heartbeat").data("{}")), HEARTBEAT_INTERVAL_SECONDS);
+
+		taskExecutor.execute(() -> {
+			try {
+				RunningPowerSourceRecomputeService.Result result = runningPowerSourceRecomputeService
+						.recomputeForAthlete(athlete, (current, total) -> sendProgress(emitter, current, total));
+				emitter.send(SseEmitter.event().name("done")
+						.data("{\"swapped\":" + result.swapped() + ",\"skipped\":" + result.skipped() + "}"));
+				emitter.complete();
+			} catch (Exception e) {
+				emitter.completeWithError(e);
+			} finally {
+				heartbeat.close();
+				lockRegistry.release("running-power-source", id);
+			}
+		});
+
+		return emitter;
 	}
 
 	/** The current value + previous value + staleness for all three fields at once - what the
