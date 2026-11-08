@@ -7,6 +7,8 @@ import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -22,6 +24,9 @@ class OverlapBackfillRunnerIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private ActivityRepository activityRepository;
+
+	@Autowired
+	private RecordRepository recordRepository;
 
 	@Autowired
 	private UserRepository userRepository;
@@ -78,6 +83,41 @@ class OverlapBackfillRunnerIntegrationTest extends IntegrationTest {
 		Activity garmin = newActivity(athlete, "Garmin", start.plusSeconds(5));
 
 		runner.run(new DefaultApplicationArguments("--backfill-overlaps", "--mode=apply"));
+
+		Activity reloadedGarmin = activityRepository.findById(garmin.getId()).orElseThrow();
+		assertThat(reloadedGarmin.getPrimaryActivity()).isNotNull();
+		assertThat(reloadedGarmin.getPrimaryActivity().getId()).isEqualTo(zwift.getId());
+	}
+
+	/** See ActivityOverlapDetectionServiceIntegrationTest's own copy of this helper. */
+	private void addCorrelatedCadence(Activity activity, Instant start, int count, int phaseOffset) {
+		List<Record> records = new ArrayList<>();
+		for (int t = 0; t < count; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setCadence((int) Math.round(80 + 5 * Math.sin((t + phaseOffset) / 30.0)));
+			records.add(record);
+		}
+		recordRepository.saveAll(records);
+	}
+
+	@Test
+	void applyModeWithMergeActionMergesAndHidesAHighScoringPair() {
+		User athlete = newUser("overlap-backfill-apply-merge@example.cc");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity zwift = newActivity(athlete, "Zwift", start);
+		Activity garmin = newActivity(athlete, "Garmin", start.plusSeconds(5));
+		addCorrelatedCadence(zwift, start, 120, 0);
+		addCorrelatedCadence(garmin, start.plusSeconds(5), 120, 5);
+
+		// Scoped to this athlete specifically - the no-filter tests above rely on MARK/FLAG never
+		// throwing (see ActivityOverlapDetectionService#merge's own validation-safety-net note),
+		// but there's no reason for this test's own assertions to depend on every other athlete
+		// already sitting in the shared integration-test database resolving cleanly too.
+		runner.run(new DefaultApplicationArguments(
+				"--backfill-overlaps", "--mode=apply", "--action=merge", "--athlete=" + athlete.getId()));
 
 		Activity reloadedGarmin = activityRepository.findById(garmin.getId()).orElseThrow();
 		assertThat(reloadedGarmin.getPrimaryActivity()).isNotNull();

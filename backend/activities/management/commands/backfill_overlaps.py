@@ -19,6 +19,11 @@ fitness trend "recomputes" - there's no separate stored series to rebuild).
     python manage.py backfill_overlaps --athlete ath_abc123
     python manage.py backfill_overlaps --mode apply            (defaults to --action mark)
     python manage.py backfill_overlaps --mode apply --action flag
+    python manage.py backfill_overlaps --mode apply --action merge
+
+--action merge (issue #501 phase 4) resolves each pair via the athlete's saved-or-built-in
+merge_rule_service rule, same as on-ingest detection - see overlap_detection's own module
+docstring for the full merge-vs-flag decision.
 """
 
 from django.core.management.base import BaseCommand, CommandError
@@ -46,10 +51,12 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--action",
-            choices=["mark", "flag"],
+            choices=["mark", "flag", "merge"],
             default="mark",
             help="Only used with --mode apply: 'mark' (default) links the lower-ranked copy as a "
-            "duplicate; 'flag' just records the pair without changing anything.",
+            "duplicate; 'flag' just records the pair without changing anything; 'merge' applies "
+            "the athlete's saved-or-built-in merge rule, falling back to flagging when none "
+            "applies or the alignment score is too low.",
         )
 
     def handle(self, *args, **options):
@@ -65,7 +72,7 @@ class Command(BaseCommand):
         else:
             athletes = list(User.objects.all())
 
-        total_pairs = marked = flagged = 0
+        total_pairs = marked = merged = merge_skipped = flagged = 0
         affected_athlete_ids: list[str] = []
 
         for athlete in athletes:
@@ -90,6 +97,17 @@ class Command(BaseCommand):
                         self.stdout.write(
                             f"[{athlete.id}] MARKED {resolution['other_activity_id']} as a duplicate of {anchor_id}"
                         )
+                    elif resolution["action"] == "merged":
+                        # Not added to affected_athlete_ids - the merge itself already ran the
+                        # full recompute cascade (see overlap_detection._merge).
+                        merged += 1
+                        self.stdout.write(
+                            f"[{athlete.id}] MERGED {resolution['other_activity_id']} into "
+                            f"{resolution['primary_activity_id']}"
+                        )
+                    elif resolution["action"] == "merge_skipped_low_score":
+                        merge_skipped += 1
+                        self.stdout.write(f"[{athlete.id}] MERGE_SKIPPED_LOW_SCORE {anchor_id} <-> {other_id}")
                     else:
                         flagged += 1
                         self.stdout.write(f"[{athlete.id}] FLAGGED {anchor_id} <-> {other_id}")
@@ -107,7 +125,10 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(
-            self.style.SUCCESS(f"Done applying. {total_pairs} pair(s) resolved: {marked} marked, {flagged} flagged.")
+            self.style.SUCCESS(
+                f"Done applying. {total_pairs} pair(s) resolved: {marked} marked, {merged} merged, "
+                f"{merge_skipped} merge-skipped (low score), {flagged} flagged."
+            )
         )
 
         for affected_id in affected_athlete_ids:

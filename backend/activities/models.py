@@ -477,22 +477,25 @@ class DuplicateResolutionBatch(PrefixedIDModel):
 
 class DuplicateResolutionEntry(models.Model):
     """One pair resolved by a DuplicateResolutionBatch. `outcome` mirrors
-    OverlapResolution's own vocabulary ("marked" | "flagged") - never "merged" today, since
-    resolve_pair doesn't produce that yet (#501). `primary_activity` is set only when
-    outcome="marked" - undo_batch's own check that `activity.primary_activity_id` still equals
-    it before reverting, so a pair re-resolved (or hand-edited) since this batch applied is
-    never silently clobbered."""
+    OverlapResolution's own vocabulary. `primary_activity` is set only when outcome="marked",
+    `merge` only when outcome="merged" - undo_batch's own check that the activity's current
+    primary (or the merge's own active state) still matches before reverting, so a pair
+    re-resolved (or hand-edited) since this batch applied is never silently clobbered."""
 
     OUTCOME_CHOICES = [
         ("marked", "Marked"),
         ("flagged", "Flagged"),
+        ("merged", "Merged"),
+        ("merge_skipped_low_score", "Merge skipped (low score)"),
     ]
 
     batch = models.ForeignKey(DuplicateResolutionBatch, on_delete=models.CASCADE, related_name="entries")
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="+")
     other_activity = models.ForeignKey(Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
-    outcome = models.CharField(max_length=10, choices=OUTCOME_CHOICES)
+    outcome = models.CharField(max_length=25, choices=OUTCOME_CHOICES)
     primary_activity = models.ForeignKey(Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    # String reference, not Merge directly - Merge is defined later in this file.
+    merge = models.ForeignKey("Merge", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     def __str__(self) -> str:
         return f"{self.batch_id}: {self.activity_id} {self.outcome}"
@@ -542,3 +545,36 @@ class Merge(PrefixedIDModel):
 
     def __str__(self) -> str:
         return f"{self.id}: {self.source_activity_id} -> {self.target_activity_id}"
+
+
+class MergeRule(PrefixedIDModel):
+    """Issue #501 (phase 4): a saved per-athlete, per-sport rule for automatic merging - which
+    side plays target/source, which fields to copy, and the null policy. Consulted by
+    overlap_detection.resolve_pair/preview_resolution when resolving an on_overlap="merge" pair;
+    no row for a sport means merge_rule_service's built-in default applies instead (or, for a
+    sport with no built-in default, that automatic merging simply doesn't apply - the pair is
+    flagged).
+
+    target_pattern/source_pattern are "device:<prefix>" strings (e.g. "device:zwift"), matched
+    case-insensitively as a prefix against Activity.device - see merge_rule_service.matches().
+    Only device: patterns are supported today; the prefix exists so other pattern kinds could be
+    added later without a schema change. Mirrors backend_java's MergeRule entity - keep the two
+    in sync when changing either."""
+
+    id_prefix = "mrl"
+
+    athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="merge_rules")
+    sport = models.CharField(max_length=10, choices=Activity.SPORT_CHOICES)
+    target_pattern = models.CharField(max_length=100)
+    source_pattern = models.CharField(max_length=100)
+    fields = models.JSONField()
+    null_policy = models.CharField(max_length=20, choices=Merge.NULL_POLICY_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["athlete", "sport"], name="unique_merge_rule_per_athlete_sport")]
+        ordering = ["sport"]
+
+    def __str__(self) -> str:
+        return f"{self.athlete_id}: {self.sport}"

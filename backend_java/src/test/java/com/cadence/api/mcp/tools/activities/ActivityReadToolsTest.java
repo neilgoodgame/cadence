@@ -12,6 +12,7 @@ import com.cadence.api.activities.ActivityTag;
 import com.cadence.api.activities.ActivityTagRepository;
 import com.cadence.api.activities.Lap;
 import com.cadence.api.activities.LapRepository;
+import com.cadence.api.activities.MergeRuleService;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
@@ -34,6 +35,7 @@ import com.cadence.api.workouts.WorkoutStep;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -64,6 +66,9 @@ class ActivityReadToolsTest extends IntegrationTest {
 
 	@Autowired
 	private ActivityMergeService activityMergeService;
+
+	@Autowired
+	private MergeRuleService mergeRuleService;
 
 	@Autowired
 	private RecordRepository recordRepository;
@@ -191,6 +196,39 @@ class ActivityReadToolsTest extends IntegrationTest {
 		authAs(outsider.getId(), "activities:read");
 
 		assertThatThrownBy(() -> activityReadTools.getMerge(activity.getId())).isInstanceOf(ForbiddenException.class);
+	}
+
+	@Test
+	void getMergeRulesIncludesTheBikeBuiltInDefaultWithNoSavedRule() {
+		User athlete = newUser("read-tool-merge-rules-default-athlete@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> data = (List<Map<String, Object>>) activityReadTools.getMergeRules().get("data");
+
+		var bike = data.stream().filter(r -> "bike".equals(r.get("sport"))).findFirst().orElseThrow();
+		assertThat(bike.get("target_pattern")).isEqualTo("device:zwift");
+		assertThat(bike.get("source_pattern")).isEqualTo("device:garmin");
+		assertThat(bike.get("fields")).isEqualTo(List.of("power"));
+		assertThat(bike.get("null_policy")).isEqualTo("keep_original");
+		// run/swim/walk/row have no built-in default - omitted entirely, not null entries.
+		assertThat(data.stream().map(r -> r.get("sport"))).doesNotContain("run", "swim", "walk", "row");
+	}
+
+	@Test
+	void getMergeRulesPrefersASavedRuleOverTheBuiltInDefault() {
+		User athlete = newUser("read-tool-merge-rules-saved-athlete@example.cc");
+		mergeRuleService.setRule(athlete.getId(), Sport.BIKE, "device:wahoo", "device:garmin",
+				List.of("power", "cadence"), NullPolicy.OVERWRITE);
+		authAs(athlete.getId(), "activities:read");
+
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> data = (List<Map<String, Object>>) activityReadTools.getMergeRules().get("data");
+
+		var bike = data.stream().filter(r -> "bike".equals(r.get("sport"))).findFirst().orElseThrow();
+		assertThat(bike.get("target_pattern")).isEqualTo("device:wahoo");
+		assertThat(bike.get("fields")).isEqualTo(List.of("power", "cadence"));
+		assertThat(bike.get("null_policy")).isEqualTo("overwrite");
 	}
 
 	@Test

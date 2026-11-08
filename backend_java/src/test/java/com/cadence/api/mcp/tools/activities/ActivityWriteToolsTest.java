@@ -463,6 +463,75 @@ class ActivityWriteToolsTest extends IntegrationTest {
 				.isInstanceOf(ForbiddenException.class);
 	}
 
+	@Test
+	void setMergeRuleSavesAndReturnsIt() {
+		User athlete = newUser("write-tool-set-merge-rule-athlete@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var response = activityWriteTools.setMergeRule(
+				"run", "device:coros", "device:garmin", List.of("heartrate"), "overwrite");
+
+		assertThat(response.get("sport")).isEqualTo("run");
+		assertThat(response.get("target_pattern")).isEqualTo("device:coros");
+		assertThat(response.get("source_pattern")).isEqualTo("device:garmin");
+		assertThat(response.get("fields")).isEqualTo(List.of("heartrate"));
+		assertThat(response.get("null_policy")).isEqualTo("overwrite");
+	}
+
+	@Test
+	void setMergeRuleDefaultsNullsToKeepOriginal() {
+		User athlete = newUser("write-tool-set-merge-rule-nulls-default-athlete@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var response = activityWriteTools.setMergeRule(
+				"run", "device:coros", "device:garmin", List.of("heartrate"), null);
+
+		assertThat(response.get("null_policy")).isEqualTo("keep_original");
+	}
+
+	@Test
+	void setMergeRuleOverwritesAnExistingRuleForTheSameSport() {
+		User athlete = newUser("write-tool-set-merge-rule-overwrite-athlete@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+		activityWriteTools.setMergeRule("run", "device:coros", "device:garmin", List.of("heartrate"), "overwrite");
+
+		var response = activityWriteTools.setMergeRule(
+				"run", "device:apple_watch", "device:garmin", List.of("heartrate", "cadence"), "keep_original");
+
+		assertThat(response.get("target_pattern")).isEqualTo("device:apple_watch");
+		assertThat(response.get("fields")).isEqualTo(List.of("heartrate", "cadence"));
+	}
+
+	@Test
+	void setMergeRuleRejectsAMalformedPattern() {
+		User athlete = newUser("write-tool-set-merge-rule-bad-pattern-athlete@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> activityWriteTools.setMergeRule(
+				"run", "coros", "device:garmin", List.of("heartrate"), null))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void setMergeRuleRejectsAnUnknownField() {
+		User athlete = newUser("write-tool-set-merge-rule-bad-field-athlete@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> activityWriteTools.setMergeRule(
+				"run", "device:coros", "device:garmin", List.of("not_a_real_field"), null))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void setMergeRuleRejectsMultisportAndTransition() {
+		User athlete = newUser("write-tool-set-merge-rule-multisport-athlete@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		assertThatThrownBy(() -> activityWriteTools.setMergeRule(
+				"multisport", "device:coros", "device:garmin", List.of("heartrate"), null))
+				.isInstanceOf(ValidationException.class);
+	}
+
 	private Activity newOverlapActivity(User athlete, String device, Instant startDate) {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);

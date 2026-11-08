@@ -27,6 +27,7 @@ from core.cql.compiler import compile_ast_to_q
 from core.cql.parser import parse
 from core.units import parse_distance_meters
 
+from . import merge_rule_service
 from .comments import resolve_parent_comment
 from .duplicate_batches import resolve_duplicates_batch as resolve_duplicates_batch_action
 from .duplicate_batches import undo_batch as undo_batch_action
@@ -171,6 +172,19 @@ def _merge_record_summary(merge: Merge) -> dict[str, Any]:
         "field_counts": merge.field_counts,
         "source_hidden": merge.source_hidden,
         "created_at": merge.created_at.isoformat(),
+    }
+
+
+def _merge_rule_response(sport: str, rule: Any) -> dict[str, Any]:
+    """get_merge_rules/set_merge_rule's shared return shape for one sport's rule - `rule` is
+    either a saved MergeRule instance or a merge_rule_service.ResolvedRule namedtuple (the
+    built-in default case); both carry the same four attributes."""
+    return {
+        "sport": sport,
+        "target_pattern": rule.target_pattern,
+        "source_pattern": rule.source_pattern,
+        "fields": rule.fields,
+        "null_policy": rule.null_policy,
     }
 
 
@@ -610,6 +624,51 @@ class ActivityMCPTools(ScopedMCPToolset):
         self._require_write(activity.athlete_id)
         undo_merge(activity_id)
         return self.get_activity(activity_id)
+
+    def set_merge_rule(
+        self,
+        sport: str,
+        target_pattern: str,
+        source_pattern: str,
+        fields: list[str],
+        nulls: str | None = None,
+    ) -> dict[str, Any]:
+        """Issue #501 (phase 4): saves sport's automatic-merge rule - consulted whenever an
+        overlapping pair of this sport is resolved with on_overlap="merge" (import-time) or the
+        #498 backfill/resolve_duplicates_batch's own action="merge" (not the manual
+        merge_activities call, which always takes its own explicit fields/nulls).
+        target_pattern/source_pattern are "device:<prefix>" strings (e.g. "device:zwift"),
+        matched case-insensitively as a prefix against each candidate's device - whichever
+        activity in a pair matches target_pattern becomes the merge target, the one matching
+        source_pattern becomes the source; a pair where neither orientation matches is left
+        flagged rather than guessed. Overwrites any existing rule for this sport."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        self._require_write(athlete_id)
+        if sport in ("multisport", "transition"):
+            raise ValidationError({"sport": "sport must be one of: bike, run, swim, walk, row."})
+        saved = merge_rule_service.set_rule(
+            athlete_id, sport, target_pattern, source_pattern, fields, _parse_null_policy(nulls)
+        )
+        return _merge_rule_response(saved.sport, saved)
+
+    def get_merge_rules(self) -> dict[str, Any]:
+        """Issue #501 (phase 4): the automatic-merge rule that would currently apply to each
+        sport, whether saved (set_merge_rule) or built-in default (bike only: target
+        device:zwift, source device:garmin, fields [power], keep_original) - a sport with
+        neither is omitted entirely, meaning automatic merging simply doesn't apply to it; an
+        unresolved pair of that sport is always left flagged for manual review."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        data = []
+        for sport, _label in Activity.SPORT_CHOICES:
+            if sport in ("multisport", "transition"):
+                continue
+            resolved = merge_rule_service.resolve(athlete_id, sport)
+            if resolved is not None:
+                data.append(_merge_rule_response(sport, resolved))
+        return {"data": data}
 
     def get_merge(self, activity_id: str) -> dict[str, Any] | None:
         """Issue #501: the merge record for activity_id's currently active merge (from

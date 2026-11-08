@@ -1,8 +1,11 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.activities.MergeRuleService.ResolvedRule;
+import com.cadence.api.activities.MergeRuleService.TargetSource;
 import com.cadence.api.activities.dto.OverlapPairResponse;
 import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.CursorPage;
 import com.cadence.api.gear.GearMileageService;
 import java.util.ArrayList;
@@ -25,9 +28,20 @@ import org.springframework.transaction.annotation.Transactional;
  * copy wins; otherwise prefer the athlete's power-source setting (#499), then more sensor
  * channels" - #499 doesn't exist yet, so this only implements the Zwift and sensor-channel steps,
  * with a deterministic (start date, then id) tie-break after that so the choice is never random.
- * {@code FLAG} - and {@code MERGE}, until #501 ships a real merge - detect and report but write
- * nothing; the pair is already visible as {@code unresolved} through the overlap query itself,
- * so there's no separate "flagged" state to persist. */
+ *
+ * <p>{@code MERGE} (issue #501 phase 4): consults {@link MergeRuleService} for the athlete's
+ * saved-or-built-in rule for the pair's sport. No rule, or neither activity matches either side
+ * of the rule's device patterns, falls back to {@code FLAGGED} - there's nothing to safely
+ * auto-decide. Otherwise previews the merge to get its alignment score; at or above {@link
+ * #MERGE_ALIGNMENT_THRESHOLD} it applies for real ({@code MERGED}), hiding the source exactly
+ * like a manual merge-and-hide would; below it, {@code MERGE_SKIPPED_LOW_SCORE} - detected and
+ * reported, nothing written, same as {@code FLAG}. The threshold itself is a placeholder: issue
+ * #501's own "Open questions" leaves "what correlation score allows automatic merging?" for
+ * calibration against real pair data, which hasn't happened yet.
+ *
+ * <p>{@code FLAG} detects and reports but writes nothing; the pair is already visible as {@code
+ * unresolved} through the overlap query itself, so there's no separate "flagged" state to
+ * persist. */
 @Service
 public class ActivityOverlapDetectionService {
 
@@ -35,18 +49,35 @@ public class ActivityOverlapDetectionService {
 	 * pathological case (e.g. several short re-recorded attempts) from doing unbounded work. */
 	private static final int MAX_PAIRS_PER_ACTIVITY = 10;
 
+	/** See the class Javadoc's {@code MERGE} paragraph - not yet calibrated against real data. */
+	static final double MERGE_ALIGNMENT_THRESHOLD = 0.9;
+
 	private final ActivityOverlapService overlapService;
 	private final ActivityRepository activityRepository;
 	private final GearMileageService gearMileageService;
+	private final MergeRuleService mergeRuleService;
+	private final ActivityMergeOrchestrator mergeOrchestrator;
 
 	public ActivityOverlapDetectionService(ActivityOverlapService overlapService, ActivityRepository activityRepository,
-			GearMileageService gearMileageService) {
+			GearMileageService gearMileageService, MergeRuleService mergeRuleService,
+			ActivityMergeOrchestrator mergeOrchestrator) {
 		this.overlapService = overlapService;
 		this.activityRepository = activityRepository;
 		this.gearMileageService = gearMileageService;
+		this.mergeRuleService = mergeRuleService;
+		this.mergeOrchestrator = mergeOrchestrator;
 	}
 
-	public record OverlapResolution(String otherActivityId, OverlapAction action, String primaryActivityId) {
+	/** {@code mergeId} is set only when {@code action == MERGED} - {@code
+	 * DuplicateResolutionBatchService#undoBatch}'s own check that the merge is still active
+	 * before reversing it, the same re-resolved-since guard {@code primaryActivityId} already
+	 * gives {@code MARKED}. */
+	public record OverlapResolution(String otherActivityId, OverlapAction action, String primaryActivityId,
+			String mergeId) {
+
+		OverlapResolution(String otherActivityId, OverlapAction action, String primaryActivityId) {
+			this(otherActivityId, action, primaryActivityId, null);
+		}
 	}
 
 	@Transactional
@@ -88,9 +119,62 @@ public class ActivityOverlapDetectionService {
 				return new OverlapResolution(otherId, OverlapAction.MARKED, primary.getId());
 			}
 		}
-		// FLAG, or MERGE falling back to FLAG (see class Javadoc) - also where MARK lands when the
-		// pair turned out not to be linkable (see canLink).
+		if (mode == OverlapHandling.MERGE) {
+			OverlapResolution merged = merge(activity, otherId, true);
+			if (merged != null) {
+				return merged;
+			}
+		}
+		// FLAG - also where MARK lands when the pair turned out not to be linkable (see
+		// canLink), and where MERGE lands when no rule/pattern match applies (see merge).
 		return new OverlapResolution(otherId, OverlapAction.FLAGGED, null);
+	}
+
+	/** @return {@code MERGED} (applied for real) or {@code MERGE_SKIPPED_LOW_SCORE} (previewed
+	 * only - the alignment score didn't clear {@link #MERGE_ALIGNMENT_THRESHOLD}) if {@code
+	 * mergeRuleService} found an applicable rule and a device-pattern match for this pair; null
+	 * if neither applies, in which case the caller falls back to {@code FLAGGED}. {@code apply}
+	 * false (the preview path) never writes anything regardless of score - it always previews. */
+	private OverlapResolution merge(Activity activity, String otherId, boolean apply) {
+		ResolvedRule rule = mergeRuleService.resolve(activity.getAthlete().getId(), activity.getSport());
+		if (rule == null) {
+			return null;
+		}
+		Activity other = activityRepository.findById(otherId).orElse(null);
+		if (other == null) {
+			return null;
+		}
+		TargetSource assignment = mergeRuleService.assign(activity, other, rule);
+		if (assignment == null) {
+			return null;
+		}
+		// Fast-fail on the one ActivityMergeService#validate rule worth pre-checking here (same
+		// spirit as mark()'s canLink) - still wrapped in the broader try/catch below as a safety
+		// net for any other validation rule, since this isn't meant to duplicate validate()'s
+		// full rule set, just avoid a wasted preview computation for the common case.
+		if (isMultisportLinked(assignment.target()) || isMultisportLinked(assignment.source())) {
+			return null;
+		}
+		try {
+			ActivityMergeService.MergeResult preview = mergeOrchestrator.merge(assignment.target().getId(),
+					assignment.source().getId(), rule.fields(), rule.nullPolicy(), null, true, true);
+			if (preview.alignmentScore() == null || preview.alignmentScore() < MERGE_ALIGNMENT_THRESHOLD) {
+				return new OverlapResolution(otherId, OverlapAction.MERGE_SKIPPED_LOW_SCORE, null);
+			}
+			if (!apply) {
+				return new OverlapResolution(otherId, OverlapAction.MERGED, assignment.target().getId());
+			}
+			ActivityMergeService.MergeResult result = mergeOrchestrator.merge(assignment.target().getId(),
+					assignment.source().getId(), rule.fields(), rule.nullPolicy(), null, true, false);
+			return new OverlapResolution(otherId, OverlapAction.MERGED, assignment.target().getId(), result.mergeId());
+		}
+		catch (ValidationException e) {
+			// The rule's device patterns matched, but ActivityMergeService's own deeper checks
+			// (e.g. one side already a duplicate of some third activity) refused it - same
+			// "can't safely do this automatically, fall back to flagging" outcome as mark()'s
+			// own canLink failure, just discovered one layer further in.
+			return null;
+		}
 	}
 
 	/** @return the primary if {@code activity} and {@code other} were linked (one of them saved
@@ -129,6 +213,14 @@ public class ActivityOverlapDetectionService {
 			Activity duplicate = activityIsPrimary ? other : activity;
 			if (canLink(duplicate, primary)) {
 				return new OverlapResolution(otherId, OverlapAction.MARKED, primary.getId());
+			}
+		}
+		if (mode == OverlapHandling.MERGE) {
+			// apply=false - merge()'s own preview=true call already has zero side effects, so
+			// this never needs to go further even when the score would qualify for real.
+			OverlapResolution merged = merge(activity, otherId, false);
+			if (merged != null) {
+				return merged;
 			}
 		}
 		return new OverlapResolution(otherId, OverlapAction.FLAGGED, null);

@@ -13,6 +13,8 @@ import com.cadence.api.activities.DuplicateResolutionBatchService.OverlapQueryFi
 import com.cadence.api.activities.DuplicateResolutionBatchService.ResolveBatchResult;
 import com.cadence.api.activities.DuplicateResolutionBatchService.UndoBatchResult;
 import com.cadence.api.activities.Environment;
+import com.cadence.api.activities.MergeRule;
+import com.cadence.api.activities.MergeRuleService;
 import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagMapper;
 import com.cadence.api.activities.TagService;
@@ -52,6 +54,7 @@ public class ActivityWriteTools {
 	private final DuplicateResolutionBatchService duplicateResolutionBatchService;
 	private final ActivityMergeOrchestrator activityMergeOrchestrator;
 	private final ActivityUnmergeService activityUnmergeService;
+	private final MergeRuleService mergeRuleService;
 	private final TagService tagService;
 	private final TagMapper tagMapper;
 	private final ActivityTagRepository activityTagRepository;
@@ -63,13 +66,14 @@ public class ActivityWriteTools {
 	public ActivityWriteTools(ActivityService activityService,
 			DuplicateResolutionBatchService duplicateResolutionBatchService,
 			ActivityMergeOrchestrator activityMergeOrchestrator, ActivityUnmergeService activityUnmergeService,
-			TagService tagService, TagMapper tagMapper, ActivityTagRepository activityTagRepository,
-			WorkoutTagRepository workoutTagRepository, UserService userService, AccessGuard accessGuard,
-			McpToolAuthorizer authorizer) {
+			MergeRuleService mergeRuleService, TagService tagService, TagMapper tagMapper,
+			ActivityTagRepository activityTagRepository, WorkoutTagRepository workoutTagRepository,
+			UserService userService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.duplicateResolutionBatchService = duplicateResolutionBatchService;
 		this.activityMergeOrchestrator = activityMergeOrchestrator;
 		this.activityUnmergeService = activityUnmergeService;
+		this.mergeRuleService = mergeRuleService;
 		this.tagService = tagService;
 		this.tagMapper = tagMapper;
 		this.activityTagRepository = activityTagRepository;
@@ -221,9 +225,58 @@ public class ActivityWriteTools {
 		}
 	}
 
+	@McpTool(name = "set_merge_rule", description = "Issue #501 (phase 4): saves sport's automatic-"
+			+ "merge rule - consulted whenever an overlapping pair of this sport is resolved with "
+			+ "on_overlap=merge (import-time) or merge_activities' automatic path (not the manual "
+			+ "merge_activities call, which always takes its own explicit fields/nulls). "
+			+ "target_pattern/source_pattern are 'device:<prefix>' strings (e.g. 'device:zwift'), "
+			+ "matched case-insensitively as a prefix against each candidate's device - whichever "
+			+ "activity in a pair matches target_pattern becomes the merge target, the one matching "
+			+ "source_pattern becomes the source; a pair where neither orientation matches is left "
+			+ "flagged rather than guessed. Overwrites any existing rule for this sport.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public Map<String, Object> setMergeRule(
+			@McpToolParam(description = "bike, run, swim, walk, or row", required = true) String sport,
+			@McpToolParam(description = "'device:<prefix>', e.g. 'device:zwift'", required = true) String targetPattern,
+			@McpToolParam(description = "'device:<prefix>', e.g. 'device:garmin'", required = true) String sourcePattern,
+			@McpToolParam(description = "Fields to copy - same list as merge_activities", required = true) List<String> fields,
+			@McpToolParam(description = "'keep_original' (default) or 'overwrite'", required = false) String nulls) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireWrite(athleteId);
+		MergeRule saved = mergeRuleService.setRule(athleteId, parseMergeRuleSport(sport), targetPattern, sourcePattern,
+				fields, parseNullPolicy(nulls));
+		MergeRuleService.ResolvedRule resolved = new MergeRuleService.ResolvedRule(saved.getTargetPattern(),
+				saved.getSourcePattern(), saved.getFields(), saved.getNullPolicy());
+		return mergeRuleResponse(saved.getSport(), resolved);
+	}
+
+	static Map<String, Object> mergeRuleResponse(Sport sport, MergeRuleService.ResolvedRule rule) {
+		Map<String, Object> entry = new LinkedHashMap<>();
+		entry.put("sport", sport.name().toLowerCase());
+		entry.put("target_pattern", rule.targetPattern());
+		entry.put("source_pattern", rule.sourcePattern());
+		entry.put("fields", rule.fields());
+		entry.put("null_policy", rule.nullPolicy().wireValue());
+		return entry;
+	}
+
+	private Sport parseMergeRuleSport(String sport) {
+		try {
+			Sport parsed = Sport.valueOf(sport.trim().toUpperCase());
+			if (parsed == Sport.MULTISPORT || parsed == Sport.TRANSITION) {
+				throw new IllegalArgumentException();
+			}
+			return parsed;
+		}
+		catch (IllegalArgumentException | NullPointerException e) {
+			throw new ValidationException("sport must be one of: bike, run, swim, walk, row.", "sport");
+		}
+	}
+
 	@McpTool(name = "resolve_duplicates_batch", description = "Issue #498: applies action ('mark' "
-			+ "or 'merge' - merge currently falls back to flag everywhere, same as every other "
-			+ "overlap path, until #501 ships) to many overlap pairs at once - either an explicit "
+			+ "or 'merge') to many overlap pairs at once - either an explicit "
 			+ "pairs list of [activityId, otherActivityId], or every unresolved pair the overlap "
 			+ "query's own filters find (same parameters as list_overlapping_activities: activityId "
 			+ "pins an anchor, sport/device/otherDevice/environment/from/to/minDurationSeconds/"

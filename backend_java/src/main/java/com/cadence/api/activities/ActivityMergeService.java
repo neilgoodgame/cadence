@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -123,7 +124,22 @@ public class ActivityMergeService {
 				activity.getTss());
 	}
 
-	@Transactional
+	/** {@code REQUIRES_NEW}, not the default {@code REQUIRED}: issue #501 phase 4's automatic
+	 * merge-on-ingest calls this (via {@link ActivityMergeOrchestrator}) from inside {@code
+	 * ActivityOverlapDetectionService}'s own already-{@code @Transactional} method, to preview a
+	 * candidate merge's alignment score before deciding whether to apply it for real. With plain
+	 * {@code REQUIRED}, {@code preview=true}'s rollback-forcing {@link
+	 * MergePreviewRollbackSignal} would join (not open) that caller's transaction and mark the
+	 * *whole thing* rollback-only - the signal being caught one level up never undoes that, so
+	 * the outer transaction would fail to commit even once a later call in the same chain legitimately
+	 * applies a real merge. {@code REQUIRES_NEW} gives every call (preview or real) its own
+	 * isolated transaction, so a preview's rollback can never affect anything else - this exactly
+	 * matches every *existing* caller's behavior too (the REST controller and MCP tool are never
+	 * themselves transactional, so {@code REQUIRED} already always opened a fresh transaction for
+	 * them in practice). Found by ActivityOverlapDetectionServiceIntegrationTest's merge-mode
+	 * tests, not by inspection - a plain unit test calling runMerge directly (no enclosing
+	 * transaction) can't reproduce this at all. */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public MergeResult runMerge(String targetId, String sourceId, List<String> fields, NullPolicy nullPolicy,
 			Integer offsetSecondsOverride, boolean hideSource, boolean preview) {
 		Activity target = activityRepository.findById(targetId)

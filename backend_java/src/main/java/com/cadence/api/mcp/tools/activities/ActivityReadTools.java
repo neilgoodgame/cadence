@@ -8,6 +8,8 @@ import com.cadence.api.activities.ActivitySplitsService;
 import com.cadence.api.activities.Environment;
 import com.cadence.api.activities.LapMapper;
 import com.cadence.api.activities.LapRepository;
+import com.cadence.api.activities.MergeRule;
+import com.cadence.api.activities.MergeRuleService;
 import com.cadence.api.activities.TagService;
 import com.cadence.api.activities.dto.ActivitySplitsResponse;
 import com.cadence.api.activities.dto.LapResponse;
@@ -24,7 +26,9 @@ import com.cadence.api.mcp.dto.McpCustomSplitStepInput;
 import com.cadence.api.mcp.dto.McpOverlapPage;
 import com.cadence.api.security.AccessGuard;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
@@ -45,12 +49,14 @@ public class ActivityReadTools {
 	private final ActivitySplitsService splitsService;
 	private final ActivityOverlapService overlapService;
 	private final ActivityMergeService mergeService;
+	private final MergeRuleService mergeRuleService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityReadTools(ActivityService activityService, LapRepository lapRepository, LapMapper lapMapper,
 			TagService tagService, ActivitySplitsService splitsService, ActivityOverlapService overlapService,
-			ActivityMergeService mergeService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			ActivityMergeService mergeService, MergeRuleService mergeRuleService, AccessGuard accessGuard,
+			McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
 		this.lapMapper = lapMapper;
@@ -58,6 +64,7 @@ public class ActivityReadTools {
 		this.splitsService = splitsService;
 		this.overlapService = overlapService;
 		this.mergeService = mergeService;
+		this.mergeRuleService = mergeRuleService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -200,6 +207,31 @@ public class ActivityReadTools {
 		Activity activity = activityService.getActivity(activityId);
 		accessGuard.requireRead(activity.getAthlete().getId());
 		return mergeService.getActiveMerge(activityId);
+	}
+
+	@McpTool(name = "get_merge_rules", description = "Issue #501 (phase 4): the automatic-merge "
+			+ "rule that would currently apply to each sport, whether saved (set_merge_rule) or "
+			+ "built-in default (bike only: target device:zwift, source device:garmin, fields "
+			+ "[power], keep_original) - a sport with neither is omitted entirely, meaning "
+			+ "automatic merging simply doesn't apply to it; an unresolved pair of that sport is "
+			+ "always left flagged for manual review.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public Map<String, Object> getMergeRules() {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireRead(athleteId);
+		List<Map<String, Object>> data = new ArrayList<>();
+		for (Sport sport : Sport.values()) {
+			if (sport == Sport.MULTISPORT || sport == Sport.TRANSITION) {
+				continue;
+			}
+			MergeRuleService.ResolvedRule resolved = mergeRuleService.resolve(athleteId, sport);
+			if (resolved != null) {
+				data.add(ActivityWriteTools.mergeRuleResponse(sport, resolved));
+			}
+		}
+		return Map.of("data", data);
 	}
 
 	@McpTool(name = "get_activity_laps", description = "Get the lap/interval splits recorded "
