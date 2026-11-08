@@ -42,7 +42,12 @@ import org.springframework.stereotype.Component;
  *   java -jar app.jar --backfill-overlaps --athlete=ath_abc123
  *   java -jar app.jar --backfill-overlaps --mode=apply           (defaults to --action=mark)
  *   java -jar app.jar --backfill-overlaps --mode=apply --action=flag
+ *   java -jar app.jar --backfill-overlaps --mode=apply --action=merge
  * </pre>
+ *
+ * <p>{@code --action=merge} (issue #501 phase 4) resolves each pair via the athlete's saved-or-
+ * built-in {@link MergeRuleService} rule, same as on-ingest detection - see {@link
+ * ActivityOverlapDetectionService}'s own Javadoc for the full merge-vs-flag decision.
  */
 @Component
 public class OverlapBackfillRunner implements ApplicationRunner {
@@ -74,8 +79,9 @@ public class OverlapBackfillRunner implements ApplicationRunner {
 
 		String athleteId = firstValue(args, "athlete");
 		boolean apply = "apply".equalsIgnoreCase(firstValue(args, "mode"));
-		OverlapHandling action = "flag".equalsIgnoreCase(firstValue(args, "action"))
-				? OverlapHandling.FLAG : OverlapHandling.MARK;
+		String actionArg = firstValue(args, "action");
+		OverlapHandling action = "merge".equalsIgnoreCase(actionArg) ? OverlapHandling.MERGE
+				: "flag".equalsIgnoreCase(actionArg) ? OverlapHandling.FLAG : OverlapHandling.MARK;
 
 		List<User> athletes = athleteId != null
 				? List.of(userRepository.findById(athleteId)
@@ -84,6 +90,8 @@ public class OverlapBackfillRunner implements ApplicationRunner {
 
 		int totalPairs = 0;
 		int marked = 0;
+		int merged = 0;
+		int mergeSkipped = 0;
 		int flagged = 0;
 		Set<String> affectedAthleteIds = new LinkedHashSet<>();
 
@@ -103,15 +111,28 @@ public class OverlapBackfillRunner implements ApplicationRunner {
 						continue;
 					}
 					OverlapResolution resolution = detectionService.resolvePair(anchorId, otherId, action);
-					if (resolution.action() == OverlapAction.MARKED) {
-						marked++;
-						affectedAthleteIds.add(athlete.getId());
-						log.info("[{}] MARKED {} as a duplicate of {}", athlete.getId(), resolution.otherActivityId(),
-								anchorId);
-					}
-					else {
-						flagged++;
-						log.info("[{}] FLAGGED {} <-> {}", athlete.getId(), anchorId, otherId);
+					switch (resolution.action()) {
+						case MARKED -> {
+							marked++;
+							affectedAthleteIds.add(athlete.getId());
+							log.info("[{}] MARKED {} as a duplicate of {}", athlete.getId(),
+									resolution.otherActivityId(), anchorId);
+						}
+						// Not added to affectedAthleteIds - the merge itself already ran the full
+						// recompute cascade (see ActivityOverlapDetectionService.merge).
+						case MERGED -> {
+							merged++;
+							log.info("[{}] MERGED {} into {}", athlete.getId(), resolution.otherActivityId(),
+									resolution.primaryActivityId());
+						}
+						case MERGE_SKIPPED_LOW_SCORE -> {
+							mergeSkipped++;
+							log.info("[{}] MERGE_SKIPPED_LOW_SCORE {} <-> {}", athlete.getId(), anchorId, otherId);
+						}
+						default -> {
+							flagged++;
+							log.info("[{}] FLAGGED {} <-> {}", athlete.getId(), anchorId, otherId);
+						}
 					}
 				}
 				if (!page.hasMore()) {
@@ -127,7 +148,8 @@ public class OverlapBackfillRunner implements ApplicationRunner {
 			return;
 		}
 
-		log.info("Done applying. {} pair(s) resolved: {} marked, {} flagged.", totalPairs, marked, flagged);
+		log.info("Done applying. {} pair(s) resolved: {} marked, {} merged, {} merge-skipped (low score), {} flagged.",
+				totalPairs, marked, merged, mergeSkipped, flagged);
 
 		for (String id : affectedAthleteIds) {
 			User athlete = userRepository.findById(id).orElseThrow();

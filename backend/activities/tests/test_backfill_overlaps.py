@@ -52,7 +52,7 @@ class BackfillOverlapsTests(TestCase):
 
         output = self._run("--mode", "apply")
 
-        self.assertIn("1 marked, 0 flagged", output)
+        self.assertIn("1 marked, 0 merged, 0 merge-skipped (low score), 0 flagged", output)
         garmin.refresh_from_db()
         zwift.refresh_from_db()
         self.assertEqual(garmin.primary_activity_id, zwift.id)
@@ -64,7 +64,7 @@ class BackfillOverlapsTests(TestCase):
 
         output = self._run("--mode", "apply", "--action", "flag")
 
-        self.assertIn("0 marked, 1 flagged", output)
+        self.assertIn("0 marked, 0 merged, 0 merge-skipped (low score), 1 flagged", output)
         garmin.refresh_from_db()
         zwift.refresh_from_db()
         self.assertIsNone(garmin.primary_activity_id)
@@ -78,7 +78,7 @@ class BackfillOverlapsTests(TestCase):
 
         output = self._run("--athlete", self.other_athlete.id, "--mode", "apply")
 
-        self.assertIn("1 marked, 0 flagged", output)
+        self.assertIn("1 marked, 0 merged, 0 merge-skipped (low score), 0 flagged", output)
         other_garmin.refresh_from_db()
         other_zwift.refresh_from_db()
         self.assertEqual(other_garmin.primary_activity_id, other_zwift.id)

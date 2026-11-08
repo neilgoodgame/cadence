@@ -1,3 +1,4 @@
+import math
 from datetime import UTC, datetime, timedelta
 
 from django.test import TestCase
@@ -5,6 +6,7 @@ from django.test import TestCase
 from accounts.models import User
 from gear.models import Bike
 
+from ..models import Record
 from ..overlap_detection import choose_primary, detect_and_resolve_overlap
 from .helpers import _make_activity
 
@@ -12,7 +14,8 @@ from .helpers import _make_activity
 class OverlapDetectionTests(TestCase):
     """Issue #498's on-ingest side of overlap detection - mirrors backend_java's
     ActivityOverlapDetectionServiceIntegrationTest; see overlap_detection.py's own docstring for
-    the primary-selection rule and why MERGE currently behaves like FLAG."""
+    the primary-selection rule (mark) and the saved-rule/alignment-threshold decision (merge,
+    issue #501 phase 4)."""
 
     def setUp(self):
         self.athlete = User.objects.create_user(email="overlap-detection@example.cc", password="x", name="Athlete")
@@ -22,6 +25,19 @@ class OverlapDetectionTests(TestCase):
         defaults = {"sport": "bike", "elapsed_seconds": 3600, "moving_time": 3600, "avg_hr": None}
         defaults.update(kwargs)
         return _make_activity(self.athlete, **defaults)
+
+    def _add_correlated_cadence(self, activity, start, count, phase_offset):
+        """A genuinely correlated cadence stream - see
+        ActivityOverlapDetectionServiceIntegrationTest's own copy of this helper."""
+        Record.objects.bulk_create(
+            Record(
+                activity=activity,
+                t=t,
+                ts=start + timedelta(seconds=t),
+                cadence=round(80 + 5 * math.sin((t + phase_offset) / 30.0)),
+            )
+            for t in range(count)
+        )
 
     def test_off_mode_does_nothing_at_all(self):
         self._bike(device="Zwift", start_date=self.start)
@@ -39,22 +55,64 @@ class OverlapDetectionTests(TestCase):
 
         results = detect_and_resolve_overlap(garmin, "flag")
 
-        self.assertEqual(results, [{"other_activity_id": zwift.id, "action": "flagged", "primary_activity_id": None}])
+        self.assertEqual(
+            results,
+            [{"other_activity_id": zwift.id, "action": "flagged", "primary_activity_id": None, "merge_id": None}],
+        )
         garmin.refresh_from_db()
         zwift.refresh_from_db()
         self.assertIsNone(garmin.primary_activity_id)
         self.assertIsNone(zwift.primary_activity_id)
 
-    def test_merge_mode_falls_back_to_flag_until_issue_501_ships(self):
+    def test_merge_mode_merges_a_zwift_garmin_pair_when_alignment_score_clears_the_threshold(self):
+        zwift = self._bike(device="Zwift", start_date=self.start)
+        garmin = self._bike(device="Garmin", start_date=self.start + timedelta(seconds=5))
+        self._add_correlated_cadence(zwift, self.start, 120, 0)
+        self._add_correlated_cadence(garmin, self.start + timedelta(seconds=5), 120, 5)
+
+        results = detect_and_resolve_overlap(garmin, "merge")
+
+        self.assertEqual(len(results), 1)
+        result = results[0]
+        self.assertEqual(result["other_activity_id"], zwift.id)
+        self.assertEqual(result["action"], "merged")
+        self.assertEqual(result["primary_activity_id"], zwift.id)  # zwift is the rule's target
+        self.assertIsNotNone(result["merge_id"])
+        garmin.refresh_from_db()
+        self.assertEqual(garmin.primary_activity_id, zwift.id)  # default rule hides the source too
+
+    def test_merge_mode_skips_low_score_and_leaves_the_pair_unresolved(self):
+        # No Record rows at all - the alignment calculator can't correlate anything, so the
+        # score is 0.0 (well below the threshold) even though the rule's own device patterns
+        # match zwift/garmin.
         self._bike(device="Zwift", start_date=self.start)
         garmin = self._bike(device="Garmin", start_date=self.start + timedelta(seconds=5))
 
         results = detect_and_resolve_overlap(garmin, "merge")
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["action"], "flagged")
+        self.assertEqual(results[0]["action"], "merge_skipped_low_score")
         garmin.refresh_from_db()
         self.assertIsNone(garmin.primary_activity_id)
+
+    def test_merge_mode_flags_when_no_rule_exists_for_the_sport(self):
+        # No built-in default for run, and none saved here either.
+        self._bike(device="Zwift", start_date=self.start, sport="run")
+        garmin = self._bike(device="Garmin", start_date=self.start + timedelta(seconds=5), sport="run")
+
+        results = detect_and_resolve_overlap(garmin, "merge")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["action"], "flagged")
+
+    def test_merge_mode_flags_when_neither_side_matches_the_rules_device_patterns(self):
+        self._bike(device="Edge 530", start_date=self.start)
+        other = self._bike(device="Edge 530", start_date=self.start + timedelta(seconds=5))
+
+        results = detect_and_resolve_overlap(other, "merge")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["action"], "flagged")
 
     def test_mark_mode_picks_the_zwift_copy_as_primary_regardless_of_which_side_is_newly_ingested(self):
         zwift = self._bike(device="Zwift", start_date=self.start)
@@ -63,7 +121,8 @@ class OverlapDetectionTests(TestCase):
         results = detect_and_resolve_overlap(garmin, "mark")
 
         self.assertEqual(
-            results, [{"other_activity_id": zwift.id, "action": "marked", "primary_activity_id": zwift.id}]
+            results,
+            [{"other_activity_id": zwift.id, "action": "marked", "primary_activity_id": zwift.id, "merge_id": None}],
         )
         garmin.refresh_from_db()
         zwift.refresh_from_db()
@@ -91,7 +150,8 @@ class OverlapDetectionTests(TestCase):
         results = detect_and_resolve_overlap(zwift, "mark")
 
         self.assertEqual(
-            results, [{"other_activity_id": garmin.id, "action": "marked", "primary_activity_id": zwift.id}]
+            results,
+            [{"other_activity_id": garmin.id, "action": "marked", "primary_activity_id": zwift.id, "merge_id": None}],
         )
         garmin.refresh_from_db()
         self.assertEqual(garmin.primary_activity_id, zwift.id)
@@ -106,7 +166,14 @@ class OverlapDetectionTests(TestCase):
 
         self.assertEqual(
             results,
-            [{"other_activity_id": many_sensors.id, "action": "marked", "primary_activity_id": many_sensors.id}],
+            [
+                {
+                    "other_activity_id": many_sensors.id,
+                    "action": "marked",
+                    "primary_activity_id": many_sensors.id,
+                    "merge_id": None,
+                }
+            ],
         )
         few_sensors.refresh_from_db()
         self.assertEqual(few_sensors.primary_activity_id, many_sensors.id)
@@ -120,7 +187,10 @@ class OverlapDetectionTests(TestCase):
 
         results = detect_and_resolve_overlap(zwift, "mark")
 
-        self.assertEqual(results, [{"other_activity_id": garmin.id, "action": "flagged", "primary_activity_id": None}])
+        self.assertEqual(
+            results,
+            [{"other_activity_id": garmin.id, "action": "flagged", "primary_activity_id": None, "merge_id": None}],
+        )
         zwift.refresh_from_db()
         self.assertIsNone(zwift.primary_activity_id)
 

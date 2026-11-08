@@ -5,6 +5,7 @@ import com.cadence.api.activities.dto.OverlapPairResponse;
 import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.common.error.UnprocessableEntityException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.CursorPage;
 import com.cadence.api.gear.GearMileageService;
@@ -39,11 +40,14 @@ public class DuplicateResolutionBatchService {
 	private final GearMileageService gearMileageService;
 	private final DuplicateResolutionBatchRepository batchRepository;
 	private final DuplicateResolutionEntryRepository entryRepository;
+	private final MergeRepository mergeRepository;
+	private final ActivityUnmergeService unmergeService;
 
 	public DuplicateResolutionBatchService(ActivityOverlapService overlapService,
 			ActivityOverlapDetectionService detectionService, ActivityRepository activityRepository,
 			ActivityService activityService, GearMileageService gearMileageService,
-			DuplicateResolutionBatchRepository batchRepository, DuplicateResolutionEntryRepository entryRepository) {
+			DuplicateResolutionBatchRepository batchRepository, DuplicateResolutionEntryRepository entryRepository,
+			MergeRepository mergeRepository, ActivityUnmergeService unmergeService) {
 		this.overlapService = overlapService;
 		this.detectionService = detectionService;
 		this.activityRepository = activityRepository;
@@ -51,6 +55,8 @@ public class DuplicateResolutionBatchService {
 		this.gearMileageService = gearMileageService;
 		this.batchRepository = batchRepository;
 		this.entryRepository = entryRepository;
+		this.mergeRepository = mergeRepository;
+		this.unmergeService = unmergeService;
 	}
 
 	public record ResolveBatchResult(boolean dryRun, String batchId, List<PairResult> results) {
@@ -131,6 +137,13 @@ public class DuplicateResolutionBatchService {
 				entry.setPrimaryActivity(activityRepository.findById(resolution.primaryActivityId()).orElseThrow());
 				affected = true;
 			}
+			else if (resolution.action() == OverlapAction.MERGED) {
+				entry.setPrimaryActivity(activityRepository.findById(resolution.primaryActivityId()).orElseThrow());
+				entry.setMerge(mergeRepository.findById(resolution.mergeId()).orElseThrow());
+				// Not affected=true - ActivityMergeOrchestrator.merge already ran the full
+				// recompute cascade for this one activity; re-running the athlete-wide version
+				// again at the end of the loop would just be redundant work.
+			}
 			entryRepository.save(entry);
 
 			results.add(new PairResult(pair[0], resolution.otherActivityId(), resolution.action(),
@@ -144,12 +157,15 @@ public class DuplicateResolutionBatchService {
 		return new ResolveBatchResult(false, batch.getId(), results);
 	}
 
-	/** Reverses a {@link DuplicateResolutionBatch}'s {@code MARKED} entries (a {@code FLAGGED}
-	 * entry never changed anything, so there's nothing to reverse for it) - unmarking each
-	 * duplicate exactly like {@code ActivityService#unmarkDuplicate} does, including restoring
-	 * its gear mileage. An entry is skipped, not forced, if its activity's primary no longer
-	 * matches what this batch set it to - it was re-resolved or hand-edited since, and blindly
-	 * reverting it could clobber that. */
+	/** Reverses a {@link DuplicateResolutionBatch}'s {@code MARKED} and {@code MERGED} entries (a
+	 * {@code FLAGGED}/{@code MERGE_SKIPPED_LOW_SCORE} entry never changed anything, so there's
+	 * nothing to reverse for either) - unmarking each duplicate exactly like {@code
+	 * ActivityService#unmarkDuplicate} does (including restoring its gear mileage) or undoing
+	 * each merge exactly like {@code unmerge_activity} does. An entry is skipped, not forced, if
+	 * its recorded state no longer matches the activity's/merge's current one - re-resolved or
+	 * hand-edited since, so blindly reverting it could clobber that - or if {@link
+	 * ActivityUnmergeService#undoMerge} itself refuses (a merge chain since, or no stored file to
+	 * restore from; see its own Javadoc). */
 	@Transactional
 	public UndoBatchResult undoBatch(User athlete, String batchId) {
 		DuplicateResolutionBatch batch = batchRepository.findByIdAndAthleteId(batchId, athlete.getId())
@@ -176,6 +192,30 @@ public class DuplicateResolutionBatchService {
 			gearMileageService.applyDuplicateChange(bikeId, shoeId, saved.getDistanceKm(), true, false);
 			reverted++;
 			affected = true;
+		}
+
+		for (DuplicateResolutionEntry entry : entryRepository.findByBatchAndOutcome(batch, OverlapAction.MERGED)) {
+			// entry.primaryActivity holds the merge's own target (see resolveDuplicatesBatch's
+			// apply loop) - the activity undoMerge needs to act on.
+			String targetId = entry.getPrimaryActivity().getId();
+			boolean stillActive = mergeRepository.findByTargetActivityId(targetId).stream()
+					.anyMatch(m -> m.getId().equals(entry.getMerge().getId()) && m.getUndoneAt() == null);
+			if (!stillActive) {
+				skipped++;
+				continue;
+			}
+			try {
+				unmergeService.undoMerge(targetId);
+			}
+			catch (NotFoundException | UnprocessableEntityException e) {
+				// The target is gone, or undoMerge itself refuses (merge chain since, no stored
+				// file) - same "don't clobber, just skip" treatment as a re-resolved MARKED entry.
+				skipped++;
+				continue;
+			}
+			reverted++;
+			// Not affected=true - undoMerge's own recompute (ActivityMergePostProcessingService
+			// .recomputeAfterMerge) already covers this activity; see the apply loop's own note.
 		}
 
 		batch.setUndoneAt(Instant.now());

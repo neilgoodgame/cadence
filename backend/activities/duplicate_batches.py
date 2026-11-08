@@ -8,17 +8,20 @@ keep the two in sync when changing either.
 from datetime import date
 from typing import Any
 
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
+from core.exceptions import UnprocessableEntityError
 from gear.mileage import apply_duplicate_change
 from uploads.processing import recompute_after_duplicate_change
 
-from .models import Activity, DuplicateResolutionBatch, DuplicateResolutionEntry
+from .models import Activity, DuplicateResolutionBatch, DuplicateResolutionEntry, Merge
 from .overlap_detection import preview_resolution, resolve_pair
 from .overlaps import find_overlaps
+from .unmerge_service import undo_merge
 
 # A deliberately bounded, one-shot action - unlike the backfill command (meant to walk an
 # athlete's entire history unattended), this keeps a single MCP call's cost, and the undo
@@ -176,10 +179,14 @@ def resolve_duplicates_batch(
             other_activity_id=other_id,
             outcome=resolution["action"],
             primary_activity_id=resolution["primary_activity_id"],
+            merge_id=resolution["merge_id"],
         )
         results.append({"activity_id": anchor_id, **resolution})
         if resolution["action"] == "marked":
             affected = True
+        # Not affected=True for "merged" - run_merge already ran the full recompute cascade for
+        # this one activity; re-running the athlete-wide version again at the end of the loop
+        # would just be redundant work.
 
     if affected:
         recompute_after_duplicate_change(athlete)
@@ -188,11 +195,14 @@ def resolve_duplicates_batch(
 
 
 def undo_batch(athlete: User, batch_id: str) -> dict[str, Any]:
-    """Reverses a DuplicateResolutionBatch's "marked" entries (a "flagged" entry never changed
-    anything, so there's nothing to reverse for it) - unmarking each duplicate exactly like
-    unmark_duplicate does, including restoring its gear mileage. An entry is skipped, not
-    forced, if its activity's primary_activity_id no longer matches what this batch set it to -
-    it was re-resolved or hand-edited since, and blindly reverting it could clobber that."""
+    """Reverses a DuplicateResolutionBatch's "marked" and "merged" entries (a "flagged"/
+    "merge_skipped_low_score" entry never changed anything, so there's nothing to reverse for
+    either) - unmarking each duplicate exactly like unmark_duplicate does (including restoring
+    its gear mileage), or undoing each merge exactly like unmerge_activity does. An entry is
+    skipped, not forced, if its recorded state no longer matches the activity's/merge's current
+    one - re-resolved or hand-edited since, so blindly reverting it could clobber that - or if
+    unmerge_service.undo_merge itself refuses (a merge chain since, or no stored file to restore
+    from; see its own docstring)."""
     batch = get_object_or_404(DuplicateResolutionBatch, pk=batch_id, athlete=athlete)
     if batch.undone_at is not None:
         raise ValidationError({"batch_id": "This batch has already been undone."})
@@ -210,6 +220,25 @@ def undo_batch(athlete: User, batch_id: str) -> dict[str, Any]:
         apply_duplicate_change(activity, was_duplicate=True, is_duplicate=False)
         reverted += 1
         affected = True
+
+    for entry in batch.entries.filter(outcome="merged").select_related("primary_activity"):
+        # entry.primary_activity holds the merge's own target (see the apply loop above) - the
+        # activity undo_merge needs to act on.
+        target_id = entry.primary_activity_id
+        still_active = Merge.objects.filter(id=entry.merge_id, undone_at__isnull=True).exists()
+        if not still_active:
+            skipped += 1
+            continue
+        try:
+            undo_merge(target_id)
+        except (Http404, UnprocessableEntityError):
+            # The target is gone, or undo_merge itself refuses (merge chain since, no stored
+            # file) - same "don't clobber, just skip" treatment as a re-resolved "marked" entry.
+            skipped += 1
+            continue
+        reverted += 1
+        # Not affected=True - undo_merge's own recompute (merge_postprocess.recompute_after_merge)
+        # already covers this activity; see the apply loop's own note.
 
     batch.undone_at = timezone.now()
     batch.save(update_fields=["undone_at"])

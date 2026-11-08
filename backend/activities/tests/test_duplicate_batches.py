@@ -45,6 +45,7 @@ class ResolveDuplicatesBatchTests(TestCase):
                     "other_activity_id": zwift.id,
                     "action": "marked",
                     "primary_activity_id": zwift.id,
+                    "merge_id": None,
                     "activity_id": garmin.id,
                 }
             ],
@@ -99,13 +100,15 @@ class ResolveDuplicatesBatchTests(TestCase):
         garmin.refresh_from_db()
         self.assertEqual(garmin.primary_activity_id, zwift.id)
 
-    def test_merge_action_falls_back_to_flag_until_issue_501_ships(self):
+    def test_merge_action_skips_low_score_without_any_correlated_data(self):
+        # No Record rows - see OverlapDetectionTests's own equivalent test for why this is 0.0
+        # (below threshold), not a null/error.
         zwift = self._bike(self.athlete, device="Zwift", start_date=self.start)
         garmin = self._bike(self.athlete, device="Garmin", start_date=self.start + timedelta(seconds=5))
 
         result = resolve_duplicates_batch(self.athlete, "merge", pairs=[[garmin.id, zwift.id]], dry_run=False)
 
-        self.assertEqual(result["results"][0]["action"], "flagged")
+        self.assertEqual(result["results"][0]["action"], "merge_skipped_low_score")
         garmin.refresh_from_db()
         self.assertIsNone(garmin.primary_activity_id)
 
@@ -176,7 +179,9 @@ class ResolveDuplicatesBatchTests(TestCase):
         with self.assertRaises(Http404):
             undo_batch(self.other_athlete, result["batch_id"])
 
-    def test_undo_batch_leaves_a_flagged_only_entry_alone(self):
+    def test_undo_batch_leaves_a_merge_skipped_low_score_entry_alone(self):
+        # merge_skipped_low_score matches neither undo_batch filter (marked nor merged) -
+        # nothing to revert or skip, same as a plain flagged entry would be.
         zwift = self._bike(self.athlete, device="Zwift", start_date=self.start)
         garmin = self._bike(self.athlete, device="Garmin", start_date=self.start + timedelta(seconds=5))
         result = resolve_duplicates_batch(self.athlete, "merge", pairs=[[garmin.id, zwift.id]], dry_run=False)

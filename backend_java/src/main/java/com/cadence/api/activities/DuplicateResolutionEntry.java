@@ -12,12 +12,11 @@ import jakarta.persistence.Table;
 
 /**
  * One pair resolved by a {@link DuplicateResolutionBatch}. {@code outcome} mirrors {@link
- * ActivityOverlapDetectionService.OverlapResolution}'s own vocabulary ({@code MARKED}/{@code
- * FLAGGED}) - never {@code MERGED} today, since nothing produces that yet (#501). {@code
- * primaryActivity} is set only when {@code outcome == MARKED} - {@code
- * DuplicateResolutionBatchService#undoBatch}'s own check that the activity's current primary
- * still equals it before reverting, so a pair re-resolved (or hand-edited) since this batch
- * applied is never silently clobbered.
+ * ActivityOverlapDetectionService.OverlapResolution}'s own vocabulary. {@code primaryActivity}
+ * is set only when {@code outcome == MARKED}, {@code merge} only when {@code outcome == MERGED}
+ * - {@code DuplicateResolutionBatchService#undoBatch}'s own check that the activity's current
+ * primary (or the merge's own active state) still matches before reverting, so a pair
+ * re-resolved (or hand-edited) since this batch applied is never silently clobbered.
  */
 @Entity
 @Table(name = "duplicate_resolution_entry")
@@ -45,6 +44,10 @@ public class DuplicateResolutionEntry {
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "primary_activity_id")
 	private Activity primaryActivity;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "merge_id")
+	private Merge merge;
 
 	public Long getId() {
 		return id;
@@ -88,5 +91,13 @@ public class DuplicateResolutionEntry {
 
 	public void setPrimaryActivity(Activity primaryActivity) {
 		this.primaryActivity = primaryActivity;
+	}
+
+	public Merge getMerge() {
+		return merge;
+	}
+
+	public void setMerge(Merge merge) {
+		this.merge = merge;
 	}
 }

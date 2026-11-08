@@ -11,12 +11,14 @@ import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /** Issue #498's on-ingest side of overlap detection - see the service's own Javadoc for the
- * primary-selection rule and why MERGE currently behaves like FLAG. */
+ * primary-selection rule (MARK) and the saved-rule/alignment-threshold decision (MERGE, issue
+ * #501 phase 4). */
 class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 
 	@Autowired
@@ -24,6 +26,12 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private ActivityRepository activityRepository;
+
+	@Autowired
+	private RecordRepository recordRepository;
+
+	@Autowired
+	private MergeRepository mergeRepository;
 
 	@Autowired
 	private UserRepository userRepository;
@@ -65,6 +73,23 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 		return bikeRepository.save(bike);
 	}
 
+	/** A genuinely correlated cadence stream for {@code activity}, starting {@code phaseOffset}
+	 * seconds later than some shared reference instant - e.g. zwift at phaseOffset=0 and garmin
+	 * at phaseOffset=5 produces the same real-world-shaped sine wave 5s apart, which the
+	 * alignment calculator should recover as offsetSeconds=5 with a high score. */
+	private void addCorrelatedCadence(Activity activity, Instant start, int count, int phaseOffset) {
+		List<Record> records = new ArrayList<>();
+		for (int t = 0; t < count; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setCadence((int) Math.round(80 + 5 * Math.sin((t + phaseOffset) / 30.0)));
+			records.add(record);
+		}
+		recordRepository.saveAll(records);
+	}
+
 	@Test
 	void offModeDoesNothingAtAll() {
 		User athlete = newUser("overlap-off@example.cc");
@@ -95,8 +120,33 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void mergeModeFallsBackToFlagUntilIssue501Ships() {
-		User athlete = newUser("overlap-merge-fallback@example.cc");
+	void mergeModeMergesAZwiftGarminPairWhenAlignmentScoreClearsTheThreshold() {
+		User athlete = newUser("overlap-merge-applied@example.cc");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity zwift = newActivity(athlete, "Zwift", start, 3600);
+		Activity garmin = newActivity(athlete, "Garmin", start.plusSeconds(5), 3600);
+		addCorrelatedCadence(zwift, start, 120, 0);
+		addCorrelatedCadence(garmin, start.plusSeconds(5), 120, 5);
+
+		List<OverlapResolution> results = detectionService.detectAndResolve(garmin, OverlapHandling.MERGE);
+
+		assertThat(results).hasSize(1);
+		assertThat(results.get(0).otherActivityId()).isEqualTo(zwift.getId());
+		assertThat(results.get(0).action()).isEqualTo(OverlapAction.MERGED);
+		assertThat(results.get(0).primaryActivityId()).isEqualTo(zwift.getId()); // zwift is the rule's target
+		assertThat(results.get(0).mergeId()).isNotNull();
+		assertThat(mergeRepository.findById(results.get(0).mergeId())).isPresent();
+		// Default rule hides the source as a #498 duplicate too.
+		assertThat(activityRepository.findById(garmin.getId()).orElseThrow().getPrimaryActivity().getId())
+				.isEqualTo(zwift.getId());
+	}
+
+	@Test
+	void mergeModeSkipsLowScoreAndLeavesThePairUnresolved() {
+		// No Record rows at all - the alignment calculator can't correlate anything, so the
+		// score is 0.0 (well below the threshold) even though the rule's own device patterns
+		// match zwift/garmin.
+		User athlete = newUser("overlap-merge-low-score@example.cc");
 		Instant start = Instant.parse("2026-06-01T18:00:00Z");
 		newActivity(athlete, "Zwift", start, 3600);
 		Activity garmin = newActivity(athlete, "Garmin", start.plusSeconds(5), 3600);
@@ -104,8 +154,39 @@ class ActivityOverlapDetectionServiceIntegrationTest extends IntegrationTest {
 		List<OverlapResolution> results = detectionService.detectAndResolve(garmin, OverlapHandling.MERGE);
 
 		assertThat(results).hasSize(1);
-		assertThat(results.get(0).action()).isEqualTo(OverlapAction.FLAGGED);
+		assertThat(results.get(0).action()).isEqualTo(OverlapAction.MERGE_SKIPPED_LOW_SCORE);
 		assertThat(activityRepository.findById(garmin.getId()).orElseThrow().getPrimaryActivity()).isNull();
+	}
+
+	@Test
+	void mergeModeFlagsWhenNoRuleExistsForTheSport() {
+		// No built-in default for run, and none saved here either.
+		User athlete = newUser("overlap-merge-no-rule@example.cc");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity a = newActivity(athlete, "Zwift", start, 3600);
+		a.setSport(Sport.RUN);
+		activityRepository.save(a);
+		Activity b = newActivity(athlete, "Garmin", start.plusSeconds(5), 3600);
+		b.setSport(Sport.RUN);
+		Activity garmin = activityRepository.save(b);
+
+		List<OverlapResolution> results = detectionService.detectAndResolve(garmin, OverlapHandling.MERGE);
+
+		assertThat(results).hasSize(1);
+		assertThat(results.get(0).action()).isEqualTo(OverlapAction.FLAGGED);
+	}
+
+	@Test
+	void mergeModeFlagsWhenNeitherSideMatchesTheRulesDevicePatterns() {
+		User athlete = newUser("overlap-merge-no-pattern-match@example.cc");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		newActivity(athlete, "Edge 530", start, 3600);
+		Activity other = newActivity(athlete, "Edge 530", start.plusSeconds(5), 3600);
+
+		List<OverlapResolution> results = detectionService.detectAndResolve(other, OverlapHandling.MERGE);
+
+		assertThat(results).hasSize(1);
+		assertThat(results.get(0).action()).isEqualTo(OverlapAction.FLAGGED);
 	}
 
 	@Test

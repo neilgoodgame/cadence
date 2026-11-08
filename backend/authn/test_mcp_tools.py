@@ -752,6 +752,118 @@ class ActivityToolsTests(TestCase):
         with self.assertRaises(PermissionDenied):
             tools.get_merge(activity_id=activity.id)
 
+    def test_set_merge_rule_saves_and_returns_it(self) -> None:
+        athlete = User.objects.create_user(email="mcp-set-merge-rule@example.cc", password="x", name="A")
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        response = tools.set_merge_rule(
+            sport="run",
+            target_pattern="device:coros",
+            source_pattern="device:garmin",
+            fields=["heartrate"],
+            nulls="overwrite",
+        )
+
+        self.assertEqual(response["sport"], "run")
+        self.assertEqual(response["target_pattern"], "device:coros")
+        self.assertEqual(response["source_pattern"], "device:garmin")
+        self.assertEqual(response["fields"], ["heartrate"])
+        self.assertEqual(response["null_policy"], "overwrite")
+
+    def test_set_merge_rule_defaults_nulls_to_keep_original(self) -> None:
+        athlete = User.objects.create_user(email="mcp-set-merge-rule-nulls-default@example.cc", password="x", name="A")
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        response = tools.set_merge_rule(
+            sport="run", target_pattern="device:coros", source_pattern="device:garmin", fields=["heartrate"]
+        )
+
+        self.assertEqual(response["null_policy"], "keep_original")
+
+    def test_set_merge_rule_overwrites_an_existing_rule_for_the_same_sport(self) -> None:
+        athlete = User.objects.create_user(email="mcp-set-merge-rule-overwrite@example.cc", password="x", name="A")
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        tools.set_merge_rule(
+            sport="run",
+            target_pattern="device:coros",
+            source_pattern="device:garmin",
+            fields=["heartrate"],
+            nulls="overwrite",
+        )
+
+        response = tools.set_merge_rule(
+            sport="run",
+            target_pattern="device:apple_watch",
+            source_pattern="device:garmin",
+            fields=["heartrate", "cadence"],
+            nulls="keep_original",
+        )
+
+        self.assertEqual(response["target_pattern"], "device:apple_watch")
+        self.assertEqual(response["fields"], ["heartrate", "cadence"])
+
+    def test_set_merge_rule_rejects_a_malformed_pattern(self) -> None:
+        athlete = User.objects.create_user(email="mcp-set-merge-rule-bad-pattern@example.cc", password="x", name="A")
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.set_merge_rule(
+                sport="run", target_pattern="coros", source_pattern="device:garmin", fields=["heartrate"]
+            )
+
+    def test_set_merge_rule_rejects_an_unknown_field(self) -> None:
+        athlete = User.objects.create_user(email="mcp-set-merge-rule-bad-field@example.cc", password="x", name="A")
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.set_merge_rule(
+                sport="run", target_pattern="device:coros", source_pattern="device:garmin", fields=["not_a_real_field"]
+            )
+
+    def test_set_merge_rule_rejects_multisport_and_transition(self) -> None:
+        athlete = User.objects.create_user(email="mcp-set-merge-rule-multisport@example.cc", password="x", name="A")
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        with self.assertRaises(ValidationError):
+            tools.set_merge_rule(
+                sport="multisport",
+                target_pattern="device:coros",
+                source_pattern="device:garmin",
+                fields=["heartrate"],
+            )
+
+    def test_get_merge_rules_includes_the_bike_built_in_default_with_no_saved_rule(self) -> None:
+        athlete = User.objects.create_user(email="mcp-get-merge-rules-default@example.cc", password="x", name="A")
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        data = tools.get_merge_rules()["data"]
+
+        bike = next(r for r in data if r["sport"] == "bike")
+        self.assertEqual(bike["target_pattern"], "device:zwift")
+        self.assertEqual(bike["source_pattern"], "device:garmin")
+        self.assertEqual(bike["fields"], ["power"])
+        self.assertEqual(bike["null_policy"], "keep_original")
+        # run/swim/walk/row have no built-in default - omitted entirely, not null entries.
+        self.assertNotIn("run", [r["sport"] for r in data])
+
+    def test_get_merge_rules_prefers_a_saved_rule_over_the_built_in_default(self) -> None:
+        athlete = User.objects.create_user(email="mcp-get-merge-rules-saved@example.cc", password="x", name="A")
+        tools = ActivityMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+        tools.set_merge_rule(
+            sport="bike",
+            target_pattern="device:wahoo",
+            source_pattern="device:garmin",
+            fields=["power", "cadence"],
+            nulls="overwrite",
+        )
+
+        data = tools.get_merge_rules()["data"]
+
+        bike = next(r for r in data if r["sport"] == "bike")
+        self.assertEqual(bike["target_pattern"], "device:wahoo")
+        self.assertEqual(bike["fields"], ["power", "cadence"])
+        self.assertEqual(bike["null_policy"], "overwrite")
+
     def test_resolve_duplicates_batch_dry_run_previews_without_mutating_anything(self) -> None:
         athlete = User.objects.create_user(email="mcp-batch-dry-run@example.cc", password="x", name="Athlete")
         start = timezone.now()

@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -111,7 +112,15 @@ public class ActivityUnmergeService {
 		};
 	}
 
-	@Transactional
+	/** {@code REQUIRES_NEW}, not the default {@code REQUIRED} - see {@link
+	 * ActivityMergeService#runMerge}'s own Javadoc for the full reasoning (issue #501 phase 4's
+	 * {@code DuplicateResolutionBatchService#undoBatch} calls this from inside its own
+	 * already-{@code @Transactional} method and catches {@link UnprocessableEntityException}
+	 * per entry to skip just that one; with plain {@code REQUIRED} the exception would still
+	 * mark undoBatch's *whole* transaction rollback-only on its way up, even though it's caught
+	 * - every existing caller (the REST controller, the MCP tool) is already non-transactional,
+	 * so this changes nothing for them). */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public Merge undoMerge(String targetId) {
 		Activity target = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
