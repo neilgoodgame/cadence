@@ -149,7 +149,7 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     running_power_source = models.CharField(max_length=10, choices=RUNNING_POWER_SOURCE_CHOICES, default="stryd")
     # Issue #499/#503 (phase 1): bike-power equivalent of running_power_source above - which
     # source (pedals/trainer) to prefer when attaching a second power stream decides a default
-    # primary (activities/activity_source_service.py::attach_power_stream). "any" (the default)
+    # primary (activities/activity_source_service.py::attach_stream). "any" (the default)
     # keeps today's behaviour - no preference applied, attach never auto-swaps.
     BIKE_POWER_SOURCE_CHOICES = [
         ("pedals", "Pedals"),
@@ -157,6 +157,26 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
         ("any", "Any"),
     ]
     bike_power_source = models.CharField(max_length=10, choices=BIKE_POWER_SOURCE_CHOICES, default="any")
+    # Issue #503 (phase 3): HR equivalent of bike_power_source above - which tagged source
+    # (strap/wrist) to prefer when attaching a second heartrate stream decides a default primary
+    # (activities/activity_source_service.py::attach_stream). "any" (the default) keeps today's
+    # behaviour - no preference applied, attach never auto-swaps. Unlike bike_power_source,
+    # there's no classify()-by-device equivalent for heartrate - this only ever matters when a
+    # stream was manually tagged with source_kind at attach time.
+    HR_SOURCE_CHOICES = [
+        ("strap", "Strap"),
+        ("wrist", "Wrist"),
+        ("any", "Any"),
+    ]
+    hr_source = models.CharField(max_length=10, choices=HR_SOURCE_CHOICES, default="any")
+    # Issue #503 (phase 3): cadence equivalent.
+    CADENCE_SOURCE_CHOICES = [
+        ("pedals", "Pedals"),
+        ("trainer", "Trainer"),
+        ("watch", "Watch"),
+        ("any", "Any"),
+    ]
+    cadence_source = models.CharField(max_length=10, choices=CADENCE_SOURCE_CHOICES, default="any")
     # Issue #498: what on-ingest overlap detection should do with this athlete's uploads by
     # default, whenever a request doesn't specify on_overlap itself - including scheduled Garmin
     # syncs, which have no request to carry the option at all. Defaults to "off" so existing

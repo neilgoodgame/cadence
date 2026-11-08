@@ -1,6 +1,8 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.athletes.BikePowerSource;
+import com.cadence.api.athletes.CadenceSource;
+import com.cadence.api.athletes.HrSource;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.id.PrefixedIdEntity;
@@ -85,6 +87,16 @@ public class Activity extends PrefixedIdEntity {
 	// (a single FIT file has no such ambiguity to record - only two separate recordings do).
 	@Column(name = "bike_power_source")
 	private BikePowerSource bikePowerSource;
+
+	// Issue #503 phase 3. Which tagged source this activity's primary heartrate/cadence stream
+	// was last attached/swapped from, if any - same "null until a manual swap" shape as
+	// bikePowerSource above, but there's no classify()-by-device fallback for either: the tag
+	// only ever exists if the athlete supplied one at attach time.
+	@Column(name = "hr_source")
+	private HrSource hrSource;
+
+	@Column(name = "cadence_source")
+	private CadenceSource cadenceSource;
 
 	@Column(name = "avg_power")
 	private Integer avgPower;
@@ -414,6 +426,22 @@ public class Activity extends PrefixedIdEntity {
 
 	public void setBikePowerSource(BikePowerSource bikePowerSource) {
 		this.bikePowerSource = bikePowerSource;
+	}
+
+	public HrSource getHrSource() {
+		return hrSource;
+	}
+
+	public void setHrSource(HrSource hrSource) {
+		this.hrSource = hrSource;
+	}
+
+	public CadenceSource getCadenceSource() {
+		return cadenceSource;
+	}
+
+	public void setCadenceSource(CadenceSource cadenceSource) {
+		this.cadenceSource = cadenceSource;
 	}
 
 	/** Same shape as matchesRunningPowerPreference, plus: the athlete's preference itself can be

@@ -126,6 +126,15 @@ public class ActivityMergeApplyService {
 		}
 	}
 
+	/** Issue #503 (phase 3): the symmetric read half of {@link #setRecordFieldValue} -
+	 * {@code ActivitySourceService#attachStream}/{@code #swapPrimaryStream} use this so power/
+	 * heartrate/cadence can all share one attach/swap implementation instead of three
+	 * near-duplicate ones. Returns null for a field outside RECORD_FIELDS. */
+	public static Object getRecordFieldValue(Record record, String field) {
+		RecordFieldAccessor accessor = RECORD_FIELDS.get(field);
+		return accessor == null ? null : accessor.getter().apply(record);
+	}
+
 	/** Issue #501 (phase 1, part 5): a JSON-safe snapshot of one *activity-level* field's
 	 * current value, for ActivityMergeService's pre-merge undo snapshot (see Merge's own
 	 * Javadoc). bikeId/shoeId return the entity's own id, not the entity - a Bike/Shoe isn't a

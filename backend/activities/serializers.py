@@ -185,6 +185,9 @@ class MergeActivitiesSerializer(serializers.Serializer):
     preview = serializers.BooleanField(required=False, default=False)
     # Issue #503 (phase 1).
     copy_mode = serializers.ChoiceField(choices=[("overwrite", "Overwrite"), ("attach", "Attach")], default="overwrite")
+    # Issue #503 (phase 3): only meaningful with copy_mode="attach" and fields=["heartrate"] or
+    # ["cadence"] - ignored for fields=["power"], which still classifies by device instead.
+    source_kind = serializers.CharField(required=False, allow_null=True, default=None)
 
 
 class SetPrimarySourceSerializer(serializers.Serializer):

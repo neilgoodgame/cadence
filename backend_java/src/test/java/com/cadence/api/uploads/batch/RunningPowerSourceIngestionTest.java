@@ -120,7 +120,7 @@ class RunningPowerSourceIngestionTest extends IntegrationTest {
 		// native preference: stryd is "the other" candidate, and this file DOES have it.
 		var sources = sourceRepository.findByActivityIdOrderByCreatedAtAsc(nativePreferenceActivity.getId());
 		assertThat(sources).hasSize(1);
-		assertThat(sources.get(0).getRunningPowerKind()).isEqualTo("stryd");
+		assertThat(sources.get(0).getSourceKind()).isEqualTo("stryd");
 		assertThat(sources.get(0).getOrigin()).isEqualTo(ActivitySourceOrigin.FILE);
 	}
 

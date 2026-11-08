@@ -1,7 +1,9 @@
 package com.cadence.api.users;
 
 import com.cadence.api.athletes.BikePowerSource;
+import com.cadence.api.athletes.CadenceSource;
 import com.cadence.api.athletes.FtpCalculationMethod;
+import com.cadence.api.athletes.HrSource;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.RunningPowerSource;
@@ -207,6 +209,16 @@ public class User extends PrefixedIdEntity {
 	 * doesn't discard the non-preferred stream; only decides which one defaults to primary. */
 	@Column(name = "bike_power_source", nullable = false)
 	private BikePowerSource bikePowerSource = BikePowerSource.ANY;
+
+	/** Issue #503 phase 3. See HrSource's own Javadoc - no classify()-by-device equivalent
+	 * exists for heartrate, so this only ever matters when a stream was manually tagged at
+	 * attach time. */
+	@Column(name = "hr_source", nullable = false)
+	private HrSource hrSource = HrSource.ANY;
+
+	/** Issue #503 phase 3. See CadenceSource's own Javadoc. */
+	@Column(name = "cadence_source", nullable = false)
+	private CadenceSource cadenceSource = CadenceSource.ANY;
 
 	/** Issue #498: what on-ingest overlap detection should do with this athlete's uploads by
 	 * default, whenever a request doesn't specify {@code on_overlap} itself - including scheduled
@@ -560,6 +572,22 @@ public class User extends PrefixedIdEntity {
 
 	public void setBikePowerSource(BikePowerSource bikePowerSource) {
 		this.bikePowerSource = bikePowerSource;
+	}
+
+	public HrSource getHrSource() {
+		return hrSource;
+	}
+
+	public void setHrSource(HrSource hrSource) {
+		this.hrSource = hrSource;
+	}
+
+	public CadenceSource getCadenceSource() {
+		return cadenceSource;
+	}
+
+	public void setCadenceSource(CadenceSource cadenceSource) {
+		this.cadenceSource = cadenceSource;
 	}
 
 	public OverlapHandling getOverlapHandling() {

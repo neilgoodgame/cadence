@@ -1,7 +1,9 @@
 package com.cadence.api.athletes.dto;
 
 import com.cadence.api.athletes.BikePowerSource;
+import com.cadence.api.athletes.CadenceSource;
 import com.cadence.api.athletes.FtpCalculationMethod;
+import com.cadence.api.athletes.HrSource;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.RunningPowerSource;
@@ -65,7 +67,11 @@ public record AthleteUpdateRequest(
 		OverlapHandling overlapHandling,
 		// Issue #499/#503 phase 1: mirrors runningPowerSource above. Appended at the end for the
 		// same reason as above.
-		BikePowerSource bikePowerSource) {
+		BikePowerSource bikePowerSource,
+		// Issue #503 phase 3: mirrors bikePowerSource above. Appended at the end for the same
+		// reason as above.
+		HrSource hrSource,
+		CadenceSource cadenceSource) {
 
 	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
 	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */

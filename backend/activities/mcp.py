@@ -592,6 +592,7 @@ class ActivityMCPTools(ScopedMCPToolset):
         offset_seconds: int | None = None,
         preview: bool = True,
         copy_mode: str | None = None,
+        source_kind: str | None = None,
     ) -> MergeResult:
         """Issue #501: copies fields from source_id into target_id - the target's timeline is
         authoritative, no stream rows are created or deleted. Resolves offset_seconds
@@ -608,9 +609,14 @@ class ActivityMCPTools(ScopedMCPToolset):
         resolved offset/alignment score and before/after summary, without writing anything; call
         again with preview=false once you're happy with it to actually apply the merge.
         copy_mode (issue #503 phase 1) defaults to "overwrite" (today's only prior behavior);
-        "attach" is for power only - keeps target's existing power stream untouched and stores
-        source's power stream alongside it as a non-primary source (see list_activity_sources/
-        set_primary_source) instead of overwriting one with the other."""
+        "attach" accepts exactly one field at a time - power, heartrate, or cadence - and keeps
+        target's existing stream for that field untouched, storing source's own stream alongside
+        it as a non-primary source (see list_activity_sources/set_primary_source) instead of
+        overwriting one with the other. source_kind (phase 3) is an optional tag for what kind of
+        sensor the attached heartrate/cadence stream came from (strap/wrist for heartrate;
+        pedals/trainer/watch for cadence) - ignored for power, which classifies by device
+        instead; if it matches the athlete's hr_source/cadence_source preference, the attached
+        stream becomes primary immediately, same as power's own auto-swap."""
         self._require_scope(ACTIVITIES_WRITE)
         target = get_object_or_404(Activity, pk=target_id)
         self._require_write(target.athlete_id)
@@ -625,6 +631,7 @@ class ActivityMCPTools(ScopedMCPToolset):
             hide_source=hide_source,
             preview=preview,
             copy_mode=_parse_copy_mode(copy_mode),
+            source_kind=source_kind,
         )
 
     def unmerge_activity(self, activity_id: str) -> dict[str, Any]:
@@ -642,27 +649,28 @@ class ActivityMCPTools(ScopedMCPToolset):
         return self.get_activity(activity_id)
 
     def list_activity_sources(self, activity_id: str) -> list[dict[str, Any]]:
-        """Issue #503 (phase 1): every non-primary stream kept alongside activity_id - e.g. a
-        Garmin/pedal power recording attached onto a Zwift ride without overwriting the Zwift
-        copy (merge_activities' attach copy_mode). The activity's own current primary stream is
-        never listed here - it's whatever's already on the activity itself (get_activity);
-        is_primary on a listed source instead tells you whether that source's own device
-        classification matches the current primary, i.e. whether set_primary_source has nothing
-        to do for it. Phase 1 only ever lists power sources. Returns an empty list if nothing has
-        ever been attached or swapped for this activity."""
+        """Issue #503 (phases 1-3): every non-primary stream kept alongside activity_id - power,
+        heartrate, or cadence - e.g. a Garmin/pedal power recording attached onto a Zwift ride
+        without overwriting the Zwift copy (merge_activities' attach copy_mode). The activity's
+        own current primary stream is never listed here - it's whatever's already on the
+        activity itself (get_activity); is_primary on a listed source instead tells you whether
+        that source matches the current primary (by device classification for a bike power
+        source, by its own source_kind tag otherwise), i.e. whether set_primary_source has
+        nothing to do for it. Returns an empty list if nothing has ever been attached or
+        swapped for this activity."""
         self._require_scope(ACTIVITIES_READ)
         activity = get_object_or_404(Activity, pk=activity_id)
         self._require_read(activity.athlete_id)
         return [summary._asdict() for summary in activity_source_service.list_sources(activity_id)]
 
     def set_primary_source(self, activity_id: str, field: str, source_id: str) -> dict[str, Any]:
-        """Issue #503 (phase 1): swaps activity_id's current primary stream for field with the
+        """Issue #503 (phases 1-3): swaps activity_id's current primary stream for field with the
         named source_id's stream (from list_activity_sources) - e.g. switching a ride's power
         back to its Garmin/pedal reading after a Zwift copy became primary. The stream being
         replaced is itself kept as a new source (never lost), so this can always be reversed by
         calling it again with the other source's id. Reruns the same recompute cascade a merge
-        triggers, so TSS/FTP-candidate data reflects the new primary immediately. Phase 1 only
-        supports field="power"."""
+        triggers, so TSS/FTP-candidate data reflects the new primary immediately. field must be
+        "power", "heartrate", or "cadence"."""
         self._require_scope(ACTIVITIES_WRITE)
         activity = get_object_or_404(Activity, pk=activity_id)
         self._require_write(activity.athlete_id)

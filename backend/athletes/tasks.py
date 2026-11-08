@@ -118,7 +118,7 @@ def recompute_running_power_source(
     swapped = skipped = 0
     for i, activity in enumerate(mismatched):
         replacement = (
-            ActivityStream.objects.filter(activity_id=activity.id, field="power", source__running_power_kind=preference)
+            ActivityStream.objects.filter(activity_id=activity.id, field="power", source__source_kind=preference)
             .order_by("-source__created_at")
             .first()
         )

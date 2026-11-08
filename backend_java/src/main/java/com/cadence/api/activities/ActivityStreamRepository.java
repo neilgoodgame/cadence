@@ -7,12 +7,12 @@ public interface ActivityStreamRepository extends JpaRepository<ActivityStream, 
 
 	Optional<ActivityStream> findByActivityIdAndFieldAndSourceId(String activityId, String field, String sourceId);
 
-	/** Issue #503 (phase 2): the newest stored {@code field} stream on this activity whose source
-	 * holds the given running-power kind - an activity may have been swapped back and forth more
-	 * than once, snapshotting a new source each time (see {@code
+	/** Issue #503 (phase 2, generalized phase 3): the newest stored {@code field} stream on this
+	 * activity whose source holds the given {@code sourceKind} - an activity may have been
+	 * swapped back and forth more than once, snapshotting a new source each time (see {@code
 	 * ActivitySourceService#swapPrimaryStream}'s own Javadoc), so this takes the most recently
 	 * created match rather than an arbitrary one. Used by {@code
 	 * RunningPowerSourceRecomputeService} to find what to re-designate as primary. */
-	Optional<ActivityStream> findTopByActivity_IdAndFieldAndSource_RunningPowerKindOrderBySource_CreatedAtDesc(
-			String activityId, String field, String runningPowerKind);
+	Optional<ActivityStream> findTopByActivity_IdAndFieldAndSource_SourceKindOrderBySource_CreatedAtDesc(
+			String activityId, String field, String sourceKind);
 }

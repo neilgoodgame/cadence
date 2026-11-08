@@ -270,7 +270,7 @@ class RealFitIngestionTests(TestCase):
 
         sources = list(ActivitySource.objects.filter(activity=native_preference_activity))
         self.assertEqual(len(sources), 1)
-        self.assertEqual(sources[0].running_power_kind, "stryd")
+        self.assertEqual(sources[0].source_kind, "stryd")
         self.assertEqual(sources[0].origin, "file")
 
     def test_patch_avg_air_temp_ignored_after_stryd_ingestion(self):

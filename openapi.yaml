@@ -1171,13 +1171,25 @@ paths:
                   enum: [overwrite, attach]
                   default: overwrite
                   description: >-
-                    Issue #503 (phase 1). overwrite (default, the only behavior before this
+                    Issue #503 (phases 1-3). overwrite (default, the only behavior before this
                     field existed) rewrites the target's own stream rows per null_policy, as
-                    described above. attach - power only, any other field is rejected - never
-                    touches the target's existing power stream; instead it stores source's
-                    power stream alongside it as a new, non-primary ActivitySource/
-                    ActivityStream (see GET .../sources and POST .../primary-source), so
-                    neither recording is lost and either can be made primary later.
+                    described above. attach accepts exactly one field at a time - power,
+                    heartrate, or cadence; any other field, or more than one at once, is
+                    rejected - and never touches the target's existing stream for that field;
+                    instead it stores source's own stream alongside it as a new, non-primary
+                    ActivitySource/ActivityStream (see GET .../sources and POST
+                    .../primary-source), so neither recording is lost and either can be made
+                    primary later.
+                source_kind:
+                  type: [string, "null"]
+                  description: >-
+                    Issue #503 (phase 3). Only meaningful with copy_mode=attach and
+                    fields=["heartrate"] or ["cadence"] - an optional, manually-supplied tag for
+                    what kind of sensor source_id's stream came from (strap/wrist for
+                    heartrate; pedals/trainer/watch for cadence). Ignored for fields=["power"],
+                    which still classifies by device instead. When supplied and it matches the
+                    athlete's hr_source/cadence_source preference, the attached stream becomes
+                    primary immediately, same as power's own device-classification auto-swap.
       responses:
         "200":
           description: The merge's outcome.
@@ -1199,14 +1211,15 @@ paths:
       summary: List this activity's non-primary stored streams
       operationId: listActivitySources
       description: >-
-        Issue #503 (phase 1). Every non-primary stream kept alongside this activity - e.g. a
-        Garmin/pedal power recording attached onto a Zwift ride without overwriting the Zwift
-        copy (POST .../merge's attach copy_mode). The activity's own current primary stream is
-        never listed here - it's whatever's already on the activity itself (GET
-        /v1/activities/{id}); is_primary on a listed source instead tells you whether that
-        source's own device classification matches the current primary, i.e. whether POST
-        .../primary-source has nothing to do for it. Phase 1 only ever lists power sources.
-        Returns an empty list if nothing has ever been attached or swapped for this activity.
+        Issue #503 (phases 1-3). Every non-primary stream kept alongside this activity - power,
+        heartrate, or cadence - e.g. a Garmin/pedal power recording attached onto a Zwift ride
+        without overwriting the Zwift copy (POST .../merge's attach copy_mode). The activity's
+        own current primary stream is never listed here - it's whatever's already on the
+        activity itself (GET /v1/activities/{id}); is_primary on a listed source instead tells
+        you whether that source matches the current primary (by device classification for a
+        bike power source, by its own source_kind tag otherwise), i.e. whether POST
+        .../primary-source has nothing to do for it. Returns an empty list if nothing has ever
+        been attached or swapped for this activity.
       responses:
         "200":
           description: The activity's stored non-primary sources, oldest first.
@@ -1245,7 +1258,7 @@ paths:
               properties:
                 field:
                   type: string
-                  description: "'power' - phase 1 only supports power sources."
+                  description: "'power', 'heartrate', or 'cadence'."
                   example: power
                 source_id:
                   type: string
@@ -4567,7 +4580,7 @@ components:
             native estimate (e.g. Garmin Running Power) and a Stryd footpod reading - native
             algorithms tend to read meaningfully higher than Stryd for the same effort, so the
             non-selected source isn't used for the run's own power/stats. Issue #503 (phase 2):
-            both readings are kept (see the ActivitySource schema's running_power_kind), so
+            both readings are kept (see the ActivitySource schema's source_kind), so
             changing this value doesn't retroactively apply to already-imported runs by itself -
             call POST /v1/athletes/{id}/recompute-running-power-source afterward to re-designate
             every existing run whose stored primary no longer matches.
@@ -4583,6 +4596,28 @@ components:
             consulted at attach time and as an FTP-candidate filter, not re-resolved
             retroactively for activities already imported. any (default) means no preference -
             attach never auto-swaps, and FTP candidates aren't filtered by it.
+          example: any
+        hr_source:
+          type: string
+          enum: [strap, wrist, any]
+          default: any
+          description: >-
+            Issue #503 (phase 3). Which heartrate reading should become primary when a chest
+            strap and a wrist-optical recording of the same activity both exist as sources (see
+            POST .../merge's attach copy_mode and POST .../primary-source). Unlike
+            bike_power_source, there's no automatic device classification for heartrate - a FIT
+            file's own heart_rate field carries no record of which physical sensor fed it - so
+            this preference only ever matters when the athlete manually tags source_kind when
+            attaching. any (default) means no preference - attach never auto-swaps.
+          example: any
+        cadence_source:
+          type: string
+          enum: [pedals, trainer, watch, any]
+          default: any
+          description: >-
+            Issue #503 (phase 3). Cadence equivalent of hr_source - pedals, trainer, or watch.
+            Same caveat: no automatic classification, only ever meaningful via a manually
+            supplied source_kind at attach time.
           example: any
         overlap_handling:
           type: string
@@ -4813,6 +4848,20 @@ components:
             POST /v1/athletes/{id}/recompute-running-power-source can re-designate which one
             this reflects.
           example: stryd
+        # Note: bike_power_source (issue #503 phase 1) has no field here yet - a pre-existing
+        # gap, not introduced by phase 3. hr_source/cadence_source below are new in phase 3.
+        hr_source:
+          type: [string, "null"]
+          enum: [strap, wrist, null]
+          description: >-
+            Issue #503 (phase 3). Which tagged source this activity's current primary heartrate
+            stream was last attached/swapped from, if any - null until a manual attach+swap
+            tagged one (there's no parse-time/device-classification equivalent for heartrate).
+            See the athlete's hr_source preference.
+        cadence_source:
+          type: [string, "null"]
+          enum: [pedals, trainer, watch, null]
+          description: Issue #503 (phase 3). Cadence equivalent of hr_source above.
         avg_power: { type: [integer, "null"] }
         norm_power: { type: [integer, "null"] }
         intensity: { type: number, description: Intensity factor, example: 0.78 }
@@ -5734,7 +5783,7 @@ components:
     ActivitySource:
       type: object
       description: >-
-        Issue #503 (phases 1-2). A non-primary stream kept alongside an activity - see GET
+        Issue #503 (phases 1-3). A non-primary stream kept alongside an activity - see GET
         /v1/activities/{id}/sources. The primary stream itself is never represented here - it
         stays in the activity's own stream data.
       properties:
@@ -5748,7 +5797,7 @@ components:
           type: [string, "null"]
         sensor_kind:
           type: string
-          description: Which field this source provides a stream for. Phase 1/2 only ever create "power".
+          description: Which field this source provides a stream for - power, heartrate, or cadence.
           example: power
         origin:
           type: string
@@ -5757,15 +5806,19 @@ components:
             file - either this activity's own original upload, snapshotted the first time its
             primary stream was swapped away (phase 1), or - for a run whose FIT file carried
             both a native and a Stryd power reading - the non-preferred candidate kept at parse
-            time (phase 2). attached - added via POST .../merge's attach copy_mode (bike only).
-        running_power_kind:
+            time (phase 2). attached - added via POST .../merge's attach copy_mode.
+        source_kind:
           type: [string, "null"]
-          enum: [native, stryd, null]
+          enum: [native, stryd, strap, wrist, pedals, trainer, watch, null]
           description: >-
-            Issue #503 (phase 2). For a running power source only - null for a bike source
-            (which distinguishes pedals/trainer by device instead, since a run's two candidates
-            come from the same device). Which candidate this stream holds, so POST
-            .../primary-source can re-designate a run's primary without a device heuristic.
+            Issue #503 (phase 3, generalized from phase 2's running_power_kind). A free-form
+            tag on what kind of sensor this stream came from, meaning depends on sensor_kind:
+            native/stryd for a running power source (set automatically at parse time),
+            strap/wrist for heartrate, pedals/trainer/watch for cadence (both manually supplied
+            by the athlete at attach time - there's no automatic classification signal for
+            either). Null for a bike power source (which distinguishes pedals/trainer by
+            device instead - a run's two candidates come from the same device, so there's
+            nothing to classify by device string there) and for any source never tagged.
         created_at:
           type: string
           format: date-time
@@ -5773,9 +5826,9 @@ components:
           type: boolean
           description: >-
             Whether this source already matches the activity's current primary reading for
-            sensor_kind - by device classification for bike, by running_power_kind vs the
-            activity's power_source for running - i.e. whether POST .../primary-source has
-            nothing to do for it.
+            sensor_kind - by device classification for a bike power source, by source_kind vs
+            the matching Activity field (power_source for running, hr_source, cadence_source)
+            otherwise - i.e. whether POST .../primary-source has nothing to do for it.
 
     ThresholdSuggestion:
       type: object

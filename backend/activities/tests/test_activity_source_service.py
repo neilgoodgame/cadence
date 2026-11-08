@@ -1,9 +1,10 @@
-"""Issue #503 (phase 1): attach_power_stream/set_primary_source/list_sources, and the REST
+"""Issue #503 (phases 1-3): attach_stream/set_primary_source/list_sources, and the REST
 surfaces built on top of them. Mirrors backend_java's ActivitySourceServiceIntegrationTest."""
 
 from datetime import UTC, datetime, timedelta
 
 from django.test import TestCase
+from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
 
@@ -26,6 +27,12 @@ class ActivitySourceServiceTests(TestCase):
         for t in range(count):
             Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=power)
 
+    def _add_field_records(self, activity, count, field, value):
+        for t in range(count):
+            Record.objects.create(
+                activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), **{field: value}
+            )
+
     def test_attach_creates_a_non_primary_source_without_touching_the_targets_primary(self):
         athlete = self._athlete("source-attach-no-touch@example.cc")
         target = self._activity(athlete, "Edge 530", name="Target")
@@ -33,7 +40,7 @@ class ActivitySourceServiceTests(TestCase):
         self._add_records(target, 10, power=200)
         self._add_records(source, 10, power=300)
 
-        result = activity_source_service.attach_power_stream(target.id, source.id, offset_seconds=0, preview=False)
+        result = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
 
         self.assertIsNotNone(result.source_id)
         self.assertEqual(result.copied, 10)
@@ -61,7 +68,7 @@ class ActivitySourceServiceTests(TestCase):
         self._add_records(target, 10, power=200)
         self._add_records(source, 10, power=300)
 
-        result = activity_source_service.attach_power_stream(target.id, source.id, offset_seconds=0, preview=False)
+        result = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
 
         self.assertTrue(result.became_primary)
         for record in target.records.all():
@@ -75,7 +82,7 @@ class ActivitySourceServiceTests(TestCase):
         source = self._activity(athlete, "Zwift", name="Source")
         self._add_records(target, 10, power=200)
         self._add_records(source, 10, power=300)
-        attach = activity_source_service.attach_power_stream(target.id, source.id, offset_seconds=0, preview=False)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
         self.assertFalse(attach.became_primary)  # "any" preference by default - no auto-swap yet
 
         activity_source_service.set_primary_source(target.id, "power", attach.source_id)
@@ -102,7 +109,7 @@ class ActivitySourceServiceTests(TestCase):
         source = self._activity(athlete, "Zwift", name="Source")  # classifies trainer
         self._add_records(target, 10, power=200)
         self._add_records(source, 10, power=300)
-        attach = activity_source_service.attach_power_stream(target.id, source.id, offset_seconds=0, preview=False)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
 
         summaries = activity_source_service.list_sources(target.id)
 
@@ -151,7 +158,7 @@ class ActivitySourceServiceTests(TestCase):
         source = self._activity(athlete, "Zwift", name="Source")
         self._add_records(target, 10, power=200)
         self._add_records(source, 10, power=300)
-        attach = activity_source_service.attach_power_stream(target.id, source.id, offset_seconds=0, preview=False)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
 
         client = _bearer_client(athlete)
         list_response = client.get(f"/v1/activities/{target.id}/sources")
@@ -185,7 +192,7 @@ class ActivitySourceServiceTests(TestCase):
         self.assertEqual(len(sources), 1)
         self.assertEqual(sources[0].origin, "file")
         self.assertEqual(sources[0].sensor_kind, "power")
-        self.assertEqual(sources[0].running_power_kind, "native")
+        self.assertEqual(sources[0].source_kind, "native")
 
         stream = sources[0].streams.get(field="power")
         self.assertFalse(stream.primary_of)
@@ -206,7 +213,7 @@ class ActivitySourceServiceTests(TestCase):
 
         self.assertFalse(ActivitySource.objects.filter(activity=activity).exists())
 
-    def test_set_primary_source_on_a_run_stamps_power_source_from_running_power_kind(self):
+    def test_set_primary_source_on_a_run_stamps_power_source_from_source_kind(self):
         athlete = self._athlete("source-run-set-primary@example.cc")
         activity = self._run_activity(athlete, power_source="stryd")
         self._add_records(activity, 5, power=200)  # stryd primary
@@ -224,7 +231,7 @@ class ActivitySourceServiceTests(TestCase):
         # The original (stryd, 200) primary was itself snapshotted as a new source, tagged with
         # its own running-power kind - not left blank/device-classified the way bike's is.
         stryd_snapshot = ActivitySource.objects.exclude(pk=native_source.pk).get(activity=activity)
-        self.assertEqual(stryd_snapshot.running_power_kind, "stryd")
+        self.assertEqual(stryd_snapshot.source_kind, "stryd")
 
         # And it's reversible, the same as bike's.
         activity_source_service.set_primary_source(activity.id, "power", stryd_snapshot.id)
@@ -252,3 +259,170 @@ class ActivitySourceServiceTests(TestCase):
         summaries_after_swap = activity_source_service.list_sources(activity.id)
         matching = next(s for s in summaries_after_swap if s.id == native_source.id)
         self.assertTrue(matching.is_primary)
+
+    def test_attach_heartrate_auto_swaps_when_source_kind_matches_the_preference(self):
+        athlete = self._athlete("source-attach-heartrate-auto-swap@example.cc", hr_source="strap")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records(target, 10, "heartrate", 140)
+        self._add_field_records(source, 10, "heartrate", 150)
+
+        result = activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="strap"
+        )
+
+        self.assertTrue(result.became_primary)
+        for record in target.records.all():
+            self.assertEqual(record.heartrate, 150)
+        target.refresh_from_db()
+        self.assertEqual(target.hr_source, "strap")
+
+    def test_attach_heartrate_with_no_source_kind_never_auto_swaps(self):
+        athlete = self._athlete("source-attach-heartrate-no-kind@example.cc", hr_source="strap")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records(target, 10, "heartrate", 140)
+        self._add_field_records(source, 10, "heartrate", 150)
+
+        result = activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False
+        )
+
+        self.assertFalse(result.became_primary)
+        for record in target.records.all():
+            self.assertEqual(record.heartrate, 140)
+
+    def test_attach_cadence_creates_a_non_primary_source_without_touching_the_targets_primary(self):
+        athlete = self._athlete("source-attach-cadence-no-touch@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_field_records(target, 10, "cadence", 85)
+        self._add_field_records(source, 10, "cadence", 88)
+
+        result = activity_source_service.attach_stream(
+            target.id, source.id, "cadence", offset_seconds=0, preview=False, source_kind="pedals"
+        )
+
+        self.assertIsNotNone(result.source_id)
+        self.assertFalse(result.became_primary)  # "any" preference by default
+        for record in target.records.all():
+            self.assertEqual(record.cadence, 85)
+        saved_source = ActivitySource.objects.get(pk=result.source_id)
+        self.assertEqual(saved_source.sensor_kind, "cadence")
+        self.assertEqual(saved_source.source_kind, "pedals")
+
+    def test_attach_rejects_an_invalid_source_kind_for_the_field(self):
+        athlete = self._athlete("source-attach-invalid-kind@example.cc")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records(target, 10, "heartrate", 140)
+        self._add_field_records(source, 10, "heartrate", 150)
+
+        with self.assertRaises(ValidationError):
+            activity_source_service.attach_stream(
+                target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="trainer"
+            )
+
+    def test_set_primary_source_generalizes_to_heartrate_and_is_reversible(self):
+        athlete = self._athlete("source-set-primary-heartrate@example.cc")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records(target, 5, "heartrate", 140)
+        self._add_field_records(source, 5, "heartrate", 150)
+        attach = activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="strap"
+        )
+
+        activity_source_service.set_primary_source(target.id, "heartrate", attach.source_id)
+
+        for record in target.records.all():
+            self.assertEqual(record.heartrate, 150)
+        target.refresh_from_db()
+        self.assertEqual(target.hr_source, "strap")
+
+        original_snapshot = ActivitySource.objects.exclude(pk=attach.source_id).get(activity=target)
+        self.assertEqual(original_snapshot.source_kind, "")  # never tagged - it was the original primary
+
+        activity_source_service.set_primary_source(target.id, "heartrate", original_snapshot.id)
+        for record in target.records.all():
+            self.assertEqual(record.heartrate, 140)
+        # hr_source is left as "strap", not cleared - the swapped-in source was never tagged, and
+        # _swap_primary_stream never nulls out an existing value for an untagged source.
+        target.refresh_from_db()
+        self.assertEqual(target.hr_source, "strap")
+
+    def test_list_sources_reports_is_primary_for_heartrate_against_activity_hr_source(self):
+        athlete = self._athlete("source-list-is-primary-heartrate@example.cc")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records(target, 5, "heartrate", 140)
+        self._add_field_records(source, 5, "heartrate", 150)
+        attach = activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="strap"
+        )
+
+        summaries = activity_source_service.list_sources(target.id)
+        self.assertEqual(len(summaries), 1)
+        self.assertFalse(summaries[0].is_primary)
+
+        activity_source_service.set_primary_source(target.id, "heartrate", attach.source_id)
+
+        summaries_after_swap = activity_source_service.list_sources(target.id)
+        matching = next(s for s in summaries_after_swap if s.id == attach.source_id)
+        self.assertTrue(matching.is_primary)
+
+    def test_swap_primary_stream_rejects_a_field_outside_the_whitelist(self):
+        athlete = self._athlete("source-swap-invalid-field@example.cc")
+        activity = self._activity(athlete, "Edge 530", name="Activity")
+        self._add_records(activity, 5, power=200)
+
+        with self.assertRaises(ValidationError):
+            activity_source_service.set_primary_source(activity.id, "altitude", "src_doesnotexist")
+
+    def test_merge_endpoint_with_attach_copy_mode_and_heartrate_field_creates_a_source(self):
+        athlete = self._athlete("source-rest-attach-heartrate@example.cc", hr_source="strap")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_field_records(target, 10, "heartrate", 140)
+        self._add_field_records(source, 10, "heartrate", 150)
+
+        response = _bearer_client(athlete).post(
+            f"/v1/activities/{target.id}/merge",
+            {
+                "source_id": source.id,
+                "fields": ["heartrate"],
+                "null_policy": "keep_original",
+                "offset_seconds": 0,
+                "preview": False,
+                "copy_mode": "attach",
+                "source_kind": "strap",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIsNone(body["merge_id"])
+        self.assertIsNotNone(body["attached_source_id"])
+        target.refresh_from_db()
+        self.assertEqual(target.hr_source, "strap")
+
+    def test_merge_endpoint_with_attach_copy_mode_rejects_a_field_outside_the_whitelist(self):
+        athlete = self._athlete("source-rest-attach-bad-field@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+
+        response = _bearer_client(athlete).post(
+            f"/v1/activities/{target.id}/merge",
+            {
+                "source_id": source.id,
+                "fields": ["altitude"],
+                "null_policy": "keep_original",
+                "offset_seconds": 0,
+                "preview": False,
+                "copy_mode": "attach",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)

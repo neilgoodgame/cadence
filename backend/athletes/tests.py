@@ -1985,9 +1985,9 @@ class RunningPowerSourceRecomputeJobViewTests(TestCase):
         self.assertEqual([r.power for r in mismatched_with_alternate.records.order_by("t")], [250, 251, 252, 253, 254])
         # The original stryd primary was snapshotted, tagged with its own kind.
         stryd_snapshot = ActivitySource.objects.exclude(
-            pk=ActivitySource.objects.get(activity=mismatched_with_alternate, running_power_kind="native").pk
+            pk=ActivitySource.objects.get(activity=mismatched_with_alternate, source_kind="native").pk
         ).get(activity=mismatched_with_alternate)
-        self.assertEqual(stryd_snapshot.running_power_kind, "stryd")
+        self.assertEqual(stryd_snapshot.source_kind, "stryd")
 
         mismatched_without_alternate.refresh_from_db()
         self.assertEqual(mismatched_without_alternate.power_source, "stryd")  # untouched - nothing to swap to

@@ -157,17 +157,27 @@ public class ActivityMergeService {
 				MergeCopyMode.OVERWRITE);
 	}
 
-	/** Issue #503 (phase 1): {@code copyMode=ATTACH} delegates to {@link ActivitySourceService}
-	 * instead of {@link ActivityMergeApplyService} - target's existing Record rows are never
-	 * touched, so there's no rollback-signal trick needed for attach's own preview (see {@link
-	 * ActivitySourceService#attachPowerStream}'s own Javadoc). Still runs inside this method's
-	 * own {@code REQUIRES_NEW} transaction (same reasoning as the class Javadoc's REQUIRES_NEW
-	 * note - a caller like {@code ActivityOverlapDetectionService} is itself transactional). */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public MergeResult runMerge(String targetId, String sourceId, List<String> fields, NullPolicy nullPolicy,
 			Integer offsetSecondsOverride, boolean hideSource, boolean preview, MergeCopyMode copyMode) {
+		return runMerge(targetId, sourceId, fields, nullPolicy, offsetSecondsOverride, hideSource, preview, copyMode,
+				null);
+	}
+
+	/** Issue #503 (phase 1, {@code sourceKind} added phase 3): {@code copyMode=ATTACH} delegates
+	 * to {@link ActivitySourceService} instead of {@link ActivityMergeApplyService} - target's
+	 * existing Record rows are never touched, so there's no rollback-signal trick needed for
+	 * attach's own preview (see {@link ActivitySourceService#attachStream}'s own Javadoc). Still
+	 * runs inside this method's own {@code REQUIRES_NEW} transaction (same reasoning as the class
+	 * Javadoc's REQUIRES_NEW note - a caller like {@code ActivityOverlapDetectionService} is
+	 * itself transactional). {@code sourceKind} is only meaningful for {@code fields=["heartrate"]}
+	 * or {@code ["cadence"]} - ignored for {@code ["power"]}. */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public MergeResult runMerge(String targetId, String sourceId, List<String> fields, NullPolicy nullPolicy,
+			Integer offsetSecondsOverride, boolean hideSource, boolean preview, MergeCopyMode copyMode,
+			String sourceKind) {
 		if (copyMode == MergeCopyMode.ATTACH) {
-			return runAttach(targetId, sourceId, fields, offsetSecondsOverride, hideSource, preview);
+			return runAttach(targetId, sourceId, fields, offsetSecondsOverride, hideSource, preview, sourceKind);
 		}
 		Activity target = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
@@ -248,11 +258,15 @@ public class ActivityMergeService {
 				merge.getCreatedAt());
 	}
 
+	private static final List<String> ATTACHABLE_FIELDS = List.of("power", "heartrate", "cadence");
+
 	private MergeResult runAttach(String targetId, String sourceId, List<String> fields, Integer offsetSecondsOverride,
-			boolean hideSource, boolean preview) {
-		if (!List.of("power").equals(fields)) {
-			throw new ValidationException("copyMode=attach only supports fields=[\"power\"] in this release.", "fields");
+			boolean hideSource, boolean preview, String sourceKind) {
+		if (fields.size() != 1 || !ATTACHABLE_FIELDS.contains(fields.get(0))) {
+			throw new ValidationException(
+					"copyMode=attach only supports a single field of power, heartrate, or cadence.", "fields");
 		}
+		String field = fields.get(0);
 		Activity target = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
 		Activity source = activityRepository.findById(sourceId)
@@ -260,7 +274,8 @@ public class ActivityMergeService {
 		validate(target, source, fields, hideSource);
 
 		ActivitySummary before = summarize(target);
-		ActivitySourceService.AttachResult attach = sourceService.attachPowerStream(targetId, sourceId, offsetSecondsOverride, preview);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(targetId, sourceId, field,
+				offsetSecondsOverride, preview, sourceKind);
 
 		if (!preview && hideSource) {
 			source.setPrimaryActivity(target);
@@ -272,7 +287,7 @@ public class ActivityMergeService {
 				.orElseThrow(() -> new NotFoundException("No such activity."));
 		ActivitySummary after = attach.becamePrimary() ? summarize(reloadedTarget) : before;
 
-		Map<String, FieldRewriteCounts> counts = Map.of("power",
+		Map<String, FieldRewriteCounts> counts = Map.of(field,
 				new FieldRewriteCounts(attach.copied(), 0, attach.nulled()));
 		return new MergeResult(null, attach.offsetSeconds(), attach.alignmentScore(), counts, before, after,
 				!preview && hideSource, attach.sourceId());

@@ -11,7 +11,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 
 /**
- * Issue #503 (phase 1): a non-primary recorded stream kept alongside an activity - e.g. the
+ * Issue #503 (phases 1-3): a non-primary recorded stream kept alongside an activity - e.g. the
  * Garmin/pedal power copy of a ride whose Zwift/Kickr copy is primary. The primary stream itself
  * is never represented here - it stays in {@link Record}'s own columns, so every existing
  * calculator/curve/best-effort/threshold path is unchanged. One row per stream (not one row per
@@ -30,23 +30,28 @@ public class ActivitySource extends PrefixedIdEntity {
 
 	private String device;
 
-	/** What field this source provides a stream for, e.g. "power" - phase 1 only ever creates
-	 * "power" sources; stored as a plain string (not a fields-whitelist enum) for the same
-	 * reason merge's own `fields` list is, so a later phase (HR, cadence) needs no schema change. */
+	/** What field this source provides a stream for - "power", "heartrate", or "cadence" as of
+	 * phase 3; stored as a plain string (not a fields-whitelist enum) for the same reason merge's
+	 * own `fields` list is, so a later phase needs no schema change. */
 	@Column(name = "sensor_kind", nullable = false)
 	private String sensorKind;
 
 	@Column(nullable = false)
 	private ActivitySourceOrigin origin;
 
-	/** Issue #503 (phase 2): for a {@code sensorKind == "power"} source on a RUN activity only -
-	 * which running-power candidate ({@code RunningPowerSource.NATIVE}/{@code STRYD}'s own wire
-	 * value) this stream holds. Null for every bike-sourced row (bike distinguishes pedals from
-	 * trainer by {@link #device} via {@code ActivitySourceService#classify} instead - a run's two
-	 * candidates come from the *same* device, so there's nothing to classify by device string)
-	 * and for any non-power sensorKind. */
-	@Column(name = "running_power_kind")
-	private String runningPowerKind;
+	/** Issue #503 (phase 3, generalized from phase 2's running-power-only {@code
+	 * runningPowerKind}): a free-form tag on what kind of sensor this stream came from, meaning
+	 * depends on {@link #sensorKind} - {@code native}/{@code stryd} for a running power source
+	 * (set automatically at parse time, see {@code ActivitySourceService
+	 * #createParseTimeRunningPowerSource}), {@code strap}/{@code wrist} for heartrate, {@code
+	 * pedals}/{@code trainer}/{@code watch} for cadence (both manually supplied by the athlete at
+	 * attach time, see {@code ActivitySourceService#attachStream} - there's no automatic
+	 * classification signal for either). Null for a bike power source (which distinguishes
+	 * pedals/trainer by {@link #device} via {@code ActivitySourceService#classify} instead - a
+	 * run's two candidates come from the *same* device, so there's nothing to classify by device
+	 * string there) and for any source never tagged at attach/parse time. */
+	@Column(name = "source_kind")
+	private String sourceKind;
 
 	@Column(nullable = false)
 	private Instant createdAt;
@@ -107,11 +112,11 @@ public class ActivitySource extends PrefixedIdEntity {
 		return createdAt;
 	}
 
-	public String getRunningPowerKind() {
-		return runningPowerKind;
+	public String getSourceKind() {
+		return sourceKind;
 	}
 
-	public void setRunningPowerKind(String runningPowerKind) {
-		this.runningPowerKind = runningPowerKind;
+	public void setSourceKind(String sourceKind) {
+		this.sourceKind = sourceKind;
 	}
 }

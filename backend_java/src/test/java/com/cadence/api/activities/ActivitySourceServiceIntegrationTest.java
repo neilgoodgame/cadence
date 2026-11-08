@@ -1,10 +1,13 @@
 package com.cadence.api.activities;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.athletes.BikePowerSource;
+import com.cadence.api.athletes.HrSource;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -64,6 +67,19 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		recordRepository.saveAll(records);
 	}
 
+	private void addFieldRecords(Activity activity, int count, String field, int value) {
+		List<Record> records = new ArrayList<>();
+		for (int t = 0; t < count; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), START.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			ActivityMergeApplyService.setRecordFieldValue(record, field, value);
+			records.add(record);
+		}
+		recordRepository.saveAll(records);
+	}
+
 	private Activity newRunActivity(User athlete, RunningPowerSource powerSource) {
 		Activity activity = new Activity();
 		activity.setAthlete(athlete);
@@ -82,7 +98,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		addRecords(target, 10, 200);
 		addRecords(source, 10, 300);
 
-		ActivitySourceService.AttachResult result = sourceService.attachPowerStream(target.getId(), source.getId(), 0, false);
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
 
 		assertThat(result.sourceId()).isNotNull();
 		assertThat(result.copied()).isEqualTo(10);
@@ -116,7 +132,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		addRecords(target, 10, 200);
 		addRecords(source, 10, 300);
 
-		ActivitySourceService.AttachResult result = sourceService.attachPowerStream(target.getId(), source.getId(), 0, false);
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
 
 		assertThat(result.becamePrimary()).isTrue();
 		List<Record> targetRows = recordRepository.findByActivityIdOrderByT(target.getId());
@@ -132,7 +148,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		Activity source = newActivity(athlete, "Source", "Zwift");
 		addRecords(target, 10, 200);
 		addRecords(source, 10, 300);
-		ActivitySourceService.AttachResult attach = sourceService.attachPowerStream(target.getId(), source.getId(), 0, false);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
 		assertThat(attach.becamePrimary()).isFalse(); // ANY preference by default - no auto-swap yet
 
 		sourceService.setPrimarySource(target.getId(), "power", attach.sourceId());
@@ -164,7 +180,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		Activity source = newActivity(athlete, "Source", "Zwift"); // classifies TRAINER
 		addRecords(target, 10, 200);
 		addRecords(source, 10, 300);
-		ActivitySourceService.AttachResult attach = sourceService.attachPowerStream(target.getId(), source.getId(), 0, false);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
 
 		List<ActivitySourceService.SourceSummary> summaries = sourceService.listSources(target.getId());
 
@@ -197,7 +213,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		ActivitySource source = sources.get(0);
 		assertThat(source.getOrigin()).isEqualTo(ActivitySourceOrigin.FILE);
 		assertThat(source.getSensorKind()).isEqualTo("power");
-		assertThat(source.getRunningPowerKind()).isEqualTo("native");
+		assertThat(source.getSourceKind()).isEqualTo("native");
 
 		ActivityStream stream = streamRepository
 				.findByActivityIdAndFieldAndSourceId(activity.getId(), "power", source.getId()).orElseThrow();
@@ -244,7 +260,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		ActivitySource strydSnapshot = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId()).stream()
 				.filter(s -> !s.getId().equals(nativeSource.getId()))
 				.findFirst().orElseThrow();
-		assertThat(strydSnapshot.getRunningPowerKind()).isEqualTo("stryd");
+		assertThat(strydSnapshot.getSourceKind()).isEqualTo("stryd");
 
 		// And it's reversible, the same as bike's.
 		sourceService.setPrimarySource(activity.getId(), "power", strydSnapshot.getId());
@@ -273,5 +289,142 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		List<ActivitySourceService.SourceSummary> summariesAfterSwap = sourceService.listSources(activity.getId());
 		assertThat(summariesAfterSwap).filteredOn(s -> s.id().equals(nativeSource.getId()))
 				.singleElement().satisfies(s -> assertThat(s.isPrimary()).isTrue());
+	}
+
+	@Test
+	void attachHeartrateAutoSwapsWhenSourceKindMatchesThePreference() {
+		User athlete = newAthlete("source-attach-heartrate-auto-swap@example.cc");
+		athlete.setHrSource(HrSource.STRAP);
+		athlete = userRepository.save(athlete);
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addFieldRecords(target, 10, "heartrate", 140);
+		addFieldRecords(source, 10, "heartrate", 150);
+
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(),
+				"heartrate", 0, false, "strap");
+
+		assertThat(result.becamePrimary()).isTrue();
+		for (Record record : recordRepository.findByActivityIdOrderByT(target.getId())) {
+			assertThat(record.getHeartrate()).isEqualTo(150);
+		}
+		Activity reloaded = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(reloaded.getHrSource()).isEqualTo(HrSource.STRAP);
+	}
+
+	@Test
+	void attachHeartrateWithNoSourceKindNeverAutoSwaps() {
+		User athlete = newAthlete("source-attach-heartrate-no-kind@example.cc");
+		athlete.setHrSource(HrSource.STRAP);
+		athlete = userRepository.save(athlete);
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addFieldRecords(target, 10, "heartrate", 140);
+		addFieldRecords(source, 10, "heartrate", 150);
+
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(),
+				"heartrate", 0, false, null);
+
+		assertThat(result.becamePrimary()).isFalse();
+		for (Record record : recordRepository.findByActivityIdOrderByT(target.getId())) {
+			assertThat(record.getHeartrate()).isEqualTo(140);
+		}
+	}
+
+	@Test
+	void attachCadenceCreatesANonPrimarySourceWithoutTouchingTheTargetsPrimary() {
+		User athlete = newAthlete("source-attach-cadence-no-touch@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Favero Assioma");
+		addFieldRecords(target, 10, "cadence", 85);
+		addFieldRecords(source, 10, "cadence", 88);
+
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(),
+				"cadence", 0, false, "pedals");
+
+		assertThat(result.sourceId()).isNotNull();
+		assertThat(result.becamePrimary()).isFalse(); // ANY preference by default
+		for (Record record : recordRepository.findByActivityIdOrderByT(target.getId())) {
+			assertThat(record.getCadence()).isEqualTo(85);
+		}
+		ActivitySource savedSource = sourceRepository.findById(result.sourceId()).orElseThrow();
+		assertThat(savedSource.getSensorKind()).isEqualTo("cadence");
+		assertThat(savedSource.getSourceKind()).isEqualTo("pedals");
+	}
+
+	@Test
+	void attachRejectsAnInvalidSourceKindForTheField() {
+		User athlete = newAthlete("source-attach-invalid-kind@example.cc");
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addFieldRecords(target, 10, "heartrate", 140);
+		addFieldRecords(source, 10, "heartrate", 150);
+
+		assertThatThrownBy(() -> sourceService.attachStream(target.getId(), source.getId(), "heartrate", 0, false,
+				"trainer")).isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void setPrimarySourceGeneralizesToHeartrateAndIsReversible() {
+		User athlete = newAthlete("source-set-primary-heartrate@example.cc");
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addFieldRecords(target, 5, "heartrate", 140);
+		addFieldRecords(source, 5, "heartrate", 150);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"heartrate", 0, false, "strap");
+
+		sourceService.setPrimarySource(target.getId(), "heartrate", attach.sourceId());
+
+		for (Record record : recordRepository.findByActivityIdOrderByT(target.getId())) {
+			assertThat(record.getHeartrate()).isEqualTo(150);
+		}
+		Activity reloaded = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(reloaded.getHrSource()).isEqualTo(HrSource.STRAP);
+
+		ActivitySource originalSnapshot = sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())
+				.stream().filter(s -> !s.getId().equals(attach.sourceId())).findFirst().orElseThrow();
+		assertThat(originalSnapshot.getSourceKind()).isNull(); // never tagged - it was the original primary
+
+		sourceService.setPrimarySource(target.getId(), "heartrate", originalSnapshot.getId());
+		for (Record record : recordRepository.findByActivityIdOrderByT(target.getId())) {
+			assertThat(record.getHeartrate()).isEqualTo(140);
+		}
+		// hrSource is left as STRAP, not cleared - the swapped-in source was never tagged, and
+		// swapPrimaryStream never nulls out an existing value for an untagged source (see its
+		// own Javadoc).
+		Activity reloadedAfterSwapBack = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(reloadedAfterSwapBack.getHrSource()).isEqualTo(HrSource.STRAP);
+	}
+
+	@Test
+	void listSourcesReportsIsPrimaryForHeartrateAgainstActivityHrSource() {
+		User athlete = newAthlete("source-list-is-primary-heartrate@example.cc");
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addFieldRecords(target, 5, "heartrate", 140);
+		addFieldRecords(source, 5, "heartrate", 150);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"heartrate", 0, false, "strap");
+
+		List<ActivitySourceService.SourceSummary> summaries = sourceService.listSources(target.getId());
+		assertThat(summaries).hasSize(1);
+		assertThat(summaries.get(0).isPrimary()).isFalse();
+
+		sourceService.setPrimarySource(target.getId(), "heartrate", attach.sourceId());
+
+		List<ActivitySourceService.SourceSummary> summariesAfterSwap = sourceService.listSources(target.getId());
+		assertThat(summariesAfterSwap).filteredOn(s -> s.id().equals(attach.sourceId()))
+				.singleElement().satisfies(s -> assertThat(s.isPrimary()).isTrue());
+	}
+
+	@Test
+	void swapPrimaryStreamRejectsAFieldOutsideTheWhitelist() {
+		User athlete = newAthlete("source-swap-invalid-field@example.cc");
+		Activity activity = newActivity(athlete, "Activity", "Edge 530");
+		addRecords(activity, 5, 200);
+
+		assertThatThrownBy(() -> sourceService.setPrimarySource(activity.getId(), "altitude", "src_doesnotexist"))
+				.isInstanceOf(ValidationException.class);
 	}
 }

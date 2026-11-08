@@ -52,6 +52,18 @@ class Activity(PrefixedIDModel):
         ("pedals", "Pedals"),
         ("trainer", "Trainer"),
     ]
+    # Issue #503 (phase 3): HR/cadence equivalents of bike_power_source above - same "null until
+    # a manual swap" shape, but there's no classify()-by-device fallback for either: the tag
+    # only ever exists if the athlete supplied one at attach time.
+    HR_SOURCE_CHOICES = [
+        ("strap", "Strap"),
+        ("wrist", "Wrist"),
+    ]
+    CADENCE_SOURCE_CHOICES = [
+        ("pedals", "Pedals"),
+        ("trainer", "Trainer"),
+        ("watch", "Watch"),
+    ]
 
     athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="activities")
     sport = models.CharField(max_length=10, choices=SPORT_CHOICES)
@@ -74,6 +86,8 @@ class Activity(PrefixedIDModel):
     distance_source = models.CharField(max_length=10, choices=DISTANCE_SOURCE_CHOICES, default="gps")
     power_source = models.CharField(max_length=10, choices=POWER_SOURCE_CHOICES, blank=True, default="")
     bike_power_source = models.CharField(max_length=10, choices=BIKE_POWER_SOURCE_CHOICES, blank=True, default="")
+    hr_source = models.CharField(max_length=10, choices=HR_SOURCE_CHOICES, blank=True, default="")
+    cadence_source = models.CharField(max_length=10, choices=CADENCE_SOURCE_CHOICES, blank=True, default="")
     avg_power = models.IntegerField(null=True, blank=True)
     norm_power = models.IntegerField(null=True, blank=True)
     intensity = models.FloatField(null=True, blank=True)
@@ -602,15 +616,15 @@ class MergeRule(PrefixedIDModel):
 
 
 class ActivitySource(PrefixedIDModel):
-    """Issue #503 (phases 1-2): a non-primary recorded stream kept alongside an activity - e.g.
+    """Issue #503 (phases 1-3): a non-primary recorded stream kept alongside an activity - e.g.
     the Garmin/pedal power copy of a ride whose Zwift/Kickr copy is primary. The primary stream
     itself is never represented here - it stays in Record's own columns, so every existing
     calculator/curve/best-effort/threshold path is unchanged. One row per stream (not one row per
     second) to keep storage small - see the issue's own sizing rationale. Mirrors backend_java's
     ActivitySource entity - keep the two in sync.
 
-    origin="attached" is one added via POST .../merge's attach copy_mode (bike only). origin="file"
-    covers two cases, both from the activity's own single upload rather than a second activity: a
+    origin="attached" is one added via POST .../merge's attach copy_mode. origin="file" covers
+    two cases, both from the activity's own single upload rather than a second activity: a
     former primary snapshotted lazily by activity_source_service.set_primary_source the first
     time it's swapped away (phase 1), and - for a run whose FIT file carries both a native and a
     Stryd power reading - the non-preferred candidate kept at parse time (phase 2, see
@@ -623,25 +637,26 @@ class ActivitySource(PrefixedIDModel):
         ("file", "File"),
         ("attached", "Attached"),
     ]
-    RUNNING_POWER_KIND_CHOICES = [
-        ("stryd", "Stryd"),
-        ("native", "Native"),
-    ]
 
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="sources")
     label = models.CharField(max_length=200, blank=True, default="")
     device = models.CharField(max_length=100, blank=True, default="")
-    # Which field this source provides a stream for, e.g. "power" - phase 1/2 only ever create
-    # "power" sources; stored as a plain string (not a fields-whitelist choice) for the same
-    # reason merge's own `fields` list is, so a later phase (HR, cadence) needs no schema change.
+    # Which field this source provides a stream for - "power", "heartrate", or "cadence" as of
+    # phase 3; stored as a plain string (not a fields-whitelist choice) for the same reason
+    # merge's own `fields` list is, so a later phase needs no schema change.
     sensor_kind = models.CharField(max_length=20)
     origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES)
-    # Issue #503 (phase 2): for a sensor_kind="power" source on a RUN activity only - which
-    # running-power candidate (native/stryd) this stream holds. Blank for every bike-sourced row
-    # (bike distinguishes pedals from trainer by `device` via activity_source_service.classify
-    # instead - a run's two candidates come from the *same* device, so there's nothing to
-    # classify by device string) and for any non-power sensor_kind.
-    running_power_kind = models.CharField(max_length=10, choices=RUNNING_POWER_KIND_CHOICES, blank=True, default="")
+    # Issue #503 (phase 3, generalized from phase 2's running_power_kind): a free-form tag on
+    # what kind of sensor this stream came from, meaning depends on sensor_kind - "native"/
+    # "stryd" for a running power source (set automatically at parse time), "strap"/"wrist" for
+    # heartrate, "pedals"/"trainer"/"watch" for cadence (both manually supplied by the athlete at
+    # attach time - see activity_source_service.attach_stream - there's no automatic
+    # classification signal for either). Blank for a bike power source (which distinguishes
+    # pedals/trainer by `device` via activity_source_service.classify instead - a run's two
+    # candidates come from the *same* device, so there's nothing to classify by device string
+    # there) and for any source never tagged. No `choices=` - the valid value set depends on the
+    # owning row's sensor_kind, which a single CharField can't express cleanly.
+    source_kind = models.CharField(max_length=10, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

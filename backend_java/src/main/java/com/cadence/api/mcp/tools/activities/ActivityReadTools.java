@@ -212,15 +212,16 @@ public class ActivityReadTools {
 		return mergeService.getActiveMerge(activityId);
 	}
 
-	@McpTool(name = "list_activity_sources", description = "Issue #503 (phase 1): every non-primary "
-			+ "stream kept alongside activityId - e.g. a Garmin/pedal power recording attached onto "
-			+ "a Zwift ride without overwriting the Zwift copy (merge_activities' attach copy mode). "
-			+ "The activity's own current primary stream is never listed here - it's whatever's "
-			+ "already on the activity itself (get_activity); isPrimary on a listed source instead "
-			+ "tells you whether that source's own device classification matches the current "
-			+ "primary, i.e. whether set_primary_source has nothing to do for it. Phase 1 only ever "
-			+ "lists power sources. Returns an empty list if nothing has ever been attached or "
-			+ "swapped for this activity.",
+	@McpTool(name = "list_activity_sources", description = "Issue #503 (phases 1-3): every "
+			+ "non-primary stream kept alongside activityId - power, heartrate, or cadence - e.g. a "
+			+ "Garmin/pedal power recording attached onto a Zwift ride without overwriting the Zwift "
+			+ "copy (merge_activities' attach copy mode). The activity's own current primary stream "
+			+ "is never listed here - it's whatever's already on the activity itself (get_activity); "
+			+ "isPrimary on a listed source instead tells you whether that source matches the "
+			+ "current primary (by device classification for a bike power source, by its own "
+			+ "sourceKind tag for heartrate/cadence/run-power sources), i.e. whether "
+			+ "set_primary_source has nothing to do for it. Returns an empty list if nothing has "
+			+ "ever been attached or swapped for this activity.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public List<ActivitySourceService.SourceSummary> listActivitySources(

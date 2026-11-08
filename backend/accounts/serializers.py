@@ -43,6 +43,8 @@ class UserSerializer(serializers.ModelSerializer):
             "ftp_calculation_method",
             "running_power_source",
             "bike_power_source",
+            "hr_source",
+            "cadence_source",
             "overlap_handling",
             "rename_matched_activities",
             "append_match_date_to_name",

@@ -23,8 +23,9 @@ NullPolicy = Literal["overwrite", "keep_original"]
 # place, per null_policy - apply_merge_fields above. "attach" doesn't touch the target's existing
 # primary stream at all; it keeps the source's stream alongside as a non-primary ActivitySource/
 # ActivityStream, which set_primary_source can promote later - see
-# activity_source_service.attach_power_stream. Phase 1 only supports "attach" for the "power"
-# field; any other field with copy_mode="attach" is rejected.
+# activity_source_service.attach_stream. "attach" supports exactly one field at a time, from
+# "power"/"heartrate"/"cadence" (issue #503 phase 3); any other field, or more than one at
+# once, is rejected.
 CopyMode = Literal["overwrite", "attach"]
 
 # Per-second channels on Record - copying any of these rewrites the target's existing rows

@@ -92,7 +92,7 @@ public class RunningPowerSourceRecomputeService {
 	private Boolean swapOne(String activityId, RunningPowerSource preference) {
 		return tx.execute(status -> {
 			Optional<ActivityStream> replacement = streamRepository
-					.findTopByActivity_IdAndFieldAndSource_RunningPowerKindOrderBySource_CreatedAtDesc(
+					.findTopByActivity_IdAndFieldAndSource_SourceKindOrderBySource_CreatedAtDesc(
 							activityId, "power", preference.wireValue());
 			if (replacement.isEmpty()) {
 				return false;
