@@ -481,6 +481,24 @@ class ActivityElevation(models.Model):
         return f"{self.activity_id} elevation ({self.elevation_quality})"
 
 
+class ActivityIntensityHistogram(models.Model):
+    """Per-activity power/heart-rate histograms for the threshold-decay load term (issue #485,
+    docs/plans/threshold-decay.md section 2.3) - seconds spent at each whole watt of 30s-smoothed
+    power, and at each whole bpm of heart rate. Its own table, same reasoning as
+    ActivityElevation: only the decay load calculation needs these, so they shouldn't bloat every
+    Activity row/query. No row yet means it hasn't been built, which
+    activities.intensity_histogram.ensure_histogram does on first read."""
+
+    activity = models.OneToOneField(
+        Activity, on_delete=models.CASCADE, primary_key=True, related_name="intensity_histogram"
+    )
+    power_30s = models.JSONField(null=True, blank=True)
+    heartrate = models.JSONField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"{self.activity_id} intensity histogram"
+
+
 class DuplicateResolutionBatch(PrefixedIDModel):
     """Issue #498's MCP resolve_duplicates_batch(..., dry_run=False) - one call that actually
     applied an action to many overlap pairs at once, recorded so undo_batch can reverse the

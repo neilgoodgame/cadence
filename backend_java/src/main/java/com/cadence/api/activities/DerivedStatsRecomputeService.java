@@ -47,17 +47,20 @@ public class DerivedStatsRecomputeService {
 	private final ZoneService zoneService;
 	private final ActivityDecouplingService decouplingService;
 	private final TssRecomputeService tssRecomputeService;
+	private final ActivityIntensityHistogramService histogramService;
 	private final TransactionTemplate tx;
 
 	public DerivedStatsRecomputeService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			UserRepository userRepository, ZoneService zoneService, ActivityDecouplingService decouplingService,
-			TssRecomputeService tssRecomputeService, PlatformTransactionManager tm) {
+			TssRecomputeService tssRecomputeService, ActivityIntensityHistogramService histogramService,
+			PlatformTransactionManager tm) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.userRepository = userRepository;
 		this.zoneService = zoneService;
 		this.decouplingService = decouplingService;
 		this.tssRecomputeService = tssRecomputeService;
+		this.histogramService = histogramService;
 		this.tx = new TransactionTemplate(tm);
 	}
 
@@ -250,6 +253,12 @@ public class DerivedStatsRecomputeService {
 		}
 
 		List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
+
+		// Its own table, not an Activity field - no "changed" bookkeeping needed beyond
+		// rebuildHistogram's own save. powerSeries above is already sanitized and gated for
+		// running-power-source exclusion - the same series normPower just used.
+		histogramService.rebuildHistogram(activity, powerSeries, hrSeries);
+
 		List<Zone> hrZones = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE).getZones();
 		Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
 		Map<String, Integer> hrSecondsPerZone = TssCalculator.secondsPerZone(hrSeries, hrZones, hrThreshold);
