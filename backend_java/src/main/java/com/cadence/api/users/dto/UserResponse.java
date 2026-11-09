@@ -1,6 +1,8 @@
 package com.cadence.api.users.dto;
 
+import com.cadence.api.athletes.CadenceSource;
 import com.cadence.api.athletes.FtpCalculationMethod;
+import com.cadence.api.athletes.HrSource;
 import com.cadence.api.athletes.LapSource;
 import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.RunningPowerSource;
@@ -48,5 +50,9 @@ public record UserResponse(
 		int raceBlockWeeks,
 		int raceKeySessionCap,
 		CourseSections.Settings courseSectionSettings,
-		Map<String, Integer> raceBlockWeekDefaults) {
+		Map<String, Integer> raceBlockWeekDefaults,
+		// Issue #503 phase 3. Appended at the end - no positional UserResponse(...) construction
+		// exists anywhere (confirmed by repo-wide grep), so this is a safe append regardless.
+		HrSource hrSource,
+		CadenceSource cadenceSource) {
 }

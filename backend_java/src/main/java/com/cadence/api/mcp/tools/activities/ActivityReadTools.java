@@ -4,6 +4,7 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityMergeService;
 import com.cadence.api.activities.ActivityOverlapService;
 import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.ActivitySourceService;
 import com.cadence.api.activities.ActivitySplitsService;
 import com.cadence.api.activities.Environment;
 import com.cadence.api.activities.LapMapper;
@@ -50,13 +51,14 @@ public class ActivityReadTools {
 	private final ActivityOverlapService overlapService;
 	private final ActivityMergeService mergeService;
 	private final MergeRuleService mergeRuleService;
+	private final ActivitySourceService sourceService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityReadTools(ActivityService activityService, LapRepository lapRepository, LapMapper lapMapper,
 			TagService tagService, ActivitySplitsService splitsService, ActivityOverlapService overlapService,
-			ActivityMergeService mergeService, MergeRuleService mergeRuleService, AccessGuard accessGuard,
-			McpToolAuthorizer authorizer) {
+			ActivityMergeService mergeService, MergeRuleService mergeRuleService, ActivitySourceService sourceService,
+			AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
 		this.lapMapper = lapMapper;
@@ -65,6 +67,7 @@ public class ActivityReadTools {
 		this.overlapService = overlapService;
 		this.mergeService = mergeService;
 		this.mergeRuleService = mergeRuleService;
+		this.sourceService = sourceService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -207,6 +210,55 @@ public class ActivityReadTools {
 		Activity activity = activityService.getActivity(activityId);
 		accessGuard.requireRead(activity.getAthlete().getId());
 		return mergeService.getActiveMerge(activityId);
+	}
+
+	@McpTool(name = "list_activity_sources", description = "Issue #503 (phases 1-3): every "
+			+ "non-primary stream kept alongside activityId - power, heartrate, or cadence - e.g. a "
+			+ "Garmin/pedal power recording attached onto a Zwift ride without overwriting the Zwift "
+			+ "copy (merge_activities' attach copy mode). The activity's own current primary stream "
+			+ "is never listed here - it's whatever's already on the activity itself (get_activity); "
+			+ "isPrimary on a listed source instead tells you whether that source matches the "
+			+ "current primary (by device classification for a bike power source, by its own "
+			+ "sourceKind tag for heartrate/cadence/run-power sources), i.e. whether "
+			+ "set_primary_source has nothing to do for it. Returns an empty list if nothing has "
+			+ "ever been attached or swapped for this activity.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public List<ActivitySourceService.SourceSummary> listActivitySources(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return sourceService.listSources(activityId);
+	}
+
+	@McpTool(name = "compare_streams", description = "Issue #503 (phase 4): agreement statistics "
+			+ "between two of activityId's stored streams for field - bias (mean of b minus a), "
+			+ "MAE, RMSE, Pearson r, Bland-Altman limits of agreement, percent of seconds within a "
+			+ "tolerance (5bpm for heartrate, 3% of a's value otherwise), a residual lag from "
+			+ "cross-correlation (e.g. wrist heartrate trailing a chest strap by a few seconds), "
+			+ "and - for field=power only - a fitted scale+offset between the two meters plus the "
+			+ "ratio of their means (the drivetrain-loss estimate). sourceA/sourceB each accept "
+			+ "either \"primary\" (the activity's current live stream) or a real source id from "
+			+ "list_activity_sources. zoneBreakdown (default false) adds a per-zone bias/MAE/RMSE "
+			+ "breakdown, bucketed by source A's own value against the athlete's zone boundaries - "
+			+ "not supported for field=cadence, which has no zone type.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public ActivitySourceService.CompareStreamsResult compareStreams(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
+			@McpToolParam(description = "'power', 'heartrate', or 'cadence'.", required = true) String field,
+			@McpToolParam(description = "\"primary\" or a source id from list_activity_sources.",
+					required = true) String sourceA,
+			@McpToolParam(description = "\"primary\" or a source id from list_activity_sources; must differ from "
+					+ "sourceA.", required = true) String sourceB,
+			@McpToolParam(description = "Include a per-zone agreement breakdown. Not supported for "
+					+ "field=cadence.", required = false) Boolean zoneBreakdown) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return sourceService.compareStreams(activityId, field, sourceA, sourceB,
+				zoneBreakdown != null && zoneBreakdown);
 	}
 
 	@McpTool(name = "get_merge_rules", description = "Issue #501 (phase 4): the automatic-merge "

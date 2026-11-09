@@ -16,18 +16,20 @@ import { MatchedWorkoutCard } from "./activity-analysis/MatchedWorkoutCard";
 import { MultisportLegs } from "./activity-analysis/MultisportLegs";
 import { MultisportStreamChart } from "./activity-analysis/MultisportStreamChart";
 import { ActivityRouteMap } from "./activity-analysis/RouteMap";
+import { SourcesTab } from "./activity-analysis/SourcesTab";
 import { StatRow } from "./activity-analysis/StatRow";
 import { StatsTab } from "./activity-analysis/StatsTab";
 import { StreamChart } from "./activity-analysis/StreamChart";
 import { ThresholdHistoryIndicator } from "./activity-analysis/ThresholdHistoryIndicator";
 import { ZonesTab } from "./activity-analysis/ZonesTab";
 
-type Tab = "stats" | "laps" | "zones" | "curves";
+type Tab = "stats" | "laps" | "zones" | "curves" | "sources";
 const TABS: { key: Tab; label: string }[] = [
   { key: "stats", label: "Stats" },
   { key: "laps", label: "Laps" },
   { key: "zones", label: "Zones" },
   { key: "curves", label: "Curves" },
+  { key: "sources", label: "Sources" },
 ];
 
 export function ActivityAnalysisScreen() {
@@ -113,6 +115,7 @@ export function ActivityAnalysisScreen() {
         {tab === "laps" && <LapsTab activityId={activity.id} sport={activity.sport} workoutId={activity.workout_id} athlete={user} />}
         {tab === "zones" && <ZonesTab activity={activity} athleteId={user.id} />}
         {tab === "curves" && <CurvesTab activityId={activity.id} />}
+        {tab === "sources" && <SourcesTab activity={activity} />}
       </div>
 
       <CommentsSection activityId={activity.id} />

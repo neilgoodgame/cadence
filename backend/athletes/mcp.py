@@ -376,6 +376,25 @@ class AthleteMCPTools(ScopedMCPToolset):
             "threshold_sanity_pct": athlete.threshold_sanity_pct,
             "ftp_calculation_method": athlete.ftp_calculation_method,
             "running_power_source": athlete.running_power_source,
+            "bike_power_source": athlete.bike_power_source,
+        }
+
+    def get_sensor_preferences(self) -> dict[str, Any]:
+        """Get the authenticated athlete's per-field sensor preferences: running_power_source,
+        bike_power_source, hr_source, cadence_source. Each decides which source becomes primary
+        by default the next time a matching stream is attached (see merge_activities' attach
+        copy_mode/set_primary_source) - "any"/no preference means attach never auto-swaps for
+        that field. Changing a preference never retroactively re-resolves an already-attached
+        activity's primary stream."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        athlete = get_object_or_404(User, pk=athlete_id)
+        return {
+            "running_power_source": athlete.running_power_source,
+            "bike_power_source": athlete.bike_power_source,
+            "hr_source": athlete.hr_source,
+            "cadence_source": athlete.cadence_source,
         }
 
     def get_import_settings(self) -> dict[str, Any]:

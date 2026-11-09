@@ -1166,12 +1166,168 @@ paths:
                   type: boolean
                   default: false
                   description: Compute and return the result without writing anything.
+                copy_mode:
+                  type: string
+                  enum: [overwrite, attach]
+                  default: overwrite
+                  description: >-
+                    Issue #503 (phases 1-3). overwrite (default, the only behavior before this
+                    field existed) rewrites the target's own stream rows per null_policy, as
+                    described above. attach accepts exactly one field at a time - power,
+                    heartrate, or cadence; any other field, or more than one at once, is
+                    rejected - and never touches the target's existing stream for that field;
+                    instead it stores source's own stream alongside it as a new, non-primary
+                    ActivitySource/ActivityStream (see GET .../sources and POST
+                    .../primary-source), so neither recording is lost and either can be made
+                    primary later.
+                source_kind:
+                  type: [string, "null"]
+                  description: >-
+                    Issue #503 (phase 3). Only meaningful with copy_mode=attach and
+                    fields=["heartrate"] or ["cadence"] - an optional, manually-supplied tag for
+                    what kind of sensor source_id's stream came from (strap/wrist for
+                    heartrate; pedals/trainer/watch for cadence). Ignored for fields=["power"],
+                    which still classifies by device instead. When supplied and it matches the
+                    athlete's hr_source/cadence_source preference, the attached stream becomes
+                    primary immediately, same as power's own device-classification auto-swap.
       responses:
         "200":
           description: The merge's outcome.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MergeResult" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/activities/{id}/sources:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Activities]
+      summary: List this activity's non-primary stored streams
+      operationId: listActivitySources
+      description: >-
+        Issue #503 (phases 1-3). Every non-primary stream kept alongside this activity - power,
+        heartrate, or cadence - e.g. a Garmin/pedal power recording attached onto a Zwift ride
+        without overwriting the Zwift copy (POST .../merge's attach copy_mode). The activity's
+        own current primary stream is never listed here - it's whatever's already on the
+        activity itself (GET /v1/activities/{id}); is_primary on a listed source instead tells
+        you whether that source matches the current primary (by device classification for a
+        bike power source, by its own source_kind tag otherwise), i.e. whether POST
+        .../primary-source has nothing to do for it. Returns an empty list if nothing has ever
+        been attached or swapped for this activity.
+      responses:
+        "200":
+          description: The activity's stored non-primary sources, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ActivitySource" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/activities/{id}/streams/compare:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Activities]
+      summary: Agreement statistics between two of this activity's stored streams
+      operationId: compareActivityStreams
+      description: >-
+        Issue #503 (phase 4). Aligns two of this activity's streams for field (already sharing
+        the activity's own timeline, so no re-alignment is needed) and reports bias (mean of b
+        minus a), MAE, RMSE, Pearson r, Bland-Altman limits of agreement, the percent of seconds
+        within a tolerance (5bpm for heartrate, 3% of a's value otherwise), and a residual lag
+        from cross-correlation (e.g. wrist heartrate trailing a chest strap by a few seconds).
+        For field=power only, also fits a scale+offset between the two meters plus the ratio of
+        their means (the drivetrain-loss estimate). a/b each accept either "primary" (the
+        activity's current live stream) or a real source id from GET .../sources - they must
+        differ. zone_breakdown (default false) adds a per-zone bias/MAE/RMSE breakdown, bucketed
+        by a's own value against the athlete's zone boundaries - not supported for
+        field=cadence, which has no zone type. 400 if the two streams have fewer than 30
+        overlapping, non-null seconds.
+      parameters:
+        - name: field
+          in: query
+          required: true
+          schema:
+            type: string
+            description: "'power', 'heartrate', or 'cadence'."
+            example: heartrate
+        - name: a
+          in: query
+          required: true
+          schema:
+            type: string
+            description: "\"primary\" or a source id from GET .../sources."
+        - name: b
+          in: query
+          required: true
+          schema:
+            type: string
+            description: "\"primary\" or a source id from GET .../sources; must differ from a."
+        - name: zone_breakdown
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: The comparison result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamComparison" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/activities/{id}/primary-source:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Swap this activity's primary stream for a stored source
+      operationId: setActivityPrimarySource
+      description: >-
+        Issue #503 (phase 1). Swaps this activity's current primary stream for field with the
+        named source_id's stream (from GET .../sources) - e.g. switching a ride's power back
+        to its Garmin/pedal reading after a Zwift copy became primary. The stream being
+        replaced is itself kept as a new source (never lost), so this can always be reversed by
+        calling it again with the other source's id. Reruns the same recompute cascade a merge
+        triggers, so TSS/FTP-candidate data reflects the new primary immediately. Supports all
+        three fields - power, heartrate, and cadence (generalized in phase 3).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [field, source_id]
+              properties:
+                field:
+                  type: string
+                  description: "'power', 'heartrate', or 'cadence'."
+                  example: power
+                source_id:
+                  type: string
+                  description: The source id to promote (from GET .../sources).
+      responses:
+        "200":
+          description: The activity with its primary stream swapped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Activity" }
         "400":
           $ref: "#/components/responses/BadRequest"
         "403":
@@ -2222,6 +2378,36 @@ paths:
                   data:
                     type: array
                     items: { $ref: "#/components/schemas/ThresholdHistoryEntry" }
+
+  /v1/athletes/{id}/recompute-running-power-source:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    post:
+      tags: [Athletes & zones]
+      summary: Retroactively re-designate every run's primary power source
+      operationId: recomputeRunningPowerSource
+      description: >-
+        Issue #503 (phase 2). PATCHing running_power_source alone never retroactively changes an
+        already-imported run - call this afterward to find every run whose stored power_source
+        no longer matches the athlete's current preference and, for each one that has the other
+        candidate stored (see GET .../sources), swap it to primary and recompute. A run whose
+        file never had the other candidate is left untouched (reported as skipped, not an
+        error). Streamed as Server-Sent Events, same shape as the (undocumented pre-existing)
+        recompute-stats/recompute-threshold-history endpoints: periodic progress events
+        (`{"current":n,"total":n}`), then one final `done` event
+        (`{"swapped":n,"skipped":n}`). 409s if a recompute is already running for this athlete.
+      responses:
+        "200":
+          description: >-
+            text/event-stream - progress events followed by a final `done` event carrying
+            `{"swapped": <integer>, "skipped": <integer>}`.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: A running-power-source recompute is already running for this athlete.
 
   /v1/athletes/{id}/threshold-suggestions:
     parameters:
@@ -4452,8 +4638,46 @@ components:
             Which running-power reading to trust when a FIT file carries both a watch's own
             native estimate (e.g. Garmin Running Power) and a Stryd footpod reading - native
             algorithms tend to read meaningfully higher than Stryd for the same effort, so the
-            non-selected source is completely ignored, not used as a fallback.
+            non-selected source isn't used for the run's own power/stats. Issue #503 (phase 2):
+            both readings are kept (see the ActivitySource schema's source_kind), so
+            changing this value doesn't retroactively apply to already-imported runs by itself -
+            call POST /v1/athletes/{id}/recompute-running-power-source afterward to re-designate
+            every existing run whose stored primary no longer matches.
           example: stryd
+        bike_power_source:
+          type: string
+          enum: [pedals, trainer, any]
+          default: any
+          description: >-
+            Issue #503 (phase 1). Which bike power reading should become primary when a
+            Zwift/trainer and a Garmin/pedal recording of the same ride both exist as sources
+            on an activity (see POST .../merge's attach copy_mode and POST .../primary-source) -
+            consulted at attach time and as an FTP-candidate filter, not re-resolved
+            retroactively for activities already imported. any (default) means no preference -
+            attach never auto-swaps, and FTP candidates aren't filtered by it.
+          example: any
+        hr_source:
+          type: string
+          enum: [strap, wrist, any]
+          default: any
+          description: >-
+            Issue #503 (phase 3). Which heartrate reading should become primary when a chest
+            strap and a wrist-optical recording of the same activity both exist as sources (see
+            POST .../merge's attach copy_mode and POST .../primary-source). Unlike
+            bike_power_source, there's no automatic device classification for heartrate - a FIT
+            file's own heart_rate field carries no record of which physical sensor fed it - so
+            this preference only ever matters when the athlete manually tags source_kind when
+            attaching. any (default) means no preference - attach never auto-swaps.
+          example: any
+        cadence_source:
+          type: string
+          enum: [pedals, trainer, watch, any]
+          default: any
+          description: >-
+            Issue #503 (phase 3). Cadence equivalent of hr_source - pedals, trainer, or watch.
+            Same caveat: no automatic classification, only ever meaningful via a manually
+            supplied source_kind at attach time.
+          example: any
         overlap_handling:
           type: string
           enum: [off, flag, mark, merge]
@@ -4675,11 +4899,28 @@ components:
           type: [string, "null"]
           enum: [stryd, native, null]
           description: >-
-            Which of the two candidate running-power readings this run's power was actually
+            Which of the two candidate running-power readings this run's power is currently
             resolved from (native vs Stryd) - null for every non-FIT/non-run activity, where
             there's no such ambiguity to record. See the athlete's running_power_source
-            preference.
+            preference. Issue #503 (phase 2): no longer fixed at ingest - GET .../sources lists
+            the non-primary candidate (if the file had one), and POST .../primary-source or
+            POST /v1/athletes/{id}/recompute-running-power-source can re-designate which one
+            this reflects.
           example: stryd
+        # Note: bike_power_source (issue #503 phase 1) has no field here yet - a pre-existing
+        # gap, not introduced by phase 3. hr_source/cadence_source below are new in phase 3.
+        hr_source:
+          type: [string, "null"]
+          enum: [strap, wrist, null]
+          description: >-
+            Issue #503 (phase 3). Which tagged source this activity's current primary heartrate
+            stream was last attached/swapped from, if any - null until a manual attach+swap
+            tagged one (there's no parse-time/device-classification equivalent for heartrate).
+            See the athlete's hr_source preference.
+        cadence_source:
+          type: [string, "null"]
+          enum: [pedals, trainer, watch, null]
+          description: Issue #503 (phase 3). Cadence equivalent of hr_source above.
         avg_power: { type: [integer, "null"] }
         norm_power: { type: [integer, "null"] }
         intensity: { type: number, description: Intensity factor, example: 0.78 }
@@ -5582,6 +5823,12 @@ components:
         before: { $ref: "#/components/schemas/MergeActivitySummary" }
         after: { $ref: "#/components/schemas/MergeActivitySummary" }
         source_hidden: { type: boolean }
+        attached_source_id:
+          type: [string, "null"]
+          description: >-
+            Issue #503 (phase 1). Set only when copy_mode=attach actually attached a stream
+            (never on a preview, which attaches nothing). Null for every overwrite merge.
+          example: src_9f2a7c
 
     MergeActivitySummary:
       type: object
@@ -5591,6 +5838,154 @@ components:
         norm_power: { type: [integer, "null"] }
         intensity: { type: [number, "null"] }
         tss: { type: integer }
+
+    ActivitySource:
+      type: object
+      description: >-
+        Issue #503 (phases 1-3). A non-primary stream kept alongside an activity - see GET
+        /v1/activities/{id}/sources. The primary stream itself is never represented here - it
+        stays in the activity's own stream data.
+      properties:
+        id:
+          type: string
+          example: src_9f2a7c
+        label:
+          type: string
+          description: The source activity's own name, at the time it was attached or swapped away.
+        device:
+          type: [string, "null"]
+        sensor_kind:
+          type: string
+          description: Which field this source provides a stream for - power, heartrate, or cadence.
+          example: power
+        origin:
+          type: string
+          enum: [file, attached]
+          description: >-
+            file - either this activity's own original upload, snapshotted the first time its
+            primary stream was swapped away (phase 1), or - for a run whose FIT file carried
+            both a native and a Stryd power reading - the non-preferred candidate kept at parse
+            time (phase 2). attached - added via POST .../merge's attach copy_mode.
+        source_kind:
+          type: [string, "null"]
+          enum: [native, stryd, strap, wrist, pedals, trainer, watch, null]
+          description: >-
+            Issue #503 (phase 3, generalized from phase 2's running_power_kind). A free-form
+            tag on what kind of sensor this stream came from, meaning depends on sensor_kind:
+            native/stryd for a running power source (set automatically at parse time),
+            strap/wrist for heartrate, pedals/trainer/watch for cadence (both manually supplied
+            by the athlete at attach time - there's no automatic classification signal for
+            either). Null for a bike power source (which distinguishes pedals/trainer by
+            device instead - a run's two candidates come from the same device, so there's
+            nothing to classify by device string there) and for any source never tagged.
+        created_at:
+          type: string
+          format: date-time
+        is_primary:
+          type: boolean
+          description: >-
+            Whether this source already matches the activity's current primary reading for
+            sensor_kind - by device classification for a bike power source, by source_kind vs
+            the matching Activity field (power_source for running, hr_source, cadence_source)
+            otherwise - i.e. whether POST .../primary-source has nothing to do for it.
+
+    StreamComparison:
+      type: object
+      description: Issue #503 (phase 4). See GET /v1/activities/{id}/streams/compare.
+      properties:
+        field:
+          type: string
+          example: heartrate
+        source_a:
+          type: string
+          description: "\"primary\" or a source id - echoes the request's a."
+        source_b:
+          type: string
+          description: "\"primary\" or a source id - echoes the request's b."
+        comparison:
+          type: object
+          properties:
+            overlap_seconds:
+              type: integer
+              description: Paired, non-null seconds the statistics below are computed over.
+            bias:
+              type: number
+              description: Mean of (b - a).
+            mae:
+              type: number
+            rmse:
+              type: number
+            pearson_r:
+              type: number
+            loa_lower:
+              type: number
+              description: Bland-Altman lower limit of agreement (bias - 1.96 * SD of differences).
+            loa_upper:
+              type: number
+              description: Bland-Altman upper limit of agreement (bias + 1.96 * SD of differences).
+            within_tolerance_pct:
+              type: number
+              description: "% of paired seconds within tolerance (5bpm absolute for heartrate, 3% of a's value otherwise)."
+        lag:
+          type: [object, "null"]
+          description: >-
+            A residual lag, found by cross-correlation (not a clock-offset search - both streams
+            already share this activity's own timeline) - null only if no candidate lag in
+            [-30s, 30s] had enough overlap to score, which can't happen when comparison succeeded
+            (lag=0 always has at least as much overlap as the Bland-Altman statistics above).
+          properties:
+            lag_seconds:
+              type: integer
+              description: Positive means b trails a by this many seconds (e.g. wrist HR behind a chest strap).
+            correlation:
+              type: number
+              description: The Pearson correlation at the winning lag.
+        power_fit:
+          type: [object, "null"]
+          description: field=power only - null for heartrate/cadence.
+          properties:
+            scale:
+              type: number
+              description: Least-squares fit of b = scale*a + offset.
+            offset:
+              type: number
+            ratio_of_means:
+              type: number
+              description: mean(b) / mean(a).
+        zone_breakdown:
+          type: [array, "null"]
+          description: >-
+            Present only when the request's zone_breakdown=true; null if not requested, empty if
+            requested but the athlete has no effective threshold to bucket by yet.
+          items:
+            type: object
+            properties:
+              zone_name:
+                type: string
+              sample_count:
+                type: integer
+              bias:
+                type: [number, "null"]
+                description: Null when sample_count is 0.
+              mae:
+                type: [number, "null"]
+              rmse:
+                type: [number, "null"]
+        points:
+          type: array
+          description: >-
+            The raw paired, overlapping seconds the statistics above were computed from - one
+            entry per second, so the frontend's overlay/difference/Bland-Altman charts don't
+            need a second request.
+          items:
+            type: object
+            properties:
+              t:
+                type: integer
+              a:
+                type: integer
+              b:
+                type: integer
 
     ThresholdSuggestion:
       type: object

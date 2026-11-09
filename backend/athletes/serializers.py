@@ -7,7 +7,7 @@ from accounts.models import User
 from core.race_distances import RACE_DISTANCE_BUCKETS
 from courses.sections import ALGORITHMS, SectionSettings
 
-from .models import BestEffortRecomputeJob, ZoneSet
+from .models import BestEffortRecomputeJob, RunningPowerSourceRecomputeJob, ZoneSet
 from .zones import reference_for
 
 
@@ -73,6 +73,9 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "best_effort_top_n",
             "ftp_calculation_method",
             "running_power_source",
+            "bike_power_source",
+            "hr_source",
+            "cadence_source",
             "overlap_handling",
             "rename_matched_activities",
             "append_match_date_to_name",
@@ -111,6 +114,9 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
                 "resting_hr",
                 "ftp_calculation_method",
                 "running_power_source",
+                "bike_power_source",
+                "hr_source",
+                "cadence_source",
                 "overlap_handling",
                 "rename_matched_activities",
                 "append_match_date_to_name",
@@ -179,3 +185,25 @@ class BestEffortRecomputeJobSerializer(serializers.ModelSerializer):
 
     def get_object(self, obj: BestEffortRecomputeJob) -> str:
         return "best_effort_recompute_job"
+
+
+class RunningPowerSourceRecomputeJobSerializer(serializers.ModelSerializer):
+    object = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RunningPowerSourceRecomputeJob
+        fields = [
+            "id",
+            "object",
+            "status",
+            "total_items",
+            "processed_items",
+            "swapped_items",
+            "skipped_items",
+            "error_message",
+            "created_at",
+            "completed_at",
+        ]
+
+    def get_object(self, obj: RunningPowerSourceRecomputeJob) -> str:
+        return "running_power_source_recompute_job"

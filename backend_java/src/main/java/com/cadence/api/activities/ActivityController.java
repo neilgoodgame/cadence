@@ -4,6 +4,7 @@ import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.ActivityWorkoutMatchCandidateResponse;
 import com.cadence.api.activities.dto.MergeActivitiesRequest;
 import com.cadence.api.activities.dto.OverlapPairResponse;
+import com.cadence.api.activities.dto.SetPrimarySourceRequest;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.CursorPage;
@@ -35,12 +36,14 @@ public class ActivityController {
 	private final ActivityOverlapService activityOverlapService;
 	private final ActivityMergeService activityMergeService;
 	private final ActivityUnmergeService activityUnmergeService;
+	private final ActivitySourceService activitySourceService;
 	private final AccessGuard accessGuard;
 
 	public ActivityController(ActivityService activityService, TssRecomputeService tssRecomputeService,
 			DerivedStatsRecomputeService derivedStatsRecomputeService, WorkoutMatchScanService workoutMatchScanService,
 			ActivityOverlapService activityOverlapService, ActivityMergeService activityMergeService,
-			ActivityUnmergeService activityUnmergeService, AccessGuard accessGuard) {
+			ActivityUnmergeService activityUnmergeService, ActivitySourceService activitySourceService,
+			AccessGuard accessGuard) {
 		this.activityService = activityService;
 		this.tssRecomputeService = tssRecomputeService;
 		this.derivedStatsRecomputeService = derivedStatsRecomputeService;
@@ -48,6 +51,7 @@ public class ActivityController {
 		this.activityOverlapService = activityOverlapService;
 		this.activityMergeService = activityMergeService;
 		this.activityUnmergeService = activityUnmergeService;
+		this.activitySourceService = activitySourceService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -177,7 +181,8 @@ public class ActivityController {
 
 		try {
 			return activityMergeService.runMerge(id, request.sourceId(), request.fields(), request.nullPolicy(),
-					request.offsetSeconds(), request.hideSourceOrDefault(), request.previewOrDefault());
+					request.offsetSeconds(), request.hideSourceOrDefault(), request.previewOrDefault(),
+					request.copyModeOrDefault(), request.sourceKind());
 		}
 		catch (MergePreviewRollbackSignal signal) {
 			// See MergePreviewRollbackSignal - runMerge's preview=true transaction is rolled
@@ -194,6 +199,39 @@ public class ActivityController {
 		Activity activity = activityService.getActivity(id);
 		accessGuard.requireWrite(activity.getAthlete().getId());
 		activityUnmergeService.undoMerge(id);
+		return activityService.toResponse(activityService.getActivity(id));
+	}
+
+	/** Issue #503 (phase 1): every non-primary stream kept alongside {@code id} - see {@link
+	 * ActivitySourceService#listSources}. */
+	@GetMapping("/v1/activities/{id}/sources")
+	public List<ActivitySourceService.SourceSummary> listActivitySources(@PathVariable String id) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return activitySourceService.listSources(id);
+	}
+
+	/** Issue #503 (phase 4): agreement statistics between two of {@code id}'s stored streams for
+	 * {@code field} - either side may be {@code "primary"} (the activity's current live stream)
+	 * or a real source id from {@link #listActivitySources}. See {@link
+	 * ActivitySourceService#compareStreams}. */
+	@GetMapping("/v1/activities/{id}/streams/compare")
+	public ActivitySourceService.CompareStreamsResult compareStreams(@PathVariable String id,
+			@RequestParam String field, @RequestParam String a, @RequestParam String b,
+			@RequestParam(name = "zone_breakdown", defaultValue = "false") boolean zoneBreakdown) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return activitySourceService.compareStreams(id, field, a, b, zoneBreakdown);
+	}
+
+	/** Issue #503 (phase 1): swaps {@code id}'s current primary stream for {@code field} with the
+	 * named source's. See {@link ActivitySourceService#setPrimarySource}. */
+	@PostMapping("/v1/activities/{id}/primary-source")
+	public ActivityResponse setPrimarySource(@PathVariable String id,
+			@Valid @RequestBody SetPrimarySourceRequest request) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		activitySourceService.setPrimarySource(id, request.field(), request.sourceId());
 		return activityService.toResponse(activityService.getActivity(id));
 	}
 

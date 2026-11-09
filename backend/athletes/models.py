@@ -212,3 +212,29 @@ class BestEffortRecomputeJob(PrefixedIDModel):
 
     def __str__(self) -> str:
         return f"{self.athlete_id} best-effort recompute ({self.status})"
+
+
+class RunningPowerSourceRecomputeJob(PrefixedIDModel):
+    """Issue #503 (phase 2): tracks an in-progress "re-designate every run's primary power
+    source" run - see athletes/tasks.py's run_running_power_source_recompute. Runs via Celery
+    rather than synchronously, same reasoning as BestEffortRecomputeJob above (a full account can
+    take longer than gunicorn's sync-worker timeout) - the frontend polls this row for progress.
+    """
+
+    id_prefix = "rpr"
+
+    athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="running_power_source_recompute_jobs")
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
+    total_items = models.IntegerField(null=True, blank=True)
+    processed_items = models.IntegerField(default=0)
+    swapped_items = models.IntegerField(default=0)
+    skipped_items = models.IntegerField(default=0)
+    error_message = models.CharField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.athlete_id} running-power-source recompute ({self.status})"

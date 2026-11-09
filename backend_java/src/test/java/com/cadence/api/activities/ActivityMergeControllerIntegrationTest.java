@@ -1,9 +1,11 @@
 package com.cadence.api.activities;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.cadence.api.athletes.HrSource;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.tokens.AccessTokenService;
@@ -36,6 +38,8 @@ class ActivityMergeControllerIntegrationTest extends IntegrationTest {
 	@Autowired
 	private ActivityRepository activityRepository;
 	@Autowired
+	private RecordRepository recordRepository;
+	@Autowired
 	private UserRepository userRepository;
 	@Autowired
 	private AccessTokenService accessTokenService;
@@ -55,6 +59,17 @@ class ActivityMergeControllerIntegrationTest extends IntegrationTest {
 		activity.setName(name);
 		activity.setStartDate(START);
 		return activityRepository.save(activity);
+	}
+
+	private void addHeartrateRecords(Activity activity, int count, int heartrate) {
+		for (int t = 0; t < count; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), START.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setHeartrate(heartrate);
+			recordRepository.save(record);
+		}
 	}
 
 	private String bearer(User user) {
@@ -87,6 +102,43 @@ class ActivityMergeControllerIntegrationTest extends IntegrationTest {
 		Activity target = newActivity(athlete, "Target");
 		Activity source = newActivity(athlete, "Source");
 		String body = "{\"source_id\":\"" + source.getId() + "\",\"fields\":[],\"null_policy\":\"overwrite\"}";
+
+		mockMvc.perform(post("/v1/activities/" + target.getId() + "/merge").header("Authorization", bearer(athlete))
+						.contentType(MediaType.APPLICATION_JSON).content(body))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void mergeWithAttachCopyModeAndHeartrateFieldCreatesASourceAndAutoSwapsWhenSourceKindMatches() throws Exception {
+		User athlete = newAthlete("merge-controller-attach-heartrate@example.cc");
+		athlete.setHrSource(HrSource.STRAP);
+		athlete = userRepository.save(athlete);
+		Activity target = newActivity(athlete, "Target");
+		Activity source = newActivity(athlete, "Source");
+		addHeartrateRecords(target, 10, 140);
+		addHeartrateRecords(source, 10, 150);
+		String body = "{\"source_id\":\"" + source.getId() + "\",\"fields\":[\"heartrate\"],"
+				+ "\"null_policy\":\"keep_original\",\"offset_seconds\":0,\"preview\":false,"
+				+ "\"copy_mode\":\"attach\",\"source_kind\":\"strap\"}";
+
+		mockMvc.perform(post("/v1/activities/" + target.getId() + "/merge").header("Authorization", bearer(athlete))
+						.contentType(MediaType.APPLICATION_JSON).content(body))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.merge_id").doesNotExist())
+				.andExpect(jsonPath("$.attached_source_id").exists());
+
+		Activity reloaded = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(reloaded.getHrSource()).isEqualTo(HrSource.STRAP);
+	}
+
+	@Test
+	void mergeWithAttachCopyModeRejectsAFieldOutsideTheWhitelist() throws Exception {
+		User athlete = newAthlete("merge-controller-attach-bad-field@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity source = newActivity(athlete, "Source");
+		String body = "{\"source_id\":\"" + source.getId() + "\",\"fields\":[\"altitude\"],"
+				+ "\"null_policy\":\"keep_original\",\"offset_seconds\":0,\"preview\":false,"
+				+ "\"copy_mode\":\"attach\"}";
 
 		mockMvc.perform(post("/v1/activities/" + target.getId() + "/merge").header("Authorization", bearer(athlete))
 						.contentType(MediaType.APPLICATION_JSON).content(body))

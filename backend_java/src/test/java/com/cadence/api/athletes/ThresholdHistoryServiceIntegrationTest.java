@@ -266,7 +266,7 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 	private AthleteUpdateRequest previewRequest(int ftp, boolean preview) {
 		return new AthleteUpdateRequest(null, null, null, ftp, null, null, null, null, null, null, null, null, null, null,
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, null, true, preview, null);
+				null, null, null, null, true, preview, null, null, null, null);
 	}
 
 	@Test

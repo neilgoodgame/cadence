@@ -188,7 +188,29 @@ public class AthleteProfileTools {
 				"threshold_window_days", athlete.getThresholdWindowDays(),
 				"threshold_sanity_pct", athlete.getThresholdSanityPct(),
 				"ftp_calculation_method", athlete.getFtpCalculationMethod(),
-				"running_power_source", athlete.getRunningPowerSource());
+				"running_power_source", athlete.getRunningPowerSource(),
+				"bike_power_source", athlete.getBikePowerSource());
+	}
+
+	@McpTool(name = "get_sensor_preferences", description = "Get the authenticated athlete's "
+			+ "per-field sensor preferences: running_power_source, bike_power_source, hr_source, "
+			+ "cadence_source. Each decides which source becomes primary by default the next time "
+			+ "a matching stream is attached (see merge_activities' attach copy_mode/"
+			+ "set_primary_source) - 'any'/no preference means attach never auto-swaps for that "
+			+ "field. Changing a preference never retroactively re-resolves an already-attached "
+			+ "activity's primary stream.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public Map<String, Object> getSensorPreferences() {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireRead(athleteId);
+		User athlete = userService.getById(athleteId);
+		return Map.of(
+				"running_power_source", athlete.getRunningPowerSource(),
+				"bike_power_source", athlete.getBikePowerSource(),
+				"hr_source", athlete.getHrSource(),
+				"cadence_source", athlete.getCadenceSource());
 	}
 
 	@McpTool(name = "get_import_settings", description = "Get the authenticated athlete's "

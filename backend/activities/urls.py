@@ -9,8 +9,10 @@ from .views import (
     ActivityListView,
     ActivityMergeView,
     ActivityOverlapListView,
+    ActivityPrimarySourceView,
     ActivityRecomputeElevationView,
     ActivitySectionsView,
+    ActivitySourcesView,
     ActivitySplitsView,
     ActivityTagView,
     ActivityUnmergeView,
@@ -22,6 +24,7 @@ from .views import (
     RecomputeActivityStatsView,
     RecomputeActivityTssView,
     RegenerateActivityLapsView,
+    StreamComparisonView,
     StreamsView,
     TagDetailView,
     TagListView,
@@ -40,6 +43,12 @@ urlpatterns = [
     ),
     path("v1/activities/<str:id>/merge", ActivityMergeView.as_view(), name="activity-merge"),
     path("v1/activities/<str:id>/unmerge", ActivityUnmergeView.as_view(), name="activity-unmerge"),
+    path("v1/activities/<str:id>/sources", ActivitySourcesView.as_view(), name="activity-sources"),
+    path(
+        "v1/activities/<str:id>/primary-source",
+        ActivityPrimarySourceView.as_view(),
+        name="activity-primary-source",
+    ),
     path("v1/activities/<str:id>/laps", LapListView.as_view(), name="activity-laps"),
     path(
         "v1/activities/<str:id>/regenerate-laps",
@@ -60,6 +69,11 @@ urlpatterns = [
         name="activity-recompute-elevation",
     ),
     path("v1/activities/<str:id>/streams", StreamsView.as_view(), name="activity-streams"),
+    path(
+        "v1/activities/<str:id>/streams/compare",
+        StreamComparisonView.as_view(),
+        name="activity-streams-compare",
+    ),
     path("v1/activities/<str:id>/curves", CurvesView.as_view(), name="activity-curves"),
     path("v1/activities/<str:id>/comments", ActivityCommentListView.as_view(), name="activity-comments"),
     path(

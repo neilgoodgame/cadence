@@ -3,6 +3,7 @@ import type {
   Activity,
   ActivityComment,
   ActivitySections,
+  ActivitySourceSummary,
   ActivitySplits,
   ActivityUpdate,
   CourseSectionSettings,
@@ -14,6 +15,8 @@ import type {
   MergeResult,
   OverlapPair,
   SplitsMode,
+  StreamComparison,
+  StreamComparisonField,
   StreamsResponse,
   Tag,
   WorkoutSport,
@@ -176,6 +179,35 @@ export function getStreams(
 
 export function getCurves(id: string, metric: "power" | "heartrate" = "power"): Promise<DurationCurve> {
   return apiFetch<DurationCurve>(`/v1/activities/${id}/curves${toQueryString({ metric })}`);
+}
+
+/** Issue #503 (phase 1). Every non-primary stream kept alongside this activity - the activity's
+ * own current primary stream is never listed here (see ActivitySourceSummary). */
+export function listActivitySources(id: string): Promise<ActivitySourceSummary[]> {
+  return apiFetch<ActivitySourceSummary[]>(`/v1/activities/${id}/sources`);
+}
+
+/** Issue #503 (phase 1). Swaps id's current primary stream for field with sourceId's stream
+ * (from listActivitySources) - always reversible by calling this again with the other source. */
+export function setActivityPrimarySource(id: string, field: StreamComparisonField, sourceId: string): Promise<Activity> {
+  return apiFetch<Activity>(`/v1/activities/${id}/primary-source`, {
+    method: "POST",
+    body: { field, source_id: sourceId },
+  });
+}
+
+/** Issue #503 (phase 4). Agreement statistics between two of this activity's stored streams for
+ * field - a/b each accept "primary" (the activity's current live stream) or a real source id
+ * from listActivitySources. */
+export function getStreamComparison(
+  id: string,
+  field: StreamComparisonField,
+  a: string,
+  b: string,
+  zoneBreakdown?: boolean,
+): Promise<StreamComparison> {
+  const params = toQueryString({ field, a, b, zone_breakdown: zoneBreakdown });
+  return apiFetch<StreamComparison>(`/v1/activities/${id}/streams/compare${params}`);
 }
 
 export function listTags(): Promise<DataList<Tag>> {

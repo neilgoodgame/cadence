@@ -28,8 +28,28 @@ public class ActivityMergeOrchestrator {
 
 	public ActivityMergeService.MergeResult merge(String targetId, String sourceId, List<String> fields,
 			NullPolicy nullPolicy, Integer offsetSecondsOverride, boolean hideSource, boolean preview) {
+		return merge(targetId, sourceId, fields, nullPolicy, offsetSecondsOverride, hideSource, preview,
+				MergeCopyMode.OVERWRITE);
+	}
+
+	public ActivityMergeService.MergeResult merge(String targetId, String sourceId, List<String> fields,
+			NullPolicy nullPolicy, Integer offsetSecondsOverride, boolean hideSource, boolean preview,
+			MergeCopyMode copyMode) {
+		return merge(targetId, sourceId, fields, nullPolicy, offsetSecondsOverride, hideSource, preview, copyMode, null);
+	}
+
+	/** Issue #503 (phase 1, {@code sourceKind} added phase 3): {@code copyMode}'s own ATTACH
+	 * branch never throws {@link MergePreviewRollbackSignal} (see {@code
+	 * ActivityMergeService.runAttach}'s own Javadoc), but this catch stays unconditional - the
+	 * same method handles both copy modes, and OVERWRITE still relies on it. {@code sourceKind}
+	 * is only meaningful for {@code copyMode=ATTACH} with {@code fields=["heartrate"]} or
+	 * {@code ["cadence"]} - ignored otherwise. */
+	public ActivityMergeService.MergeResult merge(String targetId, String sourceId, List<String> fields,
+			NullPolicy nullPolicy, Integer offsetSecondsOverride, boolean hideSource, boolean preview,
+			MergeCopyMode copyMode, String sourceKind) {
 		try {
-			return mergeService.runMerge(targetId, sourceId, fields, nullPolicy, offsetSecondsOverride, hideSource, preview);
+			return mergeService.runMerge(targetId, sourceId, fields, nullPolicy, offsetSecondsOverride, hideSource,
+					preview, copyMode, sourceKind);
 		}
 		catch (MergePreviewRollbackSignal signal) {
 			return signal.result();

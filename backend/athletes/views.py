@@ -21,15 +21,16 @@ from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 from core.permissions import user_may_read, user_may_write
 
 from . import threshold_suggestions
-from .models import BestEffortRecomputeJob, ThresholdHistory, ZoneSet
+from .models import BestEffortRecomputeJob, RunningPowerSourceRecomputeJob, ThresholdHistory, ZoneSet
 from .serializers import (
     AthleteUpdateSerializer,
     BestEffortRecomputeJobSerializer,
     FitnessPointSerializer,
+    RunningPowerSourceRecomputeJobSerializer,
     ZoneSetReplaceSerializer,
     ZoneSetSerializer,
 )
-from .tasks import run_best_effort_recompute
+from .tasks import run_best_effort_recompute, run_running_power_source_recompute
 from .threshold_history import (
     FIELD_SPORT,
     ManualValueResult,
@@ -878,6 +879,37 @@ class BestEffortRecomputeJobDetailView(APIView):
         _require_read(request, job.athlete_id)
 
         response = Response(BestEffortRecomputeJobSerializer(job).data)
+        if job.status in ("queued", "processing"):
+            response["Retry-After"] = "5"
+        return response
+
+
+class RunningPowerSourceRecomputeView(APIView):
+    # Issue #503 (phase 2): PATCHing running_power_source alone never retroactively changes an
+    # already-imported run (see Activity.power_source's own docstring) - this is the separate,
+    # explicit action that does. Runs via Celery + polling, same reasoning/shape as
+    # BestEffortRecomputeView above - unbounded (every historical run), so it needs the same
+    # "don't hold the request open" treatment. See athletes/tasks.py's
+    # recompute_running_power_source for the actual work.
+    def post(self, request: Request, id: str) -> Response:
+        _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+
+        job = RunningPowerSourceRecomputeJob.objects.create(athlete=athlete)
+        run_running_power_source_recompute.delay(job.id)
+
+        response = Response(RunningPowerSourceRecomputeJobSerializer(job).data, status=202)
+        response["Location"] = f"/v1/athletes/{id}/running-power-source/recompute/{job.id}"
+        response["Retry-After"] = "5"
+        return response
+
+
+class RunningPowerSourceRecomputeJobDetailView(APIView):
+    def get(self, request: Request, id: str, job_id: str) -> Response:
+        job = get_object_or_404(RunningPowerSourceRecomputeJob, pk=job_id, athlete_id=id)
+        _require_read(request, job.athlete_id)
+
+        response = Response(RunningPowerSourceRecomputeJobSerializer(job).data)
         if job.status in ("queued", "processing"):
             response["Retry-After"] = "5"
         return response

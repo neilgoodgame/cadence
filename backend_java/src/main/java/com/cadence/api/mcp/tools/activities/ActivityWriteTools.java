@@ -5,6 +5,7 @@ import com.cadence.api.activities.ActivityMergeApplyService.NullPolicy;
 import com.cadence.api.activities.ActivityMergeOrchestrator;
 import com.cadence.api.activities.ActivityMergeService;
 import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.ActivitySourceService;
 import com.cadence.api.activities.ActivityTagRepository;
 import com.cadence.api.activities.ActivityUnmergeService;
 import com.cadence.api.activities.DuplicateResolutionBatchService;
@@ -13,6 +14,7 @@ import com.cadence.api.activities.DuplicateResolutionBatchService.OverlapQueryFi
 import com.cadence.api.activities.DuplicateResolutionBatchService.ResolveBatchResult;
 import com.cadence.api.activities.DuplicateResolutionBatchService.UndoBatchResult;
 import com.cadence.api.activities.Environment;
+import com.cadence.api.activities.MergeCopyMode;
 import com.cadence.api.activities.MergeRule;
 import com.cadence.api.activities.MergeRuleService;
 import com.cadence.api.activities.Tag;
@@ -55,6 +57,7 @@ public class ActivityWriteTools {
 	private final ActivityMergeOrchestrator activityMergeOrchestrator;
 	private final ActivityUnmergeService activityUnmergeService;
 	private final MergeRuleService mergeRuleService;
+	private final ActivitySourceService sourceService;
 	private final TagService tagService;
 	private final TagMapper tagMapper;
 	private final ActivityTagRepository activityTagRepository;
@@ -66,14 +69,16 @@ public class ActivityWriteTools {
 	public ActivityWriteTools(ActivityService activityService,
 			DuplicateResolutionBatchService duplicateResolutionBatchService,
 			ActivityMergeOrchestrator activityMergeOrchestrator, ActivityUnmergeService activityUnmergeService,
-			MergeRuleService mergeRuleService, TagService tagService, TagMapper tagMapper,
-			ActivityTagRepository activityTagRepository, WorkoutTagRepository workoutTagRepository,
-			UserService userService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			MergeRuleService mergeRuleService, ActivitySourceService sourceService, TagService tagService,
+			TagMapper tagMapper, ActivityTagRepository activityTagRepository,
+			WorkoutTagRepository workoutTagRepository, UserService userService, AccessGuard accessGuard,
+			McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.duplicateResolutionBatchService = duplicateResolutionBatchService;
 		this.activityMergeOrchestrator = activityMergeOrchestrator;
 		this.activityUnmergeService = activityUnmergeService;
 		this.mergeRuleService = mergeRuleService;
+		this.sourceService = sourceService;
 		this.tagService = tagService;
 		this.tagMapper = tagMapper;
 		this.activityTagRepository = activityTagRepository;
@@ -169,7 +174,16 @@ public class ActivityWriteTools {
 			+ "a hidden #498 duplicate of targetId. preview defaults to true here (the opposite of "
 			+ "the web app's own default) - it computes and returns the exact result, including the "
 			+ "resolved offset/alignment score and before/after summary, without writing anything; "
-			+ "call again with preview=false once you're happy with it to actually apply the merge.",
+			+ "call again with preview=false once you're happy with it to actually apply the merge. "
+			+ "copyMode (issue #503 phase 1) defaults to 'overwrite' (today's only prior behavior); "
+			+ "'attach' keeps target's existing stream for fields=[power]/[heartrate]/[cadence] "
+			+ "(exactly one of these, not a mix) untouched and stores source's own stream alongside "
+			+ "it as a non-primary source (see list_activity_sources/set_primary_source) instead of "
+			+ "overwriting one with the other. sourceKind (phase 3) is an optional tag for what kind "
+			+ "of sensor the attached heartrate/cadence stream came from (strap/wrist for heartrate; "
+			+ "pedals/trainer/watch for cadence) - ignored for power, which classifies by device "
+			+ "instead; if it matches the athlete's hrSource/cadenceSource preference, the attached "
+			+ "stream becomes primary immediately, same as power's own auto-swap.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
 	public ActivityMergeService.MergeResult mergeActivities(
@@ -185,14 +199,19 @@ public class ActivityWriteTools {
 					+ "started this many seconds after the target. Omit to resolve one automatically",
 					required = false) Integer offsetSeconds,
 			@McpToolParam(description = "Compute and return the result without writing anything, default true "
-					+ "(opposite of the REST/web default)", required = false) Boolean preview) {
+					+ "(opposite of the REST/web default)", required = false) Boolean preview,
+			@McpToolParam(description = "'overwrite' (default) or 'attach' - see the tool description",
+					required = false) String copyMode,
+			@McpToolParam(description = "Only meaningful with copyMode=attach and fields=[heartrate]/[cadence] - "
+					+ "see the tool description", required = false) String sourceKind) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
 		Activity target = activityService.getActivity(targetId);
 		accessGuard.requireWrite(target.getAthlete().getId());
 		Activity source = activityService.getActivity(sourceId);
 		accessGuard.requireWrite(source.getAthlete().getId());
 		return activityMergeOrchestrator.merge(targetId, sourceId, fields, parseNullPolicy(nulls),
-				offsetSeconds, Boolean.TRUE.equals(hideSource), preview == null || preview);
+				offsetSeconds, Boolean.TRUE.equals(hideSource), preview == null || preview,
+				parseCopyMode(copyMode), sourceKind);
 	}
 
 	@McpTool(name = "unmerge_activity", description = "Issue #501: reverses activityId's own latest "
@@ -213,6 +232,27 @@ public class ActivityWriteTools {
 		return activityService.toResponse(activityService.getActivity(activityId));
 	}
 
+	@McpTool(name = "set_primary_source", description = "Issue #503 (phases 1-3): swaps activityId's "
+			+ "current primary stream for field with the named sourceId's stream (from "
+			+ "list_activity_sources) - e.g. switching a ride's power back to its Garmin/pedal "
+			+ "reading after a Zwift copy became primary. The stream being replaced is itself kept "
+			+ "as a new source (never lost), so this can always be reversed by calling it again with "
+			+ "the other source's id. Reruns the same recompute cascade a merge triggers, so TSS/"
+			+ "FTP-candidate data reflects the new primary immediately.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public ActivityResponse setPrimarySource(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
+			@McpToolParam(description = "'power', 'heartrate', or 'cadence'", required = true) String field,
+			@McpToolParam(description = "The source id to promote, e.g. src_xxxxxxxxxxxx (from "
+					+ "list_activity_sources)", required = true) String sourceId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		sourceService.setPrimarySource(activityId, field, sourceId);
+		return activityService.toResponse(activityService.getActivity(activityId));
+	}
+
 	private NullPolicy parseNullPolicy(String nulls) {
 		if (nulls == null || nulls.isBlank()) {
 			return NullPolicy.KEEP_ORIGINAL;
@@ -222,6 +262,18 @@ public class ActivityWriteTools {
 		}
 		catch (IllegalArgumentException e) {
 			throw new ValidationException("nulls must be 'keep_original' or 'overwrite'.", "nulls");
+		}
+	}
+
+	private MergeCopyMode parseCopyMode(String copyMode) {
+		if (copyMode == null || copyMode.isBlank()) {
+			return MergeCopyMode.OVERWRITE;
+		}
+		try {
+			return MergeCopyMode.fromWireValue(copyMode.trim());
+		}
+		catch (IllegalArgumentException e) {
+			throw new ValidationException("copy_mode must be 'overwrite' or 'attach'.", "copy_mode");
 		}
 	}
 

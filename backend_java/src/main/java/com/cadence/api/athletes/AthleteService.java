@@ -201,6 +201,26 @@ public class AthleteService {
 			athlete.setRunningPowerSource(request.runningPowerSource());
 			changed.add("runningPowerSource");
 		}
+		if (request.bikePowerSource() != null) {
+			// Mirrors runningPowerSource just above (issue #503 phase 1) - also doesn't
+			// retroactively touch already-attached ActivitySource/ActivityStream rows; it only
+			// changes which source attachStream auto-swaps to on the *next* attach. Switching
+			// an already-merged activity's current primary back and forth is set_primary_source's
+			// job, not this setting's.
+			athlete.setBikePowerSource(request.bikePowerSource());
+			changed.add("bikePowerSource");
+		}
+		if (request.hrSource() != null) {
+			// Mirrors bikePowerSource above (issue #503 phase 3) - unlike bikePowerSource, there's
+			// no classify()-by-device fallback for heartrate, so this only ever matters when a
+			// stream was manually tagged with sourceKind at attach time.
+			athlete.setHrSource(request.hrSource());
+			changed.add("hrSource");
+		}
+		if (request.cadenceSource() != null) {
+			athlete.setCadenceSource(request.cadenceSource());
+			changed.add("cadenceSource");
+		}
 		if (request.overlapHandling() != null) {
 			athlete.setOverlapHandling(request.overlapHandling());
 			changed.add("overlapHandling");

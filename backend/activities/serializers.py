@@ -183,6 +183,18 @@ class MergeActivitiesSerializer(serializers.Serializer):
     offset_seconds = serializers.IntegerField(required=False, allow_null=True, default=None)
     hide_source = serializers.BooleanField(required=False, default=False)
     preview = serializers.BooleanField(required=False, default=False)
+    # Issue #503 (phase 1).
+    copy_mode = serializers.ChoiceField(choices=[("overwrite", "Overwrite"), ("attach", "Attach")], default="overwrite")
+    # Issue #503 (phase 3): only meaningful with copy_mode="attach" and fields=["heartrate"] or
+    # ["cadence"] - ignored for fields=["power"], which still classifies by device instead.
+    source_kind = serializers.CharField(required=False, allow_null=True, default=None)
+
+
+class SetPrimarySourceSerializer(serializers.Serializer):
+    """POST /v1/activities/{id}/primary-source request body (issue #503 phase 1)."""
+
+    field = serializers.CharField()
+    source_id = serializers.CharField()
 
 
 class LapSerializer(serializers.ModelSerializer):

@@ -64,12 +64,27 @@ def _sensor_channel_count(activity: Activity) -> int:
 def choose_primary(a: Activity, b: Activity) -> Activity:
     """Which of the two should survive as the primary - see the issue's own rule: the Zwift copy
     wins outright (it carries the route, virtual GPS track, distance/speed and elevation);
-    failing that, the side with more populated sensor summary fields wins; failing that, the
-    earlier start date, then the lower id, so the result is always deterministic rather than
-    depending on which copy happened to import first."""
+    failing that, the athlete's bike_power_source setting (#499/#503 phase 1), if it's not "any"
+    and the two devices classify differently; failing that, the side with more populated sensor
+    summary fields wins; failing that, the earlier start date, then the lower id, so the result
+    is always deterministic rather than depending on which copy happened to import first.
+
+    The bike_power_source step is currently inert in practice: phase 1's own device
+    classification (the same Zwift-vs-not signal as _is_zwift above, see
+    activity_source_service.classify) means that by the time this step runs, both activities
+    already classify the same way (the Zwift check above already returned otherwise). It's wired
+    up now, in the order the issue itself specifies, so a later phase's real ANT+ device-type
+    classification (distinguishing two non-Zwift devices by sensor type, not just by name) makes
+    it live with no further change here."""
     a_zwift, b_zwift = _is_zwift(a), _is_zwift(b)
     if a_zwift != b_zwift:
         return a if a_zwift else b
+    preference = a.athlete.bike_power_source
+    if preference != "any":
+        a_source = "trainer" if a_zwift else "pedals"
+        b_source = "trainer" if b_zwift else "pedals"
+        if a_source != b_source:
+            return a if a_source == preference else b
     a_sensors, b_sensors = _sensor_channel_count(a), _sensor_channel_count(b)
     if a_sensors != b_sensors:
         return a if a_sensors > b_sensors else b
@@ -140,6 +155,7 @@ def _merge(activity: Activity, other_id: str, apply: bool) -> OverlapResolution 
             null_policy=rule.null_policy,
             hide_source=True,
             preview=True,
+            copy_mode="overwrite",
         )
         if preview["alignment_score"] is None or preview["alignment_score"] < MERGE_ALIGNMENT_THRESHOLD:
             return {
@@ -162,6 +178,7 @@ def _merge(activity: Activity, other_id: str, apply: bool) -> OverlapResolution 
             null_policy=rule.null_policy,
             hide_source=True,
             preview=False,
+            copy_mode="overwrite",
         )
         return {
             "other_activity_id": other_id,

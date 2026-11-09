@@ -152,6 +152,14 @@ public class ThresholdHistoryCalculator {
 
 		return switch (field) {
 			case FTP -> {
+				// Issue #499/#503 phase 1: excluded if this activity's attached-primary power
+				// source disagrees with the athlete's *current* bikePowerSource preference - same
+				// re-check-on-every-recompute pattern as CRITICAL_RUN_POWER below, but ANY (the
+				// default) always matches, and a null bikePowerSource (never had a second source
+				// attached - the common case) also always matches.
+				if (!activity.matchesBikePowerPreference(athlete)) {
+					yield null;
+				}
 				if (athlete.getFtpCalculationMethod() == FtpCalculationMethod.SIXTY_MIN_DIRECT) {
 					Double best60Min = DurationCurveCalculator.bestAverage(powerSeries, RUNNING_THRESHOLD_WINDOW_SECONDS);
 					yield best60Min == null ? null : new ImpliedValueDetail("60min", best60Min, Math.round(best60Min));

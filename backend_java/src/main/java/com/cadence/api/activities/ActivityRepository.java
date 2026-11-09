@@ -173,4 +173,13 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 
 	@Query("select a.shoe.id, a.distanceKm from Activity a where a.athlete.id = :athleteId and a.shoe is not null")
 	List<Object[]> findShoeIdAndDistanceKmByAthleteId(@Param("athleteId") String athleteId);
+
+	// Issue #503 (phase 2): RunningPowerSourceRecomputeService's candidate pool - every run whose
+	// resolved power source no longer matches the athlete's *current* preference. powerSource is
+	// only ever set for FIT-sourced runs (see ParseFileTasklet), so this never matches a non-FIT
+	// or non-run activity.
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.sport = com.cadence.api.common.domain.Sport.RUN "
+			+ "and a.powerSource is not null and a.powerSource <> :preference")
+	List<Activity> findRunningPowerSourceMismatches(@Param("athleteId") String athleteId,
+			@Param("preference") com.cadence.api.athletes.RunningPowerSource preference);
 }

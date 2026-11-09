@@ -184,11 +184,15 @@ def _set_avg_max_field(
 
 def _select_running_power_source(samples: list[Sample], source_format: str, athlete: User) -> tuple[list[Sample], str]:
     """Resolves each running sample's power to *only* the athlete's preferred source
-    (User.running_power_source) - the other candidate is completely ignored, not used as a
-    fallback for a momentary gap. uploads/parsers/fit.py keeps both `power` (native) and
-    `power_stryd` (Stryd's own developer field) distinct through parsing specifically because
-    it has no athlete context to choose between them; this is where that choice actually
-    happens, now that `athlete` is in scope.
+    (User.running_power_source) for Record.power/this activity's own stats - the other candidate
+    isn't used as a fallback for a momentary gap. Builds a *new* list of sample dicts (`{**s,
+    ...}`), leaving `samples` itself untouched - see the call site in _ingest_activity, which
+    separately keeps the other candidate too, reading it from this function's own input rather
+    than its return value (activity_source_service.create_parse_time_running_power_source, issue
+    #503 phase 2). uploads/parsers/fit.py keeps both `power` (native) and `power_stryd` (Stryd's
+    own developer field) distinct through parsing specifically because it has no athlete context
+    to choose between them; this is where that choice actually happens, now that `athlete` is in
+    scope.
 
     Only meaningful for FIT files, where the ambiguity exists at all - a TCX/GPX file has a
     single power field with no source to distinguish, so this passes those through unchanged
@@ -1392,6 +1396,9 @@ def _ingest_activity(
     # rather than left for a later recompute to clean up - see
     # _sanitize_environment_samples's docstring for the failure mode.
     power_source = ""
+    other_running_power_t_series: list[int] | None = None
+    other_running_power_values: list[int | None] | None = None
+    other_running_power_kind = ""
     if sport == "run":
         sanitized_air_temp, sanitized_humidity = _sanitize_environment_samples(
             [s.get("air_temp") for s in samples], [s.get("humidity") for s in samples]
@@ -1399,6 +1406,16 @@ def _ingest_activity(
         samples = [
             {**s, "air_temp": sanitized_air_temp[i], "humidity": sanitized_humidity[i]} for i, s in enumerate(samples)
         ]
+        # Issue #503 (phase 2): capture the *other* candidate before _select_running_power_source
+        # collapses `samples` down to the preferred one below - the discarded key only still
+        # exists here. Call site for the actual ActivitySource/ActivityStream creation is after
+        # the Activity row is saved (an ActivitySource FK requires it to already exist).
+        if parsed.get("source", "") == "fit":
+            preference = athlete.running_power_source
+            other_key = "power_stryd" if preference == "native" else "power"
+            other_running_power_kind = "stryd" if preference == "native" else "native"
+            other_running_power_t_series = [s["t"] for s in samples]
+            other_running_power_values = [s.get(other_key) for s in samples]
         samples, power_source = _select_running_power_source(samples, parsed.get("source", ""), athlete)
 
     if multisport:
@@ -1435,6 +1452,16 @@ def _ingest_activity(
         shoe_id=upload.shoe_id if wears_shoe else None,
     )
     apply_shoe_change(None, activity.shoe_id, activity.distance_km)
+
+    if other_running_power_t_series is not None:
+        # Local import - activities.activity_source_service imports merge_postprocess, which
+        # imports back from this module, so a top-level import here would be circular. Same
+        # reasoning as overlap_detection.py's own local import of merge_service.
+        from activities.activity_source_service import create_parse_time_running_power_source
+
+        create_parse_time_running_power_source(
+            activity, other_running_power_t_series, other_running_power_values, other_running_power_kind
+        )
 
     Record.objects.bulk_create(
         [

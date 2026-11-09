@@ -2,7 +2,6 @@ package com.cadence.api.activities;
 
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
-import com.cadence.api.users.User;
 import com.cadence.api.workouts.WorkoutAutoMatchService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,9 +46,31 @@ public class ActivityMergePostProcessingService {
 	 * target, never the (now-exhausted) source. */
 	@Transactional
 	public void recomputeAfterMerge(String targetId) {
+		recomputeActivityLevelOnly(targetId);
+
 		Activity activity = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
-		User athlete = activity.getAthlete();
+
+		// Issue #498's cascade: this activity's own data just changed underneath it, so the
+		// threshold ledger and every activity's TSS/intensity need the same full-athlete rebuild
+		// a duplicate mark/unmark/set_primary already triggers.
+		activityService.recomputeAfterDuplicateChange(activity.getAthlete());
+
+		workoutAutoMatchService.attemptMatch(targetId);
+	}
+
+	/** Issue #503 (phase 2): everything {@link #recomputeAfterMerge} does except the athlete-wide
+	 * cascade and the workout-match attempt. A bulk caller re-designating many activities for one
+	 * athlete (e.g. {@code RunningPowerSourceRecomputeService}) calls this per activity, then
+	 * {@code ActivityService#recomputeAfterDuplicateChange} once at the end, instead of once per
+	 * activity - the cascade is a full athlete-wide rebuild, so calling it per activity would be
+	 * quadratic in the athlete's activity count. The workout-match attempt is skipped entirely by
+	 * such a caller, not just deferred - re-designating a power source never changes an
+	 * activity's duration/distance/structure, so there's nothing for it to re-match. */
+	@Transactional
+	public void recomputeActivityLevelOnly(String targetId) {
+		Activity activity = activityRepository.findById(targetId)
+				.orElseThrow(() -> new NotFoundException("No such activity."));
 
 		// Avg/norm/max power, cadence, elevation, calories, TRIMP, run air temp/humidity, plus
 		// TSS/intensity and (bike/run only) decoupling/durability - all from the now-rewritten
@@ -62,12 +83,5 @@ public class ActivityMergePostProcessingService {
 			durationCurveRecomputeService.recomputeForActivity(targetId);
 			bestEffortRecomputeService.recomputeForActivity(targetId);
 		}
-
-		// Issue #498's cascade: this activity's own data just changed underneath it, so the
-		// threshold ledger and every activity's TSS/intensity need the same full-athlete rebuild
-		// a duplicate mark/unmark/set_primary already triggers.
-		activityService.recomputeAfterDuplicateChange(athlete);
-
-		workoutAutoMatchService.attemptMatch(targetId);
 	}
 }
