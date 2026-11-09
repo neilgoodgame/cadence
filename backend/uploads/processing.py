@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import User
+from activities.intensity_histogram import rebuild_histogram, rolling_mean_power
 from activities.match_preferences import apply_match_rename, apply_match_side_effects
 from activities.models import Activity, ActivityDurability, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
 from activities.overlap_detection import detect_and_resolve_overlap
@@ -280,17 +281,9 @@ def _total_descent(samples: Sequence[Sample]) -> int | None:
 
 
 def compute_normalized_power(power_series: Sequence[float | None], window: int = 30) -> float | None:
-    values = [p if p is not None else 0 for p in power_series]
-    if not values:
+    if not power_series:
         return None
-    if len(values) < window:
-        return sum(values) / len(values)
-    rolling: list[float] = []
-    window_sum = sum(values[:window])
-    rolling.append(window_sum / window)
-    for i in range(window, len(values)):
-        window_sum += values[i] - values[i - window]
-        rolling.append(window_sum / window)
+    rolling = rolling_mean_power(power_series, window)
     mean_fourth = sum(r**4 for r in rolling) / len(rolling)
     return float(mean_fourth**0.25)
 
@@ -981,6 +974,10 @@ def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
         activity.norm_power = round(norm_power)
         update_fields.append("norm_power")
 
+    # Its own table, not an Activity field - no update_fields entry needed. power_series is
+    # already gated for running-power-source exclusion above (line ~958), same series NP just used.
+    rebuild_histogram(activity, power_series, hr_series)
+
     # intensity + tss together, via the same shared helper ingest and "Recompute TSS" use - so
     # this backfill path can't drift out of sync with either of them again (issue #481: this
     # used to update intensity but never tss).
@@ -1516,6 +1513,14 @@ def _ingest_activity(
     activity.max_hr = max_hr
     # intensity/tss are computed further down, after threshold history has had a chance to
     # recompute from this same activity's own effort - see the comment there.
+
+    # Its own table, not an Activity field - no update_fields entry needed. Unlike norm_power
+    # above (deliberately ungated), the histogram feeds the threshold-decay load calculation, so
+    # it needs the same running-power-source gate rate_activity/backfill_extended_stats apply.
+    histogram_power_series = power_series
+    if activity.sport == "run" and not activity.matches_running_power_preference(athlete):
+        histogram_power_series = [None] * len(power_series)
+    rebuild_histogram(activity, histogram_power_series, hr_series)
 
     update_fields = ["avg_power", "norm_power", "avg_hr", "max_hr"]
     if activity.sport == "run":

@@ -1,6 +1,7 @@
 package com.cadence.api.uploads.batch;
 
 import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityIntensityHistogramService;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.activities.calc.NormalizedPowerCalculator;
@@ -15,6 +16,7 @@ import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.uploads.UploadCalculations;
 import com.cadence.api.uploads.parsing.ParsedActivity;
 import com.cadence.api.users.User;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -35,13 +37,15 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 	private final ActivityRepository activityRepository;
 	private final ZoneService zoneService;
 	private final TssRecomputeService tssRecomputeService;
+	private final ActivityIntensityHistogramService histogramService;
 
 	public ComputeDerivedStatsTasklet(UploadJobContextRegistry contextRegistry, ActivityRepository activityRepository,
-			ZoneService zoneService, TssRecomputeService tssRecomputeService) {
+			ZoneService zoneService, TssRecomputeService tssRecomputeService, ActivityIntensityHistogramService histogramService) {
 		this.contextRegistry = contextRegistry;
 		this.activityRepository = activityRepository;
 		this.zoneService = zoneService;
 		this.tssRecomputeService = tssRecomputeService;
+		this.histogramService = histogramService;
 	}
 
 	@Override
@@ -92,6 +96,16 @@ public class ComputeDerivedStatsTasklet implements Tasklet {
 		activity.setNormPower(normPower != null ? (int) Math.round(normPower) : null);
 		activity.setAvgHr(avgHr != null ? (int) Math.round(avgHr) : null);
 		activity.setMaxHr(maxHr);
+
+		// Its own table, not an Activity field - no save needed beyond rebuildHistogram's own.
+		// Unlike normPower above (deliberately ungated), the histogram feeds the threshold-decay
+		// load calculation, so it needs the same running-power-source gate TssRecomputeService
+		// applies.
+		List<Integer> histogramPowerSeries = powerSeries;
+		if (activity.getSport() == Sport.RUN && !activity.matchesRunningPowerPreference(athlete)) {
+			histogramPowerSeries = Collections.nCopies(powerSeries.size(), null);
+		}
+		histogramService.rebuildHistogram(activity, histogramPowerSeries, hrSeries);
 
 		// Stryd-derived, run only (matches the Python backend - a bike's ambient readings
 		// aren't meaningful the same way, and PATCH lets athletes set these manually for

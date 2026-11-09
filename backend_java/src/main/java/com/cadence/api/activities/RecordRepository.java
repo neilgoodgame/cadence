@@ -79,6 +79,19 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 	List<PowerTimeDistanceRow> findPowerTimeDistanceByActivityIdInAndTsBetween(
 			@Param("activityIds") List<String> activityIds, @Param("tsStart") Instant tsStart, @Param("tsEnd") Instant tsEnd);
 
+	/** Just (power, heartrate), as scalars - ActivityIntensityHistogramService's lazy-backfill
+	 * path builds an activity's intensity histogram from these without loading whole Record
+	 * entities (see TimeDistance). */
+	interface PowerHeartrate {
+		Integer getPower();
+
+		Integer getHeartrate();
+	}
+
+	@Query("select r.power as power, r.heartrate as heartrate from Record r"
+			+ " where r.id.activityId = :activityId order by r.t")
+	List<PowerHeartrate> findPowerHeartrateByActivityIdOrderByT(@Param("activityId") String activityId);
+
 	/** Just (distance_km, altitude), as scalars - ActivitySectionsService builds an activity's
 	 * elevation series from these without loading whole Record entities (see TimeDistance). */
 	interface DistanceAltitude {
