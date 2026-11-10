@@ -125,20 +125,27 @@ class RecomputeAfterIngestTimeMarkIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
-	void singleUploadAutoMarkTriggersTheCascadeExactlyOnce() throws Exception {
+	void singleUploadAutoMarkReachesReadyAndRunsTheScopedCascadeOnceAfterwards() throws Exception {
 		User athlete = newAthlete("e2e-single-overlap-recompute@example.cc", OverlapHandling.MARK);
 		Upload first = uploadService.createSingleUpload(
 				athlete, syntheticFit("a.fit", 0L, 200), null, null, null, null, null);
 		awaitTerminal(first.getId());
-		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+		verify(activityService, never()).recomputeAfterDuplicateChange(
+				argThat(a -> a.getId().equals(athlete.getId())), org.mockito.ArgumentMatchers.anySet());
 
 		Upload second = uploadService.createSingleUpload(
 				athlete, syntheticFit("b.fit", 0L, 205), null, null, null, null, null);
 		Upload secondDone = awaitTerminal(second.getId());
 
+		assertThat(secondDone.getStatus()).isEqualTo(UploadStatus.READY);
 		assertThat(secondDone.getOverlapAction().toString()).isEqualTo("MARKED");
-		verify(activityService, times(1))
-				.recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+		// The cascade now runs from DuplicateRecomputeTasklet (after READY) with the scoped
+		// overload, never the old unscoped one inline in the parse step. Here the demoted
+		// duplicate (the new, sensor-less-at-parse-time activity) was never a ledger source, so
+		// the affected-field set is empty and nothing is rebuilt.
+		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+		verify(activityService, org.mockito.Mockito.timeout(10_000).times(1)).recomputeAfterDuplicateChange(
+				argThat(a -> a.getId().equals(athlete.getId())), argThat(java.util.Set::isEmpty));
 	}
 
 	@Test
@@ -153,6 +160,8 @@ class RecomputeAfterIngestTimeMarkIntegrationTest extends IntegrationTest {
 
 		assertThat(secondDone.getOverlapAction().toString()).isEqualTo("FLAGGED");
 		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+		verify(activityService, never()).recomputeAfterDuplicateChange(
+				argThat(a -> a.getId().equals(athlete.getId())), org.mockito.ArgumentMatchers.anySet());
 	}
 
 	@Test

@@ -42,6 +42,22 @@ public class UploadJobContext {
 		return uploadId;
 	}
 
+	/** Set by {@link ParseFileTasklet} when ingest-time overlap handling marked a duplicate: the
+	 * activity that was demoted, and its sport. Read by {@link DuplicateRecomputeTasklet}, which
+	 * runs after the upload is already READY - see its Javadoc for why this isn't done inline. */
+	public record DuplicateChange(String demotedActivityId, com.cadence.api.common.domain.Sport sport) {
+	}
+
+	private DuplicateChange duplicateChange;
+
+	public void requestDuplicateRecompute(String demotedActivityId, com.cadence.api.common.domain.Sport sport) {
+		this.duplicateChange = new DuplicateChange(demotedActivityId, sport);
+	}
+
+	public DuplicateChange getDuplicateChange() {
+		return duplicateChange;
+	}
+
 	public void addSegment(ParsedActivity parsed, String activityId) {
 		segments.add(new Segment(parsed, activityId));
 	}

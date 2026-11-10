@@ -67,6 +67,11 @@ public class UploadJobConfig {
 		return new StepBuilder("finalizeUploadStep", jobRepository).tasklet(tasklet, tm).build();
 	}
 
+	@Bean
+	public Step duplicateRecomputeStep(JobRepository jobRepository, PlatformTransactionManager tm, DuplicateRecomputeTasklet tasklet) {
+		return new StepBuilder("duplicateRecomputeStep", jobRepository).tasklet(tasklet, tm).build();
+	}
+
 	/** Stateless (see {@link RecordItemProcessor}) - safe as an ordinary shared singleton. */
 	@Bean
 	public ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor() {

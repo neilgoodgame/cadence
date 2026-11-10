@@ -1,6 +1,6 @@
 import logging
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import timedelta
 
 from django.core.files.storage import default_storage
@@ -13,7 +13,8 @@ from activities.match_preferences import apply_match_rename, apply_match_side_ef
 from activities.models import Activity, ActivityDurability, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
 from activities.overlap_detection import detect_and_resolve_overlap
 from athletes import threshold_suggestions
-from athletes.threshold_history import rebuild_history_stream, recompute_for_activity
+from athletes.models import ThresholdHistory
+from athletes.threshold_history import FIELD_SPORT, rebuild_history_stream, recompute_for_activity
 from athletes.zones import get_or_create_zone_set, reference_for
 from gear.mileage import apply_shoe_change
 from scheduling.models import ScheduledWorkout
@@ -868,22 +869,46 @@ def recompute_tss_for_athlete(athlete: User) -> int:
     return updated
 
 
-def recompute_after_duplicate_change(athlete: User) -> None:
+def recompute_after_duplicate_change(athlete: User, fields: Iterable[str] | None = None) -> None:
     """Issue #498: shared by mark_duplicate/unmark_duplicate/set_primary (activities/views.py),
-    resolve_duplicates_batch/undo_batch (activities/duplicate_batches.py), and this module's own
-    ingest-time and batch-finalize auto-mark paths below - the same cascade the overlap backfill
+    resolve_duplicates_batch/undo_batch (activities/duplicate_batches.py), and the ingest-time and
+    batch-finalize auto-mark paths (uploads/tasks.py) - the same cascade the overlap backfill
     command's apply mode runs per affected athlete: rebuild every threshold field's ledger
     (duplicate-sourced best efforts are no longer, or newly are, eligible candidates), then
     re-rate TSS/intensity against the rebuilt ledger. The fitness trend reads Activity.tss live
     and already excludes duplicates, so there's no separate series to rebuild.
 
+    ``fields`` scopes the rebuild: None (the default) rebuilds all three, an empty collection
+    does nothing at all (no ledger row can have changed, so there is nothing to re-rate against).
+
     Lives here rather than in activities/views.py (where it originated) because this module
     needs it too, and activities/views.py already imports recompute_tss_for_athlete from here -
     the reverse import would be circular."""
+    selected = ("ftp", "critical_run_power", "threshold_pace") if fields is None else tuple(fields)
+    if not selected:
+        return
     for field in ("ftp", "critical_run_power", "threshold_pace"):
+        if field not in selected:
+            continue
         for _ in rebuild_history_stream(athlete, field):
             pass
     recompute_tss_for_athlete(athlete)
+
+
+def threshold_fields_affected_by_demoted_duplicate(demoted_activity_id: str, sport: str) -> list[str]:
+    """Which threshold fields need rebuilding after ``demoted_activity_id`` became a duplicate:
+    only those its sport can define, and only where it is currently a *measured* ledger source.
+    A duplicate that never defined a threshold can't change any window's winner (a newly
+    ingested activity that is itself the demoted side was already excluded from the ledger by the
+    duplicate filter), so nothing needs rebuilding."""
+    candidates = [field for field, field_sport in FIELD_SPORT.items() if field_sport == sport]
+    if not candidates:
+        return []
+    return list(
+        ThresholdHistory.objects.filter(source_activity_id=demoted_activity_id, kind="measured", field__in=candidates)
+        .values_list("field", flat=True)
+        .distinct()
+    )
 
 
 def compute_edwards_trimp(athlete: User, heartrate_series: Sequence[float | None]) -> float | None:
@@ -1653,9 +1678,9 @@ def _ingest_activity(
         upload.save(update_fields=["overlap_other_activity", "overlap_action"])
         # A duplicate auto-marked here can retroactively disqualify a best effort from the
         # threshold ledger just like a manual mark_duplicate does (see
-        # recompute_after_duplicate_change) - skip for a batch child; uploads/tasks.py's
-        # _maybe_finalize_batch runs this once for the whole batch instead of once per file.
-        if overlaps[0]["action"] == "marked" and not upload.batch_id:
-            recompute_after_duplicate_change(athlete)
+        # recompute_after_duplicate_change). That rebuild is deliberately NOT run inline: it
+        # replays the athlete's whole history and used to hold the upload in "processing" for
+        # minutes. uploads/tasks.py's process_upload runs it (scoped) after the upload is marked
+        # ready; for a batch child, _maybe_finalize_batch runs it once for the whole batch.
 
     return activity

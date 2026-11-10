@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from celery import shared_task
@@ -7,8 +8,15 @@ from activities.serializers import ActivitySerializer
 from webhooks.events import fire_event
 
 from .models import Upload, UploadBatch
-from .processing import UploadProcessingError, ingest_upload, recompute_after_duplicate_change
+from .processing import (
+    UploadProcessingError,
+    ingest_upload,
+    recompute_after_duplicate_change,
+    threshold_fields_affected_by_demoted_duplicate,
+)
 from .serializers import UploadBatchSerializer
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=3)  # type: ignore[untyped-decorator]
@@ -38,9 +46,25 @@ def process_upload(self: Any, upload_id: str) -> None:
         upload.completed_at = timezone.now()
         upload.save(update_fields=["status", "activity", "progress", "completed_at"])
         fire_event("activity.created", upload.athlete_id, ActivitySerializer(activity).data)
+        if upload.overlap_action == "marked" and not upload.batch_id:
+            _recompute_after_ingest_mark(upload, activity)
 
     if upload.batch_id:
         _maybe_finalize_batch(upload.batch_id)
+
+
+def _recompute_after_ingest_mark(upload: Upload, activity: Any) -> None:
+    """Runs after the upload is already ready (see processing.ingest_upload's comment for why it
+    isn't inline). Scoped to the threshold fields the demoted duplicate actually sourced; the
+    new activity, if it is the demoted side, was never a ledger source, so nothing is rebuilt.
+    Failures are logged, never raised: the upload itself has already succeeded."""
+    try:
+        activity.refresh_from_db(fields=["primary_activity"])
+        demoted_id = upload.overlap_other_activity_id if activity.primary_activity_id is None else None
+        fields = threshold_fields_affected_by_demoted_duplicate(demoted_id, activity.sport) if demoted_id else []
+        recompute_after_duplicate_change(upload.athlete, fields)
+    except Exception:
+        logger.exception("Post-upload duplicate recompute failed for upload %s", upload.pk)
 
 
 def _maybe_finalize_batch(batch_id: str) -> None:

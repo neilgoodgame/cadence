@@ -503,8 +503,21 @@ public class ActivityService {
 	 * Activity.tss live and already excludes duplicates, so there's no separate series to
 	 * rebuild. Public rather than package-visible since uploads.batch is a different package. */
 	public void recomputeAfterDuplicateChange(User athlete) {
+		recomputeAfterDuplicateChange(athlete, java.util.EnumSet.allOf(ThresholdField.class));
+	}
+
+	/** Scoped variant of {@link #recomputeAfterDuplicateChange(User)}: rebuilds only {@code
+	 * fields}, and skips the TSS re-rate entirely when that's empty (nothing in the ledger can
+	 * have changed, so there's nothing to re-rate against). The ingest-time auto-mark path uses
+	 * this so a duplicate that never defined a threshold costs nothing. */
+	public void recomputeAfterDuplicateChange(User athlete, java.util.Set<ThresholdField> fields) {
+		if (fields.isEmpty()) {
+			return;
+		}
 		for (ThresholdField field : ThresholdField.values()) {
-			thresholdHistoryService.rebuildHistory(athlete, field, (current, total) -> { });
+			if (fields.contains(field)) {
+				thresholdHistoryService.rebuildHistory(athlete, field, (current, total) -> { });
+			}
 		}
 		tssRecomputeService.recomputeForAthlete(athlete);
 	}
