@@ -2946,7 +2946,8 @@
     {
      "date": "2026-01-01",
      "value": 250.0,
-     "activity_id": null
+     "activity_id": null,
+     "already_recorded": false
     }
    ],
    "load_by_day": {

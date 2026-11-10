@@ -116,7 +116,7 @@ public class ThresholdHistoryCalculator {
 		this.raceRepository = raceRepository;
 	}
 
-	private static Sport sportFor(ThresholdField field) {
+	static Sport sportFor(ThresholdField field) {
 		return field == ThresholdField.FTP ? Sport.BIKE : Sport.RUN;
 	}
 
@@ -125,7 +125,7 @@ public class ThresholdHistoryCalculator {
 	 * Threshold suggestions feature's "implies" copy for a rejected candidate; impliedValue below
 	 * is a thin wrapper over this for every other, much more numerous caller that only ever
 	 * wanted the final value. */
-	private record ImpliedValueDetail(String window, double rawValue, double value) {
+	record ImpliedValueDetail(String window, double rawValue, double value) {
 	}
 
 	/** Fetches this one activity's records itself - for a caller considering activities one at a
@@ -135,12 +135,12 @@ public class ThresholdHistoryCalculator {
 	 * one go (rejectedCandidates, candidateStatuses, currentWindowValue) should batch-fetch with
 	 * {@link #batchedRecordsFor} instead and call the other overload below - see its own Javadoc
 	 * for why a per-activity query doesn't scale the same way. */
-	private ImpliedValueDetail impliedValueDetail(Activity activity, User athlete, ThresholdField field) {
+	ImpliedValueDetail impliedValueDetail(Activity activity, User athlete, ThresholdField field) {
 		return impliedValueDetail(
 				activity, athlete, field, recordRepository.findPowerTimeDistanceByActivityIdOrderByT(activity.getId()));
 	}
 
-	private ImpliedValueDetail impliedValueDetail(
+	ImpliedValueDetail impliedValueDetail(
 			Activity activity, User athlete, ThresholdField field, List<? extends RecordRepository.PowerTimeDistance> records) {
 		if (records.isEmpty()) {
 			return null;
@@ -208,7 +208,7 @@ public class ThresholdHistoryCalculator {
 	// the per-activity partition-fanout cost for an unbounded batch-memory one instead).
 	private static final int RECORD_BATCH_SIZE = 20;
 
-	private List<List<Activity>> chunked(List<Activity> activities) {
+	List<List<Activity>> chunked(List<Activity> activities) {
 		List<List<Activity>> chunks = new ArrayList<>();
 		for (int i = 0; i < activities.size(); i += RECORD_BATCH_SIZE) {
 			chunks.add(activities.subList(i, Math.min(i + RECORD_BATCH_SIZE, activities.size())));
@@ -223,7 +223,7 @@ public class ThresholdHistoryCalculator {
 	 * chunk's own (startDate-ordered) activities, both to keep partition pruning tight and to
 	 * bound how many activities' streams are held in memory at once (see {@link
 	 * #RECORD_BATCH_SIZE}'s own Javadoc). */
-	private Map<String, List<RecordRepository.PowerTimeDistanceRow>> batchedRecordsFor(List<Activity> chunk) {
+	Map<String, List<RecordRepository.PowerTimeDistanceRow>> batchedRecordsFor(List<Activity> chunk) {
 		if (chunk.isEmpty()) {
 			return Map.of();
 		}
@@ -282,7 +282,7 @@ public class ThresholdHistoryCalculator {
 		};
 	}
 
-	private static LocalDate dateOf(Activity activity) {
+	static LocalDate dateOf(Activity activity) {
 		return activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
 	}
 
@@ -290,7 +290,7 @@ public class ThresholdHistoryCalculator {
 	 * see the Threshold suggestions feature's AcceptedThresholdCandidate. Bypasses the band in
 	 * both currentWindowValue and replayFullHistory below, so an accepted candidate survives a
 	 * full rebuild/replay instead of being rejected again against a moving reference. */
-	private Set<String> acceptedActivityIds(User athlete, ThresholdField field) {
+	Set<String> acceptedActivityIds(User athlete, ThresholdField field) {
 		return acceptedThresholdCandidateRepository.findByAthleteIdAndField(athlete.getId(), field).stream()
 				.map(c -> c.getActivity().getId())
 				.collect(Collectors.toSet());

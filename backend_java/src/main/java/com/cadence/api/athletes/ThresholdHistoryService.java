@@ -53,15 +53,17 @@ public class ThresholdHistoryService {
 	private final ActivityRepository activityRepository;
 	private final UserRepository userRepository;
 	private final TssRecomputeService tssRecomputeService;
+	private final ThresholdDecayRecomputeService decayRecomputeService;
 
 	public ThresholdHistoryService(ThresholdHistoryRepository thresholdHistoryRepository,
 			ThresholdHistoryCalculator calculator, ActivityRepository activityRepository, UserRepository userRepository,
-			TssRecomputeService tssRecomputeService) {
+			TssRecomputeService tssRecomputeService, ThresholdDecayRecomputeService decayRecomputeService) {
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.calculator = calculator;
 		this.activityRepository = activityRepository;
 		this.userRepository = userRepository;
 		this.tssRecomputeService = tssRecomputeService;
+		this.decayRecomputeService = decayRecomputeService;
 	}
 
 	// FTP -> bike; critical running power/threshold pace -> run - the sport each field's
@@ -103,14 +105,24 @@ public class ThresholdHistoryService {
 	 * each field relevant to its sport (bike -> ftp; run -> criticalRunPower and thresholdPace),
 	 * recording a new ThresholdHistory entry (and updating the athlete's cached profile value) if
 	 * so. Called at ingest/import time - see ThresholdHistoryTasklet and ImportReader. A no-op
-	 * for every other sport. */
+	 * for every other sport.
+	 *
+	 * <p>Decay-enabled (issue #485, slice 3): re-simulates the field's ledger suffix from this
+	 * activity's own date instead - see ThresholdDecayRecomputeService.resimulateSuffix. A decay-
+	 * disabled athlete (the default for every existing one) keeps the cliff-based path above
+	 * entirely unchanged. */
 	@Transactional
 	public void recomputeForActivity(Activity activity) {
 		User athlete = activity.getAthlete();
 		LocalDate asOf = dateOf(activity);
 		for (ThresholdField field : ThresholdField.values()) {
 			if (fieldAppliesTo(field, activity)) {
-				recomputeAndRecord(athlete, field, asOf);
+				if (athlete.isThresholdDecayEnabled()) {
+					decayRecomputeService.resimulateSuffix(athlete, field, asOf);
+				}
+				else {
+					recomputeAndRecord(athlete, field, asOf);
+				}
 			}
 		}
 	}
@@ -124,9 +136,15 @@ public class ThresholdHistoryService {
 
 	/** Manual on-demand recompute (the dashboard's "this value is stale - refresh now" action) -
 	 * the same cheap current-window computation as the ingest hook, just athlete-triggered rather
-	 * than tied to a specific new activity. Returns whether the value actually changed. */
+	 * than tied to a specific new activity. Returns whether the value actually changed.
+	 *
+	 * <p>Decay-enabled: append-only re-simulation from today (design doc 4.2's "refresh button"
+	 * row) - see ThresholdDecayRecomputeService.resimulateSuffix. */
 	@Transactional
 	public boolean refreshField(User athlete, ThresholdField field) {
+		if (athlete.isThresholdDecayEnabled()) {
+			return decayRecomputeService.resimulateSuffix(athlete, field, LocalDate.now()).changed();
+		}
 		return recomputeAndRecord(athlete, field, null);
 	}
 
@@ -207,6 +225,20 @@ public class ThresholdHistoryService {
 		boolean staleOnArrival = ChronoUnit.DAYS.between(givenDate, today) > athlete.getThresholdWindowDays();
 		boolean correctionOnly = hasLaterRow || staleOnArrival;
 		boolean becameCurrent = !correctionOnly;
+
+		// Decay-enabled, and this edit actually becomes the live value: let
+		// ThresholdDecayRecomputeService create the ledger row itself (via simulate()'s own
+		// manual-entry Step emission) and re-derive the suffix after it, rather than writing it
+		// directly and separately re-simulating - the design doc's "one mechanism" (4.2). A
+		// correction-only edit never competed to be current (same as today), so it stays on the
+		// direct-write path below regardless of thresholdDecayEnabled - there's no suffix to
+		// re-simulate for a row that was never live in the first place.
+		if (athlete.isThresholdDecayEnabled() && becameCurrent) {
+			ThresholdDecay.ManualEntry newEntry = new ThresholdDecay.ManualEntry(givenDate, implied, null, false);
+			ThresholdDecayRecomputeService.ResimulateResult result = decayRecomputeService.resimulateSuffix(
+					athlete, field, givenDate, today, newEntry, setBy, rerateActivities, preview);
+			return new ManualEditResult(true, true, false, result.reratedCount(), result.wouldRerate());
+		}
 
 		ThresholdHistory entry = new ThresholdHistory();
 		entry.setAthlete(athlete);
@@ -392,6 +424,35 @@ public class ThresholdHistoryService {
 	 * count (measured rows written, not the ledger's total size). */
 	@Transactional
 	public int rebuildHistory(User athlete, ThresholdField field, BiConsumer<Integer, Integer> onProgress) {
+		if (athlete.isThresholdDecayEnabled()) {
+			// Decay-enabled: delegates to ThresholdDecayRecomputeService.resimulateSuffix from
+			// the athlete's first activity of this field's sport, or an earlier surviving manual
+			// row's own date if one exists (true cold start - resimulateSuffix's own seed
+			// lookups must find nothing at all before this point, or a manual row older than the
+			// first activity would otherwise be picked up as a seed anchor instead of entering
+			// the day loop as a manualEntries event). Design doc 4.2's "rebuild" row - MEASURED
+			// and DECAYED rows are replaced, MANUAL rows are still kept. resimulateSuffix has no
+			// natural per-activity progress hook (simulate's day loop isn't activity-driven), so
+			// this reports a single (1, 1) tick instead of one per activity - a known, disclosed
+			// limitation of this slice, not a correctness gap.
+			LocalDate firstActivityDate = activityRepository
+					.findEarliestStartDateForSport(athlete.getId(), sportFor(field))
+					.map(i -> i.atZone(ZoneOffset.UTC).toLocalDate())
+					.orElse(null);
+			List<ThresholdHistory> survivingManualRows = thresholdHistoryRepository
+					.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(
+							athlete.getId(), field, ThresholdHistoryKind.MANUAL);
+			LocalDate earliestManualDate = survivingManualRows.isEmpty() ? null : survivingManualRows.get(0).getEffectiveFrom();
+			LocalDate fromDate = earliestManualDate == null ? firstActivityDate
+					: (firstActivityDate == null ? earliestManualDate
+							: (firstActivityDate.isBefore(earliestManualDate) ? firstActivityDate : earliestManualDate));
+			if (fromDate != null) {
+				decayRecomputeService.resimulateSuffix(athlete, field, fromDate);
+			}
+			onProgress.accept(1, 1);
+			return 0;
+		}
+
 		thresholdHistoryRepository.deleteByAthleteIdAndFieldAndKind(athlete.getId(), field, ThresholdHistoryKind.MEASURED);
 		List<ThresholdHistoryEntry> entries = calculator.replayFullHistory(athlete, field, onProgress);
 		for (ThresholdHistoryEntry entry : entries) {
