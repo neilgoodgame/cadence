@@ -22,7 +22,7 @@ from .activity_source_service import VALID_FIELDS as ATTACHABLE_FIELDS
 from .activity_source_service import attach_stream
 from .merge_alignment import align
 from .merge_apply import ACTIVITY_FIELDS, STREAM_FIELDS, CopyMode, FieldRewriteCounts, NullPolicy, apply_merge_fields
-from .merge_postprocess import recompute_after_merge
+from .merge_postprocess import recompute_activity_level_only, recompute_after_merge, threshold_fields_for_sports
 from .models import Activity, Merge
 
 _VALID_FIELDS = set(STREAM_FIELDS) | set(ACTIVITY_FIELDS)
@@ -52,6 +52,15 @@ def _is_multisport_linked(activity: Activity) -> bool:
     return activity.sport in ("multisport", "transition") or activity.parent_activity_id is not None
 
 
+def _already_hidden_under(source: Activity, target: Activity) -> bool:
+    """True when ``source`` is already hidden as a duplicate of exactly ``target``, e.g. marked that
+    way by ingest-time overlap handling before the athlete came to merge the pair. Hiding it again
+    would be a no-op, so the merge proceeds without hiding and without recording source_hidden: an
+    undo then leaves the pre-existing mark alone instead of un-hiding something this merge never
+    hid."""
+    return source.primary_activity_id is not None and source.primary_activity_id == target.pk
+
+
 def _validate(target: Activity, source: Activity, fields: list[str], hide_source: bool) -> None:
     if target.pk == source.pk:
         raise ValidationError({"source_id": "An activity cannot be merged with itself."})
@@ -63,7 +72,9 @@ def _validate(target: Activity, source: Activity, fields: list[str], hide_source
     if unknown:
         raise ValidationError({"fields": f"Unknown field(s): {', '.join(unknown)}."})
     if hide_source:
-        if source.primary_activity_id is not None:
+        # Already a duplicate of *this* target (e.g. auto-marked at import) is fine - see
+        # _already_hidden_under; only a duplicate of some other activity is refused.
+        if source.primary_activity_id is not None and not _already_hidden_under(source, target):
             raise ValidationError({"source_id": "This activity is already a duplicate of another activity."})
         if _is_multisport_linked(source) or _is_multisport_linked(target):
             raise ValidationError({"source_id": "Multisport sessions and their legs cannot be hidden as duplicates."})
@@ -122,7 +133,7 @@ def _run_attach(
 
     with transaction.atomic():
         result = attach_stream(target_id, source_id, field, offset_seconds, preview, source_kind)
-        if not preview and hide_source:
+        if not preview and hide_source and not _already_hidden_under(source, target):
             source.primary_activity = target
             source.save(update_fields=["primary_activity"])
             apply_duplicate_change(source, was_duplicate=False, is_duplicate=True)
@@ -172,7 +183,8 @@ def run_merge(
     with transaction.atomic():
         counts = apply_merge_fields(target_id, source_id, fields, null_policy, resolved_offset)
 
-        if hide_source:
+        apply_hide = hide_source and not _already_hidden_under(source, target)
+        if apply_hide:
             source.primary_activity = target
             source.save(update_fields=["primary_activity"])
             apply_duplicate_change(source, was_duplicate=False, is_duplicate=True)
@@ -180,7 +192,17 @@ def run_merge(
         # Runs after hiding, not before, so the one post-processing pass (in particular its
         # full-athlete threshold ledger/TSS rebuild) already sees the source excluded as a
         # duplicate when hide_source is set - not a stale view from before the hide took effect.
-        recompute_after_merge(target_id)
+        if preview:
+            # A preview only needs the target's own re-derived stats for its before/after summary.
+            # Running the athlete-wide threshold ledger/TSS rebuild inside it (then rolling it
+            # back) made every preview as heavy as a real merge, and the merge dialog fires one
+            # per field/offset change.
+            recompute_activity_level_only(target_id)
+        else:
+            # Only the fields the merged activities' sports can define - a bike merge can't
+            # change run thresholds. The source is included because hiding it removes its own
+            # best efforts from its sport's ledger.
+            recompute_after_merge(target_id, threshold_fields_for_sports(target.sport, source.sport))
 
         target.refresh_from_db()
         after = _summarize(target)
@@ -199,7 +221,7 @@ def run_merge(
                 alignment_score=score,
                 field_counts=_counts_as_dict(counts),
                 previous_activity_values=previous_activity_values,
-                source_hidden=hide_source,
+                source_hidden=apply_hide,
             )
 
     return {
