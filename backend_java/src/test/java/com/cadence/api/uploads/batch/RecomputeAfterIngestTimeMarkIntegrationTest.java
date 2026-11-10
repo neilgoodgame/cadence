@@ -182,7 +182,9 @@ class RecomputeAfterIngestTimeMarkIntegrationTest extends IntegrationTest {
 				&& "MARKED".equals(u.getOverlapAction().toString())).count();
 
 		assertThat(marked).isEqualTo(2);
-		verify(activityService, times(1))
+		// The batch finalizer runs the cascade just after the last child settles, so the children
+		// being terminal doesn't guarantee it has run yet.
+		verify(activityService, org.mockito.Mockito.timeout(10_000).times(1))
 				.recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
 	}
 

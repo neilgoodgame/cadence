@@ -5,6 +5,7 @@ import com.cadence.api.activities.ActivityMergeApplyService.NullPolicy;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator.AlignmentResult;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator.Sample;
+import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -85,6 +86,15 @@ public class ActivityMergeService {
 				|| activity.getParentActivity() != null;
 	}
 
+	/** True when {@code source} is already hidden as a duplicate of exactly {@code target}, e.g.
+	 * marked that way by ingest-time overlap handling before the athlete came to merge the pair.
+	 * Hiding it again would be a no-op, so the merge proceeds without hiding and without
+	 * recording {@code sourceHidden}: an undo then leaves the pre-existing mark alone instead of
+	 * un-hiding something this merge never hid. */
+	private static boolean alreadyHiddenUnder(Activity source, Activity target) {
+		return source.getPrimaryActivity() != null && source.getPrimaryActivity().getId().equals(target.getId());
+	}
+
 	private void validate(Activity target, Activity source, List<String> fields, boolean hideSource) {
 		if (target.getId().equals(source.getId())) {
 			throw new ValidationException("An activity cannot be merged with itself.", "source_id");
@@ -100,7 +110,9 @@ public class ActivityMergeService {
 			throw new ValidationException("Unknown field(s): " + String.join(", ", unknown), "fields");
 		}
 		if (hideSource) {
-			if (source.getPrimaryActivity() != null) {
+			// Already a duplicate of *this* target (e.g. auto-marked at import) is fine - see
+			// alreadyHiddenUnder; only a duplicate of some other activity is refused.
+			if (source.getPrimaryActivity() != null && !alreadyHiddenUnder(source, target)) {
 				throw new ValidationException("This activity is already a duplicate of another activity.", "source_id");
 			}
 			if (isMultisportLinked(source) || isMultisportLinked(target)) {
@@ -199,7 +211,8 @@ public class ActivityMergeService {
 		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(targetId, sourceId, fields,
 				nullPolicy, offset.offsetSeconds());
 
-		if (hideSource) {
+		boolean applyHide = hideSource && !alreadyHiddenUnder(source, target);
+		if (applyHide) {
 			source.setPrimaryActivity(target);
 			activityRepository.save(source);
 			activityService.applyDuplicateGearMileageChange(source, false, true);
@@ -208,7 +221,23 @@ public class ActivityMergeService {
 		// Runs after hiding, not before, so the one post-processing pass (in particular its
 		// full-athlete threshold ledger/TSS rebuild) already sees the source excluded as a
 		// duplicate when hideSource is set - not a stale view from before the hide took effect.
-		postProcessingService.recomputeAfterMerge(targetId);
+		if (preview) {
+			// A preview only needs the target's own re-derived stats for its before/after
+			// summary. Running the athlete-wide threshold ledger/TSS rebuild inside it (then
+			// rolling it back) made every preview as heavy as a real merge and, since the dialog
+			// fires one per field/offset change, held locks on threshold_history that a real
+			// Merge click then timed out waiting on.
+			postProcessingService.recomputeActivityLevelOnly(targetId);
+		}
+		else {
+			// Only the fields the merged activities' sports can define - a bike merge can't
+			// change run thresholds. The source is included because hiding it removes its own
+			// best efforts from its sport's ledger.
+			java.util.Set<ThresholdField> thresholdFields = java.util.EnumSet.noneOf(ThresholdField.class);
+			thresholdFields.addAll(ThresholdField.forSport(target.getSport()));
+			thresholdFields.addAll(ThresholdField.forSport(source.getSport()));
+			postProcessingService.recomputeAfterMerge(targetId, thresholdFields);
+		}
 
 		Activity reloadedTarget = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
@@ -228,7 +257,7 @@ public class ActivityMergeService {
 		merge.setAlignmentScore(offset.score());
 		merge.setFieldCounts(counts);
 		merge.setPreviousActivityValues(previousActivityValues);
-		merge.setSourceHidden(hideSource);
+		merge.setSourceHidden(applyHide);
 		merge = mergeRepository.save(merge);
 
 		return new MergeResult(merge.getId(), offset.offsetSeconds(), offset.score(), counts, before, after,
@@ -277,7 +306,7 @@ public class ActivityMergeService {
 		ActivitySourceService.AttachResult attach = sourceService.attachStream(targetId, sourceId, field,
 				offsetSecondsOverride, preview, sourceKind);
 
-		if (!preview && hideSource) {
+		if (!preview && hideSource && !alreadyHiddenUnder(source, target)) {
 			source.setPrimaryActivity(target);
 			activityRepository.save(source);
 			activityService.applyDuplicateGearMileageChange(source, false, true);

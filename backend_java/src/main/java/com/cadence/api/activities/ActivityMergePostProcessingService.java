@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.workouts.WorkoutAutoMatchService;
@@ -46,15 +47,24 @@ public class ActivityMergePostProcessingService {
 	 * target, never the (now-exhausted) source. */
 	@Transactional
 	public void recomputeAfterMerge(String targetId) {
+		recomputeAfterMerge(targetId, java.util.EnumSet.allOf(ThresholdField.class));
+	}
+
+	/** Scoped variant: the athlete-wide cascade only rebuilds {@code thresholdFields} (and skips
+	 * the TSS re-rate when that's empty). A merge only rewrites the target's own streams, so a
+	 * caller that knows the sports involved (see {@link ActivityMergeService#runMerge}) can pass
+	 * just the fields those sports can define instead of all three. */
+	@Transactional
+	public void recomputeAfterMerge(String targetId, java.util.Set<ThresholdField> thresholdFields) {
 		recomputeActivityLevelOnly(targetId);
 
 		Activity activity = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
 
 		// Issue #498's cascade: this activity's own data just changed underneath it, so the
-		// threshold ledger and every activity's TSS/intensity need the same full-athlete rebuild
+		// threshold ledger and every activity's TSS/intensity need the same athlete-wide rebuild
 		// a duplicate mark/unmark/set_primary already triggers.
-		activityService.recomputeAfterDuplicateChange(activity.getAthlete());
+		activityService.recomputeAfterDuplicateChange(activity.getAthlete(), thresholdFields);
 
 		workoutAutoMatchService.attemptMatch(targetId);
 	}

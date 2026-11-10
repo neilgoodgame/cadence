@@ -11,6 +11,9 @@ deleted once #525 lands. Mirrors backend_java's ActivityMergePostProcessingServi
 in sync when changing either.
 """
 
+from collections.abc import Iterable
+
+from athletes.threshold_history import FIELD_SPORT
 from uploads.processing import (
     _write_duration_curves,
     attempt_workout_match,
@@ -27,17 +30,27 @@ from .models import Activity
 _CURVE_AND_BEST_EFFORT_EXCLUDED_SPORTS = ("multisport", "transition")
 
 
-def recompute_after_merge(target_id: str) -> None:
+def threshold_fields_for_sports(*sports: str) -> list[str]:
+    """The threshold fields activities of any of ``sports`` can define (bike: ftp; run:
+    critical_run_power and threshold_pace; every other sport: none)."""
+    return [field for field, field_sport in FIELD_SPORT.items() if field_sport in sports]
+
+
+def recompute_after_merge(target_id: str, threshold_fields: Iterable[str] | None = None) -> None:
     """Call after merge_apply.apply_merge_fields has committed - never on a preview. ``target_id``
     keeps its own id across a merge, so this always re-derives the target, never the (now-
-    exhausted) source."""
+    exhausted) source.
+
+    ``threshold_fields`` scopes the athlete-wide cascade to just those fields (None = all three;
+    empty = skip the cascade, including the TSS re-rate). A merge only rewrites the target's own
+    streams, so a caller that knows the sports involved can pass only what they can define."""
     recompute_activity_level_only(target_id)
     activity = Activity.objects.get(pk=target_id)
 
     # Issue #498's cascade: this activity's own data just changed underneath it, so the threshold
-    # ledger and every activity's TSS/intensity need the same full-athlete rebuild a duplicate
+    # ledger and every activity's TSS/intensity need the same athlete-wide rebuild a duplicate
     # mark/unmark/set_primary already triggers.
-    recompute_after_duplicate_change(activity.athlete)
+    recompute_after_duplicate_change(activity.athlete, threshold_fields)
 
     attempt_workout_match(activity, activity.athlete)
 

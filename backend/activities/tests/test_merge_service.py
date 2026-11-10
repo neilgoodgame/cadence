@@ -2,6 +2,7 @@
 Mirrors backend_java's ActivityMergeControllerIntegrationTest."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 from django.test import TestCase
 
@@ -103,6 +104,89 @@ class MergeServiceTests(TestCase):
         self.assertTrue(response.json()["source_hidden"])
         source.refresh_from_db()
         self.assertEqual(source.primary_activity_id, target.id)
+
+    def test_merges_when_the_source_is_already_hidden_under_this_target(self):
+        target = self._activity(self.athlete, name="Target")
+        source = self._activity(self.athlete, name="Source")
+        self._add_records(target, 10, power=100)
+        self._add_records(source, 10, power=250)
+        source.primary_activity = target  # e.g. auto-marked at import by on_overlap=mark
+        source.save(update_fields=["primary_activity"])
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{target.id}/merge",
+            {
+                "source_id": source.id,
+                "fields": ["power"],
+                "null_policy": "keep_original",
+                "offset_seconds": 0,
+                "hide_source": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        source.refresh_from_db()
+        self.assertEqual(source.primary_activity_id, target.id)
+        # The merge didn't hide anything itself, so undoing it must not un-hide the source.
+        self.assertFalse(Merge.objects.get(pk=response.json()["merge_id"]).source_hidden)
+
+    def test_still_rejects_hiding_a_source_that_is_a_duplicate_of_a_different_activity(self):
+        target = self._activity(self.athlete, name="Target")
+        other = self._activity(self.athlete, name="Other primary")
+        source = self._activity(self.athlete, name="Source")
+        source.primary_activity = other
+        source.save(update_fields=["primary_activity"])
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{target.id}/merge",
+            {"source_id": source.id, "fields": ["power"], "null_policy": "keep_original", "hide_source": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_preview_never_runs_the_athlete_wide_cascade(self):
+        target = self._activity(self.athlete, name="Target")
+        source = self._activity(self.athlete, name="Source")
+        self._add_records(target, 10, power=100)
+        self._add_records(source, 10, power=250)
+
+        with (
+            patch("activities.merge_service.recompute_after_merge") as cascade,
+            patch("activities.merge_service.recompute_activity_level_only") as level_only,
+        ):
+            response = _bearer_client(self.athlete).post(
+                f"/v1/activities/{target.id}/merge",
+                {
+                    "source_id": source.id,
+                    "fields": ["power"],
+                    "null_policy": "keep_original",
+                    "offset_seconds": 0,
+                    "preview": True,
+                },
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        cascade.assert_not_called()
+        level_only.assert_called_once_with(target.id)
+
+    def test_a_real_bike_merge_only_rebuilds_the_bike_threshold_field(self):
+        target = self._activity(self.athlete, name="Target")
+        source = self._activity(self.athlete, name="Source")
+        self._add_records(target, 10, power=100)
+        self._add_records(source, 10, power=250)
+
+        with patch("activities.merge_service.recompute_after_merge") as cascade:
+            response = _bearer_client(self.athlete).post(
+                f"/v1/activities/{target.id}/merge",
+                {"source_id": source.id, "fields": ["power"], "null_policy": "keep_original", "offset_seconds": 0},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        cascade.assert_called_once_with(target.id, ["ftp"])
 
     def test_rejects_an_unrecognized_field(self):
         target = self._activity(self.athlete, name="Target")

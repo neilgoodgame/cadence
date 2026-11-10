@@ -5,7 +5,6 @@ import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryKind;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
-import com.cadence.api.common.domain.Sport;
 import com.cadence.api.uploads.Upload;
 import com.cadence.api.uploads.UploadRepository;
 import java.util.EnumSet;
@@ -76,7 +75,7 @@ public class DuplicateRecomputeTasklet implements Tasklet {
 	}
 
 	Set<ThresholdField> affectedFields(UploadJobContext.DuplicateChange change) {
-		Set<ThresholdField> candidates = fieldsFor(change.sport());
+		Set<ThresholdField> candidates = ThresholdField.forSport(change.sport());
 		Set<ThresholdField> affected = EnumSet.noneOf(ThresholdField.class);
 		if (candidates.isEmpty()) {
 			return affected;
@@ -87,14 +86,5 @@ public class DuplicateRecomputeTasklet implements Tasklet {
 			}
 		}
 		return affected;
-	}
-
-	/** Mirrors {@code ThresholdHistoryService#fieldAppliesTo}. */
-	static Set<ThresholdField> fieldsFor(Sport sport) {
-		return switch (sport) {
-			case BIKE -> EnumSet.of(ThresholdField.FTP);
-			case RUN -> EnumSet.of(ThresholdField.CRITICAL_RUN_POWER, ThresholdField.THRESHOLD_PACE);
-			default -> EnumSet.noneOf(ThresholdField.class);
-		};
 	}
 }

@@ -134,6 +134,40 @@ class ActivityMergeServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void mergesWhenTheSourceIsAlreadyHiddenUnderThisTargetWithoutRecordingItAsHidden() {
+		User athlete = newAthlete("merge-service-already-hidden@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity source = newActivity(athlete, "Source");
+		addRecords(target, 10, 100);
+		addRecords(source, 10, 250);
+		source.setPrimaryActivity(target); // e.g. auto-marked at import by on_overlap=mark
+		activityRepository.save(source);
+
+		ActivityMergeService.MergeResult result = mergeService.runMerge(target.getId(), source.getId(),
+				List.of("power"), NullPolicy.KEEP_ORIGINAL, 0, true, false);
+
+		assertThat(result.after().avgPower()).isEqualTo(250);
+		assertThat(activityRepository.findById(source.getId()).orElseThrow().getPrimaryActivity().getId())
+				.isEqualTo(target.getId());
+		// The merge didn't hide anything itself, so it must not claim to have - otherwise undoing
+		// it would un-hide a duplicate the athlete marked separately.
+		assertThat(mergeRepository.findById(result.mergeId()).orElseThrow().isSourceHidden()).isFalse();
+	}
+
+	@Test
+	void stillRejectsHidingASourceThatIsADuplicateOfADifferentActivity() {
+		User athlete = newAthlete("merge-service-hidden-elsewhere@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity other = newActivity(athlete, "Other primary");
+		Activity source = newActivity(athlete, "Source");
+		source.setPrimaryActivity(other);
+		activityRepository.save(source);
+
+		assertThatThrownBy(() -> mergeService.runMerge(target.getId(), source.getId(), List.of("power"),
+				NullPolicy.KEEP_ORIGINAL, 0, true, false)).isInstanceOf(ValidationException.class);
+	}
+
+	@Test
 	void rejectsAnUnrecognizedField() {
 		User athlete = newAthlete("merge-service-unknown-field@example.cc");
 		Activity target = newActivity(athlete, "Target");
