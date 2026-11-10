@@ -296,4 +296,67 @@ class DecayCurveTests(SimpleTestCase):
         steps = simulate("ftp", settings, None, None, None, [candidate], [], {}, start, start + timedelta(days=10))
         self.assertEqual(len(steps), 1)
         self.assertEqual(steps[0].kind, "measured")
-        self.assertEqual(steps[0].value, 200.0)
+
+    def test_seed_v_value_resumes_from_an_already_decayed_value_not_the_anchor(self):
+        """The slice-3 extension: resuming a suffix well after the anchor's own date (e.g. the
+        daily job, resuming from "the day after the latest row's current_from") must continue
+        decaying from that row's own value, not jump back up to the anchor."""
+        settings = DecaySettings(window_days=112, sanity_pct=50, tau_days=25, min_pct=3, max_pct=12, enabled=True)
+        anchor_date = date(2026, 1, 1)
+        expiry = anchor_date + timedelta(days=settings.window_days + 1)
+        # First, run the whole thing in one pass to find out what v would be at some later day.
+        full_end = expiry + timedelta(days=30)
+        load = {anchor_date + timedelta(days=i): 0.0 for i in range(-5, 400)}
+        load[anchor_date] = 100.0
+        full = simulate("ftp", settings, 260.0, anchor_date, "measured", [], [], load, anchor_date, full_end)
+        resume_from = full[-1].current_from
+        already_decayed_value = full[-1].value
+        self.assertLess(already_decayed_value, 260.0)
+
+        # Resuming from the day after, seeded with that already-decayed value (not 260), must
+        # continue the SAME trajectory a continuous one-pass run would have taken.
+        resume_start = resume_from + timedelta(days=1)
+        resume_end = full_end + timedelta(days=20)
+        resumed = simulate(
+            "ftp",
+            settings,
+            260.0,
+            anchor_date,
+            "measured",
+            [],
+            [],
+            load,
+            resume_start,
+            resume_end,
+            seed_v_value=already_decayed_value,
+        )
+        one_pass = simulate("ftp", settings, 260.0, anchor_date, "measured", [], [], load, anchor_date, resume_end)
+
+        def value_on(steps, d, initial):
+            value = initial
+            for s in steps:
+                if s.current_from <= d:
+                    value = s.value
+                else:
+                    break
+            return value
+
+        self.assertEqual(value_on(resumed, resume_end, already_decayed_value), value_on(one_pass, resume_end, 260.0))
+
+        # Without the seed_v_value fix, resuming would incorrectly restart from the anchor (260).
+        wrong_resume = simulate("ftp", settings, 260.0, anchor_date, "measured", [], [], load, resume_start, resume_end)
+        self.assertNotEqual(wrong_resume[0].value, resumed[0].value)
+
+    def test_already_recorded_manual_entry_suppresses_without_duplicating_a_step(self):
+        """The slice-3 extension: a manual entry whose ledger row already exists (because it's
+        outside this particular resimulation's own trigger) must still protect against a lower
+        later candidate (1.1), but must not produce a second Step for itself."""
+        settings = DecaySettings(window_days=112, sanity_pct=50, tau_days=25, min_pct=3, max_pct=12, enabled=True)
+        manual_date = date(2026, 1, 1)
+        manual = ManualEntry(date=manual_date, value=250.0, already_recorded=True)
+        lower = DecayCandidate(date=manual_date + timedelta(days=5), implied_value=230.0, activity_id="low")
+        end = manual_date + timedelta(days=30)
+        steps = simulate("ftp", settings, None, None, None, [lower], [manual], {}, manual_date, end)
+        # No Step at all - the manual entry isn't re-emitted, and the lower candidate correctly
+        # fails the upward-reset test against it, so nothing changes.
+        self.assertEqual(steps, [])

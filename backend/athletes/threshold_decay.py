@@ -73,11 +73,19 @@ class DecayCandidate:
 class ManualEntry:
     """An athlete- or coach-entered value, native units - always becomes the anchor on its own
     date regardless of whether it's higher or lower than the current value (unlike a measured
-    candidate's upward-reset test), matching the existing `record_manual_value` rule."""
+    candidate's upward-reset test), matching the existing `record_manual_value` rule.
+
+    `already_recorded` is for an entry that already has its own ledger row (every manual entry a
+    suffix resimulation's own date range happens to span, other than the one brand-new edit a
+    manual-edit trigger is itself recording) - the day loop still applies its anchor-reset effect
+    (so it keeps suppressing a later, weaker candidate exactly as it already does today - the 1.1
+    regression), but does not append a `Step` for it, since resimulation never deletes an existing
+    manual row and emitting one here would duplicate it."""
 
     date: date
     value: float
     activity_id: str | None = None
+    already_recorded: bool = False
 
 
 @dataclass(frozen=True)
@@ -137,10 +145,14 @@ def simulate(
     load_by_day: dict[date, float],
     start: date,
     end: date,
+    seed_v_value: float | None = None,
 ) -> list[Step]:
     """The one entry point - see the module docstring for the effort-unit design and the
     `start`/seed contract. `seed_anchor_value`/`date`/`kind` describe the anchor already on file
-    as of just before `start` (all `None` for a cold start with no prior anchor at all)."""
+    as of just before `start` (all `None` for a cold start with no prior anchor at all).
+    `seed_v_value` is the ledger's current value as of `start - 1`, which can differ from
+    `seed_anchor_value` once it's partway through decaying away from the anchor - omitted (or for
+    a cold start), it defaults to `seed_anchor_value`, matching every pre-existing caller."""
     candidates_by_day = _group_by_day(candidates)
     manual_by_day = {m.date: m for m in sorted(manual_entries, key=lambda m: m.date)}
     if settings.enabled:
@@ -154,6 +166,7 @@ def simulate(
             load_by_day,
             start,
             end,
+            seed_v_value,
         )
     return _simulate_disabled(
         field,
@@ -178,28 +191,34 @@ def _simulate_enabled(
     load_by_day: dict[date, float],
     start: date,
     end: date,
+    seed_v_value: float | None = None,
 ) -> list[Step]:
     a = seed_anchor_date
     anchor_effort = _to_effort(field, seed_anchor_value) if seed_anchor_value is not None else None
-    v_effort = anchor_effort
+    effective_seed_v = seed_v_value if seed_v_value is not None else seed_anchor_value
+    v_effort = _to_effort(field, effective_seed_v) if effective_seed_v is not None else None
     # The successor pool: qualifying *activities* only (not manual entries - see 2.1 of the plan
     # doc), sliding-window-maximum pruned exactly like threshold_history.py's own window scan.
     window: list[tuple[date, float, str | None]] = []
-    last_emitted_native = (
-        _round_native(field, _from_effort(field, anchor_effort)) if anchor_effort is not None else None
-    )
+    last_emitted_native = _round_native(field, _from_effort(field, v_effort)) if v_effort is not None else None
     steps: list[Step] = []
 
-    loop_start = min(start, seed_anchor_date) if seed_anchor_date is not None else start
-    for d in _daterange(loop_start, end):
+    for d in _daterange(start, end):
         anchor_event: tuple[str, str | None, date] | None = None
+        # Set when an already-recorded manual entry resets the anchor this day - its own ledger
+        # row already exists, so the dedup fallback below must not mistake the resulting value
+        # change for a fresh decay step; it just needs last_emitted_native brought up to date.
+        suppress_emission = False
 
         manual = manual_by_day.get(d)
         if manual is not None:
             anchor_effort = _to_effort(field, manual.value)
             a = d
             v_effort = anchor_effort
-            anchor_event = (MANUAL, manual.activity_id, d)
+            if manual.already_recorded:
+                suppress_emission = True
+            else:
+                anchor_event = (MANUAL, manual.activity_id, d)
 
         ref_native = _round_native(field, _from_effort(field, v_effort)) if v_effort is not None else None
         for candidate in candidates_by_day.get(d, []):
@@ -250,6 +269,8 @@ def _simulate_enabled(
                 kind, activity_id, effective_from = anchor_event
                 steps.append(Step(new_native, kind, activity_id, effective_from, d))
                 last_emitted_native = new_native
+            elif suppress_emission:
+                last_emitted_native = new_native
             elif last_emitted_native is None or new_native != last_emitted_native:
                 steps.append(Step(new_native, DECAYED, None, d, d))
                 last_emitted_native = new_native
@@ -274,9 +295,12 @@ def _simulate_disabled(
     with no decay curve in between. Unlike enabled mode, manual entries compete in the same window
     as activities rather than unconditionally overriding it - there's no decay clock here for an
     unconditional override to usefully "reset"."""
-    window: list[tuple[date, float, str, str | None]] = []
+    # (date, effort, kind, activity_id, already_recorded) - the last flag mirrors ManualEntry's
+    # own: skip emitting a Step for this window member even if it becomes the window max, since
+    # it already has its own ledger row (a seed anchor is, by construction, always one of these).
+    window: list[tuple[date, float, str, str | None, bool]] = []
     if seed_anchor_value is not None:
-        window.append((seed_anchor_date, _to_effort(field, seed_anchor_value), seed_anchor_kind, None))
+        window.append((seed_anchor_date, _to_effort(field, seed_anchor_value), seed_anchor_kind, None, True))
     last_emitted_native = _round_native(field, _from_effort(field, window[0][1])) if window else None
     steps: list[Step] = []
 
@@ -286,7 +310,7 @@ def _simulate_disabled(
         if manual is not None:
             manual_effort = _to_effort(field, manual.value)
             window = [w for w in window if w[1] >= manual_effort]
-            window.append((d, manual_effort, MANUAL, None))
+            window.append((d, manual_effort, MANUAL, manual.activity_id, manual.already_recorded))
 
         ref_effort = window[0][1] if window else None
         ref_native = _round_native(field, _from_effort(field, ref_effort)) if ref_effort is not None else None
@@ -299,7 +323,7 @@ def _simulate_disabled(
                 continue
             candidate_effort = _to_effort(field, candidate.implied_value)
             window = [w for w in window if w[1] >= candidate_effort]
-            window.append((d, candidate_effort, MEASURED, candidate.activity_id))
+            window.append((d, candidate_effort, MEASURED, candidate.activity_id, False))
             ref_native = _round_native(field, _from_effort(field, window[0][1]))
 
         cutoff = d - timedelta(days=settings.window_days)
@@ -307,11 +331,11 @@ def _simulate_disabled(
 
         if d >= start:
             if window:
-                best_date, best_effort, best_kind, best_activity_id = window[0]
+                best_date, best_effort, best_kind, best_activity_id, best_already_recorded = window[0]
                 new_native = _round_native(field, _from_effort(field, best_effort))
-                if last_emitted_native is None or new_native != last_emitted_native:
+                if not best_already_recorded and (last_emitted_native is None or new_native != last_emitted_native):
                     steps.append(Step(new_native, best_kind, best_activity_id, best_date, d))
-                    last_emitted_native = new_native
+                last_emitted_native = new_native
             else:
                 last_emitted_native = None
 

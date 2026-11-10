@@ -540,11 +540,21 @@ def recompute_for_activity(activity: Activity) -> None:
     profile value) if so. Called at ingest/import time - see
     uploads/processing.py::_ingest_activity and dataexport/import_reader.py. A no-op for every
     other sport, same as detection always was.
+
+    Decay-enabled (issue #485, slice 3): re-simulates the field's ledger suffix from this
+    activity's own date instead - see threshold_decay_recompute.resimulate_suffix. A decay-
+    disabled athlete (the default for every existing one) keeps the cliff-based path above
+    entirely unchanged.
     """
     athlete = activity.athlete
     for field, sport in FIELD_SPORT.items():
         if sport == activity.sport:
-            _recompute_and_record(athlete, field, as_of=activity.start_date.date())
+            if athlete.threshold_decay_enabled:
+                from .threshold_decay_recompute import resimulate_suffix
+
+                resimulate_suffix(athlete, field, activity.start_date.date())
+            else:
+                _recompute_and_record(athlete, field, as_of=activity.start_date.date())
 
 
 @dataclass(frozen=True)
@@ -635,6 +645,38 @@ def record_manual_value(
     stale_on_arrival = (today - given_date).days > athlete.threshold_window_days
     is_correction_only = has_later_row or stale_on_arrival
     became_current = not is_correction_only
+
+    # Decay-enabled, and this edit actually becomes the live value: let resimulate_suffix create
+    # the ledger row itself (via simulate's own manual-entry Step emission) and re-derive the
+    # suffix after it, rather than writing it directly and separately re-simulating - the design
+    # doc's "one mechanism" (4.2). A correction-only edit never competed to be current (same as
+    # today), so it stays on the direct-write path below regardless of threshold_decay_enabled -
+    # there's no suffix to re-simulate for a row that was never live in the first place.
+    if athlete.threshold_decay_enabled and became_current:
+        from .threshold_decay import ManualEntry as DecayManualEntry
+        from .threshold_decay_recompute import resimulate_suffix
+
+        new_entry = DecayManualEntry(date=given_date, value=implied_value, already_recorded=False)
+        with transaction.atomic():
+            result = resimulate_suffix(
+                athlete,
+                field,
+                given_date,
+                end=today,
+                new_manual_entry=new_entry,
+                manual_set_by=set_by,
+                rerate_activities=rerate_activities,
+                preview=preview,
+            )
+            if preview:
+                transaction.set_rollback(True)
+        return ManualValueResult(
+            changed=True,
+            became_current=True,
+            is_correction_only=False,
+            rerated_count=result.rerated_count,
+            would_rerate=result.would_rerate,
+        )
 
     value_numeric, value_pace = (None, raw_value) if field == "threshold_pace" else (raw_value, "")
 
@@ -732,7 +774,14 @@ def _rerate_activities_from(
 def refresh_field(athlete: User, field: str) -> bool:
     """Manual on-demand recompute (the dashboard's "this value is stale - refresh now" action) -
     the same cheap current-window computation as the ingest hook, just athlete-triggered rather
-    than tied to a specific new activity. Returns whether the value actually changed."""
+    than tied to a specific new activity. Returns whether the value actually changed.
+
+    Decay-enabled: append-only re-simulation from today (design doc 4.2's "refresh button" row) -
+    see threshold_decay_recompute.resimulate_suffix."""
+    if athlete.threshold_decay_enabled:
+        from .threshold_decay_recompute import resimulate_suffix
+
+        return resimulate_suffix(athlete, field, date.today()).changed
     return _recompute_and_record(athlete, field)
 
 
@@ -757,7 +806,40 @@ def rebuild_history_stream(athlete: User, field: str) -> Iterator[tuple[int, int
     rows"). _replay_full_history_into already merges those surviving rows back into the window
     at their own effective_from, so measured activities are still correctly suppressed/revealed
     relative to them - see its own docstring. Yields (current, total) progress after each
-    activity processed, for the SSE bulk-rebuild endpoint."""
+    activity processed, for the SSE bulk-rebuild endpoint.
+
+    Decay-enabled: delegates to threshold_decay_recompute.resimulate_suffix from the athlete's
+    first activity of this field's sport, or an earlier surviving manual row's own date if one
+    exists (true cold start - resimulate_suffix's own seed lookups must find nothing at all
+    before this point, or a manual row older than the first activity would otherwise be picked
+    up as a seed anchor instead of entering the day loop as a manual_entries event, same effect
+    either way for *this* field's own ledger, but silently wrong once a real daily job starts
+    relying on the seed lookup's "nothing before this date" assumption elsewhere). Design doc
+    4.2's "rebuild" row - "measured" AND "decayed" rows are replaced, manual rows are still kept.
+    resimulate_suffix isn't a generator (simulate's day loop has no natural per-activity hook),
+    so this yields a single (1, 1) progress tuple instead of one per activity - a known,
+    disclosed limitation of this slice, not a correctness gap."""
+    if athlete.threshold_decay_enabled:
+        from .threshold_decay_recompute import resimulate_suffix
+
+        first_activity_date = (
+            Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field], primary_activity__isnull=True)
+            .order_by("start_date")
+            .values_list("start_date", flat=True)
+            .first()
+        )
+        earliest_manual_date = (
+            ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="manual", is_correction_only=False)
+            .order_by("effective_from")
+            .values_list("effective_from", flat=True)
+            .first()
+        )
+        candidates = [d for d in [first_activity_date and first_activity_date.date(), earliest_manual_date] if d]
+        if candidates:
+            resimulate_suffix(athlete, field, min(candidates))
+        yield 1, 1
+        return
+
     ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="measured").delete()
     entries: list[ThresholdHistoryEntry] = []
     yield from _replay_full_history_into(athlete, field, entries)

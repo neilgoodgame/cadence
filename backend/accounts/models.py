@@ -78,6 +78,20 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # time, not stored).
     THRESHOLD_WARNING_DAYS_CHOICES = [(14, "14 days"), (21, "21 days"), (28, "28 days"), (0, "Off")]
     threshold_warning_days = models.PositiveSmallIntegerField(choices=THRESHOLD_WARNING_DAYS_CHOICES, default=21)
+    # Threshold decay (issue #485, docs/plans/threshold-decay.md): once a threshold's anchoring
+    # evidence ages out of threshold_window_days, its value eases down a decay curve instead of
+    # jumping straight to the next-best candidate - see athletes/threshold_decay.py's simulate().
+    # Off for everyone for now, including new athletes - this slice only wires the mechanism, with
+    # no staleness-display/settings-API/daily-job/frontend support yet, so flipping new-athlete
+    # default to on (the design doc's own eventual recommendation) is deferred to a later slice
+    # once the rest of the feature is actually visible/controllable. Also avoids every existing
+    # test's default-constructed athlete silently exercising the new decay path instead of the
+    # one it was written against - confirmed the hard way (hundreds of unrelated test failures)
+    # when this was briefly `default=True` during development.
+    threshold_decay_enabled = models.BooleanField(default=False)
+    threshold_decay_tau_days = models.PositiveSmallIntegerField(default=25)
+    threshold_decay_min_pct = models.PositiveSmallIntegerField(default=3)
+    threshold_decay_max_pct = models.PositiveSmallIntegerField(default=12)
     # Aerobic decoupling qualification thresholds (see uploads/processing.py's
     # check_decoupling_qualification) - the defaults match the design spec's own fixed limits.
     # Read at compute time (ingest/recompute), same "not retroactive until recomputed"

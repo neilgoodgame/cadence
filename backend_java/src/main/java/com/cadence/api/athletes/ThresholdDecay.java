@@ -65,10 +65,22 @@ public final class ThresholdDecay {
 
 	/** An athlete- or coach-entered value, native units - always becomes the anchor on its own
 	 * date regardless of whether it's higher or lower than the current value (unlike a measured
-	 * candidate's upward-reset test), matching the existing recordManualValue rule. */
-	public record ManualEntry(LocalDate date, double value, String activityId) {
+	 * candidate's upward-reset test), matching the existing recordManualValue rule.
+	 *
+	 * <p>{@code alreadyRecorded} is for an entry that already has its own ledger row (every
+	 * manual entry a suffix resimulation's own date range happens to span, other than the one
+	 * brand-new edit a manual-edit trigger is itself recording) - the day loop still applies its
+	 * anchor-reset effect (so it keeps suppressing a later, weaker candidate exactly as it
+	 * already does today - the 1.1 regression), but does not append a {@link Step} for it, since
+	 * resimulation never deletes an existing manual row and emitting one here would duplicate
+	 * it. */
+	public record ManualEntry(LocalDate date, double value, String activityId, boolean alreadyRecorded) {
 		public ManualEntry(LocalDate date, double value) {
-			this(date, value, null);
+			this(date, value, null, false);
+		}
+
+		public ManualEntry(LocalDate date, double value, String activityId) {
+			this(date, value, activityId, false);
 		}
 	}
 
@@ -129,11 +141,23 @@ public final class ThresholdDecay {
 			ThresholdField field, DecaySettings settings, Double seedAnchorValue, LocalDate seedAnchorDate,
 			String seedAnchorKind, List<DecayCandidate> candidates, List<ManualEntry> manualEntries,
 			Map<LocalDate, Double> loadByDay, LocalDate start, LocalDate end) {
+		return simulate(field, settings, seedAnchorValue, seedAnchorDate, seedAnchorKind, candidates, manualEntries,
+				loadByDay, start, end, null);
+	}
+
+	/** As the ten-argument overload, but {@code seedVValue} is the ledger's current value as of
+	 * {@code start} minus one day, which can differ from {@code seedAnchorValue} once it's
+	 * partway through decaying away from the anchor - null defaults it to {@code
+	 * seedAnchorValue}, matching every pre-existing caller. */
+	public static List<Step> simulate(
+			ThresholdField field, DecaySettings settings, Double seedAnchorValue, LocalDate seedAnchorDate,
+			String seedAnchorKind, List<DecayCandidate> candidates, List<ManualEntry> manualEntries,
+			Map<LocalDate, Double> loadByDay, LocalDate start, LocalDate end, Double seedVValue) {
 		Map<LocalDate, List<DecayCandidate>> candidatesByDay = groupByDay(candidates);
 		Map<LocalDate, ManualEntry> manualByDay = indexByDay(manualEntries);
 		if (settings.enabled()) {
-			return simulateEnabled(
-					field, settings, seedAnchorValue, seedAnchorDate, candidatesByDay, manualByDay, loadByDay, start, end);
+			return simulateEnabled(field, settings, seedAnchorValue, seedAnchorDate, candidatesByDay, manualByDay,
+					loadByDay, start, end, seedVValue);
 		}
 		return simulateDisabled(
 				field, settings, seedAnchorValue, seedAnchorDate, seedAnchorKind, candidatesByDay, manualByDay, start, end);
@@ -145,31 +169,41 @@ public final class ThresholdDecay {
 	private static List<Step> simulateEnabled(
 			ThresholdField field, DecaySettings settings, Double seedAnchorValue, LocalDate seedAnchorDate,
 			Map<LocalDate, List<DecayCandidate>> candidatesByDay, Map<LocalDate, ManualEntry> manualByDay,
-			Map<LocalDate, Double> loadByDay, LocalDate start, LocalDate end) {
+			Map<LocalDate, Double> loadByDay, LocalDate start, LocalDate end, Double seedVValue) {
 		LocalDate a = seedAnchorDate;
 		Double anchorEffort = seedAnchorValue != null ? toEffort(field, seedAnchorValue) : null;
-		Double vEffort = anchorEffort;
+		Double effectiveSeedV = seedVValue != null ? seedVValue : seedAnchorValue;
+		Double vEffort = effectiveSeedV != null ? toEffort(field, effectiveSeedV) : null;
 		// The successor pool: qualifying *activities* only (not manual entries - see 2.1 of the
 		// plan doc), sliding-window-maximum pruned exactly like ThresholdHistoryCalculator's own
 		// window scan.
 		List<WindowEntry> window = new ArrayList<>();
-		Double lastEmittedNative = anchorEffort != null ? roundNative(fromEffort(field, anchorEffort)) : null;
+		Double lastEmittedNative = vEffort != null ? roundNative(fromEffort(field, vEffort)) : null;
 		List<Step> steps = new ArrayList<>();
 
-		LocalDate loopStart = seedAnchorDate != null && seedAnchorDate.isBefore(start) ? seedAnchorDate : start;
-		for (LocalDate d = loopStart; !d.isAfter(end); d = d.plusDays(1)) {
+		for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
 			String eventKind = null;
 			String eventActivityId = null;
 			LocalDate eventEffectiveFrom = null;
+			// Set when an already-recorded manual entry resets the anchor this day - its own
+			// ledger row already exists, so the dedup fallback below must not mistake the
+			// resulting value change for a fresh decay step; it just needs lastEmittedNative
+			// brought up to date.
+			boolean suppressEmission = false;
 
 			ManualEntry manual = manualByDay.get(d);
 			if (manual != null) {
 				anchorEffort = toEffort(field, manual.value());
 				a = d;
 				vEffort = anchorEffort;
-				eventKind = MANUAL;
-				eventActivityId = manual.activityId();
-				eventEffectiveFrom = d;
+				if (manual.alreadyRecorded()) {
+					suppressEmission = true;
+				}
+				else {
+					eventKind = MANUAL;
+					eventActivityId = manual.activityId();
+					eventEffectiveFrom = d;
+				}
 			}
 
 			Double refNative = vEffort != null ? roundNative(fromEffort(field, vEffort)) : null;
@@ -221,6 +255,9 @@ public final class ThresholdDecay {
 					steps.add(new Step(newNative, eventKind, eventActivityId, eventEffectiveFrom, d));
 					lastEmittedNative = newNative;
 				}
+				else if (suppressEmission) {
+					lastEmittedNative = newNative;
+				}
 				else if (lastEmittedNative == null || newNative != lastEmittedNative) {
 					steps.add(new Step(newNative, DECAYED, null, d, d));
 					lastEmittedNative = newNative;
@@ -231,7 +268,10 @@ public final class ThresholdDecay {
 		return steps;
 	}
 
-	private record LegacyWindowEntry(LocalDate date, double effort, String kind, String activityId) {
+	// The trailing alreadyRecorded flag mirrors ManualEntry's own: skip emitting a Step for this
+	// window member even if it becomes the window max, since it already has its own ledger row
+	// (a seed anchor is, by construction, always one of these).
+	private record LegacyWindowEntry(LocalDate date, double effort, String kind, String activityId, boolean alreadyRecorded) {
 	}
 
 	/** Decay off: reproduces today's behaviour ({@code
@@ -247,7 +287,7 @@ public final class ThresholdDecay {
 			Map<LocalDate, ManualEntry> manualByDay, LocalDate start, LocalDate end) {
 		List<LegacyWindowEntry> window = new ArrayList<>();
 		if (seedAnchorValue != null) {
-			window.add(new LegacyWindowEntry(seedAnchorDate, toEffort(field, seedAnchorValue), seedAnchorKind, null));
+			window.add(new LegacyWindowEntry(seedAnchorDate, toEffort(field, seedAnchorValue), seedAnchorKind, null, true));
 		}
 		Double lastEmittedNative = window.isEmpty() ? null : roundNative(fromEffort(field, window.get(0).effort()));
 		List<Step> steps = new ArrayList<>();
@@ -258,7 +298,7 @@ public final class ThresholdDecay {
 			if (manual != null) {
 				double manualEffort = toEffort(field, manual.value());
 				window = window.stream().filter(w -> w.effort() >= manualEffort).collect(Collectors.toCollection(ArrayList::new));
-				window.add(new LegacyWindowEntry(d, manualEffort, MANUAL, null));
+				window.add(new LegacyWindowEntry(d, manualEffort, MANUAL, manual.activityId(), manual.alreadyRecorded()));
 			}
 
 			Double refNative = window.isEmpty() ? null : roundNative(fromEffort(field, window.get(0).effort()));
@@ -269,7 +309,7 @@ public final class ThresholdDecay {
 				}
 				double candidateEffort = toEffort(field, candidate.impliedValue());
 				window = window.stream().filter(w -> w.effort() >= candidateEffort).collect(Collectors.toCollection(ArrayList::new));
-				window.add(new LegacyWindowEntry(d, candidateEffort, MEASURED, candidate.activityId()));
+				window.add(new LegacyWindowEntry(d, candidateEffort, MEASURED, candidate.activityId(), false));
 				refNative = roundNative(fromEffort(field, window.get(0).effort()));
 			}
 
@@ -280,10 +320,10 @@ public final class ThresholdDecay {
 				if (!window.isEmpty()) {
 					LegacyWindowEntry best = window.get(0);
 					double newNative = roundNative(fromEffort(field, best.effort()));
-					if (lastEmittedNative == null || newNative != lastEmittedNative) {
+					if (!best.alreadyRecorded() && (lastEmittedNative == null || newNative != lastEmittedNative)) {
 						steps.add(new Step(newNative, best.kind(), best.activityId(), best.date(), d));
-						lastEmittedNative = newNative;
 					}
+					lastEmittedNative = newNative;
 				}
 				else {
 					lastEmittedNative = null;

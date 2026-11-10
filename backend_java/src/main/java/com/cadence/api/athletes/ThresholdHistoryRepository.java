@@ -132,4 +132,33 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 			+ "and t.sourceActivity.id = :activityId")
 	void deleteByAthleteIdAndFieldAndSourceActivityId(
 			@Param("athleteId") String athleteId, @Param("field") ThresholdField field, @Param("activityId") String activityId);
+
+	// ThresholdDecayRecomputeService's seed: the ledger's current value as of `before` minus one
+	// day - any kind, including decayed. Tiebroken by id - see the comment on the other
+	// currentFrom lookup above.
+	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
+			String athleteId, ThresholdField field, LocalDate before);
+
+	// ThresholdDecayRecomputeService's seed: the latest non-decayed row before `before` - the
+	// anchor simulate() decays away from.
+	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndEffectiveFromLessThanAndKindNotOrderByEffectiveFromDescIdDesc(
+			String athleteId, ThresholdField field, LocalDate before, ThresholdHistoryKind kind);
+
+	// ThresholdDecayRecomputeService's manual-entry gathering - every surviving (not correction-
+	// only, same exclusion ThresholdHistoryCalculator.replayFullHistory's own manual-row merge
+	// already applies) manual row in [from, to], so simulate() can respect its anchor-reset
+	// effect without duplicating it (ManualEntry.alreadyRecorded).
+	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseAndEffectiveFromBetween(
+			String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate from, LocalDate to);
+
+	// ThresholdDecayRecomputeService's delete-then-regenerate (design doc section 4.2) - a single
+	// pattern that implements every row of its own table uniformly, including "append only"
+	// (nothing exists at/after `from` yet, so this simply matches nothing). Same bulk-@Modifying
+	// reasoning as deleteByAthleteIdAndFieldAndKind above.
+	@Modifying
+	@Query("delete from ThresholdHistory t where t.athlete.id = :athleteId and t.field = :field "
+			+ "and t.currentFrom >= :from and t.kind in :kinds")
+	void deleteByAthleteIdAndFieldAndCurrentFromGreaterThanEqualAndKindIn(
+			@Param("athleteId") String athleteId, @Param("field") ThresholdField field, @Param("from") LocalDate from,
+			@Param("kinds") Collection<ThresholdHistoryKind> kinds);
 }

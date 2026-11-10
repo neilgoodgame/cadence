@@ -88,6 +88,28 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "threshold_warning_days", nullable = false)
 	private int thresholdWarningDays = 21;
 
+	/** Threshold decay (issue #485, docs/plans/threshold-decay.md): once a threshold's anchoring
+	 * evidence ages out of thresholdWindowDays, its value eases down a decay curve instead of
+	 * jumping straight to the next-best candidate - see ThresholdDecay.simulate(). Off for
+	 * everyone for now, including new athletes - this slice only wires the mechanism, with no
+	 * staleness-display/settings-API/daily-job/frontend support yet, so flipping new-athlete
+	 * default to on (the design doc's own eventual recommendation) is deferred to a later slice
+	 * once the rest of the feature is actually visible/controllable. Also avoids every existing
+	 * test's default-constructed athlete silently exercising the new decay path instead of the
+	 * one it was written against - confirmed the hard way (hundreds of unrelated test failures
+	 * on the Python side) when this was briefly `true` during development. */
+	@Column(name = "threshold_decay_enabled", nullable = false)
+	private boolean thresholdDecayEnabled = false;
+
+	@Column(name = "threshold_decay_tau_days", nullable = false)
+	private int thresholdDecayTauDays = 25;
+
+	@Column(name = "threshold_decay_min_pct", nullable = false)
+	private int thresholdDecayMinPct = 3;
+
+	@Column(name = "threshold_decay_max_pct", nullable = false)
+	private int thresholdDecayMaxPct = 12;
+
 	/** Races feature (see com.cadence.api.races.RaceBlockService) - training-block length for an
 	 * A race. One of 12/16/20/24; the B/C "around the race" window is a fixed 5 weeks regardless
 	 * of this setting. No fixed-choice-integer validation convention exists elsewhere in this
@@ -419,6 +441,38 @@ public class User extends PrefixedIdEntity {
 
 	public void setThresholdWarningDays(int thresholdWarningDays) {
 		this.thresholdWarningDays = thresholdWarningDays;
+	}
+
+	public boolean isThresholdDecayEnabled() {
+		return thresholdDecayEnabled;
+	}
+
+	public void setThresholdDecayEnabled(boolean thresholdDecayEnabled) {
+		this.thresholdDecayEnabled = thresholdDecayEnabled;
+	}
+
+	public int getThresholdDecayTauDays() {
+		return thresholdDecayTauDays;
+	}
+
+	public void setThresholdDecayTauDays(int thresholdDecayTauDays) {
+		this.thresholdDecayTauDays = thresholdDecayTauDays;
+	}
+
+	public int getThresholdDecayMinPct() {
+		return thresholdDecayMinPct;
+	}
+
+	public void setThresholdDecayMinPct(int thresholdDecayMinPct) {
+		this.thresholdDecayMinPct = thresholdDecayMinPct;
+	}
+
+	public int getThresholdDecayMaxPct() {
+		return thresholdDecayMaxPct;
+	}
+
+	public void setThresholdDecayMaxPct(int thresholdDecayMaxPct) {
+		this.thresholdDecayMaxPct = thresholdDecayMaxPct;
 	}
 
 	public int getRaceBlockWeeks() {

@@ -261,4 +261,49 @@ class ThresholdDecayTest {
 		assertThat(steps.get(0).kind()).isEqualTo(ThresholdDecay.MEASURED);
 		assertThat(steps.get(0).value()).isEqualTo(200.0);
 	}
+
+	/** The slice-3 extension: resuming a suffix well after the anchor's own date (e.g. the daily
+	 * job, resuming from "the day after the latest row's current_from") must continue decaying
+	 * from that row's own value, not jump back up to the anchor. */
+	@Test
+	void seedVValueResumesFromAnAlreadyDecayedValueNotTheAnchor() {
+		LocalDate expiry = ANCHOR.plusDays(SETTINGS.windowDays() + 1L);
+		LocalDate fullEnd = expiry.plusDays(30);
+		Map<LocalDate, Double> load = flatLoad(ANCHOR, 0.0, fullEnd);
+		List<ThresholdDecay.Step> full = ThresholdDecay.simulate(
+				ThresholdField.FTP, SETTINGS, 260.0, ANCHOR, ThresholdDecay.MEASURED, List.of(), List.of(), load, ANCHOR, fullEnd);
+		LocalDate resumeFrom = full.get(full.size() - 1).currentFrom();
+		double alreadyDecayedValue = full.get(full.size() - 1).value();
+		assertThat(alreadyDecayedValue).isLessThan(260.0);
+
+		LocalDate resumeStart = resumeFrom.plusDays(1);
+		LocalDate resumeEnd = fullEnd.plusDays(20);
+		List<ThresholdDecay.Step> resumed = ThresholdDecay.simulate(ThresholdField.FTP, SETTINGS, 260.0, ANCHOR,
+				ThresholdDecay.MEASURED, List.of(), List.of(), load, resumeStart, resumeEnd, alreadyDecayedValue);
+		List<ThresholdDecay.Step> onePass = ThresholdDecay.simulate(
+				ThresholdField.FTP, SETTINGS, 260.0, ANCHOR, ThresholdDecay.MEASURED, List.of(), List.of(), load, ANCHOR, resumeEnd);
+
+		assertThat(valueOn(resumed, resumeEnd, alreadyDecayedValue)).isEqualTo(valueOn(onePass, resumeEnd, 260.0));
+
+		// Without the seedVValue fix, resuming would incorrectly restart from the anchor (260).
+		List<ThresholdDecay.Step> wrongResume = ThresholdDecay.simulate(
+				ThresholdField.FTP, SETTINGS, 260.0, ANCHOR, ThresholdDecay.MEASURED, List.of(), List.of(), load, resumeStart, resumeEnd);
+		assertThat(wrongResume.get(0).value()).isNotEqualTo(resumed.get(0).value());
+	}
+
+	/** The slice-3 extension: a manual entry whose ledger row already exists (because it's
+	 * outside this particular resimulation's own trigger) must still protect against a lower
+	 * later candidate (1.1), but must not produce a second Step for itself. */
+	@Test
+	void alreadyRecordedManualEntrySuppressesWithoutDuplicatingAStep() {
+		LocalDate manualDate = ANCHOR;
+		ThresholdDecay.ManualEntry manual = new ThresholdDecay.ManualEntry(manualDate, 250.0, null, true);
+		ThresholdDecay.DecayCandidate lower = new ThresholdDecay.DecayCandidate(manualDate.plusDays(5), 230.0, "low", false);
+		LocalDate end = manualDate.plusDays(30);
+		List<ThresholdDecay.Step> steps = ThresholdDecay.simulate(
+				ThresholdField.FTP, SETTINGS, null, null, null, List.of(lower), List.of(manual), Map.of(), manualDate, end);
+		// No Step at all - the manual entry isn't re-emitted, and the lower candidate correctly
+		// fails the upward-reset test against it, so nothing changes.
+		assertThat(steps).isEmpty();
+	}
 }
