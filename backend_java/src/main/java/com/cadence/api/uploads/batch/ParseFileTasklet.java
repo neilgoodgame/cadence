@@ -3,7 +3,6 @@ package com.cadence.api.uploads.batch;
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityOverlapDetectionService;
 import com.cadence.api.activities.ActivityRepository;
-import com.cadence.api.activities.ActivityService;
 import com.cadence.api.activities.ActivitySourceService;
 import com.cadence.api.activities.OverlapAction;
 import com.cadence.api.activities.DistanceSource;
@@ -66,13 +65,12 @@ public class ParseFileTasklet implements Tasklet {
 	private final CadenceProperties properties;
 	private final GearMileageService gearMileageService;
 	private final ActivityOverlapDetectionService overlapDetectionService;
-	private final ActivityService activityService;
 	private final ActivitySourceService activitySourceService;
 
 	public ParseFileTasklet(UploadJobContextRegistry contextRegistry, UploadRepository uploadRepository,
 			ActivityRepository activityRepository, LapRepository lapRepository, CadenceProperties properties,
 			GearMileageService gearMileageService, ActivityOverlapDetectionService overlapDetectionService,
-			ActivityService activityService, ActivitySourceService activitySourceService) {
+			ActivitySourceService activitySourceService) {
 		this.contextRegistry = contextRegistry;
 		this.uploadRepository = uploadRepository;
 		this.activityRepository = activityRepository;
@@ -80,7 +78,6 @@ public class ParseFileTasklet implements Tasklet {
 		this.properties = properties;
 		this.gearMileageService = gearMileageService;
 		this.overlapDetectionService = overlapDetectionService;
-		this.activityService = activityService;
 		this.activitySourceService = activitySourceService;
 	}
 
@@ -221,9 +218,15 @@ public class ParseFileTasklet implements Tasklet {
 				// A duplicate auto-marked here can retroactively disqualify a best effort from
 				// the threshold ledger just like a manual markDuplicate does - skip for a batch
 				// child; UploadBatchFinalizer runs this once for the whole batch instead of once
-				// per file.
+				// per file. Deliberately NOT done inline: rebuilding every threshold ledger and
+				// re-rating the athlete's whole TSS history inside this step's transaction left
+				// the upload stuck at "queued" for minutes (and blocked the single upload
+				// worker). DuplicateRecomputeTasklet runs it after the upload is READY instead,
+				// scoped to just the fields the demoted duplicate actually defined.
 				if (first.action() == OverlapAction.MARKED && upload.getBatch() == null) {
-					activityService.recomputeAfterDuplicateChange(upload.getAthlete());
+					String demotedId = activity.getId().equals(first.primaryActivityId())
+							? first.otherActivityId() : activity.getId();
+					context.requestDuplicateRecompute(demotedId, activity.getSport());
 				}
 			}
 

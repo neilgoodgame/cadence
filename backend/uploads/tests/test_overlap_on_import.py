@@ -6,9 +6,11 @@ from django.test import TestCase
 
 from accounts.models import User
 from activities.models import Activity
+from athletes.models import ThresholdHistory
 
 from ..fixtures_helpers import build_tcx, build_zip
 from ..models import Upload, UploadBatch
+from ..processing import threshold_fields_affected_by_demoted_duplicate
 from ..tasks import _maybe_finalize_batch
 from .helpers import _bearer_client
 
@@ -205,8 +207,8 @@ class RecomputeAfterIngestTimeMarkTests(TestCase):
     def setUp(self):
         self.start = datetime(2026, 6, 1, 18, 0, 0, tzinfo=UTC)
 
-    @patch("uploads.processing.recompute_after_duplicate_change")
-    def test_single_upload_auto_mark_triggers_the_cascade(self, mock_recompute):
+    @patch("uploads.tasks.recompute_after_duplicate_change")
+    def test_single_upload_auto_mark_triggers_the_scoped_cascade_after_ready(self, mock_recompute):
         athlete = User.objects.create_user(
             email="e2e-single-overlap-recompute@example.cc", password="x", overlap_handling="mark"
         )
@@ -225,9 +227,12 @@ class RecomputeAfterIngestTimeMarkTests(TestCase):
         )
         poll = client.get(f"/v1/uploads/{second.json()['id']}").json()
         self.assertEqual(poll["overlap_action"], "marked")
-        mock_recompute.assert_called_once_with(athlete)
+        self.assertEqual(poll["status"], "ready")
+        # Runs from tasks.process_upload after the upload is ready, scoped to the threshold
+        # fields the demoted duplicate sourced - none here, so nothing would be rebuilt.
+        mock_recompute.assert_called_once_with(athlete, [])
 
-    @patch("uploads.processing.recompute_after_duplicate_change")
+    @patch("uploads.tasks.recompute_after_duplicate_change")
     def test_flag_only_mode_never_triggers_the_cascade(self, mock_recompute):
         athlete = User.objects.create_user(
             email="e2e-single-overlap-recompute-flag@example.cc", password="x", overlap_handling="flag"
@@ -276,3 +281,38 @@ class RecomputeAfterIngestTimeMarkTests(TestCase):
         _maybe_finalize_batch(batch.id)
 
         mock_recompute.assert_called_once_with(athlete)
+
+
+class ThresholdFieldsAffectedByDemotedDuplicateTests(TestCase):
+    """Scoping for the post-ingest rebuild: only fields the demoted duplicate's sport can define,
+    and only where it is currently a *measured* ledger source."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="scoped-recompute@example.cc", password="x")
+        self.run = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Run", start_date=datetime(2026, 6, 1, tzinfo=UTC)
+        )
+
+    def _row(self, field, kind="measured", activity=None):
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field=field,
+            value_numeric=250,
+            source_activity=activity if activity is not None else self.run,
+            effective_from=datetime(2026, 6, 1, tzinfo=UTC).date(),
+            current_from=datetime(2026, 6, 1, tzinfo=UTC).date(),
+            kind=kind,
+        )
+
+    def test_never_a_source_affects_nothing(self):
+        self.assertEqual(threshold_fields_affected_by_demoted_duplicate(self.run.id, "run"), [])
+
+    def test_only_measured_source_fields_for_the_sport(self):
+        self._row("critical_run_power")
+        self._row("threshold_pace", kind="manual")
+        self._row("ftp")  # not a run field, even if a stray row exists
+        self.assertEqual(threshold_fields_affected_by_demoted_duplicate(self.run.id, "run"), ["critical_run_power"])
+
+    def test_sport_without_thresholds_affects_nothing(self):
+        self._row("critical_run_power")
+        self.assertEqual(threshold_fields_affected_by_demoted_duplicate(self.run.id, "swim"), [])

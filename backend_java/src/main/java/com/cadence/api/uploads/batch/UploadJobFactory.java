@@ -39,13 +39,14 @@ public class UploadJobFactory {
 	private final Step bestEffortStep;
 	private final Step workoutMatchStep;
 	private final Step finalizeUploadStep;
+	private final Step duplicateRecomputeStep;
 	private final ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor;
 	private final ItemWriter<RecordRow> recordItemWriter;
 
 	public UploadJobFactory(JobRepository jobRepository, PlatformTransactionManager transactionManager,
 			UploadJobContextRegistry contextRegistry, UploadJobExecutionListener listener, Step parseFileStep,
 			Step thresholdHistoryStep, Step decouplingDurabilityStep, Step computeDerivedStatsStep,
-			Step durationCurveStep, Step bestEffortStep, Step workoutMatchStep, Step finalizeUploadStep,
+			Step durationCurveStep, Step bestEffortStep, Step workoutMatchStep, Step finalizeUploadStep, Step duplicateRecomputeStep,
 			ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor,
 			ItemWriter<RecordRow> recordItemWriter) {
 		this.jobRepository = jobRepository;
@@ -60,6 +61,7 @@ public class UploadJobFactory {
 		this.bestEffortStep = bestEffortStep;
 		this.workoutMatchStep = workoutMatchStep;
 		this.finalizeUploadStep = finalizeUploadStep;
+		this.duplicateRecomputeStep = duplicateRecomputeStep;
 		this.recordItemProcessor = recordItemProcessor;
 		this.recordItemWriter = recordItemWriter;
 	}
@@ -91,6 +93,7 @@ public class UploadJobFactory {
 				.next(bestEffortStep)
 				.next(workoutMatchStep)
 				.next(finalizeUploadStep)
+				.next(duplicateRecomputeStep)
 				.end()
 				.build();
 	}
