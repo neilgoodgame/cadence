@@ -395,6 +395,19 @@ backends persist those exact points per activity.
 
 ### 4.4 What triggers decay: daily job, not compute-on-read
 
+**Status: deferred, tracked as #548, split out of #485.** The other four
+triggers below (ingest, manual edit, refresh, rebuild - all wired in #546)
+already self-correct a stale ledger the next time any of them fires for a
+given field, per "missed days are harmless" below. The daily job only matters
+for an athlete who goes quiet on a *specific sport* for longer than its
+trailing window - e.g. a cyclist who stops riding but keeps running would
+never see `ftp` decay without it. Given `threshold_decay_enabled` defaults to
+`false` for everyone right now (#546 - flipping the new-athlete default was
+itself deferred, since no athlete is actually decaying yet), there's no
+urgency to build this before the rest of the feature (staleness display,
+settings API, frontend) exists. Revisit before flipping that default, or
+sooner if a specific athlete's usage pattern needs it.
+
 **Compute-on-read doesn't fit.** Intensity, TSS, zones-per-activity and CTL
 are all **stored** or read from ledger rows by `current_from`. A value that only
 exists at read time would never reach stored TSS, and CTL would still be built
@@ -884,12 +897,12 @@ Each PR is a parity pair: both backends together.
    and the indicator filter. No behaviour change.
 4. **Manual value replaced early** (1.1), decay-off path only, with its
    regression test.
-5. **Decay core**:
-   - the pure module and parity fixtures,
-   - the `activity_intensity_histogram` table, written at ingest and recompute-stats, with lazy backfill,
-   - suffix re-simulation,
-   - rebuild keeping manual rows,
-   - the daily job,
+5. **Decay core** - shipped as four separate slices instead of one PR (each
+   turned out independently reviewable; see the issue links):
+   - the pure module and parity fixtures (#543),
+   - the `activity_intensity_histogram` table, written at ingest and recompute-stats, with lazy backfill (#544),
+   - suffix re-simulation into ingest/manual-edit/refresh/rebuild, rebuild keeping manual rows, the per-athlete row lock (#546),
+   - the daily job - **split out to #548, deferred** (4.4),
    - the staleness change,
    - the suggestion changes,
    - the settings fields and openapi,
