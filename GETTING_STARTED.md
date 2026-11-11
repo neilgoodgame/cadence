@@ -68,8 +68,12 @@ docker compose --profile memcapped up -d backend-memcapped
 
 ### Django (alternative)
 
+Run these from the **repo root** — `backend_java/` has its own `.env.example`
+and `docker-compose.yml`, and running from there would silently start the Java
+backend instead:
+
 ```bash
-cp .env.example .env        # from the repo root
+cp .env.example .env        # defaults work out of the box for local dev
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
