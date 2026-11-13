@@ -1,92 +1,35 @@
 # Repo Layout
 
-Cadence is a training-log/analytics app: **two independent, parity-kept backend
-implementations** of the same REST API contract, behind one React frontend.
+Cadence is a training-log/analytics app: two parity-kept backends implementing one REST API, behind one React frontend.
 
-- `backend/` — Django + DRF (Python). Not currently deployed anywhere.
-- `backend_java/` — Spring Boot (Java). **This is the one actually deployed** —
-  `infra/scripts/deploy-backend.sh` only builds and ships this image.
-- `frontend/` — React + Vite + TypeScript. Talks to whichever backend
-  `VITE_API_BASE_URL` points at.
-- `infra/` — Terraform + deploy scripts (`infra/scripts/deploy-backend.sh`,
-  `infra/scripts/deploy-frontend.sh`) for the AWS staging environment.
-- `openapi.yaml` (repo root) — the **hand-maintained, canonical REST API
-  contract** both backends implement. Each backend also serves its own
-  auto-generated live schema at `/schema/docs` (Swagger UI) for introspection —
-  `openapi.yaml` is the source of truth when the two disagree.
-- `backend/CLAUDE.md`, `backend_java/CLAUDE.md`, `frontend/CLAUDE.md` hold
-  stack-specific guidance (test/lint commands, conventions, known gotchas).
-  `ARCHITECTURE.md`, `GETTING_STARTED.md`, `backend/README.md`,
-  `backend_java/README.md` hold deeper setup/design detail.
+- `backend/`: Django + DRF. Not deployed.
+- `backend_java/`: Spring Boot. **The deployed backend** (`infra/scripts/deploy-backend.sh` ships only this).
+- `frontend/`: React + Vite + TypeScript. Calls whichever backend `VITE_API_BASE_URL` (`frontend/.env`) points at.
+- `infra/`: Terraform + deploy scripts (`deploy-backend.sh`, `deploy-frontend.sh`) for AWS staging.
+- `openapi.yaml`: hand-maintained API contract. It is the source of truth if it disagrees with a backend's generated `/schema/docs`.
+- Stack-specific rules: `backend/CLAUDE.md`, `backend_java/CLAUDE.md`, `frontend/CLAUDE.md`. Deeper docs: `ARCHITECTURE.md`, `GETTING_STARTED.md`.
 
-## How the frontend talks to a backend
+## Parity (important)
 
-One env var: `VITE_API_BASE_URL` (`frontend/.env`), e.g. `http://localhost:8080`.
-The two backends don't share a database and never talk to each other — the
-frontend just points at whichever one is running. Every request is a
-Bearer-token-authenticated JSON (or multipart) call through
-`frontend/src/api/client.ts`'s `apiFetch`/`apiFetchStream`; there's no
-server-rendering or proxy layer in between.
+A schema or behavior change usually needs the same change in **both** backends (separate migration chains: Django migrations and Flyway; same Postgres schema shape). Before calling work done, check whether the other backend needs it.
 
-- **Local dev**: `frontend/.env` defaults to `http://localhost:8080` (Java).
-  Swap to `http://localhost:8000` to point at Django instead.
-- **Staging**: `infra/scripts/deploy-frontend.sh` builds with
-  `VITE_API_BASE_URL=https://api.cadence.bioinform.co.uk` — the Java backend.
+- `backend/.claude/settings.json` and `backend_java/.claude/settings.json` grant each session access to the sibling directory (source only; secrets and build dirs are denied).
 
-## Parity requirement
+## Local run
 
-A schema or behavior change almost always needs mirroring in **both**
-`backend/` and `backend_java/` — they implement the same `openapi.yaml`
-contract and the same Postgres schema shape, via two independently-authored
-migration chains (Django migrations and Flyway) rather than a shared
-database. When changing one, check whether the other needs the same change
-before calling the work done.
+- Backend (Java), http://localhost:8080: `cd backend_java && docker compose up -d`
+- Frontend, http://localhost:5173 (check Vite output): `cd frontend && npm install && npm run dev`
+- Django instead: run it on :8000 and set `VITE_API_BASE_URL=http://localhost:8000`.
+- Staging frontend is built against `https://api.cadence.bioinform.co.uk` (Java).
 
-A Claude Code session started inside just `backend/` or just `backend_java/`
-only sees that directory by default, which gets in the way of checking
-parity. Each of those directories has a `.claude/settings.json` granting
-`additionalDirectories` access to the other, so a session rooted in either
-one can still read (and edit) across to its sibling without a repo
-restructure. Each `settings.json` also `deny`s the sibling's secret-bearing
-and gitignored paths (`.env`, `keys/`, build/cache dirs, ...) — a
-cross-backend session gets source code, not the other stack's local
-credentials or junk.
+## AWS
 
-## Running the whole stack locally
+- Use the AWS MCP server or an AWS skill if one is available; otherwise use the AWS CLI.
+- Prefer infrastructure-as-code (CDK or CloudFormation) over ad-hoc CLI changes.
+- If unsure of an AWS parameter, permission or limit, check the docs and say so. Do not guess.
+- No em dashes in AWS resource names or descriptions; use hyphens.
 
-Full walkthrough: `GETTING_STARTED.md`. Quick version:
+## Secrets
 
-```bash
-# Backend (Java, default) — http://localhost:8080
-cd backend_java && docker compose up -d
-
-# Frontend — http://localhost:5173 (or next free port, check Vite's output)
-cd frontend && npm install && npm run dev
-```
-
-# AWS Guidance
-
-- Prefer the AWS MCP Server for AWS interactions — it provides sandboxed
-  execution, observability, and audit logging. If unavailable, use the
-  AWS CLI directly.
-- Before starting a task, check whether a relevant AWS skill is available.
-  Load the skill with `retrieve_skill` and prefer its guidance over
-  general knowledge.
-- When uncertain about specific AWS details (API parameters, permissions,
-  limits, error codes), verify against documentation rather than guessing.
-  State uncertainty explicitly if you cannot confirm.
-- When creating infrastructure, prefer infrastructure-as-code (AWS CDK or
-  CloudFormation) over direct CLI commands.
-- When working with infrastructure, follow AWS Well-Architected Framework
-  principles.
-- Do not use em dashes in AWS resource names or descriptions. Use
-  hyphens instead.
-
-## Secret Safety
-
-- MUST load the `aws-secrets-manager` skill first for any secret,
-  credential, API key, token, or password task. MUST NOT call
-  `secretsmanager get-secret-value` or `batch-get-secret-value`, and MUST
-  NOT hit the Secrets Manager Agent daemon directly. MUST use
-  `{{resolve:secretsmanager:secret-id:SecretString:json-key}}` with
-  `asm-exec` so the secret resolves at runtime without entering context.
+- Never print or fetch a secret value into the conversation. Never run `secretsmanager get-secret-value` or `batch-get-secret-value`.
+- Use `{{resolve:secretsmanager:secret-id:SecretString:json-key}}` with `asm-exec` when available. If it isn't, stop and ask the user to run the command.
