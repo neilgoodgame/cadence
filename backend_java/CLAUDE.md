@@ -1,104 +1,39 @@
 # Backend (Java / Spring Boot)
 
-Spring Boot implementation of the Cadence API contract (`../openapi.yaml`).
-**This is the backend actually deployed** to staging/production —
-`infra/scripts/deploy-backend.sh` only builds and ships this image
-(`backend/`, the Django implementation, is kept at feature parity but not
-deployed). For setup/architecture, see `README.md` in this directory and the
-repo root's `GETTING_STARTED.md`/`ARCHITECTURE.md`.
+Spring Boot implementation of `../openapi.yaml`. **This is the deployed backend.** `../backend` (Django) is kept at parity (see root `CLAUDE.md`) and is readable/editable from here.
 
-A session started in this directory can also read/edit `../backend` — see
-`.claude/settings.json`'s `additionalDirectories` — which is useful when
-checking the other side of a parity change.
+## Commands (run from `backend_java/`)
 
-## Commands
+Before pushing, run both (not just `./gradlew test`; a stale local Testcontainers DB can hide isolation bugs):
 
-- Tests (matches CI exactly): `./gradlew unitTest` (no Docker) and
-  `./gradlew integrationTest` (needs Docker — Testcontainers starts its own
-  Postgres). **Run these two tasks specifically before pushing, not just
-  `./gradlew test`** — a stale local Testcontainers instance (reused across
-  many local runs) can mask a test-isolation bug that only shows up against
-  CI's fresh database. See the `IntegrationTest` gotcha below.
-- Compile only: `./gradlew compileJava compileTestJava` — much faster than a
-  full test run for checking a change compiles.
-- **Taming output**: a full `./gradlew build`/`test`/`integrationTest` run can
-  dump thousands of lines (every test's stdout, full stack traces on
-  failure) straight into context. Redirect to a file instead of letting it
-  print directly: `./gradlew integrationTest > gradle.log 2>&1; echo $?`
-  (a scratch/temp path, not a tracked file), then read only what's needed — `grep -E "FAILED|ERROR" /tmp/gradle.log` for
-  a failure summary, or the tail of the file for the final `BUILD
-  SUCCESSFUL`/`FAILED` line. `--console=plain` also drops Gradle's
-  progress-bar/ANSI noise. Only pull a failing test's full stack trace into
-  context once `grep` has pointed at which one failed, not before.
-- New migration: add `src/main/resources/db/migration/V<N>__description.sql`
-  (Flyway), where `N` is one more than the highest existing `V*` file.
+1. `./gradlew unitTest` (no Docker)
+2. `./gradlew integrationTest` (needs Docker)
+
+- Compile check only: `./gradlew compileJava compileTestJava`
+- Long output: redirect, then read the summary only.
+  - `./gradlew integrationTest --console=plain > /tmp/gradle.log 2>&1; echo $?`
+  - `grep -E "FAILED|ERROR" /tmp/gradle.log`, or `tail -n 30 /tmp/gradle.log`
+- New migration: `src/main/resources/db/migration/V<N>__description.sql`, where `N` = highest existing `V*` number + 1.
 
 ## Gotchas
 
-- **`IntegrationTest` shares one non-rolled-back Postgres across every test
-  class in a run** (deliberate — avoids container start/stop races between
-  sibling classes; see `support/IntegrationTest.java`'s own comment). Two
-  *different* test files that happen to reuse the same literal fixture
-  string (a `User` email, a `ShoeModel` manufacturer+model, a tag name, ...)
-  collide — either a real unique-constraint violation, or a silently wrong
-  row match via a `findFirst`-style lookup. **Grep the whole `src/test` tree
-  for a literal before reusing it**, and prefer a file-scoped unique prefix
-  for every new test class's fixtures. This has broken real PRs twice; it
-  only reproduces with a *fresh* `./gradlew integrationTest` run, not a
-  long-lived local one.
-- **Records used as DTOs/request bodies, constructed positionally in
-  tests**: adding a field to the *middle* of a record breaks every
-  positional `new Foo(...)` call site. If there are many call sites and
-  they're all flat (no nested parens), a small script that splits each call
-  on `,` and inserts the new arg at the right index is far more reliable
-  than a regex (a call site with nested parens silently won't match a naive
-  regex). Appending the new field at the *end* of the record avoids this
-  entirely when there's no strong reason to put it elsewhere.
-- **A JPA entity's lazy (`FetchType.LAZY`) association can throw
-  `LazyInitializationException`** if the entity was loaded by a *different*,
-  already-closed Hibernate session than the one currently open — e.g. a
-  controller does a plain (non-`@Transactional`) repository lookup, then
-  passes that entity into a `@Transactional` service method: Spring's
-  `@Transactional` opens a *new* session for that method but does not
-  reattach the entity. Reading a lazy association's `.getId()` is safe
-  either way (Hibernate proxies store the FK without initializing); fully
-  dereferencing it is not. Fix: re-fetch within the transactional method's
-  own session before touching anything beyond an id (see
-  `ActivityService.updateActivity`'s own comment for a worked example).
-
-## Memory-constrained profiling
-
-Staging's container runs with a 600MB memory cap and NMT enabled
-(`-XX:NativeMemoryTracking=summary`) after an OOM on 2026-10-16 - the app's RSS grew
-past its own heap cap, starving the whole EC2 host before the container's cgroup limit
-could trip. A plain local `docker compose up` has no memory limit, so it won't
-reproduce that squeeze. Use the `memcapped` Compose profile instead to mirror staging's
-cap for local profiling (JFR, detail-mode NMT, etc.):
-
-```bash
-docker compose --profile memcapped up -d backend-memcapped  # port 8081, not 8080
-```
-
-Read NMT data via a one-off companion container sharing its PID namespace (the runtime
-image is JRE-only, no `jcmd`):
-
-```bash
-docker run --rm --pid=container:backend_java-backend-memcapped-1 eclipse-temurin:25-jdk-noble \
-  jcmd 1 VM.native_memory summary
-```
+- **Fixture collisions in `IntegrationTest`.** All integration test classes share one Postgres that is not rolled back. Two test files reusing the same literal (user email, `ShoeModel` manufacturer+model, tag name) collide.
+  - Rule: grep `src/test` for a literal before using it. Give each new test class a unique prefix for its fixtures.
+  - This only shows on a fresh `./gradlew integrationTest` run.
+- **Positional record construction in tests.** Adding a field to the middle of a record breaks every `new Foo(...)` call. Append new fields at the end.
+- **`LazyInitializationException`.** If a controller loads an entity outside a transaction and passes it to a `@Transactional` service method, lazy associations can't be read (`.getId()` is fine). Re-fetch the entity inside the service method (example: `ActivityService.updateActivity`).
 
 ## Conventions
 
-- Packages map roughly 1:1 to API resource groups, mirroring `backend/`'s
-  Django apps: `activities`, `athletes`, `gear`, `workouts`, `admin`,
-  `uploads`, `scheduling`, `races`, `sharing`, `tokens`, `export`/`imports`,
-  `webhooks`, `users`.
-- Every entity needing a Stripe-style id (`act_...`, `wkt_...`, ...) extends
-  `common.id.PrefixedIdEntity` and implements `idPrefix()`. Internal-only
-  join/log tables don't.
-- Custom API exceptions extend `common.error.ApiException`, caught centrally
-  by `common.error.ApiExceptionHandler` into the same `{"error": {...}}`
-  envelope Django produces.
-- Access checks go through `security.AccessGuard`
-  (`requireRead`/`requireWrite`/`requireAdmin`), mirroring Django's
-  `core.permissions`/`core.auth_context`.
+- Packages map ~1:1 to API resource groups (same as Django apps): `activities`, `athletes`, `gear`, `workouts`, `admin`, `uploads`, `scheduling`, `races`, `sharing`, `tokens`, `export`/`imports`, `webhooks`, `users`.
+- Entities with Stripe-style ids (`act_...`, `wkt_...`) extend `common.id.PrefixedIdEntity` and implement `idPrefix()`. Internal join/log tables don't.
+- API errors: extend `common.error.ApiException`; `common.error.ApiExceptionHandler` produces the `{"error": {...}}` envelope.
+- Access checks: `security.AccessGuard` (`requireRead` / `requireWrite` / `requireAdmin`).
+
+## Memory-capped profiling (rarely needed)
+
+Staging runs with a 600MB cap and NMT on. To mirror it locally: `docker compose --profile memcapped up -d backend-memcapped` (port 8081). Read NMT with a companion container sharing its PID namespace (the runtime image has no `jcmd`):
+
+`docker run --rm --pid=container:<memcapped container name> eclipse-temurin:25-jdk-noble jcmd 1 VM.native_memory summary`
+
+Find the container name with `docker ps`.

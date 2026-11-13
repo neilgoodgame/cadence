@@ -1,56 +1,24 @@
 # Frontend
 
-React + TypeScript + Vite, talking to whichever backend `VITE_API_BASE_URL`
-(in `.env`) points at — see the root `CLAUDE.md` for how the two halves
-talk. No server-rendering, no proxy layer: every call goes straight from the
-browser to the backend's REST API.
+React + TypeScript + Vite. Every call goes straight from the browser to the backend REST API at `VITE_API_BASE_URL` (see root `CLAUDE.md`). No SSR, no proxy.
 
-## Commands
+## Commands (run from `frontend/`)
 
-- Dev server: `npm run dev` (Vite — prints the actual port, usually 5173).
-- Before pushing, run all three — CI runs them independently, so passing a
-  subset locally is not enough:
-  - `npx tsc -b` (typecheck). **Not** `tsc --noEmit` — it silently no-ops
-    against this repo's project-references `tsconfig.json` (`"files": []`)
-    and always exits 0 regardless of real errors.
-  - `npm run lint` (eslint) — has caught real issues `tsc`+`vitest` both
-    missed (a strict react-hooks config, among other things).
-  - `npm test` (vitest).
-- Build: `npm run build`.
-- E2E (Playwright, real browser against a real backend): `npm run test:e2e` — see
-  `e2e/README.md`. Separate from `npm test` (vitest); not part of the required pre-push
-  trio above unless you touched a flow it covers.
-- **Taming output**: `npx tsc -b` with many errors, and a full `npm test`
-  run, can both print hundreds of lines. Redirect to a file instead of
-  letting it print directly: `npx tsc -b > tsc.log 2>&1; echo $?` (scratch
-  path, not tracked), then read only what's needed. For vitest, `npm test --
-  --reporter=dot` gives a much shorter pass/fail-only run; fall back to the
-  default verbose reporter (or target one file) only once you know which
-  suite failed.
+- Dev server: `npm run dev` (prints the port, usually 5173). Build: `npm run build`.
+- Before pushing, all three must pass (CI runs them separately):
+  1. `npx tsc -b`. Do **not** use `tsc --noEmit`; it always exits 0 here (project references, `"files": []`).
+  2. `npm run lint`. It catches issues `tsc` and vitest miss.
+  3. `npm test`
+- E2E (Playwright, real backend): `npm run test:e2e` (see `e2e/README.md`). Only needed if you touched a flow it covers.
+- Long output: redirect, then read the summary only.
+  - `npx tsc -b > /tmp/tsc.log 2>&1; echo $?`
+  - `npm test -- --reporter=dot` for a short vitest run; rerun one file once you know which failed.
 
 ## Conventions
 
-- All server state goes through `@tanstack/react-query` — a `useQuery` keyed
-  by resource, a `useMutation` that invalidates the relevant query key(s) on
-  success. No other client-side data layer.
-- All HTTP calls go through `src/api/client.ts` (`apiFetch` for JSON,
-  `apiFetchStream` for a raw `Response` — SSE or binary). The Bearer token
-  is attached automatically; `apiFetch`'s `body` accepts a plain object
-  (JSON-stringified) or a `FormData` (multipart, e.g. a file upload) — it
-  special-cases `FormData` to skip the JSON `Content-Type` header.
-- No CSS framework — inline `style={{...}}` objects throughout, plus a small
-  set of CSS custom properties for the theme (`var(--ink)`, `var(--ink2)`,
-  `var(--ink3)`, `var(--card)`, `var(--elev)`, `var(--line)`,
-  `var(--ember)`, ...). `src/components/Card.tsx` is the one shared layout
-  primitive.
-- A destructive action (delete, retire, unlink, ...) confirms via a plain
-  `window.confirm(...)` before mutating — no custom modal component for
-  this.
-- An authenticated binary resource (e.g. a shoe wear photo) can't be loaded
-  via a plain `<img src="...">`, since the browser won't attach the Bearer
-  token — fetch it as a blob via `apiFetchStream` and render a
-  `URL.createObjectURL(...)` object URL instead, revoking it on
-  unmount/change (see `screens/gear/ShoePhotoImage.tsx` for the pattern).
-- `src/lib/csv.ts` has a small dependency-free CSV parser (handles quoted
-  fields) used by the admin shoe-catalog and gear CSV import flows — reuse
-  it rather than writing another one.
+- Server state: only `@tanstack/react-query`. A `useQuery` keyed by resource; a `useMutation` that invalidates the relevant keys on success.
+- HTTP: only via `src/api/client.ts`. `apiFetch` for JSON (body may be an object or `FormData`), `apiFetchStream` for a raw `Response` (SSE or binary). The Bearer token is added automatically.
+- Styling: no CSS framework. Use inline `style={{...}}` and the theme CSS variables (`var(--ink)`, `--ink2`, `--ink3`, `--card`, `--elev`, `--line`, `--ember`, ...). `src/components/Card.tsx` is the shared layout primitive.
+- Destructive actions (delete, retire, unlink): confirm with `window.confirm(...)` before mutating. No custom modal.
+- Authenticated images/binaries: `<img src>` can't send the Bearer token. Fetch a blob with `apiFetchStream`, show a `URL.createObjectURL(...)` URL, and revoke it on unmount/change (example: `screens/gear/ShoePhotoImage.tsx`).
+- CSV parsing: reuse `src/lib/csv.ts` (handles quoted fields). Don't write another parser.
