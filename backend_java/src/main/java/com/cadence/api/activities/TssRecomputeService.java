@@ -8,6 +8,7 @@ import com.cadence.api.common.domain.Sport;
 import com.cadence.api.athletes.ZoneSet;
 import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.users.User;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -44,6 +45,22 @@ public class TssRecomputeService {
 	@Transactional
 	public int recomputeForAthlete(User athlete) {
 		List<Activity> activities = activityRepository.findRecomputeCandidates(athlete.getId());
+		int updated = 0;
+		for (Activity activity : activities) {
+			if (rate(activity, athlete)) {
+				activityRepository.save(activity);
+				updated++;
+			}
+		}
+		return updated;
+	}
+
+	/** As {@link #recomputeForAthlete}, but only activities dated on/after {@code start} (issue
+	 * #545) - a duplicate-status change on an activity dated d can only alter the ledger from d
+	 * onward, so earlier activities' stored references (and thus ratings) are untouched. */
+	@Transactional
+	public int recomputeForAthleteFrom(User athlete, Instant start) {
+		List<Activity> activities = activityRepository.findRecomputeCandidatesAfter(athlete.getId(), start);
 		int updated = 0;
 		for (Activity activity : activities) {
 			if (rate(activity, athlete)) {

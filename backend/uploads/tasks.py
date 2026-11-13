@@ -62,7 +62,16 @@ def _recompute_after_ingest_mark(upload: Upload, activity: Any) -> None:
         activity.refresh_from_db(fields=["primary_activity"])
         demoted_id = upload.overlap_other_activity_id if activity.primary_activity_id is None else None
         fields = threshold_fields_affected_by_demoted_duplicate(demoted_id, activity.sport) if demoted_id else []
-        recompute_after_duplicate_change(upload.athlete, fields)
+        # Issue #545: the recompute can start at the demoted activity's own date - its duplicate
+        # status is the only thing that changed. A missing activity (deleted in the meantime)
+        # falls back to the full rebuild via from_date=None.
+        from_date = None
+        if demoted_id:
+            from activities.models import Activity
+
+            demoted = Activity.objects.filter(pk=demoted_id).values_list("start_date", flat=True).first()
+            from_date = demoted.date() if demoted else None
+        recompute_after_duplicate_change(upload.athlete, fields, from_date=from_date)
     except Exception:
         logger.exception("Post-upload duplicate recompute failed for upload %s", upload.pk)
 
@@ -75,7 +84,17 @@ def _maybe_finalize_batch(batch_id: str) -> None:
     # processing.ingest_upload's own call site, skipped for a batch child precisely so this is
     # the one place it happens).
     if batch.uploads.filter(overlap_action="marked").exists():
-        recompute_after_duplicate_change(batch.athlete)
+        # Issue #545: one recompute from the earliest marked upload's activity date - a
+        # duplicate-status change can only alter the ledger from that date onward. A marked
+        # upload with no attached activity (shouldn't normally happen) falls back to the full
+        # rebuild via from_date=None, same as recompute_after_duplicate_change's own default.
+        marked_dates = list(
+            batch.uploads.filter(overlap_action="marked", activity__isnull=False).values_list(
+                "activity__start_date", flat=True
+            )
+        )
+        from_date = min(marked_dates).date() if marked_dates else None
+        recompute_after_duplicate_change(batch.athlete, from_date=from_date)
     batch.status = "completed"
     batch.completed_at = timezone.now()
     batch.save(update_fields=["status", "completed_at"])

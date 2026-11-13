@@ -124,8 +124,10 @@ class RunningPowerSourceRecomputeServiceIntegrationTest extends IntegrationTest 
 		assertThat(recordRepository.findByActivityIdOrderByT(alreadyMatching.getId()))
 				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(500));
 
-		// The athlete-wide cascade ran exactly once, not once per swapped activity.
-		verify(activityService, times(1)).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+		// The athlete-wide cascade ran exactly once, not once per swapped activity - and with a
+		// real from-date (issue #545), not the old full-history null.
+		verify(activityService, times(1)).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())),
+				org.mockito.ArgumentMatchers.anySet(), org.mockito.ArgumentMatchers.notNull());
 	}
 
 	@Test
@@ -138,6 +140,7 @@ class RunningPowerSourceRecomputeServiceIntegrationTest extends IntegrationTest 
 
 		assertThat(result.swapped()).isZero();
 		assertThat(result.skipped()).isZero();
-		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())),
+				org.mockito.ArgumentMatchers.anySet(), org.mockito.ArgumentMatchers.any());
 	}
 }

@@ -91,6 +91,14 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 	@Query("select a from Activity a where a.athlete.id = :athleteId and a.parentActivity is null and a.primaryActivity is null")
 	List<Activity> findRecomputeCandidates(@Param("athleteId") String athleteId);
 
+	// recomputeAfterDuplicateChange's from-date variant (issue #545) - same multisport/duplicate
+	// exclusion as findRecomputeCandidates above, scoped to activities on/after the earliest
+	// changed activity's date: a duplicate-status change can only alter the ledger (and thus any
+	// rating) from that date onward, so earlier activities keep their stored TSS/intensity.
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.startDate >= :start "
+			+ "and a.parentActivity is null and a.primaryActivity is null")
+	List<Activity> findRecomputeCandidatesAfter(@Param("athleteId") String athleteId, @Param("start") Instant start);
+
 	// ThresholdHistoryService.recordManualValue's re-rate hook after a manual threshold edit -
 	// same multisport/duplicate exclusion as findRecomputeCandidates above, scoped to the one
 	// sport the edited field applies to and only activities on/after the edit's effective date

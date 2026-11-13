@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 class DuplicateRecomputeTaskletTest {
 
 	private final ThresholdHistoryRepository repo = mock(ThresholdHistoryRepository.class);
-	private final DuplicateRecomputeTasklet tasklet = new DuplicateRecomputeTasklet(null, null, repo, null);
+	private final DuplicateRecomputeTasklet tasklet = new DuplicateRecomputeTasklet(null, null, repo, null, null);
 
 	private static ThresholdHistory row(ThresholdField field, ThresholdHistoryKind kind) {
 		ThresholdHistory row = new ThresholdHistory();

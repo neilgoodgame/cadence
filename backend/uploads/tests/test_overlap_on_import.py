@@ -229,8 +229,14 @@ class RecomputeAfterIngestTimeMarkTests(TestCase):
         self.assertEqual(poll["overlap_action"], "marked")
         self.assertEqual(poll["status"], "ready")
         # Runs from tasks.process_upload after the upload is ready, scoped to the threshold
-        # fields the demoted duplicate sourced - none here, so nothing would be rebuilt.
-        mock_recompute.assert_called_once_with(athlete, [])
+        # fields the demoted duplicate sourced - none here, so nothing would be rebuilt. Which of
+        # "a"/"b" choose_primary actually keeps isn't this test's concern (and both are dated
+        # self.start regardless), so from_date is derived from the real post-mark state rather
+        # than assumed (issue #545): None if the new activity ("b") is itself the demoted side -
+        # never a ledger source, so nothing to rebuild - else the demoted other activity's date.
+        second_activity = Activity.objects.get(pk=poll["activity_id"])
+        expected_from_date = None if second_activity.primary_activity_id is not None else self.start.date()
+        mock_recompute.assert_called_once_with(athlete, [], from_date=expected_from_date)
 
     @patch("uploads.tasks.recompute_after_duplicate_change")
     def test_flag_only_mode_never_triggers_the_cascade(self, mock_recompute):
@@ -280,7 +286,9 @@ class RecomputeAfterIngestTimeMarkTests(TestCase):
 
         _maybe_finalize_batch(batch.id)
 
-        mock_recompute.assert_called_once_with(athlete)
+        # None of these synthetic Upload rows have an attached activity, so from_date falls back
+        # to the full-rebuild None (issue #545) - still exactly one call either way.
+        mock_recompute.assert_called_once_with(athlete, from_date=None)
 
 
 class ThresholdFieldsAffectedByDemotedDuplicateTests(TestCase):

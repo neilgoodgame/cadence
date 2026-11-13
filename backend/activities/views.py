@@ -195,7 +195,7 @@ def mark_duplicate(activity_id: str, primary_id: str) -> Activity:
     activity.primary_activity = primary
     activity.save(update_fields=["primary_activity"])
     apply_duplicate_change(activity, was_duplicate=False, is_duplicate=True)
-    recompute_after_duplicate_change(activity.athlete)
+    recompute_after_duplicate_change(activity.athlete, from_date=activity.start_date.date())
     return activity
 
 
@@ -208,7 +208,7 @@ def unmark_duplicate(activity_id: str) -> Activity:
     activity.primary_activity = None
     activity.save(update_fields=["primary_activity"])
     apply_duplicate_change(activity, was_duplicate=True, is_duplicate=False)
-    recompute_after_duplicate_change(activity.athlete)
+    recompute_after_duplicate_change(activity.athlete, from_date=activity.start_date.date())
     return activity
 
 
@@ -222,17 +222,22 @@ def set_primary(activity_id: str) -> Activity:
     old_primary = activity.primary_activity
     if old_primary is None:
         raise ValidationError({"activity_id": "Activity is already the primary; nothing to swap."})
+    # Issue #545: the recompute can start at the earliest of every activity whose duplicate
+    # status changed here - this one, the old primary, and each re-pointed sibling.
+    earliest_changed = activity.start_date.date()
     for sibling in old_primary.duplicate_activities.all():
         if sibling.pk != activity.pk:
             sibling.primary_activity = activity
             sibling.save(update_fields=["primary_activity"])
+            earliest_changed = min(earliest_changed, sibling.start_date.date())
     old_primary.primary_activity = activity
     old_primary.save(update_fields=["primary_activity"])
+    earliest_changed = min(earliest_changed, old_primary.start_date.date())
     activity.primary_activity = None
     activity.save(update_fields=["primary_activity"])
     apply_duplicate_change(old_primary, was_duplicate=False, is_duplicate=True)
     apply_duplicate_change(activity, was_duplicate=True, is_duplicate=False)
-    recompute_after_duplicate_change(activity.athlete)
+    recompute_after_duplicate_change(activity.athlete, from_date=earliest_changed)
     return activity
 
 

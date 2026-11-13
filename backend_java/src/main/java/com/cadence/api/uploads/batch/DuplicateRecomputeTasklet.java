@@ -1,5 +1,6 @@
 package com.cadence.api.uploads.batch;
 
+import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.ActivityService;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
@@ -7,6 +8,8 @@ import com.cadence.api.athletes.ThresholdHistoryKind;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.uploads.Upload;
 import com.cadence.api.uploads.UploadRepository;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -31,8 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
  * duplicate filter before {@code thresholdHistoryStep} ran), so nothing needs rebuilding.
  *
  * <p>Failures are logged, not propagated: the upload has already succeeded and a failed job here
- * would make {@link UploadJobExecutionListener} flip it to FAILED. Issue: partial replay from
- * the changed date (instead of the full-history rebuild) is tracked separately.
+ * would make {@link UploadJobExecutionListener} flip it to FAILED. The rebuild itself is the
+ * from-date variant (issue #545) - it replays only from the demoted activity's date onward, not
+ * the athlete's whole history.
  */
 @Component
 public class DuplicateRecomputeTasklet implements Tasklet {
@@ -43,13 +47,16 @@ public class DuplicateRecomputeTasklet implements Tasklet {
 	private final UploadRepository uploadRepository;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final ActivityService activityService;
+	private final ActivityRepository activityRepository;
 
 	public DuplicateRecomputeTasklet(UploadJobContextRegistry contextRegistry, UploadRepository uploadRepository,
-			ThresholdHistoryRepository thresholdHistoryRepository, ActivityService activityService) {
+			ThresholdHistoryRepository thresholdHistoryRepository, ActivityService activityService,
+			ActivityRepository activityRepository) {
 		this.contextRegistry = contextRegistry;
 		this.uploadRepository = uploadRepository;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.activityService = activityService;
+		this.activityRepository = activityRepository;
 	}
 
 	@Override
@@ -66,7 +73,13 @@ public class DuplicateRecomputeTasklet implements Tasklet {
 				return RepeatStatus.FINISHED;
 			}
 			Set<ThresholdField> fields = affectedFields(change);
-			activityService.recomputeAfterDuplicateChange(upload.getAthlete(), fields);
+			// Issue #545: the recompute can start at the demoted activity's own date - its
+			// duplicate status is the only thing that changed. A missing activity (deleted in the
+			// meantime) falls back to the full rebuild via a null date.
+			LocalDate fromDate = activityRepository.findById(change.demotedActivityId())
+					.map(a -> a.getStartDate().atZone(ZoneOffset.UTC).toLocalDate())
+					.orElse(null);
+			activityService.recomputeAfterDuplicateChange(upload.getAthlete(), fields, fromDate);
 		}
 		catch (RuntimeException e) {
 			log.error("Post-upload duplicate recompute failed for upload {} (upload itself is unaffected)", uploadId, e);

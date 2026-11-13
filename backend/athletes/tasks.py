@@ -116,6 +116,9 @@ def recompute_running_power_source(
     on_total(total)
 
     swapped = skipped = 0
+    # Issue #545: the cascade at the end can start at the earliest actually-swapped activity's
+    # date - a stream re-designation can only alter the ledger from there onward.
+    earliest_swapped = None
     for i, activity in enumerate(mismatched):
         replacement = (
             ActivityStream.objects.filter(activity_id=activity.id, field="power", source__source_kind=preference)
@@ -126,6 +129,8 @@ def recompute_running_power_source(
             _swap_primary_stream(activity.id, "power", replacement.source_id)
             recompute_activity_level_only(activity.id)
             swapped += 1
+            swapped_date = activity.start_date.date()
+            earliest_swapped = swapped_date if earliest_swapped is None else min(earliest_swapped, swapped_date)
         else:
             # This run's file never had the other candidate at all (e.g. a native-only Garmin
             # file, imported back when the athlete's preference happened to be "native" and
@@ -134,7 +139,7 @@ def recompute_running_power_source(
         on_progress(i + 1)
 
     if swapped > 0:
-        recompute_after_duplicate_change(athlete)
+        recompute_after_duplicate_change(athlete, from_date=earliest_swapped)
     return swapped, skipped
 
 

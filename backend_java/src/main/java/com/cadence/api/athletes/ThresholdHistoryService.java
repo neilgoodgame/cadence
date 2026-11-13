@@ -489,6 +489,62 @@ public class ThresholdHistoryService {
 		return entries.size();
 	}
 
+	/** The from-date variant of {@link #rebuildHistory} (issue #545): a duplicate-status change
+	 * on an activity dated d can only alter the ledger from d onward, so this deletes only
+	 * measured rows with currentFrom &gt;= fromDate and re-derives just that tail via
+	 * {@code calculator.replayFrom}. The delete is on currentFrom, not effectiveFrom - a
+	 * cascading-expiry row has effectiveFrom before fromDate but currentFrom after (it only
+	 * became current during the tail), and deleting by effectiveFrom would leave it behind as a
+	 * stale duplicate of what the tail replay re-derives. Manual and correction-only rows are
+	 * never touched, same as rebuildHistory (issue #504/#493). No TSS re-rate here - the caller
+	 * ({@code ActivityService.recomputeAfterDuplicateChange}) re-rates once for all changed
+	 * fields, from the same date. Returns the number of measured rows written (0 for a
+	 * decay-enabled athlete, whose resimulation reports no per-row count - same as rebuildHistory). */
+	@Transactional
+	public int rebuildHistoryFrom(User athlete, ThresholdField field, LocalDate fromDate, BiConsumer<Integer, Integer> onProgress) {
+		if (athlete.isThresholdDecayEnabled()) {
+			// Same delegation as rebuildHistory's decay branch, but from the given date rather
+			// than a cold start - resimulateSuffix's own seed lookups find the pre-fromDate
+			// state. rerateActivities=false: the caller re-rates once for all changed fields.
+			decayRecomputeService.resimulateSuffix(athlete, field, fromDate, LocalDate.now(), null, null, false, false);
+			onProgress.accept(1, 1);
+			return 0;
+		}
+
+		thresholdHistoryRepository.deleteByAthleteIdAndFieldAndCurrentFromGreaterThanEqualAndKindIn(
+				athlete.getId(), field, fromDate, java.util.List.of(ThresholdHistoryKind.MEASURED));
+		List<ThresholdHistoryEntry> entries = calculator.replayFrom(athlete, field, fromDate, onProgress);
+		for (ThresholdHistoryEntry entry : entries) {
+			ThresholdHistory row = new ThresholdHistory();
+			row.setAthlete(athlete);
+			row.setField(field);
+			row.setSourceActivity(activityRepository.getReferenceById(entry.activityId()));
+			row.setEffectiveFrom(entry.effectiveFrom());
+			row.setCurrentFrom(entry.currentFrom());
+			row.setKind(ThresholdHistoryKind.MEASURED);
+			if (field == ThresholdField.THRESHOLD_PACE) {
+				row.setValuePace(secondsToMmss(entry.value()));
+			}
+			else {
+				row.setValueNumeric((int) Math.round(entry.value()));
+			}
+			thresholdHistoryRepository.save(row);
+		}
+
+		// Same current-row re-derivation as rebuildHistory - a still-valid manual row (kept, not
+		// deleted above) can be more recent than any measured row the tail replay just wrote.
+		ThresholdHistory current = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
+				.orElse(null);
+		switch (field) {
+			case FTP -> athlete.setFtp(current != null ? current.getValueNumeric() : null);
+			case CRITICAL_RUN_POWER -> athlete.setCriticalRunPower(current != null ? current.getValueNumeric() : null);
+			case THRESHOLD_PACE -> athlete.setThresholdPace(current != null ? current.getValuePace() : "");
+		}
+		userRepository.save(athlete);
+		return entries.size();
+	}
+
 	private static Object valueOf(ThresholdField field, ThresholdHistory entry) {
 		return field == ThresholdField.THRESHOLD_PACE ? entry.getValuePace() : entry.getValueNumeric();
 	}
