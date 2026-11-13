@@ -1,7 +1,7 @@
 import logging
 from collections import deque
 from collections.abc import Iterable, Sequence
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.core.files.storage import default_storage
 from django.db import transaction
@@ -14,7 +14,12 @@ from activities.models import Activity, ActivityDurability, ActivityTag, BestEff
 from activities.overlap_detection import detect_and_resolve_overlap
 from athletes import threshold_suggestions
 from athletes.models import ThresholdHistory
-from athletes.threshold_history import FIELD_SPORT, rebuild_history_stream, recompute_for_activity
+from athletes.threshold_history import (
+    FIELD_SPORT,
+    rebuild_history_stream,
+    rebuild_history_stream_from,
+    recompute_for_activity,
+)
 from athletes.zones import get_or_create_zone_set, reference_for
 from gear.mileage import apply_shoe_change
 from scheduling.models import ScheduledWorkout
@@ -869,7 +874,30 @@ def recompute_tss_for_athlete(athlete: User) -> int:
     return updated
 
 
-def recompute_after_duplicate_change(athlete: User, fields: Iterable[str] | None = None) -> None:
+def recompute_tss_for_athlete_from(athlete: User, start: date) -> int:
+    """As recompute_tss_for_athlete, but only activities dated on/after `start` (issue #545) - a
+    duplicate-status change on an activity dated d can only alter the ledger from d onward, so
+    earlier activities' stored references (and thus ratings) are untouched. Mirrors
+    backend_java's TssRecomputeService.recomputeForAthleteFrom - keep the two in sync when
+    changing either."""
+    from activities.models import Activity
+
+    candidates = Activity.objects.filter(
+        athlete=athlete, parent_activity__isnull=True, start_date__date__gte=start
+    ).exclude(sport__in=("multisport", "transition"))
+    updated = 0
+    for activity in candidates:
+        power_series = list(activity.records.order_by("t").values_list("power", flat=True))
+        hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
+        if rate_activity(activity, athlete, power_series, hr_series):
+            activity.save(update_fields=["intensity", "tss"])
+            updated += 1
+    return updated
+
+
+def recompute_after_duplicate_change(
+    athlete: User, fields: Iterable[str] | None = None, from_date: date | None = None
+) -> None:
     """Issue #498: shared by mark_duplicate/unmark_duplicate/set_primary (activities/views.py),
     resolve_duplicates_batch/undo_batch (activities/duplicate_batches.py), and the ingest-time and
     batch-finalize auto-mark paths (uploads/tasks.py) - the same cascade the overlap backfill
@@ -881,6 +909,15 @@ def recompute_after_duplicate_change(athlete: User, fields: Iterable[str] | None
     ``fields`` scopes the rebuild: None (the default) rebuilds all three, an empty collection
     does nothing at all (no ledger row can have changed, so there is nothing to re-rate against).
 
+    ``from_date`` (issue #545) is the from-date variant: a duplicate-status change on an activity
+    dated d can only alter the ledger from d onward, so each field's rebuild replays just that
+    tail (rows with current_from before `from_date` are left in place) and the TSS re-rate covers
+    only activities dated on/after it. `from_date=None` (the default) keeps the historical
+    full-history behaviour - use it only when no changed activity's date is known. A caller that
+    changes several activities (a batch, a set_primary's re-pointed siblings) should pass the
+    minimum of their dates and rebuild once. Mirrors backend_java's ActivityService
+    .recomputeAfterDuplicateChange - keep the two in sync when changing either.
+
     Lives here rather than in activities/views.py (where it originated) because this module
     needs it too, and activities/views.py already imports recompute_tss_for_athlete from here -
     the reverse import would be circular."""
@@ -890,9 +927,16 @@ def recompute_after_duplicate_change(athlete: User, fields: Iterable[str] | None
     for field in ("ftp", "critical_run_power", "threshold_pace"):
         if field not in selected:
             continue
-        for _ in rebuild_history_stream(athlete, field):
-            pass
-    recompute_tss_for_athlete(athlete)
+        if from_date is None:
+            for _ in rebuild_history_stream(athlete, field):
+                pass
+        else:
+            for _ in rebuild_history_stream_from(athlete, field, from_date):
+                pass
+    if from_date is None:
+        recompute_tss_for_athlete(athlete)
+    else:
+        recompute_tss_for_athlete_from(athlete, from_date)
 
 
 def threshold_fields_affected_by_demoted_duplicate(demoted_activity_id: str, sport: str) -> list[str]:

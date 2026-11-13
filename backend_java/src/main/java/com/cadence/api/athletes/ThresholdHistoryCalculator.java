@@ -466,6 +466,150 @@ public class ThresholdHistoryCalculator {
 		return entries;
 	}
 
+	/** As {@link #replayFullHistory}, but replays only from {@code fromDate} onward (issue
+	 * #545) - a duplicate-status change on an activity dated d can only alter the ledger from d
+	 * onward, so this re-derives just that tail instead of replaying the athlete's whole history.
+	 * Returns exactly the entries {@code replayFullHistory} would emit with currentFrom &gt;=
+	 * fromDate; rows dated before that are the caller's to leave in place (see
+	 * {@code ThresholdHistoryService.rebuildHistoryFrom}'s delete predicate).
+	 *
+	 * <p><b>Seeding contract.</b> The replay's state at any date is its sliding window of
+	 * not-yet-expired, not-yet-dominated candidates plus the moving sanity reference (the
+	 * window's best). At the first date &gt;= fromDate every candidate still in that window is
+	 * dated after {@code fromDate - thresholdWindowDays} (older ones have aged out by
+	 * definition), so the scan below covers every candidate that can matter in the tail. The
+	 * part of the window dated before the scan start is seeded from the ledger itself: every
+	 * MEASURED row and every surviving (not correction-only) MANUAL row with effectiveFrom
+	 * before the scan start re-enters as a window candidate at its own effectiveFrom. That is
+	 * exact, not an approximation: a pre-scan candidate that never became current (and so has no
+	 * row of its own) can only matter in the tail if it later becomes the window's best, which
+	 * is impossible while a better candidate outlives it - and any such better candidate either
+	 * has its own row (seeded here, dated later, so it outlives the shadowed one) or is itself
+	 * a scan candidate that re-removes it on arrival. A pre-scan candidate rejected by the
+	 * sanity band never entered the window in the first place, so it's absent from both.
+	 *
+	 * <p>The moving reference is initialised to the seeded window's best (aged as of the first
+	 * scanned activity) and then tracked exactly like {@code replayFullHistory}'s - including
+	 * updating it when a manual candidate takes over without emitting an entry. Entries are only
+	 * emitted for dates &gt;= fromDate: value changes discovered during the pre-fromDate part of
+	 * the scan correspond to rows that already exist with currentFrom &lt; fromDate and were not
+	 * deleted, so re-emitting them would duplicate. */
+	public List<ThresholdHistoryEntry> replayFrom(User athlete, ThresholdField field, LocalDate fromDate) {
+		return replayFrom(athlete, field, fromDate, (current, total) -> { });
+	}
+
+	public List<ThresholdHistoryEntry> replayFrom(User athlete, ThresholdField field, LocalDate fromDate,
+			BiConsumer<Integer, Integer> onProgress) {
+		int windowDays = athlete.getThresholdWindowDays();
+		LocalDate scanStart = fromDate.minusDays(windowDays);
+
+		List<Candidate> window = new ArrayList<>();
+		// Seed: pre-scan measured rows, oldest first (see the seeding contract above).
+		for (ThresholdHistory row : thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndKindAndEffectiveFromLessThanOrderByEffectiveFromAsc(
+						athlete.getId(), field, ThresholdHistoryKind.MEASURED, scanStart)) {
+			Double value = rowValue(field, row);
+			if (value != null) {
+				window.add(new Candidate(row.getSourceActivity().getId(), row.getEffectiveFrom(), value));
+			}
+		}
+		// Seed: pre-scan manual rows (surviving ones only - a correction-only row never competed
+		// to be current, same exclusion replayFullHistory's own merge applies). The scan-merge
+		// list below picks up the rest at their own effectiveFrom, exactly like replayFullHistory.
+		List<ThresholdHistory> manualRows = thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(athlete.getId(), field,
+						ThresholdHistoryKind.MANUAL);
+		int nextManualIdx = 0;
+		for (; nextManualIdx < manualRows.size() && !manualRows.get(nextManualIdx).getEffectiveFrom().isAfter(scanStart);
+				nextManualIdx++) {
+			ThresholdHistory manualRow = manualRows.get(nextManualIdx);
+			Double manualValue = rowValue(field, manualRow);
+			if (manualValue != null) {
+				window.add(new Candidate(null, manualRow.getEffectiveFrom(), manualValue));
+			}
+		}
+
+		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
+		Instant start = scanStart.atStartOfDay(ZoneOffset.UTC).toInstant();
+		Instant end = LocalDate.now().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+		List<Activity> activities = activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
+		if (activities.isEmpty()) {
+			return List.of();
+		}
+
+		// The moving sanity reference as of the first scanned activity: apply that date's own
+		// manual merge and aging pass to the seeded window first (a manual row dated between the
+		// scan start and the first activity could be the better reference), then take its best.
+		LocalDate firstDate = dateOf(activities.get(0));
+		while (nextManualIdx < manualRows.size() && !manualRows.get(nextManualIdx).getEffectiveFrom().isAfter(firstDate)) {
+			ThresholdHistory manualRow = manualRows.get(nextManualIdx++);
+			Double manualValue = rowValue(field, manualRow);
+			if (manualValue != null) {
+				window = window.stream()
+						.filter(c -> !isBetter(field, manualValue, c.impliedValue()))
+						.collect(Collectors.toCollection(ArrayList::new));
+				window.add(new Candidate(null, manualRow.getEffectiveFrom(), manualValue));
+			}
+		}
+		LocalDate initialCutoff = firstDate.minusDays(windowDays);
+		window = window.stream().filter(c -> c.date().isAfter(initialCutoff)).collect(Collectors.toCollection(ArrayList::new));
+		Double currentValue = window.isEmpty() ? null : window.get(0).impliedValue();
+
+		List<ThresholdHistoryEntry> entries = new ArrayList<>();
+		int total = activities.size();
+		int current = 0;
+
+		for (Activity activity : activities) {
+			LocalDate activityDate = dateOf(activity);
+
+			// Merge in every manual row whose effectiveFrom has arrived as of this activity -
+			// same ordering and effect as replayFullHistory's own merge (the pre-scan ones were
+			// already seeded above, so the list starts at the first post-seed row).
+			while (nextManualIdx < manualRows.size() && !manualRows.get(nextManualIdx).getEffectiveFrom().isAfter(activityDate)) {
+				ThresholdHistory manualRow = manualRows.get(nextManualIdx++);
+				Double manualValue = rowValue(field, manualRow);
+				if (manualValue != null) {
+					window = window.stream()
+							.filter(c -> !isBetter(field, manualValue, c.impliedValue()))
+							.collect(Collectors.toCollection(ArrayList::new));
+					window.add(new Candidate(null, manualRow.getEffectiveFrom(), manualValue));
+				}
+			}
+
+			LocalDate cutoff = activityDate.minusDays(windowDays);
+			window = window.stream().filter(c -> c.date().isAfter(cutoff)).collect(Collectors.toCollection(ArrayList::new));
+
+			Double implied = impliedValue(activity, athlete, field);
+			boolean qualifies = implied != null && (acceptedIds.contains(activity.getId())
+					|| withinSanityBand(implied, currentValue, athlete.getThresholdSanityPct()));
+			if (qualifies) {
+				Candidate candidate = new Candidate(activity.getId(), activityDate, implied);
+				window = window.stream()
+						.filter(c -> !isBetter(field, implied, c.impliedValue()))
+						.collect(Collectors.toCollection(ArrayList::new));
+				window.add(candidate);
+			}
+
+			Candidate best = window.isEmpty() ? null : window.get(0);
+			Double newValue = best == null ? null : best.impliedValue();
+			if (!Objects.equals(newValue, currentValue)) {
+				currentValue = newValue;
+				// Only a measured winner (a real activity) needs an entry - and only from
+				// fromDate onward: a change discovered earlier corresponds to a row that already
+				// exists with currentFrom < fromDate and was deliberately left in place. A manual
+				// winner's own row already exists untouched, same as replayFullHistory.
+				if (best != null && best.activityId() != null && !activityDate.isBefore(fromDate)) {
+					entries.add(new ThresholdHistoryEntry(field, newValue, best.activityId(), best.date(), activityDate));
+				}
+			}
+			current++;
+			onProgress.accept(current, total);
+			// Same load-bearing entityManager.clear() as replayFullHistory - see its own comment.
+			entityManager.clear();
+		}
+		return entries;
+	}
+
 	// --- Threshold suggestions: detection only (pure/read-only, like the rest of this class) ---
 	// Response formatting, dismissal filtering, and caching live in ThresholdSuggestionService,
 	// which is also where the AcceptedThresholdCandidate/ThresholdSuggestionDismissal

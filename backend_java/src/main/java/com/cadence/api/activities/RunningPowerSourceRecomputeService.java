@@ -1,7 +1,10 @@
 package com.cadence.api.activities;
 
 import com.cadence.api.athletes.RunningPowerSource;
+import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.users.User;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.BiConsumer;
@@ -61,26 +64,35 @@ public class RunningPowerSourceRecomputeService {
 	public Result recomputeForAthlete(User athlete, BiConsumer<Integer, Integer> onProgress) {
 		RunningPowerSource preference = athlete.getRunningPowerSource();
 		String athleteId = athlete.getId();
-		List<String> mismatchedIds = tx.execute(status -> activityRepository
-				.findRunningPowerSourceMismatches(athleteId, preference).stream().map(Activity::getId).toList());
-		if (mismatchedIds == null) {
-			mismatchedIds = List.of();
+		List<Activity> mismatched = tx.execute(status -> activityRepository.findRunningPowerSourceMismatches(athleteId, preference));
+		if (mismatched == null) {
+			mismatched = List.of();
 		}
 
 		int swapped = 0;
 		int skipped = 0;
-		for (int i = 0; i < mismatchedIds.size(); i++) {
-			if (Boolean.TRUE.equals(swapOne(mismatchedIds.get(i), preference))) {
+		// Issue #545: the cascade at the end can start at the earliest actually-swapped
+		// activity's date - a stream re-designation can only alter the ledger from there onward.
+		LocalDate earliestSwapped = null;
+		for (int i = 0; i < mismatched.size(); i++) {
+			Activity activity = mismatched.get(i);
+			if (Boolean.TRUE.equals(swapOne(activity.getId(), preference))) {
 				swapped++;
+				LocalDate swappedDate = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
+				if (earliestSwapped == null || swappedDate.isBefore(earliestSwapped)) {
+					earliestSwapped = swappedDate;
+				}
 			}
 			else {
 				skipped++;
 			}
-			onProgress.accept(i + 1, mismatchedIds.size());
+			onProgress.accept(i + 1, mismatched.size());
 		}
 
 		if (swapped > 0) {
-			tx.executeWithoutResult(status -> activityService.recomputeAfterDuplicateChange(athlete));
+			LocalDate fromDate = earliestSwapped; // effectively final for the lambda below
+			tx.executeWithoutResult(
+					status -> activityService.recomputeAfterDuplicateChange(athlete, java.util.EnumSet.allOf(ThresholdField.class), fromDate));
 		}
 		return new Result(swapped, skipped);
 	}

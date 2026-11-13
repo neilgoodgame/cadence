@@ -124,6 +124,15 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	void deleteByAthleteIdAndFieldAndKind(
 			@Param("athleteId") String athleteId, @Param("field") ThresholdField field, @Param("kind") ThresholdHistoryKind kind);
 
+	// ThresholdHistoryCalculator.replayFrom's seed (issue #545) - every measured row dated
+	// before the scan start, oldest first: each one re-enters the replay's window as a candidate
+	// at its own effectiveFrom, exactly like replayFullHistory would have left it there. Rows
+	// whose candidate was already removed from the window by a better arrival are harmless to
+	// include - that better candidate is itself either one of these rows (and outlives this
+	// one, since it's dated later) or a scan candidate that re-removes it.
+	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndEffectiveFromLessThanOrderByEffectiveFromAsc(
+			String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate effectiveFrom);
+
 	// Threshold suggestions' undo-accept: removes the ledger row accept() created for this
 	// candidate, so a fresh recompute isn't comparing the sanity band against itself. See
 	// ThresholdSuggestionService.undoAccept.

@@ -498,4 +498,86 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 		assertThat(entries).hasSize(powers.length);
 		assertThat(entries.get(entries.size() - 1).value()).isEqualTo(Math.round(0.95 * powers[powers.length - 1]));
 	}
+
+	// --- replayFrom (issue #545) ---
+
+	private ThresholdHistory persistRow(User owner, ThresholdField field, Activity source, int power,
+			LocalDate effectiveFrom, LocalDate currentFrom) {
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(owner);
+		entry.setField(field);
+		entry.setValueNumeric((int) Math.round(0.95 * power)); // same implied-FTP math as the replay
+		entry.setSourceActivity(source);
+		entry.setEffectiveFrom(effectiveFrom);
+		entry.setCurrentFrom(currentFrom);
+		entry.setKind(ThresholdHistoryKind.MEASURED);
+		return thresholdHistoryRepository.save(entry);
+	}
+
+	private static List<ThresholdHistoryCalculator.ThresholdHistoryEntry> tailFrom(
+			List<ThresholdHistoryCalculator.ThresholdHistoryEntry> entries, LocalDate fromDate) {
+		return entries.stream().filter(e -> !e.currentFrom().isBefore(fromDate)).toList();
+	}
+
+	@Test
+	void replayFromChecksPreScanCandidatesAgainstTheSeededReferenceNotJustTheAnchor() {
+		// The seed-boundary case an anchor-only seed gets wrong: Y (300W) is the true moving
+		// reference when C (245W) arrives, but Y is older than fromDate - windowDays and so
+		// invisible to a seed that only knows the latest row (A, 280W). Against A's value C
+		// would pass the band (12.5%); against Y's it fails (18.3%) - and a full replay rejects
+		// it, so replayFrom must too (otherwise C later emits a ledger row the full replay
+		// never writes).
+		athlete = newAthlete("threshold-history-from-seedref@example.cc", 200);
+		athlete.setThresholdWindowDays(10);
+		athlete.setThresholdSanityPct(15);
+		Activity y = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-17T07:00:00Z"), 300, 1200);
+		Activity a = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-23T07:00:00Z"), 280, 1200);
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-26T07:00:00Z"), 245, 1200); // C - borderline
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-28T07:00:00Z"), 999, 600); // too short
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-02-03T07:00:00Z"), 999, 600); // too short
+
+		LocalDate fromDate = LocalDate.of(2026, 1, 30);
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> full = calculator.replayFullHistory(athlete, ThresholdField.FTP);
+		assertThat(full).hasSize(2); // Y on its own date, A when Y ages out (Jan 28)
+		assertThat(full.get(1).currentFrom()).isEqualTo(LocalDate.of(2026, 1, 28));
+
+		// The pre-change ledger state: both rows exist with currentFrom before fromDate.
+		persistRow(athlete, ThresholdField.FTP, y, 300, LocalDate.of(2026, 1, 17), LocalDate.of(2026, 1, 17));
+		persistRow(athlete, ThresholdField.FTP, a, 280, LocalDate.of(2026, 1, 23), LocalDate.of(2026, 1, 28));
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> from =
+				calculator.replayFrom(athlete, ThresholdField.FTP, fromDate);
+
+		assertThat(from).isEqualTo(tailFrom(full, fromDate)); // empty - C was rejected in both
+	}
+
+	@Test
+	void replayFromEmitsACascadingExpiryRowAcrossTheBoundary() {
+		// B (240W) never became current before fromDate, so it has no ledger row of its own -
+		// a seed built from rows alone can't know it exists. It must still be re-derived by the
+		// scan and emit its row (effectiveFrom before fromDate, currentFrom after) when A ages
+		// out during the tail.
+		athlete = newAthlete("threshold-history-from-cascade@example.cc", 200);
+		athlete.setThresholdWindowDays(10);
+		Activity a = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 250, 1200);
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-03T07:00:00Z"), 240, 1200); // B - shadowed
+		// Jan 12, not Jan 13: with a 10-day window B (Jan 3) ages out ON Jan 13 (the cutoff is
+		// strict), so the trigger must land one day earlier for B to still be in the window.
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-12T07:00:00Z"), 999, 600); // too-short trigger
+
+		LocalDate fromDate = LocalDate.of(2026, 1, 5);
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> full = calculator.replayFullHistory(athlete, ThresholdField.FTP);
+		assertThat(full).hasSize(2);
+		assertThat(full.get(1).effectiveFrom()).isEqualTo(LocalDate.of(2026, 1, 3));
+		assertThat(full.get(1).currentFrom()).isEqualTo(LocalDate.of(2026, 1, 12));
+
+		// The pre-change ledger state: only A's row exists.
+		persistRow(athlete, ThresholdField.FTP, a, 250, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1));
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> from =
+				calculator.replayFrom(athlete, ThresholdField.FTP, fromDate);
+
+		assertThat(from).isEqualTo(tailFrom(full, fromDate)); // exactly B's cross-boundary row
+		assertThat(from).hasSize(1);
+	}
 }

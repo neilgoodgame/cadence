@@ -3,6 +3,7 @@ package com.cadence.api.activities;
 import com.cadence.api.activities.ActivityOverlapDetectionService.OverlapResolution;
 import com.cadence.api.activities.dto.OverlapPairResponse;
 import com.cadence.api.athletes.OverlapHandling;
+import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.UnprocessableEntityException;
@@ -12,6 +13,7 @@ import com.cadence.api.gear.GearMileageService;
 import com.cadence.api.users.User;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -125,6 +127,9 @@ public class DuplicateResolutionBatchService {
 
 		List<PairResult> results = new ArrayList<>();
 		boolean affected = false;
+		// Issue #545: the recompute at the end can start at the earliest activity whose
+		// duplicate status this batch changed - one rebuild for the whole batch, not per pair.
+		LocalDate earliestChanged = null;
 		for (String[] pair : candidatePairs) {
 			OverlapResolution resolution = detectionService.resolvePair(pair[0], pair[1], action);
 
@@ -136,6 +141,10 @@ public class DuplicateResolutionBatchService {
 			if (resolution.action() == OverlapAction.MARKED) {
 				entry.setPrimaryActivity(activityRepository.findById(resolution.primaryActivityId()).orElseThrow());
 				affected = true;
+				LocalDate changedDate = dateOf(entry.getActivity());
+				if (earliestChanged == null || changedDate.isBefore(earliestChanged)) {
+					earliestChanged = changedDate;
+				}
 			}
 			else if (resolution.action() == OverlapAction.MERGED) {
 				entry.setPrimaryActivity(activityRepository.findById(resolution.primaryActivityId()).orElseThrow());
@@ -151,7 +160,7 @@ public class DuplicateResolutionBatchService {
 		}
 
 		if (affected) {
-			activityService.recomputeAfterDuplicateChange(athlete);
+			activityService.recomputeAfterDuplicateChange(athlete, java.util.EnumSet.allOf(ThresholdField.class), earliestChanged);
 		}
 
 		return new ResolveBatchResult(false, batch.getId(), results);
@@ -177,6 +186,9 @@ public class DuplicateResolutionBatchService {
 		int reverted = 0;
 		int skipped = 0;
 		boolean affected = false;
+		// Issue #545: as resolveDuplicatesBatch - one recompute from the earliest actually
+		// reverted activity's date (skipped entries changed nothing, so they don't count).
+		LocalDate earliestChanged = null;
 		for (DuplicateResolutionEntry entry : entryRepository.findByBatchAndOutcome(batch, OverlapAction.MARKED)) {
 			Activity activity = entry.getActivity();
 			String currentPrimaryId = activity.getPrimaryActivity() == null ? null : activity.getPrimaryActivity().getId();
@@ -192,6 +204,10 @@ public class DuplicateResolutionBatchService {
 			gearMileageService.applyDuplicateChange(bikeId, shoeId, saved.getDistanceKm(), true, false);
 			reverted++;
 			affected = true;
+			LocalDate changedDate = dateOf(saved);
+			if (earliestChanged == null || changedDate.isBefore(earliestChanged)) {
+				earliestChanged = changedDate;
+			}
 		}
 
 		for (DuplicateResolutionEntry entry : entryRepository.findByBatchAndOutcome(batch, OverlapAction.MERGED)) {
@@ -222,10 +238,14 @@ public class DuplicateResolutionBatchService {
 		batchRepository.save(batch);
 
 		if (affected) {
-			activityService.recomputeAfterDuplicateChange(athlete);
+			activityService.recomputeAfterDuplicateChange(athlete, java.util.EnumSet.allOf(ThresholdField.class), earliestChanged);
 		}
 
 		return new UndoBatchResult(batch.getId(), reverted, skipped);
+	}
+
+	private static LocalDate dateOf(Activity activity) {
+		return activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
 	}
 
 	private List<String[]> validatedExplicitPairs(User athlete, List<ExplicitPair> pairs) {

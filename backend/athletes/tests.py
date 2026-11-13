@@ -24,9 +24,11 @@ from .threshold_history import (
     current_window_value,
     is_stale,
     rebuild_history_stream,
+    rebuild_history_stream_from,
     record_manual_value,
     refresh_field,
     rejected_candidates,
+    replay_from,
     replay_full_history,
     upcoming_drop,
     warning_lead_days,
@@ -1266,6 +1268,85 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         self.assertEqual(len(entries), len(powers))
         self.assertEqual(entries[-1].value, round(0.95 * powers[-1]))
 
+    # --- replay_from (issue #545) ---
+
+    def _persist_measured_row(self, source, power, effective_from, current_from):
+        return ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=round(0.95 * power),  # same implied-FTP math as the replay
+            source_activity=source,
+            effective_from=effective_from,
+            current_from=current_from,
+            kind="measured",
+        )
+
+    @staticmethod
+    def _tail_from(entries, from_date):
+        return [e for e in entries if e.current_from >= from_date]
+
+    def test_replay_from_checks_pre_scan_candidates_against_the_seeded_reference_not_just_the_anchor(self):
+        # The seed-boundary case an anchor-only seed gets wrong: Y (300W) is the true moving
+        # reference when C (245W) arrives, but Y is older than from_date - window_days and so
+        # invisible to a seed that only knows the latest row (A, 280W). Against A's value C
+        # would pass the band (12.5%); against Y's it fails (18.3%) - and a full replay rejects
+        # it, so replay_from must too (otherwise C later emits a ledger row the full replay never
+        # writes).
+        self.athlete.threshold_window_days = 10
+        self.athlete.threshold_sanity_pct = 15
+        self.athlete.save(update_fields=["threshold_window_days", "threshold_sanity_pct"])
+        y = self._make_power_activity("bike", datetime(2026, 1, 17, 7, 0, tzinfo=UTC), power=300)
+        a = self._make_power_activity("bike", datetime(2026, 1, 23, 7, 0, tzinfo=UTC), power=280)
+        self._make_power_activity("bike", datetime(2026, 1, 26, 7, 0, tzinfo=UTC), power=245)  # C - borderline
+        self._make_power_activity(
+            "bike", datetime(2026, 1, 28, 7, 0, tzinfo=UTC), power=999, duration_seconds=600
+        )  # too short
+        self._make_power_activity(
+            "bike", datetime(2026, 2, 3, 7, 0, tzinfo=UTC), power=999, duration_seconds=600
+        )  # too short
+
+        from_date = date(2026, 1, 30)
+        full = replay_full_history(self.athlete, "ftp")
+        self.assertEqual(len(full), 2)  # Y on its own date, A when Y ages out (Jan 28)
+        self.assertEqual(full[1].current_from, date(2026, 1, 28))
+
+        # The pre-change ledger state: both rows exist with current_from before from_date.
+        self._persist_measured_row(y, 300, date(2026, 1, 17), date(2026, 1, 17))
+        self._persist_measured_row(a, 280, date(2026, 1, 23), date(2026, 1, 28))
+
+        from_entries = replay_from(self.athlete, "ftp", from_date)
+
+        self.assertEqual(from_entries, self._tail_from(full, from_date))  # empty - C was rejected in both
+
+    def test_replay_from_emits_a_cascading_expiry_row_across_the_boundary(self):
+        # B (240W) never became current before from_date, so it has no ledger row of its own - a
+        # seed built from rows alone can't know it exists. It must still be re-derived by the
+        # scan and emit its row (effective_from before from_date, current_from after) when A
+        # ages out during the tail.
+        self.athlete.threshold_window_days = 10
+        self.athlete.save(update_fields=["threshold_window_days"])
+        a = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=250)
+        self._make_power_activity("bike", datetime(2026, 1, 3, 7, 0, tzinfo=UTC), power=240)  # B - shadowed
+        # Jan 12, not Jan 13: with a 10-day window B (Jan 3) ages out ON Jan 13 (the cutoff is
+        # strict), so the trigger must land one day earlier for B to still be in the window.
+        self._make_power_activity(
+            "bike", datetime(2026, 1, 12, 7, 0, tzinfo=UTC), power=999, duration_seconds=600
+        )  # too-short trigger
+
+        from_date = date(2026, 1, 5)
+        full = replay_full_history(self.athlete, "ftp")
+        self.assertEqual(len(full), 2)
+        self.assertEqual(full[1].effective_from, date(2026, 1, 3))
+        self.assertEqual(full[1].current_from, date(2026, 1, 12))
+
+        # The pre-change ledger state: only A's row exists.
+        self._persist_measured_row(a, 250, date(2026, 1, 1), date(2026, 1, 1))
+
+        from_entries = replay_from(self.athlete, "ftp", from_date)
+
+        self.assertEqual(from_entries, self._tail_from(full, from_date))  # exactly B's cross-boundary row
+        self.assertEqual(len(from_entries), 1)
+
     def test_critical_run_power_excludes_an_activity_whose_power_source_no_longer_matches_preference(self):
         self.athlete.running_power_source = "stryd"
         self.athlete.save(update_fields=["running_power_source"])
@@ -1418,6 +1499,138 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         self.assertTrue(ledger.filter(kind="manual", is_correction_only=True).exists())
         self.athlete.refresh_from_db()
         self.assertNotEqual(self.athlete.ftp, 180)
+
+    # --- rebuild_history_stream_from (issue #545) ---
+
+    def _measured_ledger_snapshot(self):
+        rows = ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp", kind="measured").order_by(
+            "current_from", "effective_from", "id"
+        )
+        return [f"{r.value_numeric}@{r.effective_from}->{r.current_from}" for r in rows]
+
+    def test_rebuild_history_stream_from_matches_a_full_rebuild_after_a_duplicate_change(self):
+        # Issue #545's acceptance criterion: for a randomized history, rebuilding from the
+        # changed activity's date yields exactly the same ledger (and cached profile value) as a
+        # full rebuild. Fixed seed - the geometry is meant to be reproducible, not exhaustive;
+        # the targeted seed-boundary cases live in the replay_from tests above.
+        import random
+
+        self.athlete.threshold_window_days = 42  # short window: several aging cycles inside the span
+        self.athlete.save(update_fields=["threshold_window_days"])
+
+        rng = random.Random(545)
+        base = datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        qualifying = []
+        for i in range(52):
+            day_offset = rng.randrange(150)
+            too_short = i < 6  # no qualifying effort - pure window/aging triggers
+            power = 180 + rng.randrange(141)  # implied FTP lands in ~171-304
+            start = base + timedelta(days=day_offset, hours=rng.randrange(6))
+            activity = self._make_power_activity(
+                "bike", start, power=power, duration_seconds=600 if too_short else 1200
+            )
+            if not too_short:
+                qualifying.append(activity)
+
+        # A backdated manual row in the middle of the history - exercises replay_from's manual
+        # phantom seeding (it can win some windows, so the "manual wins without an entry" path
+        # must stay in sync between the two rebuilds).
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=200,
+            effective_from=date(2026, 3, 1),
+            current_from=date(2026, 3, 1),
+            kind="manual",
+        )
+
+        # Establish the pre-change ledger, then mark a random qualifying activity as a duplicate
+        # of another one (direct FK - the point is to compare the two rebuild paths, not
+        # mark_duplicate's own validation).
+        for _ in rebuild_history_stream(self.athlete, "ftp"):
+            pass
+        before = self._measured_ledger_snapshot()
+
+        changed = rng.choice(qualifying)
+        primary = rng.choice(qualifying)
+        if primary.id == changed.id:
+            primary = qualifying[(qualifying.index(primary) + 1) % len(qualifying)]
+        from_date = changed.start_date.date()
+        changed.primary_activity = primary
+        changed.save(update_fields=["primary_activity"])
+
+        # Path 1: the historical full rebuild.
+        for _ in rebuild_history_stream(self.athlete, "ftp"):
+            pass
+        full = self._measured_ledger_snapshot()
+        ftp_after_full = self.athlete.ftp
+
+        # Reset to the pre-change state (and sanity-check the reset is exact).
+        changed.primary_activity = None
+        changed.save(update_fields=["primary_activity"])
+        for _ in rebuild_history_stream(self.athlete, "ftp"):
+            pass
+        self.assertEqual(self._measured_ledger_snapshot(), before)
+
+        # Path 2: the from-date rebuild, starting at the changed activity's own date.
+        changed.primary_activity = primary
+        changed.save(update_fields=["primary_activity"])
+        for _ in rebuild_history_stream_from(self.athlete, "ftp", from_date):
+            pass
+        from_result = self._measured_ledger_snapshot()
+
+        self.assertEqual(from_result, full)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, ftp_after_full)
+
+    def test_rebuild_history_stream_from_leaves_earlier_rows_and_their_ratings_untouched(self):
+        # The other half of the acceptance criterion: a duplicate change on a recent activity
+        # does work proportional to the tail - rows with current_from before the changed date
+        # are not even deleted, so activities rated against them keep their stored TSS/intensity.
+        from uploads.processing import rate_activity
+
+        self.athlete.threshold_window_days = 42
+        self.athlete.save(update_fields=["threshold_window_days"])
+
+        # old (230W) defines the ledger until it ages out of the 42-day window; recent (260W)
+        # then takes over with its own row. Demoting recent to a duplicate must rewrite only
+        # that tail (primary's weaker effort takes over) - old's row and rating stay put.
+        old = self._make_power_activity("bike", datetime(2026, 1, 5, 7, 0, tzinfo=UTC), power=230)
+        recent = self._make_power_activity("bike", datetime(2026, 4, 15, 7, 0, tzinfo=UTC), power=260)
+        primary = self._make_power_activity("bike", datetime(2026, 4, 15, 8, 0, tzinfo=UTC), power=230)
+
+        for _ in rebuild_history_stream(self.athlete, "ftp"):
+            pass
+        old_row_current_from = (
+            ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp", kind="measured", source_activity=old)
+            .values_list("current_from", flat=True)
+            .first()
+        )
+
+        def tss_for(activity):
+            power_series = list(activity.records.order_by("t").values_list("power", flat=True))
+            hr_series = list(activity.records.order_by("t").values_list("heartrate", flat=True))
+            rate_activity(activity, self.athlete, power_series, hr_series)
+            return activity.tss
+
+        old_tss_before = tss_for(old)
+        recent.primary_activity = primary  # recent becomes a duplicate of primary
+        recent.save(update_fields=["primary_activity"])
+
+        from_date = recent.start_date.date()
+        self.assertGreater(from_date, old_row_current_from)  # the old row is strictly before the change
+
+        for _ in rebuild_history_stream_from(self.athlete, "ftp", from_date):
+            pass
+
+        # The old row survived the tail rebuild untouched...
+        self.assertTrue(
+            ThresholdHistory.objects.filter(
+                athlete=self.athlete, field="ftp", kind="measured", source_activity=old
+            ).exists()
+        )
+        # ...and the old activity's rating is exactly what it was (its reference didn't move).
+        self.assertEqual(tss_for(old), old_tss_before)
 
 
 class ThresholdHistoryListViewTests(TestCase):

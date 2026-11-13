@@ -587,4 +587,131 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 				.findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).orElseThrow();
 		assertThat(entry.getKind()).isEqualTo(ThresholdHistoryKind.MANUAL);
 	}
+
+	// --- rebuildHistoryFrom (issue #545) ---
+
+	private List<String> measuredLedgerSnapshot(User athlete) {
+		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)
+				.stream()
+				.filter(r -> r.getKind() == ThresholdHistoryKind.MEASURED)
+				.sorted(java.util.Comparator.comparing(ThresholdHistory::getCurrentFrom).thenComparing(ThresholdHistory::getEffectiveFrom))
+				.map(r -> r.getValueNumeric() + "@" + r.getEffectiveFrom() + "->" + r.getCurrentFrom())
+				.toList();
+	}
+
+	@Test
+	void rebuildHistoryFromMatchesAFullRebuildAfterADuplicateChange() {
+		// Issue #545's acceptance criterion: for a randomized history, rebuilding from the
+		// changed activity's date yields exactly the same ledger (and cached profile value) as a
+		// full rebuild. Fixed seed - the geometry is meant to be reproducible, not exhaustive;
+		// the targeted seed-boundary cases live in ThresholdHistoryCalculatorTest.
+		User athlete = newAthlete("threshold-history-from-differential@example.cc");
+		athlete.setThresholdWindowDays(42); // short window: several aging cycles inside the span
+		userRepository.save(athlete);
+
+		java.util.Random random = new java.util.Random(545L);
+		Instant base = Instant.parse("2026-01-01T07:00:00Z");
+		List<Activity> qualifying = new java.util.ArrayList<>();
+		for (int i = 0; i < 52; i++) {
+			int dayOffset = random.nextInt(150);
+			boolean tooShort = i < 6; // no qualifying effort - pure window/aging triggers
+			int power = 180 + random.nextInt(141); // implied FTP lands in ~171-304
+			Instant start = base.plusSeconds(dayOffset * 86400L + random.nextInt(6) * 3600L);
+			Activity activity = newPowerActivity(athlete, start, power, tooShort ? 600 : 1200);
+			if (!tooShort) {
+				qualifying.add(activity);
+			}
+		}
+
+		// A backdated manual row in the middle of the history - exercises replayFrom's manual
+		// phantom seeding (it can win some windows, so the "manual wins without an entry" path
+		// must stay in sync between the two rebuilds).
+		ThresholdHistory manual = new ThresholdHistory();
+		manual.setAthlete(athlete);
+		manual.setField(ThresholdField.FTP);
+		manual.setValueNumeric(200);
+		manual.setEffectiveFrom(LocalDate.of(2026, 3, 1));
+		manual.setCurrentFrom(LocalDate.of(2026, 3, 1));
+		manual.setKind(ThresholdHistoryKind.MANUAL);
+		thresholdHistoryRepository.save(manual);
+
+		// Establish the pre-change ledger, then mark a random qualifying activity as a duplicate
+		// of another one (direct FK - the point is to compare the two rebuild paths, not
+		// markDuplicate's own validation).
+		thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+		List<String> before = measuredLedgerSnapshot(athlete);
+
+		Activity changed = qualifying.get(random.nextInt(qualifying.size()));
+		Activity primary = qualifying.get(random.nextInt(qualifying.size()));
+		if (primary.getId().equals(changed.getId())) {
+			primary = qualifying.get((qualifying.indexOf(primary) + 1) % qualifying.size());
+		}
+		LocalDate fromDate = changed.getStartDate().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+		changed.setPrimaryActivity(primary);
+		activityRepository.save(changed);
+
+		// Path 1: the historical full rebuild.
+		thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+		List<String> full = measuredLedgerSnapshot(athlete);
+		Integer ftpAfterFull = athlete.getFtp();
+
+		// Reset to the pre-change state (and sanity-check the reset is exact).
+		changed.setPrimaryActivity(null);
+		activityRepository.save(changed);
+		thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+		assertThat(measuredLedgerSnapshot(athlete)).isEqualTo(before);
+
+		// Path 2: the from-date rebuild, starting at the changed activity's own date.
+		changed.setPrimaryActivity(primary);
+		activityRepository.save(changed);
+		thresholdHistoryService.rebuildHistoryFrom(athlete, ThresholdField.FTP, fromDate, (a, b) -> { });
+		List<String> from = measuredLedgerSnapshot(athlete);
+
+		assertThat(from).isEqualTo(full);
+		assertThat(athlete.getFtp()).isEqualTo(ftpAfterFull);
+	}
+
+	@Test
+	void rebuildHistoryFromLeavesEarlierRowsAndTheirRatingsUntouched() {
+		// The other half of the acceptance criterion: a duplicate change on a recent activity
+		// does work proportional to the tail - rows with currentFrom before the changed date are
+		// not even deleted, so activities rated against them keep their stored TSS/intensity.
+		User athlete = newAthlete("threshold-history-from-tail-only@example.cc");
+		athlete.setThresholdWindowDays(42);
+		userRepository.save(athlete);
+
+		// old (230W) defines the ledger until it ages out of the 42-day window; recent (260W)
+		// then takes over with its own row. Demoting recent to a duplicate must rewrite only
+		// that tail (primary's weaker effort takes over) - old's row and rating stay put.
+		Activity old = newPowerActivity(athlete, Instant.parse("2026-01-05T07:00:00Z"), 230, 1200);
+		Activity recent = newPowerActivity(athlete, Instant.parse("2026-04-15T07:00:00Z"), 260, 1200);
+		Activity primary = newPowerActivity(athlete, Instant.parse("2026-04-15T08:00:00Z"), 230, 1200);
+
+		thresholdHistoryService.rebuildHistory(athlete, ThresholdField.FTP, (a, b) -> { });
+		LocalDate oldRowCurrentFrom = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)
+				.stream()
+				.filter(r -> r.getKind() == ThresholdHistoryKind.MEASURED && r.getSourceActivity().getId().equals(old.getId()))
+				.map(ThresholdHistory::getCurrentFrom)
+				.findFirst()
+				.orElseThrow();
+
+		Integer oldTssBefore = tssRecomputeService.recomputeForActivity(old.getId());
+		recent.setPrimaryActivity(primary); // recent becomes a duplicate of primary
+		activityRepository.save(recent);
+
+		LocalDate fromDate = recent.getStartDate().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+		assertThat(fromDate).isAfter(oldRowCurrentFrom); // the old row is strictly before the change
+
+		thresholdHistoryService.rebuildHistoryFrom(athlete, ThresholdField.FTP, fromDate, (a, b) -> { });
+
+		// The old row survived the tail rebuild untouched...
+		List<ThresholdHistory> afterRows = thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
+		assertThat(afterRows.stream()
+				.filter(r -> r.getKind() == ThresholdHistoryKind.MEASURED && r.getSourceActivity().getId().equals(old.getId()))
+				.map(ThresholdHistory::getCurrentFrom)
+				.findFirst())
+				.isPresent();
+		// ...and the old activity's rating is exactly what it was (its reference didn't move).
+		assertThat(tssRecomputeService.recomputeForActivity(old.getId())).isEqualTo(oldTssBefore);
+	}
 }

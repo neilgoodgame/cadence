@@ -2,6 +2,8 @@ package com.cadence.api.activities;
 
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.common.domain.Sport;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.workouts.WorkoutAutoMatchService;
 import org.springframework.stereotype.Service;
@@ -63,8 +65,11 @@ public class ActivityMergePostProcessingService {
 
 		// Issue #498's cascade: this activity's own data just changed underneath it, so the
 		// threshold ledger and every activity's TSS/intensity need the same athlete-wide rebuild
-		// a duplicate mark/unmark/set_primary already triggers.
-		activityService.recomputeAfterDuplicateChange(activity.getAthlete(), thresholdFields);
+		// a duplicate mark/unmark/set_primary already triggers. Issue #545: from this activity's
+		// own date - the merge only rewrote its streams, so nothing earlier in the ledger can
+		// have changed.
+		LocalDate fromDate = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
+		activityService.recomputeAfterDuplicateChange(activity.getAthlete(), thresholdFields, fromDate);
 
 		workoutAutoMatchService.attemptMatch(targetId);
 	}

@@ -49,8 +49,9 @@ def recompute_after_merge(target_id: str, threshold_fields: Iterable[str] | None
 
     # Issue #498's cascade: this activity's own data just changed underneath it, so the threshold
     # ledger and every activity's TSS/intensity need the same athlete-wide rebuild a duplicate
-    # mark/unmark/set_primary already triggers.
-    recompute_after_duplicate_change(activity.athlete, threshold_fields)
+    # mark/unmark/set_primary already triggers. Issue #545: from this activity's own date - the
+    # merge only rewrote its streams, so nothing earlier in the ledger can have changed.
+    recompute_after_duplicate_change(activity.athlete, threshold_fields, from_date=activity.start_date.date())
 
     attempt_workout_match(activity, activity.athlete)
 

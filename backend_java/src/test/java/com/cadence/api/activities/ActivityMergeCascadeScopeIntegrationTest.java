@@ -77,9 +77,11 @@ class ActivityMergeCascadeScopeIntegrationTest extends IntegrationTest {
 		assertThatThrownBy(() -> mergeService.runMerge(target.getId(), source.getId(), List.of("power"),
 				NullPolicy.KEEP_ORIGINAL, 0, false, true)).isInstanceOf(MergePreviewRollbackSignal.class);
 
-		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())),
+				org.mockito.ArgumentMatchers.anySet(), org.mockito.ArgumentMatchers.isNull());
 		verify(activityService, never()).recomputeAfterDuplicateChange(
-				argThat(a -> a.getId().equals(athlete.getId())), org.mockito.ArgumentMatchers.anySet());
+				argThat(a -> a.getId().equals(athlete.getId())), org.mockito.ArgumentMatchers.anySet(),
+				org.mockito.ArgumentMatchers.notNull());
 	}
 
 	@Test
@@ -93,6 +95,7 @@ class ActivityMergeCascadeScopeIntegrationTest extends IntegrationTest {
 
 		verify(activityService, times(1)).recomputeAfterDuplicateChange(
 				argThat(a -> a.getId().equals(athlete.getId())),
-				argThat(fields -> fields.equals(EnumSet.of(ThresholdField.FTP))));
+				argThat(fields -> fields.equals(EnumSet.of(ThresholdField.FTP))),
+				org.mockito.ArgumentMatchers.notNull()); // issue #545: the merge's own date, not a full-history null
 	}
 }

@@ -131,7 +131,8 @@ class RecomputeAfterIngestTimeMarkIntegrationTest extends IntegrationTest {
 				athlete, syntheticFit("a.fit", 0L, 200), null, null, null, null, null);
 		awaitTerminal(first.getId());
 		verify(activityService, never()).recomputeAfterDuplicateChange(
-				argThat(a -> a.getId().equals(athlete.getId())), org.mockito.ArgumentMatchers.anySet());
+				argThat(a -> a.getId().equals(athlete.getId())), org.mockito.ArgumentMatchers.anySet(),
+				org.mockito.ArgumentMatchers.any());
 
 		Upload second = uploadService.createSingleUpload(
 				athlete, syntheticFit("b.fit", 0L, 205), null, null, null, null, null);
@@ -143,9 +144,11 @@ class RecomputeAfterIngestTimeMarkIntegrationTest extends IntegrationTest {
 		// overload, never the old unscoped one inline in the parse step. Here the demoted
 		// duplicate (the new, sensor-less-at-parse-time activity) was never a ledger source, so
 		// the affected-field set is empty and nothing is rebuilt.
-		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())),
+				org.mockito.ArgumentMatchers.anySet(), org.mockito.ArgumentMatchers.isNull());
 		verify(activityService, org.mockito.Mockito.timeout(10_000).times(1)).recomputeAfterDuplicateChange(
-				argThat(a -> a.getId().equals(athlete.getId())), argThat(java.util.Set::isEmpty));
+				argThat(a -> a.getId().equals(athlete.getId())), argThat(java.util.Set::isEmpty),
+				org.mockito.ArgumentMatchers.notNull()); // issue #545: the demoted activity's date, not a full-history null
 	}
 
 	@Test
@@ -159,9 +162,11 @@ class RecomputeAfterIngestTimeMarkIntegrationTest extends IntegrationTest {
 		Upload secondDone = awaitTerminal(second.getId());
 
 		assertThat(secondDone.getOverlapAction().toString()).isEqualTo("FLAGGED");
-		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+		verify(activityService, never()).recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())),
+				org.mockito.ArgumentMatchers.anySet(), org.mockito.ArgumentMatchers.isNull());
 		verify(activityService, never()).recomputeAfterDuplicateChange(
-				argThat(a -> a.getId().equals(athlete.getId())), org.mockito.ArgumentMatchers.anySet());
+				argThat(a -> a.getId().equals(athlete.getId())), org.mockito.ArgumentMatchers.anySet(),
+				org.mockito.ArgumentMatchers.notNull());
 	}
 
 	@Test
@@ -185,7 +190,8 @@ class RecomputeAfterIngestTimeMarkIntegrationTest extends IntegrationTest {
 		// The batch finalizer runs the cascade just after the last child settles, so the children
 		// being terminal doesn't guarantee it has run yet.
 		verify(activityService, org.mockito.Mockito.timeout(10_000).times(1))
-				.recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())));
+				.recomputeAfterDuplicateChange(argThat(a -> a.getId().equals(athlete.getId())),
+						org.mockito.ArgumentMatchers.anySet(), org.mockito.ArgumentMatchers.notNull()); // issue #545
 	}
 
 	private static byte[] readBytes(MockMultipartFile file) throws Exception {

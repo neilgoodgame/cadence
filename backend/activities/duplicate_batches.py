@@ -171,6 +171,9 @@ def resolve_duplicates_batch(
     batch = DuplicateResolutionBatch.objects.create(athlete=athlete, action=action, created_by=set_by)
     results = []
     affected = False
+    # Issue #545: the recompute at the end can start at the earliest activity whose duplicate
+    # status this batch changed - one rebuild for the whole batch, not per pair.
+    earliest_changed: date | None = None
     for anchor_id, other_id in candidate_pairs:
         resolution = resolve_pair(anchor_id, other_id, action)
         DuplicateResolutionEntry.objects.create(
@@ -184,12 +187,14 @@ def resolve_duplicates_batch(
         results.append({"activity_id": anchor_id, **resolution})
         if resolution["action"] == "marked":
             affected = True
+            changed_date = Activity.objects.get(pk=anchor_id).start_date.date()
+            earliest_changed = changed_date if earliest_changed is None else min(earliest_changed, changed_date)
         # Not affected=True for "merged" - run_merge already ran the full recompute cascade for
         # this one activity; re-running the athlete-wide version again at the end of the loop
         # would just be redundant work.
 
     if affected:
-        recompute_after_duplicate_change(athlete)
+        recompute_after_duplicate_change(athlete, from_date=earliest_changed)
 
     return {"dry_run": False, "batch_id": batch.id, "results": results}
 
@@ -210,6 +215,9 @@ def undo_batch(athlete: User, batch_id: str) -> dict[str, Any]:
     reverted = 0
     skipped = 0
     affected = False
+    # Issue #545: as resolve_duplicates_batch - one recompute from the earliest actually reverted
+    # activity's date (skipped entries changed nothing, so they don't count).
+    earliest_changed: date | None = None
     for entry in batch.entries.filter(outcome="marked").select_related("activity"):
         activity = entry.activity
         if activity.primary_activity_id != entry.primary_activity_id:
@@ -220,6 +228,8 @@ def undo_batch(athlete: User, batch_id: str) -> dict[str, Any]:
         apply_duplicate_change(activity, was_duplicate=True, is_duplicate=False)
         reverted += 1
         affected = True
+        changed_date = activity.start_date.date()
+        earliest_changed = changed_date if earliest_changed is None else min(earliest_changed, changed_date)
 
     for entry in batch.entries.filter(outcome="merged").select_related("primary_activity"):
         # entry.primary_activity holds the merge's own target (see the apply loop above) - the
@@ -244,6 +254,6 @@ def undo_batch(athlete: User, batch_id: str) -> dict[str, Any]:
     batch.save(update_fields=["undone_at"])
 
     if affected:
-        recompute_after_duplicate_change(athlete)
+        recompute_after_duplicate_change(athlete, from_date=earliest_changed)
 
     return {"batch_id": batch.id, "reverted_count": reverted, "skipped_count": skipped}

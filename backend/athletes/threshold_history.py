@@ -446,6 +446,145 @@ def replay_full_history(athlete: User, field: str) -> list[ThresholdHistoryEntry
     return entries
 
 
+def replay_from(athlete: User, field: str, from_date: date) -> list[ThresholdHistoryEntry]:
+    """As replay_full_history, but replays only from `from_date` onward - drains
+    _replay_from_into silently. See that function for the actual replay/seeding logic."""
+    entries: list[ThresholdHistoryEntry] = []
+    for _ in _replay_from_into(athlete, field, from_date, entries):
+        pass
+    return entries
+
+
+def _replay_from_into(
+    athlete: User, field: str, from_date: date, entries_out: list[ThresholdHistoryEntry]
+) -> Iterator[tuple[int, int]]:
+    """As _replay_full_history_into, but replays only from `from_date` onward (issue #545) - a
+    duplicate-status change on an activity dated d can only alter the ledger from d onward, so
+    this re-derives just that tail instead of replaying the athlete's whole history. Appends
+    exactly the entries replay_full_history would emit with current_from >= from_date; rows dated
+    before that are the caller's to leave in place (see rebuild_history_stream_from's delete
+    predicate). Progress is (current, total) over the scanned tail's own activities, not the
+    athlete's whole history. Mirrors backend_java's ThresholdHistoryCalculator.replayFrom - keep
+    the two in sync when changing either.
+
+    Seeding contract: the replay's state at any date is its sliding window of not-yet-expired,
+    not-yet-dominated candidates plus the moving sanity reference (the window's best). At the
+    first date >= from_date every candidate still in that window is dated after
+    `from_date - threshold_window_days` (older ones have aged out by definition), so the scan
+    below covers every candidate that can matter in the tail. The part of the window dated before
+    the scan start is seeded from the ledger itself: every measured row and every surviving (not
+    correction-only) manual row with effective_from before the scan start re-enters as a window
+    candidate at its own effective_from. That is exact, not an approximation: a pre-scan
+    candidate that never became current (and so has no row of its own) can only matter in the
+    tail if it later becomes the window's best, which is impossible while a better candidate
+    outlives it - and any such better candidate either has its own row (seeded here, dated later,
+    so it outlives the shadowed one) or is itself a scan candidate that re-removes it on arrival.
+    A pre-scan candidate rejected by the sanity band never entered the window in the first place,
+    so it's absent from both.
+
+    The moving reference is initialised to the seeded window's best (aged as of the first
+    scanned activity) and then tracked exactly like _replay_full_history_into's - including
+    updating it when a manual candidate takes over without emitting an entry. Entries are only
+    emitted for dates >= from_date: value changes discovered during the pre-from_date part of the
+    scan correspond to rows that already exist with current_from < from_date and were not
+    deleted, so re-emitting them would duplicate."""
+    window_days = athlete.threshold_window_days
+    scan_start = from_date - timedelta(days=window_days)
+
+    window: list[Candidate] = []
+    for row in ThresholdHistory.objects.filter(
+        athlete=athlete, field=field, kind="measured", effective_from__lt=scan_start
+    ).order_by("effective_from"):
+        value = _row_value(field, row)
+        if value is not None:
+            window.append(Candidate(activity_id=row.source_activity_id, date=row.effective_from, implied_value=value))
+
+    manual_rows = list(
+        ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="manual", is_correction_only=False).order_by(
+            "effective_from"
+        )
+    )
+    next_manual_idx = 0
+    while next_manual_idx < len(manual_rows) and manual_rows[next_manual_idx].effective_from <= scan_start:
+        manual_row = manual_rows[next_manual_idx]
+        next_manual_idx += 1
+        manual_value = _row_value(field, manual_row)
+        if manual_value is not None:
+            window.append(Candidate(activity_id=None, date=manual_row.effective_from, implied_value=manual_value))
+
+    accepted_ids = _accepted_activity_ids(athlete, field)
+    activities = list(
+        Activity.objects.filter(
+            athlete=athlete, sport=FIELD_SPORT[field], primary_activity__isnull=True, start_date__date__gte=scan_start
+        ).order_by("start_date")
+    )
+    total = len(activities)
+    if not activities:
+        return
+
+    # The moving sanity reference as of the first scanned activity: apply that date's own manual
+    # merge and aging pass to the seeded window first (a manual row dated between the scan start
+    # and the first activity could be the better reference), then take its best.
+    first_date = activities[0].start_date.date()
+    while next_manual_idx < len(manual_rows) and manual_rows[next_manual_idx].effective_from <= first_date:
+        manual_row = manual_rows[next_manual_idx]
+        next_manual_idx += 1
+        manual_value = _row_value(field, manual_row)
+        if manual_value is not None:
+            window = [c for c in window if not _is_better(field, manual_value, c.implied_value)]
+            window.append(Candidate(activity_id=None, date=manual_row.effective_from, implied_value=manual_value))
+    initial_cutoff = first_date - timedelta(days=window_days)
+    window = [c for c in window if c.date > initial_cutoff]
+    current_value = window[0].implied_value if window else None
+
+    for i, activity in enumerate(activities):
+        activity_date = activity.start_date.date()
+
+        # Merge in every manual row whose effective_from has arrived as of this activity - same
+        # ordering and effect as _replay_full_history_into's own merge (the pre-scan ones were
+        # already seeded above, so the list starts at the first post-seed row).
+        while next_manual_idx < len(manual_rows) and manual_rows[next_manual_idx].effective_from <= activity_date:
+            manual_row = manual_rows[next_manual_idx]
+            next_manual_idx += 1
+            manual_value = _row_value(field, manual_row)
+            if manual_value is not None:
+                window = [c for c in window if not _is_better(field, manual_value, c.implied_value)]
+                window.append(Candidate(activity_id=None, date=manual_row.effective_from, implied_value=manual_value))
+
+        cutoff = activity_date - timedelta(days=window_days)
+        window = [c for c in window if c.date > cutoff]
+
+        implied = _implied_value(activity, field)
+        qualifies = implied is not None and (
+            activity.id in accepted_ids
+            or _within_sanity_band(field, implied, current_value, athlete.threshold_sanity_pct)
+        )
+        if qualifies:
+            candidate = Candidate(activity_id=activity.id, date=activity_date, implied_value=implied)
+            window = [c for c in window if not _is_better(field, implied, c.implied_value)]
+            window.append(candidate)
+
+        best = window[0] if window else None
+        new_value = best.implied_value if best else None
+        if new_value != current_value:
+            current_value = new_value
+            # Only a measured winner (a real activity) needs an entry - and only from from_date
+            # onward: a change discovered earlier corresponds to a row that already exists with
+            # current_from < from_date and was deliberately left in place. A manual winner's own
+            # row already exists untouched, same as _replay_full_history_into.
+            if best is not None and best.activity_id is not None and activity_date >= from_date:
+                entries_out.append(
+                    ThresholdHistoryEntry(
+                        field=field,
+                        value=new_value,
+                        activity_id=best.activity_id,
+                        effective_from=best.date,
+                        current_from=activity_date,
+                    )
+                )
+        yield i + 1, total
+
+
 def _latest_entry(athlete: User, field: str) -> ThresholdHistory | None:
     """The row currently treated as "the" value for this field - every "what's current" lookup
     (is_stale, upcoming_drop, _manual_anchor_candidate, _recompute_and_record's own guard, and
@@ -861,6 +1000,57 @@ def rebuild_history_stream(athlete: User, field: str) -> Iterator[tuple[int, int
     # row (kept, not deleted above) can be more recent than any measured row the replay just
     # wrote, and _latest_entry already excludes a correction-only row from ever being mistaken
     # for current (same lookup _manual_anchor_candidate/is_stale use).
+    current_row = _latest_entry(athlete, field)
+    if field == "threshold_pace":
+        setattr(athlete, field, current_row.value_pace if current_row is not None else "")
+    else:
+        setattr(athlete, field, current_row.value_numeric if current_row is not None else None)
+    athlete.save(update_fields=[field])
+
+
+def rebuild_history_stream_from(athlete: User, field: str, from_date: date) -> Iterator[tuple[int, int]]:
+    """The from-date variant of rebuild_history_stream (issue #545): a duplicate-status change on
+    an activity dated d can only alter the ledger from d onward, so this deletes only measured
+    rows with current_from >= from_date and re-derives just that tail via replay_from. The delete
+    is on current_from, not effective_from - a cascading-expiry row has effective_from before
+    from_date but current_from after (it only became current during the tail), and deleting by
+    effective_from would leave it behind as a stale duplicate of what the tail replay re-derives.
+    Manual and correction-only rows are never touched, same as rebuild_history_stream (issue
+    #504/#493). No TSS re-rate here - the caller (uploads.processing.recompute_after_duplicate_
+    change) re-rates once for all changed fields, from the same date. Mirrors backend_java's
+    ThresholdHistoryService.rebuildHistoryFrom - keep the two in sync when changing either.
+
+    Decay-enabled: same delegation as rebuild_history_stream's decay branch, but from the given
+    date rather than a cold start - resimulate_suffix's own seed lookups find the pre-from_date
+    state. rerate_activities=False: the caller re-rates once for all changed fields, so this
+    yields a single (1, 1) progress tuple instead of one per activity, same disclosed limitation
+    as rebuild_history_stream's own decay branch."""
+    if athlete.threshold_decay_enabled:
+        from .threshold_decay_recompute import resimulate_suffix
+
+        resimulate_suffix(athlete, field, from_date, rerate_activities=False)
+        yield 1, 1
+        return
+
+    ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="measured", current_from__gte=from_date).delete()
+    entries: list[ThresholdHistoryEntry] = []
+    yield from _replay_from_into(athlete, field, from_date, entries)
+
+    ThresholdHistory.objects.bulk_create(
+        ThresholdHistory(
+            athlete=athlete,
+            field=field,
+            value_numeric=None if field == "threshold_pace" else round(entry.value),
+            value_pace=_seconds_to_mmss(entry.value) if field == "threshold_pace" else "",
+            source_activity_id=entry.activity_id,
+            effective_from=entry.effective_from,
+            current_from=entry.current_from,
+            kind="measured",
+        )
+        for entry in entries
+    )
+    # Same current-row re-derivation as rebuild_history_stream - a still-valid manual row (kept,
+    # not deleted above) can be more recent than any measured row the tail replay just wrote.
     current_row = _latest_entry(athlete, field)
     if field == "threshold_pace":
         setattr(athlete, field, current_row.value_pace if current_row is not None else "")

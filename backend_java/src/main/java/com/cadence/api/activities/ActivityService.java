@@ -436,7 +436,7 @@ public class ActivityService {
 		activity.setPrimaryActivity(primary);
 		Activity saved = activityRepository.save(activity);
 		applyDuplicateGearMileageChange(saved, false, true);
-		recomputeAfterDuplicateChange(activity.getAthlete());
+		recomputeAfterDuplicateChange(activity.getAthlete(), java.util.EnumSet.allOf(ThresholdField.class), dateOf(saved));
 		return saved;
 	}
 
@@ -451,7 +451,7 @@ public class ActivityService {
 		activity.setPrimaryActivity(null);
 		Activity saved = activityRepository.save(activity);
 		applyDuplicateGearMileageChange(saved, true, false);
-		recomputeAfterDuplicateChange(activity.getAthlete());
+		recomputeAfterDuplicateChange(activity.getAthlete(), java.util.EnumSet.allOf(ThresholdField.class), dateOf(saved));
 		return saved;
 	}
 
@@ -467,19 +467,28 @@ public class ActivityService {
 		if (oldPrimary == null) {
 			throw new ValidationException("Activity is already the primary; nothing to swap.");
 		}
+		// Issue #545: the recompute can start at the earliest of every activity whose duplicate
+		// status changed here - this one, the old primary, and each re-pointed sibling.
+		LocalDate earliestChanged = dateOf(activity);
 		for (Activity sibling : activityRepository.findByPrimaryActivityId(oldPrimary.getId())) {
 			if (!sibling.getId().equals(activity.getId())) {
 				sibling.setPrimaryActivity(activity);
 				activityRepository.save(sibling);
+				if (dateOf(sibling).isBefore(earliestChanged)) {
+					earliestChanged = dateOf(sibling);
+				}
 			}
 		}
 		oldPrimary.setPrimaryActivity(activity);
 		Activity savedOldPrimary = activityRepository.save(oldPrimary);
+		if (dateOf(savedOldPrimary).isBefore(earliestChanged)) {
+			earliestChanged = dateOf(savedOldPrimary);
+		}
 		activity.setPrimaryActivity(null);
 		Activity saved = activityRepository.save(activity);
 		applyDuplicateGearMileageChange(savedOldPrimary, false, true);
 		applyDuplicateGearMileageChange(saved, true, false);
-		recomputeAfterDuplicateChange(activity.getAthlete());
+		recomputeAfterDuplicateChange(activity.getAthlete(), java.util.EnumSet.allOf(ThresholdField.class), earliestChanged);
 		return saved;
 	}
 
@@ -511,15 +520,40 @@ public class ActivityService {
 	 * have changed, so there's nothing to re-rate against). The ingest-time auto-mark path uses
 	 * this so a duplicate that never defined a threshold costs nothing. */
 	public void recomputeAfterDuplicateChange(User athlete, java.util.Set<ThresholdField> fields) {
+		recomputeAfterDuplicateChange(athlete, fields, null);
+	}
+
+	/** From-date variant (issue #545): a duplicate-status change on an activity dated d can only
+	 * alter the ledger from d onward, so each field's rebuild replays just that tail (rows with
+	 * currentFrom before {@code fromDate} are left in place) and the TSS re-rate covers only
+	 * activities dated on/after it. {@code fromDate == null} keeps the historical full-history
+	 * behaviour - use it only when no changed activity's date is known. Callers that change
+	 * several activities (a batch, a setPrimary's re-pointed siblings) pass the MINIMUM of
+	 * their dates and rebuild once. */
+	public void recomputeAfterDuplicateChange(User athlete, java.util.Set<ThresholdField> fields, LocalDate fromDate) {
 		if (fields.isEmpty()) {
 			return;
 		}
 		for (ThresholdField field : ThresholdField.values()) {
 			if (fields.contains(field)) {
-				thresholdHistoryService.rebuildHistory(athlete, field, (current, total) -> { });
+				if (fromDate == null) {
+					thresholdHistoryService.rebuildHistory(athlete, field, (current, total) -> { });
+				}
+				else {
+					thresholdHistoryService.rebuildHistoryFrom(athlete, field, fromDate, (current, total) -> { });
+				}
 			}
 		}
-		tssRecomputeService.recomputeForAthlete(athlete);
+		if (fromDate == null) {
+			tssRecomputeService.recomputeForAthlete(athlete);
+		}
+		else {
+			tssRecomputeService.recomputeForAthleteFrom(athlete, fromDate.atStartOfDay(ZoneOffset.UTC).toInstant());
+		}
+	}
+
+	private static LocalDate dateOf(Activity activity) {
+		return activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
 	}
 
 	private boolean isMultisportLinked(Activity activity) {
