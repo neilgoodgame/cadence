@@ -15,6 +15,7 @@ from accounts.models import User
 from activities.models import Activity, Record
 
 from .models import ThresholdHistory
+from .tasks import apply_threshold_decay
 from .threshold_decay_recompute import resimulate_suffix
 from .threshold_history import recompute_for_activity, record_manual_value, refresh_field
 
@@ -227,3 +228,58 @@ class RebuildWiringTests(TestCase):
         self.assertTrue(ThresholdHistory.objects.filter(pk=ThresholdHistory.objects.get(value_numeric=200).pk).exists())
         self.assertFalse(ThresholdHistory.objects.filter(pk=stray_decayed.pk).exists())
         self.assertTrue(ThresholdHistory.objects.filter(athlete=athlete, field="ftp", kind="measured").exists())
+
+
+class ApplyThresholdDecayJobTests(TestCase):
+    """The daily companion to the four real-time triggers (issue #548) - only matters for an
+    athlete who goes quiet on one sport but not another, since ingest/manual-edit/refresh/rebuild
+    already self-correct a stale ledger whenever any of them next fires for that field."""
+
+    def test_skips_an_athlete_whose_anchor_has_not_expired_yet(self):
+        athlete = _decay_athlete(email="decay-job-fresh@example.cc")
+        start = datetime.now(tz=UTC)
+        _make_power_activity(athlete, start, power=260)
+        recompute_for_activity(Activity.objects.get(athlete=athlete))
+
+        apply_threshold_decay()
+
+        self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete, field="ftp", kind="decayed").exists())
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.ftp, round(0.95 * 260))
+
+    def test_applies_decay_when_the_anchor_has_expired_for_a_quiet_sport(self):
+        athlete = _decay_athlete(email="decay-job-stale@example.cc")
+        start = datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        _make_power_activity(athlete, start, power=260)
+        # A genuinely stale ledger: the athlete's last bike activity was 2026-01-01, and at that
+        # time the ingest trigger resimulated only through 2026-01-01 (today then) - not through
+        # the real today. recompute_for_activity would resimulate through the real today and
+        # pre-decay the anchor to its floor, making apply_threshold_decay a no-op; resimulating
+        # only through the activity's own date reproduces the ledger state a quiet athlete has.
+        resimulate_suffix(athlete, "ftp", date(2026, 1, 1), end=date(2026, 1, 1))
+
+        apply_threshold_decay()
+
+        decayed = ThresholdHistory.objects.filter(athlete=athlete, field="ftp", kind="decayed")
+        self.assertTrue(decayed.exists())
+        latest = decayed.order_by("-effective_from").first()
+        self.assertEqual(latest.current_from, date.today())
+        athlete.refresh_from_db()
+        self.assertLess(athlete.ftp, 260)
+
+    def test_skips_a_decay_disabled_athlete_even_with_an_expired_anchor(self):
+        athlete = User.objects.create_user(email="decay-job-disabled@example.cc", password="x", name="Disabled")
+        start = datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        _make_power_activity(athlete, start, power=260)
+        recompute_for_activity(Activity.objects.get(athlete=athlete))
+
+        apply_threshold_decay()
+
+        self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete, field="ftp", kind="decayed").exists())
+
+    def test_skips_a_field_with_no_ledger_rows_at_all(self):
+        athlete = _decay_athlete(email="decay-job-no-ledger@example.cc")
+
+        apply_threshold_decay()  # must not raise for a field with no anchor at all
+
+        self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete).exists())
