@@ -411,6 +411,34 @@ class DecayPrimitiveTests(SimpleTestCase):
         self.assertEqual(decay_target("ftp", 260.0, None, 1.0, DEFAULT_SETTINGS), 260.0 * (1 - 12 / 100))
         self.assertEqual(decay_target("ftp", 260.0, None, 0.5, DEFAULT_SETTINGS), 260.0 * (1 - 12 / 100))
 
+    def test_decay_target_clamps_an_out_of_range_ratio(self):
+        # The day loop's ratio is always in [0, 1]; decay_target clamps too, so an out-of-range
+        # caller can't push the floor above the anchor (which would ease a threshold upwards -
+        # or, for pace, faster). A far-below successor keeps the floor in charge so the clamp
+        # shows through.
+        self.assertEqual(
+            decay_target("ftp", 260.0, 100.0, 1.5, DEFAULT_SETTINGS),
+            decay_target("ftp", 260.0, 100.0, 1.0, DEFAULT_SETTINGS),
+        )
+        self.assertEqual(
+            decay_target("ftp", 260.0, 100.0, -0.5, DEFAULT_SETTINGS),
+            decay_target("ftp", 260.0, 100.0, 0.0, DEFAULT_SETTINGS),
+        )
+        # Unclamped, ratio=1.5 would floor pace at 240/1.015 - FASTER than the anchor; clamped
+        # it stays at the min_pct floor, slower.
+        self.assertAlmostEqual(
+            decay_target("threshold_pace", 240.0, 300.0, 1.5, DEFAULT_SETTINGS), 240.0 / (1 - 3 / 100)
+        )
+
+    def test_decay_target_zero_successor_counts_as_no_successor(self):
+        # No real candidate can imply 0, and `dict.get(key, 0.0)` is the natural "not found"
+        # idiom - so 0.0 takes the no-successor fallback on every field instead of dividing by
+        # zero in `_to_effort` for threshold_pace.
+        self.assertEqual(decay_target("ftp", 260.0, 0.0, 1.0, DEFAULT_SETTINGS), 260.0 * (1 - 12 / 100))
+        self.assertAlmostEqual(
+            decay_target("threshold_pace", 240.0, 0.0, 1.0, DEFAULT_SETTINGS), 240.0 / (1 - 12 / 100)
+        )
+
     def test_decay_target_pace_comes_out_slower_never_faster(self):
         # The effort-space conversion (1/value) means the floor is anchor / (1 - amplitude/100)
         # seconds/km - SLOWER than the anchor. A native-space `anchor * (1 - amplitude/100)`

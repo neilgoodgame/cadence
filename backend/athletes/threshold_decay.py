@@ -135,15 +135,17 @@ def decay_target(
 ) -> float:
     """The value an anchor is currently easing towards, in native units (unrounded): the better
     of the trailing window's successor and the load-ratio-adjusted floor below the anchor - or,
-    with no successor at all, the day loop's own no-successor fallback (the anchor at full
-    `max_pct` amplitude). Same "never eases upwards" rule as the day loop. Does the
-    native<->effort conversion internally via `_to_effort`/`_from_effort`, so a
-    `threshold_pace` target always comes out slower, never faster; callers only ever see native
-    units."""
+    with no successor at all (a zero one counts as none: no real candidate can imply 0), the
+    day loop's own no-successor fallback (the anchor at full `max_pct` amplitude). Same "never
+    eases upwards" rule as the day loop - `ratio` is clamped to [0, 1] here too, so an
+    out-of-range value can't push the floor above the anchor. Does the native<->effort
+    conversion internally via `_to_effort`/`_from_effort`, so a `threshold_pace` target always
+    comes out slower, never faster; callers only ever see native units."""
+    ratio = min(1.0, max(0.0, ratio))
     anchor_effort = _to_effort(field, anchor_value)
     amplitude = settings.min_pct + (settings.max_pct - settings.min_pct) * (1 - ratio)
     floor_effort = anchor_effort * (1 - amplitude / 100.0)
-    if successor_value is None:
+    if successor_value is None or successor_value == 0:
         target_effort = anchor_effort * (1 - settings.max_pct / 100.0)
     else:
         target_effort = max(_to_effort(field, successor_value), floor_effort)
