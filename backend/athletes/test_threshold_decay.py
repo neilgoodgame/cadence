@@ -6,7 +6,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from .fixtures.decay.scenarios import build_scenarios
-from .threshold_decay import DecayCandidate, DecaySettings, ManualEntry, simulate
+from .threshold_decay import DecayCandidate, DecaySettings, ManualEntry, decay_load_ratio, decay_target, simulate
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "decay"
 JAVA_FIXTURES = (
@@ -360,3 +360,135 @@ class DecayCurveTests(SimpleTestCase):
         # No Step at all - the manual entry isn't re-emitted, and the lower candidate correctly
         # fails the upward-reset test against it, so nothing changes.
         self.assertEqual(steps, [])
+
+
+class DecayPrimitiveTests(SimpleTestCase):
+    """The shared primitives `decay_load_ratio`/`decay_target`: the native-boundary versions of
+    the ratio/target math `_simulate_enabled` keeps inline for its per-day loop, added for
+    threshold_history.upcoming_drop's and the summary's once-per-call projections (issue #485)."""
+
+    def test_decay_load_ratio_is_today_over_anchor(self):
+        anchor = date(2026, 1, 1)
+        as_of = anchor + timedelta(days=30)
+        self.assertEqual(decay_load_ratio({anchor: 100.0, as_of: 50.0}, anchor, as_of), 0.5)
+
+    def test_decay_load_ratio_clamps_to_the_unit_interval(self):
+        anchor = date(2026, 1, 1)
+        as_of = anchor + timedelta(days=30)
+        self.assertEqual(decay_load_ratio({anchor: 100.0, as_of: 250.0}, anchor, as_of), 1.0)
+        self.assertEqual(decay_load_ratio({anchor: 100.0, as_of: -5.0}, anchor, as_of), 0.0)
+
+    def test_decay_load_ratio_is_one_with_no_baseline_load_at_the_anchor(self):
+        # Open question 3: L(a) < 1 -> ratio 1.0, whatever today's load says - including a
+        # missing anchor day (load 0.0 < 1).
+        anchor = date(2026, 1, 1)
+        as_of = anchor + timedelta(days=30)
+        self.assertEqual(decay_load_ratio({anchor: 0.5, as_of: 0.0}, anchor, as_of), 1.0)
+        self.assertEqual(decay_load_ratio({as_of: 50.0}, anchor, as_of), 1.0)
+
+    def test_decay_load_ratio_missing_today_is_zero(self):
+        anchor = date(2026, 1, 1)
+        as_of = anchor + timedelta(days=30)
+        self.assertEqual(decay_load_ratio({anchor: 100.0}, anchor, as_of), 0.0)
+
+    def test_decay_target_successor_above_floor_wins(self):
+        # ratio 1 -> amplitude exactly min_pct (3) -> floor 260 * 0.97 = 252.2; the successor
+        # (255) is above it, so it survives.
+        self.assertEqual(decay_target("ftp", 260.0, 255.0, 1.0, DEFAULT_SETTINGS), 255.0)
+
+    def test_decay_target_successor_below_floor_is_clamped_to_the_floor(self):
+        self.assertEqual(decay_target("ftp", 260.0, 200.0, 1.0, DEFAULT_SETTINGS), 260.0 * (1 - 3 / 100))
+
+    def test_decay_target_floor_tracks_the_ratio_amplitude(self):
+        # A far-below successor keeps the floor in charge, exposing the ratio -> amplitude map:
+        # min_pct + (max_pct - min_pct) * (1 - ratio).
+        self.assertEqual(decay_target("ftp", 260.0, 100.0, 1.0, DEFAULT_SETTINGS), 260.0 * (1 - 3 / 100))
+        self.assertEqual(decay_target("ftp", 260.0, 100.0, 0.5, DEFAULT_SETTINGS), 260.0 * (1 - 7.5 / 100))
+        self.assertEqual(decay_target("ftp", 260.0, 100.0, 0.0, DEFAULT_SETTINGS), 260.0 * (1 - 12 / 100))
+
+    def test_decay_target_no_successor_is_the_max_pct_floor_regardless_of_ratio(self):
+        # The day loop's own no-successor fallback: full max_pct amplitude, ratio ignored.
+        self.assertEqual(decay_target("ftp", 260.0, None, 1.0, DEFAULT_SETTINGS), 260.0 * (1 - 12 / 100))
+        self.assertEqual(decay_target("ftp", 260.0, None, 0.5, DEFAULT_SETTINGS), 260.0 * (1 - 12 / 100))
+
+    def test_decay_target_clamps_an_out_of_range_ratio(self):
+        # The day loop's ratio is always in [0, 1]; decay_target clamps too, so an out-of-range
+        # caller can't push the floor above the anchor (which would ease a threshold upwards -
+        # or, for pace, faster). A far-below successor keeps the floor in charge so the clamp
+        # shows through.
+        self.assertEqual(
+            decay_target("ftp", 260.0, 100.0, 1.5, DEFAULT_SETTINGS),
+            decay_target("ftp", 260.0, 100.0, 1.0, DEFAULT_SETTINGS),
+        )
+        self.assertEqual(
+            decay_target("ftp", 260.0, 100.0, -0.5, DEFAULT_SETTINGS),
+            decay_target("ftp", 260.0, 100.0, 0.0, DEFAULT_SETTINGS),
+        )
+        # Unclamped, ratio=1.5 would floor pace at 240/1.015 - FASTER than the anchor; clamped
+        # it stays at the min_pct floor, slower.
+        self.assertAlmostEqual(
+            decay_target("threshold_pace", 240.0, 300.0, 1.5, DEFAULT_SETTINGS), 240.0 / (1 - 3 / 100)
+        )
+
+    def test_decay_target_zero_successor_counts_as_no_successor(self):
+        # No real candidate can imply 0, and `dict.get(key, 0.0)` is the natural "not found"
+        # idiom - so 0.0 takes the no-successor fallback on every field instead of dividing by
+        # zero in `_to_effort` for threshold_pace.
+        self.assertEqual(decay_target("ftp", 260.0, 0.0, 1.0, DEFAULT_SETTINGS), 260.0 * (1 - 12 / 100))
+        self.assertAlmostEqual(
+            decay_target("threshold_pace", 240.0, 0.0, 1.0, DEFAULT_SETTINGS), 240.0 / (1 - 12 / 100)
+        )
+
+    def test_decay_target_pace_comes_out_slower_never_faster(self):
+        # The effort-space conversion (1/value) means the floor is anchor / (1 - amplitude/100)
+        # seconds/km - SLOWER than the anchor. A native-space `anchor * (1 - amplitude/100)`
+        # would have eased the pace faster, which is wrong. A far-slower successor keeps the
+        # floor in charge so the ratio -> amplitude map shows through.
+        self.assertAlmostEqual(
+            decay_target("threshold_pace", 240.0, 300.0, 1.0, DEFAULT_SETTINGS), 240.0 / (1 - 3 / 100)
+        )
+        self.assertAlmostEqual(
+            decay_target("threshold_pace", 240.0, 300.0, 0.0, DEFAULT_SETTINGS), 240.0 / (1 - 12 / 100)
+        )
+        # No successor at all: the day loop's own fallback (max_pct, ratio ignored) - still
+        # slower than the anchor.
+        self.assertAlmostEqual(
+            decay_target("threshold_pace", 240.0, None, 1.0, DEFAULT_SETTINGS), 240.0 / (1 - 12 / 100)
+        )
+        # A better successor (faster pace) wins outright.
+        self.assertAlmostEqual(decay_target("threshold_pace", 240.0, 230.0, 1.0, DEFAULT_SETTINGS), 230.0)
+
+    def test_decay_target_matches_the_day_loops_own_target(self):
+        # The primitives must agree with what `_simulate_enabled`'s inline math actually drives
+        # v towards: flat load at ratio r, and after enough days v sits on round(target). Every
+        # branch of the target formula is covered - no successor (the fallback in charge), a
+        # far-below successor (the floor in charge), and an above-floor successor (the successor
+        # in charge) - so a tuning change to either copy's formula desyncs here.
+        anchor = date(2026, 1, 1)
+        expiry = anchor + timedelta(days=DEFAULT_SETTINGS.window_days + 1)
+        end = expiry + timedelta(days=400)
+        for ratio in (0.0, 0.25, 1.0):
+            for successor in (None, 200.0, 255.0):
+                with self.subTest(ratio=ratio, successor=successor):
+                    load = {
+                        anchor + timedelta(days=i): (100.0 if i == 0 else 100.0 * ratio)
+                        for i in range(-5, (end - anchor).days + 5)
+                    }
+                    if successor is None:
+                        candidates = []
+                    else:
+                        candidates = [
+                            DecayCandidate(
+                                date=anchor + timedelta(days=10 * i),
+                                implied_value=successor,
+                                activity_id=f"succ_{i}",
+                                accepted=True,
+                            )
+                            for i in range(1, 53)
+                        ]
+                    steps = simulate(
+                        "ftp", DEFAULT_SETTINGS, 260.0, anchor, "measured", candidates, [], load, anchor, end
+                    )
+                    self.assertEqual(
+                        steps[-1].value, round(decay_target("ftp", 260.0, successor, ratio, DEFAULT_SETTINGS))
+                    )
