@@ -22,4 +22,8 @@ public interface UserRepository extends JpaRepository<User, String> {
 	// is held until that transaction commits or rolls back.
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	Optional<User> findWithLockById(String id);
+
+	// ThresholdDecayJob's daily scan (issue #548) - every athlete decay applies to; the common
+	// case today is none, since threshold_decay_enabled defaults to false.
+	List<User> findByThresholdDecayEnabledTrue();
 }

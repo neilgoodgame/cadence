@@ -64,14 +64,22 @@ def _seed_v(athlete: User, field: str, from_date: date) -> float | None:
     return _row_value(field, row) if row is not None else None
 
 
-def _seed_anchor(athlete: User, field: str, from_date: date) -> tuple[float | None, date | None, str | None]:
-    """The latest non-decayed row before `from_date` - the anchor `simulate` decays away from."""
-    row = (
-        ThresholdHistory.objects.filter(athlete=athlete, field=field, effective_from__lt=from_date)
+def latest_non_decayed_row(athlete: User, field: str, before: date) -> ThresholdHistory | None:
+    """The latest non-decayed (measured or manual) row for (athlete, field) with effective_from <
+    `before` - the anchor a suffix resimulation decays away from. Shared by _seed_anchor and
+    athletes.tasks.apply_threshold_decay's daily-job gate so the anchor-selection rule lives in one
+    place (issue #548 review)."""
+    return (
+        ThresholdHistory.objects.filter(athlete=athlete, field=field, effective_from__lt=before)
         .exclude(kind="decayed")
         .order_by("-effective_from", "-id")
         .first()
     )
+
+
+def _seed_anchor(athlete: User, field: str, from_date: date) -> tuple[float | None, date | None, str | None]:
+    """The latest non-decayed row before `from_date` - the anchor `simulate` decays away from."""
+    row = latest_non_decayed_row(athlete, field, from_date)
     if row is None:
         return None, None, None
     return _row_value(field, row), row.effective_from, row.kind

@@ -1,4 +1,6 @@
+import logging
 from collections.abc import Callable
+from datetime import date, timedelta
 from typing import Any
 
 from celery import shared_task
@@ -8,6 +10,8 @@ from accounts.models import User
 from activities.models import Activity, BestEffort
 
 from .models import BestEffortRecomputeJob, RunningPowerSourceRecomputeJob
+
+logger = logging.getLogger(__name__)
 
 _SPORT_FOR_KIND = {
     "cycling_hr": "bike",
@@ -169,3 +173,31 @@ def run_running_power_source_recompute(self: Any, job_id: str) -> None:
     job.skipped_items = skipped
     job.completed_at = timezone.now()
     job.save(update_fields=["status", "swapped_items", "skipped_items", "completed_at"])
+
+
+@shared_task
+def apply_threshold_decay() -> None:
+    """Daily companion (02:17 UTC, see config/settings.py's CELERY_BEAT_SCHEDULE) to the
+    ingest/manual-edit/refresh/rebuild triggers (issue #546) - those four already re-simulate a
+    field's suffix through today whenever they run, so a stale ledger self-corrects the next time
+    any of them fires. This job only matters for an athlete who goes quiet on one sport but not
+    another (e.g. a cyclist who stops riding but keeps running would never see ftp decay without
+    it). Issue #548, split out of #485. Skips every athlete with threshold_decay_enabled=False
+    (the default, and so the common case today). One athlete/field failure is logged and does not
+    stop the rest of the run."""
+    from .models import THRESHOLD_FIELD_CHOICES
+    from .threshold_decay_recompute import latest_non_decayed_row, resimulate_suffix
+
+    today = date.today()
+    for athlete in User.objects.filter(threshold_decay_enabled=True):
+        for field, _ in THRESHOLD_FIELD_CHOICES:
+            anchor = latest_non_decayed_row(athlete, field, today)
+            if anchor is None:
+                continue
+            expiry = today - timedelta(days=athlete.threshold_window_days)
+            if anchor.effective_from >= expiry:
+                continue
+            try:
+                resimulate_suffix(athlete, field, today)
+            except Exception:
+                logger.exception("Threshold decay daily job failed for athlete %s field %s", athlete.pk, field)
