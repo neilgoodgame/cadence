@@ -119,6 +119,37 @@ def _within_sanity_band(candidate_value: float, reference_value: float | None, s
     return abs(candidate_value - reference_value) / reference_value <= sanity_pct / 100
 
 
+def decay_load_ratio(load_by_day: dict[date, float], anchor_date: date, as_of: date) -> float:
+    """`as_of`'s above-Z2 load vs the load at the anchor's own measurement date, clamped to
+    [0, 1] - 1.0 with no baseline load at the anchor (issue #485's open question 3). The same
+    ratio `simulate`'s own day loop computes inline (which keeps its own copy rather than
+    calling this); this public version is for the two once-per-call projection sites -
+    threshold_history.upcoming_drop's and the summary's decay target."""
+    load_today = load_by_day.get(as_of, 0.0)
+    load_at_anchor = load_by_day.get(anchor_date, 0.0)
+    return 1.0 if load_at_anchor < 1 else min(1.0, max(0.0, load_today / load_at_anchor))
+
+
+def decay_target(
+    field: str, anchor_value: float, successor_value: float | None, ratio: float, settings: DecaySettings
+) -> float:
+    """The value an anchor is currently easing towards, in native units (unrounded): the better
+    of the trailing window's successor and the load-ratio-adjusted floor below the anchor - or,
+    with no successor at all, the day loop's own no-successor fallback (the anchor at full
+    `max_pct` amplitude). Same "never eases upwards" rule as the day loop. Does the
+    native<->effort conversion internally via `_to_effort`/`_from_effort`, so a
+    `threshold_pace` target always comes out slower, never faster; callers only ever see native
+    units."""
+    anchor_effort = _to_effort(field, anchor_value)
+    amplitude = settings.min_pct + (settings.max_pct - settings.min_pct) * (1 - ratio)
+    floor_effort = anchor_effort * (1 - amplitude / 100.0)
+    if successor_value is None:
+        target_effort = anchor_effort * (1 - settings.max_pct / 100.0)
+    else:
+        target_effort = max(_to_effort(field, successor_value), floor_effort)
+    return _from_effort(field, target_effort)
+
+
 def _daterange(start: date, end: date):
     d = start
     one_day = timedelta(days=1)
