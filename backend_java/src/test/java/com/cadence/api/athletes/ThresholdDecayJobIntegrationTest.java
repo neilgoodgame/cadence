@@ -36,6 +36,8 @@ class ThresholdDecayJobIntegrationTest extends IntegrationTest {
 	@Autowired
 	private ThresholdHistoryService thresholdHistoryService;
 	@Autowired
+	private ThresholdDecayRecomputeService recomputeService;
+	@Autowired
 	private ThresholdHistoryRepository thresholdHistoryRepository;
 
 	private User newDecayAthlete(String email) {
@@ -90,7 +92,15 @@ class ThresholdDecayJobIntegrationTest extends IntegrationTest {
 		User athlete = newDecayAthlete("decay-job-stale@example.cc");
 		Instant start = LocalDate.of(2026, 1, 1).atStartOfDay(ZoneOffset.UTC).toInstant();
 		Activity activity = newPowerActivity(athlete, start, 260, 1200);
-		thresholdHistoryService.recomputeForActivity(activity);
+		// A genuinely stale ledger: the athlete's last bike activity was 2026-01-01, and at that
+		// time the ingest trigger resimulated only through 2026-01-01 (today then) - not through
+		// the real today. recomputeForActivity would resimulate through the real today and
+		// pre-decay the anchor to its floor, making applyThresholdDecay a no-op; resimulating
+		// only through the activity's own date reproduces the ledger state a quiet athlete has.
+		// 8-arg overload (the only @Transactional one) - the 4-arg convenience form reaches it via
+		// self-invocation and would run non-transactionally here, where the test has no enclosing tx.
+		recomputeService.resimulateSuffix(athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 1),
+				LocalDate.of(2026, 1, 1), null, null, true, false);
 
 		thresholdDecayJob.applyThresholdDecay();
 
@@ -98,6 +108,9 @@ class ThresholdDecayJobIntegrationTest extends IntegrationTest {
 				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(athlete.getId(),
 						ThresholdField.FTP, ThresholdHistoryKind.DECAYED);
 		assertThat(decayed).isNotEmpty();
+		// The job itself did fresh work: the newest decayed row is current as of today (not a
+		// leftover from seeding, which produced no decayed rows at all).
+		assertThat(decayed.get(decayed.size() - 1).getCurrentFrom()).isEqualTo(LocalDate.now());
 		User reloaded = userRepository.findById(athlete.getId()).orElseThrow();
 		assertThat(reloaded.getFtp()).isLessThan(260);
 	}

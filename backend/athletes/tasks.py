@@ -185,18 +185,13 @@ def apply_threshold_decay() -> None:
     it). Issue #548, split out of #485. Skips every athlete with threshold_decay_enabled=False
     (the default, and so the common case today). One athlete/field failure is logged and does not
     stop the rest of the run."""
-    from .models import THRESHOLD_FIELD_CHOICES, ThresholdHistory
-    from .threshold_decay_recompute import resimulate_suffix
+    from .models import THRESHOLD_FIELD_CHOICES
+    from .threshold_decay_recompute import latest_non_decayed_row, resimulate_suffix
 
     today = date.today()
     for athlete in User.objects.filter(threshold_decay_enabled=True):
         for field, _ in THRESHOLD_FIELD_CHOICES:
-            anchor = (
-                ThresholdHistory.objects.filter(athlete=athlete, field=field, effective_from__lt=today)
-                .exclude(kind="decayed")
-                .order_by("-effective_from", "-id")
-                .first()
-            )
+            anchor = latest_non_decayed_row(athlete, field, today)
             if anchor is None:
                 continue
             expiry = today - timedelta(days=athlete.threshold_window_days)

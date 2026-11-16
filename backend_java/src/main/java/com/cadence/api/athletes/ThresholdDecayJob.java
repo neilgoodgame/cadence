@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Daily companion (02:17 UTC) to the ingest/manual-edit/refresh/rebuild triggers already wired
@@ -18,6 +17,14 @@ import org.springframework.transaction.annotation.Transactional;
  * quiet on one sport but not another (e.g. a cyclist who stops riding but keeps running would
  * never see ftp decay without it). Issue #548, split out of #485. Skips every athlete with
  * thresholdDecayEnabled=false (the default, and so the common case today).
+ *
+ * <p>There is deliberately no transaction wrapping this whole run or a single athlete: each field's
+ * resimulation runs in its own transaction (the job invokes the {@code @Transactional} 8-arg
+ * {@code resimulateSuffix} overload directly), so one athlete/field failure rolls back only that
+ * field and is logged without stopping the rest of the run - matching the Python backend's
+ * apply_threshold_decay. (A {@code @Transactional} on a self-invoked package-private helper would
+ * be silently ignored by Spring's proxy-based AOP, and a single transaction around the whole run
+ * would let one athlete's failure mark it rollback-only and poison every other athlete.)
  */
 @Component
 public class ThresholdDecayJob {
@@ -40,11 +47,7 @@ public class ThresholdDecayJob {
 	@Scheduled(cron = "0 17 2 * * *")
 	public void applyThresholdDecay() {
 		for (User athlete : userRepository.findByThresholdDecayEnabledTrue()) {
-			try {
-				processAthlete(athlete);
-			} catch (Exception ex) {
-				log.error("Threshold decay daily job failed for athlete {}", athlete.getId(), ex);
-			}
+			processAthlete(athlete);
 			// Load-bearing, not cosmetic (same reasoning as ThresholdHistoryCalculator's own
 			// per-activity entityManager.clear()) - staging runs with a 600MB cap, and
 			// resimulateSuffix can load a whole trailing window of Activity/Record rows per
@@ -53,16 +56,24 @@ public class ThresholdDecayJob {
 		}
 	}
 
-	@Transactional
 	void processAthlete(User athlete) {
 		LocalDate today = LocalDate.now();
 		LocalDate expiry = today.minusDays(athlete.getThresholdWindowDays());
 		for (ThresholdField field : ThresholdField.values()) {
-			thresholdHistoryRepository
-					.findFirstByAthleteIdAndFieldAndEffectiveFromLessThanAndKindNotOrderByEffectiveFromDescIdDesc(
-							athlete.getId(), field, today, ThresholdHistoryKind.DECAYED)
-					.filter(anchor -> anchor.getEffectiveFrom().isBefore(expiry))
-					.ifPresent(anchor -> recomputeService.resimulateSuffix(athlete, field, today));
+			try {
+				thresholdHistoryRepository
+						.findFirstByAthleteIdAndFieldAndEffectiveFromLessThanAndKindNotOrderByEffectiveFromDescIdDesc(
+								athlete.getId(), field, today, ThresholdHistoryKind.DECAYED)
+						.filter(anchor -> anchor.getEffectiveFrom().isBefore(expiry))
+						// Call the 8-arg overload directly (as rebuildHistoryFrom does): only it is
+						// @Transactional - the 3/4-arg convenience overloads reach it via self-invocation,
+						// which bypasses Spring's proxy and would leave this call non-transactional here,
+						// where there is deliberately no enclosing transaction. Each field thus gets its own tx.
+						.ifPresent(anchor -> recomputeService.resimulateSuffix(athlete, field, today, today, null,
+								null, true, false));
+			} catch (Exception ex) {
+				log.error("Threshold decay daily job failed for athlete {} field {}", athlete.getId(), field, ex);
+			}
 		}
 	}
 }
