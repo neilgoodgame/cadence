@@ -49,6 +49,12 @@ DECAYED = "decayed"
 
 @dataclass(frozen=True)
 class DecaySettings:
+    """The athlete's decay parameters - a plain value object with no validation of its own.
+    `min_pct <= max_pct` (swapped values invert the amplitude: maintained load would decay
+    most, no load least) and `tau_days > 0` are enforced at the settings boundary instead
+    (issue #485's settings exposure, validated against the merged result), so both backends'
+    types stay check-free mirrors of each other."""
+
     window_days: int
     sanity_pct: int
     tau_days: float
