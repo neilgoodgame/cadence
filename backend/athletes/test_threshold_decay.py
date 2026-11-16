@@ -460,25 +460,35 @@ class DecayPrimitiveTests(SimpleTestCase):
 
     def test_decay_target_matches_the_day_loops_own_target(self):
         # The primitives must agree with what `_simulate_enabled`'s inline math actually drives
-        # v towards: flat load at ratio r and a persistent low successor pin the target to the
-        # floor, so after enough days v sits on round(decay_target(...)).
+        # v towards: flat load at ratio r, and after enough days v sits on round(target). Every
+        # branch of the target formula is covered - no successor (the fallback in charge), a
+        # far-below successor (the floor in charge), and an above-floor successor (the successor
+        # in charge) - so a tuning change to either copy's formula desyncs here.
         anchor = date(2026, 1, 1)
         expiry = anchor + timedelta(days=DEFAULT_SETTINGS.window_days + 1)
         end = expiry + timedelta(days=400)
         for ratio in (0.0, 0.25, 1.0):
-            with self.subTest(ratio=ratio):
-                load = {
-                    anchor + timedelta(days=i): (100.0 if i == 0 else 100.0 * ratio)
-                    for i in range(-5, (end - anchor).days + 5)
-                }
-                candidates = [
-                    DecayCandidate(
-                        date=anchor + timedelta(days=10 * i),
-                        implied_value=200.0,
-                        activity_id=f"succ_{i}",
-                        accepted=True,
+            for successor in (None, 200.0, 255.0):
+                with self.subTest(ratio=ratio, successor=successor):
+                    load = {
+                        anchor + timedelta(days=i): (100.0 if i == 0 else 100.0 * ratio)
+                        for i in range(-5, (end - anchor).days + 5)
+                    }
+                    if successor is None:
+                        candidates = []
+                    else:
+                        candidates = [
+                            DecayCandidate(
+                                date=anchor + timedelta(days=10 * i),
+                                implied_value=successor,
+                                activity_id=f"succ_{i}",
+                                accepted=True,
+                            )
+                            for i in range(1, 53)
+                        ]
+                    steps = simulate(
+                        "ftp", DEFAULT_SETTINGS, 260.0, anchor, "measured", candidates, [], load, anchor, end
                     )
-                    for i in range(1, 53)
-                ]
-                steps = simulate("ftp", DEFAULT_SETTINGS, 260.0, anchor, "measured", candidates, [], load, anchor, end)
-                self.assertEqual(steps[-1].value, round(decay_target("ftp", 260.0, 200.0, ratio, DEFAULT_SETTINGS)))
+                    self.assertEqual(
+                        steps[-1].value, round(decay_target("ftp", 260.0, successor, ratio, DEFAULT_SETTINGS))
+                    )

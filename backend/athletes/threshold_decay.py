@@ -124,7 +124,10 @@ def decay_load_ratio(load_by_day: dict[date, float], anchor_date: date, as_of: d
     [0, 1] - 1.0 with no baseline load at the anchor (issue #485's open question 3). The same
     ratio `simulate`'s own day loop computes inline (which keeps its own copy rather than
     calling this); this public version is for the two once-per-call projection sites -
-    threshold_history.upcoming_drop's and the summary's decay target."""
+    threshold_history.upcoming_drop's and the summary's decay target. A day missing from
+    `load_by_day` means zero load that day (the loop's own semantics), so pass a date with real
+    load data - today, never a future one like the anchor's expiry: this can't detect a future
+    `as_of`, and it would silently yield ratio 0.0, i.e. the worst-case floor."""
     load_today = load_by_day.get(as_of, 0.0)
     load_at_anchor = load_by_day.get(anchor_date, 0.0)
     return 1.0 if load_at_anchor < 1 else min(1.0, max(0.0, load_today / load_at_anchor))
