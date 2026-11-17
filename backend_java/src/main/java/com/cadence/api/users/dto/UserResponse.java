@@ -54,5 +54,10 @@ public record UserResponse(
 		// Issue #503 phase 3. Appended at the end - no positional UserResponse(...) construction
 		// exists anywhere (confirmed by repo-wide grep), so this is a safe append regardless.
 		HrSource hrSource,
-		CadenceSource cadenceSource) {
+		CadenceSource cadenceSource,
+		// Issue #485: same append-at-the-end reasoning as above.
+		boolean thresholdDecayEnabled,
+		int thresholdDecayTauDays,
+		int thresholdDecayMinPct,
+		int thresholdDecayMaxPct) {
 }

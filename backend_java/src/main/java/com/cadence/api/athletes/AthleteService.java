@@ -151,6 +151,39 @@ public class AthleteService {
 			athlete.setThresholdSanityPct(Math.max(1, Math.min(100, request.thresholdSanityPct())));
 			suggestionsAffected = true;
 		}
+		if (request.thresholdDecayEnabled() != null) {
+			athlete.setThresholdDecayEnabled(request.thresholdDecayEnabled());
+			suggestionsAffected = true;
+		}
+		if (request.thresholdDecayTauDays() != null) {
+			if (request.thresholdDecayTauDays() < 7 || request.thresholdDecayTauDays() > 90) {
+				throw new ValidationException("Must be between 7 and 90.", "thresholdDecayTauDays");
+			}
+			athlete.setThresholdDecayTauDays(request.thresholdDecayTauDays());
+			suggestionsAffected = true;
+		}
+		if (request.thresholdDecayMinPct() != null) {
+			if (request.thresholdDecayMinPct() < 0 || request.thresholdDecayMinPct() > 10) {
+				throw new ValidationException("Must be between 0 and 10.", "thresholdDecayMinPct");
+			}
+			athlete.setThresholdDecayMinPct(request.thresholdDecayMinPct());
+			suggestionsAffected = true;
+		}
+		if (request.thresholdDecayMaxPct() != null) {
+			if (request.thresholdDecayMaxPct() < 0 || request.thresholdDecayMaxPct() > 30) {
+				throw new ValidationException("Must be between 0 and 30.", "thresholdDecayMaxPct");
+			}
+			athlete.setThresholdDecayMaxPct(request.thresholdDecayMaxPct());
+			suggestionsAffected = true;
+		}
+		if (request.thresholdDecayMinPct() != null || request.thresholdDecayMaxPct() != null) {
+			// Checked against the merged result (this request's own new value if sent, else
+			// whatever's already stored) - not just the two fields together in the same
+			// request, since a PATCH can send only one of them.
+			if (athlete.getThresholdDecayMinPct() > athlete.getThresholdDecayMaxPct()) {
+				throw new ValidationException("Must not exceed thresholdDecayMaxPct.", "thresholdDecayMinPct");
+			}
+		}
 		if (request.decouplingViLimitBike() != null) {
 			athlete.setDecouplingViLimitBike(request.decouplingViLimitBike());
 			changed.add("decouplingViLimitBike");

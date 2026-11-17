@@ -32,7 +32,18 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
     default_shoe_limit_km = serializers.IntegerField(required=False, min_value=0, max_value=5000)
     threshold_window_days = serializers.IntegerField(required=False, min_value=1, max_value=365)
     threshold_sanity_pct = serializers.IntegerField(required=False, min_value=1, max_value=100)
+    threshold_decay_enabled = serializers.BooleanField(required=False)
+    threshold_decay_tau_days = serializers.IntegerField(required=False, min_value=7, max_value=90)
+    threshold_decay_min_pct = serializers.IntegerField(required=False, min_value=0, max_value=10)
+    threshold_decay_max_pct = serializers.IntegerField(required=False, min_value=0, max_value=30)
     course_section_settings = SectionSettingsSerializer(required=False)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        min_pct = attrs.get("threshold_decay_min_pct", getattr(self.instance, "threshold_decay_min_pct", None))
+        max_pct = attrs.get("threshold_decay_max_pct", getattr(self.instance, "threshold_decay_max_pct", None))
+        if min_pct is not None and max_pct is not None and min_pct > max_pct:
+            raise serializers.ValidationError({"threshold_decay_min_pct": "Must not exceed threshold_decay_max_pct."})
+        return attrs
 
     def validate_course_section_settings(self, value: dict[str, Any]) -> SectionSettings:
         merged = replace(self.instance.section_settings(), **value)
@@ -85,6 +96,10 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "threshold_window_days",
             "threshold_sanity_pct",
             "threshold_warning_days",
+            "threshold_decay_enabled",
+            "threshold_decay_tau_days",
+            "threshold_decay_min_pct",
+            "threshold_decay_max_pct",
             "decoupling_vi_limit_bike",
             "decoupling_vi_limit_run",
             "decoupling_if_limit",

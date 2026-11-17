@@ -71,7 +71,14 @@ public record AthleteUpdateRequest(
 		// Issue #503 phase 3: mirrors bikePowerSource above. Appended at the end for the same
 		// reason as above.
 		HrSource hrSource,
-		CadenceSource cadenceSource) {
+		CadenceSource cadenceSource,
+		// Issue #485: threshold_decay_enabled/tau_days/min_pct/max_pct model fields existed since
+		// #546 but had no field here to receive them. Appended at the end for the same reason as
+		// above.
+		Boolean thresholdDecayEnabled,
+		Integer thresholdDecayTauDays,
+		Integer thresholdDecayMinPct,
+		Integer thresholdDecayMaxPct) {
 
 	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
 	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */
