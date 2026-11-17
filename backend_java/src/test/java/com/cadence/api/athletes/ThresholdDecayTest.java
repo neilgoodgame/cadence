@@ -306,4 +306,166 @@ class ThresholdDecayTest {
 		// fails the upward-reset test against it, so nothing changes.
 		assertThat(steps).isEmpty();
 	}
+
+	// The shared primitives decayLoadRatio/decayTarget: the native-boundary versions of the
+	// ratio/target math simulateEnabled keeps inline for its per-day loop, added for
+	// ThresholdHistoryCalculator.upcomingDrop's and the summary's once-per-call projections
+	// (issue #485). Mirrors the Python backend's test_threshold_decay.py::DecayPrimitiveTests.
+
+	@Test
+	void decayLoadRatioIsTodayOverAnchor() {
+		LocalDate asOf = ANCHOR.plusDays(30);
+		assertThat(ThresholdDecay.decayLoadRatio(Map.of(ANCHOR, 100.0, asOf, 50.0), ANCHOR, asOf)).isEqualTo(0.5);
+	}
+
+	@Test
+	void decayLoadRatioClampsToTheUnitInterval() {
+		LocalDate asOf = ANCHOR.plusDays(30);
+		assertThat(ThresholdDecay.decayLoadRatio(Map.of(ANCHOR, 100.0, asOf, 250.0), ANCHOR, asOf)).isEqualTo(1.0);
+		assertThat(ThresholdDecay.decayLoadRatio(Map.of(ANCHOR, 100.0, asOf, -5.0), ANCHOR, asOf)).isEqualTo(0.0);
+	}
+
+	@Test
+	void decayLoadRatioIsOneWithNoBaselineLoadAtTheAnchor() {
+		// Open question 3: L(a) < 1 -> ratio 1.0, whatever today's load says - including a
+		// missing anchor day (load 0.0 < 1).
+		LocalDate asOf = ANCHOR.plusDays(30);
+		assertThat(ThresholdDecay.decayLoadRatio(Map.of(ANCHOR, 0.5, asOf, 0.0), ANCHOR, asOf)).isEqualTo(1.0);
+		assertThat(ThresholdDecay.decayLoadRatio(Map.of(asOf, 50.0), ANCHOR, asOf)).isEqualTo(1.0);
+	}
+
+	@Test
+	void decayLoadRatioMissingTodayIsZero() {
+		LocalDate asOf = ANCHOR.plusDays(30);
+		assertThat(ThresholdDecay.decayLoadRatio(Map.of(ANCHOR, 100.0), ANCHOR, asOf)).isEqualTo(0.0);
+	}
+
+	@Test
+	void decayTargetSuccessorAboveFloorWins() {
+		// ratio 1 -> amplitude exactly minPct (3) -> floor 260 * 0.97 = 252.2; the successor
+		// (255) is above it, so it survives.
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 255.0, 1.0, SETTINGS)).isEqualTo(255.0);
+	}
+
+	@Test
+	void decayTargetSuccessorBelowFloorIsClampedToTheFloor() {
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 200.0, 1.0, SETTINGS))
+				.isEqualTo(260.0 * (1 - SETTINGS.minPct() / 100.0));
+	}
+
+	@Test
+	void decayTargetFloorTracksTheRatioAmplitude() {
+		// A far-below successor keeps the floor in charge, exposing the ratio -> amplitude map:
+		// minPct + (maxPct - minPct) * (1 - ratio).
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 100.0, 1.0, SETTINGS))
+				.isEqualTo(260.0 * (1 - 3.0 / 100.0));
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 100.0, 0.5, SETTINGS))
+				.isEqualTo(260.0 * (1 - 7.5 / 100.0));
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 100.0, 0.0, SETTINGS))
+				.isEqualTo(260.0 * (1 - 12.0 / 100.0));
+	}
+
+	@Test
+	void decayTargetNoSuccessorIsTheMaxPctFloorRegardlessOfRatio() {
+		// The day loop's own no-successor fallback: full maxPct amplitude, ratio ignored.
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, null, 1.0, SETTINGS))
+				.isEqualTo(260.0 * (1 - SETTINGS.maxPct() / 100.0));
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, null, 0.5, SETTINGS))
+				.isEqualTo(260.0 * (1 - SETTINGS.maxPct() / 100.0));
+	}
+
+	@Test
+	void decayTargetClampsAnOutOfRangeRatio() {
+		// The day loop's ratio is always in [0, 1]; decayTarget clamps too, so an out-of-range
+		// caller can't push the floor above the anchor (which would ease a threshold upwards -
+		// or, for pace, faster). A far-below successor keeps the floor in charge so the clamp
+		// shows through.
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 100.0, 1.5, SETTINGS))
+				.isEqualTo(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 100.0, 1.0, SETTINGS));
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 100.0, -0.5, SETTINGS))
+				.isEqualTo(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 100.0, 0.0, SETTINGS));
+		// Unclamped, ratio=1.5 would floor pace at 240/1.015 - FASTER than the anchor; clamped
+		// it stays at the minPct floor, slower.
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.THRESHOLD_PACE, 240.0, 300.0, 1.5, SETTINGS))
+				.isCloseTo(240.0 / (1 - 3.0 / 100.0), org.assertj.core.data.Offset.offset(1e-6));
+	}
+
+	@Test
+	void decayTargetZeroSuccessorCountsAsNoSuccessor() {
+		// No real candidate can imply 0, and a missing map entry defaulting to 0.0 is the
+		// natural "not found" idiom - so 0.0 takes the no-successor fallback on every field
+		// instead of dividing by zero in toEffort for THRESHOLD_PACE.
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, 0.0, 1.0, SETTINGS))
+				.isEqualTo(260.0 * (1 - SETTINGS.maxPct() / 100.0));
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.THRESHOLD_PACE, 240.0, 0.0, 1.0, SETTINGS))
+				.isCloseTo(240.0 / (1 - 12.0 / 100.0), org.assertj.core.data.Offset.offset(1e-6));
+	}
+
+	@Test
+	void decayTargetPaceComesOutSlowerNeverFaster() {
+		// The effort-space conversion (1/value) means the floor is anchor / (1 - amplitude/100)
+		// seconds/km - SLOWER than the anchor. A native-space `anchor * (1 - amplitude/100)`
+		// would have eased the pace faster, which is wrong. A far-slower successor keeps the
+		// floor in charge so the ratio -> amplitude map shows through.
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.THRESHOLD_PACE, 240.0, 300.0, 1.0, SETTINGS))
+				.isCloseTo(240.0 / (1 - 3.0 / 100.0), org.assertj.core.data.Offset.offset(1e-6));
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.THRESHOLD_PACE, 240.0, 300.0, 0.0, SETTINGS))
+				.isCloseTo(240.0 / (1 - 12.0 / 100.0), org.assertj.core.data.Offset.offset(1e-6));
+		// No successor at all: the day loop's own fallback (maxPct, ratio ignored) - still
+		// slower than the anchor.
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.THRESHOLD_PACE, 240.0, null, 1.0, SETTINGS))
+				.isCloseTo(240.0 / (1 - 12.0 / 100.0), org.assertj.core.data.Offset.offset(1e-6));
+		// A better successor (faster pace) wins outright.
+		assertThat(ThresholdDecay.decayTarget(ThresholdField.THRESHOLD_PACE, 240.0, 230.0, 1.0, SETTINGS))
+				.isCloseTo(230.0, org.assertj.core.data.Offset.offset(1e-6));
+	}
+
+	@Test
+	void decayTargetMatchesTheDayLoopsOwnTarget() {
+		// The primitives must agree with what simulateEnabled's inline math actually drives v
+		// towards: flat load at ratio r, and after enough days v sits on round(target). Every
+		// branch of the target formula is covered - no successor (the fallback in charge), a
+		// far-below successor (the floor in charge), and an above-floor successor (the
+		// successor in charge) - so a tuning change to either copy's formula desyncs here.
+		LocalDate expiry = ANCHOR.plusDays(SETTINGS.windowDays() + 1L);
+		LocalDate end = expiry.plusDays(400);
+		for (double ratio : new double[] { 0.0, 0.25, 1.0 }) {
+			for (Double successor : new Double[] { null, 200.0, 255.0 }) {
+				Map<LocalDate, Double> load = flatLoad(ANCHOR, ratio, end);
+				List<ThresholdDecay.DecayCandidate> candidates =
+						successor == null ? List.of() : persistentLowSuccessor(ANCHOR, successor, end);
+				List<ThresholdDecay.Step> steps = ThresholdDecay.simulate(ThresholdField.FTP, SETTINGS, 260.0, ANCHOR,
+						ThresholdDecay.MEASURED, candidates, List.of(), load, ANCHOR, end);
+				double expected = ThresholdDecay.decayTarget(ThresholdField.FTP, 260.0, successor, ratio, SETTINGS);
+				assertThat(steps.get(steps.size() - 1).value())
+						.as("ratio=" + ratio + " successor=" + successor)
+						.isEqualTo(Math.round(expected));
+			}
+		}
+	}
+
+	@Test
+	void decayTargetMatchesTheDayLoopsOwnTargetForPace() {
+		// Same cross-check as decayTargetMatchesTheDayLoopsOwnTarget, but for threshold_pace -
+		// the one field with a non-trivial effort conversion (1/value), exactly where a Java/
+		// Python desync in the native<->effort boundary would hide. 300 (slower than the 240
+		// anchor) keeps the floor in charge; 245 (also slower than the anchor, so no upward
+		// reset) still beats the floor, so the successor takes over instead.
+		LocalDate expiry = ANCHOR.plusDays(SETTINGS.windowDays() + 1L);
+		LocalDate end = expiry.plusDays(400);
+		for (double ratio : new double[] { 0.0, 1.0 }) {
+			for (Double successor : new Double[] { null, 300.0, 245.0 }) {
+				Map<LocalDate, Double> load = flatLoad(ANCHOR, ratio, end);
+				List<ThresholdDecay.DecayCandidate> candidates =
+						successor == null ? List.of() : persistentLowSuccessor(ANCHOR, successor, end);
+				List<ThresholdDecay.Step> steps = ThresholdDecay.simulate(ThresholdField.THRESHOLD_PACE, SETTINGS,
+						240.0, ANCHOR, ThresholdDecay.MEASURED, candidates, List.of(), load, ANCHOR, end);
+				double expected =
+						ThresholdDecay.decayTarget(ThresholdField.THRESHOLD_PACE, 240.0, successor, ratio, SETTINGS);
+				assertThat(steps.get(steps.size() - 1).value())
+						.as("ratio=" + ratio + " successor=" + successor)
+						.isEqualTo(Math.round(expected));
+			}
+		}
+	}
 }
