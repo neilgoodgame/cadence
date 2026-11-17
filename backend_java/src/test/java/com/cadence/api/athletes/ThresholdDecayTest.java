@@ -443,4 +443,29 @@ class ThresholdDecayTest {
 			}
 		}
 	}
+
+	@Test
+	void decayTargetMatchesTheDayLoopsOwnTargetForPace() {
+		// Same cross-check as decayTargetMatchesTheDayLoopsOwnTarget, but for threshold_pace -
+		// the one field with a non-trivial effort conversion (1/value), exactly where a Java/
+		// Python desync in the native<->effort boundary would hide. 300 (slower than the 240
+		// anchor) keeps the floor in charge; 245 (also slower than the anchor, so no upward
+		// reset) still beats the floor, so the successor takes over instead.
+		LocalDate expiry = ANCHOR.plusDays(SETTINGS.windowDays() + 1L);
+		LocalDate end = expiry.plusDays(400);
+		for (double ratio : new double[] { 0.0, 1.0 }) {
+			for (Double successor : new Double[] { null, 300.0, 245.0 }) {
+				Map<LocalDate, Double> load = flatLoad(ANCHOR, ratio, end);
+				List<ThresholdDecay.DecayCandidate> candidates =
+						successor == null ? List.of() : persistentLowSuccessor(ANCHOR, successor, end);
+				List<ThresholdDecay.Step> steps = ThresholdDecay.simulate(ThresholdField.THRESHOLD_PACE, SETTINGS,
+						240.0, ANCHOR, ThresholdDecay.MEASURED, candidates, List.of(), load, ANCHOR, end);
+				double expected =
+						ThresholdDecay.decayTarget(ThresholdField.THRESHOLD_PACE, 240.0, successor, ratio, SETTINGS);
+				assertThat(steps.get(steps.size() - 1).value())
+						.as("ratio=" + ratio + " successor=" + successor)
+						.isEqualTo(Math.round(expected));
+			}
+		}
+	}
 }
