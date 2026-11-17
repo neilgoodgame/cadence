@@ -492,3 +492,39 @@ class DecayPrimitiveTests(SimpleTestCase):
                     self.assertEqual(
                         steps[-1].value, round(decay_target("ftp", 260.0, successor, ratio, DEFAULT_SETTINGS))
                     )
+
+    def test_decay_target_matches_the_day_loops_own_target_for_pace(self):
+        # Same cross-check as test_decay_target_matches_the_day_loops_own_target, but for
+        # threshold_pace - the one field with a non-trivial effort conversion (1/value), exactly
+        # where a desync in the native<->effort boundary would hide. 300 (slower than the 240
+        # anchor) keeps the floor in charge; 245 (also slower than the anchor, so no upward
+        # reset) still beats the floor, so the successor takes over instead.
+        anchor = date(2026, 1, 1)
+        expiry = anchor + timedelta(days=DEFAULT_SETTINGS.window_days + 1)
+        end = expiry + timedelta(days=400)
+        for ratio in (0.0, 1.0):
+            for successor in (None, 300.0, 245.0):
+                with self.subTest(ratio=ratio, successor=successor):
+                    load = {
+                        anchor + timedelta(days=i): (100.0 if i == 0 else 100.0 * ratio)
+                        for i in range(-5, (end - anchor).days + 5)
+                    }
+                    if successor is None:
+                        candidates = []
+                    else:
+                        candidates = [
+                            DecayCandidate(
+                                date=anchor + timedelta(days=10 * i),
+                                implied_value=successor,
+                                activity_id=f"succ_{i}",
+                                accepted=True,
+                            )
+                            for i in range(1, 53)
+                        ]
+                    steps = simulate(
+                        "threshold_pace", DEFAULT_SETTINGS, 240.0, anchor, "measured", candidates, [], load, anchor, end
+                    )
+                    self.assertEqual(
+                        steps[-1].value,
+                        round(decay_target("threshold_pace", 240.0, successor, ratio, DEFAULT_SETTINGS)),
+                    )
