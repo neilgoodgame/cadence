@@ -117,6 +117,42 @@ public final class ThresholdDecay {
 		return deviation <= sanityPct / 100.0;
 	}
 
+	/** {@code asOf}'s above-Z2 load vs the load at the anchor's own measurement date, clamped to
+	 * [0, 1] - 1.0 with no baseline load at the anchor (issue #485's open question 3). The same
+	 * ratio {@link #simulateEnabled}'s own day loop computes inline (which keeps its own copy
+	 * rather than calling this); this public version is for the two once-per-call projection
+	 * sites - {@link ThresholdHistoryCalculator#upcomingDrop}'s and the summary's decay target.
+	 * A day missing from {@code loadByDay} means zero load that day (the loop's own semantics),
+	 * so pass a date with real load data - today, never a future one like the anchor's expiry:
+	 * this can't detect a future {@code asOf}, and it would silently yield ratio 0.0, i.e. the
+	 * worst-case floor. */
+	public static double decayLoadRatio(Map<LocalDate, Double> loadByDay, LocalDate anchorDate, LocalDate asOf) {
+		double loadToday = loadByDay.getOrDefault(asOf, 0.0);
+		double loadAtAnchor = loadByDay.getOrDefault(anchorDate, 0.0);
+		return loadAtAnchor < 1 ? 1.0 : Math.min(1.0, Math.max(0.0, loadToday / loadAtAnchor));
+	}
+
+	/** The value an anchor is currently easing towards, in native units (unrounded): the better
+	 * of the trailing window's successor and the load-ratio-adjusted floor below the anchor -
+	 * or, with no successor at all (a zero one counts as none: no real candidate can imply 0),
+	 * the day loop's own no-successor fallback (the anchor at full {@code maxPct} amplitude).
+	 * Same "never eases upwards" rule as the day loop - {@code ratio} is clamped to [0, 1] here
+	 * too, so an out-of-range value can't push the floor above the anchor. Does the
+	 * native<->effort conversion internally via {@link #toEffort}/{@link #fromEffort}, so a
+	 * {@code THRESHOLD_PACE} target always comes out slower, never faster; callers only ever see
+	 * native units. */
+	public static double decayTarget(
+			ThresholdField field, double anchorValue, Double successorValue, double ratio, DecaySettings settings) {
+		ratio = Math.min(1.0, Math.max(0.0, ratio));
+		double anchorEffort = toEffort(field, anchorValue);
+		double amplitude = settings.minPct() + (settings.maxPct() - settings.minPct()) * (1 - ratio);
+		double floorEffort = anchorEffort * (1 - amplitude / 100.0);
+		double targetEffort = successorValue == null || successorValue == 0
+				? anchorEffort * (1 - settings.maxPct() / 100.0)
+				: Math.max(toEffort(field, successorValue), floorEffort);
+		return fromEffort(field, targetEffort);
+	}
+
 	private static Map<LocalDate, List<DecayCandidate>> groupByDay(List<DecayCandidate> candidates) {
 		Map<LocalDate, List<DecayCandidate>> byDay = new TreeMap<>();
 		for (DecayCandidate c : candidates) {
