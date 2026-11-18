@@ -203,6 +203,39 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		assertThat(thresholdHistoryService.isStale(athlete, ThresholdField.FTP, LocalDate.now())).isFalse();
 	}
 
+	// --- isStale under decay (issue #485, phase 10) ---
+
+	@Test
+	void isStaleStaysTrueWhileAValueIsActivelyDecaying() {
+		// Decay is on and the anchor (2026-01-01) has aged out of a 30-day window, but a decayed
+		// row dated "today" (2026-03-01) sits on top of the ledger. isStale must look at the
+		// anchor, not that fresh decayed row - so it stays true for the whole duration of the glide.
+		User athlete = newAthlete("stale-decay-active@example.cc");
+		athlete.setThresholdWindowDays(30);
+		athlete.setThresholdDecayEnabled(true);
+		userRepository.save(athlete);
+		newEntry(athlete, ThresholdField.FTP, 250, LocalDate.of(2026, 1, 1), ThresholdHistoryKind.MEASURED);
+		newEntry(athlete, ThresholdField.FTP, 245, LocalDate.of(2026, 3, 1), ThresholdHistoryKind.DECAYED);
+
+		assertThat(thresholdHistoryService.isStale(athlete, ThresholdField.FTP, LocalDate.of(2026, 3, 1))).isTrue();
+	}
+
+	@Test
+	void isStaleSkipsDecayedRowsToFindTheAnchorAfterDecayIsDisabled() {
+		// Decay was on long enough to accumulate decayed rows, then turned off (the default). The
+		// stale decayed rows are still sitting at the top of the ledger - the most recent dated
+		// "today" (2026-03-01) - but the lookup must skip all of them to reach the real anchor
+		// underneath, which has aged out.
+		User athlete = newAthlete("stale-decay-disabled@example.cc");
+		athlete.setThresholdWindowDays(30);
+		userRepository.save(athlete);
+		newEntry(athlete, ThresholdField.FTP, 250, LocalDate.of(2026, 1, 1), ThresholdHistoryKind.MEASURED);
+		newEntry(athlete, ThresholdField.FTP, 248, LocalDate.of(2026, 2, 15), ThresholdHistoryKind.DECAYED);
+		newEntry(athlete, ThresholdField.FTP, 245, LocalDate.of(2026, 3, 1), ThresholdHistoryKind.DECAYED);
+
+		assertThat(thresholdHistoryService.isStale(athlete, ThresholdField.FTP, LocalDate.of(2026, 3, 1))).isTrue();
+	}
+
 	@Test
 	void rerateActivitiesFalseLeavesRatingsUnchangedUntilRecompute() {
 		User athlete = newAthlete("manual-threshold-no-rerate@example.cc");
