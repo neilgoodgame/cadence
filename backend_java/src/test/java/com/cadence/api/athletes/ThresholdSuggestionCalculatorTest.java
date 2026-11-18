@@ -375,6 +375,9 @@ class ThresholdSuggestionCalculatorTest extends IntegrationTest {
 	void upcomingDropFallsBackToSuccessorWhenTheAnchorRowHasNoValue() {
 		// A corrupt row (shouldn't happen - see the guard's own comment) must not crash
 		// decayTarget's effort conversion - falls back to the plain successor, same as decay-off.
+		// decays must also be false here: no decay-aware target was actually computed, so the
+		// frontend must not render the "starts easing... towards about" wording with a null
+		// proposed value.
 		User athlete = newAthlete("threshold-sug-decay-corrupt@example.cc", 250);
 		athlete.setThresholdDecayEnabled(true);
 		userRepository.save(athlete);
@@ -387,7 +390,7 @@ class ThresholdSuggestionCalculatorTest extends IntegrationTest {
 
 		assertThat(result).isInstanceOf(UpcomingDropResult.UpcomingDrop.class);
 		UpcomingDropResult.UpcomingDrop drop = (UpcomingDropResult.UpcomingDrop) result;
-		assertThat(drop.decays()).isTrue();
+		assertThat(drop.decays()).isFalse();
 		assertThat(drop.targetValue()).isNull();
 	}
 }

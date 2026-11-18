@@ -78,11 +78,11 @@ public class ThresholdHistoryCalculator {
 	 * that method's Javadoc for the suppression rules that decide between them (or neither, via
 	 * a null return). */
 	public sealed interface UpcomingDropResult {
-		record UpcomingDrop(ThresholdHistory currentEntry, Double targetValue, boolean decays, LocalDate expiry, int daysLeft)
+		record UpcomingDrop(ThresholdHistory currentEntry, Double targetValue, LocalDate expiry, int daysLeft, boolean decays)
 				implements UpcomingDropResult {
 		}
 
-		record RaceWillRefresh(Race race, boolean decays, LocalDate expiry, int daysLeft) implements UpcomingDropResult {
+		record RaceWillRefresh(Race race, LocalDate expiry, int daysLeft, boolean decays) implements UpcomingDropResult {
 		}
 	}
 
@@ -778,6 +778,11 @@ public class ThresholdHistoryCalculator {
 		Double currentValue = athleteReferenceValue(athlete, field);
 
 		Double anchorValue = athlete.isThresholdDecayEnabled() ? rowValue(field, latest) : null;
+		// Whether a decay-aware target was actually computed below - not just whether the
+		// setting is on. If anchorValue is null (decay off, or a corrupt row - see below), the
+		// proposed value is the plain successor, not a decay target, so the suggestion layer/
+		// frontend must not be told "this is decay-aware" in that case either.
+		boolean decays = anchorValue != null;
 		Double targetValue;
 		if (anchorValue == null) {
 			// Decay off, or (shouldn't happen - the ledger's own invariant guarantees exactly
@@ -830,12 +835,12 @@ public class ThresholdHistoryCalculator {
 						athlete.getId(), sportFor(field), effectiveToday, expiry)
 				.orElse(null);
 		if (race != null) {
-			return new UpcomingDropResult.RaceWillRefresh(race, athlete.isThresholdDecayEnabled(), expiry, daysLeft);
+			return new UpcomingDropResult.RaceWillRefresh(race, expiry, daysLeft, decays);
 		}
 
-		// Rule 4: no successor - emit anyway (targetValue=null, decay off); the caller formats
-		// this as "goes stale" rather than "drops to {value}". Impossible under decay -
-		// targetValue is never null there (decayTarget's no-successor floor fallback).
-		return new UpcomingDropResult.UpcomingDrop(latest, targetValue, athlete.isThresholdDecayEnabled(), expiry, daysLeft);
+		// Rule 4: no successor - emit anyway (targetValue=null); the caller formats this as
+		// "goes stale" rather than "drops to {value}". Impossible when decays is true -
+		// targetValue is never null on that path (decayTarget's no-successor floor fallback).
+		return new UpcomingDropResult.UpcomingDrop(latest, targetValue, expiry, daysLeft, decays);
 	}
 }
