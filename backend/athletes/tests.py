@@ -287,6 +287,21 @@ class AthleteDetailViewTests(TestCase):
             f"/v1/athletes/{self.athlete.id}", {"threshold_decay_min_pct": 9}, format="json"
         )
         self.assertEqual(response.status_code, 400)  # 9 > stored max_pct (8) - rejected
+        self.assertIn("threshold_decay_min_pct", response.json()["error"]["message"])
+
+    def test_threshold_decay_max_pct_below_stored_min_pct_is_rejected_against_max_pct(self):
+        # The mirror of the test above - the request only sends max_pct this time, so the error
+        # must name max_pct, not min_pct (the field it would wrongly land on if the validation
+        # always blamed min_pct regardless of which field the client actually touched).
+        self.athlete.threshold_decay_min_pct = 5
+        self.athlete.save(update_fields=["threshold_decay_min_pct"])
+
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_max_pct": 3}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)  # 3 < stored min_pct (5) - rejected
+        self.assertIn("threshold_decay_max_pct", response.json()["error"]["message"])
 
     def test_threshold_decay_min_max_pct_rejected_when_swapped_in_the_same_request(self):
         response = _bearer_client(self.athlete).patch(

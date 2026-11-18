@@ -42,7 +42,17 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
         min_pct = attrs.get("threshold_decay_min_pct", getattr(self.instance, "threshold_decay_min_pct", None))
         max_pct = attrs.get("threshold_decay_max_pct", getattr(self.instance, "threshold_decay_max_pct", None))
         if min_pct is not None and max_pct is not None and min_pct > max_pct:
-            raise serializers.ValidationError({"threshold_decay_min_pct": "Must not exceed threshold_decay_max_pct."})
+            # Blame whichever of the two fields this request actually sent - a PATCH that only
+            # sends max_pct (and conflicts with an already-stored min_pct) shouldn't report the
+            # error against a field the client never touched.
+            field = (
+                "threshold_decay_max_pct"
+                if "threshold_decay_max_pct" in attrs and "threshold_decay_min_pct" not in attrs
+                else "threshold_decay_min_pct"
+            )
+            raise serializers.ValidationError(
+                {field: "threshold_decay_min_pct must not exceed threshold_decay_max_pct."}
+            )
         return attrs
 
     def validate_course_section_settings(self, value: dict[str, Any]) -> SectionSettings:

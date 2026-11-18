@@ -350,7 +350,25 @@ class AthleteServiceIntegrationTest extends IntegrationTest {
 		userRepository.save(athlete);
 		assertThatThrownBy(
 				() -> athleteService.updateProfile(athlete, thresholdDecaySettingsOnly(null, null, 9, null)))
-				.isInstanceOf(ValidationException.class); // 9 > stored maxPct (8) - rejected
+				.isInstanceOf(ValidationException.class) // 9 > stored maxPct (8) - rejected
+				.extracting(ex -> ((ValidationException) ex).getParam())
+				.isEqualTo("thresholdDecayMinPct");
+	}
+
+	@Test
+	void thresholdDecayMaxPctBelowStoredMinPctIsRejectedAgainstMaxPct() {
+		// The mirror of the test above - the request only sends maxPct this time, so the error
+		// must name maxPct, not minPct (the field it would wrongly land on if the validation
+		// always blamed minPct regardless of which field the caller actually touched).
+		User athlete = newAthlete("threshold-decay-max-stored-min@example.cc");
+		athlete.setThresholdDecayMinPct(5);
+		userRepository.save(athlete);
+
+		assertThatThrownBy(
+				() -> athleteService.updateProfile(athlete, thresholdDecaySettingsOnly(null, null, null, 3)))
+				.isInstanceOf(ValidationException.class) // 3 < stored minPct (5) - rejected
+				.extracting(ex -> ((ValidationException) ex).getParam())
+				.isEqualTo("thresholdDecayMaxPct");
 	}
 
 	@Test

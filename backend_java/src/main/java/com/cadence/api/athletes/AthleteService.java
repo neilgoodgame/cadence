@@ -181,7 +181,12 @@ public class AthleteService {
 			// whatever's already stored) - not just the two fields together in the same
 			// request, since a PATCH can send only one of them.
 			if (athlete.getThresholdDecayMinPct() > athlete.getThresholdDecayMaxPct()) {
-				throw new ValidationException("Must not exceed thresholdDecayMaxPct.", "thresholdDecayMinPct");
+				// Blame whichever of the two fields this request actually sent - a PATCH that
+				// only sends maxPct (and conflicts with an already-stored minPct) shouldn't
+				// report the error against a field the client never touched.
+				String field = request.thresholdDecayMaxPct() != null && request.thresholdDecayMinPct() == null
+						? "thresholdDecayMaxPct" : "thresholdDecayMinPct";
+				throw new ValidationException("thresholdDecayMinPct must not exceed thresholdDecayMaxPct.", field);
 			}
 		}
 		if (request.decouplingViLimitBike() != null) {
