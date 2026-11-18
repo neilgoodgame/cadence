@@ -4,6 +4,7 @@ import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.TssRecomputeService;
+import com.cadence.api.athletes.dto.ThresholdSummaryEntry;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
@@ -268,5 +269,37 @@ public class ThresholdDecayRecomputeService {
 		}
 
 		return new ResimulateResult(changed, reratedCount, wouldRerate);
+	}
+
+	/** issue #485: anchorValue/anchorEffectiveFrom/decayingSince/target for a currently-decaying
+	 * field - null otherwise. Keyed off the CURRENT row's own kind (checked by the caller,
+	 * ThresholdHistoryService.summaryFor), not the athlete's live thresholdDecayEnabled flag, so
+	 * a now-disabled athlete with a leftover decayed row from when decay was on still gets a
+	 * correctly-computed object. Mirrors Django's views._decay_object. */
+	public ThresholdSummaryEntry.Decay decayObjectFor(User athlete, ThresholdField field) {
+		ThresholdHistory anchor = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotOrderByEffectiveFromDescIdDesc(
+						athlete.getId(), field, ThresholdHistoryKind.DECAYED)
+				.orElse(null);
+		if (anchor == null) {
+			// Shouldn't happen if current.getKind() == DECAYED (a decayed row can only exist
+			// after a non-decayed anchor was resimulated from), but guard it anyway rather than
+			// throwing.
+			return null;
+		}
+		double anchorValue = rowValue(field, anchor);
+		ThresholdDecay.DecaySettings settings = decaySettingsFor(athlete);
+		LocalDate today = LocalDate.now();
+		LocalDate decayingSince = anchor.getEffectiveFrom().plusDays(athlete.getThresholdWindowDays() + 1L);
+		Map<LocalDate, Double> loadByDay = decayLoadService.loadByDayForAthlete(athlete, field, anchorValue,
+				athlete.getLthr() != null ? athlete.getLthr().doubleValue() : null,
+				anchor.getEffectiveFrom().minusDays(settings.windowDays()), today);
+		double ratio = ThresholdDecay.decayLoadRatio(loadByDay, anchor.getEffectiveFrom(), today);
+		ThresholdHistoryCalculator.Candidate successor = calculator.currentWindowValue(athlete, field, today);
+		Double successorValue = successor != null ? successor.impliedValue() : null;
+		double target = ThresholdDecay.decayTarget(field, anchorValue, successorValue, ratio, settings);
+		Object anchorDisplay = field == ThresholdField.THRESHOLD_PACE ? secondsToMmss(anchorValue) : (int) Math.round(anchorValue);
+		Object targetDisplay = field == ThresholdField.THRESHOLD_PACE ? secondsToMmss(target) : (int) Math.round(target);
+		return new ThresholdSummaryEntry.Decay(anchorDisplay, anchor.getEffectiveFrom(), decayingSince, targetDisplay);
 	}
 }
