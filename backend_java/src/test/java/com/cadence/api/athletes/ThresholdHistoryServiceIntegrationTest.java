@@ -241,6 +241,22 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void summaryForReportsStaleWhileAValueIsActivelyDecaying() {
+		// summaryFor's own `stale` flag - found in review (#563) to still compute it via a raw
+		// date diff against `current`'s own effectiveFrom, instead of delegating to isStale
+		// (just fixed above). Uses LocalDate.now()-relative dates, not fixed ones, since
+		// summaryFor has no asOf parameter to override "today" with.
+		User athlete = newAthlete("summary-stale-decay@example.cc");
+		athlete.setThresholdWindowDays(30);
+		athlete.setThresholdDecayEnabled(true);
+		userRepository.save(athlete);
+		newEntry(athlete, ThresholdField.FTP, 250, LocalDate.now().minusDays(40), ThresholdHistoryKind.MEASURED);
+		newEntry(athlete, ThresholdField.FTP, 245, LocalDate.now(), ThresholdHistoryKind.DECAYED);
+
+		assertThat(thresholdHistoryService.summaryFor(athlete, ThresholdField.FTP).stale()).isTrue();
+	}
+
+	@Test
 	void rerateActivitiesFalseLeavesRatingsUnchangedUntilRecompute() {
 		User athlete = newAthlete("manual-threshold-no-rerate@example.cc");
 		Activity activity = newPowerActivity(athlete, Instant.now(), 185, 11916);

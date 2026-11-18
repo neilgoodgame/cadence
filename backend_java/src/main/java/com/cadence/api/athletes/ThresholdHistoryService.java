@@ -573,7 +573,13 @@ public class ThresholdHistoryService {
 		}
 		ThresholdHistory current = entries.get(0);
 		ThresholdHistory previous = entries.size() > 1 ? entries.get(1) : null;
-		boolean stale = ChronoUnit.DAYS.between(current.getEffectiveFrom(), LocalDate.now()) > athlete.getThresholdWindowDays();
+		// issue #485: delegate to isStale (the anchor-excluding, DECAYED-aware lookup) instead
+		// of a raw date diff against `current`'s own effectiveFrom - a decayed row is rewritten
+		// daily with effectiveFrom == today, so that raw diff would keep this permanently false
+		// for the whole duration of a decay glide, exactly the bug isStale itself was already
+		// fixed for. Found in review: this method never actually called isStale, so the fix
+		// didn't reach GET /v1/athletes/{id}/thresholds or the MCP tool built on it.
+		boolean stale = isStale(athlete, field, LocalDate.now());
 		return new ThresholdSummaryEntry(valueOf(field, current), previous != null ? valueOf(field, previous) : null,
 				sourceActivityIdOf(current), current.getEffectiveFrom(), stale, setByUserIdOf(current), current.getKind());
 	}

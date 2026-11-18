@@ -27,8 +27,9 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCurrentFromLessThanEqualOrderByCurrentFromDescIdDesc(
 			String athleteId, ThresholdField field, LocalDate currentFrom);
 
-	// The current entry - what the athlete's live profile is cached from, and what isStale
-	// compares against. Tiebroken by id - see the comment above.
+	// The current entry - what the athlete's live profile is cached from. Tiebroken by id - see
+	// the comment above. isStale does NOT compare against this one - see the DECAYED-excluding
+	// sibling method a few lines down.
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(String athleteId, ThresholdField field);
 
 	// As above, but excluding correction-only rows (issue #493 - a backdated manual edit that

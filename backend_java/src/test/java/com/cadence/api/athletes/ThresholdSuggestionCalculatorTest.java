@@ -227,6 +227,32 @@ class ThresholdSuggestionCalculatorTest extends IntegrationTest {
 	}
 
 	@Test
+	void upcomingDropIgnoresAFreshDecayedRowSittingOnTopOfAnAlreadyExpiredAnchor() {
+		// issue #485 (#563's own review): a decayed row is rewritten daily with effectiveFrom ==
+		// today, so the OLD "latest row of any kind" anchor lookup would see this fresh row and
+		// wrongly treat the anchor as not-yet-expired, computing an upcoming-drop suggestion
+		// from the wrong (decayed) date instead of correctly recognizing the real anchor is
+		// already well past its own expiry and suppressing the suggestion entirely.
+		User athlete = newAthlete("threshold-sug-decayed-anchor@example.cc", 250);
+		athlete.setThresholdWindowDays(30);
+		athlete = userRepository.save(athlete);
+		LocalDate today = LocalDate.of(2026, 6, 1);
+		newLedgerEntry(athlete, ThresholdField.FTP, 250, null, today.minusDays(40)); // well past window+1
+		ThresholdHistory decayed = new ThresholdHistory();
+		decayed.setAthlete(athlete);
+		decayed.setField(ThresholdField.FTP);
+		decayed.setValueNumeric(245);
+		decayed.setEffectiveFrom(today);
+		decayed.setCurrentFrom(today);
+		decayed.setKind(ThresholdHistoryKind.DECAYED);
+		thresholdHistoryRepository.save(decayed);
+
+		UpcomingDropResult result = calculator.upcomingDrop(athlete, ThresholdField.FTP, today);
+
+		assertThat(result).isNull();
+	}
+
+	@Test
 	void warningLeadDaysScalesDownForAShortWindow() {
 		User athlete = newAthlete("threshold-sug-short-window@example.cc", 200);
 		athlete.setThresholdWindowDays(56); // < 84
