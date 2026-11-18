@@ -22,6 +22,7 @@ from activities.models import Activity, Record
 from races.models import Race
 
 from .models import AcceptedThresholdCandidate, ThresholdHistory
+from .threshold_decay import DecaySettings, decay_load_ratio, decay_target
 
 FIELD_SPORT = {
     "ftp": "bike",
@@ -1229,9 +1230,9 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
     nothing to warn about (not yet/no longer in the lead window, warnings off, or a small-drop/
     near-match suppression rule applies); otherwise a dict of raw internal values - not API-
     shaped primitives, see threshold_suggestions.py for that layer:
-      {"kind": "upcoming_drop", "current_entry": ThresholdHistory, "successor": Candidate | None,
-       "expiry": date, "days_left": int}
-      {"kind": "race_will_refresh", "race": Race, "expiry": date, "days_left": int}
+      {"kind": "upcoming_drop", "current_entry": ThresholdHistory, "target_value": float | None,
+       "decays": bool, "expiry": date, "days_left": int}
+      {"kind": "race_will_refresh", "race": Race, "decays": bool, "expiry": date, "days_left": int}
     """
     today = today or date.today()
     lead = warning_lead_days(athlete)
@@ -1253,9 +1254,36 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
     successor = current_window_value(athlete, field, as_of=expiry)
     current_value = _athlete_reference_value(athlete, field)
 
+    if athlete.threshold_decay_enabled:
+        from .decay_load import load_by_day_for_athlete  # circular at module level - see phase 1
+
+        settings = DecaySettings(
+            window_days=athlete.threshold_window_days,
+            sanity_pct=athlete.threshold_sanity_pct,
+            tau_days=athlete.threshold_decay_tau_days,
+            min_pct=athlete.threshold_decay_min_pct,
+            max_pct=athlete.threshold_decay_max_pct,
+            enabled=athlete.threshold_decay_enabled,
+        )
+        anchor_value = _row_value(field, latest)
+        load_by_day = load_by_day_for_athlete(
+            athlete,
+            field,
+            anchor_value,
+            athlete.lthr,
+            latest.effective_from - timedelta(days=settings.window_days),
+            today,
+        )
+        ratio = decay_load_ratio(load_by_day, latest.effective_from, today)
+        target_value = decay_target(
+            field, anchor_value, successor.implied_value if successor else None, ratio, settings
+        )
+    else:
+        target_value = successor.implied_value if successor else None
+
     # Rule 1: small drop - close enough that a warning isn't worth the noise.
-    if successor is not None and current_value is not None and current_value != 0:
-        delta = abs(successor.implied_value - current_value)
+    if target_value is not None and current_value is not None and current_value != 0:
+        delta = abs(target_value - current_value)
         delta_pct = delta / current_value * 100
         small_absolute = 3 if field in LOWER_IS_BETTER else 5
         if delta_pct <= 2 and delta < small_absolute:
@@ -1285,14 +1313,22 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
         .first()
     )
     if race is not None:
-        return {"kind": "race_will_refresh", "race": race, "expiry": expiry, "days_left": days_left}
+        return {
+            "kind": "race_will_refresh",
+            "race": race,
+            "decays": athlete.threshold_decay_enabled,
+            "expiry": expiry,
+            "days_left": days_left,
+        }
 
-    # Rule 4: no successor - emit anyway (successor=None); the caller formats this as "goes
-    # stale" rather than "drops to {value}".
+    # Rule 4: no successor - emit anyway (target_value=None, decay off); the caller formats
+    # this as "goes stale" rather than "drops to {value}". Impossible under decay - target_value
+    # is never None there (see decay_target's no-successor floor fallback).
     return {
         "kind": "upcoming_drop",
         "current_entry": latest,
-        "successor": successor,
+        "target_value": target_value,
+        "decays": athlete.threshold_decay_enabled,
         "expiry": expiry,
         "days_left": days_left,
     }

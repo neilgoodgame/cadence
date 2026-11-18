@@ -2655,7 +2655,7 @@ class ThresholdSuggestionAlgorithmTests(TestCase):
         self.assertEqual(result["kind"], "race_will_refresh")
         self.assertEqual(result["race"].id, race.id)
 
-    def test_upcoming_drop_has_null_proposed_when_there_is_no_successor(self):
+    def test_upcoming_drop_has_null_target_value_when_there_is_no_successor(self):
         today = date(2026, 6, 1)
         lead = warning_lead_days(self.athlete)
         effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
@@ -2664,7 +2664,32 @@ class ThresholdSuggestionAlgorithmTests(TestCase):
         result = upcoming_drop(self.athlete, "ftp", today=today)
 
         self.assertEqual(result["kind"], "upcoming_drop")
-        self.assertIsNone(result["successor"])
+        self.assertIsNone(result["target_value"])
+        self.assertFalse(result["decays"])
+
+    def test_upcoming_drop_is_decay_aware_and_never_goes_stale(self):
+        # Decay is on; zero activities, so the math is fully deterministic (same reasoning as
+        # DecayObjectSummaryTests in views.py, PR #565): decay_load_ratio -> 1.0 (load_at_anchor
+        # < 1), current_window_value -> None -> decay_target's "no successor" branch:
+        # anchor * (1 - max_pct/100) = 250 * 0.88 = 220 - never None, unlike the decay-off case
+        # above.
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self.athlete.ftp = 250
+        self.athlete.threshold_decay_enabled = True
+        self.athlete.threshold_decay_min_pct = 3
+        self.athlete.threshold_decay_max_pct = 12
+        self.athlete.save(
+            update_fields=["ftp", "threshold_decay_enabled", "threshold_decay_min_pct", "threshold_decay_max_pct"]
+        )
+        self._ledger_entry("ftp", value_numeric=250, effective_from=effective_from)
+
+        result = upcoming_drop(self.athlete, "ftp", today=today)
+
+        self.assertEqual(result["kind"], "upcoming_drop")
+        self.assertTrue(result["decays"])
+        self.assertEqual(result["target_value"], 220)
 
 
 class ThresholdSuggestionApiTests(TestCase):
@@ -2691,6 +2716,34 @@ class ThresholdSuggestionApiTests(TestCase):
     def test_outsider_forbidden(self):
         response = _bearer_client(self.outsider).get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
         self.assertEqual(response.status_code, 403)
+
+    def test_upcoming_drop_suggestion_is_decay_aware(self):
+        # upcoming_drop is called with no `today` override here (defaults to the real
+        # date.today()), unlike the pure-function tests in ThresholdSuggestionAlgorithmTests -
+        # the fixture dates must be relative to the real clock, not fixed 2026 calendar dates.
+        today = date.today()
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self.athlete.ftp = 250
+        self.athlete.threshold_decay_enabled = True
+        self.athlete.threshold_decay_min_pct = 3
+        self.athlete.threshold_decay_max_pct = 12
+        self.athlete.save(
+            update_fields=["ftp", "threshold_decay_enabled", "threshold_decay_min_pct", "threshold_decay_max_pct"]
+        )
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=250,
+            effective_from=effective_from,
+            current_from=effective_from,
+        )
+
+        response = _bearer_client(self.athlete).get(f"/v1/athletes/{self.athlete.id}/threshold-suggestions")
+
+        upcoming = next(s for s in response.json()["data"] if s["kind"] == "upcoming_drop")
+        self.assertTrue(upcoming["decays"])
+        self.assertEqual(upcoming["proposed"], 220)
 
     def test_accept_records_a_real_ledger_entry_and_updates_the_profile(self):
         activity = self._make_power_activity("bike", timezone.now() - timedelta(days=5), power=500)

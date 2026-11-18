@@ -25,7 +25,6 @@ from accounts.models import User
 from .models import AcceptedThresholdCandidate, ThresholdHistory, ThresholdSuggestionDismissal
 from .threshold_history import (
     FIELD_SPORT,
-    Candidate,
     _athlete_reference_value,
     _latest_entry,
     _record_candidate,
@@ -107,8 +106,9 @@ def _upcoming_suggestion(athlete: User, field: str) -> dict | None:
             "race": {"id": race.id, "name": race.name, "date": race.date.isoformat()},
         }
 
+    decays = result["decays"]
     current_entry: ThresholdHistory = result["current_entry"]
-    successor: Candidate | None = result["successor"]
+    target_value: float | None = result["target_value"]
     key = f"{current_entry.source_activity_id or 'manual'}:{expiry.isoformat()}"
     if key in _dismissed_keys(athlete, field, "upcoming_drop"):
         return None
@@ -119,8 +119,9 @@ def _upcoming_suggestion(athlete: User, field: str) -> dict | None:
         "field": field,
         "kind": "upcoming_drop",
         "current": getattr(athlete, field),
-        "proposed": _format_value(field, successor.implied_value) if successor else None,
-        "delta_pct": _delta_pct(field, reference, successor.implied_value if successor else None),
+        "proposed": _format_value(field, target_value) if target_value is not None else None,
+        "delta_pct": _delta_pct(field, reference, target_value),
+        "decays": decays,
         "activity_id": current_entry.source_activity_id,
         "activity_date": current_entry.effective_from.isoformat(),
         "expiry_date": expiry.isoformat(),

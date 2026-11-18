@@ -149,6 +149,12 @@ describe("suggestionTitle", () => {
   it("falls back to 'goes stale' when there is no successor", () => {
     expect(suggestionTitle(upcomingDrop({ proposed: null }))).toBe(`Threshold pace goes stale on ${dMon("2026-08-10")}`);
   });
+
+  it("builds the decay-aware 'starts easing' title when decays is true", () => {
+    expect(suggestionTitle(upcomingDrop({ decays: true }))).toBe(
+      `Threshold pace starts easing from 4:00/km on ${dMon("2026-08-10")}, towards about 4:07/km`,
+    );
+  });
 });
 
 describe("suggestionDetail", () => {

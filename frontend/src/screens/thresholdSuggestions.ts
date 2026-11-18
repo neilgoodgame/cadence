@@ -49,6 +49,9 @@ export function suggestionTitle(s: ThresholdSuggestion): string {
   if (s.kind === "rejected") {
     return `Accept ${label} ${formatFieldValue(s.field, s.proposed!)}?`;
   }
+  if (s.decays) {
+    return `${label} starts easing from ${formatFieldValue(s.field, s.current!)} on ${fmtDMon(s.expiry_date!)}, towards about ${formatFieldValue(s.field, s.proposed!)}`;
+  }
   if (s.proposed == null) {
     return `${label} goes stale on ${fmtDMon(s.expiry_date!)}`;
   }

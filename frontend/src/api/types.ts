@@ -296,6 +296,7 @@ export interface ThresholdSuggestion {
   current?: number | string;
   proposed?: number | string | null;
   delta_pct?: number | null;
+  decays?: boolean;
   activity_id?: string | null;
   activity_date?: string;
   implied_from?: { window: string; value: number };
