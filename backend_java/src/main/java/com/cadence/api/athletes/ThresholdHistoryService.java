@@ -573,7 +573,7 @@ public class ThresholdHistoryService {
 		}
 		ThresholdHistory current = entries.get(0);
 		ThresholdHistory previous = entries.size() > 1 ? entries.get(1) : null;
-		boolean stale = ChronoUnit.DAYS.between(current.getEffectiveFrom(), LocalDate.now()) > athlete.getThresholdWindowDays();
+		boolean stale = isStale(athlete, field, LocalDate.now());
 		return new ThresholdSummaryEntry(valueOf(field, current), previous != null ? valueOf(field, previous) : null,
 				sourceActivityIdOf(current), current.getEffectiveFrom(), stale, setByUserIdOf(current), current.getKind());
 	}

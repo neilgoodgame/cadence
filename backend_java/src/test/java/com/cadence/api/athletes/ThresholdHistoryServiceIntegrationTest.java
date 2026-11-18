@@ -10,6 +10,7 @@ import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
 import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
+import com.cadence.api.athletes.dto.ThresholdSummaryEntry;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.support.IntegrationTest;
@@ -234,6 +235,28 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		newEntry(athlete, ThresholdField.FTP, 245, LocalDate.of(2026, 3, 1), ThresholdHistoryKind.DECAYED);
 
 		assertThat(thresholdHistoryService.isStale(athlete, ThresholdField.FTP, LocalDate.of(2026, 3, 1))).isTrue();
+	}
+
+	@Test
+	void summaryForReportsStaleWhileAValueIsActivelyDecaying() {
+		// summaryFor's own `stale` field used to be computed inline from the plain
+		// correctionOnly-filtered "latest" row - the same bug isStale had before this fix, just
+		// duplicated - so it stayed false for the whole duration of a decay glide. It must now
+		// agree with isStale (see ThresholdSummaryEntry's own Javadoc, which already documented
+		// that intent). summaryFor has no asOf parameter (always LocalDate.now()), so - unlike
+		// the isStale tests above - the fixture dates must be relative to the real clock: an
+		// anchor well outside the 30-day window, and a decayed row dated today, exactly like the
+		// daily decay job would leave the ledger.
+		User athlete = newAthlete("summary-stale-decay@example.cc");
+		athlete.setThresholdWindowDays(30);
+		athlete.setThresholdDecayEnabled(true);
+		userRepository.save(athlete);
+		newEntry(athlete, ThresholdField.FTP, 250, LocalDate.now().minusDays(40), ThresholdHistoryKind.MEASURED);
+		newEntry(athlete, ThresholdField.FTP, 245, LocalDate.now(), ThresholdHistoryKind.DECAYED);
+
+		ThresholdSummaryEntry summary = thresholdHistoryService.summaryFor(athlete, ThresholdField.FTP);
+
+		assertThat(summary.stale()).isTrue();
 	}
 
 	@Test
