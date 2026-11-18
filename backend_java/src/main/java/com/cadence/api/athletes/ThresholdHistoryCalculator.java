@@ -755,7 +755,8 @@ public class ThresholdHistoryCalculator {
 		}
 
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotOrderByEffectiveFromDescIdDesc(
+						athlete.getId(), field, ThresholdHistoryKind.DECAYED)
 				.orElse(null);
 		if (latest == null || ChronoUnit.DAYS.between(latest.getEffectiveFrom(), effectiveToday) > athlete.getThresholdWindowDays()) {
 			return null;
