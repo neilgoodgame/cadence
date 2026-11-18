@@ -2275,6 +2275,10 @@ paths:
                 threshold_window_days: { type: integer, description: See the User schema. }
                 threshold_sanity_pct: { type: integer, description: See the User schema. }
                 threshold_warning_days: { type: integer, enum: [14, 21, 28, 0], description: See the User schema. }
+                threshold_decay_enabled: { type: boolean, description: See the User schema. }
+                threshold_decay_tau_days: { type: integer, description: See the User schema. }
+                threshold_decay_min_pct: { type: integer, description: See the User schema. }
+                threshold_decay_max_pct: { type: integer, description: See the User schema. }
                 decoupling_vi_limit_bike: { type: number, description: See the User schema. }
                 decoupling_vi_limit_run: { type: number, description: See the User schema. }
                 decoupling_if_limit: { type: number, description: See the User schema. }
@@ -4724,6 +4728,39 @@ components:
             Scaled down for threshold_window_days < 84 (a quarter of the window is
             used instead of this raw setting).
           example: 21
+        threshold_decay_enabled:
+          type: boolean
+          default: false
+          description: >
+            Once a threshold's anchoring evidence ages out of threshold_window_days, ease its
+            value down a decay curve instead of dropping straight to the next-best candidate -
+            see ThresholdSummaryEntry.decay and ThresholdSuggestion.decays. Off by default for
+            every athlete.
+          example: false
+        threshold_decay_tau_days:
+          type: integer
+          default: 25
+          minimum: 7
+          maximum: 90
+          description: Decay time constant (days) - roughly how long it takes to ease 63% of the way to the target.
+          example: 25
+        threshold_decay_min_pct:
+          type: integer
+          default: 3
+          minimum: 0
+          maximum: 10
+          description: >
+            Minimum % the value can ease down even with training fully maintained. Must not
+            exceed threshold_decay_max_pct - checked against the merged result of a PATCH, not
+            just the two fields together in the same request.
+          example: 3
+        threshold_decay_max_pct:
+          type: integer
+          default: 12
+          minimum: 0
+          maximum: 30
+          description: Maximum % the value can ease down with no qualifying training at all.
+          example: 12
         decoupling_vi_limit_bike:
           type: number
           default: 1.06
@@ -5713,6 +5750,29 @@ components:
             from a measured/manual value that aged out, rather than dropping straight to the
             next-best effort). Null with no entry at all.
           example: measured
+        decay:
+          type: [object, "null"]
+          description: >-
+            Present only when kind == "decayed" - the anchor it's easing from and the value it's
+            easing towards. Null otherwise, including for an athlete whose own
+            threshold_decay_enabled is currently false (a leftover decayed row from when it was
+            on still gets a correctly-computed object).
+          properties:
+            anchor_value:
+              oneOf: [{ type: number }, { type: string }]
+              description: The value before it started easing down - same dual-typing as `value`.
+              example: 265
+            anchor_effective_from: { type: string, format: date }
+            decaying_since:
+              type: string
+              format: date
+              description: >-
+                When the glide started - the anchor's own effective_from plus
+                threshold_window_days + 1.
+            target:
+              oneOf: [{ type: number }, { type: string }]
+              description: The value this field is currently easing towards.
+              example: 245
 
     ThresholdHistoryEntry:
       type: object
@@ -6007,14 +6067,22 @@ components:
         proposed:
           oneOf: [{ type: number }, { type: string }, { type: "null" }]
           description: >
-            rejected: the candidate's implied value. upcoming_drop: the successor
-            that takes over, or null if the value would simply go stale with
-            nothing behind it. Absent for race_will_refresh.
+            rejected: the candidate's implied value. upcoming_drop: the value the field is
+            projected to have at expiry - the next-window successor, or, for a decay-enabled
+            athlete (see `decays`), the decay-projected target instead, which is never null even
+            with no successor. Absent for race_will_refresh.
           example: 297
         delta_pct:
           type: [number, "null"]
           description: Unsigned percent change between current and proposed. Absent for race_will_refresh.
           example: 12.1
+        decays:
+          type: boolean
+          description: >-
+            upcoming_drop only - true when `proposed` is the decay-projected target rather than
+            the plain next-window successor (see ThresholdSummaryEntry.decay). Always false for
+            rejected/race_will_refresh.
+          example: false
         activity_id:
           type: [string, "null"]
           description: >
