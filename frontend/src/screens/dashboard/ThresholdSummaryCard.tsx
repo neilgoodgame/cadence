@@ -46,6 +46,10 @@ function daysRemaining(effectiveFrom: string, windowDays: number): number {
   return windowDays - elapsedDays;
 }
 
+function fmtDate(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
 // Pace is seconds/km - a *lower* value is the improvement, the opposite of the two power fields.
 function deltaLabel(field: TabField, entry: ThresholdSummaryEntry): string | null {
   if (entry.value == null || entry.previous_value == null) return null;
@@ -260,23 +264,34 @@ export function ThresholdSummaryCard() {
           Valid for {remaining} more day{remaining === 1 ? "" : "s"}
         </div>
       )}
-      {entry?.stale && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-          <span style={{ fontSize: 12, color: "var(--ember)" }}>
-            {entry.value == null ? "No qualifying effort yet" : "Aged out of window"}
-          </span>
-          <button
-            onClick={() => refreshMutation.mutate(active.field as ThresholdFieldName)}
-            disabled={refreshMutation.isPending}
-            style={{
-              fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 6,
-              border: "1px solid var(--line)", background: "transparent", color: "var(--ink2)",
-              cursor: refreshMutation.isPending ? "wait" : "pointer",
-            }}
-          >
-            {refreshMutation.isPending ? "Refreshing…" : "Refresh"}
-          </button>
+      {entry?.kind === "decayed" && entry.decay ? (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ fontSize: 12, color: "var(--ink2)" }}>Modelled · test due</div>
+          <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>
+            Easing from {formatValue(active.field, entry.decay.anchor_value)} since{" "}
+            {fmtDate(entry.decay.anchor_effective_from)}, towards about{" "}
+            {formatValue(active.field, entry.decay.target)}.
+          </div>
         </div>
+      ) : (
+        entry?.stale && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--ember)" }}>
+              {entry.value == null ? "No qualifying effort yet" : "Aged out of window"}
+            </span>
+            <button
+              onClick={() => refreshMutation.mutate(active.field as ThresholdFieldName)}
+              disabled={refreshMutation.isPending}
+              style={{
+                fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 6,
+                border: "1px solid var(--line)", background: "transparent", color: "var(--ink2)",
+                cursor: refreshMutation.isPending ? "wait" : "pointer",
+              }}
+            >
+              {refreshMutation.isPending ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+        )
       )}
       <Link
         to={`/thresholds/${active.field}`}
