@@ -78,11 +78,11 @@ public class ThresholdHistoryCalculator {
 	 * that method's Javadoc for the suppression rules that decide between them (or neither, via
 	 * a null return). */
 	public sealed interface UpcomingDropResult {
-		record UpcomingDrop(ThresholdHistory currentEntry, Candidate successor, LocalDate expiry, int daysLeft)
+		record UpcomingDrop(ThresholdHistory currentEntry, Double targetValue, LocalDate expiry, int daysLeft, boolean decays)
 				implements UpcomingDropResult {
 		}
 
-		record RaceWillRefresh(Race race, LocalDate expiry, int daysLeft) implements UpcomingDropResult {
+		record RaceWillRefresh(Race race, LocalDate expiry, int daysLeft, boolean decays) implements UpcomingDropResult {
 		}
 	}
 
@@ -104,16 +104,19 @@ public class ThresholdHistoryCalculator {
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository;
 	private final RaceRepository raceRepository;
+	private final DecayLoadService decayLoadService;
 
 	public ThresholdHistoryCalculator(ActivityRepository activityRepository, RecordRepository recordRepository,
 			EntityManager entityManager, ThresholdHistoryRepository thresholdHistoryRepository,
-			AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository, RaceRepository raceRepository) {
+			AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository, RaceRepository raceRepository,
+			DecayLoadService decayLoadService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.entityManager = entityManager;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.acceptedThresholdCandidateRepository = acceptedThresholdCandidateRepository;
 		this.raceRepository = raceRepository;
+		this.decayLoadService = decayLoadService;
 	}
 
 	static Sport sportFor(ThresholdField field) {
@@ -774,9 +777,34 @@ public class ThresholdHistoryCalculator {
 		Candidate successor = currentWindowValue(athlete, field, expiry);
 		Double currentValue = athleteReferenceValue(athlete, field);
 
+		Double anchorValue = athlete.isThresholdDecayEnabled() ? rowValue(field, latest) : null;
+		// Whether a decay-aware target was actually computed below - not just whether the
+		// setting is on. If anchorValue is null (decay off, or a corrupt row - see below), the
+		// proposed value is the plain successor, not a decay target, so the suggestion layer/
+		// frontend must not be told "this is decay-aware" in that case either.
+		boolean decays = anchorValue != null;
+		Double targetValue;
+		if (anchorValue == null) {
+			// Decay off, or (shouldn't happen - the ledger's own invariant guarantees exactly
+			// one of valueNumeric/valuePace is set for latest.getField()) a corrupt row - fall
+			// back to the plain successor rather than crashing decayTarget's effort conversion.
+			targetValue = successor != null ? successor.impliedValue() : null;
+		}
+		else {
+			ThresholdDecay.DecaySettings settings = new ThresholdDecay.DecaySettings(athlete.getThresholdWindowDays(),
+					athlete.getThresholdSanityPct(), athlete.getThresholdDecayTauDays(), athlete.getThresholdDecayMinPct(),
+					athlete.getThresholdDecayMaxPct(), athlete.isThresholdDecayEnabled());
+			Map<LocalDate, Double> loadByDay = decayLoadService.loadByDayForAthlete(athlete, field, anchorValue,
+					athlete.getLthr() != null ? athlete.getLthr().doubleValue() : null,
+					latest.getEffectiveFrom().minusDays(settings.windowDays()), effectiveToday);
+			double ratio = ThresholdDecay.decayLoadRatio(loadByDay, latest.getEffectiveFrom(), effectiveToday);
+			Double successorValue = successor != null ? successor.impliedValue() : null;
+			targetValue = ThresholdDecay.decayTarget(field, anchorValue, successorValue, ratio, settings);
+		}
+
 		// Rule 1: small drop - close enough that a warning isn't worth the noise.
-		if (successor != null && currentValue != null && currentValue != 0) {
-			double delta = Math.abs(successor.impliedValue() - currentValue);
+		if (targetValue != null && currentValue != null && currentValue != 0) {
+			double delta = Math.abs(targetValue - currentValue);
 			double deltaPct = delta / currentValue * 100;
 			double smallAbsolute = LOWER_IS_BETTER.contains(field) ? 3 : 5;
 			if (deltaPct <= 2 && delta < smallAbsolute) {
@@ -807,11 +835,12 @@ public class ThresholdHistoryCalculator {
 						athlete.getId(), sportFor(field), effectiveToday, expiry)
 				.orElse(null);
 		if (race != null) {
-			return new UpcomingDropResult.RaceWillRefresh(race, expiry, daysLeft);
+			return new UpcomingDropResult.RaceWillRefresh(race, expiry, daysLeft, decays);
 		}
 
-		// Rule 4: no successor - emit anyway (successor=null); the caller formats this as "goes
-		// stale" rather than "drops to {value}".
-		return new UpcomingDropResult.UpcomingDrop(latest, successor, expiry, daysLeft);
+		// Rule 4: no successor - emit anyway (targetValue=null); the caller formats this as
+		// "goes stale" rather than "drops to {value}". Impossible when decays is true -
+		// targetValue is never null on that path (decayTarget's no-successor floor fallback).
+		return new UpcomingDropResult.UpcomingDrop(latest, targetValue, expiry, daysLeft, decays);
 	}
 }

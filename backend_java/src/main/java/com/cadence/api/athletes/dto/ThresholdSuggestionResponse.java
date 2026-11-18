@@ -18,7 +18,8 @@ public record ThresholdSuggestionResponse(
 		ImpliedFrom impliedFrom,
 		LocalDate expiryDate,
 		Integer daysLeft,
-		RaceInfo race) implements Serializable {
+		RaceInfo race,
+		boolean decays) implements Serializable {
 
 	public record ImpliedFrom(String window, double value) implements Serializable {
 	}
@@ -30,7 +31,7 @@ public record ThresholdSuggestionResponse(
 	 * read time (ThresholdSuggestionService.listSuggestions) rather than caching a number that
 	 * goes stale within the day. */
 	public ThresholdSuggestionResponse withDaysLeft(int newDaysLeft) {
-		return new ThresholdSuggestionResponse(
-				id, field, kind, current, proposed, deltaPct, activityId, activityDate, impliedFrom, expiryDate, newDaysLeft, race);
+		return new ThresholdSuggestionResponse(id, field, kind, current, proposed, deltaPct, activityId, activityDate,
+				impliedFrom, expiryDate, newDaysLeft, race, decays);
 	}
 }
