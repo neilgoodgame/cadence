@@ -118,6 +118,10 @@ export function BestEffortsTab() {
   }>({ running: false, current: 0, total: 0, updated: null, error: false });
   const [windowDays, setWindowDays] = useState(user?.threshold_window_days ?? 112);
   const [sanityPct, setSanityPct] = useState(user?.threshold_sanity_pct ?? 30);
+  const [decayEnabled, setDecayEnabled] = useState(user?.threshold_decay_enabled ?? false);
+  const [decayTauDays, setDecayTauDays] = useState(user?.threshold_decay_tau_days ?? 25);
+  const [decayMinPct, setDecayMinPct] = useState(user?.threshold_decay_min_pct ?? 3);
+  const [decayMaxPct, setDecayMaxPct] = useState(user?.threshold_decay_max_pct ?? 12);
   const IDLE_FIELD_RECOMPUTE = { running: false, current: 0, total: 0, result: null as number | null, error: false };
   const [fieldRecompute, setFieldRecompute] = useState<Record<ThresholdFieldName, typeof IDLE_FIELD_RECOMPUTE>>({
     ftp: IDLE_FIELD_RECOMPUTE,
@@ -218,10 +222,20 @@ export function BestEffortsTab() {
       const updated = await updateAthlete(user!.id, {
         threshold_window_days: windowDays,
         threshold_sanity_pct: sanityPct,
+        threshold_decay_enabled: decayEnabled,
+        threshold_decay_tau_days: decayTauDays,
+        threshold_decay_min_pct: decayMinPct,
+        threshold_decay_max_pct: decayMaxPct,
       });
       setUser(updated);
     },
   });
+
+  const decayMinMaxInvalid = decayMinPct > decayMaxPct;
+  // Was decay off before this edit started, and is it being turned on now? Only then is the
+  // "rebuild to apply to past history" hint relevant - toggling it off, or leaving it as it
+  // already was, has nothing new to apply.
+  const decayJustEnabled = !user?.threshold_decay_enabled && decayEnabled;
 
   const startFieldRecompute = useCallback(async (field: ThresholdFieldName) => {
     setFieldRecompute(s => ({ ...s, [field]: { running: true, current: 0, total: 0, result: null, error: false } }));
@@ -486,7 +500,13 @@ export function BestEffortsTab() {
             onClick={() => thresholdSettingsMutation.mutate()}
             disabled={
               thresholdSettingsMutation.isPending
-              || (windowDays === user.threshold_window_days && sanityPct === user.threshold_sanity_pct)
+              || decayMinMaxInvalid
+              || (windowDays === user.threshold_window_days
+                && sanityPct === user.threshold_sanity_pct
+                && decayEnabled === user.threshold_decay_enabled
+                && decayTauDays === user.threshold_decay_tau_days
+                && decayMinPct === user.threshold_decay_min_pct
+                && decayMaxPct === user.threshold_decay_max_pct)
             }
             style={btnStyle}
           >
@@ -498,6 +518,60 @@ export function BestEffortsTab() {
           Changing these doesn't retroactively update your history - rebuild a field below to
           replay it under the new settings.
         </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "14px 16px", borderRadius: 8, background: "var(--elev)", border: "1px solid var(--line)" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <input type="checkbox" checked={decayEnabled} onChange={e => setDecayEnabled(e.target.checked)} />
+            Gradual decay
+          </label>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0, lineHeight: 1.6 }}>
+            After a threshold's best effort leaves the window, ease it down towards your recent
+            efforts instead of dropping straight to them. How far it can fall depends on how much
+            you've kept training that sport.
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: decayEnabled ? 1 : 0.5 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink2)" }}>
+              Decay time constant (days)
+              <input
+                type="number" min={7} max={90} value={decayTauDays} disabled={!decayEnabled}
+                onChange={e => setDecayTauDays(Math.max(7, Math.min(90, Number(e.target.value))))}
+                style={inputStyle}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink2)" }}>
+              Minimum decay (%)
+              <input
+                type="number" min={0} max={10} value={decayMinPct} disabled={!decayEnabled}
+                onChange={e => setDecayMinPct(Math.max(0, Math.min(10, Number(e.target.value))))}
+                style={inputStyle}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink2)" }}>
+              Maximum decay (%)
+              <input
+                type="number" min={0} max={30} value={decayMaxPct} disabled={!decayEnabled}
+                onChange={e => setDecayMaxPct(Math.max(0, Math.min(30, Number(e.target.value))))}
+                style={inputStyle}
+              />
+            </label>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--ink3)", margin: 0, lineHeight: 1.5 }}>
+            {"About 63% of the way to the target after this many days. "}
+            Minimum: how far an unverified value drifts even if you keep training as hard as
+            before - 0 holds it while training is maintained. Maximum: how far it can fall with
+            no riding above Z2 at all.
+          </p>
+          {decayMinMaxInvalid && (
+            <p style={{ fontSize: 12, color: "var(--danger,#e04040)", margin: 0 }}>
+              Minimum decay must not exceed maximum decay.
+            </p>
+          )}
+          {decayJustEnabled && (
+            <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>
+              Rebuild each field below to apply decay to past history.
+            </p>
+          )}
+        </div>
 
         <div>
           <button

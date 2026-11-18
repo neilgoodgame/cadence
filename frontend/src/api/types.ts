@@ -48,6 +48,18 @@ export interface Athlete {
    * Threshold suggestions feature warns about it - 14/21/28, or 0 = off. See
    * ThresholdSuggestion's "upcoming_drop" kind. */
   threshold_warning_days: number;
+  /** Once a threshold's anchoring evidence ages out of threshold_window_days, ease its value
+   * down a decay curve instead of dropping straight to the next-best candidate. Off for every
+   * athlete by default - the staleness display, suggestion wording, and ledger kind="decayed"
+   * handling only partially exist yet (issue #485). */
+  threshold_decay_enabled: boolean;
+  /** Decay time constant in days - roughly how long it takes to ease 63% of the way to the
+   * target. 7-90, default 25. */
+  threshold_decay_tau_days: number;
+  /** Minimum % the value can ease down even with training fully maintained - 0-10, default 3. */
+  threshold_decay_min_pct: number;
+  /** Maximum % the value can ease down with no qualifying training at all - 0-30, default 12. */
+  threshold_decay_max_pct: number;
   /** Aerobic decoupling qualification thresholds - read at compute time (ingest/recompute),
    * not retroactive: changing these doesn't repaint already-scored activities on its own. */
   decoupling_vi_limit_bike: number;
@@ -225,6 +237,11 @@ export interface ThresholdSummaryEntry {
   /** The source activity has aged out of the trailing window - surfaced, never silently
    * auto-corrected. Recomputes on the next activity, or via a manual refresh. */
   stale: boolean;
+  /** How this value was determined: measured (the best qualifying effort within the window),
+   * manual (set directly via PATCH /v1/athletes/{id}), or decayed (eased down from a measured/
+   * manual value that aged out - issue #485; only possible when threshold_decay_enabled, which
+   * defaults to off). Null with no entry at all. */
+  kind: "measured" | "manual" | "decayed" | null;
 }
 
 export interface ThresholdsSummary {
@@ -254,6 +271,8 @@ export interface ThresholdHistoryPoint {
   /** When this row was actually saved - distinct from effective_from for a backdated manual
    * row, where the ledger shows both ("effective 1 Nov · entered 3 Nov" - issue #505). */
   created_at: string;
+  /** See ThresholdSummaryEntry.kind - never null here, since a row only exists once it has one. */
+  kind: "measured" | "manual" | "decayed";
 }
 
 export interface ThresholdHistoryResponse {
@@ -585,6 +604,10 @@ export interface AthleteUpdate {
   threshold_window_days?: number;
   threshold_sanity_pct?: number;
   threshold_warning_days?: number;
+  threshold_decay_enabled?: boolean;
+  threshold_decay_tau_days?: number;
+  threshold_decay_min_pct?: number;
+  threshold_decay_max_pct?: number;
   decoupling_vi_limit_bike?: number;
   decoupling_vi_limit_run?: number;
   decoupling_if_limit?: number;
