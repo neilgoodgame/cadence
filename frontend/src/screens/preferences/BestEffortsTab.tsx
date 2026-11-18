@@ -231,11 +231,10 @@ export function BestEffortsTab() {
     },
   });
 
-  const decayMinMaxInvalid = decayMinPct > decayMaxPct;
-  // Was decay off before this edit started, and is it being turned on now? Only then is the
-  // "rebuild to apply to past history" hint relevant - toggling it off, or leaving it as it
-  // already was, has nothing new to apply.
-  const decayJustEnabled = !user?.threshold_decay_enabled && decayEnabled;
+  // Scoped to decayEnabled - unchecking the box makes a stale invalid range irrelevant again,
+  // so it can't keep blocking Save for an unrelated field (window/sanity) after the user backs
+  // out of enabling decay without fixing the numbers first.
+  const decayMinMaxInvalid = decayEnabled && decayMinPct > decayMaxPct;
 
   const startFieldRecompute = useCallback(async (field: ThresholdFieldName) => {
     setFieldRecompute(s => ({ ...s, [field]: { running: true, current: 0, total: 0, result: null, error: false } }));
@@ -566,7 +565,7 @@ export function BestEffortsTab() {
               Minimum decay must not exceed maximum decay.
             </p>
           )}
-          {decayJustEnabled && (
+          {decayEnabled && (
             <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>
               Rebuild each field below to apply decay to past history.
             </p>
