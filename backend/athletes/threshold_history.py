@@ -1254,7 +1254,15 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
     successor = current_window_value(athlete, field, as_of=expiry)
     current_value = _athlete_reference_value(athlete, field)
 
-    if athlete.threshold_decay_enabled:
+    anchor_value = _row_value(field, latest) if athlete.threshold_decay_enabled else None
+
+    if anchor_value is None:
+        # Decay off, or (shouldn't happen - the ledger's own invariant guarantees exactly one
+        # of value_numeric/value_pace is set for latest.field) a corrupt row - fall back to the
+        # plain successor rather than raising inside decay_target's effort conversion. Mirrors
+        # _manual_anchor_candidate's own None-guard on the same _row_value helper.
+        target_value = successor.implied_value if successor else None
+    else:
         from .decay_load import load_by_day_for_athlete  # circular at module level - see phase 1
 
         settings = DecaySettings(
@@ -1265,7 +1273,6 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
             max_pct=athlete.threshold_decay_max_pct,
             enabled=athlete.threshold_decay_enabled,
         )
-        anchor_value = _row_value(field, latest)
         load_by_day = load_by_day_for_athlete(
             athlete,
             field,
@@ -1278,8 +1285,6 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
         target_value = decay_target(
             field, anchor_value, successor.implied_value if successor else None, ratio, settings
         )
-    else:
-        target_value = successor.implied_value if successor else None
 
     # Rule 1: small drop - close enough that a warning isn't worth the noise.
     if target_value is not None and current_value is not None and current_value != 0:

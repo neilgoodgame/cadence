@@ -2691,6 +2691,23 @@ class ThresholdSuggestionAlgorithmTests(TestCase):
         self.assertTrue(result["decays"])
         self.assertEqual(result["target_value"], 220)
 
+    def test_upcoming_drop_falls_back_to_successor_when_the_anchor_row_has_no_value(self):
+        # A corrupt row (shouldn't happen - the ledger's own invariant guarantees exactly one of
+        # value_numeric/value_pace is set for its own field) must not crash decay_target's
+        # effort conversion - falls back to the plain successor instead, same as decay-off.
+        today = date(2026, 6, 1)
+        lead = warning_lead_days(self.athlete)
+        effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
+        self.athlete.threshold_decay_enabled = True
+        self.athlete.save(update_fields=["threshold_decay_enabled"])
+        self._ledger_entry("ftp", effective_from=effective_from)  # value_numeric left unset
+
+        result = upcoming_drop(self.athlete, "ftp", today=today)
+
+        self.assertEqual(result["kind"], "upcoming_drop")
+        self.assertTrue(result["decays"])
+        self.assertIsNone(result["target_value"])
+
 
 class ThresholdSuggestionApiTests(TestCase):
     """GET/accept/dismiss .../threshold-suggestions - the caching/formatting/dismissal-keying
