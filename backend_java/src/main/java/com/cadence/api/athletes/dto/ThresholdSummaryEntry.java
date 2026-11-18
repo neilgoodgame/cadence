@@ -9,7 +9,12 @@ import java.time.LocalDate;
  * trailing window), never a recompute - see ThresholdHistoryService.isStale. `setByUserId` is
  * null for an auto-derived value (sourceActivityId is populated instead); for a manually-entered
  * value, the id of whoever set it - equal to this athlete's own id for a self-edit, a different
- * user's id if a coach set it on their behalf. */
+ * user's id if a coach set it on their behalf. `decay` (issue #485) is non-null exactly when
+ * `kind == DECAYED` - see ThresholdDecayRecomputeService.decayObjectFor. */
 public record ThresholdSummaryEntry(Object value, Object previousValue, String sourceActivityId,
-		LocalDate effectiveFrom, boolean stale, String setByUserId, ThresholdHistoryKind kind) {
+		LocalDate effectiveFrom, boolean stale, String setByUserId, ThresholdHistoryKind kind, Decay decay) {
+
+	/** `anchorValue`/`target` are dual-typed exactly like the outer record's `value`. */
+	public record Decay(Object anchorValue, LocalDate anchorEffectiveFrom, LocalDate decayingSince, Object target) {
+	}
 }

@@ -159,6 +159,13 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotOrderByEffectiveFromDescIdDesc(
 			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
 
+	// summaryFor's "previous" lookup (issue #485) - same non-decayed exclusion as the method
+	// above, plus bounded to strictly before the current row's own effectiveFrom, so a
+	// daily-shifting decayed row never counts as "previous" either.
+	Optional<ThresholdHistory>
+			findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotAndEffectiveFromLessThanOrderByEffectiveFromDescIdDesc(
+					String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate before);
+
 	// ThresholdDecayRecomputeService's manual-entry gathering - every surviving (not correction-
 	// only, same exclusion ThresholdHistoryCalculator.replayFullHistory's own manual-row merge
 	// already applies) manual row in [from, to], so simulate() can respect its anchor-reset

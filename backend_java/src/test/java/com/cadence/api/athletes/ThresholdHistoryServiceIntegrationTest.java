@@ -260,6 +260,52 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void summaryForAndPreviousBothSkipAnIntermediateDecayedRowToReachTheRealAnchor() {
+		// anchor (250, 40 days ago) -> an intermediate decayed row (248, 20 days ago) -> today's
+		// decayed row (245, current). Both "previous" and the decay object's anchor must skip
+		// the intermediate decayed row to reach the real anchor underneath. Zero activities, so
+		// the math is fully deterministic: decayLoadRatio -> 1.0 (loadAtAnchor < 1),
+		// currentWindowValue -> null -> decayTarget's "no successor" branch:
+		// anchor * (1 - maxPct/100) = 250 * 0.88 = 220.
+		User athlete = newAthlete("decay-object-summary@example.cc");
+		athlete.setThresholdWindowDays(30);
+		athlete.setThresholdDecayEnabled(true);
+		athlete.setThresholdDecayMinPct(3);
+		athlete.setThresholdDecayMaxPct(12);
+		userRepository.save(athlete);
+		LocalDate anchorDate = LocalDate.now().minusDays(40);
+		newEntry(athlete, ThresholdField.FTP, 250, anchorDate, ThresholdHistoryKind.MEASURED);
+		newEntry(athlete, ThresholdField.FTP, 248, LocalDate.now().minusDays(20), ThresholdHistoryKind.DECAYED);
+		newEntry(athlete, ThresholdField.FTP, 245, LocalDate.now(), ThresholdHistoryKind.DECAYED);
+
+		ThresholdSummaryEntry summary = thresholdHistoryService.summaryFor(athlete, ThresholdField.FTP);
+
+		assertThat(summary.value()).isEqualTo(245);
+		assertThat(summary.previousValue()).isEqualTo(250);
+		assertThat(summary.kind()).isEqualTo(ThresholdHistoryKind.DECAYED);
+		assertThat(summary.decay()).isNotNull();
+		assertThat(summary.decay().anchorValue()).isEqualTo(250);
+		assertThat(summary.decay().anchorEffectiveFrom()).isEqualTo(anchorDate);
+		assertThat(summary.decay().decayingSince()).isEqualTo(anchorDate.plusDays(31));
+		assertThat(summary.decay().target()).isEqualTo(220);
+	}
+
+	@Test
+	void summaryForHasNoDecayObjectWhenCurrentIsMeasured() {
+		User athlete = newAthlete("decay-object-summary-measured@example.cc");
+		userRepository.save(athlete);
+		newEntry(athlete, ThresholdField.FTP, 250, LocalDate.now().minusDays(10), ThresholdHistoryKind.MEASURED);
+		newEntry(athlete, ThresholdField.FTP, 260, LocalDate.now(), ThresholdHistoryKind.MEASURED);
+
+		ThresholdSummaryEntry summary = thresholdHistoryService.summaryFor(athlete, ThresholdField.FTP);
+
+		assertThat(summary.value()).isEqualTo(260);
+		assertThat(summary.previousValue()).isEqualTo(250);
+		assertThat(summary.kind()).isEqualTo(ThresholdHistoryKind.MEASURED);
+		assertThat(summary.decay()).isNull();
+	}
+
+	@Test
 	void rerateActivitiesFalseLeavesRatingsUnchangedUntilRecompute() {
 		User athlete = newAthlete("manual-threshold-no-rerate@example.cc");
 		Activity activity = newPowerActivity(athlete, Instant.now(), 185, 11916);

@@ -565,17 +565,25 @@ public class ThresholdHistoryService {
 	 * the current one has aged out of the window. */
 	public ThresholdSummaryEntry summaryFor(User athlete, ThresholdField field) {
 		// Excludes correction-only rows (issue #493 - a backdated manual edit that never
-		// actually took over) from both current and previous.
-		List<ThresholdHistory> entries = thresholdHistoryRepository
-				.findByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field);
-		if (entries.isEmpty()) {
-			return new ThresholdSummaryEntry(null, null, null, null, true, null, null);
+		// actually took over) from current. "current" keeps any kind (a decayed row IS the live
+		// value); "previous" additionally skips decayed rows (issue #485) via a separate,
+		// bounded lookup - see ThresholdSummaryEntry.Decay's own Javadoc.
+		ThresholdHistory current = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field)
+				.orElse(null);
+		if (current == null) {
+			return new ThresholdSummaryEntry(null, null, null, null, true, null, null, null);
 		}
-		ThresholdHistory current = entries.get(0);
-		ThresholdHistory previous = entries.size() > 1 ? entries.get(1) : null;
+		ThresholdHistory previous = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotAndEffectiveFromLessThanOrderByEffectiveFromDescIdDesc(
+						athlete.getId(), field, ThresholdHistoryKind.DECAYED, current.getEffectiveFrom())
+				.orElse(null);
 		boolean stale = isStale(athlete, field, LocalDate.now());
+		ThresholdSummaryEntry.Decay decay = current.getKind() == ThresholdHistoryKind.DECAYED
+				? decayRecomputeService.decayObjectFor(athlete, field)
+				: null;
 		return new ThresholdSummaryEntry(valueOf(field, current), previous != null ? valueOf(field, previous) : null,
-				sourceActivityIdOf(current), current.getEffectiveFrom(), stale, setByUserIdOf(current), current.getKind());
+				sourceActivityIdOf(current), current.getEffectiveFrom(), stale, setByUserIdOf(current), current.getKind(), decay);
 	}
 
 	/** GET /v1/athletes/{id}/threshold-history?field=... - the full ledger, most recent first. */
