@@ -34,11 +34,22 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	// As above, but excluding correction-only rows (issue #493 - a backdated manual edit that
 	// never actually took over, because a later row already existed or it was already outside
 	// the window the moment it was saved). This is THE "what's current" lookup - every one of
-	// recordManualValue's own dedup check, isStale, summaryFor, and
-	// ThresholdHistoryCalculator.manualAnchorCandidate (#484's fix) must use this, not the
-	// unfiltered method above, so a correction-only row is never mistaken for the live value.
+	// recordManualValue's own dedup check, summaryFor, and ThresholdHistoryCalculator.
+	// manualAnchorCandidate (#484's fix) must use this, not the unfiltered method above, so a
+	// correction-only row is never mistaken for the live value. isStale/upcomingDrop do NOT use
+	// this one - see the sibling method below.
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(
 			String athleteId, ThresholdField field);
+
+	// isStale/upcomingDrop's anchor lookup (issue #485) - like the method above, but also
+	// excludes kind=DECAYED. A decayed row is written daily with effectiveFrom == today, so
+	// including it here would keep staleness pinned to false for the whole duration of a decay
+	// glide; the anchor is "the last row actually measured or set, not eased down from one".
+	// Every other caller (recording the live profile value, rebuild bookkeeping,
+	// resimulateSuffix's post-write sync) wants the live value regardless of kind and keeps
+	// using the method above. Mirrors the Python backend's _latest_entry(include_decayed=False).
+	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotOrderByEffectiveFromDescIdDesc(
+			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
 
 	// The full ledger for one field, most recent first - backs the history screen. Tiebroken by
 	// id - see the comment above. Includes correction-only rows (issue #493) - the full ledger

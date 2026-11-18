@@ -404,7 +404,9 @@ public class ThresholdHistoryService {
 	public boolean isStale(User athlete, ThresholdField field, LocalDate asOf) {
 		LocalDate effectiveAsOf = asOf != null ? asOf : LocalDate.now();
 		ThresholdHistory latest = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseOrderByEffectiveFromDescIdDesc(athlete.getId(), field).orElse(null);
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotOrderByEffectiveFromDescIdDesc(
+						athlete.getId(), field, ThresholdHistoryKind.DECAYED)
+				.orElse(null);
 		if (latest == null) {
 			return true;
 		}
