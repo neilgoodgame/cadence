@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.db import transaction
 from django.http import StreamingHttpResponse
@@ -21,6 +21,7 @@ from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 from core.permissions import user_may_read, user_may_write
 
 from . import threshold_suggestions
+from .decay_load import load_by_day_for_athlete
 from .models import BestEffortRecomputeJob, RunningPowerSourceRecomputeJob, ThresholdHistory, ZoneSet
 from .serializers import (
     AthleteUpdateSerializer,
@@ -31,9 +32,14 @@ from .serializers import (
     ZoneSetSerializer,
 )
 from .tasks import run_best_effort_recompute, run_running_power_source_recompute
+from .threshold_decay import DecaySettings, decay_load_ratio, decay_target
 from .threshold_history import (
     FIELD_SPORT,
     ManualValueResult,
+    _latest_entry,
+    _row_value,
+    _seconds_to_mmss,
+    current_window_value,
     is_stale,
     rebuild_history_stream,
     record_manual_value,
@@ -706,16 +712,52 @@ def _validate_threshold_field(field: str | None) -> str:
     return field
 
 
+def _decay_object(athlete: User, field: str) -> dict | None:
+    """issue #485: anchor_value/anchor_effective_from/decaying_since/target for a currently-
+    decaying field - None otherwise. Keyed off the CURRENT row's own kind (checked by the
+    caller, threshold_summary_for_field), not the athlete's live threshold_decay_enabled flag,
+    so a now-disabled athlete with a leftover decayed row from when decay was on still gets a
+    correctly-computed object."""
+    anchor = _latest_entry(athlete, field, include_decayed=False)
+    if anchor is None:
+        # Shouldn't happen if current.kind == "decayed" (a decayed row can only exist after a
+        # non-decayed anchor was resimulated from), but guard it anyway rather than raising.
+        return None
+    anchor_value = _row_value(field, anchor)
+    settings = DecaySettings(
+        window_days=athlete.threshold_window_days,
+        sanity_pct=athlete.threshold_sanity_pct,
+        tau_days=athlete.threshold_decay_tau_days,
+        min_pct=athlete.threshold_decay_min_pct,
+        max_pct=athlete.threshold_decay_max_pct,
+        enabled=athlete.threshold_decay_enabled,
+    )
+    today = date.today()
+    decaying_since = anchor.effective_from + timedelta(days=athlete.threshold_window_days + 1)
+    load_by_day = load_by_day_for_athlete(
+        athlete, field, anchor_value, athlete.lthr, anchor.effective_from - timedelta(days=settings.window_days), today
+    )
+    ratio = decay_load_ratio(load_by_day, anchor.effective_from, today)
+    successor = current_window_value(athlete, field, as_of=today)
+    target = decay_target(field, anchor_value, successor.implied_value if successor else None, ratio, settings)
+    return {
+        "anchor_value": _seconds_to_mmss(anchor_value) if field == "threshold_pace" else round(anchor_value),
+        "anchor_effective_from": anchor.effective_from,
+        "decaying_since": decaying_since,
+        "target": _seconds_to_mmss(target) if field == "threshold_pace" else round(target),
+    }
+
+
 def threshold_summary_for_field(athlete: User, field: str) -> dict:
     # Excludes correction-only rows (issue #493 - a backdated manual edit that never actually
-    # took over) from both current and previous - same exclusion as _latest_entry, just inlined
-    # here since this needs the top 2, not just the top 1.
-    entries = list(
+    # took over) from current - same exclusion as _latest_entry.
+    current = (
         ThresholdHistory.objects.filter(athlete=athlete, field=field)
         .exclude(is_correction_only=True)
-        .order_by("-effective_from")[:2]
+        .order_by("-effective_from")
+        .first()
     )
-    if not entries:
+    if current is None:
         return {
             "value": None,
             "previous_value": None,
@@ -724,8 +766,18 @@ def threshold_summary_for_field(athlete: User, field: str) -> dict:
             "effective_from": None,
             "stale": True,
             "kind": None,
+            "decay": None,
         }
-    current, previous = entries[0], entries[1] if len(entries) > 1 else None
+    # issue #485: "previous" additionally skips decayed rows, so it always means the last real
+    # measurement/correction, not a daily-shifting decayed value (plan-485/README.md's resolved
+    # design decision) - a separate, bounded query rather than slicing [:2] off one queryset.
+    previous = (
+        ThresholdHistory.objects.filter(athlete=athlete, field=field, effective_from__lt=current.effective_from)
+        .exclude(is_correction_only=True)
+        .exclude(kind="decayed")
+        .order_by("-effective_from")
+        .first()
+    )
 
     def _value(entry: ThresholdHistory) -> int | str:
         return entry.value_pace if field == "threshold_pace" else entry.value_numeric
@@ -738,6 +790,7 @@ def threshold_summary_for_field(athlete: User, field: str) -> dict:
         "effective_from": current.effective_from,
         "stale": is_stale(athlete, field),
         "kind": current.kind,
+        "decay": _decay_object(athlete, field) if current.kind == "decayed" else None,
     }
 
 

@@ -33,6 +33,7 @@ from .threshold_history import (
     upcoming_drop,
     warning_lead_days,
 )
+from .views import threshold_summary_for_field
 from .zones import DEFAULT_PACE_ZONES, DEFAULT_ZONES, reference_for
 
 
@@ -2083,6 +2084,65 @@ class StalenessWithDecayTests(TestCase):
         self._row("decayed", date(2026, 3, 1), 245)
 
         self.assertTrue(is_stale(self.athlete, "ftp", as_of=date(2026, 3, 1)))
+
+
+class DecayObjectSummaryTests(TestCase):
+    """threshold_summary_for_field's decay object (issue #485, phase 3) - wiring only, not the
+    decay math itself (already covered by threshold_decay.py's own golden-fixture parity tests).
+    With zero activities anywhere, decay_load_ratio deterministically returns 1.0 (load_at_anchor
+    < 1) and current_window_value deterministically returns None (no candidates), so decay_target
+    takes its "no successor" branch: anchor * (1 - max_pct/100) - fully hand-computable without
+    any activity fixtures."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="decay-object@example.cc", password="x", name="Athlete")
+        self.athlete.threshold_window_days = 30
+        self.athlete.threshold_decay_min_pct = 3
+        self.athlete.threshold_decay_max_pct = 12
+        self.athlete.save(update_fields=["threshold_window_days", "threshold_decay_min_pct", "threshold_decay_max_pct"])
+
+    def _row(self, kind, effective_from, value):
+        return ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=value,
+            effective_from=effective_from,
+            current_from=effective_from,
+            kind=kind,
+        )
+
+    def test_decay_object_and_previous_both_skip_an_intermediate_decayed_row(self):
+        # anchor (250, 40 days ago) -> an intermediate decayed row (248, 20 days ago) -> today's
+        # decayed row (245, current). Both "previous" and the decay object's anchor must skip the
+        # intermediate decayed row to reach the real anchor underneath.
+        self.athlete.threshold_decay_enabled = True
+        self.athlete.save(update_fields=["threshold_decay_enabled"])
+        anchor_date = date.today() - timedelta(days=40)
+        self._row("measured", anchor_date, 250)
+        self._row("decayed", date.today() - timedelta(days=20), 248)
+        self._row("decayed", date.today(), 245)
+
+        summary = threshold_summary_for_field(self.athlete, "ftp")
+
+        self.assertEqual(summary["value"], 245)
+        self.assertEqual(summary["previous_value"], 250)
+        self.assertEqual(summary["kind"], "decayed")
+        self.assertIsNotNone(summary["decay"])
+        self.assertEqual(summary["decay"]["anchor_value"], 250)
+        self.assertEqual(summary["decay"]["anchor_effective_from"], anchor_date)
+        self.assertEqual(summary["decay"]["decaying_since"], anchor_date + timedelta(days=31))
+        self.assertEqual(summary["decay"]["target"], 220)  # 250 * (1 - 0.12)
+
+    def test_no_decay_object_when_current_is_measured(self):
+        self._row("measured", date.today() - timedelta(days=10), 250)
+        self._row("measured", date.today(), 260)
+
+        summary = threshold_summary_for_field(self.athlete, "ftp")
+
+        self.assertEqual(summary["value"], 260)
+        self.assertEqual(summary["previous_value"], 250)
+        self.assertEqual(summary["kind"], "measured")
+        self.assertIsNone(summary["decay"])
 
 
 class RefreshFieldTests(TestCase):
