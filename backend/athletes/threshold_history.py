@@ -585,7 +585,7 @@ def _replay_from_into(
         yield i + 1, total
 
 
-def _latest_entry(athlete: User, field: str) -> ThresholdHistory | None:
+def _latest_entry(athlete: User, field: str, include_decayed: bool = True) -> ThresholdHistory | None:
     """The row currently treated as "the" value for this field - every "what's current" lookup
     (is_stale, upcoming_drop, _manual_anchor_candidate, _recompute_and_record's own guard, and
     this function's own callers below) goes through here, so a correction-only row (issue #493 -
@@ -593,13 +593,23 @@ def _latest_entry(athlete: User, field: str) -> ThresholdHistory | None:
     it was already outside the window the moment it was saved) is excluded once, for all of them.
     A correction-only row is still a real row - zones.reference_for's activity-scoped lookup
     (filtered on current_from, not effective_from) finds it like any other - it's just never
-    "the" value here."""
-    return (
+    "the" value here.
+
+    include_decayed=False (is_stale/upcoming_drop only) also drops kind="decayed" rows, so the
+    result is "the last row actually measured or set, not eased down from one" (issue #485) - a
+    decayed row is written daily with effective_from == today, so including it would keep staleness
+    pinned to False for the whole decay glide. Every other caller wants the live value, which is
+    genuinely a decayed row mid-glide, and leaves it at the default. Distinct from
+    threshold_decay_recompute.latest_non_decayed_row, which takes an exclusive `before` bound for
+    seeding a resimulation and doesn't filter correction-only rows."""
+    qs = (
         ThresholdHistory.objects.filter(athlete=athlete, field=field)
         .exclude(is_correction_only=True)
         .order_by("-effective_from")
-        .first()
     )
+    if not include_decayed:
+        qs = qs.exclude(kind="decayed")
+    return qs.first()
 
 
 def _value_in_effect_at(athlete: User, field: str, as_of: date) -> float | None:
@@ -929,7 +939,7 @@ def is_stale(athlete: User, field: str, as_of: date | None = None) -> bool:
     plain date comparison, not a recompute, so it's cheap enough to call on every read (e.g. the
     dashboard). True with no entry at all (nothing to be current)."""
     as_of = as_of or date.today()
-    latest = _latest_entry(athlete, field)
+    latest = _latest_entry(athlete, field, include_decayed=False)
     if latest is None:
         return True
     return (as_of - latest.effective_from).days > athlete.threshold_window_days
@@ -1228,7 +1238,7 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
     if lead <= 0:
         return None
 
-    latest = _latest_entry(athlete, field)
+    latest = _latest_entry(athlete, field, include_decayed=False)
     if latest is None or is_stale(athlete, field, today):
         return None
 

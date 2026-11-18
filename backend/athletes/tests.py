@@ -2040,6 +2040,51 @@ class RecordManualValueTests(TestCase):
         self.assertEqual(ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").count(), 1)
 
 
+class StalenessWithDecayTests(TestCase):
+    """is_stale's anchor lookup must ignore kind="decayed" rows (issue #485, phase 2) - a decayed
+    row is written daily with effective_from == current_from == today, so once decay starts the
+    "latest row of any kind" rule would keep pointing at a fresh decayed row and staleness could
+    never flip back to True. The anchor is the last row that was actually measured or set, not
+    eased down from one."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="stale-decay@example.cc", password="x", name="Athlete")
+        self.athlete.threshold_window_days = 30
+        self.athlete.save(update_fields=["threshold_window_days"])
+
+    def _row(self, kind, effective_from, value):
+        return ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=value,
+            effective_from=effective_from,
+            current_from=effective_from,
+            kind=kind,
+        )
+
+    def test_is_stale_stays_true_while_a_value_is_actively_decaying(self):
+        # Decay is on and the anchor (2026-01-01) has aged out of the 30-day window, but a decayed
+        # row dated today (2026-03-01) sits on top of the ledger. is_stale must look at the anchor,
+        # not that fresh decayed row - so it stays True for the whole duration of the glide.
+        self.athlete.threshold_decay_enabled = True
+        self.athlete.save(update_fields=["threshold_decay_enabled"])
+        self._row("measured", date(2026, 1, 1), 250)
+        self._row("decayed", date(2026, 3, 1), 245)
+
+        self.assertTrue(is_stale(self.athlete, "ftp", as_of=date(2026, 3, 1)))
+
+    def test_is_stale_skips_decayed_rows_to_find_the_anchor_after_decay_is_disabled(self):
+        # Decay was on long enough to accumulate decayed rows, then turned off (the default). The
+        # stale decayed rows are still sitting at the top of the ledger - the most recent dated
+        # today (2026-03-01) - but the lookup must skip all of them to reach the real anchor
+        # underneath, which has aged out.
+        self._row("measured", date(2026, 1, 1), 250)
+        self._row("decayed", date(2026, 2, 15), 248)
+        self._row("decayed", date(2026, 3, 1), 245)
+
+        self.assertTrue(is_stale(self.athlete, "ftp", as_of=date(2026, 3, 1)))
+
+
 class RefreshFieldTests(TestCase):
     """refresh_field / _recompute_and_record - the athlete-triggered "this value is stale,
     refresh now" recompute, as distinct from record_manual_value's trusted-unconditionally
