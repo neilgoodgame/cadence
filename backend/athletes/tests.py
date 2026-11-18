@@ -217,6 +217,100 @@ class AthleteDetailViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    # --- Threshold decay settings (issue #485): model fields existed since #546, exposed here ---
+
+    def test_self_can_update_threshold_decay_enabled(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_enabled": True}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["threshold_decay_enabled"])
+        self.athlete.refresh_from_db()
+        self.assertTrue(self.athlete.threshold_decay_enabled)
+
+    def test_self_can_update_threshold_decay_tau_days(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_tau_days": 30}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["threshold_decay_tau_days"], 30)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.threshold_decay_tau_days, 30)
+
+    def test_threshold_decay_tau_days_out_of_range_is_rejected(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_tau_days": 6}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_tau_days": 91}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_self_can_update_threshold_decay_min_and_max_pct(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}",
+            {"threshold_decay_min_pct": 5, "threshold_decay_max_pct": 15},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["threshold_decay_min_pct"], 5)
+        self.assertEqual(response.json()["threshold_decay_max_pct"], 15)
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.threshold_decay_min_pct, 5)
+        self.assertEqual(self.athlete.threshold_decay_max_pct, 15)
+
+    def test_threshold_decay_min_pct_out_of_range_is_rejected(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_min_pct": 11}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_threshold_decay_max_pct_out_of_range_is_rejected(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_max_pct": 31}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_threshold_decay_min_pct_exceeding_stored_max_pct_is_rejected(self):
+        # The athlete's stored max_pct (default 12) is the bound when the request only sends
+        # min_pct - not just the two fields sent together in the same request.
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_min_pct": 10}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)  # 10 <= stored max_pct (12) - allowed
+
+        self.athlete.refresh_from_db()
+        self.athlete.threshold_decay_max_pct = 8
+        self.athlete.save(update_fields=["threshold_decay_max_pct"])
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_min_pct": 9}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)  # 9 > stored max_pct (8) - rejected
+        self.assertIn("threshold_decay_min_pct", response.json()["error"]["message"])
+
+    def test_threshold_decay_max_pct_below_stored_min_pct_is_rejected_against_max_pct(self):
+        # The mirror of the test above - the request only sends max_pct this time, so the error
+        # must name max_pct, not min_pct (the field it would wrongly land on if the validation
+        # always blamed min_pct regardless of which field the client actually touched).
+        self.athlete.threshold_decay_min_pct = 5
+        self.athlete.save(update_fields=["threshold_decay_min_pct"])
+
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}", {"threshold_decay_max_pct": 3}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)  # 3 < stored min_pct (5) - rejected
+        self.assertIn("threshold_decay_max_pct", response.json()["error"]["message"])
+
+    def test_threshold_decay_min_max_pct_rejected_when_swapped_in_the_same_request(self):
+        response = _bearer_client(self.athlete).patch(
+            f"/v1/athletes/{self.athlete.id}",
+            {"threshold_decay_min_pct": 15, "threshold_decay_max_pct": 5},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_self_can_update_race_block_weeks(self):
         response = _bearer_client(self.athlete).patch(
             f"/v1/athletes/{self.athlete.id}", {"race_block_weeks": 20}, format="json"

@@ -51,6 +51,10 @@ _SUGGESTION_AFFECTING_SETTINGS = {
     "threshold_sanity_pct",
     "threshold_warning_days",
     "ftp_calculation_method",
+    "threshold_decay_enabled",
+    "threshold_decay_tau_days",
+    "threshold_decay_min_pct",
+    "threshold_decay_max_pct",
 }
 
 # 4w/16w match BEST_EFFORT_TRIM_PERIOD_DAYS in uploads/processing.py exactly - the Best Efforts
