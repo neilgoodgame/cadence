@@ -188,4 +188,28 @@ class ThresholdSuggestionServiceTest extends IntegrationTest {
 
 		assertThat(service.listSuggestions(athlete).stream().filter(s -> "ftp".equals(s.field())).toList()).hasSize(1);
 	}
+
+	@Test
+	void upcomingDropSuggestionIsDecayAware() {
+		User athlete = newAthlete("threshold-sug-svc-decay-aware@example.cc", 250);
+		athlete.setThresholdDecayEnabled(true);
+		athlete.setThresholdDecayMinPct(3);
+		athlete.setThresholdDecayMaxPct(12);
+		userRepository.save(athlete);
+		int lead = ThresholdHistoryCalculator.warningLeadDays(athlete);
+		LocalDate effectiveFrom = LocalDate.now().minusDays(athlete.getThresholdWindowDays() + 1L - lead);
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(athlete);
+		entry.setField(ThresholdField.FTP);
+		entry.setValueNumeric(250);
+		entry.setEffectiveFrom(effectiveFrom);
+		entry.setCurrentFrom(effectiveFrom);
+		thresholdHistoryRepository.save(entry);
+
+		ThresholdSuggestionResponse upcoming = service.listSuggestions(athlete).stream()
+				.filter(s -> "upcoming_drop".equals(s.kind())).findFirst().orElseThrow();
+
+		assertThat(upcoming.decays()).isTrue();
+		assertThat(upcoming.proposed()).isEqualTo(220);
+	}
 }

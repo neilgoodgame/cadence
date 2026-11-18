@@ -148,7 +148,7 @@ public class ThresholdSuggestionService {
 					deltaPct(reference, candidate.impliedValue()),
 					candidate.activityId(), candidate.date(),
 					new ImpliedFrom(candidate.window(), Math.round(candidate.rawValue())),
-					null, null, null);
+					null, null, null, false);
 		}
 		return null;
 	}
@@ -166,7 +166,7 @@ public class ThresholdSuggestionService {
 					field.wireValue(), "race_will_refresh",
 					null, null, null, null, null, null,
 					raceWillRefresh.expiry(), raceWillRefresh.daysLeft(),
-					new RaceInfo(race.getId(), race.getName(), race.getDate()));
+					new RaceInfo(race.getId(), race.getName(), race.getDate()), false);
 		}
 
 		UpcomingDropResult.UpcomingDrop drop = (UpcomingDropResult.UpcomingDrop) result;
@@ -178,15 +178,15 @@ public class ThresholdSuggestionService {
 			return null;
 		}
 		Double reference = athleteReferenceValue(athlete, field);
-		Candidate successor = drop.successor();
+		Double targetValue = drop.targetValue();
 		return new ThresholdSuggestionResponse(
 				field.wireValue() + ":upcoming_drop:" + key,
 				field.wireValue(), "upcoming_drop",
 				currentRawValue(athlete, field),
-				successor != null ? formatValue(field, successor.impliedValue()) : null,
-				successor != null ? deltaPct(reference, successor.impliedValue()) : null,
+				targetValue != null ? formatValue(field, targetValue) : null,
+				targetValue != null ? deltaPct(reference, targetValue) : null,
 				sourceActivityId, currentEntry.getEffectiveFrom(),
-				null, drop.expiry(), drop.daysLeft(), null);
+				null, drop.expiry(), drop.daysLeft(), null, drop.decays());
 	}
 
 	private List<ThresholdSuggestionResponse> build(User athlete) {

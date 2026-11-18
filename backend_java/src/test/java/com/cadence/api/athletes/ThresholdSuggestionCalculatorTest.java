@@ -337,7 +337,7 @@ class ThresholdSuggestionCalculatorTest extends IntegrationTest {
 	}
 
 	@Test
-	void upcomingDropHasNullSuccessorWhenThereIsNone() {
+	void upcomingDropHasNullTargetValueWhenThereIsNoSuccessor() {
 		User athlete = newAthlete("threshold-sug-no-successor@example.cc", 250);
 		LocalDate today = LocalDate.of(2026, 6, 1);
 		int lead = ThresholdHistoryCalculator.warningLeadDays(athlete);
@@ -347,6 +347,47 @@ class ThresholdSuggestionCalculatorTest extends IntegrationTest {
 		UpcomingDropResult result = calculator.upcomingDrop(athlete, ThresholdField.FTP, today);
 
 		assertThat(result).isInstanceOf(UpcomingDropResult.UpcomingDrop.class);
-		assertThat(((UpcomingDropResult.UpcomingDrop) result).successor()).isNull();
+		assertThat(((UpcomingDropResult.UpcomingDrop) result).targetValue()).isNull();
+		assertThat(((UpcomingDropResult.UpcomingDrop) result).decays()).isFalse();
+	}
+
+	@Test
+	void upcomingDropIsDecayAwareAndNeverGoesStale() {
+		User athlete = newAthlete("threshold-sug-decay-aware@example.cc", 250);
+		athlete.setThresholdDecayEnabled(true);
+		athlete.setThresholdDecayMinPct(3);
+		athlete.setThresholdDecayMaxPct(12);
+		userRepository.save(athlete);
+		LocalDate today = LocalDate.of(2026, 6, 1);
+		int lead = ThresholdHistoryCalculator.warningLeadDays(athlete);
+		LocalDate effectiveFrom = today.minusDays(athlete.getThresholdWindowDays() + 1L - lead);
+		newLedgerEntry(athlete, ThresholdField.FTP, 250, null, effectiveFrom);
+
+		UpcomingDropResult result = calculator.upcomingDrop(athlete, ThresholdField.FTP, today);
+
+		assertThat(result).isInstanceOf(UpcomingDropResult.UpcomingDrop.class);
+		UpcomingDropResult.UpcomingDrop drop = (UpcomingDropResult.UpcomingDrop) result;
+		assertThat(drop.decays()).isTrue();
+		assertThat(drop.targetValue()).isEqualTo(220.0);
+	}
+
+	@Test
+	void upcomingDropFallsBackToSuccessorWhenTheAnchorRowHasNoValue() {
+		// A corrupt row (shouldn't happen - see the guard's own comment) must not crash
+		// decayTarget's effort conversion - falls back to the plain successor, same as decay-off.
+		User athlete = newAthlete("threshold-sug-decay-corrupt@example.cc", 250);
+		athlete.setThresholdDecayEnabled(true);
+		userRepository.save(athlete);
+		LocalDate today = LocalDate.of(2026, 6, 1);
+		int lead = ThresholdHistoryCalculator.warningLeadDays(athlete);
+		LocalDate effectiveFrom = today.minusDays(athlete.getThresholdWindowDays() + 1L - lead);
+		newLedgerEntry(athlete, ThresholdField.FTP, null, null, effectiveFrom); // valueNumeric left null
+
+		UpcomingDropResult result = calculator.upcomingDrop(athlete, ThresholdField.FTP, today);
+
+		assertThat(result).isInstanceOf(UpcomingDropResult.UpcomingDrop.class);
+		UpcomingDropResult.UpcomingDrop drop = (UpcomingDropResult.UpcomingDrop) result;
+		assertThat(drop.decays()).isTrue();
+		assertThat(drop.targetValue()).isNull();
 	}
 }
