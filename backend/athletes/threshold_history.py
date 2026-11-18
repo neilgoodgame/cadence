@@ -1255,6 +1255,11 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
     current_value = _athlete_reference_value(athlete, field)
 
     anchor_value = _row_value(field, latest) if athlete.threshold_decay_enabled else None
+    # Whether a decay-aware target was actually computed below - not just whether the setting
+    # is on. If anchor_value is None (decay off, or a corrupt row - see below), the proposed
+    # value is the plain successor, not a decay target, so the suggestion layer/frontend must
+    # not be told "this is decay-aware" in that case either.
+    decays = anchor_value is not None
 
     if anchor_value is None:
         # Decay off, or (shouldn't happen - the ledger's own invariant guarantees exactly one
@@ -1321,19 +1326,19 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
         return {
             "kind": "race_will_refresh",
             "race": race,
-            "decays": athlete.threshold_decay_enabled,
+            "decays": decays,
             "expiry": expiry,
             "days_left": days_left,
         }
 
-    # Rule 4: no successor - emit anyway (target_value=None, decay off); the caller formats
-    # this as "goes stale" rather than "drops to {value}". Impossible under decay - target_value
-    # is never None there (see decay_target's no-successor floor fallback).
+    # Rule 4: no successor - emit anyway (target_value=None); the caller formats this as "goes
+    # stale" rather than "drops to {value}". Impossible when decays is True - target_value is
+    # never None on that path (see decay_target's no-successor floor fallback).
     return {
         "kind": "upcoming_drop",
         "current_entry": latest,
         "target_value": target_value,
-        "decays": athlete.threshold_decay_enabled,
+        "decays": decays,
         "expiry": expiry,
         "days_left": days_left,
     }

@@ -2695,6 +2695,9 @@ class ThresholdSuggestionAlgorithmTests(TestCase):
         # A corrupt row (shouldn't happen - the ledger's own invariant guarantees exactly one of
         # value_numeric/value_pace is set for its own field) must not crash decay_target's
         # effort conversion - falls back to the plain successor instead, same as decay-off.
+        # decays must also be False here: no decay-aware target was actually computed, so the
+        # frontend must not render the "starts easing... towards about" wording with a null
+        # proposed value.
         today = date(2026, 6, 1)
         lead = warning_lead_days(self.athlete)
         effective_from = today - timedelta(days=self.athlete.threshold_window_days + 1 - lead)
@@ -2705,7 +2708,7 @@ class ThresholdSuggestionAlgorithmTests(TestCase):
         result = upcoming_drop(self.athlete, "ftp", today=today)
 
         self.assertEqual(result["kind"], "upcoming_drop")
-        self.assertTrue(result["decays"])
+        self.assertFalse(result["decays"])
         self.assertIsNone(result["target_value"])
 
 
