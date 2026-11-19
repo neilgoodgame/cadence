@@ -9,5 +9,6 @@ export default defineConfig({
     // vitest's - without this, vitest's default glob picks them up too and they fail
     // to even load (wrong `test` import).
     exclude: ['**/node_modules/**', '**/e2e/**'],
+    setupFiles: ['./src/test/setup.ts'],
   },
 })
