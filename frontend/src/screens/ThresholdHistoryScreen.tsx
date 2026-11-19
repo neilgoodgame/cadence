@@ -15,7 +15,7 @@ import { useAuth } from "../auth/AuthContext";
 import { Card } from "../components/Card";
 import { ActivityNameLink } from "../components/ActivityNameLink";
 import { ThresholdHistoryChart } from "./ThresholdHistoryChart";
-import { daysInEffect, deltaLabel } from "./thresholdHistory";
+import { daysInEffect, deltaLabel, groupDecayedRuns, type LedgerRow } from "./thresholdHistory";
 import { AddRaceModal } from "./calendar/AddRaceModal";
 import { ScheduleModal } from "./calendar/ScheduleModal";
 import {
@@ -108,6 +108,9 @@ export function ThresholdHistoryScreen() {
   const [accepted, setAccepted] = useState<{ id: string; field: ThresholdFieldName; value: number | string; effectiveFrom: string } | null>(null);
   const [scheduleTarget, setScheduleTarget] = useState<ActionableSuggestion | null>(null);
   const [raceTarget, setRaceTarget] = useState<ActionableSuggestion | null>(null);
+  // Which collapsed decayed-run groups (keyed by the run's first row's index in `entries`) are
+  // expanded - default collapsed. See groupDecayedRuns' own Javadoc for why a run exists at all.
+  const [expandedRuns, setExpandedRuns] = useState<Set<number>>(new Set());
 
   const field = FIELDS.find((f) => f.field === rawField)?.field;
 
@@ -181,6 +184,149 @@ export function ThresholdHistoryScreen() {
   const entries = historyQuery.data?.data ?? [];
   const days = daysInEffect(entries);
   const maxDays = Math.max(1, ...days);
+  const groups = groupDecayedRuns(entries);
+
+  function renderRow(row: LedgerRow) {
+    const { entry, index: i } = row;
+    // effective_from is the qualifying activity's own date; current_from is when this row
+    // actually became the recorded current value (see ThresholdHistoryPoint) - they differ
+    // exactly when a later ingest revealed an earlier, dormant effort (the same "revealed" case
+    // ThresholdHistoryIndicator surfaces on the activity page).
+    const revealed = entry.effective_from !== entry.current_from;
+    const delta = i < entries.length - 1 ? deltaLabel(active.field as ThresholdFieldName, entry.value, entries[i + 1].value) : null;
+    const barPct = Math.round((days[i] / maxDays) * 100);
+    // A manual row's "effective from" is always entered deliberately - when it was actually
+    // saved (created_at) can be a different date than what it's backdated to (current_from,
+    // which equals effective_from for every manual row - see ThresholdHistoryPoint). Worth
+    // showing only when they differ; same-day entries would just repeat the date already shown
+    // (issue #505).
+    const backdated = entry.set_by_user_id !== null && entry.created_at.slice(0, 10) !== entry.current_from;
+    return (
+      <div
+        key={`${entry.current_from}-${i}`}
+        style={{
+          display: "grid", gridTemplateColumns: GRID_COLS, gap: 8,
+          padding: "11px 18px",
+          borderBottom: i < entries.length - 1 ? "1px solid var(--line)" : "none",
+          alignItems: "center",
+        }}
+      >
+        <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>{i + 1}</span>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+          <span className="mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
+            {formatLedgerValue(active.field as ThresholdFieldName, entry.value)}
+          </span>
+          {entry.is_correction_only && (
+            <span
+              className="mono"
+              title="Not used as the current value - outside the window, or a later entry already existed when this was saved."
+              style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "var(--line)", color: "var(--ink3)", letterSpacing: "0.04em", whiteSpace: "nowrap" }}
+            >
+              CORRECTION ONLY
+            </span>
+          )}
+          {entry.kind === "decayed" && (
+            <span
+              className="mono"
+              title="Modelled - eased down from an aged-out measurement, not a fresh effort."
+              style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "var(--line)", color: "var(--ink3)", letterSpacing: "0.04em", whiteSpace: "nowrap" }}
+            >
+              DECAYED
+            </span>
+          )}
+        </span>
+        {entry.source_activity_id ? (
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ember)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <ActivityNameLink id={entry.source_activity_id} />
+          </span>
+        ) : (
+          <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>&mdash;</span>
+        )}
+        <span className="mono" style={{ fontSize: 12, color: "var(--ink3)", whiteSpace: "nowrap" }}>
+          {setByLabel(entry.set_by_user_id, activeAthleteId, selfId)}
+        </span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--ink3)", whiteSpace: "nowrap" }}>
+          {delta ?? "—"}
+        </span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--ink2)", display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
+          {fmtShortDate(entry.current_from)}
+          {backdated && (
+            <span style={{ color: "var(--ink3)" }} title={`Entered ${fmtShortDate(entry.created_at)}`}>
+              &middot; entered {fmtShortDateNoYear(entry.created_at)}
+            </span>
+          )}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 56, height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden", flexShrink: 0 }}>
+            <div style={{ width: `${barPct}%`, height: "100%", background: "var(--ember)", borderRadius: 3 }} />
+          </div>
+          <span className="mono" style={{ fontSize: 12, color: "var(--ink2)", whiteSpace: "nowrap" }}>
+            {days[i]} day{days[i] === 1 ? "" : "s"}
+          </span>
+        </div>
+        {revealed ? (
+          <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
+            <span
+              className="mono"
+              style={{
+                fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+                background: "var(--ember-soft)", color: "var(--ember)", letterSpacing: "0.04em",
+              }}
+            >
+              REVEALED
+            </span>
+            <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>{fmtShortDate(entry.effective_from)}</span>
+          </span>
+        ) : (
+          <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>&mdash;</span>
+        )}
+      </div>
+    );
+  }
+
+  function renderDecayedRun(rows: LedgerRow[]) {
+    const key = rows[0].index;
+    const open = expandedRuns.has(key);
+    const oldest = rows[rows.length - 1].entry;
+    const newest = rows[0].entry;
+    return (
+      <Fragment key={`decayed-run-${key}`}>
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            padding: "11px 18px",
+            borderBottom: rows[rows.length - 1].index < entries.length - 1 ? "1px solid var(--line)" : "none",
+          }}
+        >
+          <span
+            className="mono"
+            style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "var(--line)", color: "var(--ink3)", letterSpacing: "0.04em" }}
+          >
+            DECAYED
+          </span>
+          <span className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
+            {rows.length} entries &middot; {formatLedgerValue(active.field as ThresholdFieldName, oldest.value)} &rarr;{" "}
+            {formatLedgerValue(active.field as ThresholdFieldName, newest.value)} &middot; {fmtShortDate(oldest.current_from)}{" "}
+            &ndash; {fmtShortDate(newest.current_from)}
+          </span>
+          <span
+            onClick={() =>
+              setExpandedRuns((s) => {
+                const next = new Set(s);
+                if (open) next.delete(key);
+                else next.add(key);
+                return next;
+              })
+            }
+            style={{ fontSize: 12, fontWeight: 600, color: "var(--ember)", cursor: "pointer" }}
+          >
+            {open ? "Hide entries" : "Show entries"}
+          </span>
+        </div>
+        {open && rows.map((row) => renderRow(row))}
+      </Fragment>
+    );
+  }
 
   const currentValue = active.field === "lthr" ? user.lthr : thresholdsQuery.data?.[active.field as ThresholdFieldName]?.value ?? null;
   const currentSince =
@@ -464,94 +610,7 @@ export function ThresholdHistoryScreen() {
                   <span>Effort date</span>
                 </div>
 
-                {entries.map((entry, i) => {
-                  // effective_from is the qualifying activity's own date; current_from is when
-                  // this row actually became the recorded current value (see
-                  // ThresholdHistoryPoint) - they differ exactly when a later ingest revealed an
-                  // earlier, dormant effort (the same "revealed" case ThresholdHistoryIndicator
-                  // surfaces on the activity page).
-                  const revealed = entry.effective_from !== entry.current_from;
-                  const delta = i < entries.length - 1 ? deltaLabel(active.field as ThresholdFieldName, entry.value, entries[i + 1].value) : null;
-                  const barPct = Math.round((days[i] / maxDays) * 100);
-                  // A manual row's "effective from" is always entered deliberately - when it was
-                  // actually saved (created_at) can be a different date than what it's backdated
-                  // to (current_from, which equals effective_from for every manual row - see
-                  // ThresholdHistoryPoint). Worth showing only when they differ; same-day entries
-                  // would just repeat the date already shown (issue #505).
-                  const backdated = entry.set_by_user_id !== null && entry.created_at.slice(0, 10) !== entry.current_from;
-                  return (
-                    <div
-                      key={`${entry.current_from}-${i}`}
-                      style={{
-                        display: "grid", gridTemplateColumns: GRID_COLS, gap: 8,
-                        padding: "11px 18px",
-                        borderBottom: i < entries.length - 1 ? "1px solid var(--line)" : "none",
-                        alignItems: "center",
-                      }}
-                    >
-                      <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>{i + 1}</span>
-                      <span style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
-                        <span className="mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
-                          {formatLedgerValue(active.field as ThresholdFieldName, entry.value)}
-                        </span>
-                        {entry.is_correction_only && (
-                          <span
-                            className="mono"
-                            title="Not used as the current value - outside the window, or a later entry already existed when this was saved."
-                            style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "var(--line)", color: "var(--ink3)", letterSpacing: "0.04em", whiteSpace: "nowrap" }}
-                          >
-                            CORRECTION ONLY
-                          </span>
-                        )}
-                      </span>
-                      {entry.source_activity_id ? (
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ember)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          <ActivityNameLink id={entry.source_activity_id} />
-                        </span>
-                      ) : (
-                        <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>&mdash;</span>
-                      )}
-                      <span className="mono" style={{ fontSize: 12, color: "var(--ink3)", whiteSpace: "nowrap" }}>
-                        {setByLabel(entry.set_by_user_id, activeAthleteId, selfId)}
-                      </span>
-                      <span className="mono" style={{ fontSize: 12, color: "var(--ink3)", whiteSpace: "nowrap" }}>
-                        {delta ?? "—"}
-                      </span>
-                      <span className="mono" style={{ fontSize: 12, color: "var(--ink2)", display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
-                        {fmtShortDate(entry.current_from)}
-                        {backdated && (
-                          <span style={{ color: "var(--ink3)" }} title={`Entered ${fmtShortDate(entry.created_at)}`}>
-                            &middot; entered {fmtShortDateNoYear(entry.created_at)}
-                          </span>
-                        )}
-                      </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 56, height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden", flexShrink: 0 }}>
-                          <div style={{ width: `${barPct}%`, height: "100%", background: "var(--ember)", borderRadius: 3 }} />
-                        </div>
-                        <span className="mono" style={{ fontSize: 12, color: "var(--ink2)", whiteSpace: "nowrap" }}>
-                          {days[i]} day{days[i] === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                      {revealed ? (
-                        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
-                          <span
-                            className="mono"
-                            style={{
-                              fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
-                              background: "var(--ember-soft)", color: "var(--ember)", letterSpacing: "0.04em",
-                            }}
-                          >
-                            REVEALED
-                          </span>
-                          <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>{fmtShortDate(entry.effective_from)}</span>
-                        </span>
-                      ) : (
-                        <span className="mono" style={{ fontSize: 12, color: "var(--ink3)" }}>&mdash;</span>
-                      )}
-                    </div>
-                  );
-                })}
+                {groups.map((group) => (group.kind === "row" ? renderRow(group.row) : renderDecayedRun(group.rows)))}
               </div>
             </>
           )}

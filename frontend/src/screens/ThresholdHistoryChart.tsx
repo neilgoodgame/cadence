@@ -11,6 +11,7 @@ import {
   isImprovement,
   monthTickStep,
   numericValue,
+  splitByKind,
   tooltipDays,
   tooltipDeltaText,
   tooltipSourceText,
@@ -68,8 +69,9 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
         date: new Date(p.current_from),
         value: numericValue(field, p.value),
         hasSource: p.source_activity_id != null,
+        kind: p.kind,
       }))
-      .filter((p): p is { date: Date; value: number; hasSource: boolean } => p.value != null);
+      .filter((p): p is { date: Date; value: number; hasSource: boolean; kind: ThresholdHistoryPoint["kind"] } => p.value != null);
     if (chronological.length === 0) {
       return null;
     }
@@ -90,7 +92,7 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
     // Extends the last (current) value's step to today, so the line visually continues to the
     // present instead of stopping dead at its source activity's date - a threshold value holds
     // until superseded, it doesn't just vanish.
-    const series: ClippedPoint[] = today > last.date ? [...clipped, { date: today, value: last.value, real: false }] : clipped;
+    const series: ClippedPoint[] = today > last.date ? [...clipped, { date: today, value: last.value, real: false, kind: last.kind }] : clipped;
 
     const t0 = series[0].date;
     const t1 = series[series.length - 1].date;
@@ -111,6 +113,7 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
       .curve(curveStepAfter);
     const path = stepLine(series) ?? "";
     const area = `${path} V ${H} H ${x(series[0].date)} Z`;
+    const segments = splitByKind(series).map((seg) => ({ decayed: seg.decayed, d: stepLine(seg.points) ?? "" }));
 
     const yTicks = y.ticks(4).map((v) => ({ value: v, y: y(v) }));
 
@@ -144,12 +147,19 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
     const bestPoint = best != null ? real.find((p) => p.value === best) : undefined;
     const currentIsBest = best != null && last.value === best;
 
-    const changePoints = real.map((p, i) => ({
-      index: i,
-      x: x(p.date),
-      y: y(p.value),
-      improved: isImprovement(field, p.value, p.previousValue),
-    }));
+    // Decayed points are a daily-computed glide, not a discrete new measurement - they don't
+    // get a change-point dot/hover target (and tooltipSourceText has no way to tell one apart
+    // from a real manual entry, since both carry source_activity_id: null). `index` still
+    // reflects each point's true position in `real`, since `real[hover]` relies on it.
+    const changePoints = real
+      .map((p, i) => ({
+        index: i,
+        x: x(p.date),
+        y: y(p.value),
+        improved: isImprovement(field, p.value, p.previousValue),
+        decayed: p.kind === "decayed",
+      }))
+      .filter((p) => !p.decayed);
 
     const endPoint = series[series.length - 1];
     const endX = x(endPoint.date);
@@ -158,6 +168,7 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
     return {
       path,
       area,
+      segments,
       yTicks,
       xTicks,
       yearBands,
@@ -178,7 +189,7 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
     return <div style={{ color: "var(--ink3)", fontSize: 13 }}>Not enough history yet to chart.</div>;
   }
 
-  const { path, area, yTicks, xTicks, yearBands, real, best, bestPoint, currentIsBest, changePoints, endX, endY, endValue, x, y } = chart;
+  const { area, segments, yTicks, xTicks, yearBands, real, best, bestPoint, currentIsBest, changePoints, endX, endY, endValue, x, y } = chart;
 
   const pctX = (xv: number) => (xv / W) * 100;
   const pctY = (yv: number) => ((5 + yv) / VIEWBOX_H) * 100;
@@ -275,7 +286,18 @@ export function ThresholdHistoryChart({ field, points }: { field: ThresholdField
                 <rect x={0} y={y(best) - 0.5} width={W} height={1} fill="var(--ink3)" opacity={0.8} />
               )}
               <path d={area} fill="url(#thrArea)" stroke="none" />
-              <path d={path} fill="none" stroke="var(--ember)" strokeWidth={2} strokeLinejoin="round" />
+              {segments.map((seg, i) => (
+                <path
+                  key={i}
+                  d={seg.d}
+                  fill="none"
+                  stroke="var(--ember)"
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                  strokeDasharray={seg.decayed ? "5 4" : undefined}
+                  opacity={seg.decayed ? 0.55 : 1}
+                />
+              ))}
               {changePoints.map((p) => (
                 <g key={p.index}>
                   <circle

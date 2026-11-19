@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThresholdHistoryPoint } from "../api/types";
-import { daysInEffect, deltaLabel } from "./thresholdHistory";
+import { daysInEffect, deltaLabel, groupDecayedRuns } from "./thresholdHistory";
 
 function point(overrides: Partial<ThresholdHistoryPoint> = {}): ThresholdHistoryPoint {
   return {
@@ -61,5 +61,57 @@ describe("deltaLabel", () => {
   it("returns null when the value hasn't changed", () => {
     expect(deltaLabel("ftp", 250, 250)).toBeNull();
     expect(deltaLabel("threshold_pace", "4:35", "4:35")).toBeNull();
+  });
+});
+
+describe("groupDecayedRuns", () => {
+  it("leaves every row ungrouped when none are decayed", () => {
+    const entries = [point({ kind: "measured" }), point({ kind: "manual" })];
+    expect(groupDecayedRuns(entries)).toEqual([
+      { kind: "row", row: { entry: entries[0], index: 0 } },
+      { kind: "row", row: { entry: entries[1], index: 1 } },
+    ]);
+  });
+
+  it("leaves a lone decayed row ungrouped", () => {
+    const entries = [point({ kind: "decayed" }), point({ kind: "measured" })];
+    expect(groupDecayedRuns(entries)).toEqual([
+      { kind: "row", row: { entry: entries[0], index: 0 } },
+      { kind: "row", row: { entry: entries[1], index: 1 } },
+    ]);
+  });
+
+  it("collapses a run of 2+ consecutive decayed rows, preserving order", () => {
+    const entries = [point({ kind: "decayed" }), point({ kind: "decayed" }), point({ kind: "decayed" })];
+    expect(groupDecayedRuns(entries)).toEqual([
+      {
+        kind: "decayedRun",
+        rows: [
+          { entry: entries[0], index: 0 },
+          { entry: entries[1], index: 1 },
+          { entry: entries[2], index: 2 },
+        ],
+      },
+    ]);
+  });
+
+  it("collapses a run in the middle without eating its measured neighbours", () => {
+    const entries = [
+      point({ kind: "measured" }),
+      point({ kind: "decayed" }),
+      point({ kind: "decayed" }),
+      point({ kind: "manual" }),
+    ];
+    expect(groupDecayedRuns(entries)).toEqual([
+      { kind: "row", row: { entry: entries[0], index: 0 } },
+      {
+        kind: "decayedRun",
+        rows: [
+          { entry: entries[1], index: 1 },
+          { entry: entries[2], index: 2 },
+        ],
+      },
+      { kind: "row", row: { entry: entries[3], index: 3 } },
+    ]);
   });
 });
