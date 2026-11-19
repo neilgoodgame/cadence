@@ -233,6 +233,7 @@ to preview that outcome (`preview`) without saving anything.
 | `set_by` | Who entered it by hand, if anyone |
 | `effective_from` | The date of the qualifying effort, or of the manual entry |
 | `current_from` | The date this row actually became the current value |
+| `kind` | `measured` (a qualifying activity), `manual` (entered by hand), or `decayed` (eased down by 3.5 - only possible when `threshold_decay_enabled`) |
 | `is_correction_only` | True for a backdated manual row that never became current - see 3.3 |
 
 The two dates differ when a lower, older value only becomes current because a
@@ -242,10 +243,69 @@ might only become current on 10 June when a 270 W FTP from 15 Feb drops out.
 **Which row is current:** the row with the latest `effective_from`, excluding
 any `is_correction_only` row. Java breaks ties by highest id.
 
-**Staleness:** a field is stale when
-`(today − current row's effective_from) > threshold_window_days`, or when there
-is no row at all. This is a cheap date check that runs on every dashboard read;
-it doesn't recalculate anything.
+**Staleness:** a field is stale when `(today − latest non-decayed row's effective_from) >
+threshold_window_days`, or when there is no such row at all - excluding a `decayed` row too,
+not just a correction-only one, since a decayed row's own `effective_from` is always today and
+would otherwise mask staleness for as long as decay keeps running. This is a cheap date check
+that runs on every dashboard read; it doesn't recalculate anything.
+
+### 3.5 Gradual decay
+
+When `threshold_decay_enabled`, a value doesn't drop in one step the instant its anchor's
+evidence ages out of the window - it eases down smoothly, only as far as current training load
+fails to support it. With decay off, section 3.1's cliff behaviour is unchanged: the window's
+next-best successor takes over immediately.
+
+**Anchor.** The most recent `measured` or `manual` row - its value `A` and date `a`. A
+qualifying activity whose implied value is at least the current value becomes a new anchor
+immediately (an "upward reset"), and so does a fresh manual entry or accepted suggestion. Before
+the anchor's expiry (`a + threshold_window_days + 1` - the same rule staleness and upcoming-drop
+warnings use), the value stays pinned at `A`: weaker evidence already in the window never
+replaces it early.
+
+**After expiry**, each day:
+
+```
+ratio     = clamp(load(today) / load(anchor date), 0, 1)   # 1.0 with no baseline load
+amplitude = min_pct + (max_pct − min_pct) × (1 − ratio)
+floor     = A × (1 − amplitude)
+target    = max(successor, floor)     if a qualifying successor exists in the window
+          = A × (1 − max_pct)         otherwise
+value     = min(value, target + (value − target) × e^(−1/tau_days))
+```
+
+The `min(value, ...)` clamp means decay only ever eases **down**: if load recovers mid-glide and
+`floor` rises back above the current value, the value doesn't follow it - only a genuine upward
+reset moves it up. `min_pct` guarantees some decay even with load fully maintained (`ratio = 1`),
+since a value that's gone untested for a whole window cycle is a weaker claim regardless of
+training volume. Each new anchor restarts the clock, so without a fresh qualifying effort a
+value ratchets down by roughly `min_pct` to `max_pct` every `threshold_window_days`-long cycle -
+the "test due" pressure this feature is named for. A `decayed` row is written only when the
+rounded value actually changes from the last one emitted (3.4).
+
+**Load term** (the `load(...)` ratio above): intensity-filtered training load for the field's
+sport, measured against the **anchor's** value - never the decaying value itself, which would
+let the Z2/Z3 boundary drift down with it. For each activity, every 30-second-smoothed power
+sample at or above 75% of the anchor counts, weighted by `(power / anchor)² × 100 / 3600` - the
+same IF²-weighted TSS-rate shape as the app's other load metrics, restricted to above-tempo
+effort so volume alone can't disguise an intensity drop. An activity with no trusted power
+(HR-only, no power, or an excluded power source) falls back to the same formula against heart
+rate, at 85% of LTHR. The result is smoothed with a 42-day EWMA (the same recurrence as the
+fitness/CTL series elsewhere in the app).
+
+**Pace direction.** Decay math runs in effort units (`1 / pace`, a speed) and converts back to
+whole seconds/km for storage, so decay always makes pace **slower** - consistent with how pace
+zones already treat percentages as effort (section 4).
+
+**Worked example.** 260 W anchor expires on day 0; a 232 W successor is in the window;
+`tau_days` = 25, `min_pct` = 3%, `max_pct` = 12% (all current defaults - section 6):
+
+| Load vs the anchor date | Amplitude | Target | Day 0 | Day 14 | Day 28 | Day 56 |
+|---|---|---|---|---|---|---|
+| Maintained (ratio 1) | 3% | 252.2 W | 260 | 257 | 255 | 253 |
+| Halved (ratio 0.5) | 7.5% | 240.5 W | 260 | 252 | 247 | 243 |
+| None (ratio 0; floor 228.8 W is below the successor) | 12% | 232 W | 260 | 248 | 241 | 235 |
+| No qualifying activity in the window at all | 12% | 228.8 W | 260 | 247 | 239 | 232 |
 
 ## 4. Zones
 
@@ -359,8 +419,11 @@ the expiry date.
    already implies a value within 2% of the current one.
 3. **Race booked: quiet note.** If a race in that sport is booked before the
    expiry date, a `race_will_refresh` note is shown instead of a warning.
-4. **Otherwise: warn.** The warning says "drops to X", or "goes stale" if there
-   is no successor.
+4. **Otherwise: warn.** The warning says "drops to X", or "goes stale" if there is no
+   successor - unless `threshold_decay_enabled`, in which case the drop is never a hard stop:
+   `proposed` becomes 3.5's decay target instead of the plain window successor, `decays` is
+   set, and the frontend instead says "starts easing from X on \<expiry date\>, towards about
+   Y".
 
 ## 6. Athlete settings
 
@@ -368,6 +431,10 @@ the expiry date.
 |---|---|---|
 | `threshold_window_days` | 112 | Length of the rolling window |
 | `threshold_sanity_pct` | 30 | Width of the outlier filter |
+| `threshold_decay_enabled` | false | Turns on gradual decay (3.5) instead of the default hard cliff when a value's anchor ages out |
+| `threshold_decay_tau_days` | 25 | Exponential time constant for how fast decay approaches its target (range 7-90) |
+| `threshold_decay_min_pct` | 3 | Minimum decay amplitude even with training fully maintained (range 0-10, must be ≤ max) |
+| `threshold_decay_max_pct` | 12 | Maximum decay amplitude with no maintaining load at all (range 0-30) |
 | `threshold_warning_days` | 21 | Warning lead for upcoming drops (0 turns warnings off) |
 | `ftp_calculation_method` | `twenty_min_test` | 20-minute × 0.95, or 60-minute direct |
 | `running_power_source` | `stryd` | Which running-power source counts (`stryd` / `native`) |
