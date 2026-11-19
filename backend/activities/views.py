@@ -641,15 +641,16 @@ class ActivityMergeView(APIView):
 
 
 class ActivityUnmergeView(APIView):
-    """Issue #501 (phase 1): POST .../unmerge, undoing the activity's own latest active merge.
-    See unmerge_service.undo_merge for the actual orchestration."""
+    """Issue #501 (phase 1): POST .../unmerge, undoing one of the activity's active merges - the
+    only one, unless an optional "merge_id" body field (issue #542) picks a specific one among
+    several. See unmerge_service.undo_merge for the actual orchestration."""
 
     def post(self, request: Request, id: str) -> Response:
         activity = get_object_or_404(Activity, pk=id)
         sub, _ = get_effective_athlete_id(request)
         if not user_may_write(sub, activity.athlete_id):
             raise PermissionDenied("You do not have write access to that athlete's data.")
-        undo_merge(id)
+        undo_merge(id, merge_id=request.data.get("merge_id"))
         activity.refresh_from_db()
         return Response(ActivitySerializer(activity).data)
 

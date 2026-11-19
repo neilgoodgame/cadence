@@ -192,13 +192,16 @@ public class ActivityController {
 		}
 	}
 
-	/** Issue #501 (phase 1): undoes {@code id}'s own latest active merge. See
+	/** Issue #501 (phase 1): undoes one of {@code id}'s active merges - the only one, unless an
+	 * optional {@code merge_id} body field (issue #542) picks a specific one among several. See
 	 * {@link ActivityUnmergeService#undoMerge} for the orchestration. */
 	@PostMapping("/v1/activities/{id}/unmerge")
-	public ActivityResponse unmergeActivity(@PathVariable String id) {
+	public ActivityResponse unmergeActivity(@PathVariable String id,
+			@RequestBody(required = false) Map<String, Object> body) {
 		Activity activity = activityService.getActivity(id);
 		accessGuard.requireWrite(activity.getAthlete().getId());
-		activityUnmergeService.undoMerge(id);
+		String mergeId = body == null ? null : (String) body.get("merge_id");
+		activityUnmergeService.undoMerge(id, mergeId);
 		return activityService.toResponse(activityService.getActivity(id));
 	}
 

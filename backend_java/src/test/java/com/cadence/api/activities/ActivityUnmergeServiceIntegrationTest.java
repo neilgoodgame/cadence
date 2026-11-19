@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.activities.ActivityMergeApplyService.NullPolicy;
+import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.UnprocessableEntityException;
 import com.cadence.api.support.IntegrationTest;
@@ -41,6 +42,10 @@ class ActivityUnmergeServiceIntegrationTest extends IntegrationTest {
 	private MergeRepository mergeRepository;
 	@Autowired
 	private UserRepository userRepository;
+	@Autowired
+	private ActivitySourceRepository sourceRepository;
+	@Autowired
+	private ActivitySourceService sourceService;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -174,6 +179,134 @@ class ActivityUnmergeServiceIntegrationTest extends IntegrationTest {
 		mergeService.runMerge(target.getId(), sourceB.getId(), List.of("power"), NullPolicy.OVERWRITE, 0, false, false);
 
 		assertThatThrownBy(() -> unmergeService.undoMerge(target.getId()))
+				.isInstanceOf(UnprocessableEntityException.class);
+	}
+
+	/** Issue #542: an attach that never became primary is harmless while attached - undo just
+	 * removes it, no Record/stats change. */
+	@Test
+	void undoesANonPrimaryAttachByDeletingTheSourceWithoutTouchingRecord() throws Exception {
+		User athlete = newAthlete("unmerge-attach-non-primary@example.cc");
+		Activity target = uploadedTarget(athlete);
+		Activity source = sourceWithRecords(athlete, target.getStartDate(), 999, 250);
+
+		ActivityMergeService.MergeResult result = mergeService.runMerge(target.getId(), source.getId(),
+				List.of("power"), null, 0, false, false, MergeCopyMode.ATTACH, null);
+		Merge merge = mergeRepository.findById(result.mergeId()).orElseThrow();
+		assertThat(merge.getCopyMode()).isEqualTo(MergeCopyMode.ATTACH);
+		assertThat(merge.getDemotedSource()).isNull(); // bikePowerSource default is ANY - no auto-swap
+
+		unmergeService.undoMerge(target.getId());
+
+		Activity restored = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(restored.getAvgPower()).isNotEqualTo(250);
+		assertThat(sourceRepository.findById(merge.getAttachedSource().getId())).isEmpty();
+		Merge undoneMerge = mergeRepository.findById(result.mergeId()).orElseThrow();
+		assertThat(undoneMerge.getUndoneAt()).isNotNull();
+	}
+
+	/** Issue #542: when the attach auto-promoted to primary (the athlete's sensor preference
+	 * matched), undo must swap Record back to the pre-merge values, not just delete a row. */
+	@Test
+	void undoesAPromotedAttachByRestoringThePriorPrimaryStream() throws Exception {
+		User athlete = newAthlete("unmerge-attach-promoted@example.cc");
+		athlete.setBikePowerSource(BikePowerSource.PEDALS);
+		athlete = userRepository.save(athlete);
+		Activity target = uploadedTarget(athlete);
+		target.setDevice("Zwift"); // classifies "trainer" - current primary isn't "pedals" yet
+		target = activityRepository.save(target);
+		Activity source = sourceWithRecords(athlete, target.getStartDate(), 999, 250);
+		source.setDevice("Wahoo"); // classifies "pedals", matches the preference -> auto-swap
+		source = activityRepository.save(source);
+
+		ActivityMergeService.MergeResult result = mergeService.runMerge(target.getId(), source.getId(),
+				List.of("power"), null, 0, false, false, MergeCopyMode.ATTACH, null);
+		Merge merge = mergeRepository.findById(result.mergeId()).orElseThrow();
+		assertThat(merge.getDemotedSource()).isNotNull();
+		Activity promoted = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(promoted.getAvgPower()).isEqualTo(250);
+
+		unmergeService.undoMerge(target.getId());
+
+		Activity restored = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(restored.getAvgPower()).isNotEqualTo(250);
+		assertThat(sourceRepository.findById(merge.getAttachedSource().getId())).isEmpty();
+		Merge undoneMerge = mergeRepository.findById(result.mergeId()).orElseThrow();
+		assertThat(undoneMerge.getUndoneAt()).isNotNull();
+	}
+
+	/** Issue #542: an overwrite merge on one field and an attach merge on another can now both be
+	 * active at once - undo must be told which one via mergeId. */
+	@Test
+	void mergeIdDisambiguatesBetweenTwoSimultaneousMerges() throws Exception {
+		User athlete = newAthlete("unmerge-merge-id@example.cc");
+		Activity target = uploadedTarget(athlete);
+		Activity overwriteSource = sourceWithRecords(athlete, target.getStartDate(), 999, 250);
+		Activity attachSource = sourceWithRecords(athlete, target.getStartDate(), 999, 300);
+
+		ActivityMergeService.MergeResult overwriteResult = mergeService.runMerge(target.getId(),
+				overwriteSource.getId(), List.of("name"), NullPolicy.OVERWRITE, 0, false, false);
+		ActivityMergeService.MergeResult attachResult = mergeService.runMerge(target.getId(), attachSource.getId(),
+				List.of("power"), null, 0, false, false, MergeCopyMode.ATTACH, null);
+
+		assertThatThrownBy(() -> unmergeService.undoMerge(target.getId()))
+				.isInstanceOf(UnprocessableEntityException.class);
+
+		unmergeService.undoMerge(target.getId(), attachResult.mergeId());
+		assertThat(mergeRepository.findById(overwriteResult.mergeId()).orElseThrow().getUndoneAt()).isNull();
+		assertThat(mergeRepository.findById(attachResult.mergeId()).orElseThrow().getUndoneAt()).isNotNull();
+	}
+
+	/** Code review finding: undo must not trust a stale demotedSource once something else (here,
+	 * a direct setPrimarySource call unrelated to this merge) has since changed the field's
+	 * actual current primary - it must check the live data, not the merge-time fact, or it would
+	 * silently discard the athlete's later, intentional choice. */
+	@Test
+	void undoingAPromotedAttachNeverClobbersALaterUnrelatedPrimarySwap() throws Exception {
+		User athlete = newAthlete("unmerge-attach-later-swap@example.cc");
+		athlete.setBikePowerSource(BikePowerSource.PEDALS);
+		athlete = userRepository.save(athlete);
+		Activity target = uploadedTarget(athlete);
+		target.setDevice("Zwift"); // classifies "trainer" - current primary isn't "pedals" yet
+		target = activityRepository.save(target);
+		Activity attachSource = sourceWithRecords(athlete, target.getStartDate(), 999, 250);
+		attachSource.setDevice("Wahoo"); // classifies "pedals", matches the preference -> auto-swap
+		attachSource = activityRepository.save(attachSource);
+
+		ActivityMergeService.MergeResult result = mergeService.runMerge(target.getId(), attachSource.getId(),
+				List.of("power"), null, 0, false, false, MergeCopyMode.ATTACH, null);
+		Merge merge = mergeRepository.findById(result.mergeId()).orElseThrow();
+		assertThat(merge.getDemotedSource()).isNotNull(); // ground truth: this merge did promote
+
+		// Something else - unrelated to this merge - changes the field's primary afterward.
+		Activity laterSource = sourceWithRecords(athlete, target.getStartDate(), 999, 999);
+		ActivitySourceService.AttachResult laterAttach = sourceService.attachStream(target.getId(), laterSource.getId(),
+				"power", 0, false, null);
+		sourceService.setPrimarySource(target.getId(), "power", laterAttach.sourceId());
+		Activity afterLaterSwap = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(afterLaterSwap.getAvgPower()).isEqualTo(999);
+
+		unmergeService.undoMerge(target.getId(), merge.getId());
+
+		Activity restored = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(restored.getAvgPower()).isEqualTo(999); // untouched - the later swap must survive undo
+	}
+
+	/** Code review finding: passing mergeId must not bypass the merge-chain safety check -
+	 * undoing an older overwrite merge by id while a newer one still touches the same field
+	 * would otherwise re-parse the original file and silently erase the newer merge's effect. */
+	@Test
+	void undoByMergeIdIsBlockedWhenAnotherActiveMergeSharesAField() throws Exception {
+		User athlete = newAthlete("unmerge-shared-field@example.cc");
+		Activity target = uploadedTarget(athlete);
+		Activity sourceA = sourceWithRecords(athlete, target.getStartDate(), 999, 250);
+		Activity sourceB = sourceWithRecords(athlete, target.getStartDate(), 999, 300);
+
+		ActivityMergeService.MergeResult older = mergeService.runMerge(target.getId(), sourceA.getId(),
+				List.of("power"), NullPolicy.OVERWRITE, 0, false, false);
+		mergeService.runMerge(target.getId(), sourceB.getId(), List.of("power"), NullPolicy.OVERWRITE, 0, false, false);
+
+		assertThatThrownBy(() -> unmergeService.undoMerge(target.getId(), older.mergeId()))
 				.isInstanceOf(UnprocessableEntityException.class);
 	}
 }

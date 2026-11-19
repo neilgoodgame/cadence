@@ -448,7 +448,7 @@ class ActivityWriteToolsTest extends IntegrationTest {
 		authAs(athlete.getId(), "activities:read", "activities:write");
 		activityWriteTools.mergeActivities(target.getId(), source.getId(), List.of("power"), "overwrite", null, 0, false, null, null);
 
-		assertThatThrownBy(() -> activityWriteTools.unmergeActivity(target.getId()))
+		assertThatThrownBy(() -> activityWriteTools.unmergeActivity(target.getId(), null))
 				.isInstanceOf(UnprocessableEntityException.class);
 	}
 
@@ -459,7 +459,7 @@ class ActivityWriteToolsTest extends IntegrationTest {
 		User outsider = newUser("write-tool-unmerge-outsider@example.cc");
 		authAs(outsider.getId(), "activities:read", "activities:write");
 
-		assertThatThrownBy(() -> activityWriteTools.unmergeActivity(target.getId()))
+		assertThatThrownBy(() -> activityWriteTools.unmergeActivity(target.getId(), null))
 				.isInstanceOf(ForbiddenException.class);
 	}
 

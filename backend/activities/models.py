@@ -570,12 +570,38 @@ class Merge(PrefixedIDModel):
         ("keep_original", "Keep original"),
     ]
 
+    # Issue #542: which merge_service path produced this row. "attach" rows never touch Record
+    # at merge time (see activity_source_service.attach_stream), so null_policy is meaningless
+    # for them - always null. Existing rows are all "overwrite" (attach created none before this).
+    COPY_MODE_CHOICES = [
+        ("overwrite", "Overwrite"),
+        ("attach", "Attach"),
+    ]
+
     target_activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="merges_into")
     source_activity = models.ForeignKey(
         Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="merges_from"
     )
     fields = models.JSONField()
-    null_policy = models.CharField(max_length=20, choices=NULL_POLICY_CHOICES)
+    # Issue #542: null for an "attach" row, where null_policy is meaningless - null=True rather
+    # than the usual Django "" sentinel (DJ001) so this column's actual NULL-ness matches
+    # backend_java's identical column exactly, per the repo's own cross-backend schema-shape
+    # parity rule (root CLAUDE.md).
+    null_policy = models.CharField(max_length=20, choices=NULL_POLICY_CHOICES, null=True, blank=True)  # noqa: DJ001
+    copy_mode = models.CharField(max_length=10, choices=COPY_MODE_CHOICES, default="overwrite")
+    # Issue #542: the ActivitySource an "attach" merge created - needed so unmerge/detach can
+    # find it. Always null for "overwrite" rows. SET_NULL (not CASCADE): if the source is deleted
+    # some other way, this audit row survives as a record of what happened, same reasoning as
+    # source_activity above.
+    attached_source = models.ForeignKey(
+        "ActivitySource", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    # Issue #542: set only when an "attach" merge auto-promoted the attached stream to primary at
+    # merge time (the athlete's sensor preference matched) - the id of the new snapshot source
+    # the swap created for the *former* primary, so undo knows exactly what to swap back to.
+    demoted_source = models.ForeignKey(
+        "ActivitySource", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     offset_seconds = models.IntegerField()
     alignment_score = models.FloatField(null=True, blank=True)
     # {field_name: {"copied": n, "kept_original": n, "nulled": n}}, straight from

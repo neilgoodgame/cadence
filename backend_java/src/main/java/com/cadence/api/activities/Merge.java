@@ -40,8 +40,27 @@ public class Merge extends PrefixedIdEntity {
 	@Column(nullable = false)
 	private List<String> fields;
 
-	@Column(nullable = false)
+	// Issue #542: null for a copyMode=ATTACH row - attach never overwrites Record, so there's no
+	// null-handling choice to record.
 	private ActivityMergeApplyService.NullPolicy nullPolicy;
+
+	@Column(nullable = false)
+	private MergeCopyMode copyMode = MergeCopyMode.OVERWRITE;
+
+	/** Issue #542: the ActivitySource a copyMode=ATTACH merge created - needed so unmerge/detach
+	 * can find it. Always null for an OVERWRITE row. SET_NULL (not CASCADE): if the source is
+	 * deleted some other way, this audit row survives as a record of what happened, same
+	 * reasoning as sourceActivity above. */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "attached_source_id")
+	private ActivitySource attachedSource;
+
+	/** Issue #542: set only when an ATTACH merge auto-promoted the attached stream to primary at
+	 * merge time (the athlete's sensor preference matched) - the id of the new snapshot source
+	 * the swap created for the *former* primary, so undo knows exactly what to swap back to. */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "demoted_source_id")
+	private ActivitySource demotedSource;
 
 	@Column(nullable = false)
 	private int offsetSeconds;
@@ -116,6 +135,30 @@ public class Merge extends PrefixedIdEntity {
 
 	public void setNullPolicy(ActivityMergeApplyService.NullPolicy nullPolicy) {
 		this.nullPolicy = nullPolicy;
+	}
+
+	public MergeCopyMode getCopyMode() {
+		return copyMode;
+	}
+
+	public void setCopyMode(MergeCopyMode copyMode) {
+		this.copyMode = copyMode;
+	}
+
+	public ActivitySource getAttachedSource() {
+		return attachedSource;
+	}
+
+	public void setAttachedSource(ActivitySource attachedSource) {
+		this.attachedSource = attachedSource;
+	}
+
+	public ActivitySource getDemotedSource() {
+		return demotedSource;
+	}
+
+	public void setDemotedSource(ActivitySource demotedSource) {
+		this.demotedSource = demotedSource;
 	}
 
 	public int getOffsetSeconds() {

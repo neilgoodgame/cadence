@@ -121,10 +121,11 @@ class ActivityMergeControllerIntegrationTest extends IntegrationTest {
 				+ "\"null_policy\":\"keep_original\",\"offset_seconds\":0,\"preview\":false,"
 				+ "\"copy_mode\":\"attach\",\"source_kind\":\"strap\"}";
 
+		// Issue #542: an attach now records a Merge row too, so it can be found/undone.
 		mockMvc.perform(post("/v1/activities/" + target.getId() + "/merge").header("Authorization", bearer(athlete))
 						.contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.merge_id").doesNotExist())
+				.andExpect(jsonPath("$.merge_id").exists())
 				.andExpect(jsonPath("$.attached_source_id").exists());
 
 		Activity reloaded = activityRepository.findById(target.getId()).orElseThrow();

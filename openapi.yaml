@@ -1343,13 +1343,30 @@ paths:
       summary: Undo this activity's latest merge
       operationId: unmergeActivity
       description: >-
-        Issue #501. Reverses the activity's own latest active (not already undone) merge:
-        restores its stream fields by re-parsing its own stored upload file, restores its
-        activity-level fields from the snapshot the merge itself recorded, and un-hides the
-        source if the merge had hidden it as a #498 duplicate (unless something else has since
-        re-resolved that source - then it's left alone). Disallowed - 422 - when there's no
-        active merge, more than one active merge is stacked on this activity (undo isn't
-        supported for a merge chain), or the activity's own upload row has no stored file.
+        Issue #501. Reverses one of the activity's active (not already undone) merges - either
+        an "overwrite" merge (restores its stream fields by re-parsing its own stored upload
+        file, and activity-level fields from the snapshot the merge itself recorded) or an
+        "attach" merge (issue #542: deletes the attached source, swapping the primary stream
+        back first if the attach had promoted it). Either way, un-hides the source if the merge
+        had hidden it as a #498 duplicate (unless something else has since re-resolved that
+        source - then it's left alone). `merge_id` (optional body field) picks a specific merge
+        when more than one is active on this activity at once (e.g. an overwrite merge on one
+        field and an attach merge on another); omit it when there's at most one. Disallowed -
+        422 - when there's no active merge (or none matching `merge_id`), more than one is
+        active and `merge_id` wasn't given, or - for an overwrite merge - the activity's own
+        upload row has no stored file.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                merge_id:
+                  type: string
+                  description: >-
+                    A specific merge id from GET-equivalent get_merge/list_merges MCP tools,
+                    needed only when more than one merge is active on this activity.
       responses:
         "200":
           description: The activity with its merge undone.
@@ -5863,7 +5880,10 @@ components:
       properties:
         merge_id:
           type: [string, "null"]
-          description: Null for a preview - nothing was recorded.
+          description: >-
+            Null for a preview - nothing was recorded. Non-null for a real merge of either
+            copy_mode, including "attach" (issue #542) - see GET-equivalent get_merge/list_merges
+            MCP tools, and pass it to unmerge_activity's merge_id to undo this specific merge.
           example: mrg_9f2a7c
         offset_seconds:
           type: integer

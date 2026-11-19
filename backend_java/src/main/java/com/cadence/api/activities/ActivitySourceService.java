@@ -15,6 +15,8 @@ import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.users.User;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -42,6 +44,9 @@ public class ActivitySourceService {
 
 	private static final List<String> VALID_FIELDS = List.of("power", "heartrate", "cadence");
 
+	@PersistenceContext
+	private EntityManager entityManager;
+
 	private final ActivityRepository activityRepository;
 	private final RecordRepository recordRepository;
 	private final ActivitySourceRepository sourceRepository;
@@ -61,7 +66,7 @@ public class ActivitySourceService {
 	}
 
 	public record AttachResult(String sourceId, int offsetSeconds, Double alignmentScore, boolean becamePrimary,
-			int copied, int nulled) {
+			int copied, int nulled, String demotedSourceId) {
 	}
 
 	/** Zwift (trainer power, read after drivetrain losses) vs everything else (treated as
@@ -186,7 +191,7 @@ public class ActivitySourceService {
 		}
 
 		if (preview) {
-			return new AttachResult(null, offsetSeconds, alignmentScore, false, copied, nulled);
+			return new AttachResult(null, offsetSeconds, alignmentScore, false, copied, nulled, null);
 		}
 
 		ActivitySource activitySource = new ActivitySource();
@@ -209,12 +214,19 @@ public class ActivitySourceService {
 
 		User athlete = target.getAthlete();
 		boolean becamePrimary = false;
+		String demotedSourceId = null;
 		if (shouldAutoSwapOnAttach(field, sourceKind, source, target, athlete)) {
-			setPrimarySource(targetId, field, activitySource.getId());
+			// Calls swapPrimaryStream directly rather than the public setPrimarySource, so the id
+			// of the snapshot it creates for the demoted former primary can be captured for the
+			// Merge row ActivityMergeService#runAttach is about to create - see
+			// AttachResult.demotedSourceId's own Javadoc.
+			demotedSourceId = swapPrimaryStream(targetId, field, activitySource.getId());
+			postProcessingService.recomputeAfterMerge(targetId);
 			becamePrimary = true;
 		}
 
-		return new AttachResult(activitySource.getId(), offsetSeconds, alignmentScore, becamePrimary, copied, nulled);
+		return new AttachResult(activitySource.getId(), offsetSeconds, alignmentScore, becamePrimary, copied, nulled,
+				demotedSourceId);
 	}
 
 	private static boolean shouldAutoSwapOnAttach(String field, String sourceKind, Activity source, Activity target,
@@ -299,19 +311,22 @@ public class ActivitySourceService {
 	 * same cascade a real #501 merge or #498 primary swap already triggers. */
 	@Transactional
 	public Activity setPrimarySource(String activityId, String field, String sourceId) {
-		Activity activity = swapPrimaryStream(activityId, field, sourceId);
+		swapPrimaryStream(activityId, field, sourceId);
 		postProcessingService.recomputeAfterMerge(activityId);
 		return activityRepository.findById(activityId).orElseThrow(() -> new NotFoundException("No such activity."));
 	}
 
 	/** The data-only half of {@link #setPrimarySource} - everything except the recompute
-	 * cascade. Package-visible: besides {@code setPrimarySource} itself, only {@code
-	 * RunningPowerSourceRecomputeService}'s bulk loop calls this directly, deferring the
-	 * athlete-wide cascade ({@code ActivityMergePostProcessingService#recomputeAfterMerge}'s own
-	 * full-ledger rebuild) to run once per athlete instead of once per swapped activity, which
-	 * would otherwise be quadratic in the athlete's activity count. */
+	 * cascade. Package-visible: besides {@code setPrimarySource} itself, {@code
+	 * RunningPowerSourceRecomputeService}'s bulk loop, {@code attachStream} and {@link
+	 * #detachAndRestore} (issue #542) call this directly, deferring the athlete-wide cascade
+	 * ({@code ActivityMergePostProcessingService#recomputeAfterMerge}'s own full-ledger rebuild)
+	 * to run once per athlete instead of once per swapped activity, which would otherwise be
+	 * quadratic in the athlete's activity count. Returns the id of the new snapshot source this
+	 * creates for the *former* primary, so a caller that needs to undo this exact swap later
+	 * (issue #542) knows what to swap back to. */
 	@Transactional
-	Activity swapPrimaryStream(String activityId, String field, String sourceId) {
+	String swapPrimaryStream(String activityId, String field, String sourceId) {
 		validateField(field);
 		Activity activity = activityRepository.findById(activityId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
@@ -334,8 +349,17 @@ public class ActivitySourceService {
 		int t0 = rows.stream().mapToInt(Record::getT).min().orElse(0);
 		int tMax = rows.stream().mapToInt(Record::getT).max().orElse(t0);
 		Short[] originalValues = new Short[tMax - t0 + 1];
-		Map<Integer, Integer> currentByT = rows.stream().collect(Collectors.toMap(Record::getT,
-				r -> (Integer) ActivityMergeApplyService.getRecordFieldValue(r, field), (a, b) -> b));
+		// Collectors.toMap's merge function (the 3rd arg) is only consulted for a duplicate key -
+		// but HashMap.merge, which it's built on, null-checks every VALUE unconditionally, so a
+		// field that's null for even one row (a real upload's gaps, not just the synthetic
+		// always-populated fixtures every other caller of this method happened to use so far)
+		// throws NPE here. Filtering nulls out first is equivalent: currentByT.get(t) returning
+		// null because the key is absent behaves identically to it being present with a null
+		// value, for every use below.
+		Map<Integer, Integer> currentByT = rows.stream()
+				.filter(r -> ActivityMergeApplyService.getRecordFieldValue(r, field) != null)
+				.collect(Collectors.toMap(Record::getT, r -> (Integer) ActivityMergeApplyService.getRecordFieldValue(r, field),
+						(a, b) -> b));
 		for (int t = t0; t <= tMax; t++) {
 			Integer v = currentByT.get(t);
 			if (v != null) {
@@ -366,7 +390,7 @@ public class ActivitySourceService {
 		stampActivityAfterSwap(activity, field, newPrimaryStream.getSource());
 		activityRepository.save(activity);
 
-		return activityRepository.findById(activityId).orElseThrow(() -> new NotFoundException("No such activity."));
+		return originalSource.getId();
 	}
 
 	/** What to tag the activity's *current* primary with before it's swapped away - power+run
@@ -447,6 +471,102 @@ public class ActivitySourceService {
 					&& CadenceSource.fromWireValue(source.getSourceKind()) == activity.getCadenceSource();
 			default -> false;
 		};
+	}
+
+	/** Issue #542: whether {@code source}'s own stored stream for {@code field} is, second for
+	 * second, what {@link Record} currently holds - the one reliable way to tell "is this
+	 * literally the data Record was last swapped to" without a recorded flag. Deliberately NOT
+	 * {@link #isPrimaryForField}: that's a device-*classification* heuristic (e.g. "this device
+	 * isn't Zwift, so call it pedals"), which can match two different, never-swapped-in devices
+	 * purely by landing in the same classification bucket - exactly the false positive that would
+	 * make {@link #detachAndRestore} wrongly think a swap-back is needed for a source that was
+	 * never actually written into Record. */
+	private boolean streamMatchesRecord(ActivitySource source, String field, Activity activity) {
+		ActivityStream stream = streamRepository
+				.findByActivityIdAndFieldAndSourceId(activity.getId(), field, source.getId())
+				.orElseThrow(() -> new NotFoundException("No such source for this activity/field."));
+		// Filter nulls before collecting - see swapPrimaryStream's currentByT for why
+		// Collectors.toMap's merge function alone doesn't save you from HashMap.merge's
+		// unconditional null-value check.
+		Map<Integer, Integer> recordValues = recordRepository.findByActivityIdOrderByT(activity.getId()).stream()
+				.filter(r -> ActivityMergeApplyService.getRecordFieldValue(r, field) != null)
+				.collect(Collectors.toMap(Record::getT, r -> (Integer) ActivityMergeApplyService.getRecordFieldValue(r, field),
+						(a, b) -> b));
+		Short[] values = stream.getStreamValues();
+		// Detach immediately - stream's own lazy `source` association is never accessed (it's
+		// resolved separately, via the `source` parameter), so it's left uninitialized. If
+		// `source` is then deleted later in the same session (detachAndRestore's non-restore
+		// branch), Hibernate's pre-flush check misreads that still-uninitialized proxy as a
+		// transient reference on the still-managed `stream` and throws a
+		// TransientPropertyValueException - detaching `stream` here, once its only needed field
+		// (streamValues/t0) has been read, avoids that entirely.
+		entityManager.detach(stream);
+		for (int i = 0; i < values.length; i++) {
+			Integer expected = values[i] == null ? null : values[i].intValue();
+			if (!Objects.equals(recordValues.get(stream.getT0() + i), expected)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Issue #542: the swap-back candidate for detaching a currently-primary source with no
+	 * explicitly recorded demotedSourceId (e.g. a pre-fix orphaned attach backfilled with none,
+	 * or a standalone detachSource call). Every promotion snapshots whatever was primary right
+	 * before it into a new ORIGIN=FILE {@link ActivitySource} (see {@link #swapPrimaryStream}) -
+	 * so the most recently created one for this field is always exactly "what was primary
+	 * immediately before the current one", by construction. */
+	private String previousPrimarySourceForField(String activityId, String field) {
+		return sourceRepository
+				.findFirstByActivityIdAndSensorKindAndOriginOrderByCreatedAtDesc(activityId, field, ActivitySourceOrigin.FILE)
+				.map(ActivitySource::getId).orElse(null);
+	}
+
+	/** Issue #542: removes a non-primary attached source outright, or - if it's currently primary
+	 * - swaps {@code field} back to its predecessor first, then removes it. Shared by {@link
+	 * ActivityUnmergeService}'s undo of an ATTACH merge and the standalone detachSource call.
+	 *
+	 * <p>Whether a swap-back is needed is always decided from the *current* data ({@link
+	 * #streamMatchesRecord}) - never from {@code demotedSourceId}'s mere presence, even though
+	 * it's ground truth about what the attach itself did at merge time: something else (a direct
+	 * {@link #setPrimarySource} call, or a later merge/attach) can re-resolve the field's primary
+	 * again after this merge, and trusting a stale "it was promoted" fact would then swap back
+	 * over - and discard - that later, unrelated change. {@code demotedSourceId}, when given,
+	 * only picks *which* source to restore once a swap-back is already confirmed necessary; when
+	 * it's null (the standalone detachSource case, where there's no Merge row to have recorded
+	 * this) or stale (no longer accurate), falls back to {@link #previousPrimarySourceForField}
+	 * to find what to restore instead.
+	 *
+	 * <p>Swapping back reuses {@link #swapPrimaryStream}, which - being a general-purpose primary
+	 * swap - itself snapshots whatever's *currently* primary (the source being detached) into one
+	 * more new {@link ActivitySource}/{@link ActivityStream} row. That snapshot is pure
+	 * duplication of data about to be deleted anyway, so it's deleted alongside the original
+	 * source rather than left behind as clutter. Returns whether a swap-back + recompute
+	 * happened. */
+	@Transactional
+	public boolean detachAndRestore(String activityId, String field, String sourceId, String demotedSourceId) {
+		Activity activity = activityRepository.findById(activityId)
+				.orElseThrow(() -> new NotFoundException("No such activity."));
+		ActivitySource source = sourceRepository.findById(sourceId)
+				.filter(s -> s.getActivity().getId().equals(activityId))
+				.orElseThrow(() -> new NotFoundException("No such source for this activity."));
+		if (source.getOrigin() != ActivitySourceOrigin.ATTACHED) {
+			throw new ValidationException("Only an attached source can be detached.", "source_id");
+		}
+
+		boolean needsRestore = streamMatchesRecord(source, field, activity);
+		if (needsRestore) {
+			String restoreTo = demotedSourceId != null ? demotedSourceId : previousPrimarySourceForField(activityId, field);
+			if (restoreTo == null) {
+				throw new ValidationException(
+						"Can't detach - no previous primary " + field + " stream found to restore.", "source_id");
+			}
+			String redundantSnapshotId = swapPrimaryStream(activityId, field, restoreTo);
+			postProcessingService.recomputeAfterMerge(activityId);
+			sourceRepository.deleteById(redundantSnapshotId);
+		}
+		sourceRepository.delete(source);
+		return needsRestore;
 	}
 
 	/** The literal {@code a}/{@code b} value meaning "the activity's current primary stream for

@@ -9,14 +9,19 @@ import com.cadence.api.uploads.Upload;
 import com.cadence.api.uploads.UploadRepository;
 import com.cadence.api.uploads.parsing.FileParserDispatcher;
 import com.cadence.api.uploads.parsing.ParsedActivity;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,12 +53,17 @@ public class ActivityUnmergeService {
 	private final ShoeRepository shoeRepository;
 	private final ActivityService activityService;
 	private final ActivityMergePostProcessingService postProcessingService;
+	private final ActivitySourceService sourceService;
 	private final CadenceProperties properties;
+
+	@PersistenceContext
+	private EntityManager entityManager;
 
 	public ActivityUnmergeService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			MergeRepository mergeRepository, UploadRepository uploadRepository, BikeRepository bikeRepository,
 			ShoeRepository shoeRepository, ActivityService activityService,
-			ActivityMergePostProcessingService postProcessingService, CadenceProperties properties) {
+			ActivityMergePostProcessingService postProcessingService, ActivitySourceService sourceService,
+			CadenceProperties properties) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.mergeRepository = mergeRepository;
@@ -62,27 +72,55 @@ public class ActivityUnmergeService {
 		this.shoeRepository = shoeRepository;
 		this.activityService = activityService;
 		this.postProcessingService = postProcessingService;
+		this.sourceService = sourceService;
 		this.properties = properties;
 	}
 
-	/** Restoring stream fields re-parses the target's *original* upload file - correct for a
-	 * single merge, but wrong for a chain of two-or-more merges that touched the same field
+	/** {@code mergeId} picks a specific active merge directly - needed once an activity can carry
+	 * more than one at once (issue #542: an ATTACH merge no longer has to be the only merge on a
+	 * target, now that it records a {@link Merge} row too). With no {@code mergeId}: restoring
+	 * stream fields re-parses the target's *original* upload file for an OVERWRITE merge -
+	 * correct for a single one, but wrong for a chain of two-or-more that touched the same field
 	 * (undoing the second should land on the first merge's result, not on the pre-every-merge
-	 * original). Since nothing here tracks per-merge snapshots of stream data (that's the whole
-	 * reason undo re-parses rather than storing them), a target with more than one active merge
-	 * can't be safely undone at all - block it loudly rather than silently restoring too far
-	 * back. */
-	private Merge latestActiveMerge(String targetId) {
+	 * original); since nothing here tracks per-merge snapshots of overwrite stream data, more
+	 * than one active merge is ambiguous without a {@code mergeId} - block it loudly (naming the
+	 * available ids) rather than silently restoring too far back or guessing which one was
+	 * meant. */
+	private Merge latestActiveMerge(String targetId, String mergeId) {
+		if (mergeId != null) {
+			return mergeRepository.findById(mergeId)
+					.filter(m -> m.getTargetActivity().getId().equals(targetId) && m.getUndoneAt() == null)
+					.orElseThrow(() -> new UnprocessableEntityException("No active merge '" + mergeId + "' found on this activity."));
+		}
 		List<Merge> active = mergeRepository.findByTargetActivityId(targetId).stream()
 				.filter(m -> m.getUndoneAt() == null).toList();
 		if (active.isEmpty()) {
 			throw new UnprocessableEntityException("This activity has no active merge to undo.");
 		}
 		if (active.size() > 1) {
+			String ids = active.stream().map(Merge::getId).reduce((a, b) -> a + ", " + b).orElse("");
 			throw new UnprocessableEntityException(
-					"This activity has more than one merge applied - undo isn't supported for a merge chain.");
+					"This activity has more than one active merge (" + ids + ") - pass merge_id to choose which one to undo.");
 		}
 		return active.get(0);
+	}
+
+	/** Issue #542: undoing an OVERWRITE merge restores every one of its own {@code fields} by
+	 * re-parsing the target's original upload file - safe only when no other active merge has
+	 * since touched any of the same fields. Passing {@code mergeId} to pick a specific merge
+	 * otherwise bypasses {@link #latestActiveMerge}'s own "more than one active merge" guard
+	 * entirely (that guard only fires when {@code mergeId} is omitted), which would let undoing
+	 * an older merge silently erase a newer one's effect on a shared field, resetting all the way
+	 * back to the pre-every-merge original. Only relevant to this, the overwrite path: an ATTACH
+	 * merge's own undo is keyed to the field's *current* data (see {@link
+	 * ActivitySourceService#detachAndRestore}), not a blind re-parse, so it can't suffer this - a
+	 * coexisting attach merge on a different field is exactly the case this issue added support
+	 * for and must stay unblocked. */
+	private Merge otherActiveMergeSharingField(String targetId, Merge merge) {
+		Set<String> fields = new HashSet<>(merge.getFields());
+		return mergeRepository.findByTargetActivityId(targetId).stream()
+				.filter(m -> m.getUndoneAt() == null && !m.getId().equals(merge.getId()))
+				.filter(m -> !Collections.disjoint(fields, m.getFields())).findFirst().orElse(null);
 	}
 
 	private Upload resolveUpload(String targetId) {
@@ -122,9 +160,23 @@ public class ActivityUnmergeService {
 	 * so this changes nothing for them). */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public Merge undoMerge(String targetId) {
+		return undoMerge(targetId, null);
+	}
+
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public Merge undoMerge(String targetId, String mergeId) {
 		Activity target = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
-		Merge merge = latestActiveMerge(targetId);
+		Merge merge = latestActiveMerge(targetId, mergeId);
+		if (merge.getCopyMode() == MergeCopyMode.ATTACH) {
+			return undoAttach(target, merge);
+		}
+		Merge conflicting = otherActiveMergeSharingField(targetId, merge);
+		if (conflicting != null) {
+			throw new UnprocessableEntityException("This activity has another active merge ('" + conflicting.getId()
+					+ "') touching the same field(s) as '" + merge.getId()
+					+ "' - undo isn't supported for a merge chain on a shared field.");
+		}
 		Upload upload = resolveUpload(targetId);
 
 		List<ParsedActivity> parsedActivities;
@@ -203,5 +255,58 @@ public class ActivityUnmergeService {
 
 		merge.setUndoneAt(Instant.now());
 		return mergeRepository.save(merge);
+	}
+
+	/** Issue #542: undoes an ATTACH merge - deletes the {@link ActivitySource}/{@link
+	 * ActivityStream} it created (swapping Record back to {@code merge.getDemotedSource()} first
+	 * if it had auto-promoted to primary) rather than overwrite's re-parse-the-upload-file
+	 * approach, which doesn't apply here since attach never touched Record (unless it promoted)
+	 * in the first place. See {@link ActivitySourceService#detachAndRestore} for the shared
+	 * swap-back + cleanup logic, also used by the standalone detachSource call.
+	 *
+	 * <p>Extracts every scalar it needs from {@code merge}, then detaches it from the session,
+	 * *before* calling {@code detachAndRestore}, which deletes the real {@link ActivitySource}
+	 * row(s) that {@code merge.attachedSource}/{@code demotedSource} - lazy, uninitialized
+	 * proxies - reference: leaving {@code merge} managed across that delete trips a Hibernate
+	 * quirk ({@link ActivitySourceService#streamMatchesRecord} works around the same thing for
+	 * its own similarly-lazy reference) where a still-managed entity's uninitialized proxy to a
+	 * since-deleted row is misread as "an unsaved transient instance" at the next flush.
+	 * Explicitly flushes right after (now safe, since {@code merge} is detached) to force those
+	 * deletes - and the DB's own {@code ON DELETE SET NULL} FK action against this exact row -
+	 * to actually execute before reloading {@code merge} fresh: without the flush, Hibernate's
+	 * auto-flush-before-query heuristic sees no entity-type overlap between a plain {@code
+	 * Merge} query and the pending {@code ActivitySource} deletes, so it'd skip flushing first -
+	 * the reload would then still read the stale (pre-delete) {@code attached_source_id} and
+	 * recreate the exact same problem one step later, at final commit. */
+	private Merge undoAttach(Activity target, Merge merge) {
+		String field = merge.getFields().get(0);
+		String attachedSourceId = merge.getAttachedSource().getId();
+		String demotedSourceId = merge.getDemotedSource() != null ? merge.getDemotedSource().getId() : null;
+		boolean sourceHidden = merge.isSourceHidden();
+		String sourceActivityId = merge.getSourceActivity() != null ? merge.getSourceActivity().getId() : null;
+		String mergeId = merge.getId();
+		entityManager.detach(merge);
+
+		sourceService.detachAndRestore(target.getId(), field, attachedSourceId, demotedSourceId);
+		entityManager.flush();
+
+		Activity source = null;
+		if (sourceHidden && sourceActivityId != null) {
+			Activity candidate = activityRepository.findById(sourceActivityId).orElse(null);
+			if (candidate != null && candidate.getPrimaryActivity() != null
+					&& candidate.getPrimaryActivity().getId().equals(target.getId())) {
+				candidate.setPrimaryActivity(null);
+				activityRepository.save(candidate);
+				activityService.applyDuplicateGearMileageChange(candidate, true, false);
+				source = candidate;
+			}
+		}
+		if (source != null) {
+			postProcessingService.recomputeAfterMerge(source.getId());
+		}
+
+		Merge reloadedMerge = mergeRepository.findById(mergeId).orElseThrow(() -> new NotFoundException("No such merge."));
+		reloadedMerge.setUndoneAt(Instant.now());
+		return mergeRepository.save(reloadedMerge);
 	}
 }
