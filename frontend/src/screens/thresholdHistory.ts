@@ -23,6 +23,38 @@ export function daysInEffect(entries: ThresholdHistoryPoint[]): number[] {
   });
 }
 
+/** Each item is either a single ungrouped row or a run of 2+ consecutive decayed rows
+ * collapsed into one group (a lone decayed row isn't worth collapsing). `index` is each row's
+ * position in the original `entries` array - callers need it to look up `days[index]` (from
+ * `daysInEffect`, computed separately over the *uncollapsed* array) and `entries[index + 1]`
+ * (for `deltaLabel`) without recomputing anything here. */
+export interface LedgerRow {
+  entry: ThresholdHistoryPoint;
+  index: number;
+}
+export type LedgerGroup = { kind: "row"; row: LedgerRow } | { kind: "decayedRun"; rows: LedgerRow[] };
+
+export function groupDecayedRuns(entries: ThresholdHistoryPoint[]): LedgerGroup[] {
+  const groups: LedgerGroup[] = [];
+  let run: LedgerRow[] = [];
+  const flush = () => {
+    if (run.length === 0) return;
+    if (run.length === 1) groups.push({ kind: "row", row: run[0] });
+    else groups.push({ kind: "decayedRun", rows: run });
+    run = [];
+  };
+  entries.forEach((entry, index) => {
+    if (entry.kind === "decayed") {
+      run.push({ entry, index });
+    } else {
+      flush();
+      groups.push({ kind: "row", row: { entry, index } });
+    }
+  });
+  flush();
+  return groups;
+}
+
 // Pace is seconds/km - a *lower* value is the improvement, the opposite of the two power
 // fields. Mirrors dashboard/ThresholdSummaryCard.tsx's own deltaLabel (that one compares a
 // field's current value against its previous value; this compares two adjacent ledger rows).

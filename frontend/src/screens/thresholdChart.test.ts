@@ -4,6 +4,7 @@ import {
   clipToRange,
   isImprovement,
   monthTickStep,
+  splitByKind,
   tooltipDays,
   tooltipDeltaText,
   tooltipSourceText,
@@ -117,5 +118,43 @@ describe("tooltipSourceText", () => {
 describe("tooltipDays", () => {
   it("counts whole days between a point and the next change (or today)", () => {
     expect(tooltipDays(new Date("2026-01-01T00:00:00Z"), new Date("2026-01-11T00:00:00Z"))).toBe(10);
+  });
+});
+
+describe("splitByKind", () => {
+  function p(date: string, value: number, kind?: ClippedPoint["kind"]): ClippedPoint {
+    return { date: new Date(date), value, real: true, kind };
+  }
+
+  it("returns one non-decayed segment for an all-real series", () => {
+    const series = [p("2026-01-01", 240, "measured"), p("2026-02-01", 250, "measured")];
+    expect(splitByKind(series)).toEqual([{ points: series, decayed: false }]);
+  });
+
+  it("returns one decayed segment for an all-decayed series", () => {
+    const series = [p("2026-01-01", 250, "decayed"), p("2026-01-02", 248, "decayed")];
+    expect(splitByKind(series)).toEqual([{ points: series, decayed: true }]);
+  });
+
+  it("splits real -> decayed -> real into three segments, each joined to its neighbour", () => {
+    const real1 = p("2026-01-01", 240, "measured");
+    const decayed1 = p("2026-02-01", 250, "decayed");
+    const decayed2 = p("2026-02-02", 248, "decayed");
+    const real2 = p("2026-03-01", 260, "measured");
+    const segments = splitByKind([real1, decayed1, decayed2, real2]);
+    expect(segments).toEqual([
+      { points: [real1], decayed: false },
+      { points: [real1, decayed1, decayed2], decayed: true },
+      { points: [decayed2, real2], decayed: false },
+    ]);
+  });
+
+  it("treats a missing kind as non-decayed", () => {
+    const series = [p("2026-01-01", 240), p("2026-02-01", 250)];
+    expect(splitByKind(series)).toEqual([{ points: series, decayed: false }]);
+  });
+
+  it("returns an empty array for an empty series", () => {
+    expect(splitByKind([])).toEqual([]);
   });
 });

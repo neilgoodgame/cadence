@@ -1,6 +1,6 @@
 import { parsePace } from "../lib/format";
 import { formatPaceBound } from "../lib/thresholdFields";
-import type { ThresholdFieldName } from "../api/types";
+import type { ThresholdFieldName, ThresholdHistoryPoint } from "../api/types";
 
 export type ChartRange = "all" | "1y" | "16w";
 
@@ -48,6 +48,10 @@ export interface ClippedPoint {
    * the value in effect at that moment, but isn't a real ledger entry (no change-point dot,
    * doesn't count toward `bestValue`). */
   real: boolean;
+  /** Optional, not just unset on synthetic points - keeps every plain `{date,value,real}`
+   * literal elsewhere (tests, the chart's own "extend to today" point) compiling without having
+   * to care about kind. `splitByKind` treats a missing kind as non-decayed. */
+  kind?: ThresholdHistoryPoint["kind"];
 }
 
 /** Clips a chronological series to the trailing `range` window. When the window start falls
@@ -65,7 +69,36 @@ export function clipToRange(points: ClippedPoint[], range: ChartRange, today: Da
     if (p.date.getTime() <= startMs) before = p;
     else after.push(p);
   }
-  return before ? [{ date: start, value: before.value, real: false }, ...after] : after;
+  return before ? [{ date: start, value: before.value, real: false, kind: before.kind }, ...after] : after;
+}
+
+export interface ChartSegment {
+  points: ClippedPoint[];
+  decayed: boolean;
+}
+
+/** Splits a chronological series into alternating real/decayed segments for separate stroke
+ * styling. Each segment after the first repeats its predecessor's last point so the drawn
+ * lines join with no visual gap - generalizes race-detail/raceBlockChart.ts's
+ * splitProjectedLine (a fixed two-way split) to however many separate decay episodes a field's
+ * history actually has. */
+export function splitByKind(series: ClippedPoint[]): ChartSegment[] {
+  if (series.length === 0) return [];
+  const segments: ChartSegment[] = [];
+  let current: ClippedPoint[] = [series[0]];
+  let decayed = series[0].kind === "decayed";
+  for (let i = 1; i < series.length; i++) {
+    const isDecayed = series[i].kind === "decayed";
+    if (isDecayed !== decayed) {
+      segments.push({ points: current, decayed });
+      current = [current[current.length - 1], series[i]];
+      decayed = isDecayed;
+    } else {
+      current.push(series[i]);
+    }
+  }
+  segments.push({ points: current, decayed });
+  return segments;
 }
 
 /** The tooltip's delta line - "First recorded value" for a series' first point, otherwise a
