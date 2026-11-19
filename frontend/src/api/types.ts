@@ -242,6 +242,16 @@ export interface ThresholdSummaryEntry {
    * manual value that aged out - issue #485; only possible when threshold_decay_enabled, which
    * defaults to off). Null with no entry at all. */
   kind: "measured" | "manual" | "decayed" | null;
+  /** Present only when kind === "decayed" - the anchor it's easing from and the value it's
+   * easing towards. Null otherwise, including for an athlete whose own
+   * threshold_decay_enabled is currently false (a leftover decayed row from when it was on
+   * still gets a correctly-computed object). */
+  decay: {
+    anchor_value: number | string;
+    anchor_effective_from: string;
+    decaying_since: string;
+    target: number | string;
+  } | null;
 }
 
 export interface ThresholdsSummary {
