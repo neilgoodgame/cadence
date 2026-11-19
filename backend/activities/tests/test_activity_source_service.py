@@ -113,6 +113,78 @@ class ActivitySourceServiceTests(TestCase):
         target.refresh_from_db()
         self.assertEqual(target.bike_power_source, "pedals")
 
+    def test_detach_and_restore_deletes_a_non_primary_attach_without_touching_record(self):
+        athlete = self._athlete("source-detach-non-primary@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records(target, 10, power=200)
+        self._add_records(source, 10, power=300)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        needed_restore = activity_source_service.detach_and_restore(target.id, "power", attach.source_id)
+
+        self.assertFalse(needed_restore)
+        self.assertFalse(ActivitySource.objects.filter(pk=attach.source_id).exists())
+        for record in target.records.all():
+            self.assertEqual(record.power, 200)  # untouched
+
+    def test_detach_and_restore_with_a_known_demoted_source_id_swaps_record_back(self):
+        athlete = self._athlete("source-detach-known-demoted@example.cc", bike_power_source="trainer")
+        target = self._activity(athlete, "Edge 530", name="Target")  # classifies pedals
+        source = self._activity(athlete, "Zwift", name="Source")  # classifies trainer, matches preference
+        self._add_records(target, 10, power=200)
+        self._add_records(source, 10, power=300)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+        self.assertTrue(attach.became_primary)
+        self.assertIsNotNone(attach.demoted_source_id)
+
+        needed_restore = activity_source_service.detach_and_restore(
+            target.id, "power", attach.source_id, attach.demoted_source_id
+        )
+
+        self.assertTrue(needed_restore)
+        self.assertFalse(ActivitySource.objects.filter(pk=attach.source_id).exists())
+        for record in target.records.all():
+            self.assertEqual(record.power, 200)
+        target.refresh_from_db()
+        self.assertEqual(target.bike_power_source, "pedals")
+        # Only the original demoted snapshot remains - the redundant one the swap-back itself
+        # created (a duplicate of the just-deleted attach's own data) was cleaned up too.
+        self.assertEqual(ActivitySource.objects.filter(activity=target).count(), 1)
+
+    def test_detach_and_restore_falls_back_to_data_equality_with_no_demoted_source_id(self):
+        """Issue #542: a source promoted via a direct set_primary_source call (not an attach
+        merge) has no Merge row at all, so detach_source must discover whether it's really
+        primary from the data itself, not a device-classification guess."""
+        athlete = self._athlete("source-detach-data-equality@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records(target, 10, power=200)
+        self._add_records(source, 10, power=300)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+        self.assertFalse(attach.became_primary)
+        activity_source_service.set_primary_source(target.id, "power", attach.source_id)
+
+        needed_restore = activity_source_service.detach_and_restore(target.id, "power", attach.source_id)
+
+        self.assertTrue(needed_restore)
+        for record in target.records.all():
+            self.assertEqual(record.power, 200)
+        self.assertEqual(ActivitySource.objects.filter(activity=target).count(), 1)
+
+    def test_detach_and_restore_rejects_a_file_origin_source(self):
+        athlete = self._athlete("source-detach-file-origin@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records(target, 10, power=200)
+        self._add_records(source, 10, power=300)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+        activity_source_service.set_primary_source(target.id, "power", attach.source_id)
+        file_origin_source = ActivitySource.objects.get(activity=target, origin="file")
+
+        with self.assertRaises(ValidationError):
+            activity_source_service.detach_and_restore(target.id, "power", file_origin_source.id)
+
     def test_list_sources_reports_is_primary_against_the_activitys_current_primary(self):
         athlete = self._athlete("source-list-is-primary@example.cc")
         target = self._activity(athlete, "Edge 530", name="Target")  # classifies pedals
@@ -157,7 +229,8 @@ class ActivitySourceServiceTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertIsNone(body["merge_id"])
+        # Issue #542: an attach now records a Merge row too, so it can be found/undone.
+        self.assertIsNotNone(body["merge_id"])
         self.assertIsNotNone(body["attached_source_id"])
         for record in target.records.all():
             self.assertEqual(record.power, 200)  # untouched
@@ -412,7 +485,8 @@ class ActivitySourceServiceTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertIsNone(body["merge_id"])
+        # Issue #542: an attach now records a Merge row too, so it can be found/undone.
+        self.assertIsNotNone(body["merge_id"])
         self.assertIsNotNone(body["attached_source_id"])
         target.refresh_from_db()
         self.assertEqual(target.hr_source, "strap")

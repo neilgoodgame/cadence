@@ -212,6 +212,21 @@ public class ActivityReadTools {
 		return mergeService.getActiveMerge(activityId);
 	}
 
+	@McpTool(name = "list_merges", description = "Issue #542: every active merge on activityId, "
+			+ "not just the most recent one get_merge returns - an activity can carry more than "
+			+ "one at once, e.g. an \"overwrite\" merge on power and a separate \"attach\" merge "
+			+ "on heartrate. Most recent first. Pass a specific mergeId from here to "
+			+ "unmerge_activity to choose which one to undo when there's more than one.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public List<ActivityMergeService.MergeRecord> listMerges(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return mergeService.listActiveMerges(activityId);
+	}
+
 	@McpTool(name = "list_activity_sources", description = "Issue #503 (phases 1-3): every "
 			+ "non-primary stream kept alongside activityId - power, heartrate, or cadence - e.g. a "
 			+ "Garmin/pedal power recording attached onto a Zwift ride without overwriting the Zwift "

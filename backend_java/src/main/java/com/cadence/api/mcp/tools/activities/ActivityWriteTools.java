@@ -214,21 +214,28 @@ public class ActivityWriteTools {
 				parseCopyMode(copyMode), sourceKind);
 	}
 
-	@McpTool(name = "unmerge_activity", description = "Issue #501: reverses activityId's own latest "
-			+ "active merge (from merge_activities) - restores its stream fields by re-parsing its "
-			+ "own stored upload file, restores its activity-level fields from the snapshot the "
-			+ "merge itself recorded, and un-hides the source if the merge had hidden it (unless "
-			+ "something else has since re-resolved that source, which is left alone). Fails if "
-			+ "there's no active merge, more than one is stacked on this activity (a merge chain - "
-			+ "undo isn't supported for that), or the activity's own upload row has no stored file.",
+	@McpTool(name = "unmerge_activity", description = "Issue #501: reverses one of activityId's "
+			+ "active merges (from merge_activities) - either copyMode='overwrite' (restores stream "
+			+ "fields by re-parsing its own stored upload file, and activity-level fields from the "
+			+ "snapshot the merge itself recorded) or copyMode='attach' (issue #542: deletes the "
+			+ "attached source, swapping the primary stream back first if the attach had promoted "
+			+ "it). Either way, un-hides the source if the merge had hidden it (unless something "
+			+ "else has since re-resolved that source, which is left alone). mergeId picks a "
+			+ "specific merge when more than one is active on this activity (e.g. one overwrite "
+			+ "merge and one attach merge at once) - omit it when there's at most one. Fails if "
+			+ "there's no active merge (or none matching mergeId), more than one is active and "
+			+ "mergeId wasn't given, or - for an overwrite merge - the activity's own upload row "
+			+ "has no stored file.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
 	public ActivityResponse unmergeActivity(
-			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId) {
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
+			@McpToolParam(description = "A specific merge id from get_merge/list_merges, needed only when more "
+					+ "than one merge is active", required = false) String mergeId) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
 		Activity activity = activityService.getActivity(activityId);
 		accessGuard.requireWrite(activity.getAthlete().getId());
-		activityUnmergeService.undoMerge(activityId);
+		activityUnmergeService.undoMerge(activityId, mergeId);
 		return activityService.toResponse(activityService.getActivity(activityId));
 	}
 

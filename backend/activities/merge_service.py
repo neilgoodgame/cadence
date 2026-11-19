@@ -130,10 +130,12 @@ def _run_attach(
         )
     field = fields[0]
     before = _summarize(target)
+    merge_row: Merge | None = None
 
     with transaction.atomic():
         result = attach_stream(target_id, source_id, field, offset_seconds, preview, source_kind)
-        if not preview and hide_source and not _already_hidden_under(source, target):
+        apply_hide = not preview and hide_source and not _already_hidden_under(source, target)
+        if apply_hide:
             source.primary_activity = target
             source.save(update_fields=["primary_activity"])
             apply_duplicate_change(source, was_duplicate=False, is_duplicate=True)
@@ -141,10 +143,28 @@ def _run_attach(
         after = _summarize(target)
         if preview:
             transaction.set_rollback(True)
+        else:
+            counts = {field: FieldRewriteCounts(copied=result.copied, kept_original=0, nulled=result.nulled)}
+            # Issue #542: record this attach the same way the overwrite path records its own
+            # merge, so get_merge/unmerge_activity/list_merges have something to find - attach
+            # previously wrote nothing here, which is exactly why it couldn't be undone.
+            merge_row = Merge.objects.create(
+                target_activity=target,
+                source_activity=source,
+                fields=fields,
+                null_policy="",
+                copy_mode="attach",
+                attached_source_id=result.source_id,
+                demoted_source_id=result.demoted_source_id,
+                offset_seconds=result.offset_seconds,
+                alignment_score=result.alignment_score,
+                field_counts=_counts_as_dict(counts),
+                source_hidden=apply_hide,
+            )
 
     counts = {field: FieldRewriteCounts(copied=result.copied, kept_original=0, nulled=result.nulled)}
     return {
-        "merge_id": None,
+        "merge_id": merge_row.id if merge_row else None,
         "offset_seconds": result.offset_seconds,
         "alignment_score": result.alignment_score,
         "field_counts": _counts_as_dict(counts),

@@ -190,6 +190,88 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void detachAndRestoreDeletesANonPrimaryAttachWithoutTouchingRecord() {
+		User athlete = newAthlete("source-detach-non-primary@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecords(target, 10, 200);
+		addRecords(source, 10, 300);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+
+		boolean neededRestore = sourceService.detachAndRestore(target.getId(), "power", attach.sourceId(), null);
+
+		assertThat(neededRestore).isFalse();
+		assertThat(sourceRepository.findById(attach.sourceId())).isEmpty();
+		assertThat(recordRepository.findByActivityIdOrderByT(target.getId()))
+				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(200)); // untouched
+	}
+
+	@Test
+	void detachAndRestoreWithAKnownDemotedSourceIdSwapsRecordBack() {
+		User athlete = newAthlete("source-detach-known-demoted@example.cc");
+		athlete.setBikePowerSource(BikePowerSource.TRAINER);
+		athlete = userRepository.save(athlete);
+		Activity target = newActivity(athlete, "Target", "Edge 530"); // classifies PEDALS
+		Activity source = newActivity(athlete, "Source", "Zwift"); // classifies TRAINER, matches preference
+		addRecords(target, 10, 200);
+		addRecords(source, 10, 300);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+		assertThat(attach.becamePrimary()).isTrue();
+		assertThat(attach.demotedSourceId()).isNotNull();
+
+		boolean neededRestore = sourceService.detachAndRestore(target.getId(), "power", attach.sourceId(),
+				attach.demotedSourceId());
+
+		assertThat(neededRestore).isTrue();
+		assertThat(sourceRepository.findById(attach.sourceId())).isEmpty();
+		assertThat(recordRepository.findByActivityIdOrderByT(target.getId()))
+				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(200));
+		Activity reloaded = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(reloaded.getBikePowerSource()).isEqualTo(BikePowerSource.PEDALS);
+		// Only the original demoted snapshot remains - the redundant one the swap-back itself
+		// created (a duplicate of the just-deleted attach's own data) was cleaned up too.
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())).hasSize(1);
+	}
+
+	/** Issue #542: a source promoted via a direct setPrimarySource call (not an attach merge) has
+	 * no Merge row at all, so detachSource must discover whether it's really primary from the
+	 * data itself, not a device-classification guess. */
+	@Test
+	void detachAndRestoreFallsBackToDataEqualityWithNoDemotedSourceId() {
+		User athlete = newAthlete("source-detach-data-equality@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecords(target, 10, 200);
+		addRecords(source, 10, 300);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+		assertThat(attach.becamePrimary()).isFalse();
+		sourceService.setPrimarySource(target.getId(), "power", attach.sourceId());
+
+		boolean neededRestore = sourceService.detachAndRestore(target.getId(), "power", attach.sourceId(), null);
+
+		assertThat(neededRestore).isTrue();
+		assertThat(recordRepository.findByActivityIdOrderByT(target.getId()))
+				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(200));
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())).hasSize(1);
+	}
+
+	@Test
+	void detachAndRestoreRejectsAFileOriginSource() {
+		User athlete = newAthlete("source-detach-file-origin@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecords(target, 10, 200);
+		addRecords(source, 10, 300);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+		sourceService.setPrimarySource(target.getId(), "power", attach.sourceId());
+		ActivitySource fileOriginSource = sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())
+				.stream().filter(s -> s.getOrigin() == ActivitySourceOrigin.FILE).findFirst().orElseThrow();
+
+		assertThatThrownBy(() -> sourceService.detachAndRestore(target.getId(), "power", fileOriginSource.getId(), null))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
 	void listSourcesReportsIsPrimaryAgainstTheActivitysCurrentPrimary() {
 		User athlete = newAthlete("source-list-is-primary@example.cc");
 		Activity target = newActivity(athlete, "Target", "Edge 530"); // classifies PEDALS

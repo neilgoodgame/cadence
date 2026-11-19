@@ -169,14 +169,18 @@ def _parse_copy_mode(value: str | None) -> CopyMode:
 
 
 def _merge_record_summary(merge: Merge) -> dict[str, Any]:
-    """get_merge's return shape - the merge record itself, not the before/after summary
-    merge_activities/run_merge returns (MergeResult is for an in-progress call's own outcome)."""
+    """get_merge/list_merges' return shape - the merge record itself, not the before/after
+    summary merge_activities/run_merge returns (MergeResult is for an in-progress call's own
+    outcome). copy_mode/attached_source_id (issue #542) are always "overwrite"/null for a merge
+    created before that fix shipped, except for backfilled attach rows."""
     return {
         "merge_id": merge.id,
         "source_id": merge.source_activity_id,
         "source_name": merge.source_activity.name if merge.source_activity_id else None,
         "fields": merge.fields,
         "null_policy": merge.null_policy,
+        "copy_mode": merge.copy_mode,
+        "attached_source_id": merge.attached_source_id,
         "offset_seconds": merge.offset_seconds,
         "alignment_score": merge.alignment_score,
         "field_counts": merge.field_counts,
@@ -634,18 +638,22 @@ class ActivityMCPTools(ScopedMCPToolset):
             source_kind=source_kind,
         )
 
-    def unmerge_activity(self, activity_id: str) -> dict[str, Any]:
-        """Issue #501: reverses activity_id's own latest active merge (from merge_activities) -
-        restores its stream fields by re-parsing its own stored upload file, restores its
-        activity-level fields from the snapshot the merge itself recorded, and un-hides the
-        source if the merge had hidden it (unless something else has since re-resolved that
-        source, which is left alone). Fails if there's no active merge, more than one is stacked
-        on this activity (a merge chain - undo isn't supported for that), or the activity's own
+    def unmerge_activity(self, activity_id: str, merge_id: str | None = None) -> dict[str, Any]:
+        """Issue #501: reverses one of activity_id's active merges (from merge_activities) -
+        either copy_mode="overwrite" (restores stream fields by re-parsing its own stored upload
+        file, and activity-level fields from the snapshot the merge itself recorded) or
+        copy_mode="attach" (issue #542: deletes the attached source, swapping the primary stream
+        back first if the attach had promoted it). Either way, un-hides the source if the merge
+        had hidden it (unless something else has since re-resolved that source, which is left
+        alone). merge_id picks a specific merge when more than one is active on this activity
+        (e.g. one overwrite merge and one attach merge at once) - omit it when there's at most
+        one. Fails if there's no active merge (or none matching merge_id), more than one is
+        active and merge_id wasn't given, or - for an overwrite merge - the activity's own
         upload row has no stored file."""
         self._require_scope(ACTIVITIES_WRITE)
         activity = get_object_or_404(Activity, pk=activity_id)
         self._require_write(activity.athlete_id)
-        undo_merge(activity_id)
+        undo_merge(activity_id, merge_id=merge_id)
         return self.get_activity(activity_id)
 
     def list_activity_sources(self, activity_id: str) -> list[dict[str, Any]]:
@@ -758,6 +766,22 @@ class ActivityMCPTools(ScopedMCPToolset):
             .first()
         )
         return _merge_record_summary(merge) if merge else None
+
+    def list_merges(self, activity_id: str) -> dict[str, Any]:
+        """Issue #542: every active merge on activity_id, not just the most recent one get_merge
+        returns - an activity can carry more than one at once, e.g. an "overwrite" merge on
+        power and a separate "attach" merge on heartrate. Most recent first. Pass a specific
+        merge_id from here to unmerge_activity to choose which one to undo when there's more
+        than one."""
+        self._require_scope(ACTIVITIES_READ)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_read(activity.athlete_id)
+        merges = (
+            Merge.objects.filter(target_activity_id=activity_id, undone_at__isnull=True)
+            .order_by("-created_at")
+            .select_related("source_activity")
+        )
+        return {"data": [_merge_record_summary(merge) for merge in merges]}
 
     def resolve_duplicates_batch(
         self,

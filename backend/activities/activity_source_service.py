@@ -36,6 +36,10 @@ class AttachResult:
     offset_seconds: int
     alignment_score: float | None
     became_primary: bool
+    # Issue #542: set only when became_primary - the id of the new snapshot source the swap
+    # created for the *former* primary, so a Merge row can record exactly what undo should
+    # restore. None when preview or when the attach never promoted.
+    demoted_source_id: str | None
     copied: int
     nulled: int
 
@@ -178,7 +182,7 @@ def attach_stream(
             nulled += 1
 
     if preview:
-        return AttachResult(None, resolved_offset, score, False, copied, nulled)
+        return AttachResult(None, resolved_offset, score, False, None, copied, nulled)
 
     with transaction.atomic():
         activity_source = ActivitySource.objects.create(
@@ -195,11 +199,17 @@ def attach_stream(
 
         athlete = target.athlete
         became_primary = False
+        demoted_source_id = None
         if _should_auto_swap_on_attach(field, source_kind, source, target, athlete):
-            set_primary_source(target_id, field, activity_source.id)
+            # Calls _swap_primary_stream directly rather than the public set_primary_source, so
+            # the id of the snapshot it creates for the demoted former primary can be captured
+            # for the Merge row merge_service._run_attach is about to create - see
+            # AttachResult.demoted_source_id's own docstring.
+            _, demoted_source_id = _swap_primary_stream(target_id, field, activity_source.id)
+            recompute_after_merge(target_id)
             became_primary = True
 
-    return AttachResult(activity_source.id, resolved_offset, score, became_primary, copied, nulled)
+    return AttachResult(activity_source.id, resolved_offset, score, became_primary, demoted_source_id, copied, nulled)
 
 
 def create_parse_time_running_power_source(
@@ -243,7 +253,7 @@ def set_primary_source(activity_id: str, field: str, source_id: str) -> Activity
     post-merge recompute cascade - same cascade a real #501 merge or #498 primary swap already
     triggers. See _swap_primary_stream for the data-only half this wraps."""
     with transaction.atomic():
-        activity = _swap_primary_stream(activity_id, field, source_id)
+        activity, _demoted_source_id = _swap_primary_stream(activity_id, field, source_id)
         recompute_after_merge(activity_id)
     activity.refresh_from_db()
     return activity
@@ -285,17 +295,19 @@ def _stamp_activity_after_swap(activity: Activity, field: str, new_source: Activ
         activity.save(update_fields=["cadence_source"])
 
 
-def _swap_primary_stream(activity_id: str, field: str, source_id: str) -> Activity:
+def _swap_primary_stream(activity_id: str, field: str, source_id: str) -> tuple[Activity, str]:
     """The data-only half of set_primary_source - everything except the recompute cascade. Besides
-    set_primary_source itself, only athletes.tasks.recompute_running_power_source's bulk loop
-    calls this directly, deferring the athlete-wide cascade (merge_postprocess
-    .recompute_after_duplicate_change's own full-ledger rebuild) to run once per athlete instead
-    of once per swapped activity, which would otherwise be quadratic in the athlete's activity
-    count - see recompute_activity_level_only's own docstring.
+    set_primary_source itself, athletes.tasks.recompute_running_power_source's bulk loop and
+    attach_stream/detach_and_restore (issue #542) call this directly, deferring the athlete-wide
+    cascade (merge_postprocess.recompute_after_duplicate_change's own full-ledger rebuild) to run
+    once per athlete instead of once per swapped activity, which would otherwise be quadratic in
+    the athlete's activity count - see recompute_activity_level_only's own docstring.
 
     The activity's *current* primary values (today, always living in Record) are themselves
     saved as a new ActivitySource/ActivityStream pair first (origin "file" - they came from this
-    activity's own upload, not an attach), so swapping never loses data either direction."""
+    activity's own upload, not an attach), so swapping never loses data either direction. Returns
+    that new snapshot's source id alongside the activity, so a caller that needs to undo this
+    exact swap later (issue #542) knows what to swap back to."""
     _validate_field(field)
     activity = get_object_or_404(Activity, pk=activity_id)
     new_primary_stream = get_object_or_404(ActivityStream, activity_id=activity_id, field=field, source_id=source_id)
@@ -335,7 +347,75 @@ def _swap_primary_stream(activity_id: str, field: str, source_id: str) -> Activi
         new_source = new_primary_stream.source
         _stamp_activity_after_swap(activity, field, new_source)
 
-    return activity
+    return activity, original_source.id
+
+
+def _previous_primary_source_for_field(activity: Activity, field: str, exclude_source_id: str) -> str | None:
+    """Issue #542: the swap-back candidate for detaching a currently-primary source with no
+    explicitly recorded demoted_source_id (e.g. a pre-fix orphaned attach backfilled with none,
+    or a standalone detach_source call). Every promotion snapshots whatever was primary right
+    before it into a new origin="file" ActivitySource (see _swap_primary_stream) - so the most
+    recently created one for this field is always exactly "what was primary immediately before
+    the current one", by construction. exclude_source_id guards against picking the source being
+    detached itself (it can't be origin="file" if it's the one we're detaching here, but excluded
+    defensively all the same)."""
+    return (
+        ActivitySource.objects.filter(activity=activity, sensor_kind=field, origin="file")
+        .exclude(pk=exclude_source_id)
+        .order_by("-created_at")
+        .values_list("id", flat=True)
+        .first()
+    )
+
+
+def _stream_matches_record(source: ActivitySource, field: str, activity: Activity) -> bool:
+    """Issue #542: whether source's own stored stream for field is, second for second, what
+    Record currently holds - the one reliable way to tell "is this literally the data Record was
+    last swapped to" without a recorded flag. Deliberately NOT _is_primary_for_field: that's a
+    device-*classification* heuristic (e.g. "this device isn't Zwift, so call it pedals"), which
+    can match two different, never-swapped-in devices purely by landing in the same classification
+    bucket - exactly the false positive that would make detach wrongly think a swap-back is
+    needed for a source that was never actually written into Record."""
+    stream = get_object_or_404(ActivityStream, activity_id=activity.id, field=field, source_id=source.id)
+    record_values = {row.t: getattr(row, field) for row in activity.records.only("t", field)}
+    return all(record_values.get(stream.t0 + i) == value for i, value in enumerate(stream.values))
+
+
+def detach_and_restore(activity_id: str, field: str, source_id: str, demoted_source_id: str | None = None) -> bool:
+    """Issue #542: removes a non-primary attached source outright, or - if it's currently
+    primary - swaps field back to its predecessor first, then removes it. Shared by
+    unmerge_service's undo of an "attach" merge and the standalone detach_source call.
+
+    demoted_source_id, when given, is ground truth from the Merge row that created this source:
+    it's set if and only if the attach actually swapped itself into Record at merge time (see
+    AttachResult.demoted_source_id), so its mere presence settles whether a swap-back is needed -
+    no further check required. When it's None (the standalone detach_source case, where there's
+    no Merge row to have recorded this), falls back to _stream_matches_record as the best
+    available signal, then _previous_primary_source_for_field to find what to restore.
+
+    Swapping back reuses _swap_primary_stream, which - being a general-purpose primary swap -
+    itself snapshots whatever's *currently* primary (the source being detached) into one more new
+    ActivitySource/ActivityStream row. That snapshot is pure duplication of data about to be
+    deleted anyway, so it's deleted alongside the original source rather than left behind as
+    clutter. Returns whether a swap-back + recompute happened."""
+    activity = get_object_or_404(Activity, pk=activity_id)
+    source = get_object_or_404(ActivitySource, pk=source_id, activity_id=activity_id)
+    if source.origin != "attached":
+        raise ValidationError({"source_id": "Only an attached source can be detached."})
+
+    needs_restore = True if demoted_source_id is not None else _stream_matches_record(source, field, activity)
+    with transaction.atomic():
+        if needs_restore:
+            restore_to = demoted_source_id or _previous_primary_source_for_field(activity, field, source_id)
+            if restore_to is None:
+                raise ValidationError(
+                    {"source_id": f"Can't detach - no previous primary {field} stream found to restore."}
+                )
+            _, redundant_snapshot_id = _swap_primary_stream(activity_id, field, restore_to)
+            recompute_after_merge(activity_id)
+            ActivitySource.objects.filter(pk=redundant_snapshot_id).delete()
+        source.delete()
+    return needs_restore
 
 
 def _is_primary_for_field(source: ActivitySource, activity: Activity) -> bool:

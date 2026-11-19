@@ -52,29 +52,35 @@ public class ActivityMergeService {
 		}
 	}
 
-	/** Issue #501 (phase 3): a target's currently active merge, for {@code get_merge}. {@code sourceId}/
-	 * {@code sourceName} are null if the source activity has since been deleted outright (the {@link
-	 * Merge#getSourceActivity} association is SET_NULL, not CASCADE - see that field's own Javadoc). */
+	/** Issue #501 (phase 3): a target's currently active merge, for {@code get_merge}/{@code
+	 * list_merges}. {@code sourceId}/{@code sourceName} are null if the source activity has since
+	 * been deleted outright (the {@link Merge#getSourceActivity} association is SET_NULL, not
+	 * CASCADE - see that field's own Javadoc). {@code copyMode}/{@code attachedSourceId} (issue
+	 * #542) are always OVERWRITE/null for a merge created before that fix shipped, except for
+	 * backfilled attach rows. */
 	public record MergeRecord(String mergeId, String sourceId, String sourceName, List<String> fields,
 			NullPolicy nullPolicy, int offsetSeconds, Double alignmentScore,
-			Map<String, FieldRewriteCounts> fieldCounts, boolean sourceHidden, Instant createdAt) {
+			Map<String, FieldRewriteCounts> fieldCounts, boolean sourceHidden, Instant createdAt,
+			MergeCopyMode copyMode, String attachedSourceId) {
 	}
 
 	private final ActivityRepository activityRepository;
 	private final RecordRepository recordRepository;
 	private final MergeRepository mergeRepository;
+	private final ActivitySourceRepository sourceRepository;
 	private final ActivityService activityService;
 	private final ActivityMergeApplyService mergeApplyService;
 	private final ActivityMergePostProcessingService postProcessingService;
 	private final ActivitySourceService sourceService;
 
 	public ActivityMergeService(ActivityRepository activityRepository, RecordRepository recordRepository,
-			MergeRepository mergeRepository, ActivityService activityService,
+			MergeRepository mergeRepository, ActivitySourceRepository sourceRepository, ActivityService activityService,
 			ActivityMergeApplyService mergeApplyService, ActivityMergePostProcessingService postProcessingService,
 			ActivitySourceService sourceService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.mergeRepository = mergeRepository;
+		this.sourceRepository = sourceRepository;
 		this.activityService = activityService;
 		this.mergeApplyService = mergeApplyService;
 		this.sourceService = sourceService;
@@ -272,19 +278,30 @@ public class ActivityMergeService {
 	 * backend_java/CLAUDE.md's lazy-association gotcha. */
 	@Transactional(readOnly = true)
 	public MergeRecord getActiveMerge(String targetId) {
-		List<Merge> active = mergeRepository.findByTargetActivityId(targetId).stream()
-				.filter(m -> m.getUndoneAt() == null)
-				.sorted(Comparator.comparing(Merge::getCreatedAt).reversed())
-				.toList();
-		if (active.isEmpty()) {
-			return null;
-		}
-		Merge merge = active.get(0);
+		List<Merge> active = activeMergesSorted(targetId);
+		return active.isEmpty() ? null : toMergeRecord(active.get(0));
+	}
+
+	/** Issue #542: every active merge on {@code targetId}, not just the most recent one {@link
+	 * #getActiveMerge} returns - an activity can carry more than one at once, e.g. an OVERWRITE
+	 * merge on power and a separate ATTACH merge on heartrate. Most recent first. */
+	@Transactional(readOnly = true)
+	public List<MergeRecord> listActiveMerges(String targetId) {
+		return activeMergesSorted(targetId).stream().map(this::toMergeRecord).toList();
+	}
+
+	private List<Merge> activeMergesSorted(String targetId) {
+		return mergeRepository.findByTargetActivityId(targetId).stream().filter(m -> m.getUndoneAt() == null)
+				.sorted(Comparator.comparing(Merge::getCreatedAt).reversed()).toList();
+	}
+
+	private MergeRecord toMergeRecord(Merge merge) {
 		Activity source = merge.getSourceActivity();
 		return new MergeRecord(merge.getId(), source != null ? source.getId() : null,
 				source != null ? source.getName() : null, merge.getFields(), merge.getNullPolicy(),
 				merge.getOffsetSeconds(), merge.getAlignmentScore(), merge.getFieldCounts(), merge.isSourceHidden(),
-				merge.getCreatedAt());
+				merge.getCreatedAt(), merge.getCopyMode(),
+				merge.getAttachedSource() != null ? merge.getAttachedSource().getId() : null);
 	}
 
 	private static final List<String> ATTACHABLE_FIELDS = List.of("power", "heartrate", "cadence");
@@ -306,7 +323,8 @@ public class ActivityMergeService {
 		ActivitySourceService.AttachResult attach = sourceService.attachStream(targetId, sourceId, field,
 				offsetSecondsOverride, preview, sourceKind);
 
-		if (!preview && hideSource && !alreadyHiddenUnder(source, target)) {
+		boolean applyHide = !preview && hideSource && !alreadyHiddenUnder(source, target);
+		if (applyHide) {
 			source.setPrimaryActivity(target);
 			activityRepository.save(source);
 			activityService.applyDuplicateGearMileageChange(source, false, true);
@@ -318,7 +336,33 @@ public class ActivityMergeService {
 
 		Map<String, FieldRewriteCounts> counts = Map.of(field,
 				new FieldRewriteCounts(attach.copied(), 0, attach.nulled()));
-		return new MergeResult(null, attach.offsetSeconds(), attach.alignmentScore(), counts, before, after,
+
+		String mergeId = null;
+		if (!preview) {
+			// Issue #542: record this attach the same way the overwrite path records its own
+			// merge, so getActiveMerge/unmerge/listActiveMerges have something to find - attach
+			// previously wrote nothing here, which is exactly why it couldn't be undone.
+			Merge merge = new Merge();
+			merge.setTargetActivity(target);
+			merge.setSourceActivity(source);
+			merge.setFields(fields);
+			merge.setNullPolicy(null);
+			merge.setCopyMode(MergeCopyMode.ATTACH);
+			merge.setAttachedSource(sourceRepository.findById(attach.sourceId())
+					.orElseThrow(() -> new NotFoundException("No such source.")));
+			merge.setDemotedSource(attach.demotedSourceId() == null ? null
+					: sourceRepository.findById(attach.demotedSourceId())
+							.orElseThrow(() -> new NotFoundException("No such source.")));
+			merge.setOffsetSeconds(attach.offsetSeconds());
+			merge.setAlignmentScore(attach.alignmentScore());
+			merge.setFieldCounts(counts);
+			merge.setPreviousActivityValues(Map.of());
+			merge.setSourceHidden(applyHide);
+			merge = mergeRepository.save(merge);
+			mergeId = merge.getId();
+		}
+
+		return new MergeResult(mergeId, attach.offsetSeconds(), attach.alignmentScore(), counts, before, after,
 				!preview && hideSource, attach.sourceId());
 	}
 }
