@@ -636,6 +636,7 @@ class ActivityMergeView(APIView):
             preview=data["preview"],
             copy_mode=data["copy_mode"],
             source_kind=data["source_kind"],
+            zero_policy=data["zero_policy"],
         )
         return Response(result)
 

@@ -21,7 +21,15 @@ from gear.mileage import apply_duplicate_change
 from .activity_source_service import VALID_FIELDS as ATTACHABLE_FIELDS
 from .activity_source_service import attach_stream
 from .merge_alignment import align
-from .merge_apply import ACTIVITY_FIELDS, STREAM_FIELDS, CopyMode, FieldRewriteCounts, NullPolicy, apply_merge_fields
+from .merge_apply import (
+    ACTIVITY_FIELDS,
+    STREAM_FIELDS,
+    CopyMode,
+    FieldRewriteCounts,
+    NullPolicy,
+    ZeroPolicy,
+    apply_merge_fields,
+)
 from .merge_postprocess import recompute_activity_level_only, recompute_after_merge, threshold_fields_for_sports
 from .models import Activity, Merge
 
@@ -102,7 +110,15 @@ def _summarize(activity: Activity) -> ActivitySummary:
 
 
 def _counts_as_dict(counts: dict[str, FieldRewriteCounts]) -> dict[str, dict[str, int]]:
-    return {k: {"copied": v.copied, "kept_original": v.kept_original, "nulled": v.nulled} for k, v in counts.items()}
+    return {
+        k: {
+            "copied": v.copied,
+            "kept_original": v.kept_original,
+            "nulled": v.nulled,
+            "dropouts_nulled": v.dropouts_nulled,
+        }
+        for k, v in counts.items()
+    }
 
 
 def _run_attach(
@@ -113,6 +129,7 @@ def _run_attach(
     hide_source: bool,
     preview: bool,
     source_kind: str | None,
+    zero_policy: ZeroPolicy,
 ) -> MergeResult:
     """Issue #503 (phases 1-3): copy_mode="attach" - never touches the target's existing primary
     stream for fields; delegates the actual computation/writing to activity_source_service
@@ -120,7 +137,8 @@ def _run_attach(
     the overwrite path (and so hide_source's side effects roll back together with it), but -
     unlike overwrite - attach_stream itself writes nothing at all when preview=True, so there's
     nothing that specifically needs rolling back from attach's own writes. source_kind is only
-    meaningful for fields=["heartrate"]/["cadence"] - ignored for fields=["power"]."""
+    meaningful for fields=["heartrate"]/["cadence"] - ignored for fields=["power"]. zero_policy
+    (issue #541) is likewise only meaningful for fields=["power"]."""
     target = get_object_or_404(Activity, pk=target_id)
     source = get_object_or_404(Activity, pk=source_id)
     _validate(target, source, fields, hide_source)
@@ -133,8 +151,12 @@ def _run_attach(
     merge_row: Merge | None = None
 
     with transaction.atomic():
-        result = attach_stream(target_id, source_id, field, offset_seconds, preview, source_kind)
-        counts = {field: FieldRewriteCounts(copied=result.copied, kept_original=0, nulled=result.nulled)}
+        result = attach_stream(target_id, source_id, field, offset_seconds, preview, source_kind, zero_policy)
+        counts = {
+            field: FieldRewriteCounts(
+                copied=result.copied, kept_original=0, nulled=result.nulled, dropouts_nulled=result.dropouts_nulled
+            )
+        }
         apply_hide = not preview and hide_source and not _already_hidden_under(source, target)
         if apply_hide:
             source.primary_activity = target
@@ -184,9 +206,10 @@ def run_merge(
     preview: bool = False,
     copy_mode: CopyMode = "overwrite",
     source_kind: str | None = None,
+    zero_policy: ZeroPolicy = "as_null",
 ) -> MergeResult:
     if copy_mode == "attach":
-        return _run_attach(target_id, source_id, fields, offset_seconds, hide_source, preview, source_kind)
+        return _run_attach(target_id, source_id, fields, offset_seconds, hide_source, preview, source_kind, zero_policy)
 
     target = get_object_or_404(Activity, pk=target_id)
     source = get_object_or_404(Activity, pk=source_id)
@@ -200,7 +223,7 @@ def run_merge(
     merge_row: Merge | None = None
 
     with transaction.atomic():
-        counts = apply_merge_fields(target_id, source_id, fields, null_policy, resolved_offset)
+        counts = apply_merge_fields(target_id, source_id, fields, null_policy, resolved_offset, zero_policy)
 
         apply_hide = hide_source and not _already_hidden_under(source, target)
         if apply_hide:

@@ -72,6 +72,19 @@ class ActivityMergeControllerIntegrationTest extends IntegrationTest {
 		}
 	}
 
+	private void addPowerAndCadenceRecords(Activity activity, int count, java.util.function.IntUnaryOperator power,
+			int cadence) {
+		for (int t = 0; t < count; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), START.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(power.applyAsInt(t));
+			record.setCadence(cadence);
+			recordRepository.save(record);
+		}
+	}
+
 	private String bearer(User user) {
 		return "Bearer " + accessTokenService
 				.create(user, new CreateAccessTokenRequest("merge-test", List.of("activities:write"), null, null), Set.of())
@@ -94,6 +107,41 @@ class ActivityMergeControllerIntegrationTest extends IntegrationTest {
 				.andExpect(jsonPath("$.merge_id").exists())
 				.andExpect(jsonPath("$.offset_seconds").value(0))
 				.andExpect(jsonPath("$.source_hidden").value(false));
+	}
+
+	@Test
+	void mergeBindsZeroPolicyAndMasksAConfirmedDropoutByDefault() throws Exception {
+		User athlete = newAthlete("merge-controller-zero-policy@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity source = newActivity(athlete, "Source");
+		addPowerAndCadenceRecords(target, 10, t -> 200 + t, 85);
+		addPowerAndCadenceRecords(source, 10, t -> t == 4 || t == 5 ? 0 : 300 + t, 85);
+		// zero_policy omitted entirely - confirms the documented default (as_null) applies.
+		String body = "{\"source_id\":\"" + source.getId() + "\",\"fields\":[\"power\"],"
+				+ "\"null_policy\":\"keep_original\",\"offset_seconds\":0}";
+
+		mockMvc.perform(post("/v1/activities/" + target.getId() + "/merge").header("Authorization", bearer(athlete))
+						.contentType(MediaType.APPLICATION_JSON).content(body))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.field_counts.power.dropouts_nulled").value(2))
+				.andExpect(jsonPath("$.field_counts.power.copied").value(8));
+	}
+
+	@Test
+	void mergeBindsZeroPolicyKeepAndCopiesTheDropoutThrough() throws Exception {
+		User athlete = newAthlete("merge-controller-zero-policy-keep@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity source = newActivity(athlete, "Source");
+		addPowerAndCadenceRecords(target, 10, t -> 200 + t, 85);
+		addPowerAndCadenceRecords(source, 10, t -> t == 4 || t == 5 ? 0 : 300 + t, 85);
+		String body = "{\"source_id\":\"" + source.getId() + "\",\"fields\":[\"power\"],"
+				+ "\"null_policy\":\"keep_original\",\"offset_seconds\":0,\"zero_policy\":\"keep\"}";
+
+		mockMvc.perform(post("/v1/activities/" + target.getId() + "/merge").header("Authorization", bearer(athlete))
+						.contentType(MediaType.APPLICATION_JSON).content(body))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.field_counts.power.dropouts_nulled").value(0))
+				.andExpect(jsonPath("$.field_counts.power.copied").value(10));
 	}
 
 	@Test

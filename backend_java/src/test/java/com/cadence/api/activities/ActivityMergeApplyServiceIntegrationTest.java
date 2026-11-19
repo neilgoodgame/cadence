@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.cadence.api.activities.ActivityMergeApplyService.FieldRewriteCounts;
 import com.cadence.api.activities.ActivityMergeApplyService.NullPolicy;
+import com.cadence.api.activities.ActivityMergeApplyService.ZeroPolicy;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
@@ -237,6 +238,121 @@ class ActivityMergeApplyServiceIntegrationTest extends IntegrationTest {
 				target.getId(), source.getId(), List.of("not_a_real_field"), NullPolicy.OVERWRITE, 0);
 
 		assertThat(counts).isEmpty();
+	}
+
+	/** A 2 s power-meter dropout at source t=4,5 - the source's own cadence keeps turning
+	 * through it, and the target's power (the dropout detector's reference) stays well above
+	 * the 100 W confirmation threshold throughout. */
+	private Activity[] dropoutFixture(String emailPrefix) {
+		User athlete = newAthlete(emailPrefix + "@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity source = newActivity(athlete, "Source");
+		addRecords(target, 10, (r, t) -> r.setPower(200 + t));
+		addRecords(source, 10, (r, t) -> {
+			r.setPower(t == 4 || t == 5 ? 0 : 300 + t);
+			r.setCadence(85);
+		});
+		return new Activity[] {target, source};
+	}
+
+	@Test
+	void zeroPolicyAsNullMasksAConfirmedDropoutThenKeepOriginalApplies() {
+		Activity[] fixture = dropoutFixture("merge-apply-dropout-keep-original");
+		Activity target = fixture[0];
+		Activity source = fixture[1];
+
+		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(
+				target.getId(), source.getId(), List.of("power"), NullPolicy.KEEP_ORIGINAL, 0);
+
+		Map<Integer, Integer> rows = powerByT(target);
+		assertThat(rows.get(4)).isEqualTo(204); // target's own original value, via keepOriginal
+		assertThat(rows.get(5)).isEqualTo(205);
+		assertThat(rows.get(0)).isEqualTo(300); // untouched, real data
+		assertThat(counts.get("power").dropoutsNulled()).isEqualTo(2);
+		assertThat(counts.get("power").copied()).isEqualTo(8);
+		assertThat(counts.get("power").keptOriginal()).isEqualTo(0);
+		assertThat(counts.get("power").nulled()).isEqualTo(0);
+	}
+
+	@Test
+	void zeroPolicyAsNullMasksAConfirmedDropoutThenOverwriteApplies() {
+		Activity[] fixture = dropoutFixture("merge-apply-dropout-overwrite");
+		Activity target = fixture[0];
+		Activity source = fixture[1];
+
+		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(
+				target.getId(), source.getId(), List.of("power"), NullPolicy.OVERWRITE, 0);
+
+		Map<Integer, Integer> rows = powerByT(target);
+		assertThat(rows.get(4)).isNull();
+		assertThat(rows.get(5)).isNull();
+		assertThat(counts.get("power").dropoutsNulled()).isEqualTo(2);
+		assertThat(counts.get("power").nulled()).isEqualTo(0);
+	}
+
+	@Test
+	void zeroPolicyKeepPreservesThePre541Behavior() {
+		Activity[] fixture = dropoutFixture("merge-apply-dropout-zero-keep");
+		Activity target = fixture[0];
+		Activity source = fixture[1];
+
+		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(
+				target.getId(), source.getId(), List.of("power"), NullPolicy.KEEP_ORIGINAL, 0, ZeroPolicy.KEEP);
+
+		Map<Integer, Integer> rows = powerByT(target);
+		assertThat(rows.get(4)).isEqualTo(0); // copied through unchanged, like any other reading
+		assertThat(rows.get(5)).isEqualTo(0);
+		assertThat(counts.get("power").dropoutsNulled()).isEqualTo(0);
+		assertThat(counts.get("power").copied()).isEqualTo(10);
+	}
+
+	@Test
+	void aRunLongerThanFiveSecondsIsNeverMasked() {
+		User athlete = newAthlete("merge-apply-dropout-too-long@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity source = newActivity(athlete, "Source");
+		addRecords(target, 14, (r, t) -> r.setPower(200 + t));
+		addRecords(source, 14, (r, t) -> {
+			r.setPower(t >= 2 && t <= 8 ? 0 : 300 + t); // 7 s, too long to be a dropout
+			r.setCadence(85);
+		});
+
+		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(
+				target.getId(), source.getId(), List.of("power"), NullPolicy.KEEP_ORIGINAL, 0);
+
+		Map<Integer, Integer> rows = powerByT(target);
+		assertThat(rows.get(5)).isEqualTo(0); // copied through - not masked
+		assertThat(counts.get("power").dropoutsNulled()).isEqualTo(0);
+		assertThat(counts.get("power").copied()).isEqualTo(14);
+	}
+
+	@Test
+	void zeroPolicyNeverAffectsANonPowerFieldInTheSameMerge() {
+		User athlete = newAthlete("merge-apply-dropout-non-power@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity source = newActivity(athlete, "Source");
+		addRecords(target, 10, (r, t) -> {
+			r.setPower(200 + t);
+			r.setHeartrate(140 + t);
+		});
+		addRecords(source, 10, (r, t) -> {
+			r.setPower(t == 4 || t == 5 ? 0 : 300 + t);
+			r.setHeartrate(t == 4 || t == 5 ? 0 : 150 + t);
+			r.setCadence(85);
+		});
+
+		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(
+				target.getId(), source.getId(), List.of("power", "heartrate"), NullPolicy.OVERWRITE, 0);
+
+		List<Record> targetRecords = recordRepository.findByActivityIdOrderByT(target.getId());
+		Map<Integer, Integer> heartrates = new java.util.HashMap<>();
+		for (Record record : targetRecords) {
+			heartrates.put(record.getT(), record.getHeartrate());
+		}
+		assertThat(heartrates.get(4)).isEqualTo(0); // heartrate has no dropout concept - a literal 0 is just data
+		assertThat(heartrates.get(5)).isEqualTo(0);
+		assertThat(counts.get("heartrate").dropoutsNulled()).isEqualTo(0);
+		assertThat(counts.get("power").dropoutsNulled()).isEqualTo(2);
 	}
 
 	private Map<Integer, Integer> powerByT(Activity activity) {

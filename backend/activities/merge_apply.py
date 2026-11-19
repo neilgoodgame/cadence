@@ -15,9 +15,17 @@ from typing import Literal
 
 from django.db import transaction
 
+from .dropout_detection import detect_dropouts
 from .models import Activity, Record
 
 NullPolicy = Literal["overwrite", "keep_original"]
+# Issue #541: how a literal 0 W reading from the source is treated when it's confirmed as a
+# power-meter dropout (see dropout_detection.detect_dropouts), not real data. "as_null" (the
+# default) masks it as though the source had no value there at all, so null_policy's own
+# keep_original/overwrite choice then applies uniformly; "keep" preserves today's pre-#541
+# behavior of copying it through like any other reading. Power-only - no other field can read a
+# dropout-indistinguishable-from-real-effort 0 the way a power meter can.
+ZeroPolicy = Literal["keep", "as_null"]
 # Issue #503 (phase 1): how POST .../merge copies a field from source onto target. "overwrite"
 # (the default, and the only mode before this issue) rewrites the target's own Record rows in
 # place, per null_policy - apply_merge_fields above. "attach" doesn't touch the target's existing
@@ -67,6 +75,10 @@ class FieldRewriteCounts:
     copied: int
     kept_original: int
     nulled: int
+    # Issue #541: how many of the source's seconds were a confirmed power-meter dropout (see
+    # ZeroPolicy) rather than a genuine 0 W reading or a missing sample - always 0 for every
+    # field other than power, and for power whenever zero_policy="keep".
+    dropouts_nulled: int = 0
 
 
 def _compute_stream_field(
@@ -74,16 +86,26 @@ def _compute_stream_field(
     source_values: dict[int, object],
     offset_seconds: int,
     null_policy: NullPolicy,
+    dropout_ts: set[int] | None = None,
 ) -> tuple[dict[int, object], FieldRewriteCounts]:
     """Pure: for every t the target has, looks up the source's value at (t - offset_seconds) -
     offset_seconds is how much later the source started than the target (see
     merge_alignment.align's own docstring for the sign convention). A target second with no
-    matching source row is treated the same as an explicit source null. Returns the new value
-    for every target t (even where unchanged), plus the counts preview/apply both report."""
+    matching source row is treated the same as an explicit source null. dropout_ts (issue #541),
+    when given, is a set of *source*-local seconds confirmed as power-meter dropouts - those are
+    masked the same way as a missing source value (so null_policy's own branches handle them
+    uniformly), but counted separately as dropouts_nulled rather than copied/nulled. Returns the
+    new value for every target t (even where unchanged), plus the counts preview/apply both
+    report."""
     new_values: dict[int, object] = {}
-    copied = kept_original = nulled = 0
+    copied = kept_original = nulled = dropouts_nulled = 0
     for t, target_value in target_values.items():
-        source_value = source_values.get(t - offset_seconds)
+        source_t = t - offset_seconds
+        if dropout_ts is not None and source_t in dropout_ts:
+            new_values[t] = target_value if null_policy == "keep_original" else None
+            dropouts_nulled += 1
+            continue
+        source_value = source_values.get(source_t)
         if source_value is not None:
             new_values[t] = source_value
             copied += 1
@@ -93,7 +115,7 @@ def _compute_stream_field(
         else:
             new_values[t] = None
             nulled += 1
-    return new_values, FieldRewriteCounts(copied, kept_original, nulled)
+    return new_values, FieldRewriteCounts(copied, kept_original, nulled, dropouts_nulled)
 
 
 def _compute_activity_field(target: Activity, source: Activity, field: str) -> tuple[object, FieldRewriteCounts]:
@@ -103,7 +125,12 @@ def _compute_activity_field(target: Activity, source: Activity, field: str) -> t
 
 
 def _compute(
-    target: Activity, source: Activity, fields: list[str], null_policy: NullPolicy, offset_seconds: int
+    target: Activity,
+    source: Activity,
+    fields: list[str],
+    null_policy: NullPolicy,
+    offset_seconds: int,
+    zero_policy: ZeroPolicy = "as_null",
 ) -> tuple[dict[str, FieldRewriteCounts], dict[str, dict[int, object]], dict[str, object]]:
     """Shared by preview_merge_fields and apply_merge_fields. Returns (per-field counts, new
     stream values keyed by field then t, new activity-level field values) - apply_merge_fields
@@ -114,12 +141,29 @@ def _compute(
 
     stream_fields = [f for f in fields if f in STREAM_FIELDS]
     if stream_fields:
-        target_rows = list(target.records.only("t", *stream_fields))
-        source_rows = list(source.records.only("t", *stream_fields))
+        # Issue #541: fetch cadence alongside power too, even when it isn't itself one of the
+        # requested fields - it's the single-stream dropout-detection fallback, read from the
+        # source's own rows (same shape _resolve_offset's own cadence/power fetch already uses).
+        fetch_fields = set(stream_fields)
+        detect_power_dropouts = "power" in stream_fields and zero_policy == "as_null"
+        if detect_power_dropouts:
+            fetch_fields.add("cadence")
+        target_rows = list(target.records.only("t", *fetch_fields))
+        source_rows = list(source.records.only("t", *fetch_fields))
         for field in stream_fields:
             target_values = {row.t: getattr(row, field) for row in target_rows}
             source_values = {row.t: getattr(row, field) for row in source_rows}
-            new_values, field_counts = _compute_stream_field(target_values, source_values, offset_seconds, null_policy)
+            dropout_ts = None
+            if field == "power" and detect_power_dropouts:
+                # Both the reference (target's power) and the cadence fallback need to be keyed
+                # on the *source's* own local t, matching source_values - see
+                # _compute_stream_field's own lookup (t - offset_seconds).
+                reference = {t: target_values.get(t + offset_seconds) for t in source_values}
+                source_cadence = {row.t: row.cadence for row in source_rows}
+                dropout_ts, _ = detect_dropouts(source_values, reference, source_cadence)
+            new_values, field_counts = _compute_stream_field(
+                target_values, source_values, offset_seconds, null_policy, dropout_ts
+            )
             counts[field] = field_counts
             new_stream_values[field] = new_values
 
@@ -133,24 +177,36 @@ def _compute(
 
 
 def preview_merge_fields(
-    target_id: str, source_id: str, fields: list[str], null_policy: NullPolicy, offset_seconds: int
+    target_id: str,
+    source_id: str,
+    fields: list[str],
+    null_policy: NullPolicy,
+    offset_seconds: int,
+    zero_policy: ZeroPolicy = "as_null",
 ) -> dict[str, FieldRewriteCounts]:
     """Same computation apply_merge_fields runs, without writing anything."""
     target = Activity.objects.get(pk=target_id)
     source = Activity.objects.get(pk=source_id)
-    counts, _, _ = _compute(target, source, fields, null_policy, offset_seconds)
+    counts, _, _ = _compute(target, source, fields, null_policy, offset_seconds, zero_policy)
     return counts
 
 
 def apply_merge_fields(
-    target_id: str, source_id: str, fields: list[str], null_policy: NullPolicy, offset_seconds: int
+    target_id: str,
+    source_id: str,
+    fields: list[str],
+    null_policy: NullPolicy,
+    offset_seconds: int,
+    zero_policy: ZeroPolicy = "as_null",
 ) -> dict[str, FieldRewriteCounts]:
     """Writes the selected fields from source onto target - the target keeps its own id, so its
     comments, tags, gear, workout link and current_from history stay intact; only the listed
     fields' values change."""
     target = Activity.objects.get(pk=target_id)
     source = Activity.objects.get(pk=source_id)
-    counts, new_stream_values, new_activity_values = _compute(target, source, fields, null_policy, offset_seconds)
+    counts, new_stream_values, new_activity_values = _compute(
+        target, source, fields, null_policy, offset_seconds, zero_policy
+    )
 
     with transaction.atomic():
         if new_stream_values:

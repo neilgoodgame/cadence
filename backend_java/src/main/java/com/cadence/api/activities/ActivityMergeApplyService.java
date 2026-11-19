@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.activities.calc.DropoutDetector;
 import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.Shoe;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -10,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import org.springframework.stereotype.Service;
@@ -54,7 +56,33 @@ public class ActivityMergeApplyService {
 		}
 	}
 
-	public record FieldRewriteCounts(int copied, int keptOriginal, int nulled) {
+	/** Issue #541: how a literal 0 W reading from the source is treated when it's confirmed as a
+	 * power-meter dropout (see {@code DropoutDetector}), not real data. {@code AS_NULL} (the
+	 * default) masks it as though the source had no value there at all, so nullPolicy's own
+	 * KEEP_ORIGINAL/OVERWRITE choice then applies uniformly; {@code KEEP} preserves today's
+	 * pre-#541 behavior of copying it through like any other reading. Power-only - no other
+	 * field can read a dropout-indistinguishable-from-real-effort 0 the way a power meter can. */
+	public enum ZeroPolicy {
+		KEEP, AS_NULL;
+
+		@JsonValue
+		public String wireValue() {
+			return name().toLowerCase();
+		}
+
+		@JsonCreator
+		public static ZeroPolicy fromWireValue(String value) {
+			return ZeroPolicy.valueOf(value.toUpperCase());
+		}
+	}
+
+	public record FieldRewriteCounts(int copied, int keptOriginal, int nulled, int dropoutsNulled) {
+
+		// Issue #541: appended as a new field - callers that never deal with dropouts (every
+		// non-power field) construct this the same 3-arg way they always have.
+		public FieldRewriteCounts(int copied, int keptOriginal, int nulled) {
+			this(copied, keptOriginal, nulled, 0);
+		}
 	}
 
 	private record RecordFieldAccessor(Function<Record, Object> getter, BiConsumer<Record, Object> setter) {
@@ -186,16 +214,28 @@ public class ActivityMergeApplyService {
 	/** Searches, for every t the target has, the source's value at (t - offsetSeconds) -
 	 * offsetSeconds is how much later the source started than the target (see
 	 * ActivityMergeAlignmentCalculator's own Javadoc for the sign convention). A target second
-	 * with no matching source row is treated the same as an explicit source null. */
+	 * with no matching source row is treated the same as an explicit source null. dropoutTs
+	 * (issue #541), when given, is a set of *source*-local seconds confirmed as power-meter
+	 * dropouts - those are masked the same way as a missing source value (so nullPolicy's own
+	 * branches handle them uniformly), but counted separately as dropoutsNulled rather than
+	 * copied/nulled. */
 	private static Map.Entry<Map<Integer, Object>, FieldRewriteCounts> computeStreamField(
-			Map<Integer, Object> targetValues, Map<Integer, Object> sourceValues, int offsetSeconds, NullPolicy nullPolicy) {
+			Map<Integer, Object> targetValues, Map<Integer, Object> sourceValues, int offsetSeconds,
+			NullPolicy nullPolicy, Set<Integer> dropoutTs) {
 		Map<Integer, Object> newValues = new HashMap<>();
 		int copied = 0;
 		int keptOriginal = 0;
 		int nulled = 0;
+		int dropoutsNulled = 0;
 		for (Map.Entry<Integer, Object> entry : targetValues.entrySet()) {
 			int t = entry.getKey();
-			Object sourceValue = sourceValues.get(t - offsetSeconds);
+			int sourceT = t - offsetSeconds;
+			if (dropoutTs != null && dropoutTs.contains(sourceT)) {
+				newValues.put(t, nullPolicy == NullPolicy.KEEP_ORIGINAL ? entry.getValue() : null);
+				dropoutsNulled++;
+				continue;
+			}
+			Object sourceValue = sourceValues.get(sourceT);
 			if (sourceValue != null) {
 				newValues.put(t, sourceValue);
 				copied++;
@@ -209,10 +249,11 @@ public class ActivityMergeApplyService {
 				nulled++;
 			}
 		}
-		return Map.entry(newValues, new FieldRewriteCounts(copied, keptOriginal, nulled));
+		return Map.entry(newValues, new FieldRewriteCounts(copied, keptOriginal, nulled, dropoutsNulled));
 	}
 
-	private ComputeResult compute(Activity target, Activity source, List<String> fields, NullPolicy nullPolicy, int offsetSeconds) {
+	private ComputeResult compute(Activity target, Activity source, List<String> fields, NullPolicy nullPolicy,
+			int offsetSeconds, ZeroPolicy zeroPolicy) {
 		Map<String, FieldRewriteCounts> counts = new LinkedHashMap<>();
 		Map<String, Map<Integer, Object>> newStreamValues = new LinkedHashMap<>();
 		Map<String, Object> newActivityValues = new LinkedHashMap<>();
@@ -221,6 +262,7 @@ public class ActivityMergeApplyService {
 		if (!streamFields.isEmpty()) {
 			List<Record> targetRows = recordRepository.findByActivityIdOrderByT(target.getId());
 			List<Record> sourceRows = recordRepository.findByActivityIdOrderByT(source.getId());
+			boolean detectPowerDropouts = streamFields.contains("power") && zeroPolicy == ZeroPolicy.AS_NULL;
 			for (String field : streamFields) {
 				RecordFieldAccessor accessor = RECORD_FIELDS.get(field);
 				// Every target row gets a value - even null, since the null policy applies to a
@@ -238,7 +280,27 @@ public class ActivityMergeApplyService {
 						sourceValues.put(row.getT(), value);
 					}
 				}
-				var result = computeStreamField(targetValues, sourceValues, offsetSeconds, nullPolicy);
+				Set<Integer> dropoutTs = null;
+				if (field.equals("power") && detectPowerDropouts) {
+					// Both the reference (target's power) and the cadence fallback need to be
+					// keyed on the *source's* own local t, matching sourceValues - see
+					// computeStreamField's own lookup (t - offsetSeconds).
+					Map<Integer, Integer> sourcePower = new HashMap<>();
+					for (Record row : sourceRows) {
+						sourcePower.put(row.getT(), row.getPower());
+					}
+					Map<Integer, Integer> reference = new HashMap<>();
+					for (Integer sourceT : sourcePower.keySet()) {
+						Object targetValue = targetValues.get(sourceT + offsetSeconds);
+						reference.put(sourceT, targetValue == null ? null : (Integer) targetValue);
+					}
+					Map<Integer, Integer> sourceCadence = new HashMap<>();
+					for (Record row : sourceRows) {
+						sourceCadence.put(row.getT(), row.getCadence());
+					}
+					dropoutTs = DropoutDetector.detectDropouts(sourcePower, reference, sourceCadence).dropoutTs();
+				}
+				var result = computeStreamField(targetValues, sourceValues, offsetSeconds, nullPolicy, dropoutTs);
 				newStreamValues.put(field, result.getKey());
 				counts.put(field, result.getValue());
 			}
@@ -256,12 +318,23 @@ public class ActivityMergeApplyService {
 		return new ComputeResult(counts, newStreamValues, newActivityValues);
 	}
 
-	/** Same computation {@link #applyMergeFields} runs, without writing anything. */
 	public Map<String, FieldRewriteCounts> previewMergeFields(String targetId, String sourceId, List<String> fields,
 			NullPolicy nullPolicy, int offsetSeconds) {
+		return previewMergeFields(targetId, sourceId, fields, nullPolicy, offsetSeconds, ZeroPolicy.AS_NULL);
+	}
+
+	/** Same computation {@link #applyMergeFields} runs, without writing anything. */
+	public Map<String, FieldRewriteCounts> previewMergeFields(String targetId, String sourceId, List<String> fields,
+			NullPolicy nullPolicy, int offsetSeconds, ZeroPolicy zeroPolicy) {
 		Activity target = activityService.getActivity(targetId);
 		Activity source = activityService.getActivity(sourceId);
-		return compute(target, source, fields, nullPolicy, offsetSeconds).counts();
+		return compute(target, source, fields, nullPolicy, offsetSeconds, zeroPolicy).counts();
+	}
+
+	@Transactional
+	public Map<String, FieldRewriteCounts> applyMergeFields(String targetId, String sourceId, List<String> fields,
+			NullPolicy nullPolicy, int offsetSeconds) {
+		return applyMergeFields(targetId, sourceId, fields, nullPolicy, offsetSeconds, ZeroPolicy.AS_NULL);
 	}
 
 	/** Writes the selected fields from source onto target - the target keeps its own id, so its
@@ -269,10 +342,10 @@ public class ActivityMergeApplyService {
 	 * fields' values change. */
 	@Transactional
 	public Map<String, FieldRewriteCounts> applyMergeFields(String targetId, String sourceId, List<String> fields,
-			NullPolicy nullPolicy, int offsetSeconds) {
+			NullPolicy nullPolicy, int offsetSeconds, ZeroPolicy zeroPolicy) {
 		Activity target = activityService.getActivity(targetId);
 		Activity source = activityService.getActivity(sourceId);
-		ComputeResult result = compute(target, source, fields, nullPolicy, offsetSeconds);
+		ComputeResult result = compute(target, source, fields, nullPolicy, offsetSeconds, zeroPolicy);
 
 		if (!result.newStreamValues().isEmpty()) {
 			List<Record> targetRows = recordRepository.findByActivityIdOrderByT(targetId);

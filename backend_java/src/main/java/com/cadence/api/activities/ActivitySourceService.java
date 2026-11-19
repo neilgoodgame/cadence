@@ -3,6 +3,7 @@ package com.cadence.api.activities;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator.AlignmentResult;
 import com.cadence.api.activities.calc.ActivityMergeAlignmentCalculator.Sample;
+import com.cadence.api.activities.calc.DropoutDetector;
 import com.cadence.api.activities.calc.StreamComparisonCalculator;
 import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.CadenceSource;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,7 +68,7 @@ public class ActivitySourceService {
 	}
 
 	public record AttachResult(String sourceId, int offsetSeconds, Double alignmentScore, boolean becamePrimary,
-			int copied, int nulled, String demotedSourceId) {
+			int copied, int nulled, String demotedSourceId, int dropoutsNulled) {
 	}
 
 	/** Zwift (trainer power, read after drivetrain losses) vs everything else (treated as
@@ -133,6 +135,17 @@ public class ActivitySourceService {
 	@Transactional
 	public AttachResult attachStream(String targetId, String sourceId, String field, Integer offsetSecondsOverride,
 			boolean preview, String sourceKind) {
+		return attachStream(targetId, sourceId, field, offsetSecondsOverride, preview, sourceKind,
+				ActivityMergeApplyService.ZeroPolicy.AS_NULL);
+	}
+
+	/** zeroPolicy (issue #541) is likewise only meaningful for field="power". Independently
+	 * {@code @Transactional} (same as every overload of {@code ActivityMergeService#runMerge}) -
+	 * self-invocation from the no-zeroPolicy overload above wouldn't otherwise go through the
+	 * Spring proxy that establishes the transaction boundary. */
+	@Transactional
+	public AttachResult attachStream(String targetId, String sourceId, String field, Integer offsetSecondsOverride,
+			boolean preview, String sourceKind, ActivityMergeApplyService.ZeroPolicy zeroPolicy) {
 		validateField(field);
 		validateSourceKind(field, sourceKind);
 		Activity target = activityRepository.findById(targetId)
@@ -170,17 +183,47 @@ public class ActivitySourceService {
 		// t) - source's field value at target-local t is whatever the source recorded at its own
 		// local time (t - offsetSeconds), same lookup direction ActivityMergeApplyService's
 		// overwrite path uses.
-		Map<Integer, Integer> sourceValueByT = sourceRows.stream()
-				.filter(r -> ActivityMergeApplyService.getRecordFieldValue(r, field) != null)
-				.collect(Collectors.toMap(Record::getT,
-						r -> (Integer) ActivityMergeApplyService.getRecordFieldValue(r, field), (a, b) -> b));
+		Map<Integer, Integer> sourceFieldByT = new HashMap<>();
+		for (Record row : sourceRows) {
+			Object value = ActivityMergeApplyService.getRecordFieldValue(row, field);
+			if (value != null) {
+				sourceFieldByT.put(row.getT(), (Integer) value);
+			}
+		}
+		Set<Integer> dropoutTs = Set.of();
+		if (field.equals("power") && zeroPolicy == ActivityMergeApplyService.ZeroPolicy.AS_NULL) {
+			// Reference (target's own power) and the cadence fallback (source's own) both need
+			// to be keyed on the *source's* own local t, matching sourceFieldByT - target-local
+			// t is source-local t + offsetSeconds, same convention ActivityMergeApplyService
+			// .compute uses.
+			Map<Integer, Integer> targetPowerByT = new HashMap<>();
+			for (Record row : targetRows) {
+				targetPowerByT.put(row.getT(), row.getPower());
+			}
+			Map<Integer, Integer> reference = new HashMap<>();
+			for (Integer t : sourceFieldByT.keySet()) {
+				reference.put(t, targetPowerByT.get(t + offsetSeconds));
+			}
+			Map<Integer, Integer> sourceCadenceByT = new HashMap<>();
+			for (Record row : sourceRows) {
+				sourceCadenceByT.put(row.getT(), row.getCadence());
+			}
+			dropoutTs = DropoutDetector.detectDropouts(sourceFieldByT, reference, sourceCadenceByT).dropoutTs();
+		}
+
 		int t0 = targetRows.stream().mapToInt(Record::getT).min().orElse(0);
 		int tMax = targetRows.stream().mapToInt(Record::getT).max().orElse(t0);
 		Short[] values = new Short[tMax - t0 + 1];
 		int copied = 0;
 		int nulled = 0;
+		int dropoutsNulled = 0;
 		for (int t = t0; t <= tMax; t++) {
-			Integer sourceValue = sourceValueByT.get(t - offsetSeconds);
+			int sourceT = t - offsetSeconds;
+			if (dropoutTs.contains(sourceT)) {
+				dropoutsNulled++;
+				continue;
+			}
+			Integer sourceValue = sourceFieldByT.get(sourceT);
 			if (sourceValue != null) {
 				values[t - t0] = sourceValue.shortValue();
 				copied++;
@@ -191,7 +234,7 @@ public class ActivitySourceService {
 		}
 
 		if (preview) {
-			return new AttachResult(null, offsetSeconds, alignmentScore, false, copied, nulled, null);
+			return new AttachResult(null, offsetSeconds, alignmentScore, false, copied, nulled, null, dropoutsNulled);
 		}
 
 		ActivitySource activitySource = new ActivitySource();
@@ -226,7 +269,7 @@ public class ActivitySourceService {
 		}
 
 		return new AttachResult(activitySource.getId(), offsetSeconds, alignmentScore, becamePrimary, copied, nulled,
-				demotedSourceId);
+				demotedSourceId, dropoutsNulled);
 	}
 
 	private static boolean shouldAutoSwapOnAttach(String field, String sourceKind, Activity source, Activity target,

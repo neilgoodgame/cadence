@@ -47,9 +47,17 @@ public class ActivityMergeOrchestrator {
 	public ActivityMergeService.MergeResult merge(String targetId, String sourceId, List<String> fields,
 			NullPolicy nullPolicy, Integer offsetSecondsOverride, boolean hideSource, boolean preview,
 			MergeCopyMode copyMode, String sourceKind) {
+		return merge(targetId, sourceId, fields, nullPolicy, offsetSecondsOverride, hideSource, preview, copyMode,
+				sourceKind, ActivityMergeApplyService.ZeroPolicy.AS_NULL);
+	}
+
+	/** zeroPolicy (issue #541) is likewise only meaningful when "power" is one of fields. */
+	public ActivityMergeService.MergeResult merge(String targetId, String sourceId, List<String> fields,
+			NullPolicy nullPolicy, Integer offsetSecondsOverride, boolean hideSource, boolean preview,
+			MergeCopyMode copyMode, String sourceKind, ActivityMergeApplyService.ZeroPolicy zeroPolicy) {
 		try {
 			return mergeService.runMerge(targetId, sourceId, fields, nullPolicy, offsetSecondsOverride, hideSource,
-					preview, copyMode, sourceKind);
+					preview, copyMode, sourceKind, zeroPolicy);
 		}
 		catch (MergePreviewRollbackSignal signal) {
 			return signal.result();

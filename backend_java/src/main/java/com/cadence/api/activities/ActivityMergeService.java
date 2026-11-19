@@ -194,8 +194,19 @@ public class ActivityMergeService {
 	public MergeResult runMerge(String targetId, String sourceId, List<String> fields, NullPolicy nullPolicy,
 			Integer offsetSecondsOverride, boolean hideSource, boolean preview, MergeCopyMode copyMode,
 			String sourceKind) {
+		return runMerge(targetId, sourceId, fields, nullPolicy, offsetSecondsOverride, hideSource, preview, copyMode,
+				sourceKind, ActivityMergeApplyService.ZeroPolicy.AS_NULL);
+	}
+
+	/** zeroPolicy (issue #541) is likewise only meaningful when "power" is one of fields.
+	 * Independently {@code @Transactional} - same reasoning as every other overload here. */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public MergeResult runMerge(String targetId, String sourceId, List<String> fields, NullPolicy nullPolicy,
+			Integer offsetSecondsOverride, boolean hideSource, boolean preview, MergeCopyMode copyMode,
+			String sourceKind, ActivityMergeApplyService.ZeroPolicy zeroPolicy) {
 		if (copyMode == MergeCopyMode.ATTACH) {
-			return runAttach(targetId, sourceId, fields, offsetSecondsOverride, hideSource, preview, sourceKind);
+			return runAttach(targetId, sourceId, fields, offsetSecondsOverride, hideSource, preview, sourceKind,
+					zeroPolicy);
 		}
 		Activity target = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
@@ -215,7 +226,7 @@ public class ActivityMergeService {
 		}
 
 		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(targetId, sourceId, fields,
-				nullPolicy, offset.offsetSeconds());
+				nullPolicy, offset.offsetSeconds(), zeroPolicy);
 
 		boolean applyHide = hideSource && !alreadyHiddenUnder(source, target);
 		if (applyHide) {
@@ -307,7 +318,7 @@ public class ActivityMergeService {
 	private static final List<String> ATTACHABLE_FIELDS = List.of("power", "heartrate", "cadence");
 
 	private MergeResult runAttach(String targetId, String sourceId, List<String> fields, Integer offsetSecondsOverride,
-			boolean hideSource, boolean preview, String sourceKind) {
+			boolean hideSource, boolean preview, String sourceKind, ActivityMergeApplyService.ZeroPolicy zeroPolicy) {
 		if (fields.size() != 1 || !ATTACHABLE_FIELDS.contains(fields.get(0))) {
 			throw new ValidationException(
 					"copyMode=attach only supports a single field of power, heartrate, or cadence.", "fields");
@@ -321,7 +332,7 @@ public class ActivityMergeService {
 
 		ActivitySummary before = summarize(target);
 		ActivitySourceService.AttachResult attach = sourceService.attachStream(targetId, sourceId, field,
-				offsetSecondsOverride, preview, sourceKind);
+				offsetSecondsOverride, preview, sourceKind, zeroPolicy);
 
 		boolean applyHide = !preview && hideSource && !alreadyHiddenUnder(source, target);
 		if (applyHide) {
@@ -335,7 +346,7 @@ public class ActivityMergeService {
 		ActivitySummary after = attach.becamePrimary() ? summarize(reloadedTarget) : before;
 
 		Map<String, FieldRewriteCounts> counts = Map.of(field,
-				new FieldRewriteCounts(attach.copied(), 0, attach.nulled()));
+				new FieldRewriteCounts(attach.copied(), 0, attach.nulled(), attach.dropoutsNulled()));
 
 		String mergeId = null;
 		if (!preview) {

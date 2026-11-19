@@ -188,6 +188,10 @@ class MergeActivitiesSerializer(serializers.Serializer):
     # Issue #503 (phase 3): only meaningful with copy_mode="attach" and fields=["heartrate"] or
     # ["cadence"] - ignored for fields=["power"], which still classifies by device instead.
     source_kind = serializers.CharField(required=False, allow_null=True, default=None)
+    # Issue #541: only meaningful when "power" is one of fields - "as_null" (the default) masks
+    # a confirmed power-meter dropout the same as a missing source sample; "keep" preserves the
+    # pre-#541 behavior of copying a dropout zero through like any other reading.
+    zero_policy = serializers.ChoiceField(choices=[("keep", "Keep"), ("as_null", "As null")], default="as_null")
 
 
 class SetPrimarySourceSerializer(serializers.Serializer):

@@ -157,3 +157,94 @@ class MergeApplyTests(TestCase):
         counts = apply_merge_fields(target.id, source.id, ["not_a_real_field"], "overwrite", offset_seconds=0)
 
         assert counts == {}
+
+    def _dropout_fixture(self):
+        """A 2 s power-meter dropout at source t=4,5 - the source's own cadence keeps turning
+        through it, and the target's power (the dropout detector's reference) stays well above
+        the 100 W confirmation threshold throughout."""
+        target = self._activity(name="Target")
+        source = self._activity(name="Source")
+        self._add_records(target, 10, power=lambda t: 200 + t)
+        self._add_records(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            cadence=lambda t: 85,
+        )
+        return target, source
+
+    def test_zero_policy_as_null_masks_a_confirmed_dropout_then_keep_original_applies(self):
+        target, source = self._dropout_fixture()
+
+        counts = apply_merge_fields(target.id, source.id, ["power"], "keep_original", offset_seconds=0)
+
+        rows = {r.t: r.power for r in target.records.all()}
+        assert rows[4] == 204  # target's own original value, via keep_original
+        assert rows[5] == 205
+        assert rows[0] == 300  # untouched, real data
+        assert counts["power"].dropouts_nulled == 2
+        assert counts["power"].copied == 8
+        assert counts["power"].kept_original == 0
+        assert counts["power"].nulled == 0
+
+    def test_zero_policy_as_null_masks_a_confirmed_dropout_then_overwrite_applies(self):
+        target, source = self._dropout_fixture()
+
+        counts = apply_merge_fields(target.id, source.id, ["power"], "overwrite", offset_seconds=0)
+
+        rows = {r.t: r.power for r in target.records.all()}
+        assert rows[4] is None
+        assert rows[5] is None
+        assert counts["power"].dropouts_nulled == 2
+        assert counts["power"].nulled == 0
+
+    def test_zero_policy_keep_preserves_the_pre_541_behavior(self):
+        target, source = self._dropout_fixture()
+
+        counts = apply_merge_fields(
+            target.id, source.id, ["power"], "keep_original", offset_seconds=0, zero_policy="keep"
+        )
+
+        rows = {r.t: r.power for r in target.records.all()}
+        assert rows[4] == 0  # copied through unchanged, like any other reading
+        assert rows[5] == 0
+        assert counts["power"].dropouts_nulled == 0
+        assert counts["power"].copied == 10
+
+    def test_a_run_longer_than_five_seconds_is_never_masked(self):
+        target = self._activity(name="Target")
+        source = self._activity(name="Source")
+        self._add_records(target, 14, power=lambda t: 200 + t)
+        self._add_records(
+            source,
+            14,
+            power=lambda t: 0 if 2 <= t <= 8 else 300 + t,  # 7 s, too long to be a dropout
+            cadence=lambda t: 85,
+        )
+
+        counts = apply_merge_fields(target.id, source.id, ["power"], "keep_original", offset_seconds=0)
+
+        rows = {r.t: r.power for r in target.records.all()}
+        assert rows[5] == 0  # copied through - not masked
+        assert counts["power"].dropouts_nulled == 0
+        assert counts["power"].copied == 14
+
+    def test_zero_policy_never_affects_a_non_power_field_in_the_same_merge(self):
+        target = self._activity(name="Target")
+        source = self._activity(name="Source")
+        self._add_records(target, 10, power=lambda t: 200 + t, heartrate=lambda t: 140 + t)
+        self._add_records(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            heartrate=lambda t: 0 if t in (4, 5) else 150 + t,
+            cadence=lambda t: 85,
+        )
+
+        counts = apply_merge_fields(target.id, source.id, ["power", "heartrate"], "overwrite", offset_seconds=0)
+
+        heartrates = {r.t: r.heartrate for r in target.records.all()}
+        assert heartrates[4] == 0  # heartrate has no dropout concept - a literal 0 is just data
+        assert heartrates[5] == 0
+        assert counts["heartrate"].dropouts_nulled == 0
+        assert counts["power"].dropouts_nulled == 2

@@ -18,7 +18,9 @@ from rest_framework.exceptions import ValidationError
 from athletes.zones import get_or_create_zone_set, reference_for
 
 from . import stream_comparison
+from .dropout_detection import detect_dropouts
 from .merge_alignment import align
+from .merge_apply import ZeroPolicy
 from .merge_postprocess import recompute_after_merge
 from .models import Activity, ActivitySource, ActivityStream, Record
 
@@ -42,6 +44,10 @@ class AttachResult:
     demoted_source_id: str | None
     copied: int
     nulled: int
+    # Issue #541: how many of the source's seconds were a confirmed power-meter dropout rather
+    # than a genuine 0 W reading or a missing sample - always 0 outside field="power", and for
+    # power whenever zero_policy="keep".
+    dropouts_nulled: int = 0
 
 
 class SourceSummary(NamedTuple):
@@ -139,6 +145,7 @@ def attach_stream(
     offset_seconds: int | None = None,
     preview: bool = False,
     source_kind: str | None = None,
+    zero_policy: ZeroPolicy = "as_null",
 ) -> AttachResult:
     """Attaches source's field stream onto target as a non-primary ActivityStream, aligned to
     target's own timeline using the same cross-correlation ``run_merge`` uses for ``overwrite``
@@ -148,7 +155,8 @@ def attach_stream(
     one, immediately swaps via set_primary_source before returning - the athlete can always swap
     back later. For heartrate/cadence, that preference match can only ever happen when
     source_kind was supplied (there's no device-classification fallback the way power has via
-    classify()). preview=True computes and returns the result without writing anything (no
+    classify()). zero_policy (issue #541) is likewise only meaningful for field="power".
+    preview=True computes and returns the result without writing anything (no
     transaction-rollback trick needed here, unlike ``overwrite`` - nothing is written unless
     preview is False, so there's nothing to undo)."""
     _validate_field(field)
@@ -168,13 +176,27 @@ def attach_stream(
     # Build the attached array on the target's own timeline (t0..t0+n-1, matching Record's t) -
     # source's field value at target-local t is whatever the source recorded at its own local
     # time (t - offset_seconds), same lookup direction merge_apply's overwrite path uses.
-    source_value_by_t = {row.t: getattr(row, field) for row in source_rows if getattr(row, field) is not None}
+    source_field_by_t = {row.t: getattr(row, field) for row in source_rows}
+    dropout_ts: set[int] = set()
+    if field == "power" and zero_policy == "as_null":
+        # Reference (target's own power) and the cadence fallback (source's own) both need to be
+        # keyed on the *source's* own local t, matching source_field_by_t - target-local t is
+        # source-local t + resolved_offset, same convention merge_apply._compute uses.
+        target_power_by_t = {row.t: row.power for row in target_rows}
+        reference = {t: target_power_by_t.get(t + resolved_offset) for t in source_field_by_t}
+        source_cadence_by_t = {row.t: row.cadence for row in source_rows}
+        dropout_ts, _ = detect_dropouts(source_field_by_t, reference, source_cadence_by_t)
+
     t0 = min((row.t for row in target_rows), default=0)
     t_max = max((row.t for row in target_rows), default=t0)
     values: list[int | None] = [None] * (t_max - t0 + 1)
-    copied = nulled = 0
+    copied = nulled = dropouts_nulled = 0
     for t in range(t0, t_max + 1):
-        source_value = source_value_by_t.get(t - resolved_offset)
+        source_t = t - resolved_offset
+        if source_t in dropout_ts:
+            dropouts_nulled += 1
+            continue
+        source_value = source_field_by_t.get(source_t)
         if source_value is not None:
             values[t - t0] = source_value
             copied += 1
@@ -182,7 +204,7 @@ def attach_stream(
             nulled += 1
 
     if preview:
-        return AttachResult(None, resolved_offset, score, False, None, copied, nulled)
+        return AttachResult(None, resolved_offset, score, False, None, copied, nulled, dropouts_nulled)
 
     with transaction.atomic():
         activity_source = ActivitySource.objects.create(
@@ -209,7 +231,9 @@ def attach_stream(
             recompute_after_merge(target_id)
             became_primary = True
 
-    return AttachResult(activity_source.id, resolved_offset, score, became_primary, demoted_source_id, copied, nulled)
+    return AttachResult(
+        activity_source.id, resolved_offset, score, became_primary, demoted_source_id, copied, nulled, dropouts_nulled
+    )
 
 
 def create_parse_time_running_power_source(
