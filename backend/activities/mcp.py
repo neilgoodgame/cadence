@@ -767,7 +767,7 @@ class ActivityMCPTools(ScopedMCPToolset):
         )
         return _merge_record_summary(merge) if merge else None
 
-    def list_merges(self, activity_id: str) -> dict[str, Any]:
+    def list_merges(self, activity_id: str) -> list[dict[str, Any]]:
         """Issue #542: every active merge on activity_id, not just the most recent one get_merge
         returns - an activity can carry more than one at once, e.g. an "overwrite" merge on
         power and a separate "attach" merge on heartrate. Most recent first. Pass a specific
@@ -781,7 +781,9 @@ class ActivityMCPTools(ScopedMCPToolset):
             .order_by("-created_at")
             .select_related("source_activity")
         )
-        return {"data": [_merge_record_summary(merge) for merge in merges]}
+        # Bare list, not {"data": [...]}, matching list_activity_sources (the closest sibling
+        # "every X for this activity" tool) and backend_java's own listMerges.
+        return [_merge_record_summary(merge) for merge in merges]
 
     def resolve_duplicates_batch(
         self,

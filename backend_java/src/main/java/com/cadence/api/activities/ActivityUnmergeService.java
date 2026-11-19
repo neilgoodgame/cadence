@@ -16,9 +16,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -102,6 +105,24 @@ public class ActivityUnmergeService {
 		return active.get(0);
 	}
 
+	/** Issue #542: undoing an OVERWRITE merge restores every one of its own {@code fields} by
+	 * re-parsing the target's original upload file - safe only when no other active merge has
+	 * since touched any of the same fields. Passing {@code mergeId} to pick a specific merge
+	 * otherwise bypasses {@link #latestActiveMerge}'s own "more than one active merge" guard
+	 * entirely (that guard only fires when {@code mergeId} is omitted), which would let undoing
+	 * an older merge silently erase a newer one's effect on a shared field, resetting all the way
+	 * back to the pre-every-merge original. Only relevant to this, the overwrite path: an ATTACH
+	 * merge's own undo is keyed to the field's *current* data (see {@link
+	 * ActivitySourceService#detachAndRestore}), not a blind re-parse, so it can't suffer this - a
+	 * coexisting attach merge on a different field is exactly the case this issue added support
+	 * for and must stay unblocked. */
+	private Merge otherActiveMergeSharingField(String targetId, Merge merge) {
+		Set<String> fields = new HashSet<>(merge.getFields());
+		return mergeRepository.findByTargetActivityId(targetId).stream()
+				.filter(m -> m.getUndoneAt() == null && !m.getId().equals(merge.getId()))
+				.filter(m -> !Collections.disjoint(fields, m.getFields())).findFirst().orElse(null);
+	}
+
 	private Upload resolveUpload(String targetId) {
 		Upload upload = uploadRepository.findByActivityId(targetId).orElse(null);
 		if (upload == null || upload.getStoredPath() == null || upload.getStoredPath().isBlank()) {
@@ -149,6 +170,12 @@ public class ActivityUnmergeService {
 		Merge merge = latestActiveMerge(targetId, mergeId);
 		if (merge.getCopyMode() == MergeCopyMode.ATTACH) {
 			return undoAttach(target, merge);
+		}
+		Merge conflicting = otherActiveMergeSharingField(targetId, merge);
+		if (conflicting != null) {
+			throw new UnprocessableEntityException("This activity has another active merge ('" + conflicting.getId()
+					+ "') touching the same field(s) as '" + merge.getId()
+					+ "' - undo isn't supported for a merge chain on a shared field.");
 		}
 		Upload upload = resolveUpload(targetId);
 

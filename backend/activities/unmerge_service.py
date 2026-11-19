@@ -62,17 +62,34 @@ def _resolve_upload(target: Activity) -> Upload:
     return upload
 
 
-def _undo_attach(target_id: str, merge: Merge) -> Merge:
+def _other_active_merge_sharing_field(target_id: str, merge: Merge) -> Merge | None:
+    """Issue #542: undoing an "overwrite" merge restores every one of its own `fields` by
+    re-parsing the target's original upload file - safe only when no other active merge has
+    since touched any of the same fields. Passing merge_id to pick a specific merge otherwise
+    bypasses _latest_active_merge's own "more than one active merge" guard entirely (that guard
+    only fires when merge_id is omitted), which would let undoing an older merge silently erase a
+    newer one's effect on a shared field, resetting all the way back to the pre-every-merge
+    original. Only relevant to this, the overwrite path: an "attach" merge's own undo is keyed to
+    the field's *current* data (see activity_source_service.detach_and_restore), not a blind
+    re-parse, so it can't suffer this - a coexisting attach merge on a different field is exactly
+    the case this issue added support for and must stay unblocked."""
+    fields = set(merge.fields)
+    for other in Merge.objects.filter(target_activity_id=target_id, undone_at__isnull=True).exclude(pk=merge.id):
+        if fields & set(other.fields):
+            return other
+    return None
+
+
+def _undo_attach(target: Activity, merge: Merge) -> Merge:
     """Issue #542: undoes an "attach" merge - deletes the ActivitySource/ActivityStream it
     created (swapping Record back to merge.demoted_source_id first if it had auto-promoted to
     primary) rather than overwrite's re-parse-the-upload-file approach, which doesn't apply here
     since attach never touched Record (unless it promoted) in the first place. See
     activity_source_service.detach_and_restore for the shared swap-back + cleanup logic, also
     used by the standalone detach_source call."""
-    target = get_object_or_404(Activity, pk=target_id)
     with transaction.atomic():
         activity_source_service.detach_and_restore(
-            target_id, merge.fields[0], merge.attached_source_id, merge.demoted_source_id
+            target.id, merge.fields[0], merge.attached_source_id, merge.demoted_source_id
         )
 
         source = None
@@ -97,7 +114,13 @@ def undo_merge(target_id: str, merge_id: str | None = None) -> Merge:
     target = get_object_or_404(Activity, pk=target_id)
     merge = _latest_active_merge(target_id, merge_id)
     if merge.copy_mode == "attach":
-        return _undo_attach(target_id, merge)
+        return _undo_attach(target, merge)
+    conflicting = _other_active_merge_sharing_field(target_id, merge)
+    if conflicting is not None:
+        raise UnprocessableEntityError(
+            f"This activity has another active merge ('{conflicting.id}') touching the same "
+            f"field(s) as '{merge.id}' - undo isn't supported for a merge chain on a shared field."
+        )
     upload = _resolve_upload(target)
 
     # ingest_upload links Upload.activity only to the parent/sole activity, never a multisport

@@ -386,12 +386,15 @@ def detach_and_restore(activity_id: str, field: str, source_id: str, demoted_sou
     primary - swaps field back to its predecessor first, then removes it. Shared by
     unmerge_service's undo of an "attach" merge and the standalone detach_source call.
 
-    demoted_source_id, when given, is ground truth from the Merge row that created this source:
-    it's set if and only if the attach actually swapped itself into Record at merge time (see
-    AttachResult.demoted_source_id), so its mere presence settles whether a swap-back is needed -
-    no further check required. When it's None (the standalone detach_source case, where there's
-    no Merge row to have recorded this), falls back to _stream_matches_record as the best
-    available signal, then _previous_primary_source_for_field to find what to restore.
+    Whether a swap-back is needed is always decided from the *current* data (_stream_matches_record)
+    - never from demoted_source_id's mere presence, even though it's ground truth about what the
+    attach itself did at merge time: something else (a direct set_primary_source call, or a later
+    merge/attach) can re-resolve the field's primary again after this merge, and trusting a stale
+    "it was promoted" fact would then swap back over - and discard - that later, unrelated change.
+    demoted_source_id, when given, only picks *which* source to restore once a swap-back is
+    already confirmed necessary; when it's None (the standalone detach_source case, where there's
+    no Merge row to have recorded this) or stale (no longer accurate), falls back to
+    _previous_primary_source_for_field to find what to restore instead.
 
     Swapping back reuses _swap_primary_stream, which - being a general-purpose primary swap -
     itself snapshots whatever's *currently* primary (the source being detached) into one more new
@@ -403,7 +406,7 @@ def detach_and_restore(activity_id: str, field: str, source_id: str, demoted_sou
     if source.origin != "attached":
         raise ValidationError({"source_id": "Only an attached source can be detached."})
 
-    needs_restore = True if demoted_source_id is not None else _stream_matches_record(source, field, activity)
+    needs_restore = _stream_matches_record(source, field, activity)
     with transaction.atomic():
         if needs_restore:
             restore_to = demoted_source_id or _previous_primary_source_for_field(activity, field, source_id)

@@ -10,6 +10,7 @@ from core.exceptions import UnprocessableEntityError
 from uploads.fixtures_helpers import build_tcx
 from uploads.tests.helpers import _bearer_client as _upload_bearer_client
 
+from .. import activity_source_service
 from ..merge_service import run_merge
 from ..models import Activity, Merge, Record
 from ..unmerge_service import undo_merge
@@ -157,3 +158,48 @@ class UnmergeServiceTests(TestCase):
         undo_merge(target.id, merge_id=attach_result["merge_id"])
         self.assertIsNone(Merge.objects.get(pk=overwrite_result["merge_id"]).undone_at)
         self.assertIsNotNone(Merge.objects.get(pk=attach_result["merge_id"]).undone_at)
+
+    def test_undoing_a_promoted_attach_never_clobbers_a_later_unrelated_primary_swap(self):
+        """Code review finding: undo must not trust a stale demoted_source_id once something
+        else (here, a direct set_primary_source call unrelated to this merge) has since changed
+        the field's actual current primary - it must check the live data, not the merge-time
+        fact, or it would silently discard the athlete's later, intentional choice."""
+        self.athlete.bike_power_source = "pedals"
+        self.athlete.save(update_fields=["bike_power_source"])
+        target = self._uploaded_target(power=100)
+        target.device = "Zwift"  # classifies "trainer" - current primary isn't "pedals" yet
+        target.save(update_fields=["device"])
+        attach_source = self._source_with_records(power=250)
+        attach_source.device = "Wahoo"  # classifies "pedals", matches the preference -> auto-swap
+        attach_source.save(update_fields=["device"])
+        result = run_merge(target.id, attach_source.id, ["power"], None, offset_seconds=0, copy_mode="attach")
+        merge = Merge.objects.get(pk=result["merge_id"])
+        self.assertIsNotNone(merge.demoted_source_id)  # ground truth: this merge did promote
+
+        # Something else - unrelated to this merge - changes the field's primary afterward.
+        later_source = self._source_with_records(power=999)
+        later_attach = activity_source_service.attach_stream(
+            target.id, later_source.id, "power", offset_seconds=0, preview=False
+        )
+        activity_source_service.set_primary_source(target.id, "power", later_attach.source_id)
+        target.refresh_from_db()
+        self.assertEqual(target.avg_power, 999)
+
+        undo_merge(target.id, merge_id=merge.id)
+
+        target.refresh_from_db()
+        self.assertEqual(target.avg_power, 999)  # untouched - the later swap must survive undo
+
+    def test_undo_by_merge_id_is_blocked_when_another_active_merge_shares_a_field(self):
+        """Code review finding: passing merge_id must not bypass the merge-chain safety check -
+        undoing an older overwrite merge by id while a newer one still touches the same field
+        would otherwise re-parse the original file and silently erase the newer merge's effect."""
+        target = self._uploaded_target(power=100)
+        source_a = self._source_with_records(power=250)
+        source_b = self._source_with_records(power=300)
+
+        older = run_merge(target.id, source_a.id, ["power"], "overwrite", offset_seconds=0)
+        run_merge(target.id, source_b.id, ["power"], "overwrite", offset_seconds=0)
+
+        with self.assertRaises(UnprocessableEntityError):
+            undo_merge(target.id, merge_id=older["merge_id"])

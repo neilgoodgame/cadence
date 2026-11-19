@@ -583,9 +583,11 @@ class Merge(PrefixedIDModel):
         Activity, null=True, blank=True, on_delete=models.SET_NULL, related_name="merges_from"
     )
     fields = models.JSONField()
-    # Issue #542: blank (not choices-listed) for an "attach" row, where null_policy is
-    # meaningless - Django convention prefers "" over NULL for an optional CharField (DJ001).
-    null_policy = models.CharField(max_length=20, choices=NULL_POLICY_CHOICES, blank=True, default="")
+    # Issue #542: null for an "attach" row, where null_policy is meaningless - null=True rather
+    # than the usual Django "" sentinel (DJ001) so this column's actual NULL-ness matches
+    # backend_java's identical column exactly, per the repo's own cross-backend schema-shape
+    # parity rule (root CLAUDE.md).
+    null_policy = models.CharField(max_length=20, choices=NULL_POLICY_CHOICES, null=True, blank=True)  # noqa: DJ001
     copy_mode = models.CharField(max_length=10, choices=COPY_MODE_CHOICES, default="overwrite")
     # Issue #542: the ActivitySource an "attach" merge created - needed so unmerge/detach can
     # find it. Always null for "overwrite" rows. SET_NULL (not CASCADE): if the source is deleted

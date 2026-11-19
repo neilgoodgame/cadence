@@ -526,13 +526,16 @@ public class ActivitySourceService {
 	 * - swaps {@code field} back to its predecessor first, then removes it. Shared by {@link
 	 * ActivityUnmergeService}'s undo of an ATTACH merge and the standalone detachSource call.
 	 *
-	 * <p>{@code demotedSourceId}, when given, is ground truth from the {@link Merge} row that
-	 * created this source: it's set if and only if the attach actually swapped itself into Record
-	 * at merge time (see {@link AttachResult#demotedSourceId}), so its mere presence settles
-	 * whether a swap-back is needed - no further check required. When it's null (the standalone
-	 * detachSource case, where there's no Merge row to have recorded this), falls back to {@link
-	 * #streamMatchesRecord} as the best available signal, then {@link
-	 * #previousPrimarySourceForField} to find what to restore.
+	 * <p>Whether a swap-back is needed is always decided from the *current* data ({@link
+	 * #streamMatchesRecord}) - never from {@code demotedSourceId}'s mere presence, even though
+	 * it's ground truth about what the attach itself did at merge time: something else (a direct
+	 * {@link #setPrimarySource} call, or a later merge/attach) can re-resolve the field's primary
+	 * again after this merge, and trusting a stale "it was promoted" fact would then swap back
+	 * over - and discard - that later, unrelated change. {@code demotedSourceId}, when given,
+	 * only picks *which* source to restore once a swap-back is already confirmed necessary; when
+	 * it's null (the standalone detachSource case, where there's no Merge row to have recorded
+	 * this) or stale (no longer accurate), falls back to {@link #previousPrimarySourceForField}
+	 * to find what to restore instead.
 	 *
 	 * <p>Swapping back reuses {@link #swapPrimaryStream}, which - being a general-purpose primary
 	 * swap - itself snapshots whatever's *currently* primary (the source being detached) into one
@@ -551,7 +554,7 @@ public class ActivitySourceService {
 			throw new ValidationException("Only an attached source can be detached.", "source_id");
 		}
 
-		boolean needsRestore = demotedSourceId != null || streamMatchesRecord(source, field, activity);
+		boolean needsRestore = streamMatchesRecord(source, field, activity);
 		if (needsRestore) {
 			String restoreTo = demotedSourceId != null ? demotedSourceId : previousPrimarySourceForField(activityId, field);
 			if (restoreTo == null) {

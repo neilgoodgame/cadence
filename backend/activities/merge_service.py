@@ -134,6 +134,7 @@ def _run_attach(
 
     with transaction.atomic():
         result = attach_stream(target_id, source_id, field, offset_seconds, preview, source_kind)
+        counts = {field: FieldRewriteCounts(copied=result.copied, kept_original=0, nulled=result.nulled)}
         apply_hide = not preview and hide_source and not _already_hidden_under(source, target)
         if apply_hide:
             source.primary_activity = target
@@ -144,7 +145,6 @@ def _run_attach(
         if preview:
             transaction.set_rollback(True)
         else:
-            counts = {field: FieldRewriteCounts(copied=result.copied, kept_original=0, nulled=result.nulled)}
             # Issue #542: record this attach the same way the overwrite path records its own
             # merge, so get_merge/unmerge_activity/list_merges have something to find - attach
             # previously wrote nothing here, which is exactly why it couldn't be undone.
@@ -152,7 +152,7 @@ def _run_attach(
                 target_activity=target,
                 source_activity=source,
                 fields=fields,
-                null_policy="",
+                null_policy=None,
                 copy_mode="attach",
                 attached_source_id=result.source_id,
                 demoted_source_id=result.demoted_source_id,
@@ -162,7 +162,6 @@ def _run_attach(
                 source_hidden=apply_hide,
             )
 
-    counts = {field: FieldRewriteCounts(copied=result.copied, kept_original=0, nulled=result.nulled)}
     return {
         "merge_id": merge_row.id if merge_row else None,
         "offset_seconds": result.offset_seconds,
