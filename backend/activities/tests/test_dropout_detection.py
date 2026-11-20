@@ -2,7 +2,7 @@
 functions, not a TestCase - conftest.py's auto-tagging puts them in the `unit` bucket. Mirrors
 backend_java's DropoutDetectorTest."""
 
-from ..dropout_detection import DropoutRun, detect_dropouts
+from ..dropout_detection import DropoutRun, build_reference, detect_dropouts
 
 
 def _constant(n: int, value: int) -> dict[int, int]:
@@ -100,3 +100,49 @@ def test_a_missing_sample_is_not_treated_as_a_zero():
 
     assert dropout_ts == set()
     assert runs == []
+
+
+def test_one_missing_reference_sample_in_a_run_does_not_reject_the_whole_run():
+    """Code review finding: the reference stream can drop a sample too - a gap there shouldn't
+    sink corroboration from the run's other, clearly-confirmed seconds."""
+    primary = {**_constant(10, 200), 4: 0, 5: 0, 6: 0}
+    reference = {**_constant(10, 220)}
+    del reference[5]  # the reference's own simultaneous gap - neutral, not disconfirming
+
+    dropout_ts, runs = detect_dropouts(primary, reference, cadence=None)
+
+    assert dropout_ts == {4, 5, 6}
+    assert runs == [DropoutRun(start_t=4, length=3)]
+
+
+def test_a_reference_run_with_no_data_at_all_is_not_confirmed():
+    """No evidence either way must not be treated as confirmation - only an explicit low/zero
+    reference reading rejects a run (mutual coasting); a total absence of data means there was
+    nothing to corroborate with in the first place."""
+    primary = {**_constant(10, 200), 4: 0, 5: 0}
+    reference: dict[int, int | None] = {}  # no reference data at these seconds at all
+
+    dropout_ts, runs = detect_dropouts(primary, reference, cadence=None)
+
+    assert dropout_ts == set()
+    assert runs == []
+
+
+def test_build_reference_returns_none_when_the_target_has_no_data_at_all():
+    """Code review finding: a reference dict of all-None values must not be passed to
+    detect_dropouts as if it were real data - that silently defeats the cadence-only fallback,
+    since `reference is not None` would always be taken even with nothing to compare against."""
+    target_values_by_t: dict[int, int | None] = dict.fromkeys(range(10), None)
+
+    reference = build_reference(target_values_by_t, offset_seconds=0, source_ts=range(10))
+
+    assert reference is None
+
+
+def test_build_reference_returns_the_aligned_dict_when_the_target_has_some_data():
+    target_values_by_t = dict.fromkeys(range(10), 220)
+
+    reference = build_reference(target_values_by_t, offset_seconds=3, source_ts=range(5))
+
+    # source-local t -> target-local (t + offset_seconds)
+    assert reference == {0: 220, 1: 220, 2: 220, 3: 220, 4: 220}

@@ -289,11 +289,15 @@ public class ActivityMergeApplyService {
 					for (Record row : sourceRows) {
 						sourcePower.put(row.getT(), row.getPower());
 					}
-					Map<Integer, Integer> reference = new HashMap<>();
-					for (Integer sourceT : sourcePower.keySet()) {
-						Object targetValue = targetValues.get(sourceT + offsetSeconds);
-						reference.put(sourceT, targetValue == null ? null : (Integer) targetValue);
+					Map<Integer, Integer> targetPower = new HashMap<>();
+					for (Record row : targetRows) {
+						targetPower.put(row.getT(), row.getPower());
 					}
+					// buildReference returns null (not a map of all-null values) when the target
+					// has no power data at all - letting detectDropouts fall back to the cadence
+					// signal instead of a reference that can never confirm anything.
+					Map<Integer, Integer> reference = DropoutDetector.buildReference(targetPower, offsetSeconds,
+							sourcePower.keySet());
 					Map<Integer, Integer> sourceCadence = new HashMap<>();
 					for (Record row : sourceRows) {
 						sourceCadence.put(row.getT(), row.getCadence());

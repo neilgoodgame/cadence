@@ -192,18 +192,15 @@ public class ActivitySourceService {
 		}
 		Set<Integer> dropoutTs = Set.of();
 		if (field.equals("power") && zeroPolicy == ActivityMergeApplyService.ZeroPolicy.AS_NULL) {
-			// Reference (target's own power) and the cadence fallback (source's own) both need
-			// to be keyed on the *source's* own local t, matching sourceFieldByT - target-local
-			// t is source-local t + offsetSeconds, same convention ActivityMergeApplyService
-			// .compute uses.
+			// buildReference returns null (not a map of all-null values) when the target has no
+			// power data at all - letting detectDropouts fall back to the cadence signal instead
+			// of a reference that can never confirm anything.
 			Map<Integer, Integer> targetPowerByT = new HashMap<>();
 			for (Record row : targetRows) {
 				targetPowerByT.put(row.getT(), row.getPower());
 			}
-			Map<Integer, Integer> reference = new HashMap<>();
-			for (Integer t : sourceFieldByT.keySet()) {
-				reference.put(t, targetPowerByT.get(t + offsetSeconds));
-			}
+			Map<Integer, Integer> reference = DropoutDetector.buildReference(targetPowerByT, offsetSeconds,
+					sourceFieldByT.keySet());
 			Map<Integer, Integer> sourceCadenceByT = new HashMap<>();
 			for (Record row : sourceRows) {
 				sourceCadenceByT.put(row.getT(), row.getCadence());

@@ -15,7 +15,7 @@ from typing import Literal
 
 from django.db import transaction
 
-from .dropout_detection import detect_dropouts
+from .dropout_detection import build_reference, detect_dropouts
 from .models import Activity, Record
 
 NullPolicy = Literal["overwrite", "keep_original"]
@@ -155,10 +155,10 @@ def _compute(
             source_values = {row.t: getattr(row, field) for row in source_rows}
             dropout_ts = None
             if field == "power" and detect_power_dropouts:
-                # Both the reference (target's power) and the cadence fallback need to be keyed
-                # on the *source's* own local t, matching source_values - see
-                # _compute_stream_field's own lookup (t - offset_seconds).
-                reference = {t: target_values.get(t + offset_seconds) for t in source_values}
+                # build_reference returns None (not a dict of all-None values) when the target
+                # has no power data at all - letting detect_dropouts fall back to the cadence
+                # signal instead of a reference that can never confirm anything.
+                reference = build_reference(target_values, offset_seconds, source_values.keys())
                 source_cadence = {row.t: row.cadence for row in source_rows}
                 dropout_ts, _ = detect_dropouts(source_values, reference, source_cadence)
             new_values, field_counts = _compute_stream_field(

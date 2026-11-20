@@ -18,7 +18,7 @@ from rest_framework.exceptions import ValidationError
 from athletes.zones import get_or_create_zone_set, reference_for
 
 from . import stream_comparison
-from .dropout_detection import detect_dropouts
+from .dropout_detection import build_reference, detect_dropouts
 from .merge_alignment import align
 from .merge_apply import ZeroPolicy
 from .merge_postprocess import recompute_after_merge
@@ -179,11 +179,11 @@ def attach_stream(
     source_field_by_t = {row.t: getattr(row, field) for row in source_rows}
     dropout_ts: set[int] = set()
     if field == "power" and zero_policy == "as_null":
-        # Reference (target's own power) and the cadence fallback (source's own) both need to be
-        # keyed on the *source's* own local t, matching source_field_by_t - target-local t is
-        # source-local t + resolved_offset, same convention merge_apply._compute uses.
+        # build_reference returns None (not a dict of all-None values) when the target has no
+        # power data at all - letting detect_dropouts fall back to the cadence signal instead of
+        # a reference that can never confirm anything.
         target_power_by_t = {row.t: row.power for row in target_rows}
-        reference = {t: target_power_by_t.get(t + resolved_offset) for t in source_field_by_t}
+        reference = build_reference(target_power_by_t, resolved_offset, source_field_by_t.keys())
         source_cadence_by_t = {row.t: row.cadence for row in source_rows}
         dropout_ts, _ = detect_dropouts(source_field_by_t, reference, source_cadence_by_t)
 

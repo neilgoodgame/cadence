@@ -355,6 +355,30 @@ class ActivityMergeApplyServiceIntegrationTest extends IntegrationTest {
 		assertThat(counts.get("power").dropoutsNulled()).isEqualTo(2);
 	}
 
+	/** Code review finding: merging power onto a target recorded on a device with no power
+	 * meter must still fall back to the cadence signal, not silently treat "no reference data"
+	 * as "reference says this isn't a dropout". */
+	@Test
+	void cadenceFallbackConfirmsADropoutWhenTheTargetHasNoPowerDataAtAll() {
+		User athlete = newAthlete("merge-apply-dropout-no-target-power@example.cc");
+		Activity target = newActivity(athlete, "Target"); // no power meter - every row's power is null
+		Activity source = newActivity(athlete, "Source");
+		addRecords(target, 10, (r, t) -> r.setCadence(80));
+		addRecords(source, 10, (r, t) -> {
+			r.setPower(t == 4 || t == 5 ? 0 : 300 + t);
+			r.setCadence(85);
+		});
+
+		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(
+				target.getId(), source.getId(), List.of("power"), NullPolicy.OVERWRITE, 0);
+
+		Map<Integer, Integer> rows = powerByT(target);
+		assertThat(rows.get(4)).isNull(); // masked as a dropout, not copied as a real 0
+		assertThat(rows.get(5)).isNull();
+		assertThat(counts.get("power").dropoutsNulled()).isEqualTo(2);
+		assertThat(counts.get("power").copied()).isEqualTo(8);
+	}
+
 	private Map<Integer, Integer> powerByT(Activity activity) {
 		Map<Integer, Integer> result = new java.util.HashMap<>();
 		for (Record record : recordRepository.findByActivityIdOrderByT(activity.getId())) {

@@ -1,9 +1,11 @@
 package com.cadence.api.activities.calc;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -79,7 +81,18 @@ public final class DropoutDetector {
 			}
 			boolean confirmed;
 			if (reference != null) {
-				confirmed = run.stream().allMatch(t -> orZero(reference.get(t)) > REFERENCE_MIN_WATTS);
+				// A second with no reference sample at all (null) is neutral - neither confirms
+				// nor disconfirms, since the reference stream can drop a sample too (its own,
+				// unrelated hiccup shouldn't sink the rest of an otherwise well-corroborated
+				// run). A second where the reference genuinely reads <= 100 W does disconfirm
+				// (that's the "mutual near-zero" case - real coasting, not a one-sided glitch).
+				// At least one second must actually confirm - a run with no reference data at
+				// all for any of its seconds is unconfirmed, not blindly trusted.
+				boolean disconfirmed = run.stream()
+						.anyMatch(t -> reference.get(t) != null && reference.get(t) <= REFERENCE_MIN_WATTS);
+				boolean confirmedAny = run.stream()
+						.anyMatch(t -> reference.get(t) != null && reference.get(t) > REFERENCE_MIN_WATTS);
+				confirmed = !disconfirmed && confirmedAny;
 			}
 			else if (cadence != null) {
 				boolean pedalling = run.stream().allMatch(t -> orZero(cadence.get(t)) > 0);
@@ -101,5 +114,26 @@ public final class DropoutDetector {
 
 	private static int orZero(Integer value) {
 		return value == null ? 0 : value;
+	}
+
+	/** Builds the {@code reference} map {@link #detectDropouts} expects - source-local t -&gt;
+	 * the target's own value at the corresponding target-local t (source-local t + {@code
+	 * offsetSeconds}) - or {@code null} if the target has no data at all overlapping these
+	 * seconds (e.g. attaching power onto an activity recorded on a device with no power meter).
+	 * Returning {@code null} here, not a map of every value {@code null}, matters: {@link
+	 * #detectDropouts}'s own {@code reference != null} branch would otherwise always be taken
+	 * even when there's genuinely nothing to compare against, silently defeating the
+	 * cadence-only single-stream fallback it exists for. One shared helper ({@code
+	 * ActivityMergeApplyService#compute} and {@code ActivitySourceService#attachStream} both
+	 * call this, instead of each building the map and this check inline) so this exact bug can't
+	 * resurface in just one of the two call sites later. */
+	public static Map<Integer, Integer> buildReference(Map<Integer, Integer> targetValuesByT, int offsetSeconds,
+			Set<Integer> sourceTs) {
+		Map<Integer, Integer> reference = new HashMap<>();
+		for (int t : sourceTs) {
+			reference.put(t, targetValuesByT.get(t + offsetSeconds));
+		}
+		boolean hasData = reference.values().stream().anyMatch(Objects::nonNull);
+		return hasData ? reference : null;
 	}
 }

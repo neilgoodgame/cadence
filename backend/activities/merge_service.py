@@ -126,6 +126,7 @@ def _run_attach(
     source_id: str,
     fields: list[str],
     offset_seconds: int | None,
+    *,
     hide_source: bool,
     preview: bool,
     source_kind: str | None,
@@ -209,7 +210,16 @@ def run_merge(
     zero_policy: ZeroPolicy = "as_null",
 ) -> MergeResult:
     if copy_mode == "attach":
-        return _run_attach(target_id, source_id, fields, offset_seconds, hide_source, preview, source_kind, zero_policy)
+        return _run_attach(
+            target_id,
+            source_id,
+            fields,
+            offset_seconds,
+            hide_source=hide_source,
+            preview=preview,
+            source_kind=source_kind,
+            zero_policy=zero_policy,
+        )
 
     target = get_object_or_404(Activity, pk=target_id)
     source = get_object_or_404(Activity, pk=source_id)

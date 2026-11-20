@@ -150,6 +150,29 @@ class ActivitySourceServiceTests(TestCase):
             else:
                 self.assertEqual(record.power, 300 + record.t)
 
+    def test_attach_cadence_fallback_confirms_a_dropout_with_no_target_power_data(self):
+        """Code review finding: attaching power onto a target recorded on a device with no power
+        meter must still fall back to the cadence signal, not silently treat "no reference data"
+        as "reference says this isn't a dropout"."""
+        athlete = self._athlete("source-attach-dropout-no-target-power@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")  # no power meter
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records_with(target, 10, cadence=lambda t: 80)
+        self._add_records_with(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            cadence=lambda t: 85,
+        )
+
+        result = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        self.assertEqual(result.dropouts_nulled, 2)
+        self.assertEqual(result.copied, 8)
+        stream = ActivitySource.objects.get(pk=result.source_id).streams.get(field="power")
+        self.assertIsNone(stream.values[4])
+        self.assertIsNone(stream.values[5])
+
     def test_attach_auto_swaps_when_the_attached_source_matches_the_preference(self):
         athlete = self._athlete("source-attach-auto-swap@example.cc", bike_power_source="trainer")
         target = self._activity(athlete, "Edge 530", name="Target")  # classifies pedals

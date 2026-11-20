@@ -228,6 +228,30 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		}
 	}
 
+	/** Code review finding: attaching power onto a target recorded on a device with no power
+	 * meter must still fall back to the cadence signal, not silently treat "no reference data"
+	 * as "reference says this isn't a dropout". */
+	@Test
+	void attachCadenceFallbackConfirmsADropoutWithNoTargetPowerData() {
+		User athlete = newAthlete("source-attach-dropout-no-target-power@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530"); // no power meter
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecordsWith(target, 10, (r, t) -> r.setCadence(80));
+		addRecordsWith(source, 10, (r, t) -> {
+			r.setPower(t == 4 || t == 5 ? 0 : 300 + t);
+			r.setCadence(85);
+		});
+
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+
+		assertThat(result.dropoutsNulled()).isEqualTo(2);
+		assertThat(result.copied()).isEqualTo(8);
+		ActivityStream stream = streamRepository
+				.findByActivityIdAndFieldAndSourceId(target.getId(), "power", result.sourceId()).orElseThrow();
+		assertThat(stream.getStreamValues()[4]).isNull();
+		assertThat(stream.getStreamValues()[5]).isNull();
+	}
+
 	@Test
 	void attachAutoSwapsWhenTheAttachedSourceMatchesThePreference() {
 		User athlete = newAthlete("source-attach-auto-swap@example.cc");

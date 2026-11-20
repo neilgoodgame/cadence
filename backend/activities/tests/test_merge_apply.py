@@ -248,3 +248,25 @@ class MergeApplyTests(TestCase):
         assert heartrates[5] == 0
         assert counts["heartrate"].dropouts_nulled == 0
         assert counts["power"].dropouts_nulled == 2
+
+    def test_cadence_fallback_confirms_a_dropout_when_the_target_has_no_power_data_at_all(self):
+        """Code review finding: merging power onto a target recorded on a device with no power
+        meter must still fall back to the cadence signal, not silently treat "no reference data"
+        as "reference says this isn't a dropout"."""
+        target = self._activity(name="Target")  # no power meter - every row's power is None
+        source = self._activity(name="Source")
+        self._add_records(target, 10, cadence=lambda t: 80)
+        self._add_records(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            cadence=lambda t: 85,
+        )
+
+        counts = apply_merge_fields(target.id, source.id, ["power"], "overwrite", offset_seconds=0)
+
+        rows = {r.t: r.power for r in target.records.all()}
+        assert rows[4] is None  # masked as a dropout, not copied as a real 0
+        assert rows[5] is None
+        assert counts["power"].dropouts_nulled == 2
+        assert counts["power"].copied == 8
