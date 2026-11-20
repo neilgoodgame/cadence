@@ -104,7 +104,7 @@ public class ThresholdHistoryService {
 	/** Checks whether `activity`'s own effort changes the athlete's current window value for
 	 * each field relevant to its sport (bike -> ftp; run -> criticalRunPower and thresholdPace),
 	 * recording a new ThresholdHistory entry (and updating the athlete's cached profile value) if
-	 * so. Called at ingest/import time - see ThresholdHistoryTasklet and ImportReader. A no-op
+	 * so. Called at ingest/import time - see PostProcessNewActivityTasklet and ImportReader. A no-op
 	 * for every other sport.
 	 *
 	 * <p>Decay-enabled (issue #485, slice 3): re-simulates the field's ledger suffix from this

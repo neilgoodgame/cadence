@@ -92,20 +92,22 @@ public class ActivityPostProcessingService {
 
 	/** Call once, right after a freshly-parsed activity's Record/Lap rows have been persisted -
 	 * the real ingest-time sequence {@code UploadJobFactory}'s tasklet chain used to run as six
-	 * separate steps. Order matches that original sequence exactly: duration curve, best
-	 * efforts, and workout-match have no threshold/TSS dependency and run first; the threshold
-	 * check must run before this activity's own TSS/intensity is rated, and decoupling's own IF
-	 * calculation needs that same freshly-set threshold too - {@link
-	 * #recomputePowerHrAndDecoupling} runs last for that reason. Skipped by the caller entirely
-	 * for a multisport parent (its legs handle all of this instead, and its own tss is set as the
-	 * sum of its legs'). */
+	 * separate steps. The threshold check runs first, before anything that could depend on it -
+	 * not just TSS/decoupling ({@link #recomputePowerHrAndDecoupling}, last, needs the
+	 * freshly-set threshold for both), but also {@code BestEffortComputeService}'s own
+	 * {@code RUNNING_POWER} kind, which only fires when {@code athlete.getCriticalRunPower()} is
+	 * already non-null: an athlete's very first qualifying run must bootstrap that value via
+	 * this same threshold check before its own best effort can be recorded, or it's silently
+	 * skipped (see {@code RunningPowerSourceIngestionTest}). Called unconditionally, including
+	 * for a multisport parent - see this class's own Javadoc for why no {@code
+	 * isMultisportParent} branch is needed here. */
 	@Transactional
 	public void processNewActivity(String targetId, Double avgLeftBalancePct) {
 		Activity activity = activityRepository.findById(targetId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
+		recomputeThresholdForNewActivity(activity);
 		recomputeDurationCurveAndBestEfforts(targetId);
 		workoutAutoMatchService.attemptMatch(targetId);
-		recomputeThresholdForNewActivity(activity);
 		recomputePowerHrAndDecoupling(targetId, avgLeftBalancePct);
 	}
 

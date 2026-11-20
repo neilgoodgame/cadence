@@ -39,7 +39,7 @@ public record ParsedActivity(
 			int t, Double lat, Double lng, Double altitude, Double distanceKm,
 			Integer heartrate, Integer cadence, Integer power, Double speed,
 			Double airTemp, Integer humidity, Double coreTemp, Double skinTemp, Double heatStrain,
-			// Transient - consumed by ComputeDerivedStatsTasklet to compute the activity-level
+			// Transient - consumed by PostProcessNewActivityTasklet to compute the activity-level
 			// avgLeftBalancePct, not persisted per-sample onto Record (the mockup only shows
 			// one aggregate L/R split, not a stream). FIT-only, always null from GPX/TCX.
 			Double leftBalancePct,

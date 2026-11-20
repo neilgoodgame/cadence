@@ -25,11 +25,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
 
 /**
- * End-to-end: a real FIT file, through the actual upload pipeline (ThresholdHistoryTasklet ->
- * ComputeDerivedStatsTasklet, in that order), ends up with a ThresholdHistory ledger entry - and
- * this same activity's own TSS/intensity is rated against the value that entry establishes, not
- * left to fall back to the athlete's stale starting profile (see ThresholdHistoryTasklet's
- * Javadoc: the effort that reveals a new threshold is itself re-rated against it).
+ * End-to-end: a real FIT file, through the actual upload pipeline
+ * ({@code PostProcessNewActivityTasklet} -> {@code ActivityPostProcessingService
+ * #processNewActivity}, which recomputes this activity's own threshold history before rating its
+ * TSS/intensity), ends up with a ThresholdHistory ledger entry - and this same activity's own
+ * TSS/intensity is rated against the value that entry establishes, not left to fall back to the
+ * athlete's stale starting profile (see {@code ActivityPostProcessingService
+ * #recomputeThresholdForNewActivity}'s own Javadoc: the effort that reveals a new threshold is
+ * itself re-rated against it).
  */
 class ThresholdHistoryIngestionTest extends IntegrationTest {
 

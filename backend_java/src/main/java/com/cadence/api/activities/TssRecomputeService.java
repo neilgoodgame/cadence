@@ -72,7 +72,7 @@ public class TssRecomputeService {
 	}
 
 	/** Computes and writes {@code intensity} and {@code tss} together from this activity's own
-	 * stored Record rows - used by ingest ({@code ComputeDerivedStatsTasklet}), "Recompute TSS"
+	 * stored Record rows - used by ingest ({@code PostProcessNewActivityTasklet}), "Recompute TSS"
 	 * (above) and "Recompute stats" ({@code DerivedStatsRecomputeService}) alike, so the three
 	 * can't drift apart (see docs/plans/threshold-decay.md section 8 - issue #481: "Recompute
 	 * stats" used to update intensity but never tss). Returns whether either value changed. Does

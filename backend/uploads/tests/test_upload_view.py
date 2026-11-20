@@ -310,6 +310,26 @@ class ThresholdHistoryIngestionTests(TestCase):
         athlete.refresh_from_db()
         self.assertEqual(athlete.ftp, 209)
 
+    def test_a_qualifying_first_ever_run_bootstraps_critical_run_power_and_gets_its_own_best_effort(self):
+        # Issue #525: critical_run_power starts unset (no fixture default, unlike
+        # RealFitIngestionTests' athlete) - this run must be the one to establish it. If the
+        # threshold check ran after update_best_efforts (as a reordering mistake once did, caught
+        # by backend_java's RunningPowerSourceIngestionTest), this run's own running_power best
+        # effort would be silently skipped, since update_best_efforts' running_power branch
+        # requires athlete.critical_run_power to already be truthy.
+        athlete = User.objects.create_user(email="threshold-ingest-bootstrap@example.cc", password="x", name="Athlete")
+        start = datetime(2026, 6, 20, 7, 0, tzinfo=UTC)
+        content = build_tcx(start, sport="Running", duration_s=3600, power=250, hr=150, distance_m=12000)
+        client = _bearer_client(athlete)
+        response = client.post("/v1/activities", {"file": SimpleUploadedFile("run.tcx", content)}, format="multipart")
+        upload_id = response.json()["id"]
+        poll = client.get(f"/v1/uploads/{upload_id}").json()
+        activity = Activity.objects.get(pk=poll["activity_id"])
+
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.critical_run_power, 250)
+        self.assertTrue(BestEffort.objects.filter(athlete=athlete, kind="running_power", activity=activity).exists())
+
     def test_too_short_a_ride_creates_no_entry(self):
         athlete = User.objects.create_user(
             email="threshold-ingest-short@example.cc", password="x", name="Athlete", ftp=200

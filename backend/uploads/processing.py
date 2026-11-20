@@ -12,13 +12,11 @@ from activities.intensity_histogram import rebuild_histogram, rolling_mean_power
 from activities.match_preferences import apply_match_rename, apply_match_side_effects
 from activities.models import Activity, ActivityDurability, ActivityTag, BestEffort, DurationCurve, Lap, Record, Tag
 from activities.overlap_detection import detect_and_resolve_overlap
-from athletes import threshold_suggestions
 from athletes.models import ThresholdHistory
 from athletes.threshold_history import (
     FIELD_SPORT,
     rebuild_history_stream,
     rebuild_history_stream_from,
-    recompute_for_activity,
 )
 from athletes.zones import get_or_create_zone_set, reference_for
 from gear.mileage import apply_shoe_change
@@ -1476,7 +1474,6 @@ def _ingest_activity(
     samples = parsed["samples"]
     laps = parsed.get("laps", [])
     sport = parsed["sport"]
-    is_multisport_parent = multisport and parent is None
 
     # Dropped here, before a Record row or the activity-level average is built from them,
     # rather than left for a later recompute to clean up - see
@@ -1588,88 +1585,18 @@ def _ingest_activity(
         ]
     )
 
-    power_series = [s.get("power") for s in samples]
-    hr_series = [s.get("heartrate") for s in samples]
-
-    norm_power = compute_normalized_power(power_series) if any(p is not None for p in power_series) else None
-    avg_power = _mean(power_series)
-    avg_hr = _mean(hr_series)
-    max_hr = _max(hr_series)
-
-    activity.avg_power = round(avg_power) if avg_power is not None else None
-    activity.norm_power = round(norm_power) if norm_power is not None else None
-    activity.avg_hr = round(avg_hr) if avg_hr is not None else None
-    activity.max_hr = max_hr
-    # intensity/tss are computed further down, after threshold history has had a chance to
-    # recompute from this same activity's own effort - see the comment there.
-
-    # Its own table, not an Activity field - no update_fields entry needed. Unlike norm_power
-    # above (deliberately ungated), the histogram feeds the threshold-decay load calculation, so
-    # it needs the same running-power-source gate rate_activity/backfill_extended_stats apply.
-    histogram_power_series = power_series
-    if activity.sport == "run" and not activity.matches_running_power_preference(athlete):
-        histogram_power_series = [None] * len(power_series)
-    rebuild_histogram(activity, histogram_power_series, hr_series)
-
-    update_fields = ["avg_power", "norm_power", "avg_hr", "max_hr"]
-    if activity.sport == "run":
-        air_temp_series = [s.get("air_temp") for s in samples]
-        humidity_series = [s.get("humidity") for s in samples]
-        if any(v is not None for v in air_temp_series):
-            avg_air_temp = _mean(air_temp_series)
-            activity.avg_air_temp = round(avg_air_temp, 1) if avg_air_temp is not None else None
-            update_fields.append("avg_air_temp")
-        if any(v is not None for v in humidity_series):
-            avg_humidity = _mean(humidity_series)
-            activity.avg_humidity = round(avg_humidity) if avg_humidity is not None else None
-            update_fields.append("avg_humidity")
-
-    _set_avg_max_field(activity, update_fields, [s.get("heat_strain") for s in samples], "heat_strain")
-    _set_avg_max_field(activity, update_fields, [s.get("core_temp") for s in samples], "core_temp")
-    _set_avg_max_field(activity, update_fields, [s.get("skin_temp") for s in samples], "skin_temp")
-
-    max_power = _max(power_series)
-    if max_power is not None:
-        activity.max_power = round(max_power)
-        update_fields.append("max_power")
-
-    cadence_series = [s.get("cadence") for s in samples]
-    if any(c is not None for c in cadence_series):
-        avg_cadence = _mean(cadence_series)
-        max_cadence = _max(cadence_series)
-        activity.avg_cadence = round(avg_cadence) if avg_cadence is not None else None
-        activity.max_cadence = round(max_cadence) if max_cadence is not None else None
-        update_fields.extend(["avg_cadence", "max_cadence"])
-
-    speed_series = [s.get("speed") for s in samples]
-    max_speed_ms = _max(speed_series)
-    if max_speed_ms is not None:
-        activity.max_speed = round(max_speed_ms * 3.6, 1)
-        update_fields.append("max_speed")
-
-    altitude_series = [s.get("altitude") for s in samples]
-    if any(a is not None for a in altitude_series):
-        elevation_min = _min(altitude_series)
-        elevation_max = _max(altitude_series)
-        activity.elevation_min = round(elevation_min) if elevation_min is not None else None
-        activity.elevation_max = round(elevation_max) if elevation_max is not None else None
-        update_fields.extend(["elevation_min", "elevation_max"])
-
-    calories = compute_calories(power_series, activity.moving_time)
-    if calories is not None:
-        activity.calories = calories
-        update_fields.append("calories")
-
-    trimp = compute_edwards_trimp(athlete, hr_series)
-    if trimp is not None:
-        activity.trimp = trimp
-        update_fields.append("trimp")
-
+    # Issue #525: avg_left_balance_pct and the device-reported training-effect fields are the
+    # only things here that are genuinely parse-time-only - unrecoverable from stored Record rows
+    # afterward (see activity_post_processing.recompute_power_hr_and_decoupling's own docstring
+    # for why). Computed directly from the in-memory samples/parsed dict and saved once here;
+    # everything else below used to be duplicated inline in this function and is now the one
+    # real implementation in activity_post_processing.process_new_activity, re-run from the
+    # Record rows just bulk-created above instead.
     left_balance_series = [s.get("left_balance_pct") for s in samples]
+    avg_left_balance_pct = None
     if any(v is not None for v in left_balance_series):
         avg_left_balance = _mean(left_balance_series)
-        activity.avg_left_balance_pct = round(avg_left_balance, 1) if avg_left_balance is not None else None
-        update_fields.append("avg_left_balance_pct")
+        avg_left_balance_pct = round(avg_left_balance, 1) if avg_left_balance is not None else None
 
     aerobic_te = parsed.get("aerobic_training_effect")
     anaerobic_te = parsed.get("anaerobic_training_effect")
@@ -1677,59 +1604,24 @@ def _ingest_activity(
         activity.aerobic_training_effect = aerobic_te
         activity.anaerobic_training_effect = anaerobic_te
         activity.training_effect_label = training_effect_label(aerobic_te)
-        update_fields.extend(["aerobic_training_effect", "anaerobic_training_effect", "training_effect_label"])
+        activity.save(update_fields=["aerobic_training_effect", "anaerobic_training_effect", "training_effect_label"])
 
-    if not is_multisport_parent:
-        # Duration curves and best efforts compare like-for-like within a sport, and no
-        # multisport workouts exist to match - the parent's legs handle all three instead.
-        _write_duration_curves(activity, power_series, hr_series)
-        t_series = [s["t"] for s in samples]
-        distance_km_series = [s.get("distance_km") for s in samples]
-        update_best_efforts(activity, athlete, power_series, t_series, distance_km_series, hr_series)
-        attempt_workout_match(activity, athlete)
+    # Local import - activities.activity_post_processing imports this module at the top level
+    # (recompute_after_duplicate_change etc.), so a top-level import here would be circular. Same
+    # reasoning as the running-power-source import above.
+    from activities.activity_post_processing import process_new_activity
 
-        # Recompute threshold history BEFORE intensity/TSS below, so that if this activity's own
-        # effort raises the athlete's current threshold, this same activity is rated against the
-        # new value too - not just future ones (see athletes/threshold_history.py).
-        recompute_for_activity(activity)
-        # A new bike/run activity can change the Threshold suggestions list even when it didn't
-        # change the current threshold itself - e.g. it's now the "near match" that suppresses an
-        # upcoming_drop warning. Invalidated unconditionally for bike/run, not just on an actual
-        # threshold change.
-        if activity.sport in ("bike", "run"):
-            threshold_suggestions.invalidate(athlete.id)
-
-        # Also after recompute_for_activity, for the same reason - IF needs the threshold *at
-        # this activity's own date*, which this same activity's effort may have just set.
-        air_temp_series = [s.get("air_temp") for s in samples]
-        core_temp_series = [s.get("core_temp") for s in samples]
-        skin_temp_series = [s.get("skin_temp") for s in samples]
-        decoupling = compute_decoupling(
-            activity, athlete, power_series, hr_series, t_series, air_temp_series, core_temp_series, skin_temp_series
-        )
-        for field, value in decoupling.items():
-            setattr(activity, field, value)
-        update_fields.extend(decoupling.keys())
-
-        durability_rows = compute_durability_rows(activity, athlete, power_series, t_series)
-        if durability_rows:
-            ActivityDurability.objects.bulk_create(
-                [
-                    ActivityDurability(
-                        activity=activity, athlete=athlete, activity_date=activity.start_date.date(), **row
-                    )
-                    for row in durability_rows
-                ]
-            )
-
-        # intensity + tss together, via the same shared helper "Recompute TSS" and "Recompute
-        # stats" use - so this ingest path can't drift out of sync with either of them again
-        # (issue #481). The multisport parent's TSS is set by the caller as the sum of its legs',
-        # so rate_activity is skipped for it (same is_multisport_parent guard as above).
-        rate_activity(activity, athlete, power_series, hr_series)
-        update_fields.extend(["intensity", "tss"])
-
-    activity.save(update_fields=update_fields)
+    # Unconditional, including for a multisport parent (the old step 7 above this used to skip
+    # entirely for one): duration-curve/best-efforts already excludes multisport/transition
+    # sport internally; decoupling (folded into recompute_power_hr_and_decoupling) excludes
+    # anything but bike/run internally; workout-match and the threshold check are both provable
+    # no-ops for sport "multisport" (no ScheduledWorkout or ThresholdHistory field is ever
+    # defined for it); and whatever this sets on the parent's own tss/intensity is immediately
+    # superseded by the sum-of-legs assignment in ingest_upload, right after this returns. A
+    # multisport parent's own avg/max power, avg/max HR, histogram, etc - which it does need,
+    # same as any other activity - come from this same call, same as everything else.
+    process_new_activity(activity.id, avg_left_balance_pct)
+    activity.refresh_from_db()
 
     # Issue #498: only ever meaningful for a single-activity upload in practice - a multisport
     # parent/leg is excluded inside the detection itself (see _is_multisport_linked there). At

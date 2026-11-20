@@ -32,34 +32,13 @@ public class UploadJobConfig {
 		return new StepBuilder("parseFileStep", jobRepository).tasklet(tasklet, tm).build();
 	}
 
+	/** Issue #525: replaces thresholdHistoryStep, decouplingDurabilityStep,
+	 * computeDerivedStatsStep, durationCurveStep, bestEffortStep, and workoutMatchStep - see
+	 * {@link PostProcessNewActivityTasklet}'s own Javadoc. */
 	@Bean
-	public Step thresholdHistoryStep(JobRepository jobRepository, PlatformTransactionManager tm, ThresholdHistoryTasklet tasklet) {
-		return new StepBuilder("thresholdHistoryStep", jobRepository).tasklet(tasklet, tm).build();
-	}
-
-	@Bean
-	public Step decouplingDurabilityStep(JobRepository jobRepository, PlatformTransactionManager tm, ActivityDecouplingTasklet tasklet) {
-		return new StepBuilder("decouplingDurabilityStep", jobRepository).tasklet(tasklet, tm).build();
-	}
-
-	@Bean
-	public Step computeDerivedStatsStep(JobRepository jobRepository, PlatformTransactionManager tm, ComputeDerivedStatsTasklet tasklet) {
-		return new StepBuilder("computeDerivedStatsStep", jobRepository).tasklet(tasklet, tm).build();
-	}
-
-	@Bean
-	public Step durationCurveStep(JobRepository jobRepository, PlatformTransactionManager tm, DurationCurveTasklet tasklet) {
-		return new StepBuilder("durationCurveStep", jobRepository).tasklet(tasklet, tm).build();
-	}
-
-	@Bean
-	public Step bestEffortStep(JobRepository jobRepository, PlatformTransactionManager tm, BestEffortTasklet tasklet) {
-		return new StepBuilder("bestEffortStep", jobRepository).tasklet(tasklet, tm).build();
-	}
-
-	@Bean
-	public Step workoutMatchStep(JobRepository jobRepository, PlatformTransactionManager tm, WorkoutMatchTasklet tasklet) {
-		return new StepBuilder("workoutMatchStep", jobRepository).tasklet(tasklet, tm).build();
+	public Step postProcessNewActivityStep(JobRepository jobRepository, PlatformTransactionManager tm,
+			PostProcessNewActivityTasklet tasklet) {
+		return new StepBuilder("postProcessNewActivityStep", jobRepository).tasklet(tasklet, tm).build();
 	}
 
 	@Bean

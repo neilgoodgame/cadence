@@ -157,7 +157,7 @@ public class DerivedStatsRecomputeService {
 		}
 
 		// avgPower/normPower: same sanitized series maxPower above uses - these predate
-		// RunningPowerSanitizer being wired into ComputeDerivedStatsTasklet's ingest-time
+		// RunningPowerSanitizer being wired into PostProcessNewActivityTasklet's ingest-time
 		// computation for some historical activities, leaving a stale unsanitized value stuck
 		// here (e.g. one Stryd spike sample dragging avgPower/normPower far above maxPower).
 		Double avgPower = mean(powerSeries);
@@ -213,7 +213,7 @@ public class DerivedStatsRecomputeService {
 			changed = true;
 		}
 
-		// Stryd-derived, run only - same scope ComputeDerivedStatsTasklet's ingest-time
+		// Stryd-derived, run only - same scope PostProcessNewActivityTasklet's ingest-time
 		// computation uses. Checked against the *raw* series (not sanitized) so a 0/0-fallback
 		// activity - where sanitizing removes every sample - is recognized as "had data, now
 		// corrected to null" rather than silently skipped and left showing its stale 0/0.

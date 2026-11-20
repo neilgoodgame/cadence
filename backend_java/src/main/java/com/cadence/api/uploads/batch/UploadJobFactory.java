@@ -32,12 +32,7 @@ public class UploadJobFactory {
 	private final UploadJobContextRegistry contextRegistry;
 	private final UploadJobExecutionListener listener;
 	private final Step parseFileStep;
-	private final Step thresholdHistoryStep;
-	private final Step decouplingDurabilityStep;
-	private final Step computeDerivedStatsStep;
-	private final Step durationCurveStep;
-	private final Step bestEffortStep;
-	private final Step workoutMatchStep;
+	private final Step postProcessNewActivityStep;
 	private final Step finalizeUploadStep;
 	private final Step duplicateRecomputeStep;
 	private final ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor;
@@ -45,8 +40,7 @@ public class UploadJobFactory {
 
 	public UploadJobFactory(JobRepository jobRepository, PlatformTransactionManager transactionManager,
 			UploadJobContextRegistry contextRegistry, UploadJobExecutionListener listener, Step parseFileStep,
-			Step thresholdHistoryStep, Step decouplingDurabilityStep, Step computeDerivedStatsStep,
-			Step durationCurveStep, Step bestEffortStep, Step workoutMatchStep, Step finalizeUploadStep, Step duplicateRecomputeStep,
+			Step postProcessNewActivityStep, Step finalizeUploadStep, Step duplicateRecomputeStep,
 			ItemProcessor<RecordItemProcessor.SegmentSample, RecordRow> recordItemProcessor,
 			ItemWriter<RecordRow> recordItemWriter) {
 		this.jobRepository = jobRepository;
@@ -54,12 +48,7 @@ public class UploadJobFactory {
 		this.contextRegistry = contextRegistry;
 		this.listener = listener;
 		this.parseFileStep = parseFileStep;
-		this.thresholdHistoryStep = thresholdHistoryStep;
-		this.decouplingDurabilityStep = decouplingDurabilityStep;
-		this.computeDerivedStatsStep = computeDerivedStatsStep;
-		this.durationCurveStep = durationCurveStep;
-		this.bestEffortStep = bestEffortStep;
-		this.workoutMatchStep = workoutMatchStep;
+		this.postProcessNewActivityStep = postProcessNewActivityStep;
 		this.finalizeUploadStep = finalizeUploadStep;
 		this.duplicateRecomputeStep = duplicateRecomputeStep;
 		this.recordItemProcessor = recordItemProcessor;
@@ -86,12 +75,7 @@ public class UploadJobFactory {
 				.on(ParseFileTasklet.EXIT_NO_ACTIVITY_DATA).end()
 				.from(parseFileStep).on(ExitStatus.FAILED.getExitCode()).fail()
 				.from(parseFileStep).on("*").to(loadRecordsStep)
-				.next(thresholdHistoryStep)
-				.next(decouplingDurabilityStep)
-				.next(computeDerivedStatsStep)
-				.next(durationCurveStep)
-				.next(bestEffortStep)
-				.next(workoutMatchStep)
+				.next(postProcessNewActivityStep)
 				.next(finalizeUploadStep)
 				.next(duplicateRecomputeStep)
 				.end()

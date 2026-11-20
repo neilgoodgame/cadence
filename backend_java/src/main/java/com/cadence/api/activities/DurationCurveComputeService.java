@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
  * Core duration-curve computation shared by the upload pipeline and the on-demand recompute
  * endpoint. Callers are responsible for transaction boundaries, for supplying the time-series
  * data, and for skipping {@code Sport.MULTISPORT} parents - a mixed-sport stream compares
- * incomparable efforts (see DurationCurveTasklet/DurationCurveRecomputeService).
+ * incomparable efforts (see PostProcessNewActivityTasklet/DurationCurveRecomputeService).
  */
 @Service
 public class DurationCurveComputeService {

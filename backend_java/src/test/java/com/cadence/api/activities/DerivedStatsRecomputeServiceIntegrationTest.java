@@ -112,7 +112,7 @@ class DerivedStatsRecomputeServiceIntegrationTest extends IntegrationTest {
 	}
 
 	// Regression test for a real bug found live: a historical activity ingested before
-	// RunningPowerSanitizer was wired into ComputeDerivedStatsTasklet's avgPower/normPower
+	// RunningPowerSanitizer was wired into PostProcessNewActivityTasklet's avgPower/normPower
 	// computation was left with a stale avgPower/normPower dragged sky-high by a single Stryd
 	// footpod spike sample - see RunningPowerSanitizer's Javadoc for the failure mode. maxPower
 	// was already correctly backfilled sanitized; avgPower/normPower were not backfilled at all

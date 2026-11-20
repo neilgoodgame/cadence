@@ -85,18 +85,24 @@ def recompute_threshold_for_new_activity(activity: Activity) -> None:
 
 def process_new_activity(target_id: str, avg_left_balance_pct: float | None = None) -> None:
     """Call once, right after a freshly-parsed activity's Record/Lap rows have been bulk-created
-    - the real ingest-time sequence uploads.processing._ingest_activity used to run inline.
-    Order matches that original sequence exactly: duration curve, best efforts, and workout-match
-    have no threshold/TSS dependency and run first; the threshold check must run before this
-    activity's own TSS/intensity is rated, and decoupling's own IF calculation needs that same
-    freshly-set threshold too - recompute_power_hr_and_decoupling runs last for that reason.
-    Skipped by the caller entirely for a multisport parent (its legs handle all of this instead,
-    and its own tss is set as the sum of its legs')."""
+    - the real ingest-time sequence uploads.processing._ingest_activity used to run inline. The
+    threshold check runs first, before anything that could depend on it - not just TSS/
+    decoupling (recompute_power_hr_and_decoupling, last, needs the freshly-set threshold for
+    both), but also update_best_efforts' own running_power kind, which only fires when
+    athlete.critical_run_power is already truthy: an athlete's very first qualifying run must
+    bootstrap that value via this same threshold check before its own best effort can be
+    recorded, or it's silently skipped (confirmed broken when this ran after duration-curve/
+    best-efforts, matching an equivalent bug this fixed in backend_java - see
+    RunningPowerSourceIngestionTest there). Called unconditionally, including for a multisport
+    parent: every piece here is either correctly sport-gated internally, a provable no-op for
+    sport "multisport" (no ScheduledWorkout or ThresholdHistory field is ever defined for it),
+    or self-healing (the parent's own tss is immediately overwritten as the sum of its legs',
+    right after this returns, in ingest_upload)."""
     activity = Activity.objects.get(pk=target_id)
     athlete = activity.athlete
+    recompute_threshold_for_new_activity(activity)
     recompute_duration_curve_and_best_efforts(target_id)
     attempt_workout_match(activity, athlete)
-    recompute_threshold_for_new_activity(activity)
     recompute_power_hr_and_decoupling(target_id, avg_left_balance_pct)
 
 
