@@ -27,8 +27,8 @@ from .overlaps import find_overlaps
 
 # run_merge is imported lazily inside _merge(), not here at module level - uploads.processing
 # imports this module at the top level for detect_and_resolve_overlap, and merge_service (via
-# merge_postprocess) imports back from uploads.processing, so a top-level import here would be
-# circular. Same reasoning as athletes/threshold_history.py's own local import.
+# activity_post_processing) imports back from uploads.processing, so a top-level import here
+# would be circular. Same reasoning as athletes/threshold_history.py's own local import.
 
 # Zwift + Garmin pairs are almost always exactly one real duplicate; this just bounds a
 # pathological case (e.g. several short re-recorded attempts) from doing unbounded work.

@@ -24,8 +24,8 @@ from uploads.models import Upload
 from uploads.parsers import parse_file
 
 from . import activity_source_service
+from .activity_post_processing import recompute_after_merge
 from .merge_apply import ACTIVITY_FIELDS, STREAM_FIELDS
-from .merge_postprocess import recompute_after_merge
 from .models import Activity, Merge, Record
 
 

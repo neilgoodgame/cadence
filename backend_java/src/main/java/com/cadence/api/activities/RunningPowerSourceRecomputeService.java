@@ -19,7 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * ActivitySourceService#swapPrimaryStream}) if it has a stored alternate to swap to, then runs
  * the shared athlete-wide recompute cascade ({@link ActivityService#recomputeAfterDuplicateChange})
  * exactly once at the end - not once per swapped activity, which would be quadratic in the
- * athlete's activity count (see {@link ActivityMergePostProcessingService
+ * athlete's activity count (see {@link ActivityPostProcessingService
  * #recomputeActivityLevelOnly}'s own Javadoc).
  *
  * <p>Each activity is read, swapped, and recomputed in its own short transaction via {@link
@@ -41,13 +41,13 @@ public class RunningPowerSourceRecomputeService {
 	private final ActivityRepository activityRepository;
 	private final ActivityStreamRepository streamRepository;
 	private final ActivitySourceService sourceService;
-	private final ActivityMergePostProcessingService postProcessingService;
+	private final ActivityPostProcessingService postProcessingService;
 	private final ActivityService activityService;
 	private final TransactionTemplate tx;
 
 	public RunningPowerSourceRecomputeService(ActivityRepository activityRepository,
 			ActivityStreamRepository streamRepository, ActivitySourceService sourceService,
-			ActivityMergePostProcessingService postProcessingService, ActivityService activityService,
+			ActivityPostProcessingService postProcessingService, ActivityService activityService,
 			PlatformTransactionManager tm) {
 		this.activityRepository = activityRepository;
 		this.streamRepository = streamRepository;

@@ -1,5 +1,4 @@
-"""Issue #501 (phase 1, part 3): mirrors backend_java's
-ActivityMergePostProcessingServiceIntegrationTest."""
+"""Issue #525: mirrors backend_java's ActivityPostProcessingServiceIntegrationTest."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -9,12 +8,12 @@ from accounts.models import User
 from scheduling.models import ScheduledWorkout
 from workouts.models import Workout
 
-from ..merge_postprocess import recompute_after_merge
+from ..activity_post_processing import recompute_after_merge
 from ..models import BestEffort, DurationCurve, Record
 from .helpers import _make_activity
 
 
-class MergePostprocessTests(TestCase):
+class ActivityPostProcessingTests(TestCase):
     def setUp(self):
         self.athlete = User.objects.create_user(
             email="merge-postprocess@example.cc", password="x", name="Athlete", ftp=200, lthr=160
@@ -44,6 +43,22 @@ class MergePostprocessTests(TestCase):
         activity.refresh_from_db()
         self.assertEqual(activity.max_power, 250)
         self.assertEqual(activity.avg_power, 250)
+
+    def test_recomputes_avg_and_max_hr_from_rewritten_records(self):
+        # Issue #525: avg_hr/max_hr were never backfilled by the old merge_postprocess path even
+        # though Record.heartrate is stored - closed as part of unifying with ingest's own
+        # computation, which has always set these two. _make_activity's defaults (avg_hr=140,
+        # max_hr=160) are deliberately stale here, standing in for pre-merge values a rewritten
+        # heartrate stream must overwrite.
+        activity = self._bike_activity()
+        self._add_records(activity, power=250, heartrate=120)
+        Record.objects.filter(activity=activity, t=599).update(heartrate=190)
+
+        recompute_after_merge(activity.id)
+
+        activity.refresh_from_db()
+        self.assertEqual(activity.avg_hr, 120)
+        self.assertEqual(activity.max_hr, 190)
 
     def test_runs_the_full_athlete_threshold_ledger_tss_cascade(self):
         activity = self._bike_activity()

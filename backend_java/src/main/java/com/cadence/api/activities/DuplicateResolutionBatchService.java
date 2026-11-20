@@ -230,7 +230,7 @@ public class DuplicateResolutionBatchService {
 				continue;
 			}
 			reverted++;
-			// Not affected=true - undoMerge's own recompute (ActivityMergePostProcessingService
+			// Not affected=true - undoMerge's own recompute (ActivityPostProcessingService
 			// .recomputeAfterMerge) already covers this activity; see the apply loop's own note.
 		}
 
