@@ -247,7 +247,8 @@ def undo_batch(athlete: User, batch_id: str) -> dict[str, Any]:
             skipped += 1
             continue
         reverted += 1
-        # Not affected=True - undo_merge's own recompute (merge_postprocess.recompute_after_merge)
+        # Not affected=True - undo_merge's own recompute
+        # (activity_post_processing.recompute_after_merge)
         # already covers this activity; see the apply loop's own note.
 
     batch.undone_at = timezone.now()

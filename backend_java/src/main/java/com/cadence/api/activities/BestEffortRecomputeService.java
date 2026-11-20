@@ -72,7 +72,7 @@ public class BestEffortRecomputeService {
 	}
 
 	/** Issue #501: on-demand recompute for one activity, every kind - reused by
-	 * ActivityMergePostProcessingService after a merge rewrites this activity's Record stream.
+	 * ActivityPostProcessingService after a merge rewrites this activity's Record stream.
 	 * Unlike {@link #recomputeAll}, does NOT delete the athlete's existing BestEffort rows first -
 	 * {@link BestEffortComputeService#computeForActivity} already upserts just this activity's own
 	 * rows and trims the window, so every other activity's rows are left untouched. */

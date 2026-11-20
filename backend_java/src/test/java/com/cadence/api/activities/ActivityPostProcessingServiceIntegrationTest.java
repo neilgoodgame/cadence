@@ -17,13 +17,13 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-/** Issue #501 (phase 1, part 3): mirrors backend's activities/tests/test_merge_postprocess.py. */
-class ActivityMergePostProcessingServiceIntegrationTest extends IntegrationTest {
+/** Issue #525: mirrors backend's activities/tests/test_activity_post_processing.py. */
+class ActivityPostProcessingServiceIntegrationTest extends IntegrationTest {
 
 	private static final Instant START = Instant.parse("2026-06-01T07:00:00Z");
 
 	@Autowired
-	private ActivityMergePostProcessingService postProcessingService;
+	private ActivityPostProcessingService postProcessingService;
 	@Autowired
 	private ActivityRepository activityRepository;
 	@Autowired
@@ -86,6 +86,32 @@ class ActivityMergePostProcessingServiceIntegrationTest extends IntegrationTest 
 		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
 		assertThat(reloaded.getMaxPower()).isEqualTo(250);
 		assertThat(reloaded.getAvgPower()).isEqualTo(250);
+	}
+
+	@Test
+	void recomputesAvgAndMaxHrFromRewrittenRecords() {
+		// Issue #525: avgHr/maxHr were never backfilled by the old
+		// ActivityMergePostProcessingService path even though Record.heartrate is stored -
+		// closed as part of unifying with ingest's own computation, which has always set these
+		// two.
+		User athlete = newAthlete("post-processing-hr@example.cc");
+		Activity activity = newBikeActivity(athlete);
+		addRecords(activity, 599, 250, 120);
+		Record last = new Record();
+		last.setId(new RecordId(activity.getId(), START.plusSeconds(599)));
+		last.setActivity(activity);
+		last.setT(599);
+		last.setPower(250);
+		last.setHeartrate(190);
+		recordRepository.save(last);
+		assertThat(activity.getAvgHr()).isNull();
+		assertThat(activity.getMaxHr()).isNull();
+
+		postProcessingService.recomputeAfterMerge(activity.getId());
+
+		Activity reloaded = activityRepository.findById(activity.getId()).orElseThrow();
+		assertThat(reloaded.getAvgHr()).isEqualTo(120);
+		assertThat(reloaded.getMaxHr()).isEqualTo(190);
 	}
 
 	@Test

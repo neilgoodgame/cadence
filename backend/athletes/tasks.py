@@ -101,13 +101,15 @@ def recompute_running_power_source(
     whose stored power_source no longer matches the athlete's *current* running_power_source
     preference, swaps each one (reusing activity_source_service._swap_primary_stream) if it has
     a stored alternate to swap to, then runs the shared athlete-wide recompute cascade
-    (merge_postprocess.recompute_after_duplicate_change) exactly once at the end - not once per
+    (uploads.processing.recompute_after_duplicate_change) exactly once at the end - not once per
     swapped activity, which would be quadratic in the athlete's activity count (see
-    merge_postprocess.recompute_activity_level_only's own docstring). Returns (swapped, skipped).
+    activity_post_processing.recompute_activity_level_only's own docstring). Returns (swapped,
+    skipped).
     """
+    from activities.activity_post_processing import recompute_activity_level_only
     from activities.activity_source_service import _swap_primary_stream
-    from activities.merge_postprocess import recompute_activity_level_only, recompute_after_duplicate_change
     from activities.models import Activity, ActivityStream
+    from uploads.processing import recompute_after_duplicate_change
 
     preference = athlete.running_power_source
     mismatched = list(

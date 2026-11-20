@@ -51,7 +51,7 @@ public class DurationCurveRecomputeService {
 	}
 
 	/** Issue #501: on-demand single-activity recompute, reused by
-	 * ActivityMergePostProcessingService after a merge rewrites this activity's Record stream. */
+	 * ActivityPostProcessingService after a merge rewrites this activity's Record stream. */
 	public void recomputeForActivity(String activityId) {
 		tx.execute(status -> {
 			Activity activity = activityRepository.findById(activityId).orElse(null);

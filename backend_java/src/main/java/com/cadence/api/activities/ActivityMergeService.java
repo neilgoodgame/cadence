@@ -70,12 +70,12 @@ public class ActivityMergeService {
 	private final ActivitySourceRepository sourceRepository;
 	private final ActivityService activityService;
 	private final ActivityMergeApplyService mergeApplyService;
-	private final ActivityMergePostProcessingService postProcessingService;
+	private final ActivityPostProcessingService postProcessingService;
 	private final ActivitySourceService sourceService;
 
 	public ActivityMergeService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			MergeRepository mergeRepository, ActivitySourceRepository sourceRepository, ActivityService activityService,
-			ActivityMergeApplyService mergeApplyService, ActivityMergePostProcessingService postProcessingService,
+			ActivityMergeApplyService mergeApplyService, ActivityPostProcessingService postProcessingService,
 			ActivitySourceService sourceService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;

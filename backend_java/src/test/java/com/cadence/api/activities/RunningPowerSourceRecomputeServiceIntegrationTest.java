@@ -23,7 +23,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
  * threshold-ledger scenario - the cascade's own correctness is covered by {@code
  * ThresholdHistoryServiceIntegrationTest} and friends; this proves the bulk job calls it exactly
  * once per athlete, not once per swapped activity (see {@code
- * ActivityMergePostProcessingService#recomputeActivityLevelOnly}'s own Javadoc for why that
+ * ActivityPostProcessingService#recomputeActivityLevelOnly}'s own Javadoc for why that
  * matters), same technique as {@code RecomputeAfterIngestTimeMarkIntegrationTest}. */
 class RunningPowerSourceRecomputeServiceIntegrationTest extends IntegrationTest {
 

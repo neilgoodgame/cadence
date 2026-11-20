@@ -18,6 +18,11 @@ from rest_framework.exceptions import ValidationError
 
 from gear.mileage import apply_duplicate_change
 
+from .activity_post_processing import (
+    recompute_activity_level_only,
+    recompute_after_merge,
+    threshold_fields_for_sports,
+)
 from .activity_source_service import VALID_FIELDS as ATTACHABLE_FIELDS
 from .activity_source_service import attach_stream
 from .merge_alignment import align
@@ -30,7 +35,6 @@ from .merge_apply import (
     ZeroPolicy,
     apply_merge_fields,
 )
-from .merge_postprocess import recompute_activity_level_only, recompute_after_merge, threshold_fields_for_sports
 from .models import Activity, Merge
 
 _VALID_FIELDS = set(STREAM_FIELDS) | set(ACTIVITY_FIELDS)

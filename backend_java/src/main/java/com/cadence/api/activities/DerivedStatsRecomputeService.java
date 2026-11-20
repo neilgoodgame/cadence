@@ -26,17 +26,21 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Backfills the extended Activity Analysis stats (avg/norm/max power, cadence, elevation,
- * calories, TRIMP, run air temp/humidity) for activities ingested before that computation existed (or
- * before an athlete had the profile thresholds TRIMP needs, or - for air temp/humidity - before
- * EnvironmentSanitizer existed to correct a Stryd sensor-fallback reading), from stored
- * per-second Record rows rather than re-parsing the original upload file - same data source and
- * reason TssRecomputeService already uses.
+ * Backfills the extended Activity Analysis stats (avg/max/norm power, avg/max HR, cadence,
+ * elevation, calories, TRIMP, run air temp/humidity) for activities ingested before that
+ * computation existed (or before an athlete had the profile thresholds TRIMP needs, or - for air
+ * temp/humidity - before EnvironmentSanitizer existed to correct a Stryd sensor-fallback
+ * reading), from stored per-second Record rows rather than re-parsing the original upload file -
+ * same data source and reason TssRecomputeService already uses. Shared by the per-activity/
+ * per-athlete recompute-stats endpoints and (issue #525) by ActivityPostProcessingService's
+ * merge/ingest orchestration.
  *
- * avgLeftBalancePct can NOT be backfilled this way: the FIT left_right_balance field is
- * deliberately never persisted per-sample onto Record (the UI only shows one aggregate
- * split, not a stream - see FitFileParser's leftBalancePct), so it's simply unrecoverable
- * for anything not re-ingested from the original file.
+ * avgLeftBalancePct can NOT be backfilled from stored Record rows: the FIT left_right_balance
+ * field is deliberately never persisted per-sample (the UI only shows one aggregate split, not a
+ * stream - see FitFileParser's leftBalancePct), so it's simply unrecoverable for anything not
+ * re-ingested from the original file. A caller that has it fresh from a parse (ingest only)
+ * passes it to {@link #recomputeForActivity(String, Double)}; every other caller uses the
+ * one-arg overload and that field is left untouched.
  */
 @Service
 public class DerivedStatsRecomputeService {
@@ -66,9 +70,16 @@ public class DerivedStatsRecomputeService {
 
 	@Transactional
 	public Activity recomputeForActivity(String activityId) {
+		return recomputeForActivity(activityId, null);
+	}
+
+	/** {@code avgLeftBalancePct}: see this class's own Javadoc - only a caller with a fresh parse
+	 * (ingest) can supply it. */
+	@Transactional
+	public Activity recomputeForActivity(String activityId, Double avgLeftBalancePct) {
 		Activity activity = activityRepository.findById(activityId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
-		applyBackfill(activity, activity.getAthlete());
+		applyBackfill(activity, activity.getAthlete(), avgLeftBalancePct);
 		Activity saved = activityRepository.save(activity);
 		if (saved.getSport() == Sport.BIKE || saved.getSport() == Sport.RUN) {
 			decouplingService.computeAndPersist(saved, saved.getAthlete());
@@ -114,7 +125,7 @@ public class DerivedStatsRecomputeService {
 			if (athlete == null) {
 				return false;
 			}
-			boolean changed = applyBackfill(activity, athlete);
+			boolean changed = applyBackfill(activity, athlete, null);
 			if (changed) {
 				activityRepository.save(activity);
 			}
@@ -127,7 +138,7 @@ public class DerivedStatsRecomputeService {
 
 	/** Mutates {@code activity} in place from its stored Record rows; returns whether
 	 * anything was set (the caller decides whether/how to persist). */
-	private boolean applyBackfill(Activity activity, User athlete) {
+	private boolean applyBackfill(Activity activity, User athlete, Double avgLeftBalancePct) {
 		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
 		boolean changed = false;
 
@@ -253,6 +264,26 @@ public class DerivedStatsRecomputeService {
 		}
 
 		List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
+
+		// Issue #525: unlike the fields above, avgHr/maxHr were never backfilled here even
+		// though Record.heartrate is stored (merging a heartrate stream onto an activity
+		// previously never updated them) - closed as part of unifying this method with the
+		// ingest-time computation, which has always set these two.
+		Double avgHr = mean(hrSeries);
+		Integer maxHr = max(hrSeries);
+		if (avgHr != null) {
+			activity.setAvgHr((int) Math.round(avgHr));
+			changed = true;
+		}
+		if (maxHr != null) {
+			activity.setMaxHr(maxHr);
+			changed = true;
+		}
+
+		if (avgLeftBalancePct != null) {
+			activity.setAvgLeftBalancePct(avgLeftBalancePct);
+			changed = true;
+		}
 
 		// Its own table, not an Activity field - no "changed" bookkeeping needed beyond
 		// rebuildHistogram's own save. powerSeries above is already sanitized and gated for

@@ -18,10 +18,10 @@ from rest_framework.exceptions import ValidationError
 from athletes.zones import get_or_create_zone_set, reference_for
 
 from . import stream_comparison
+from .activity_post_processing import recompute_after_merge
 from .dropout_detection import build_reference, detect_dropouts
 from .merge_alignment import align
 from .merge_apply import ZeroPolicy
-from .merge_postprocess import recompute_after_merge
 from .models import Activity, ActivitySource, ActivityStream, Record
 
 VALID_FIELDS = ("power", "heartrate", "cadence")
@@ -323,7 +323,7 @@ def _swap_primary_stream(activity_id: str, field: str, source_id: str) -> tuple[
     """The data-only half of set_primary_source - everything except the recompute cascade. Besides
     set_primary_source itself, athletes.tasks.recompute_running_power_source's bulk loop and
     attach_stream/detach_and_restore (issue #542) call this directly, deferring the athlete-wide
-    cascade (merge_postprocess.recompute_after_duplicate_change's own full-ledger rebuild) to run
+    cascade (uploads.processing.recompute_after_duplicate_change's own full-ledger rebuild) to run
     once per athlete instead of once per swapped activity, which would otherwise be quadratic in
     the athlete's activity count - see recompute_activity_level_only's own docstring.
 

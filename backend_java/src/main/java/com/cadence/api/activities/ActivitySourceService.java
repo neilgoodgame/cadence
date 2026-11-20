@@ -53,12 +53,12 @@ public class ActivitySourceService {
 	private final RecordRepository recordRepository;
 	private final ActivitySourceRepository sourceRepository;
 	private final ActivityStreamRepository streamRepository;
-	private final ActivityMergePostProcessingService postProcessingService;
+	private final ActivityPostProcessingService postProcessingService;
 	private final ZoneService zoneService;
 
 	public ActivitySourceService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			ActivitySourceRepository sourceRepository, ActivityStreamRepository streamRepository,
-			ActivityMergePostProcessingService postProcessingService, ZoneService zoneService) {
+			ActivityPostProcessingService postProcessingService, ZoneService zoneService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.sourceRepository = sourceRepository;
@@ -360,7 +360,7 @@ public class ActivitySourceService {
 	 * cascade. Package-visible: besides {@code setPrimarySource} itself, {@code
 	 * RunningPowerSourceRecomputeService}'s bulk loop, {@code attachStream} and {@link
 	 * #detachAndRestore} (issue #542) call this directly, deferring the athlete-wide cascade
-	 * ({@code ActivityMergePostProcessingService#recomputeAfterMerge}'s own full-ledger rebuild)
+	 * ({@code ActivityPostProcessingService#recomputeAfterMerge}'s own full-ledger rebuild)
 	 * to run once per athlete instead of once per swapped activity, which would otherwise be
 	 * quadratic in the athlete's activity count. Returns the id of the new snapshot source this
 	 * creates for the *former* primary, so a caller that needs to undo this exact swap later

@@ -989,17 +989,20 @@ def compute_calories(power_series: Sequence[float | None], moving_time_seconds: 
     return round(metabolic_kj / KJ_PER_KCAL)
 
 
-def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
-    """Backfills max power, cadence, max speed, elevation (min/max/ascent/descent),
-    calories, TRIMP, and (run only) air temp/humidity for `activity` from its stored
+def backfill_extended_stats(activity: Activity, athlete: User, avg_left_balance_pct: float | None = None) -> list[str]:
+    """Backfills avg/max power, avg/max HR, cadence, max speed, elevation (min/max/ascent/
+    descent), calories, TRIMP, and (run only) air temp/humidity for `activity` from its stored
     per-second Record rows, rather than re-parsing the original upload file. Shared by the
-    per-activity and per-athlete recompute-stats endpoints. Mutates `activity` in place and
-    returns the field names that changed; the caller is responsible for saving.
+    per-activity and per-athlete recompute-stats endpoints, and (issue #525) by
+    activities.activity_post_processing's merge/ingest orchestration. Mutates `activity` in
+    place and returns the field names that changed; the caller is responsible for saving.
 
-    avg_left_balance_pct can NOT be backfilled this way: the FIT left_right_balance field
-    is deliberately never persisted per-sample onto Record (the UI only shows one
-    aggregate split, not a stream - see uploads/parsers/fit.py's _left_balance_pct), so
-    it's simply unrecoverable for anything not re-ingested from the original file.
+    avg_left_balance_pct can NOT be backfilled from stored Record rows: the FIT
+    left_right_balance field is deliberately never persisted per-sample (the UI only shows one
+    aggregate split, not a stream - see uploads/parsers/fit.py's _left_balance_pct), so it's
+    simply unrecoverable for anything not re-ingested from the original file. A caller that has
+    it fresh from a parse (ingest only) passes it here; every other caller omits it and the
+    field is left untouched, same as before this parameter existed.
     """
     records = list(
         activity.records.order_by("t").values(
@@ -1042,6 +1045,23 @@ def backfill_extended_stats(activity: Activity, athlete: User) -> list[str]:
     if norm_power is not None:
         activity.norm_power = round(norm_power)
         update_fields.append("norm_power")
+
+    # Issue #525: unlike the fields above, avg_hr/max_hr were never backfilled here even though
+    # Record.heartrate is stored (merging a heartrate stream onto an activity previously never
+    # updated them) - closed as part of unifying this function with the ingest-time computation,
+    # which has always set these two.
+    avg_hr = _mean(hr_series)
+    max_hr = _max(hr_series)
+    if avg_hr is not None:
+        activity.avg_hr = round(avg_hr)
+        update_fields.append("avg_hr")
+    if max_hr is not None:
+        activity.max_hr = max_hr
+        update_fields.append("max_hr")
+
+    if avg_left_balance_pct is not None:
+        activity.avg_left_balance_pct = avg_left_balance_pct
+        update_fields.append("avg_left_balance_pct")
 
     # Its own table, not an Activity field - no update_fields entry needed. power_series is
     # already gated for running-power-source exclusion above (line ~958), same series NP just used.
@@ -1520,9 +1540,9 @@ def _ingest_activity(
     apply_shoe_change(None, activity.shoe_id, activity.distance_km)
 
     if other_running_power_t_series is not None:
-        # Local import - activities.activity_source_service imports merge_postprocess, which
-        # imports back from this module, so a top-level import here would be circular. Same
-        # reasoning as overlap_detection.py's own local import of merge_service.
+        # Local import - activities.activity_source_service imports activity_post_processing,
+        # which imports back from this module, so a top-level import here would be circular.
+        # Same reasoning as overlap_detection.py's own local import of merge_service.
         from activities.activity_source_service import create_parse_time_running_power_source
 
         create_parse_time_running_power_source(

@@ -52,7 +52,7 @@ public class ActivityUnmergeService {
 	private final BikeRepository bikeRepository;
 	private final ShoeRepository shoeRepository;
 	private final ActivityService activityService;
-	private final ActivityMergePostProcessingService postProcessingService;
+	private final ActivityPostProcessingService postProcessingService;
 	private final ActivitySourceService sourceService;
 	private final CadenceProperties properties;
 
@@ -62,7 +62,7 @@ public class ActivityUnmergeService {
 	public ActivityUnmergeService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			MergeRepository mergeRepository, UploadRepository uploadRepository, BikeRepository bikeRepository,
 			ShoeRepository shoeRepository, ActivityService activityService,
-			ActivityMergePostProcessingService postProcessingService, ActivitySourceService sourceService,
+			ActivityPostProcessingService postProcessingService, ActivitySourceService sourceService,
 			CadenceProperties properties) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
