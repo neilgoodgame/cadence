@@ -1,6 +1,7 @@
 package com.cadence.api.activities.dto;
 
 import com.cadence.api.activities.ActivityMergeApplyService.NullPolicy;
+import com.cadence.api.activities.ActivityMergeApplyService.ZeroPolicy;
 import com.cadence.api.activities.MergeCopyMode;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -15,10 +16,12 @@ import java.util.List;
  * overwrite}, today's only behavior, so every existing caller is unaffected. {@code sourceKind}
  * (issue #503 phase 3) is only meaningful with {@code copyMode=attach} and {@code
  * fields=["heartrate"]} or {@code ["cadence"]} - ignored for {@code ["power"]}, which still
- * classifies by device instead. */
+ * classifies by device instead. {@code zeroPolicy} (issue #541) is likewise boxed/optional -
+ * omitted means {@code as_null}, the documented default - and only meaningful when "power" is
+ * one of {@code fields}. */
 public record MergeActivitiesRequest(@NotBlank String sourceId, @NotEmpty List<String> fields,
 		@NotNull NullPolicy nullPolicy, Integer offsetSeconds, Boolean hideSource, Boolean preview,
-		MergeCopyMode copyMode, String sourceKind) {
+		MergeCopyMode copyMode, String sourceKind, ZeroPolicy zeroPolicy) {
 
 	public boolean hideSourceOrDefault() {
 		return hideSource != null && hideSource;
@@ -30,5 +33,9 @@ public record MergeActivitiesRequest(@NotBlank String sourceId, @NotEmpty List<S
 
 	public MergeCopyMode copyModeOrDefault() {
 		return copyMode != null ? copyMode : MergeCopyMode.OVERWRITE;
+	}
+
+	public ZeroPolicy zeroPolicyOrDefault() {
+		return zeroPolicy != null ? zeroPolicy : ZeroPolicy.AS_NULL;
 	}
 }

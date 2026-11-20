@@ -31,7 +31,7 @@ from . import activity_source_service, merge_rule_service
 from .comments import resolve_parent_comment
 from .duplicate_batches import resolve_duplicates_batch as resolve_duplicates_batch_action
 from .duplicate_batches import undo_batch as undo_batch_action
-from .merge_apply import CopyMode, NullPolicy
+from .merge_apply import CopyMode, NullPolicy, ZeroPolicy
 from .merge_service import MergeResult, run_merge
 from .models import Activity, ActivityComment, ActivityTag, DurationCurve, Merge, Tag
 from .overlaps import find_overlaps
@@ -165,6 +165,16 @@ def _parse_copy_mode(value: str | None) -> CopyMode:
         return "overwrite"
     if value not in ("overwrite", "attach"):
         raise ValidationError({"copy_mode": "copy_mode must be 'overwrite' or 'attach'."})
+    return value
+
+
+def _parse_zero_policy(value: str | None) -> ZeroPolicy:
+    """merge_activities' `zeros` param (issue #541) - defaults to as_null, matching the feature's
+    own documented default, rather than requiring every call to spell it out."""
+    if value is None:
+        return "as_null"
+    if value not in ("keep", "as_null"):
+        raise ValidationError({"zeros": "zeros must be 'keep' or 'as_null'."})
     return value
 
 
@@ -597,6 +607,7 @@ class ActivityMCPTools(ScopedMCPToolset):
         preview: bool = True,
         copy_mode: str | None = None,
         source_kind: str | None = None,
+        zeros: str | None = None,
     ) -> MergeResult:
         """Issue #501: copies fields from source_id into target_id - the target's timeline is
         authoritative, no stream rows are created or deleted. Resolves offset_seconds
@@ -620,7 +631,13 @@ class ActivityMCPTools(ScopedMCPToolset):
         sensor the attached heartrate/cadence stream came from (strap/wrist for heartrate;
         pedals/trainer/watch for cadence) - ignored for power, which classifies by device
         instead; if it matches the athlete's hr_source/cadence_source preference, the attached
-        stream becomes primary immediately, same as power's own auto-swap."""
+        stream becomes primary immediately, same as power's own auto-swap. zeros (issue #541)
+        only applies when "power" is one of fields - "as_null" (default) masks a confirmed
+        power-meter dropout (a short run of literal 0 W readings with corroborating evidence it
+        happened mid-effort, not a real stop) the same as a missing source sample, so it's then
+        subject to `nulls` like any other gap; "keep" copies a dropout zero through unchanged,
+        the pre-#541 behavior. field_counts in the result gains a dropouts_nulled count per
+        field, always 0 outside power."""
         self._require_scope(ACTIVITIES_WRITE)
         target = get_object_or_404(Activity, pk=target_id)
         self._require_write(target.athlete_id)
@@ -636,6 +653,7 @@ class ActivityMCPTools(ScopedMCPToolset):
             preview=preview,
             copy_mode=_parse_copy_mode(copy_mode),
             source_kind=source_kind,
+            zero_policy=_parse_zero_policy(zeros),
         )
 
     def unmerge_activity(self, activity_id: str, merge_id: str | None = None) -> dict[str, Any]:

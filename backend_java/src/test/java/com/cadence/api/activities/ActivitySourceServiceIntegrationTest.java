@@ -80,6 +80,21 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		recordRepository.saveAll(records);
 	}
 
+	/** customize: (record, t) -> void - issue #541's dropout tests need per-second power *and*
+	 * cadence control that the single-field helpers above don't give. */
+	private void addRecordsWith(Activity activity, int count, java.util.function.BiConsumer<Record, Integer> customize) {
+		List<Record> records = new ArrayList<>();
+		for (int t = 0; t < count; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), START.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			customize.accept(record, t);
+			records.add(record);
+		}
+		recordRepository.saveAll(records);
+	}
+
 	/** Writes a linearly-varying series ({@code baseValue + t} for {@code t} in {@code [0,count)})
 	 * instead of a constant one - needed for the phase-4 comparison tests, since a constant
 	 * series has zero variance and can't exercise Pearson r/the lag search meaningfully. */
@@ -136,6 +151,105 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		assertThat(stream.isPrimaryOf()).isFalse();
 		assertThat(stream.getStreamValues()).hasSize(10);
 		assertThat(stream.getStreamValues()[0]).isEqualTo((short) 300);
+	}
+
+	@Test
+	void attachMasksAConfirmedDropoutByDefault() {
+		User athlete = newAthlete("source-attach-dropout-masked@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecordsWith(target, 10, (r, t) -> r.setPower(200 + t));
+		addRecordsWith(source, 10, (r, t) -> {
+			r.setPower(t == 4 || t == 5 ? 0 : 300 + t);
+			r.setCadence(85);
+		});
+
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+
+		assertThat(result.dropoutsNulled()).isEqualTo(2);
+		assertThat(result.copied()).isEqualTo(8);
+		ActivityStream stream = streamRepository
+				.findByActivityIdAndFieldAndSourceId(target.getId(), "power", result.sourceId()).orElseThrow();
+		assertThat(stream.getStreamValues()[4]).isNull();
+		assertThat(stream.getStreamValues()[5]).isNull();
+		// The target's own primary stream is untouched either way.
+		for (Record record : recordRepository.findByActivityIdOrderByT(target.getId())) {
+			assertThat(record.getPower()).isEqualTo(200 + record.getT());
+		}
+	}
+
+	@Test
+	void attachZeroPolicyKeepPreservesThePre541Behavior() {
+		User athlete = newAthlete("source-attach-dropout-keep@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecordsWith(target, 10, (r, t) -> r.setPower(200 + t));
+		addRecordsWith(source, 10, (r, t) -> {
+			r.setPower(t == 4 || t == 5 ? 0 : 300 + t);
+			r.setCadence(85);
+		});
+
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(), "power",
+				0, false, null, ActivityMergeApplyService.ZeroPolicy.KEEP);
+
+		assertThat(result.dropoutsNulled()).isEqualTo(0);
+		assertThat(result.copied()).isEqualTo(10);
+		ActivityStream stream = streamRepository
+				.findByActivityIdAndFieldAndSourceId(target.getId(), "power", result.sourceId()).orElseThrow();
+		assertThat(stream.getStreamValues()[4]).isEqualTo((short) 0);
+		assertThat(stream.getStreamValues()[5]).isEqualTo((short) 0);
+	}
+
+	/** A dropout-zero stream that gets auto-promoted to primary must have already been masked
+	 * before promotion - not just fixed for the non-promoted case. */
+	@Test
+	void aPromotedAttachNeverLetsADropoutZeroReachRecord() {
+		User athlete = newAthlete("source-attach-dropout-promoted@example.cc");
+		athlete.setBikePowerSource(BikePowerSource.TRAINER);
+		athlete = userRepository.save(athlete);
+		Activity target = newActivity(athlete, "Target", "Edge 530"); // classifies PEDALS
+		Activity source = newActivity(athlete, "Source", "Zwift"); // classifies TRAINER, matches preference
+		addRecordsWith(target, 10, (r, t) -> r.setPower(200 + t));
+		addRecordsWith(source, 10, (r, t) -> {
+			r.setPower(t == 4 || t == 5 ? 0 : 300 + t);
+			r.setCadence(85);
+		});
+
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+
+		assertThat(result.becamePrimary()).isTrue();
+		for (Record record : recordRepository.findByActivityIdOrderByT(target.getId())) {
+			if (record.getT() == 4 || record.getT() == 5) {
+				assertThat(record.getPower()).isNull(); // masked, never the raw dropout zero
+			}
+			else {
+				assertThat(record.getPower()).isEqualTo(300 + record.getT());
+			}
+		}
+	}
+
+	/** Code review finding: attaching power onto a target recorded on a device with no power
+	 * meter must still fall back to the cadence signal, not silently treat "no reference data"
+	 * as "reference says this isn't a dropout". */
+	@Test
+	void attachCadenceFallbackConfirmsADropoutWithNoTargetPowerData() {
+		User athlete = newAthlete("source-attach-dropout-no-target-power@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530"); // no power meter
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecordsWith(target, 10, (r, t) -> r.setCadence(80));
+		addRecordsWith(source, 10, (r, t) -> {
+			r.setPower(t == 4 || t == 5 ? 0 : 300 + t);
+			r.setCadence(85);
+		});
+
+		ActivitySourceService.AttachResult result = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+
+		assertThat(result.dropoutsNulled()).isEqualTo(2);
+		assertThat(result.copied()).isEqualTo(8);
+		ActivityStream stream = streamRepository
+				.findByActivityIdAndFieldAndSourceId(target.getId(), "power", result.sourceId()).orElseThrow();
+		assertThat(stream.getStreamValues()[4]).isNull();
+		assertThat(stream.getStreamValues()[5]).isNull();
 	}
 
 	@Test

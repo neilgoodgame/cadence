@@ -27,6 +27,17 @@ class MergeServiceTests(TestCase):
         for t in range(count):
             Record.objects.create(activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), power=power)
 
+    def _add_records_with(self, activity, count, **field_fns):
+        """field_fns: field_name -> callable(t) -> value - issue #541's dropout tests need
+        per-second power *and* cadence control the constant-value helper above doesn't give."""
+        for t in range(count):
+            Record.objects.create(
+                activity=activity,
+                t=t,
+                ts=activity.start_date + timedelta(seconds=t),
+                **{field: fn(t) for field, fn in field_fns.items()},
+            )
+
     def test_merges_and_records_an_audit_row(self):
         target = self._activity(self.athlete, name="Target")
         source = self._activity(self.athlete, name="Source")
@@ -222,3 +233,54 @@ class MergeServiceTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_zero_policy_masks_a_confirmed_dropout_by_default(self):
+        target = self._activity(self.athlete, name="Target")
+        source = self._activity(self.athlete, name="Source")
+        self._add_records_with(target, 10, power=lambda t: 200 + t)
+        self._add_records_with(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            cadence=lambda t: 85,
+        )
+
+        # zero_policy omitted entirely - confirms the documented default (as_null) applies.
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{target.id}/merge",
+            {"source_id": source.id, "fields": ["power"], "null_policy": "keep_original", "offset_seconds": 0},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["field_counts"]["power"]["dropouts_nulled"], 2)
+        self.assertEqual(body["field_counts"]["power"]["copied"], 8)
+
+    def test_zero_policy_keep_copies_the_dropout_through(self):
+        target = self._activity(self.athlete, name="Target")
+        source = self._activity(self.athlete, name="Source")
+        self._add_records_with(target, 10, power=lambda t: 200 + t)
+        self._add_records_with(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            cadence=lambda t: 85,
+        )
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{target.id}/merge",
+            {
+                "source_id": source.id,
+                "fields": ["power"],
+                "null_policy": "keep_original",
+                "offset_seconds": 0,
+                "zero_policy": "keep",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["field_counts"]["power"]["dropouts_nulled"], 0)
+        self.assertEqual(body["field_counts"]["power"]["copied"], 10)

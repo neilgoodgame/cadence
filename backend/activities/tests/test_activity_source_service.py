@@ -43,6 +43,17 @@ class ActivitySourceServiceTests(TestCase):
                 activity=activity, t=t, ts=activity.start_date + timedelta(seconds=t), **{field: base_value + t}
             )
 
+    def _add_records_with(self, activity, count, **field_fns):
+        """field_fns: field_name -> callable(t) -> value - issue #541's dropout tests need
+        per-second power *and* cadence control that the constant-value helpers above don't give."""
+        for t in range(count):
+            Record.objects.create(
+                activity=activity,
+                t=t,
+                ts=activity.start_date + timedelta(seconds=t),
+                **{field: fn(t) for field, fn in field_fns.items()},
+            )
+
     def test_attach_creates_a_non_primary_source_without_touching_the_targets_primary(self):
         athlete = self._athlete("source-attach-no-touch@example.cc")
         target = self._activity(athlete, "Edge 530", name="Target")
@@ -70,6 +81,97 @@ class ActivitySourceServiceTests(TestCase):
         self.assertFalse(stream.primary_of)
         self.assertEqual(len(stream.values), 10)
         self.assertEqual(stream.values[0], 300)
+
+    def test_attach_masks_a_confirmed_dropout_by_default(self):
+        athlete = self._athlete("source-attach-dropout-masked@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records_with(target, 10, power=lambda t: 200 + t)
+        self._add_records_with(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            cadence=lambda t: 85,
+        )
+
+        result = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        self.assertEqual(result.dropouts_nulled, 2)
+        self.assertEqual(result.copied, 8)
+        stream = ActivitySource.objects.get(pk=result.source_id).streams.get(field="power")
+        self.assertIsNone(stream.values[4])
+        self.assertIsNone(stream.values[5])
+        # The target's own primary stream is untouched either way.
+        for record in target.records.all():
+            self.assertEqual(record.power, 200 + record.t)
+
+    def test_attach_zero_policy_keep_preserves_the_pre_541_behavior(self):
+        athlete = self._athlete("source-attach-dropout-keep@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records_with(target, 10, power=lambda t: 200 + t)
+        self._add_records_with(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            cadence=lambda t: 85,
+        )
+
+        result = activity_source_service.attach_stream(
+            target.id, source.id, "power", offset_seconds=0, preview=False, zero_policy="keep"
+        )
+
+        self.assertEqual(result.dropouts_nulled, 0)
+        self.assertEqual(result.copied, 10)
+        stream = ActivitySource.objects.get(pk=result.source_id).streams.get(field="power")
+        self.assertEqual(stream.values[4], 0)
+        self.assertEqual(stream.values[5], 0)
+
+    def test_a_promoted_attach_never_lets_a_dropout_zero_reach_record(self):
+        """A dropout-zero stream that gets auto-promoted to primary must have already been
+        masked before promotion - not just fixed for the non-promoted case."""
+        athlete = self._athlete("source-attach-dropout-promoted@example.cc", bike_power_source="trainer")
+        target = self._activity(athlete, "Edge 530", name="Target")  # classifies pedals
+        source = self._activity(athlete, "Zwift", name="Source")  # classifies trainer, matches preference
+        self._add_records_with(target, 10, power=lambda t: 200 + t)
+        self._add_records_with(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            cadence=lambda t: 85,
+        )
+
+        result = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        self.assertTrue(result.became_primary)
+        for record in target.records.all():
+            if record.t in (4, 5):
+                self.assertIsNone(record.power)  # masked, never the raw dropout zero
+            else:
+                self.assertEqual(record.power, 300 + record.t)
+
+    def test_attach_cadence_fallback_confirms_a_dropout_with_no_target_power_data(self):
+        """Code review finding: attaching power onto a target recorded on a device with no power
+        meter must still fall back to the cadence signal, not silently treat "no reference data"
+        as "reference says this isn't a dropout"."""
+        athlete = self._athlete("source-attach-dropout-no-target-power@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")  # no power meter
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records_with(target, 10, cadence=lambda t: 80)
+        self._add_records_with(
+            source,
+            10,
+            power=lambda t: 0 if t in (4, 5) else 300 + t,
+            cadence=lambda t: 85,
+        )
+
+        result = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        self.assertEqual(result.dropouts_nulled, 2)
+        self.assertEqual(result.copied, 8)
+        stream = ActivitySource.objects.get(pk=result.source_id).streams.get(field="power")
+        self.assertIsNone(stream.values[4])
+        self.assertIsNone(stream.values[5])
 
     def test_attach_auto_swaps_when_the_attached_source_matches_the_preference(self):
         athlete = self._athlete("source-attach-auto-swap@example.cc", bike_power_source="trainer")

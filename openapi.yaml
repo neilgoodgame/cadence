@@ -1190,6 +1190,19 @@ paths:
                     which still classifies by device instead. When supplied and it matches the
                     athlete's hr_source/cadence_source preference, the attached stream becomes
                     primary immediately, same as power's own device-classification auto-swap.
+                zero_policy:
+                  type: string
+                  enum: [keep, as_null]
+                  default: as_null
+                  description: >-
+                    Issue #541. Only meaningful when "power" is one of fields. A real
+                    power-meter dropout (an ANT+/Bluetooth glitch) writes a literal 0 W into
+                    the FIT file, not a missing sample - as_null (default) detects a short run
+                    of such zeros (corroborated by the other side of the merge, or by cadence
+                    when a short run is bracketed by real power on both sides) and masks it the
+                    same as a missing source second, so null_policy's own choice then applies;
+                    keep preserves the pre-#541 behavior of copying a dropout zero through
+                    unchanged.
       responses:
         "200":
           description: The merge's outcome.
@@ -5893,13 +5906,16 @@ components:
           description: Null when offset_seconds was given explicitly in the request, since nothing was correlated.
         field_counts:
           type: object
-          description: Per requested field - how many target seconds were copied/kept_original/nulled. Activity-level fields report copied=1,nulled=0 or copied=0,nulled=1 (kept_original is always 0 for them).
+          description: Per requested field - how many target seconds were copied/kept_original/nulled/dropouts_nulled. Activity-level fields report copied=1,nulled=0 or copied=0,nulled=1 (kept_original/dropouts_nulled are always 0 for them).
           additionalProperties:
             type: object
             properties:
               copied: { type: integer }
               kept_original: { type: integer }
               nulled: { type: integer }
+              dropouts_nulled:
+                type: integer
+                description: Issue #541. How many seconds were a confirmed power-meter dropout rather than real data or a genuine gap - always 0 outside field="power", and whenever zero_policy="keep".
         before: { $ref: "#/components/schemas/MergeActivitySummary" }
         after: { $ref: "#/components/schemas/MergeActivitySummary" }
         source_hidden: { type: boolean }

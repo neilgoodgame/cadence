@@ -182,7 +182,7 @@ public class ActivityController {
 		try {
 			return activityMergeService.runMerge(id, request.sourceId(), request.fields(), request.nullPolicy(),
 					request.offsetSeconds(), request.hideSourceOrDefault(), request.previewOrDefault(),
-					request.copyModeOrDefault(), request.sourceKind());
+					request.copyModeOrDefault(), request.sourceKind(), request.zeroPolicyOrDefault());
 		}
 		catch (MergePreviewRollbackSignal signal) {
 			// See MergePreviewRollbackSignal - runMerge's preview=true transaction is rolled

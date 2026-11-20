@@ -2,6 +2,7 @@ package com.cadence.api.mcp.tools.activities;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityMergeApplyService.NullPolicy;
+import com.cadence.api.activities.ActivityMergeApplyService.ZeroPolicy;
 import com.cadence.api.activities.ActivityMergeOrchestrator;
 import com.cadence.api.activities.ActivityMergeService;
 import com.cadence.api.activities.ActivityService;
@@ -183,7 +184,13 @@ public class ActivityWriteTools {
 			+ "of sensor the attached heartrate/cadence stream came from (strap/wrist for heartrate; "
 			+ "pedals/trainer/watch for cadence) - ignored for power, which classifies by device "
 			+ "instead; if it matches the athlete's hrSource/cadenceSource preference, the attached "
-			+ "stream becomes primary immediately, same as power's own auto-swap.",
+			+ "stream becomes primary immediately, same as power's own auto-swap. zeros (issue #541) "
+			+ "only applies when 'power' is one of fields - 'as_null' (default) masks a confirmed "
+			+ "power-meter dropout (a short run of literal 0 W readings with corroborating evidence "
+			+ "it happened mid-effort, not a real stop) the same as a missing source sample, so it's "
+			+ "then subject to nulls like any other gap; 'keep' copies a dropout zero through "
+			+ "unchanged, the pre-#541 behavior. fieldCounts in the result gains a dropoutsNulled "
+			+ "count per field, always 0 outside power.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false))
 	public ActivityMergeService.MergeResult mergeActivities(
@@ -203,7 +210,9 @@ public class ActivityWriteTools {
 			@McpToolParam(description = "'overwrite' (default) or 'attach' - see the tool description",
 					required = false) String copyMode,
 			@McpToolParam(description = "Only meaningful with copyMode=attach and fields=[heartrate]/[cadence] - "
-					+ "see the tool description", required = false) String sourceKind) {
+					+ "see the tool description", required = false) String sourceKind,
+			@McpToolParam(description = "'as_null' (default) or 'keep' - see the tool description",
+					required = false) String zeros) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
 		Activity target = activityService.getActivity(targetId);
 		accessGuard.requireWrite(target.getAthlete().getId());
@@ -211,7 +220,7 @@ public class ActivityWriteTools {
 		accessGuard.requireWrite(source.getAthlete().getId());
 		return activityMergeOrchestrator.merge(targetId, sourceId, fields, parseNullPolicy(nulls),
 				offsetSeconds, Boolean.TRUE.equals(hideSource), preview == null || preview,
-				parseCopyMode(copyMode), sourceKind);
+				parseCopyMode(copyMode), sourceKind, parseZeroPolicy(zeros));
 	}
 
 	@McpTool(name = "unmerge_activity", description = "Issue #501: reverses one of activityId's "
@@ -281,6 +290,18 @@ public class ActivityWriteTools {
 		}
 		catch (IllegalArgumentException e) {
 			throw new ValidationException("copy_mode must be 'overwrite' or 'attach'.", "copy_mode");
+		}
+	}
+
+	private ZeroPolicy parseZeroPolicy(String zeros) {
+		if (zeros == null || zeros.isBlank()) {
+			return ZeroPolicy.AS_NULL;
+		}
+		try {
+			return ZeroPolicy.fromWireValue(zeros.trim());
+		}
+		catch (IllegalArgumentException e) {
+			throw new ValidationException("zeros must be 'keep' or 'as_null'.", "zeros");
 		}
 	}
 
