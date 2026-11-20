@@ -268,7 +268,7 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "is_virtual", nullable = false)
 	private boolean virtual = false;
 
-	// Auto-match naming preferences (WorkoutMatchTasklet) - both default off so existing
+	// Auto-match naming preferences (PostProcessNewActivityTasklet) - both default off so existing
 	// device-derived activity names are untouched unless opted in. appendMatchDateToName
 	// only has an effect when renameMatchedActivities is also on.
 	@Column(name = "rename_matched_activities", nullable = false)

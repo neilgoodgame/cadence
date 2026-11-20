@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Links a same-day, same-sport, still-planned {@link ScheduledWorkout} to a newly-ingested
- * activity, if one exists - the actual matching logic behind {@code WorkoutMatchTasklet},
+ * activity, if one exists - the actual matching logic behind {@code PostProcessNewActivityTasklet},
  * extracted into a plain injectable service (rather than living directly in the Spring Batch
  * tasklet) so it's directly unit-testable. Not to be confused with {@link WorkoutMatchService},
  * which is read-only (backs {@code GET /v1/workouts/{id}/matches}) and doesn't perform matching.

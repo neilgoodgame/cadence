@@ -37,7 +37,7 @@ public class DurationCurveRecomputeService {
 		String athleteId = athlete.getId();
 		List<String> ids = tx.execute(status ->
 				activityRepository.findRecomputeCandidates(athleteId).stream()
-						// Same reasoning as DurationCurveTasklet - a multisport parent's own mixed-sport
+						// Same reasoning as PostProcessNewActivityTasklet - a multisport parent's own mixed-sport
 						// stream isn't a meaningful curve. Multisport legs are already excluded by
 						// findRecomputeCandidates itself (same candidate scope as best-efforts recompute).
 						.filter(a -> a.getSport() != Sport.MULTISPORT)
