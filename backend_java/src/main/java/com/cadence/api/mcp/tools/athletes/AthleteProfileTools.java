@@ -223,7 +223,31 @@ public class AthleteProfileTools {
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		ThresholdField effectiveField = parseField(field);
+		if (from.isAfter(to)) {
+			throw new ValidationException("Must not be after to.", "from");
+		}
 		User athlete = userService.getById(athleteId);
+		// Same bounds AthleteService#updateProfile enforces on the saved settings, checked
+		// against the effective (override-or-saved) value. Java's own floating-point division
+		// never throws on tauDays=0 (IEEE 754 -Infinity, not ArithmeticException, unlike
+		// Python's backend) - but silently simulating with it would still be nonsense, and the
+		// two backends must reject the same bad input the same way (root CLAUDE.md's parity
+		// rule), not just avoid crashing.
+		double effectiveTau = tauDays != null ? tauDays : athlete.getThresholdDecayTauDays();
+		double effectiveMin = minPct != null ? minPct : athlete.getThresholdDecayMinPct();
+		double effectiveMax = maxPct != null ? maxPct : athlete.getThresholdDecayMaxPct();
+		if (effectiveTau < 7 || effectiveTau > 90) {
+			throw new ValidationException("Must be between 7 and 90.", "tauDays");
+		}
+		if (effectiveMin < 0 || effectiveMin > 10) {
+			throw new ValidationException("Must be between 0 and 10.", "minPct");
+		}
+		if (effectiveMax < 0 || effectiveMax > 30) {
+			throw new ValidationException("Must be between 0 and 30.", "maxPct");
+		}
+		if (effectiveMin > effectiveMax) {
+			throw new ValidationException("Must not exceed maxPct.", "minPct");
+		}
 		ThresholdDecayRecomputeService.PreviewResult result = thresholdDecayRecomputeService.gatherPreviewSteps(
 				athlete, effectiveField, from, to, tauDays, minPct, maxPct);
 		ThresholdDecay.DecaySettings settings = result.settingsUsed();

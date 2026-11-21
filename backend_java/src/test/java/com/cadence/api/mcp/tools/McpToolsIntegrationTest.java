@@ -1028,12 +1028,12 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		LocalDate expiry = LocalDate.of(2026, 1, 1).plusDays(athlete.getThresholdWindowDays() + 1L);
 		LocalDate to = expiry.plusDays(30);
 
-		var result = athleteProfileTools.previewThresholdDecay("ftp", expiry, to, 99.0, null, null);
+		var result = athleteProfileTools.previewThresholdDecay("ftp", expiry, to, 30.0, null, null);
 
 		assertThat(result.get("field")).isEqualTo("ftp");
 		@SuppressWarnings("unchecked")
 		Map<String, Object> settingsUsed = (Map<String, Object>) result.get("settings_used");
-		assertThat(settingsUsed.get("tau_days")).isEqualTo(99.0);
+		assertThat(settingsUsed.get("tau_days")).isEqualTo(30.0);
 		assertThat(settingsUsed.get("min_pct")).isEqualTo(3.0);
 		assertThat(settingsUsed.get("max_pct")).isEqualTo(12.0);
 		@SuppressWarnings("unchecked")
@@ -1053,6 +1053,65 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 		assertThatThrownBy(() -> athleteProfileTools.previewThresholdDecay(
 				"not_a_field", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), null, null, null))
+				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
+	}
+
+	@Test
+	void previewThresholdDecayRejectsFromAfterTo() {
+		User athlete = saveAthlete("mcp-preview-decay-range@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> athleteProfileTools.previewThresholdDecay(
+				"ftp", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 1, 1), null, null, null))
+				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
+	}
+
+	@Test
+	void previewThresholdDecayRejectsATauDaysOverrideThatWouldBeNonsenseIfDivided() {
+		User athlete = saveAthlete("mcp-preview-decay-tau-zero@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> athleteProfileTools.previewThresholdDecay(
+				"ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), 0.0, null, null))
+				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
+	}
+
+	@Test
+	void previewThresholdDecayRejectsAnOutOfRangeTauDaysOverride() {
+		User athlete = saveAthlete("mcp-preview-decay-tau-range@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> athleteProfileTools.previewThresholdDecay(
+				"ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), 200.0, null, null))
+				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
+	}
+
+	@Test
+	void previewThresholdDecayRejectsMinPctExceedingMaxPct() {
+		User athlete = saveAthlete("mcp-preview-decay-min-max@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> athleteProfileTools.previewThresholdDecay(
+				"ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), null, 20.0, 5.0))
+				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
+	}
+
+	@Test
+	void previewThresholdDecayFallsBackToTheAthletesSavedMinMaxForTheCrossCheck() {
+		// The athlete's own saved minPct/maxPct (3/12) are already consistent - overriding only
+		// maxPct down to 1 (below the saved minPct) must still be caught, proving the
+		// cross-check uses the *effective* value, not just the two params given in this call.
+		User athlete = new User();
+		athlete.setEmail("mcp-preview-decay-min-max-effective@example.cc");
+		athlete.setName("Preview Min Max Effective");
+		athlete.setPassword("irrelevant-for-this-test");
+		athlete.setThresholdDecayMinPct(3);
+		athlete.setThresholdDecayMaxPct(12);
+		athlete = userRepository.save(athlete);
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> athleteProfileTools.previewThresholdDecay(
+				"ftp", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), null, null, 1.0))
 				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
 	}
 

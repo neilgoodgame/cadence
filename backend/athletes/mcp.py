@@ -411,6 +411,22 @@ class AthleteMCPTools(ScopedMCPToolset):
             raise ValidationError({"from_date": "Must not be after to_date."})
 
         athlete = get_object_or_404(User, pk=athlete_id)
+        # Same bounds AthleteUpdateSerializer enforces on the saved settings (athletes/
+        # serializers.py) - checked against the effective (override-or-saved) value, so a
+        # tau_days=0 override can't reach threshold_decay.py's math.exp(-1.0/tau_days) and
+        # raise a ZeroDivisionError instead of a clean validation error.
+        effective_tau = tau_days if tau_days is not None else athlete.threshold_decay_tau_days
+        effective_min = min_pct if min_pct is not None else athlete.threshold_decay_min_pct
+        effective_max = max_pct if max_pct is not None else athlete.threshold_decay_max_pct
+        if not (7 <= effective_tau <= 90):
+            raise ValidationError({"tau_days": "Must be between 7 and 90."})
+        if not (0 <= effective_min <= 10):
+            raise ValidationError({"min_pct": "Must be between 0 and 10."})
+        if not (0 <= effective_max <= 30):
+            raise ValidationError({"max_pct": "Must be between 0 and 30."})
+        if effective_min > effective_max:
+            raise ValidationError({"min_pct": "Must not exceed max_pct."})
+
         steps, settings_used = gather_preview_steps(athlete, field, from_d, to_d, tau_days, min_pct, max_pct)
         return {
             "field": field,

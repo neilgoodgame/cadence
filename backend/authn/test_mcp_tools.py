@@ -1956,10 +1956,10 @@ class AthleteToolsTests(TestCase):
         tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
         expiry = date(2026, 1, 1) + timedelta(days=athlete.threshold_window_days + 1)
         to_date = expiry + timedelta(days=30)
-        result = tools.preview_threshold_decay(field="ftp", from_date=str(expiry), to_date=str(to_date), tau_days=99)
+        result = tools.preview_threshold_decay(field="ftp", from_date=str(expiry), to_date=str(to_date), tau_days=30)
 
         self.assertEqual(result["field"], "ftp")
-        self.assertEqual(result["settings_used"]["tau_days"], 99)
+        self.assertEqual(result["settings_used"]["tau_days"], 30)
         self.assertEqual(result["settings_used"]["min_pct"], 3)
         self.assertEqual(result["settings_used"]["max_pct"], 12)
         self.assertGreater(len(result["data"]), 0)
@@ -1974,6 +1974,52 @@ class AthleteToolsTests(TestCase):
 
         with self.assertRaises(ValidationError):
             tools.preview_threshold_decay(field="not_a_field", from_date="2026-01-01", to_date="2026-02-01")
+
+    def test_preview_threshold_decay_rejects_from_date_after_to_date(self) -> None:
+        athlete = User.objects.create_user(email="mcp-preview-decay-range@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(field="ftp", from_date="2026-02-01", to_date="2026-01-01")
+
+    def test_preview_threshold_decay_rejects_a_tau_days_override_that_would_divide_by_zero(self) -> None:
+        athlete = User.objects.create_user(email="mcp-preview-decay-tau-zero@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(field="ftp", from_date="2026-01-01", to_date="2026-02-01", tau_days=0)
+
+    def test_preview_threshold_decay_rejects_an_out_of_range_tau_days_override(self) -> None:
+        athlete = User.objects.create_user(email="mcp-preview-decay-tau-range@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(field="ftp", from_date="2026-01-01", to_date="2026-02-01", tau_days=200)
+
+    def test_preview_threshold_decay_rejects_min_pct_exceeding_max_pct(self) -> None:
+        athlete = User.objects.create_user(email="mcp-preview-decay-min-max@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(
+                field="ftp", from_date="2026-01-01", to_date="2026-02-01", min_pct=20, max_pct=5
+            )
+
+    def test_preview_threshold_decay_falls_back_to_the_athletes_saved_min_max_for_the_cross_check(self) -> None:
+        """The athlete's own saved min_pct/max_pct (3/12) are already consistent - overriding
+        only max_pct down to 1 (below the saved min_pct) must still be caught, proving the
+        cross-check uses the *effective* value, not just the two params given in this call."""
+        athlete = User.objects.create_user(
+            email="mcp-preview-decay-min-max-effective@example.cc",
+            password="x",
+            name="Athlete",
+            threshold_decay_min_pct=3,
+            threshold_decay_max_pct=12,
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(field="ftp", from_date="2026-01-01", to_date="2026-02-01", max_pct=1)
 
     def test_get_fitness_trend_sport_filter_excludes_other_sports(self) -> None:
         athlete = User.objects.create_user(email="mcp-fitness-trend-sport@example.cc", password="x", name="Athlete")
