@@ -30,6 +30,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -607,6 +608,29 @@ public class ActivitySourceService {
 			sourceRepository.deleteById(redundantSnapshotId);
 		}
 		sourceRepository.delete(source);
+		return needsRestore;
+	}
+
+	/** Issue #542: the standalone entry point for {@link #detachAndRestore}, for a source that
+	 * was never part of a tracked {@link Merge} at all - most notably the handful of real
+	 * activities that got an attached source before this issue's own core fix started recording
+	 * one. {@code field} is derived from the source's own {@code sensorKind} rather than taken as
+	 * a separate param, since a source only ever belongs to one field.
+	 *
+	 * <p>{@code REQUIRES_NEW}, not the default {@code REQUIRED} - same reasoning as {@link
+	 * ActivityMergeService#runMerge}'s own class Javadoc: a {@code preview=true} call throws
+	 * {@link DetachSourcePreviewRollbackSignal} to force a rollback while still returning the
+	 * already-computed result, and that signal must only ever roll back *this* call's own
+	 * transaction, never join and poison some future caller's outer one. */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public boolean detachSource(String activityId, String sourceId, boolean preview) {
+		ActivitySource source = sourceRepository.findById(sourceId)
+				.filter(s -> s.getActivity().getId().equals(activityId))
+				.orElseThrow(() -> new NotFoundException("No such source for this activity."));
+		boolean needsRestore = detachAndRestore(activityId, source.getSensorKind(), sourceId, null);
+		if (preview) {
+			throw new DetachSourcePreviewRollbackSignal(needsRestore);
+		}
 		return needsRestore;
 	}
 

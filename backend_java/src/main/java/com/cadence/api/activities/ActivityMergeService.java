@@ -59,7 +59,7 @@ public class ActivityMergeService {
 	 * #542) are always OVERWRITE/null for a merge created before that fix shipped, except for
 	 * backfilled attach rows. */
 	public record MergeRecord(String mergeId, String sourceId, String sourceName, List<String> fields,
-			NullPolicy nullPolicy, int offsetSeconds, Double alignmentScore,
+			NullPolicy nullPolicy, Integer offsetSeconds, Double alignmentScore,
 			Map<String, FieldRewriteCounts> fieldCounts, boolean sourceHidden, Instant createdAt,
 			MergeCopyMode copyMode, String attachedSourceId) {
 	}

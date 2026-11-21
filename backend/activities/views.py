@@ -46,6 +46,7 @@ from .serializers import (
     ActivityCommentSerializer,
     ActivitySerializer,
     ActivityUpdateSerializer,
+    DetachSourceSerializer,
     DurationCurveSerializer,
     LapSerializer,
     MergeActivitiesSerializer,
@@ -709,6 +710,28 @@ class ActivityPrimarySourceView(APIView):
         activity_source_service.set_primary_source(id, data["field"], data["source_id"])
         activity.refresh_from_db()
         return Response(ActivitySerializer(activity).data)
+
+
+class ActivityDetachSourceView(APIView):
+    """Issue #542: POST .../detach-source - removes an attached source that was never part of a
+    tracked Merge at all (e.g. a pre-fix orphaned attach), swapping back to the previous primary
+    first if needed. See activity_source_service.detach_source for the actual orchestration."""
+
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        serializer = DetachSourceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        needs_restore = activity_source_service.detach_source(id, data["source_id"], data["preview"])
+        activity.refresh_from_db()
+        response = ActivitySerializer(activity).data
+        response["needs_restore"] = needs_restore
+        return Response(response)
 
 
 class LapListView(APIView):

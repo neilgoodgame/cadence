@@ -288,6 +288,73 @@ class ActivitySourceServiceTests(TestCase):
         with self.assertRaises(ValidationError):
             activity_source_service.detach_and_restore(target.id, "power", file_origin_source.id)
 
+    def test_detach_source_derives_field_from_the_source_itself(self):
+        """Issue #542: the standalone entry point takes no separate field param - it's derived
+        from source.sensor_kind, unlike detach_and_restore itself."""
+        athlete = self._athlete("source-detach-standalone-no-restore@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records(target, 10, power=200)
+        self._add_records(source, 10, power=300)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        needs_restore = activity_source_service.detach_source(target.id, attach.source_id)
+
+        self.assertFalse(needs_restore)
+        self.assertFalse(ActivitySource.objects.filter(pk=attach.source_id).exists())
+        for record in target.records.all():
+            self.assertEqual(record.power, 200)  # untouched
+
+    def test_detach_source_swaps_back_a_currently_primary_source_with_no_merge_row(self):
+        """The orphaned-attach case this exists for: no Merge row at all (simulated here by never
+        creating one - attach_stream alone never does), so there's no demoted_source_id to use -
+        detach_source must still correctly restore via the data-equality fallback."""
+        athlete = self._athlete("source-detach-standalone-restore@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records(target, 10, power=200)
+        self._add_records(source, 10, power=300)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+        activity_source_service.set_primary_source(target.id, "power", attach.source_id)
+
+        needs_restore = activity_source_service.detach_source(target.id, attach.source_id)
+
+        self.assertTrue(needs_restore)
+        self.assertFalse(ActivitySource.objects.filter(pk=attach.source_id).exists())
+        for record in target.records.all():
+            self.assertEqual(record.power, 200)
+
+    def test_detach_source_preview_leaves_everything_unchanged(self):
+        athlete = self._athlete("source-detach-standalone-preview@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records(target, 10, power=200)
+        self._add_records(source, 10, power=300)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+        activity_source_service.set_primary_source(target.id, "power", attach.source_id)
+        source_count_before = ActivitySource.objects.filter(activity=target).count()
+
+        needs_restore = activity_source_service.detach_source(target.id, attach.source_id, preview=True)
+
+        self.assertTrue(needs_restore)
+        self.assertTrue(ActivitySource.objects.filter(pk=attach.source_id).exists())
+        self.assertEqual(ActivitySource.objects.filter(activity=target).count(), source_count_before)
+        for record in target.records.all():
+            self.assertEqual(record.power, 300)  # unchanged - the attach is still primary
+
+    def test_detach_source_rejects_a_file_origin_source(self):
+        athlete = self._athlete("source-detach-standalone-file-origin@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records(target, 10, power=200)
+        self._add_records(source, 10, power=300)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+        activity_source_service.set_primary_source(target.id, "power", attach.source_id)
+        file_origin_source = ActivitySource.objects.get(activity=target, origin="file")
+
+        with self.assertRaises(ValidationError):
+            activity_source_service.detach_source(target.id, file_origin_source.id)
+
     def test_list_sources_reports_is_primary_against_the_activitys_current_primary(self):
         athlete = self._athlete("source-list-is-primary@example.cc")
         target = self._activity(athlete, "Edge 530", name="Target")  # classifies pedals
@@ -360,6 +427,31 @@ class ActivitySourceServiceTests(TestCase):
         self.assertEqual(swap_response.status_code, 200)
         target.refresh_from_db()
         self.assertEqual(target.bike_power_source, "trainer")
+
+    def test_detach_source_rest_endpoint(self):
+        athlete = self._athlete("source-rest-detach@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Zwift", name="Source")
+        self._add_records(target, 10, power=200)
+        self._add_records(source, 10, power=300)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+        client = _bearer_client(athlete)
+
+        preview_response = client.post(
+            f"/v1/activities/{target.id}/detach-source",
+            {"source_id": attach.source_id, "preview": True},
+            format="json",
+        )
+        self.assertEqual(preview_response.status_code, 200)
+        self.assertFalse(preview_response.json()["needs_restore"])
+        self.assertTrue(ActivitySource.objects.filter(pk=attach.source_id).exists())
+
+        response = client.post(
+            f"/v1/activities/{target.id}/detach-source", {"source_id": attach.source_id}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["needs_restore"])
+        self.assertFalse(ActivitySource.objects.filter(pk=attach.source_id).exists())
 
     def _run_activity(self, athlete, power_source):
         return _make_activity(athlete, sport="run", start_date=self.start, moving_time=600, power_source=power_source)

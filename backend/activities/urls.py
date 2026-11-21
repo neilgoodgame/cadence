@@ -5,6 +5,7 @@ from uploads.views import ActivityBatchUploadView
 from .views import (
     ActivityCommentDetailView,
     ActivityCommentListView,
+    ActivityDetachSourceView,
     ActivityDetailView,
     ActivityListView,
     ActivityMergeView,
@@ -48,6 +49,11 @@ urlpatterns = [
         "v1/activities/<str:id>/primary-source",
         ActivityPrimarySourceView.as_view(),
         name="activity-primary-source",
+    ),
+    path(
+        "v1/activities/<str:id>/detach-source",
+        ActivityDetachSourceView.as_view(),
+        name="activity-detach-source",
     ),
     path("v1/activities/<str:id>/laps", LapListView.as_view(), name="activity-laps"),
     path(

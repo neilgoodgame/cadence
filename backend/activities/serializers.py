@@ -201,6 +201,15 @@ class SetPrimarySourceSerializer(serializers.Serializer):
     source_id = serializers.CharField()
 
 
+class DetachSourceSerializer(serializers.Serializer):
+    """POST /v1/activities/{id}/detach-source request body (issue #542). preview defaults False
+    here - REST callers opt in explicitly; the MCP tool defaults it True instead, matching
+    merge_activities' own REST-vs-MCP preview-default split."""
+
+    source_id = serializers.CharField()
+    preview = serializers.BooleanField(required=False, default=False)
+
+
 class LapSerializer(serializers.ModelSerializer):
     # step_* fields are flattened directly onto the lap (rather than a nested workout_step
     # object) so the frontend can render step context without an N+1 workout-step lookup per
