@@ -48,6 +48,18 @@ def _first_activity_date(athlete_id: str) -> date | None:
     return first_activity_date.date() if first_activity_date else None
 
 
+def _clamped_start(athlete_id: str, from_date: date, to_date: date) -> date | None:
+    """The baseline start date both compute_fitness_series and compute_above_z2_fitness_series
+    walk their EWMA from - the athlete's first-ever activity (of any sport - a sport/intensity
+    filter narrows which days count, not when the EWMA starts warming up from) if earlier than
+    from_date, else from_date itself. None (not from_date) when that start is already after
+    to_date, so both callers can return an empty series with one shared check rather than two
+    copies of the same comparison."""
+    first = _first_activity_date(athlete_id)
+    start = min(first, from_date) if first else from_date
+    return None if start > to_date else start
+
+
 def _ewma_series(daily_values: dict[date, float], start: date, from_date: date, to_date: date) -> list[dict[str, Any]]:
     """The CTL (42-day EWMA)/ATL (7-day EWMA)/TSB (CTL-ATL) walk, generalized to any per-day
     load value (issue #487) - originally hardwired to `_daily_tss`'s TSS, now a plain
@@ -77,9 +89,8 @@ def compute_fitness_series(
     _ewma_series for the day-walk itself; the baseline start date is always the athlete's
     first-ever activity regardless of `sport` - a sport filter narrows which TSS counts, not
     when the EWMA starts warming up from."""
-    first = _first_activity_date(athlete_id)
-    start = min(first, from_date) if first else from_date
-    if start > to_date:
+    start = _clamped_start(athlete_id, from_date, to_date)
+    if start is None:
         return []
 
     tss_by_day = _daily_tss(athlete_id, start, to_date, sport, include_duplicates)
@@ -92,7 +103,15 @@ def _daily_above_z2_load(
     """Issue #487: every bike activity's above-Z2 training load (decay_load.
     above_z2_load_for_activity, field="ftp" - the load term's own bike-only scope), summed per
     day. Same multisport-child/duplicate exclusion _daily_tss uses, restricted to sport="bike"
-    since there's no pace-based above-Z2 histogram for runs."""
+    since there's no pace-based above-Z2 histogram for runs.
+
+    Unlike _daily_tss's single aggregate SQL query, this is one query per activity (histogram
+    lazy-build + the ledger lookup for that activity's own in-effect reference, inside
+    above_z2_load_for_activity) - the same O(activities) shape load_by_day_for_athlete's own
+    histogram lookup already has, now with one more per-activity lookup on top for the
+    per-activity (not single-anchor) reference resolution the plan for this feature calls for.
+    Acceptable for a calibration tool queried occasionally over a bounded window, not a
+    high-frequency dashboard path - revisit if that ever changes."""
     from activities.models import Activity
     from athletes.decay_load import above_z2_load_for_activity
 
@@ -120,9 +139,8 @@ def compute_above_z2_fitness_series(
     first-ever activity of any sport, not just bike."""
     from accounts.models import User
 
-    first = _first_activity_date(athlete_id)
-    start = min(first, from_date) if first else from_date
-    if start > to_date:
+    start = _clamped_start(athlete_id, from_date, to_date)
+    if start is None:
         return []
 
     athlete = User.objects.get(pk=athlete_id)

@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 /**
@@ -55,12 +56,10 @@ public class FitnessService {
 	 * caller leaves it at the default. */
 	public List<FitnessPoint> computeFitnessSeries(String athleteId, LocalDate from, LocalDate to, Sport sport,
 			boolean includeDuplicates) {
-		LocalDate start = earliestStartOrFrom(athleteId, from);
-		if (start.isAfter(to)) {
-			return List.of();
-		}
-		Map<LocalDate, Double> tssByDay = dailyTss(athleteId, start, to, sport, includeDuplicates);
-		return ewmaSeries(tssByDay, start, from, to);
+		return clampedStart(athleteId, from, to).map(start -> {
+			Map<LocalDate, Double> tssByDay = dailyTss(athleteId, start, to, sport, includeDuplicates);
+			return ewmaSeries(tssByDay, start, from, to);
+		}).orElse(List.of());
 	}
 
 	public FitnessPoint computeFitnessPoint(String athleteId, LocalDate asOf) {
@@ -76,13 +75,22 @@ public class FitnessService {
 	 * sport, not just bike. */
 	public List<FitnessPoint> computeAboveZ2FitnessSeries(String athleteId, LocalDate from, LocalDate to,
 			boolean includeDuplicates) {
+		return clampedStart(athleteId, from, to).map(start -> {
+			User athlete = userRepository.findById(athleteId).orElseThrow();
+			Map<LocalDate, Double> dailyLoads = dailyAboveZ2Load(athlete, start, to, includeDuplicates);
+			return ewmaSeries(dailyLoads, start, from, to);
+		}).orElse(List.of());
+	}
+
+	/** The baseline start date both computeFitnessSeries and computeAboveZ2FitnessSeries walk
+	 * their EWMA from - the athlete's first-ever activity (of any sport - a sport/intensity
+	 * filter narrows which days count, not when the EWMA starts warming up from) if earlier than
+	 * {@code from}, else {@code from} itself. Empty (not {@code from}) when that start is already
+	 * after {@code to}, so both callers can return an empty series with one shared check rather
+	 * than two copies of the same comparison. */
+	private Optional<LocalDate> clampedStart(String athleteId, LocalDate from, LocalDate to) {
 		LocalDate start = earliestStartOrFrom(athleteId, from);
-		if (start.isAfter(to)) {
-			return List.of();
-		}
-		User athlete = userRepository.findById(athleteId).orElseThrow();
-		Map<LocalDate, Double> dailyLoads = dailyAboveZ2Load(athlete, start, to, includeDuplicates);
-		return ewmaSeries(dailyLoads, start, from, to);
+		return start.isAfter(to) ? Optional.empty() : Optional.of(start);
 	}
 
 	private LocalDate earliestStartOrFrom(String athleteId, LocalDate from) {
@@ -133,7 +141,15 @@ public class FitnessService {
 	/** Issue #487: every bike activity's above-Z2 training load ({@link
 	 * DecayLoadService#aboveZ2LoadForActivity}, field=FTP - the load term's own bike-only scope),
 	 * summed per day. Same multisport-child/duplicate exclusion {@link #dailyTss} uses, scoped to
-	 * {@code Sport.BIKE} since there's no pace-based above-Z2 histogram for runs. */
+	 * {@code Sport.BIKE} since there's no pace-based above-Z2 histogram for runs.
+	 *
+	 * <p>Unlike {@link #dailyTss}'s single aggregate SQL query, this is one query per activity
+	 * (histogram lazy-build + the ledger lookup for that activity's own in-effect reference,
+	 * inside aboveZ2LoadForActivity) - the same O(activities) shape {@code loadByDayForAthlete}'s
+	 * own histogram lookup already has, now with one more per-activity lookup on top for the
+	 * per-activity (not single-anchor) reference resolution the plan for this feature calls for.
+	 * Acceptable for a calibration tool queried occasionally over a bounded window, not a
+	 * high-frequency dashboard path - revisit if that ever changes. */
 	private Map<LocalDate, Double> dailyAboveZ2Load(User athlete, LocalDate start, LocalDate to, boolean includeDuplicates) {
 		Instant startInstant = start.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant endInstant = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
