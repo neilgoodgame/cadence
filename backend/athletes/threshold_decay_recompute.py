@@ -9,7 +9,7 @@ module's callers there.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from datetime import date, timedelta
 
@@ -20,7 +20,7 @@ from activities.models import Activity
 
 from .decay_load import load_by_day_for_athlete
 from .models import ThresholdHistory
-from .threshold_decay import DecayCandidate, DecaySettings, simulate
+from .threshold_decay import DecayCandidate, DecaySettings, Step, simulate
 from .threshold_decay import ManualEntry as DecayManualEntry
 from .threshold_history import (
     FIELD_SPORT,
@@ -253,3 +253,65 @@ def resimulate_suffix(
             )
 
     return ResimulateResult(changed=changed, rerated_count=rerated_count, would_rerate=would_rerate)
+
+
+def gather_preview_steps(
+    athlete: User,
+    field: str,
+    from_date: date,
+    end: date,
+    tau_days: float | None = None,
+    min_pct: float | None = None,
+    max_pct: float | None = None,
+) -> tuple[list[Step], DecaySettings]:
+    """Issue #487: `resimulate_suffix`'s own read-only half, stopped before its write block (no
+    `ThresholdHistory` delete/bulk_create, no `athlete.save()`, no re-rating) - gathers the exact
+    same inputs and calls `simulate`, but never touches the ledger, so a caller can try different
+    `tau_days`/`min_pct`/`max_pct` against real history with zero side effects. Returns the
+    `Step`s alongside the `DecaySettings` actually used, so a caller overriding only one of the
+    three can see what the other two defaulted to (the athlete's own saved settings).
+
+    `enabled` is forced `True` regardless of `athlete.threshold_decay_enabled` - `simulate` takes
+    a different, legacy ("disabled") branch when `enabled=False` that ignores `tau_days`/
+    `min_pct`/`max_pct` entirely, which would silently make every override here a no-op for an
+    athlete who hasn't turned decay on yet. `window_days`/`sanity_pct` are never overridden - the
+    issue's own signature doesn't offer that, and `_gather_candidates`'s own window scan already
+    reads `athlete.threshold_window_days` directly, so overriding `settings.window_days` alone
+    wouldn't even change what candidates are gathered."""
+    base_settings = _decay_settings_for(athlete)
+    settings = replace(
+        base_settings,
+        tau_days=tau_days if tau_days is not None else base_settings.tau_days,
+        min_pct=min_pct if min_pct is not None else base_settings.min_pct,
+        max_pct=max_pct if max_pct is not None else base_settings.max_pct,
+        enabled=True,
+    )
+
+    seed_v = _seed_v(athlete, field, from_date)
+    seed_anchor_value, seed_anchor_date, seed_anchor_kind = _seed_anchor(athlete, field, from_date)
+
+    candidates = _gather_candidates(athlete, field, from_date, end)
+    manual_entries = _gather_manual_entries(athlete, field, from_date, end, None)
+
+    load_by_day = (
+        load_by_day_for_athlete(
+            athlete, field, seed_anchor_value, athlete.lthr, from_date - timedelta(days=settings.window_days), end
+        )
+        if seed_anchor_value
+        else {}
+    )
+
+    steps = simulate(
+        field,
+        settings,
+        seed_anchor_value,
+        seed_anchor_date,
+        seed_anchor_kind,
+        candidates,
+        manual_entries,
+        load_by_day,
+        from_date,
+        end,
+        seed_v_value=seed_v,
+    )
+    return steps, settings

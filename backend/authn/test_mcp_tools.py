@@ -21,6 +21,7 @@ from activities.mcp import ActivityMCPTools
 from activities.models import Activity, ActivityTag, BestEffort, Record, Tag
 from athletes.mcp import AthleteMCPTools
 from athletes.models import AcceptedThresholdCandidate, ThresholdHistory
+from athletes.threshold_history import recompute_for_activity
 from authn.oauth_utils import issue_token_pair
 from core.exceptions import UnprocessableEntityError
 from core.models import generate_id
@@ -1927,6 +1928,98 @@ class AthleteToolsTests(TestCase):
             entry = by_id[activity.id]
             self.assertEqual(entry["status"], "qualified", f"activity {activity.id}")
             self.assertEqual(entry["implied_value"], round(0.95 * 230))
+
+    def test_preview_threshold_decay_models_a_decayed_ledger_without_writing_anything(self) -> None:
+        """Issue #487: never writes to the ledger, and uses tau_days/min_pct/max_pct in place of
+        the athlete's own saved settings when given."""
+        athlete = User.objects.create_user(
+            email="mcp-preview-decay@example.cc",
+            password="x",
+            name="Athlete",
+            threshold_window_days=10,
+            threshold_sanity_pct=50,
+            threshold_decay_enabled=True,
+            threshold_decay_tau_days=5,
+            threshold_decay_min_pct=3,
+            threshold_decay_max_pct=12,
+        )
+        start = datetime(2026, 1, 1, 7, 0, tzinfo=UTC)
+        activity = Activity.objects.create(
+            id=generate_id("act"), athlete=athlete, sport="bike", name="Ride", start_date=start, moving_time=1200
+        )
+        for t in range(1200):
+            Record.objects.create(activity=activity, t=t, ts=start + timedelta(seconds=t), power=260)
+        recompute_for_activity(activity)
+        athlete.refresh_from_db()
+        rows_before = ThresholdHistory.objects.filter(athlete=athlete, field="ftp").count()
+        ftp_before = athlete.ftp
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+        expiry = date(2026, 1, 1) + timedelta(days=athlete.threshold_window_days + 1)
+        to_date = expiry + timedelta(days=30)
+        result = tools.preview_threshold_decay(field="ftp", from_date=str(expiry), to_date=str(to_date), tau_days=30)
+
+        self.assertEqual(result["field"], "ftp")
+        self.assertEqual(result["settings_used"]["tau_days"], 30)
+        self.assertEqual(result["settings_used"]["min_pct"], 3)
+        self.assertEqual(result["settings_used"]["max_pct"], 12)
+        self.assertGreater(len(result["data"]), 0)
+        self.assertIn("decayed", {step["kind"] for step in result["data"]})
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=athlete, field="ftp").count(), rows_before)
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.ftp, ftp_before)
+
+    def test_preview_threshold_decay_rejects_an_unknown_field(self) -> None:
+        athlete = User.objects.create_user(email="mcp-preview-decay-field@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(field="not_a_field", from_date="2026-01-01", to_date="2026-02-01")
+
+    def test_preview_threshold_decay_rejects_from_date_after_to_date(self) -> None:
+        athlete = User.objects.create_user(email="mcp-preview-decay-range@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(field="ftp", from_date="2026-02-01", to_date="2026-01-01")
+
+    def test_preview_threshold_decay_rejects_a_tau_days_override_that_would_divide_by_zero(self) -> None:
+        athlete = User.objects.create_user(email="mcp-preview-decay-tau-zero@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(field="ftp", from_date="2026-01-01", to_date="2026-02-01", tau_days=0)
+
+    def test_preview_threshold_decay_rejects_an_out_of_range_tau_days_override(self) -> None:
+        athlete = User.objects.create_user(email="mcp-preview-decay-tau-range@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(field="ftp", from_date="2026-01-01", to_date="2026-02-01", tau_days=200)
+
+    def test_preview_threshold_decay_rejects_min_pct_exceeding_max_pct(self) -> None:
+        athlete = User.objects.create_user(email="mcp-preview-decay-min-max@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(
+                field="ftp", from_date="2026-01-01", to_date="2026-02-01", min_pct=20, max_pct=5
+            )
+
+    def test_preview_threshold_decay_falls_back_to_the_athletes_saved_min_max_for_the_cross_check(self) -> None:
+        """The athlete's own saved min_pct/max_pct (3/12) are already consistent - overriding
+        only max_pct down to 1 (below the saved min_pct) must still be caught, proving the
+        cross-check uses the *effective* value, not just the two params given in this call."""
+        athlete = User.objects.create_user(
+            email="mcp-preview-decay-min-max-effective@example.cc",
+            password="x",
+            name="Athlete",
+            threshold_decay_min_pct=3,
+            threshold_decay_max_pct=12,
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.preview_threshold_decay(field="ftp", from_date="2026-01-01", to_date="2026-02-01", max_pct=1)
 
     def test_get_fitness_trend_sport_filter_excludes_other_sports(self) -> None:
         athlete = User.objects.create_user(email="mcp-fitness-trend-sport@example.cc", password="x", name="Athlete")

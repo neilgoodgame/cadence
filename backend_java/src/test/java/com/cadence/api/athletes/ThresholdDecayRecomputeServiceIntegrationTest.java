@@ -234,4 +234,92 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(rows).noneMatch(e -> e.getId().equals(strayDecayedId));
 		assertThat(rows).anyMatch(e -> e.getKind() == ThresholdHistoryKind.MEASURED);
 	}
+
+	// Issue #487: the read-only half of resimulateSuffix, for previewThresholdDecay.
+
+	@Test
+	void gatherPreviewStepsNeverWritesToTheLedgerOrTheAthletesLiveValue() {
+		User athlete = newDecayAthlete("preview-no-write@example.cc");
+		LocalDate anchorDate = LocalDate.of(2026, 1, 1);
+		Instant start = anchorDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+		Activity activity = newPowerActivity(athlete, start, 260, 1200);
+		thresholdHistoryService.recomputeForActivity(activity);
+		athlete = userRepository.findById(athlete.getId()).orElseThrow();
+		LocalDate expiry = anchorDate.plusDays(athlete.getThresholdWindowDays() + 1L);
+		LocalDate end = expiry.plusDays(30);
+		List<Long> idsBefore = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).stream()
+				.map(ThresholdHistory::getId).toList();
+		Integer ftpBefore = athlete.getFtp();
+
+		ThresholdDecayRecomputeService.PreviewResult result =
+				decayRecomputeService.gatherPreviewSteps(athlete, ThresholdField.FTP, expiry, end, null, null, null);
+
+		assertThat(result.steps()).isNotEmpty();
+		List<Long> idsAfter = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).stream()
+				.map(ThresholdHistory::getId).toList();
+		assertThat(idsAfter).isEqualTo(idsBefore);
+		User reloaded = userRepository.findById(athlete.getId()).orElseThrow();
+		assertThat(reloaded.getFtp()).isEqualTo(ftpBefore);
+	}
+
+	@Test
+	void gatherPreviewStepsDefaultsToTheAthletesOwnSettingsWhenNothingIsOverridden() {
+		User athlete = newDecayAthlete("preview-defaults@example.cc");
+		Instant start = LocalDate.of(2026, 1, 1).atStartOfDay(ZoneOffset.UTC).toInstant();
+		Activity activity = newPowerActivity(athlete, start, 260, 1200);
+		thresholdHistoryService.recomputeForActivity(activity);
+
+		ThresholdDecayRecomputeService.PreviewResult result = decayRecomputeService.gatherPreviewSteps(
+				athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), null, null, null);
+
+		assertThat(result.settingsUsed().tauDays()).isEqualTo(athlete.getThresholdDecayTauDays());
+		assertThat(result.settingsUsed().minPct()).isEqualTo(athlete.getThresholdDecayMinPct());
+		assertThat(result.settingsUsed().maxPct()).isEqualTo(athlete.getThresholdDecayMaxPct());
+	}
+
+	@Test
+	void gatherPreviewStepsOverridesOnlyTheParamsActuallyGiven() {
+		User athlete = newDecayAthlete("preview-partial-override@example.cc");
+		Instant start = LocalDate.of(2026, 1, 1).atStartOfDay(ZoneOffset.UTC).toInstant();
+		Activity activity = newPowerActivity(athlete, start, 260, 1200);
+		thresholdHistoryService.recomputeForActivity(activity);
+
+		ThresholdDecayRecomputeService.PreviewResult result = decayRecomputeService.gatherPreviewSteps(
+				athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), 99.0, null, null);
+
+		assertThat(result.settingsUsed().tauDays()).isEqualTo(99.0);
+		assertThat(result.settingsUsed().minPct()).isEqualTo(athlete.getThresholdDecayMinPct());
+		assertThat(result.settingsUsed().maxPct()).isEqualTo(athlete.getThresholdDecayMaxPct());
+	}
+
+	@Test
+	void gatherPreviewStepsForcesEnabledEvenForADecayDisabledAthlete() {
+		// simulateDisabled (the cliff-based legacy path) can never emit a DECAYED kind step -
+		// only simulateEnabled can. Seeing one here proves the forced enabled=true actually took
+		// effect, not just that settingsUsed reports it.
+		User athlete = new User();
+		athlete.setEmail("preview-forces-enabled@example.cc");
+		athlete.setName("Preview Forces Enabled");
+		athlete.setPassword("irrelevant-for-this-test");
+		athlete.setThresholdWindowDays(10);
+		athlete.setThresholdSanityPct(50);
+		athlete.setThresholdDecayTauDays(5);
+		athlete.setThresholdDecayMinPct(3);
+		athlete.setThresholdDecayMaxPct(12);
+		athlete = userRepository.save(athlete);
+		assertThat(athlete.isThresholdDecayEnabled()).isFalse();
+		LocalDate anchorDate = LocalDate.of(2026, 1, 1);
+		Instant start = anchorDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+		Activity activity = newPowerActivity(athlete, start, 260, 1200);
+		thresholdHistoryService.recomputeForActivity(activity);
+		LocalDate expiry = anchorDate.plusDays(athlete.getThresholdWindowDays() + 1L);
+
+		ThresholdDecayRecomputeService.PreviewResult result = decayRecomputeService.gatherPreviewSteps(
+				athlete, ThresholdField.FTP, expiry, expiry.plusDays(30), null, null, null);
+
+		assertThat(result.settingsUsed().enabled()).isTrue();
+		assertThat(result.steps()).anyMatch(step -> step.kind().equals(ThresholdDecay.DECAYED));
+	}
 }
