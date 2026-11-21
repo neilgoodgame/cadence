@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -624,7 +625,8 @@ public class ActivitySourceService {
 	public record CompareStreamsResult(String field, String sourceA, String sourceB,
 			StreamComparisonCalculator.ComparisonResult comparison, StreamComparisonCalculator.LagResult lag,
 			StreamComparisonCalculator.PowerFit powerFit, List<StreamComparisonCalculator.ZoneBucketResult> zoneBreakdown,
-			List<ComparisonPoint> points) {
+			List<ComparisonPoint> points, int dropoutSecondsA, int dropoutSecondsB,
+			List<DropoutDetector.DropoutRun> dropoutRunsA, List<DropoutDetector.DropoutRun> dropoutRunsB) {
 	}
 
 	/** Issue #503 (phase 4): compares two already-stored streams for the same field on the same
@@ -633,10 +635,26 @@ public class ActivitySourceService {
 	 * off its {@link ActivityStream}). {@code zoneBreakdown=true} is rejected for {@code
 	 * field="cadence"}, which has no {@link ZoneType} to bucket by. All the actual statistics are
 	 * computed by the pure {@link StreamComparisonCalculator} - this method's job is just
-	 * resolving both sides to a series and picking the right zone type/tolerance for the field. */
+	 * resolving both sides to a series and picking the right zone type/tolerance for the field.
+	 *
+	 * <p>Issue #541 (follow-up): for {@code field="power"} only, each side's confirmed dropout
+	 * seconds (a 0 W glitch, not real data - see {@link DropoutDetector}'s own Javadoc) are
+	 * always detected and reported ({@code dropoutSecondsA/B}, {@code dropoutRunsA/B}), and -
+	 * when {@code excludeDropouts} is true, the default - excluded from comparison/lag/
+	 * powerFit/zoneBreakdown (but not from {@code points}, which stays the full raw picture for
+	 * the caller to mark/exclude itself). Both series already share this activity's own t clock
+	 * by construction (a stored source's stream was already aligned once, at attach time), so
+	 * {@code offsetSeconds} is always 0 here - unlike {@link #attachStream}'s own dropout call,
+	 * which resolves a real cross-activity offset first. */
 	@Transactional
 	public CompareStreamsResult compareStreams(String activityId, String field, String sourceA, String sourceB,
 			boolean zoneBreakdown) {
+		return compareStreams(activityId, field, sourceA, sourceB, zoneBreakdown, true);
+	}
+
+	@Transactional
+	public CompareStreamsResult compareStreams(String activityId, String field, String sourceA, String sourceB,
+			boolean zoneBreakdown, boolean excludeDropouts) {
 		validateField(field);
 		if (sourceA.equals(sourceB)) {
 			throw new ValidationException("a and b must refer to two different sources.", "b");
@@ -650,17 +668,42 @@ public class ActivitySourceService {
 		Map<Integer, Integer> seriesA = loadFieldSeries(activity, field, sourceA);
 		Map<Integer, Integer> seriesB = loadFieldSeries(activity, field, sourceB);
 
+		Set<Integer> dropoutSecondsA = Set.of();
+		List<DropoutDetector.DropoutRun> dropoutRunsA = List.of();
+		Set<Integer> dropoutSecondsB = Set.of();
+		List<DropoutDetector.DropoutRun> dropoutRunsB = List.of();
+		Map<Integer, Integer> compareSeriesA = seriesA;
+		Map<Integer, Integer> compareSeriesB = seriesB;
+		if (field.equals("power")) {
+			PowerDropouts dropouts = detectPowerDropouts(activity, seriesA, seriesB);
+			dropoutSecondsA = dropouts.secondsA();
+			dropoutRunsA = dropouts.runsA();
+			dropoutSecondsB = dropouts.secondsB();
+			dropoutRunsB = dropouts.runsB();
+			if (excludeDropouts) {
+				Set<Integer> excluded = new HashSet<>(dropoutSecondsA);
+				excluded.addAll(dropoutSecondsB);
+				if (!excluded.isEmpty()) {
+					compareSeriesA = seriesA.entrySet().stream().filter(e -> !excluded.contains(e.getKey()))
+							.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+					compareSeriesB = seriesB.entrySet().stream().filter(e -> !excluded.contains(e.getKey()))
+							.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+				}
+			}
+		}
+
 		StreamComparisonCalculator.Tolerance tolerance = field.equals("heartrate")
 				? StreamComparisonCalculator.Tolerance.absolute(5.0)
 				: StreamComparisonCalculator.Tolerance.relativePct(3.0);
-		StreamComparisonCalculator.ComparisonResult comparison = StreamComparisonCalculator.compare(seriesA, seriesB, tolerance);
+		StreamComparisonCalculator.ComparisonResult comparison = StreamComparisonCalculator.compare(compareSeriesA,
+				compareSeriesB, tolerance);
 		if (comparison == null) {
 			throw new ValidationException("Not enough overlapping samples between the two sources to compare (need at "
 					+ "least " + StreamComparisonCalculator.MIN_OVERLAP_SAMPLES + ").", "b");
 		}
-		StreamComparisonCalculator.LagResult lag = StreamComparisonCalculator.findLag(seriesA, seriesB);
+		StreamComparisonCalculator.LagResult lag = StreamComparisonCalculator.findLag(compareSeriesA, compareSeriesB);
 		StreamComparisonCalculator.PowerFit powerFit = field.equals("power")
-				? StreamComparisonCalculator.fitPowerScaleOffset(seriesA, seriesB) : null;
+				? StreamComparisonCalculator.fitPowerScaleOffset(compareSeriesA, compareSeriesB) : null;
 
 		List<StreamComparisonCalculator.ZoneBucketResult> zoneResults = null;
 		if (zoneBreakdown) {
@@ -670,7 +713,7 @@ public class ActivitySourceService {
 			ZoneSet zoneSet = zoneService.getOrCreate(athlete, type);
 			Double reference = zoneService.referenceFor(athlete, type, activity);
 			zoneResults = reference == null ? List.of()
-					: StreamComparisonCalculator.zoneBreakdown(seriesA, seriesB, zoneSet.getZones(), reference);
+					: StreamComparisonCalculator.zoneBreakdown(compareSeriesA, compareSeriesB, zoneSet.getZones(), reference);
 		}
 
 		List<ComparisonPoint> points = new ArrayList<>();
@@ -681,7 +724,28 @@ public class ActivitySourceService {
 			}
 		}
 
-		return new CompareStreamsResult(field, sourceA, sourceB, comparison, lag, powerFit, zoneResults, points);
+		return new CompareStreamsResult(field, sourceA, sourceB, comparison, lag, powerFit, zoneResults, points,
+				dropoutSecondsA.size(), dropoutSecondsB.size(), dropoutRunsA, dropoutRunsB);
+	}
+
+	private record PowerDropouts(Set<Integer> secondsA, List<DropoutDetector.DropoutRun> runsA,
+			Set<Integer> secondsB, List<DropoutDetector.DropoutRun> runsB) {
+	}
+
+	/** {@link #compareStreams}'s own symmetric dropout pass: each side's confirmed dropouts,
+	 * using the *other* side as its reference. The activity's own primary cadence (the
+	 * single-stream fallback) is only loaded if at least one side's reference comes back empty
+	 * - the common case is two real streams corroborating each other, where cadence is never
+	 * consulted at all. */
+	private PowerDropouts detectPowerDropouts(Activity activity, Map<Integer, Integer> seriesA,
+			Map<Integer, Integer> seriesB) {
+		Map<Integer, Integer> referenceForA = DropoutDetector.buildReference(seriesB, 0, seriesA.keySet());
+		Map<Integer, Integer> referenceForB = DropoutDetector.buildReference(seriesA, 0, seriesB.keySet());
+		Map<Integer, Integer> cadenceSeries = referenceForA == null || referenceForB == null
+				? loadFieldSeries(activity, "cadence", PRIMARY_SOURCE_REF) : null;
+		DropoutDetector.DropoutResult resultA = DropoutDetector.detectDropouts(seriesA, referenceForA, cadenceSeries);
+		DropoutDetector.DropoutResult resultB = DropoutDetector.detectDropouts(seriesB, referenceForB, cadenceSeries);
+		return new PowerDropouts(resultA.dropoutTs(), resultA.runs(), resultB.dropoutTs(), resultB.runs());
 	}
 
 	/** Resolves {@code sourceRef} ({@link #PRIMARY_SOURCE_REF} or a real {@link ActivitySource}

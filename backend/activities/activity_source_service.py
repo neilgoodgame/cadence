@@ -19,7 +19,7 @@ from athletes.zones import get_or_create_zone_set, reference_for
 
 from . import stream_comparison
 from .activity_post_processing import recompute_after_merge
-from .dropout_detection import build_reference, detect_dropouts
+from .dropout_detection import DropoutRun, build_reference, detect_dropouts
 from .merge_alignment import align
 from .merge_apply import ZeroPolicy
 from .models import Activity, ActivitySource, ActivityStream, Record
@@ -499,6 +499,10 @@ class CompareStreamsResult:
     power_fit: stream_comparison.PowerFit | None
     zone_breakdown: list[stream_comparison.ZoneBucketResult] | None
     points: list[ComparisonPoint]
+    dropout_seconds_a: int
+    dropout_seconds_b: int
+    dropout_runs_a: list[DropoutRun]
+    dropout_runs_b: list[DropoutRun]
 
 
 def _load_field_series(activity: Activity, field: str, source_ref: str) -> dict[int, int]:
@@ -510,8 +514,32 @@ def _load_field_series(activity: Activity, field: str, source_ref: str) -> dict[
     return {stream.t0 + i: value for i, value in enumerate(stream.values) if value is not None}
 
 
+def _detect_power_dropouts(
+    activity: Activity, series_a: dict[int, int], series_b: dict[int, int]
+) -> tuple[set[int], list[DropoutRun], set[int], list[DropoutRun]]:
+    """compare_streams' own symmetric dropout pass: each side's confirmed dropouts, using the
+    *other* side as its reference. The activity's own primary cadence (the single-stream
+    fallback) is only loaded if at least one side's reference comes back empty - the common case
+    is two real streams corroborating each other, where cadence is never consulted at all."""
+    reference_for_a = build_reference(series_b, 0, series_a.keys())
+    reference_for_b = build_reference(series_a, 0, series_b.keys())
+    cadence_series = (
+        _load_field_series(activity, "cadence", PRIMARY_SOURCE_REF)
+        if reference_for_a is None or reference_for_b is None
+        else None
+    )
+    dropout_seconds_a, dropout_runs_a = detect_dropouts(series_a, reference_for_a, cadence_series)
+    dropout_seconds_b, dropout_runs_b = detect_dropouts(series_b, reference_for_b, cadence_series)
+    return dropout_seconds_a, dropout_runs_a, dropout_seconds_b, dropout_runs_b
+
+
 def compare_streams(
-    activity_id: str, field: str, source_a: str, source_b: str, zone_breakdown: bool = False
+    activity_id: str,
+    field: str,
+    source_a: str,
+    source_b: str,
+    zone_breakdown: bool = False,
+    exclude_dropouts: bool = True,
 ) -> CompareStreamsResult:
     """Issue #503 (phase 4): compares two already-stored streams for field on the same activity -
     either side may be PRIMARY_SOURCE_REF (the activity's current primary, read live off Record)
@@ -519,7 +547,17 @@ def compare_streams(
     zone_breakdown=True is rejected for field="cadence", which has no zone type to bucket by. All
     the actual statistics are computed by the pure stream_comparison module - this function's job
     is just resolving both sides to a series and picking the right zone type/tolerance for the
-    field."""
+    field.
+
+    Issue #541 (follow-up): for field="power" only, each side's confirmed dropout seconds (a
+    0 W glitch, not real data - see dropout_detection's own docstring) are always detected and
+    reported (dropout_seconds_a/b, dropout_runs_a/b), and - when exclude_dropouts is true, the
+    default - excluded from comparison/lag/power_fit/zone_breakdown (but not from points, which
+    stays the full raw picture for the caller to mark/exclude itself). Both series already share
+    this activity's own t clock by construction (a stored source's stream was already aligned
+    once, at attach time), so offset_seconds is always 0 here - unlike attach_stream's own
+    dropout call, which resolves a real cross-activity offset first.
+    """
     _validate_field(field)
     if source_a == source_b:
         raise ValidationError({"b": "a and b must refer to two different sources."})
@@ -532,12 +570,27 @@ def compare_streams(
     series_a = _load_field_series(activity, field, source_a)
     series_b = _load_field_series(activity, field, source_b)
 
+    dropout_seconds_a: set[int] = set()
+    dropout_runs_a: list[DropoutRun] = []
+    dropout_seconds_b: set[int] = set()
+    dropout_runs_b: list[DropoutRun] = []
+    compare_series_a, compare_series_b = series_a, series_b
+    if field == "power":
+        dropout_seconds_a, dropout_runs_a, dropout_seconds_b, dropout_runs_b = _detect_power_dropouts(
+            activity, series_a, series_b
+        )
+        if exclude_dropouts:
+            excluded = dropout_seconds_a | dropout_seconds_b
+            if excluded:
+                compare_series_a = {t: v for t, v in series_a.items() if t not in excluded}
+                compare_series_b = {t: v for t, v in series_b.items() if t not in excluded}
+
     tolerance = (
         stream_comparison.Tolerance.of_absolute(5.0)
         if field == "heartrate"
         else stream_comparison.Tolerance.of_relative_pct(3.0)
     )
-    comparison = stream_comparison.compare(series_a, series_b, tolerance)
+    comparison = stream_comparison.compare(compare_series_a, compare_series_b, tolerance)
     if comparison is None:
         raise ValidationError(
             {
@@ -545,8 +598,10 @@ def compare_streams(
                 f"{stream_comparison.MIN_OVERLAP_SAMPLES})."
             }
         )
-    lag = stream_comparison.find_lag(series_a, series_b)
-    power_fit = stream_comparison.fit_power_scale_offset(series_a, series_b) if field == "power" else None
+    lag = stream_comparison.find_lag(compare_series_a, compare_series_b)
+    power_fit = (
+        stream_comparison.fit_power_scale_offset(compare_series_a, compare_series_b) if field == "power" else None
+    )
 
     zone_results = None
     if zone_breakdown:
@@ -555,7 +610,9 @@ def compare_streams(
         zone_set = get_or_create_zone_set(athlete, zone_type)
         reference = reference_for(athlete, zone_type, activity)
         zone_results = (
-            [] if reference is None else stream_comparison.zone_breakdown(series_a, series_b, zone_set.zones, reference)
+            []
+            if reference is None
+            else stream_comparison.zone_breakdown(compare_series_a, compare_series_b, zone_set.zones, reference)
         )
 
     points = [ComparisonPoint(t, series_a[t], series_b[t]) for t in sorted(series_a) if t in series_b]
@@ -569,6 +626,10 @@ def compare_streams(
         power_fit=power_fit,
         zone_breakdown=zone_results,
         points=points,
+        dropout_seconds_a=len(dropout_seconds_a),
+        dropout_seconds_b=len(dropout_seconds_b),
+        dropout_runs_a=dropout_runs_a,
+        dropout_runs_b=dropout_runs_b,
     )
 
 
@@ -587,4 +648,8 @@ def compare_streams_response(result: CompareStreamsResult) -> dict:
         if result.zone_breakdown is not None
         else None,
         "points": [point._asdict() for point in result.points],
+        "dropout_seconds_a": result.dropout_seconds_a,
+        "dropout_seconds_b": result.dropout_seconds_b,
+        "dropout_runs_a": [dataclasses.asdict(run) for run in result.dropout_runs_a],
+        "dropout_runs_b": [dataclasses.asdict(run) for run in result.dropout_runs_b],
     }

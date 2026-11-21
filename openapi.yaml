@@ -1265,7 +1265,12 @@ paths:
         differ. zone_breakdown (default false) adds a per-zone bias/MAE/RMSE breakdown, bucketed
         by a's own value against the athlete's zone boundaries - not supported for
         field=cadence, which has no zone type. 400 if the two streams have fewer than 30
-        overlapping, non-null seconds.
+        overlapping, non-null seconds (after dropout exclusion, if enabled).
+        Issue #541 follow-up: for field=power only, each side's confirmed power-meter dropout
+        seconds (a short 0W glitch, not real coasting) are always detected and reported
+        (dropout_seconds_a/b, dropout_runs_a/b), and - by default (exclude_dropouts=true) -
+        excluded from comparison/lag/power_fit/zone_breakdown, since they'd otherwise skew the
+        reported agreement. points always includes every second regardless.
       parameters:
         - name: field
           in: query
@@ -1292,6 +1297,16 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: exclude_dropouts
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: true
+            description: >-
+              field=power only: exclude each side's confirmed power-meter dropout seconds from
+              comparison/lag/power_fit/zone_breakdown. Dropouts are still detected and reported
+              (dropout_seconds_a/b, dropout_runs_a/b) when this is false.
       responses:
         "200":
           description: The comparison result.
@@ -6070,9 +6085,10 @@ components:
         points:
           type: array
           description: >-
-            The raw paired, overlapping seconds the statistics above were computed from - one
-            entry per second, so the frontend's overlay/difference/Bland-Altman charts don't
-            need a second request.
+            Every raw paired, overlapping second - one entry per second, so the frontend's
+            overlay/difference/Bland-Altman charts don't need a second request. Unlike the
+            statistics above, this always includes dropout seconds even when
+            exclude_dropouts=true (see dropout_runs_a/b to identify which ones).
           items:
             type: object
             properties:
@@ -6082,6 +6098,32 @@ components:
                 type: integer
               b:
                 type: integer
+        dropout_seconds_a:
+          type: integer
+          description: >-
+            Issue #541 follow-up. How many of source a's seconds were a confirmed power-meter
+            dropout (a short 0W glitch, not real data) - always 0 outside field="power".
+        dropout_seconds_b:
+          type: integer
+          description: Same as dropout_seconds_a, for source b.
+        dropout_runs_a:
+          type: array
+          description: The individual dropout runs making up dropout_seconds_a.
+          items: { $ref: "#/components/schemas/DropoutRun" }
+        dropout_runs_b:
+          type: array
+          description: The individual dropout runs making up dropout_seconds_b.
+          items:
+            $ref: "#/components/schemas/DropoutRun"
+
+    DropoutRun:
+      type: object
+      description: Issue #541. One confirmed power-meter dropout run - a short 0W glitch, not real data.
+      properties:
+        start_t:
+          type: integer
+        length:
+          type: integer
 
     ThresholdSuggestion:
       type: object

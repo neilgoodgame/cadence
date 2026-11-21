@@ -690,7 +690,13 @@ class ActivityMCPTools(ScopedMCPToolset):
         return [summary._asdict() for summary in activity_source_service.list_sources(activity_id)]
 
     def compare_streams(
-        self, activity_id: str, field: str, source_a: str, source_b: str, zone_breakdown: bool = False
+        self,
+        activity_id: str,
+        field: str,
+        source_a: str,
+        source_b: str,
+        zone_breakdown: bool = False,
+        exclude_dropouts: bool = True,
     ) -> dict[str, Any]:
         """Issue #503 (phase 4): agreement statistics between two of activity_id's stored streams
         for field - bias (mean of b minus a), MAE, RMSE, Pearson r, Bland-Altman limits of
@@ -701,11 +707,22 @@ class ActivityMCPTools(ScopedMCPToolset):
         source_b each accept either "primary" (the activity's current live stream) or a real
         source id from list_activity_sources. zone_breakdown (default false) adds a per-zone
         bias/MAE/RMSE breakdown, bucketed by source a's own value against the athlete's zone
-        boundaries - not supported for field="cadence", which has no zone type."""
+        boundaries - not supported for field="cadence", which has no zone type.
+
+        For field="power" only (issue #541 follow-up): each side's power-meter dropout seconds
+        (a short 0 W glitch, not real coasting - confirmed by the other side's power or, failing
+        that, cadence + bracketing power) are always reported as dropout_seconds_a/b and
+        dropout_runs_a/b, and - by default (exclude_dropouts=true) - excluded from the bias/MAE/
+        RMSE/lag/power_fit/zone_breakdown numbers above, since they'd otherwise skew the reported
+        agreement. Pass exclude_dropouts=false to see the raw, unfiltered numbers instead. points
+        always includes every second regardless, so a caller can inspect or re-include the
+        excluded seconds itself."""
         self._require_scope(ACTIVITIES_READ)
         activity = get_object_or_404(Activity, pk=activity_id)
         self._require_read(activity.athlete_id)
-        result = activity_source_service.compare_streams(activity_id, field, source_a, source_b, zone_breakdown)
+        result = activity_source_service.compare_streams(
+            activity_id, field, source_a, source_b, zone_breakdown, exclude_dropouts
+        )
         return activity_source_service.compare_streams_response(result)
 
     def set_primary_source(self, activity_id: str, field: str, source_id: str) -> dict[str, Any]:

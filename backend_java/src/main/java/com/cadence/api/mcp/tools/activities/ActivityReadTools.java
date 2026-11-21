@@ -268,12 +268,14 @@ public class ActivityReadTools {
 			@McpToolParam(description = "\"primary\" or a source id from list_activity_sources; must differ from "
 					+ "sourceA.", required = true) String sourceB,
 			@McpToolParam(description = "Include a per-zone agreement breakdown. Not supported for "
-					+ "field=cadence.", required = false) Boolean zoneBreakdown) {
+					+ "field=cadence.", required = false) Boolean zoneBreakdown,
+			@McpToolParam(description = "field=power only: exclude confirmed power-meter dropout seconds from "
+					+ "the agreement numbers. Defaults to true.", required = false) Boolean excludeDropouts) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
 		Activity activity = activityService.getActivity(activityId);
 		accessGuard.requireRead(activity.getAthlete().getId());
 		return sourceService.compareStreams(activityId, field, sourceA, sourceB,
-				zoneBreakdown != null && zoneBreakdown);
+				zoneBreakdown != null && zoneBreakdown, excludeDropouts == null || excludeDropouts);
 	}
 
 	@McpTool(name = "get_merge_rules", description = "Issue #501 (phase 4): the automatic-merge "

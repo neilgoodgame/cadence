@@ -25,9 +25,10 @@ function StreamComparisonPanel({
   sourceB: string;
   unit: string;
 }) {
+  const [excludeDropouts, setExcludeDropouts] = useState(true);
   const comparisonQuery = useQuery({
-    queryKey: ["stream-comparison", activityId, field, "primary", sourceB],
-    queryFn: () => getStreamComparison(activityId, field, "primary", sourceB, field !== "cadence"),
+    queryKey: ["stream-comparison", activityId, field, "primary", sourceB, excludeDropouts],
+    queryFn: () => getStreamComparison(activityId, field, "primary", sourceB, field !== "cadence", excludeDropouts),
   });
 
   if (comparisonQuery.isLoading) {
@@ -42,9 +43,28 @@ function StreamComparisonPanel({
   }
   const result = comparisonQuery.data;
   const stats = result.comparison;
+  const dropoutSeconds = result.dropout_seconds_a + result.dropout_seconds_b;
 
   return (
     <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+      {field === "power" && dropoutSeconds > 0 && (
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12,
+            color: "var(--ink3)",
+            marginBottom: 12,
+            cursor: "pointer",
+          }}
+        >
+          <input type="checkbox" checked={excludeDropouts} onChange={(e) => setExcludeDropouts(e.target.checked)} />
+          {dropoutSeconds} power-meter dropout second{dropoutSeconds === 1 ? "" : "s"} detected -{" "}
+          {excludeDropouts ? "excluded from the stats below" : "included in the stats below"}
+        </label>
+      )}
+
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "var(--ink2)", marginBottom: 12 }}>
         <span>Bias <b style={{ color: "var(--ink)" }}>{stats.bias.toFixed(1)} {unit}</b></span>
         <span>MAE <b style={{ color: "var(--ink)" }}>{stats.mae.toFixed(1)} {unit}</b></span>
