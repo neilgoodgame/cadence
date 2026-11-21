@@ -675,15 +675,11 @@ public class ActivitySourceService {
 		Map<Integer, Integer> compareSeriesA = seriesA;
 		Map<Integer, Integer> compareSeriesB = seriesB;
 		if (field.equals("power")) {
-			Map<Integer, Integer> cadenceSeries = loadFieldSeries(activity, "cadence", PRIMARY_SOURCE_REF);
-			Map<Integer, Integer> referenceForA = DropoutDetector.buildReference(seriesB, 0, seriesA.keySet());
-			Map<Integer, Integer> referenceForB = DropoutDetector.buildReference(seriesA, 0, seriesB.keySet());
-			DropoutDetector.DropoutResult resultA = DropoutDetector.detectDropouts(seriesA, referenceForA, cadenceSeries);
-			DropoutDetector.DropoutResult resultB = DropoutDetector.detectDropouts(seriesB, referenceForB, cadenceSeries);
-			dropoutSecondsA = resultA.dropoutTs();
-			dropoutRunsA = resultA.runs();
-			dropoutSecondsB = resultB.dropoutTs();
-			dropoutRunsB = resultB.runs();
+			PowerDropouts dropouts = detectPowerDropouts(activity, seriesA, seriesB);
+			dropoutSecondsA = dropouts.secondsA();
+			dropoutRunsA = dropouts.runsA();
+			dropoutSecondsB = dropouts.secondsB();
+			dropoutRunsB = dropouts.runsB();
 			if (excludeDropouts) {
 				Set<Integer> excluded = new HashSet<>(dropoutSecondsA);
 				excluded.addAll(dropoutSecondsB);
@@ -730,6 +726,26 @@ public class ActivitySourceService {
 
 		return new CompareStreamsResult(field, sourceA, sourceB, comparison, lag, powerFit, zoneResults, points,
 				dropoutSecondsA.size(), dropoutSecondsB.size(), dropoutRunsA, dropoutRunsB);
+	}
+
+	private record PowerDropouts(Set<Integer> secondsA, List<DropoutDetector.DropoutRun> runsA,
+			Set<Integer> secondsB, List<DropoutDetector.DropoutRun> runsB) {
+	}
+
+	/** {@link #compareStreams}'s own symmetric dropout pass: each side's confirmed dropouts,
+	 * using the *other* side as its reference. The activity's own primary cadence (the
+	 * single-stream fallback) is only loaded if at least one side's reference comes back empty
+	 * - the common case is two real streams corroborating each other, where cadence is never
+	 * consulted at all. */
+	private PowerDropouts detectPowerDropouts(Activity activity, Map<Integer, Integer> seriesA,
+			Map<Integer, Integer> seriesB) {
+		Map<Integer, Integer> referenceForA = DropoutDetector.buildReference(seriesB, 0, seriesA.keySet());
+		Map<Integer, Integer> referenceForB = DropoutDetector.buildReference(seriesA, 0, seriesB.keySet());
+		Map<Integer, Integer> cadenceSeries = referenceForA == null || referenceForB == null
+				? loadFieldSeries(activity, "cadence", PRIMARY_SOURCE_REF) : null;
+		DropoutDetector.DropoutResult resultA = DropoutDetector.detectDropouts(seriesA, referenceForA, cadenceSeries);
+		DropoutDetector.DropoutResult resultB = DropoutDetector.detectDropouts(seriesB, referenceForB, cadenceSeries);
+		return new PowerDropouts(resultA.dropoutTs(), resultA.runs(), resultB.dropoutTs(), resultB.runs());
 	}
 
 	/** Resolves {@code sourceRef} ({@link #PRIMARY_SOURCE_REF} or a real {@link ActivitySource}

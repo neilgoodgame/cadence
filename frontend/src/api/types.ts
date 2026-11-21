@@ -816,6 +816,12 @@ export interface StreamComparisonPoint {
   b: number;
 }
 
+/** Issue #541 follow-up. One confirmed power-meter dropout run - a short 0W glitch, not real data. */
+export interface DropoutRun {
+  start_t: number;
+  length: number;
+}
+
 /** GET /v1/activities/{id}/streams/compare (issue #503, phase 4). */
 export interface StreamComparison {
   field: StreamComparisonField;
@@ -828,8 +834,16 @@ export interface StreamComparison {
   /** Null unless requested via zone_breakdown=true; empty if requested but the athlete has no
    * effective threshold to bucket by yet. */
   zone_breakdown: ZoneBucketResult[] | null;
-  /** The raw paired, overlapping seconds the stats above were computed from. */
+  /** Every raw paired, overlapping second - unlike comparison/lag/power_fit/zone_breakdown above,
+   * this always includes dropout seconds even when exclude_dropouts=true (the default). */
   points: StreamComparisonPoint[];
+  /** Issue #541 follow-up. Always 0 outside field="power". How many of source_a's seconds were a
+   * confirmed power-meter dropout - excluded from comparison/lag/power_fit/zone_breakdown above
+   * unless exclude_dropouts=false was passed. */
+  dropout_seconds_a: number;
+  dropout_seconds_b: number;
+  dropout_runs_a: DropoutRun[];
+  dropout_runs_b: DropoutRun[];
 }
 
 export interface BestEffort {

@@ -514,6 +514,25 @@ def _load_field_series(activity: Activity, field: str, source_ref: str) -> dict[
     return {stream.t0 + i: value for i, value in enumerate(stream.values) if value is not None}
 
 
+def _detect_power_dropouts(
+    activity: Activity, series_a: dict[int, int], series_b: dict[int, int]
+) -> tuple[set[int], list[DropoutRun], set[int], list[DropoutRun]]:
+    """compare_streams' own symmetric dropout pass: each side's confirmed dropouts, using the
+    *other* side as its reference. The activity's own primary cadence (the single-stream
+    fallback) is only loaded if at least one side's reference comes back empty - the common case
+    is two real streams corroborating each other, where cadence is never consulted at all."""
+    reference_for_a = build_reference(series_b, 0, series_a.keys())
+    reference_for_b = build_reference(series_a, 0, series_b.keys())
+    cadence_series = (
+        _load_field_series(activity, "cadence", PRIMARY_SOURCE_REF)
+        if reference_for_a is None or reference_for_b is None
+        else None
+    )
+    dropout_seconds_a, dropout_runs_a = detect_dropouts(series_a, reference_for_a, cadence_series)
+    dropout_seconds_b, dropout_runs_b = detect_dropouts(series_b, reference_for_b, cadence_series)
+    return dropout_seconds_a, dropout_runs_a, dropout_seconds_b, dropout_runs_b
+
+
 def compare_streams(
     activity_id: str,
     field: str,
@@ -557,11 +576,9 @@ def compare_streams(
     dropout_runs_b: list[DropoutRun] = []
     compare_series_a, compare_series_b = series_a, series_b
     if field == "power":
-        cadence_series = _load_field_series(activity, "cadence", PRIMARY_SOURCE_REF)
-        reference_for_a = build_reference(series_b, 0, series_a.keys())
-        reference_for_b = build_reference(series_a, 0, series_b.keys())
-        dropout_seconds_a, dropout_runs_a = detect_dropouts(series_a, reference_for_a, cadence_series)
-        dropout_seconds_b, dropout_runs_b = detect_dropouts(series_b, reference_for_b, cadence_series)
+        dropout_seconds_a, dropout_runs_a, dropout_seconds_b, dropout_runs_b = _detect_power_dropouts(
+            activity, series_a, series_b
+        )
         if exclude_dropouts:
             excluded = dropout_seconds_a | dropout_seconds_b
             if excluded:

@@ -6109,23 +6109,21 @@ components:
         dropout_runs_a:
           type: array
           description: The individual dropout runs making up dropout_seconds_a.
-          items:
-            type: object
-            properties:
-              start_t:
-                type: integer
-              length:
-                type: integer
+          items: { $ref: "#/components/schemas/DropoutRun" }
         dropout_runs_b:
           type: array
           description: The individual dropout runs making up dropout_seconds_b.
           items:
-            type: object
-            properties:
-              start_t:
-                type: integer
-              length:
-                type: integer
+            $ref: "#/components/schemas/DropoutRun"
+
+    DropoutRun:
+      type: object
+      description: Issue #541. One confirmed power-meter dropout run - a short 0W glitch, not real data.
+      properties:
+        start_t:
+          type: integer
+        length:
+          type: integer
 
     ThresholdSuggestion:
       type: object

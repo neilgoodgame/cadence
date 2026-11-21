@@ -205,8 +205,15 @@ export function getStreamComparison(
   a: string,
   b: string,
   zoneBreakdown?: boolean,
+  excludeDropouts?: boolean,
 ): Promise<StreamComparison> {
-  const params = toQueryString({ field, a, b, zone_breakdown: zoneBreakdown });
+  const params = toQueryString({
+    field,
+    a,
+    b,
+    zone_breakdown: zoneBreakdown,
+    exclude_dropouts: excludeDropouts,
+  });
   return apiFetch<StreamComparison>(`/v1/activities/${id}/streams/compare${params}`);
 }
 
