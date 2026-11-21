@@ -221,10 +221,11 @@ public class ActivityController {
 	@GetMapping("/v1/activities/{id}/streams/compare")
 	public ActivitySourceService.CompareStreamsResult compareStreams(@PathVariable String id,
 			@RequestParam String field, @RequestParam String a, @RequestParam String b,
-			@RequestParam(name = "zone_breakdown", defaultValue = "false") boolean zoneBreakdown) {
+			@RequestParam(name = "zone_breakdown", defaultValue = "false") boolean zoneBreakdown,
+			@RequestParam(name = "exclude_dropouts", defaultValue = "true") boolean excludeDropouts) {
 		Activity activity = activityService.getActivity(id);
 		accessGuard.requireRead(activity.getAthlete().getId());
-		return activitySourceService.compareStreams(id, field, a, b, zoneBreakdown);
+		return activitySourceService.compareStreams(id, field, a, b, zoneBreakdown, excludeDropouts);
 	}
 
 	/** Issue #503 (phase 1): swaps {@code id}'s current primary stream for {@code field} with the

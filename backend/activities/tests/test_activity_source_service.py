@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 from accounts.models import User
 
 from .. import activity_source_service
+from ..dropout_detection import DropoutRun
 from ..models import ActivitySource, Record
 from .helpers import _bearer_client, _make_activity
 
@@ -657,6 +658,74 @@ class ActivitySourceServiceTests(TestCase):
         self.assertAlmostEqual(result.power_fit.scale, 1.0, places=1)
         self.assertAlmostEqual(result.power_fit.offset, 20.0, delta=0.5)
         self.assertGreater(result.power_fit.ratio_of_means, 1.0)
+
+    def test_compare_streams_excludes_a_confirmed_dropout_by_default(self):
+        # Issue #541 follow-up: the target's own primary stream (never touched by any
+        # zero_policy) carries a real 2s dropout; the attached source corroborates it was a
+        # glitch, not real data, by reading well above the threshold at those same seconds.
+        athlete = self._athlete("compare-dropout-excluded@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_records_with(target, 40, power=lambda t: 0 if t in (4, 5) else 200 + t)
+        self._add_records_with(source, 40, power=lambda t: 300 + t)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        result = activity_source_service.compare_streams(
+            target.id, "power", activity_source_service.PRIMARY_SOURCE_REF, attach.source_id
+        )
+
+        self.assertEqual(result.dropout_seconds_a, 2)
+        self.assertEqual(result.dropout_runs_a, [DropoutRun(4, 2)])
+        self.assertEqual(result.dropout_seconds_b, 0)
+        self.assertEqual(result.dropout_runs_b, [])
+        # Excluded from the stats: 38 clean pairs at a constant +100 bias, not skewed by the
+        # two dropout-zero outliers a naive comparison would otherwise include.
+        self.assertEqual(result.comparison.overlap_seconds, 38)
+        self.assertAlmostEqual(result.comparison.bias, 100.0, places=3)
+        # points still carries every second, including the excluded ones, for the caller's own use.
+        self.assertEqual(len(result.points), 40)
+
+    def test_compare_streams_exclude_dropouts_false_preserves_the_raw_numbers(self):
+        athlete = self._athlete("compare-dropout-raw@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_records_with(target, 40, power=lambda t: 0 if t in (4, 5) else 200 + t)
+        self._add_records_with(source, 40, power=lambda t: 300 + t)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        result = activity_source_service.compare_streams(
+            target.id,
+            "power",
+            activity_source_service.PRIMARY_SOURCE_REF,
+            attach.source_id,
+            exclude_dropouts=False,
+        )
+
+        # Still detected and reported even when not excluded.
+        self.assertEqual(result.dropout_seconds_a, 2)
+        self.assertEqual(result.comparison.overlap_seconds, 40)
+        # (304 + 305 + 38*100) / 40 - the two dropout-zero outliers pull the raw bias well above
+        # the clean, excluded-case value of 100.0 asserted above.
+        self.assertAlmostEqual(result.comparison.bias, 110.225, places=3)
+
+    def test_compare_streams_does_not_exclude_mutual_near_zero_coasting(self):
+        # Genuine coasting on both sides at the same seconds must not be reported or excluded as
+        # a dropout on either side - the corroborating-evidence requirement is what tells a real
+        # glitch apart from this.
+        athlete = self._athlete("compare-no-dropout-coasting@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_records_with(target, 40, power=lambda t: 0 if t in (4, 5) else 200 + t)
+        self._add_records_with(source, 40, power=lambda t: 2 if t in (4, 5) else 300 + t)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+
+        result = activity_source_service.compare_streams(
+            target.id, "power", activity_source_service.PRIMARY_SOURCE_REF, attach.source_id
+        )
+
+        self.assertEqual(result.dropout_seconds_a, 0)
+        self.assertEqual(result.dropout_seconds_b, 0)
+        self.assertEqual(result.comparison.overlap_seconds, 40)
 
     def test_compare_streams_rejects_zone_breakdown_for_cadence(self):
         athlete = self._athlete("compare-cadence-no-zone@example.cc")

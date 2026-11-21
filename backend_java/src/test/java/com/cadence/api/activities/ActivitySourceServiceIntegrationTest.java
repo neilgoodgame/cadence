@@ -3,6 +3,7 @@ package com.cadence.api.activities;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cadence.api.activities.calc.DropoutDetector;
 import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.HrSource;
 import com.cadence.api.athletes.RunningPowerSource;
@@ -689,6 +690,76 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		assertThat(result.powerFit().scale()).isEqualTo(1.0, org.assertj.core.data.Offset.offset(0.01));
 		assertThat(result.powerFit().offset()).isEqualTo(20.0, org.assertj.core.data.Offset.offset(0.5));
 		assertThat(result.powerFit().ratioOfMeans()).isGreaterThan(1.0);
+	}
+
+	@Test
+	void compareStreamsExcludesAConfirmedDropoutByDefault() {
+		// Issue #541 follow-up: the target's own primary stream (never touched by any
+		// zeroPolicy) carries a real 2s dropout; the attached source corroborates it was a
+		// glitch, not real data, by reading well above the threshold at those same seconds.
+		User athlete = newAthlete("compare-dropout-excluded@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Favero Assioma");
+		addRecordsWith(target, 40, (r, t) -> r.setPower(t == 4 || t == 5 ? 0 : 200 + t));
+		addRecordsWith(source, 40, (r, t) -> r.setPower(300 + t));
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"power", 0, false, null);
+
+		ActivitySourceService.CompareStreamsResult result = sourceService.compareStreams(target.getId(), "power",
+				ActivitySourceService.PRIMARY_SOURCE_REF, attach.sourceId(), false);
+
+		assertThat(result.dropoutSecondsA()).isEqualTo(2);
+		assertThat(result.dropoutRunsA()).containsExactly(new DropoutDetector.DropoutRun(4, 2));
+		assertThat(result.dropoutSecondsB()).isZero();
+		assertThat(result.dropoutRunsB()).isEmpty();
+		// Excluded from the stats: 38 clean pairs at a constant +100 bias, not skewed by the two
+		// dropout-zero outliers a naive comparison would otherwise include.
+		assertThat(result.comparison().overlapSeconds()).isEqualTo(38);
+		assertThat(result.comparison().bias()).isEqualTo(100.0, org.assertj.core.data.Offset.offset(0.001));
+		// points still carries every second, including the excluded ones, for the caller's own use.
+		assertThat(result.points()).hasSize(40);
+	}
+
+	@Test
+	void compareStreamsExcludeDropoutsFalsePreservesTheRawNumbers() {
+		User athlete = newAthlete("compare-dropout-raw@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Favero Assioma");
+		addRecordsWith(target, 40, (r, t) -> r.setPower(t == 4 || t == 5 ? 0 : 200 + t));
+		addRecordsWith(source, 40, (r, t) -> r.setPower(300 + t));
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"power", 0, false, null);
+
+		ActivitySourceService.CompareStreamsResult result = sourceService.compareStreams(target.getId(), "power",
+				ActivitySourceService.PRIMARY_SOURCE_REF, attach.sourceId(), false, false);
+
+		// Still detected and reported even when not excluded.
+		assertThat(result.dropoutSecondsA()).isEqualTo(2);
+		assertThat(result.comparison().overlapSeconds()).isEqualTo(40);
+		// (304 + 305 + 38*100) / 40 - the two dropout-zero outliers pull the raw bias well above
+		// the clean, excluded-case value of 100.0 asserted above.
+		assertThat(result.comparison().bias()).isEqualTo(110.225, org.assertj.core.data.Offset.offset(0.001));
+	}
+
+	@Test
+	void compareStreamsDoesNotExcludeMutualNearZeroCoasting() {
+		// Genuine coasting on both sides at the same seconds must not be reported or excluded as
+		// a dropout on either side - the corroborating-evidence requirement is what tells a real
+		// glitch apart from this.
+		User athlete = newAthlete("compare-no-dropout-coasting@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Favero Assioma");
+		addRecordsWith(target, 40, (r, t) -> r.setPower(t == 4 || t == 5 ? 0 : 200 + t));
+		addRecordsWith(source, 40, (r, t) -> r.setPower(t == 4 || t == 5 ? 2 : 300 + t));
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"power", 0, false, null);
+
+		ActivitySourceService.CompareStreamsResult result = sourceService.compareStreams(target.getId(), "power",
+				ActivitySourceService.PRIMARY_SOURCE_REF, attach.sourceId(), false);
+
+		assertThat(result.dropoutSecondsA()).isZero();
+		assertThat(result.dropoutSecondsB()).isZero();
+		assertThat(result.comparison().overlapSeconds()).isEqualTo(40);
 	}
 
 	@Test

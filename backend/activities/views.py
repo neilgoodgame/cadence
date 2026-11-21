@@ -684,7 +684,10 @@ class StreamComparisonView(APIView):
         source_a = request.query_params.get("a", "")
         source_b = request.query_params.get("b", "")
         zone_breakdown = request.query_params.get("zone_breakdown", "false").lower() == "true"
-        result = activity_source_service.compare_streams(id, field, source_a, source_b, zone_breakdown)
+        exclude_dropouts = request.query_params.get("exclude_dropouts", "true").lower() == "true"
+        result = activity_source_service.compare_streams(
+            id, field, source_a, source_b, zone_breakdown, exclude_dropouts
+        )
         return Response(activity_source_service.compare_streams_response(result))
 
 
