@@ -850,6 +850,95 @@ class BestEffortListViewTests(TestCase):
         windows = {e["window"] for e in response.json()["data"]}
         self.assertNotIn("1min", windows)
 
+    # Issue #582: explicit date-range queries (start_date/end_date). A different kind
+    # (running_pace) keeps these independent of setUp's cycling_power fixtures.
+
+    def _make_range_fixture(self, days_ago: int):
+        activity = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name=f"Range run -{days_ago}d",
+            start_date=timezone.now() - timedelta(days=days_ago),
+        )
+        return BestEffort.objects.create(
+            athlete=self.athlete,
+            kind="running_pace",
+            window="5km",
+            value=300.0 + days_ago,
+            unit="sec_per_km",
+            date=date.today() - timedelta(days=days_ago),
+            activity=activity,
+        )
+
+    def test_date_range_filters_inclusively_on_both_bounds(self):
+        today = date.today()
+        inside_start = self._make_range_fixture(10)  # exactly on the start boundary
+        inside_end = self._make_range_fixture(1)  # exactly on the end boundary
+        self._make_range_fixture(11)  # one day before the start - excluded
+        self._make_range_fixture(0)  # today, one day after the end - excluded
+
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts"
+            f"?kind=running_pace&start_date={today - timedelta(days=10)}&end_date={today - timedelta(days=1)}"
+        )
+        self.assertEqual(response.status_code, 200)
+        activity_ids = {e["activity_id"] for e in response.json()["data"]}
+        self.assertEqual(activity_ids, {inside_start.activity.id, inside_end.activity.id})
+
+    def test_date_range_response_echoes_dates_and_null_period(self):
+        today = date.today()
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts"
+            f"?kind=cycling_power&start_date={today - timedelta(days=30)}&end_date={today}"
+        )
+        body = response.json()
+        self.assertIsNone(body["period"])
+        self.assertEqual(body["start_date"], (today - timedelta(days=30)).isoformat())
+        self.assertEqual(body["end_date"], today.isoformat())
+
+    def test_period_response_includes_null_dates(self):
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power&period=1y"
+        )
+        body = response.json()
+        self.assertEqual(body["period"], "1y")
+        self.assertIsNone(body["start_date"])
+        self.assertIsNone(body["end_date"])
+
+    def test_one_sided_range_400(self):
+        today = date.today()
+        for qs in (f"start_date={today}", f"end_date={today}"):
+            response = _bearer_client(self.athlete).get(
+                f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power&{qs}"
+            )
+            self.assertEqual(response.status_code, 400)
+
+    def test_period_combined_with_range_400(self):
+        today = date.today()
+        for period in ("all", "1y"):  # the explicit default value is rejected too
+            response = _bearer_client(self.athlete).get(
+                f"/v1/athletes/{self.athlete.id}/best-efforts"
+                f"?kind=cycling_power&period={period}&start_date={today - timedelta(days=30)}&end_date={today}"
+            )
+            self.assertEqual(response.status_code, 400)
+
+    def test_malformed_range_date_400(self):
+        # "20260803" (ISO 8601 basic form) is rejected as well - the contract is dashed
+        # YYYY-MM-DD only, matching Java's LocalDate.parse.
+        for bad in ("2026-13-45", "not-a-date", "20260803"):
+            response = _bearer_client(self.athlete).get(
+                f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power&start_date={bad}&end_date=2026-08-31"
+            )
+            self.assertEqual(response.status_code, 400)
+
+    def test_start_after_end_400(self):
+        today = date.today()
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts"
+            f"?kind=cycling_power&start_date={today}&end_date={today - timedelta(days=30)}"
+        )
+        self.assertEqual(response.status_code, 400)
+
 
 class ActivityBestEffortRanksViewTests(TestCase):
     """Backs the Dashboard "Top efforts this week" card - see ActivityBestEffortRanksView's
