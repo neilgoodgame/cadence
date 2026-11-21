@@ -62,8 +62,10 @@ public class Merge extends PrefixedIdEntity {
 	@JoinColumn(name = "demoted_source_id")
 	private ActivitySource demotedSource;
 
-	@Column(nullable = false)
-	private int offsetSeconds;
+	// Issue #542: null for a backfilled standalone-detach row, where the real offset used at the
+	// original (pre-tracking) attach time was never recorded anywhere - boxed rather than
+	// fabricating 0, same reasoning as nullPolicy above.
+	private Integer offsetSeconds;
 
 	private Double alignmentScore;
 
@@ -161,11 +163,11 @@ public class Merge extends PrefixedIdEntity {
 		this.demotedSource = demotedSource;
 	}
 
-	public int getOffsetSeconds() {
+	public Integer getOffsetSeconds() {
 		return offsetSeconds;
 	}
 
-	public void setOffsetSeconds(int offsetSeconds) {
+	public void setOffsetSeconds(Integer offsetSeconds) {
 		this.offsetSeconds = offsetSeconds;
 	}
 
@@ -203,6 +205,14 @@ public class Merge extends PrefixedIdEntity {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	/** Issue #542: lets DetachMergeBackfillRunner backdate a backfilled row to the orphaned
+	 * source's own createdAt instead of "now" - {@link #onCreate} only fills this in when it's
+	 * still null at insert time, so setting it first sticks. No real (non-backfilled) caller
+	 * needs this - every other Merge is created right as its event happens. */
+	public void setCreatedAt(Instant createdAt) {
+		this.createdAt = createdAt;
 	}
 
 	public Instant getUndoneAt() {

@@ -1363,6 +1363,58 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/activities/{id}/detach-source:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Remove an attached source that was never part of a tracked merge
+      operationId: detachActivitySource
+      description: >-
+        Issue #542. Removes an attached source (from GET .../sources) that was never part of a
+        tracked merge at all - most notably a handful of real activities that got an attached
+        source before PR #575 started recording a Merge row for every attach (those have no
+        merge to undo via POST .../unmerge). Swaps the activity's primary stream back to its
+        predecessor first if the source being detached is currently primary, the same way
+        unmerge's own undo of an attach merge does. `preview` (default false here - the MCP tool
+        defaults it true instead, for agent safety) runs the exact same logic inside a
+        rolled-back transaction, so it can never disagree with a real call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_id]
+              properties:
+                source_id:
+                  type: string
+                  description: The source id to detach (from GET .../sources).
+                preview:
+                  type: boolean
+                  default: false
+                  description: Compute and return the result without writing anything.
+      responses:
+        "200":
+          description: The activity, plus whether a swap-back happened.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Activity"
+                  - type: object
+                    required: [needs_restore]
+                    properties:
+                      needs_restore:
+                        type: boolean
+                        description: Whether the primary stream was swapped back to its predecessor.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/activities/{id}/unmerge:
     parameters:
       - $ref: "#/components/parameters/ActivityId"

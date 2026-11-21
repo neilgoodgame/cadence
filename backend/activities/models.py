@@ -602,7 +602,10 @@ class Merge(PrefixedIDModel):
     demoted_source = models.ForeignKey(
         "ActivitySource", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
-    offset_seconds = models.IntegerField()
+    # Issue #542: null for a backfilled standalone-detach row, where the real offset used at the
+    # original (pre-tracking) attach time was never recorded anywhere - null=True rather than a
+    # fabricated 0, same reasoning as null_policy above.
+    offset_seconds = models.IntegerField(null=True, blank=True)
     alignment_score = models.FloatField(null=True, blank=True)
     # {field_name: {"copied": n, "kept_original": n, "nulled": n}}, straight from
     # FieldRewriteCounts/merge_apply.apply_merge_fields's own return value.

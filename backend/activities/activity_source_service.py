@@ -445,6 +445,21 @@ def detach_and_restore(activity_id: str, field: str, source_id: str, demoted_sou
     return needs_restore
 
 
+def detach_source(activity_id: str, source_id: str, preview: bool = False) -> bool:
+    """Issue #542: the standalone entry point for detach_and_restore, for a source that was never
+    part of a tracked Merge at all - most notably the handful of real activities that got an
+    attached source before this issue's own core fix started recording one. field is derived from
+    the source's own sensor_kind rather than taken as a separate param, since a source only ever
+    belongs to one field. preview runs the exact same code inside one rolled-back transaction
+    (same technique merge_service's own preview uses) so it can never disagree with a real call."""
+    source = get_object_or_404(ActivitySource, pk=source_id, activity_id=activity_id)
+    with transaction.atomic():
+        needs_restore = detach_and_restore(activity_id, source.sensor_kind, source_id)
+        if preview:
+            transaction.set_rollback(True)
+    return needs_restore
+
+
 def _is_primary_for_field(source: ActivitySource, activity: Activity) -> bool:
     """is_primary reflects whether this source matches the activity's *current* primary reading
     for its field - power/bike by device classification (_current_primary_source), power/run and

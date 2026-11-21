@@ -9,6 +9,7 @@ import com.cadence.api.activities.ActivityService;
 import com.cadence.api.activities.ActivitySourceService;
 import com.cadence.api.activities.ActivityTagRepository;
 import com.cadence.api.activities.ActivityUnmergeService;
+import com.cadence.api.activities.DetachSourcePreviewRollbackSignal;
 import com.cadence.api.activities.DuplicateResolutionBatchService;
 import com.cadence.api.activities.DuplicateResolutionBatchService.ExplicitPair;
 import com.cadence.api.activities.DuplicateResolutionBatchService.OverlapQueryFilters;
@@ -22,6 +23,7 @@ import com.cadence.api.activities.Tag;
 import com.cadence.api.activities.TagMapper;
 import com.cadence.api.activities.TagService;
 import com.cadence.api.activities.dto.ActivityResponse;
+import com.cadence.api.activities.dto.DetachSourceResponse;
 import com.cadence.api.activities.dto.TagAttachResponse;
 import com.cadence.api.activities.dto.TagResponse;
 import com.cadence.api.athletes.OverlapHandling;
@@ -267,6 +269,37 @@ public class ActivityWriteTools {
 		accessGuard.requireWrite(activity.getAthlete().getId());
 		sourceService.setPrimarySource(activityId, field, sourceId);
 		return activityService.toResponse(activityService.getActivity(activityId));
+	}
+
+	@McpTool(name = "detach_source", description = "Issue #542: removes an attached source (from "
+			+ "list_activity_sources) that was never part of a tracked merge at all - e.g. a "
+			+ "pre-fix orphaned attach with no merge to unmerge_activity through. Swaps the "
+			+ "activity's primary stream back to its predecessor first if the source being "
+			+ "detached is currently primary, the same way unmerge_activity's own undo of an "
+			+ "attach merge does. preview (default true) runs the exact same logic inside a "
+			+ "rolled-back transaction - nothing changes, but the response's needsRestore still "
+			+ "reflects what a real call would do. Pass preview=false to actually detach it.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = true, idempotentHint = false, openWorldHint = false))
+	public DetachSourceResponse detachSource(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
+			@McpToolParam(description = "The source id to detach, e.g. src_xxxxxxxxxxxx (from "
+					+ "list_activity_sources)", required = true) String sourceId,
+			@McpToolParam(description = "Compute and return the result without writing anything, default true "
+					+ "(opposite of the REST/web default)", required = false) Boolean preview) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		boolean effectivePreview = preview == null || preview;
+		try {
+			boolean needsRestore = sourceService.detachSource(activityId, sourceId, effectivePreview);
+			return new DetachSourceResponse(activityService.toResponse(activityService.getActivity(activityId)),
+					needsRestore);
+		}
+		catch (DetachSourcePreviewRollbackSignal signal) {
+			return new DetachSourceResponse(activityService.toResponse(activityService.getActivity(activityId)),
+					signal.needsRestore());
+		}
 	}
 
 	private NullPolicy parseNullPolicy(String nulls) {

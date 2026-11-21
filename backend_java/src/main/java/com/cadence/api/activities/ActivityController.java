@@ -2,6 +2,8 @@ package com.cadence.api.activities;
 
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.ActivityWorkoutMatchCandidateResponse;
+import com.cadence.api.activities.dto.DetachSourceRequest;
+import com.cadence.api.activities.dto.DetachSourceResponse;
 import com.cadence.api.activities.dto.MergeActivitiesRequest;
 import com.cadence.api.activities.dto.OverlapPairResponse;
 import com.cadence.api.activities.dto.SetPrimarySourceRequest;
@@ -237,6 +239,28 @@ public class ActivityController {
 		accessGuard.requireWrite(activity.getAthlete().getId());
 		activitySourceService.setPrimarySource(id, request.field(), request.sourceId());
 		return activityService.toResponse(activityService.getActivity(id));
+	}
+
+	/** Issue #542: removes an attached source that was never part of a tracked {@link Merge} at
+	 * all (e.g. a pre-fix orphaned attach), swapping back to the previous primary first if
+	 * needed. See {@link ActivitySourceService#detachSource}; {@code preview=true} runs the real
+	 * detach inside a rolled-back transaction, same technique as {@code .../merge}'s own preview. */
+	@PostMapping("/v1/activities/{id}/detach-source")
+	public DetachSourceResponse detachSource(@PathVariable String id,
+			@Valid @RequestBody DetachSourceRequest request) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		try {
+			boolean needsRestore = activitySourceService.detachSource(id, request.sourceId(), request.previewOrDefault());
+			return new DetachSourceResponse(activityService.toResponse(activityService.getActivity(id)), needsRestore);
+		}
+		catch (DetachSourcePreviewRollbackSignal signal) {
+			// See DetachSourcePreviewRollbackSignal - detachSource's preview=true transaction is
+			// rolled back (not committed) by the time this is caught, so the activity is reloaded
+			// completely unchanged; only needsRestore (computed before the rollback) reflects
+			// what a real call would have done.
+			return new DetachSourceResponse(activityService.toResponse(activityService.getActivity(id)), signal.needsRestore());
+		}
 	}
 
 	@DeleteMapping("/v1/activities/{id}")

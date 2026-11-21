@@ -739,6 +739,22 @@ class ActivityMCPTools(ScopedMCPToolset):
         activity_source_service.set_primary_source(activity_id, field, source_id)
         return self.get_activity(activity_id)
 
+    def detach_source(self, activity_id: str, source_id: str, preview: bool = True) -> dict[str, Any]:
+        """Issue #542: removes an attached source (from list_activity_sources) that was never
+        part of a tracked merge at all - e.g. a pre-fix orphaned attach with no Merge row to
+        unmerge_activity through. Swaps the activity's primary stream back to its predecessor
+        first if the source being detached is currently primary, the same way unmerge_activity's
+        own undo of an "attach" merge does. preview (default true) runs the exact same logic
+        inside a rolled-back transaction - nothing changes, but the response's needs_restore still
+        reflects what a real call would do. Pass preview=false to actually detach it."""
+        self._require_scope(ACTIVITIES_WRITE)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        needs_restore = activity_source_service.detach_source(activity_id, source_id, preview)
+        result = self.get_activity(activity_id)
+        result["needs_restore"] = needs_restore
+        return result
+
     def set_merge_rule(
         self,
         sport: str,

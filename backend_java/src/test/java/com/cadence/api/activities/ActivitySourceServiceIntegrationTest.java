@@ -386,6 +386,90 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 				.isInstanceOf(ValidationException.class);
 	}
 
+	/** Issue #542: detachSource takes no separate field param - it's derived from the source's
+	 * own sensorKind, unlike detachAndRestore itself. */
+	@Test
+	void detachSourceDerivesFieldFromTheSourceItself() {
+		User athlete = newAthlete("source-detach-standalone-no-restore@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecords(target, 10, 200);
+		addRecords(source, 10, 300);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+
+		boolean needsRestore = sourceService.detachSource(target.getId(), attach.sourceId(), false);
+
+		assertThat(needsRestore).isFalse();
+		assertThat(sourceRepository.findById(attach.sourceId())).isEmpty();
+		assertThat(recordRepository.findByActivityIdOrderByT(target.getId()))
+				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(200));
+	}
+
+	/** The orphaned-attach case this exists for: no Merge row at all (attachStream alone never
+	 * creates one), so there's no demotedSourceId to use - detachSource must still correctly
+	 * restore via the data-equality fallback. */
+	@Test
+	void detachSourceSwapsBackACurrentlyPrimarySourceWithNoMergeRow() {
+		User athlete = newAthlete("source-detach-standalone-restore@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecords(target, 10, 200);
+		addRecords(source, 10, 300);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+		sourceService.setPrimarySource(target.getId(), "power", attach.sourceId());
+
+		boolean needsRestore = sourceService.detachSource(target.getId(), attach.sourceId(), false);
+
+		assertThat(needsRestore).isTrue();
+		assertThat(sourceRepository.findById(attach.sourceId())).isEmpty();
+		assertThat(recordRepository.findByActivityIdOrderByT(target.getId()))
+				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(200));
+	}
+
+	@Test
+	void detachSourcePreviewLeavesEverythingUnchanged() {
+		User athlete = newAthlete("source-detach-standalone-preview@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecords(target, 10, 200);
+		addRecords(source, 10, 300);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+		sourceService.setPrimarySource(target.getId(), "power", attach.sourceId());
+		int sourceCountBefore = sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId()).size();
+
+		boolean needsRestore;
+		try {
+			needsRestore = sourceService.detachSource(target.getId(), attach.sourceId(), true);
+		}
+		catch (DetachSourcePreviewRollbackSignal signal) {
+			// Expected - see the signal's own Javadoc. detachSource's preview=true transaction
+			// is rolled back (not committed) by the time this is caught.
+			needsRestore = signal.needsRestore();
+		}
+
+		assertThat(needsRestore).isTrue();
+		assertThat(sourceRepository.findById(attach.sourceId())).isPresent();
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())).hasSize(sourceCountBefore);
+		assertThat(recordRepository.findByActivityIdOrderByT(target.getId()))
+				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(300)); // unchanged - the attach is still primary
+	}
+
+	@Test
+	void detachSourceRejectsAFileOriginSource() {
+		User athlete = newAthlete("source-detach-standalone-file-origin@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Zwift");
+		addRecords(target, 10, 200);
+		addRecords(source, 10, 300);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
+		sourceService.setPrimarySource(target.getId(), "power", attach.sourceId());
+		ActivitySource fileOriginSource = sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())
+				.stream().filter(s -> s.getOrigin() == ActivitySourceOrigin.FILE).findFirst().orElseThrow();
+
+		assertThatThrownBy(() -> sourceService.detachSource(target.getId(), fileOriginSource.getId(), false))
+				.isInstanceOf(ValidationException.class);
+	}
+
 	@Test
 	void listSourcesReportsIsPrimaryAgainstTheActivitysCurrentPrimary() {
 		User athlete = newAthlete("source-list-is-primary@example.cc");
