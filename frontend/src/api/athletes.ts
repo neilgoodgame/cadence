@@ -272,12 +272,18 @@ export async function* recomputeThresholdHistoryStream(
   }
 }
 
+/** Issue #582: `range` (inclusive, YYYY-MM-DD) queries an explicit window - e.g. a race's
+ * training block - instead of the fixed now-anchored periods. The two are mutually exclusive
+ * on the wire, so a range query omits `period` entirely; the response echoes whichever mode
+ * was used (`period` null for a range, both dates null for a period). */
 export function listBestEfforts(
   athleteId: string,
   kind: BestEffortKind,
   period: BestEffortPeriod = "all",
-): Promise<{ kind: string; period: string; data: BestEffort[] }> {
-  return apiFetch(`/v1/athletes/${athleteId}/best-efforts?kind=${kind}&period=${period}`);
+  range?: { startDate: string; endDate: string },
+): Promise<{ kind: string; period: string | null; start_date: string | null; end_date: string | null; data: BestEffort[] }> {
+  const qs = range ? `kind=${kind}&start_date=${range.startDate}&end_date=${range.endDate}` : `kind=${kind}&period=${period}`;
+  return apiFetch(`/v1/athletes/${athleteId}/best-efforts?${qs}`);
 }
 
 /** Aerobic decoupling sessions (trend + rolling average) and durability (best power once

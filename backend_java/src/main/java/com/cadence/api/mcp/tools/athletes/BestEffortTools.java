@@ -78,7 +78,7 @@ public class BestEffortTools {
 		List<BestEffortResponse> data = capped.stream()
 				.map(e -> new BestEffortResponse(e.getWindow(), e.getValue(), e.getUnit(), e.getDate(), e.getActivity().getId()))
 				.toList();
-		return new BestEffortListResponse(effectiveKind, effectivePeriod, data);
+		return new BestEffortListResponse(effectiveKind, effectivePeriod, data, null, null);
 	}
 
 	private BestEffortKind parseKind(String kind) {

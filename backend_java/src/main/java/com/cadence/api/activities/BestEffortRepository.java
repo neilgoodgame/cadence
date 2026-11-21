@@ -57,6 +57,12 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 	List<BestEffort> findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
 			String athleteId, BestEffortKind kind);
 
+	/** Issue #582: explicit date-range variant of the finder above - e.g. a race's
+	 * training-block window, which the fixed now-anchored periods can't express. Inclusive on
+	 * both bounds, matching Django's date__gte/date__lte filter. */
+	List<BestEffort> findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualAndDateLessThanEqualOrderByWindowAscValueDesc(
+			String athleteId, BestEffortKind kind, LocalDate start, LocalDate end);
+
 	/** Issue #498's MCP list_best_efforts tool only: {@code includeDuplicates} can override the
 	 * default exclusion above for ad-hoc inspection of a same-ride-twice pair. The REST
 	 * BestEffortController and every other caller keep using the always-excluding finders

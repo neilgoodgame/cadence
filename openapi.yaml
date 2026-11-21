@@ -1648,7 +1648,11 @@ paths:
       operationId: listBestEfforts
       description: >
         Personal records by kind and period. Cycling returns peak power by duration;
-        running returns best pace and power by distance.
+        running returns best pace and power by distance. Either use `period` (a fixed
+        window anchored to today) or an explicit inclusive date range via
+        `start_date`/`end_date` (e.g. a race's training-block window) - not both. A
+        date-range query echoes `start_date`/`end_date` in the response with `period`
+        null; a period query echoes `period` with both dates null.
       parameters:
         - name: kind
           in: query
@@ -1658,10 +1662,23 @@ paths:
             enum: [cycling_power, running_pace, running_power]
         - name: period
           in: query
+          description: Mutually exclusive with start_date/end_date.
           schema:
             type: string
             enum: [4w, 3m, 16w, 1y, all]
             default: all
+        - name: start_date
+          in: query
+          description: Inclusive range start (YYYY-MM-DD); must be given together with end_date.
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: Inclusive range end (YYYY-MM-DD); must be given together with start_date.
+          schema:
+            type: string
+            format: date
       responses:
         "200":
           description: Best efforts.
@@ -1671,7 +1688,9 @@ paths:
                 type: object
                 properties:
                   kind: { type: string }
-                  period: { type: string }
+                  period: { type: string, nullable: true }
+                  start_date: { type: string, format: date, nullable: true }
+                  end_date: { type: string, format: date, nullable: true }
                   data:
                     type: array
                     items:
