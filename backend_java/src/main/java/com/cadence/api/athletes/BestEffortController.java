@@ -82,9 +82,30 @@ public class BestEffortController {
 	public BestEffortListResponse listBestEfforts(@PathVariable String id,
 			@RequestParam BestEffortKind kind,
 			@RequestParam(required = false) String period,
-			@RequestParam(required = false) String startDate,
-			@RequestParam(required = false) String endDate) {
+			// @RequestParam binds by the literal query-string key, unaffected by Jackson's
+			// snake_case body naming strategy - the wire contract is start_date/end_date, so
+			// these need explicit values (see AthleteControllerZonesIntegrationTest for the
+			// regression this guards against).
+			@RequestParam(value = "start_date", required = false) String startDate,
+			@RequestParam(value = "end_date", required = false) String endDate) {
 		accessGuard.requireRead(id);
+
+		String effectivePeriod = period != null ? period : "all";
+		// 4w/16w match BestEffortWindows.TRIM_PERIOD_DAYS exactly - querying the exact displayed
+		// period directly (rather than fetching a wider bucket and narrowing client-side) avoids
+		// capPerWindow discarding entries that are top-N within the narrower window but not
+		// within the top-N of a wider one it happened to be fetched from. Unknown values 400
+		// (matching Django and the documented enum) rather than silently falling back to all.
+		// Validated before the range checks so doubly-invalid requests get the same 400 message
+		// on both backends (Django checks the period enum first too).
+		LocalDate since = switch (effectivePeriod) {
+			case "4w" -> LocalDate.now().minusDays(28);
+			case "3m" -> LocalDate.now().minusDays(90);
+			case "16w" -> LocalDate.now().minusDays(112);
+			case "1y" -> LocalDate.now().minusDays(365);
+			case "all" -> null;
+			default -> throw new ValidationException("Must be one of 4w, 3m, 16w, 1y, all.", "period");
+		};
 
 		LocalDate rangeStart = null;
 		LocalDate rangeEnd = null;
@@ -104,28 +125,11 @@ public class BestEffortController {
 			}
 		}
 
-		String effectivePeriod = period != null ? period : "all";
-		List<BestEffort> efforts;
-		if (rangeStart != null) {
-			efforts = bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualAndDateLessThanEqualOrderByWindowAscValueDesc(id, kind, rangeStart, rangeEnd);
-		} else {
-			// 4w/16w match BestEffortWindows.TRIM_PERIOD_DAYS exactly - querying the exact displayed
-			// period directly (rather than fetching a wider bucket and narrowing client-side) avoids
-			// capPerWindow discarding entries that are top-N within the narrower window but not
-			// within the top-N of a wider one it happened to be fetched from. Unknown values 400
-			// (matching Django and the documented enum) rather than silently falling back to all.
-			LocalDate since = switch (effectivePeriod) {
-				case "4w" -> LocalDate.now().minusDays(28);
-				case "3m" -> LocalDate.now().minusDays(90);
-				case "16w" -> LocalDate.now().minusDays(112);
-				case "1y" -> LocalDate.now().minusDays(365);
-				case "all" -> null;
-				default -> throw new ValidationException("Must be one of 4w, 3m, 16w, 1y, all.", "period");
-			};
-			efforts = since != null
-					? bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, since)
-					: bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(id, kind);
-		}
+		List<BestEffort> efforts = rangeStart != null
+				? bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualAndDateLessThanEqualOrderByWindowAscValueDesc(id, kind, rangeStart, rangeEnd)
+				: since != null
+						? bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, since)
+						: bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(id, kind);
 
 		int topN = userService.getById(id).getBestEffortTopN();
 		List<BestEffort> capped = capPerWindow(efforts, kind == BestEffortKind.RUNNING_PACE, topN);
@@ -136,9 +140,14 @@ public class BestEffortController {
 		return new BestEffortListResponse(kind, rangeStart != null ? null : effectivePeriod, data, rangeStart, rangeEnd);
 	}
 
-	/** Strict YYYY-MM-DD parse for the range params - LocalDate.parse's ISO_LOCAL_DATE rejects
-	 * everything but zero-padded dashed dates, matching Django's fromisoformat+round-trip check. */
+	/** Strict YYYY-MM-DD parse for the range params. The regex pins the shape - ISO_LOCAL_DATE
+	 * would additionally accept a signed year ("+2026-08-03"), which the contract doesn't - then
+	 * LocalDate.parse rejects calendar-invalid dates (2026-13-45). Together that matches Django's
+	 * fromisoformat+round-trip check exactly. */
 	private static LocalDate parseRangeDate(String raw, String param) {
+		if (!raw.matches("\\d{4}-\\d{2}-\\d{2}")) {
+			throw new ValidationException("Must be a YYYY-MM-DD date.", param);
+		}
 		try {
 			return LocalDate.parse(raw);
 		} catch (DateTimeParseException e) {

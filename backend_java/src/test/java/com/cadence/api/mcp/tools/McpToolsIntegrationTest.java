@@ -1031,6 +1031,18 @@ class McpToolsIntegrationTest extends IntegrationTest {
 	}
 
 	@Test
+	void listBestEffortsUnknownPeriodThrows() {
+		// Parity with the REST endpoint and Django's MCP tool: an unknown period is a 400, not
+		// a silent all-time fallback (a typo'd period would otherwise answer with lifetime data).
+		User athlete = saveAthlete("mcp-best-efforts-badperiod@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> bestEffortTools.listBestEfforts("cycling_power", "banana", null))
+				.isInstanceOf(ValidationException.class)
+				.hasMessage("Must be one of 4w, 3m, 16w, 1y, all.");
+	}
+
+	@Test
 	void getThresholdSettingsReturnsTheAthletesSettings() {
 		User athlete = saveAthlete("mcp-threshold-settings@example.cc");
 		athlete.setThresholdWindowDays(60);

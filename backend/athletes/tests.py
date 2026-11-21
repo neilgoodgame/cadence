@@ -923,13 +923,24 @@ class BestEffortListViewTests(TestCase):
             self.assertEqual(response.status_code, 400)
 
     def test_malformed_range_date_400(self):
-        # "20260803" (ISO 8601 basic form) is rejected as well - the contract is dashed
-        # YYYY-MM-DD only, matching Java's LocalDate.parse.
-        for bad in ("2026-13-45", "not-a-date", "20260803"):
+        # "20260803" (ISO 8601 basic form) and "+2026-08-03" (signed year) are rejected as
+        # well - the contract is unsigned dashed YYYY-MM-DD only, matching Java's shape check.
+        for bad in ("2026-13-45", "not-a-date", "20260803", "+2026-08-03"):
             response = _bearer_client(self.athlete).get(
                 f"/v1/athletes/{self.athlete.id}/best-efforts?kind=cycling_power&start_date={bad}&end_date=2026-08-31"
             )
             self.assertEqual(response.status_code, 400)
+
+    def test_unknown_period_with_range_400s_on_the_enum_error(self):
+        # Doubly-invalid input: the period enum error must win on both backends (pins the
+        # validation order, not just the single-error messages).
+        today = date.today()
+        response = _bearer_client(self.athlete).get(
+            f"/v1/athletes/{self.athlete.id}/best-efforts"
+            f"?kind=cycling_power&period=banana&start_date={today - timedelta(days=30)}&end_date={today}"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Must be one of 4w, 3m, 16w, 1y, all.", response.json()["error"]["message"])
 
     def test_start_after_end_400(self):
         today = date.today()

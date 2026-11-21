@@ -274,15 +274,20 @@ export async function* recomputeThresholdHistoryStream(
 
 /** Issue #582: `range` (inclusive, YYYY-MM-DD) queries an explicit window - e.g. a race's
  * training block - instead of the fixed now-anchored periods. The two are mutually exclusive
- * on the wire, so a range query omits `period` entirely; the response echoes whichever mode
- * was used (`period` null for a range, both dates null for a period). */
+ * on the wire (the API 400s if both are sent), so passing both here throws client-side rather
+ * than letting a caller's stale period state silently switch the query to range mode. The
+ * response echoes whichever mode was used (`period` null for a range, both dates null for a
+ * period). */
 export function listBestEfforts(
   athleteId: string,
   kind: BestEffortKind,
-  period: BestEffortPeriod = "all",
+  period?: BestEffortPeriod,
   range?: { startDate: string; endDate: string },
 ): Promise<{ kind: string; period: string | null; start_date: string | null; end_date: string | null; data: BestEffort[] }> {
-  const qs = range ? `kind=${kind}&start_date=${range.startDate}&end_date=${range.endDate}` : `kind=${kind}&period=${period}`;
+  if (period !== undefined && range) {
+    throw new Error("listBestEfforts: pass either a period or a date range, not both");
+  }
+  const qs = range ? `kind=${kind}&start_date=${range.startDate}&end_date=${range.endDate}` : `kind=${kind}&period=${period ?? "all"}`;
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts?${qs}`);
 }
 

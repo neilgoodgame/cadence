@@ -248,12 +248,26 @@ class BestEffortControllerIntegrationTest extends IntegrationTest {
 		User athlete = newAthlete("befrange-malformed@example.cc", 10);
 
 		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
-		// "20260803" (ISO 8601 basic form) is rejected as well - the contract is dashed
-		// YYYY-MM-DD only, matching Django's fromisoformat+round-trip check.
-		for (String bad : new String[] { "2026-13-45", "not-a-date", "20260803" }) {
+		// "20260803" (ISO 8601 basic form) and "+2026-08-03" (signed year) are rejected as well
+		// - the contract is unsigned dashed YYYY-MM-DD only, matching Django's
+		// fromisoformat+round-trip check.
+		for (String bad : new String[] { "2026-13-45", "not-a-date", "20260803", "+2026-08-03" }) {
 			assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, null, bad, "2026-08-31"))
 					.isInstanceOf(ValidationException.class);
 		}
+	}
+
+	@Test
+	void unknownPeriodWithRangeThrowsTheEnumError() {
+		// Doubly-invalid input: the period enum error must win on both backends (Django checks
+		// it first too) - pins the validation order, not just the single-error messages.
+		User athlete = newAthlete("befrange-doubleinvalid@example.cc", 10);
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, "banana",
+				LocalDate.now().minusDays(30).toString(), LocalDate.now().toString()))
+				.isInstanceOf(ValidationException.class)
+				.hasMessage("Must be one of 4w, 3m, 16w, 1y, all.");
 	}
 
 	@Test
