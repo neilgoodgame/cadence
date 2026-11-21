@@ -713,4 +713,30 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 		assertThat(from.get(0).effectiveFrom()).isEqualTo(fromDate);
 		assertThat(from.get(0).currentFrom()).isEqualTo(fromDate);
 	}
+
+	@Test
+	void replayFromSeedingSkipsALeftoverDecayedRowFromASinceDisabledDecayPeriod() {
+		// A DECAYED row is never a real window-max event this (purely windowed-max, decay-
+		// unaware) replay would ever have produced itself - it's only ever written by
+		// ThresholdDecayRecomputeService, for an athlete who had thresholdDecayEnabled at the
+		// time. If the athlete later disables decay, that leftover row must not get picked up
+		// as the seed's "last real change" just because correctionOnly=false and it's more
+		// recent than the true last real (measured/manual) row - it would seed a wildly wrong
+		// reference.
+		athlete = newAthlete("threshold-history-494-skips-decayed@example.cc", 200);
+		athlete.setThresholdWindowDays(10);
+		Activity real = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 400, 1200);
+		persistRow(athlete, ThresholdField.FTP, real, 400, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1));
+		newEntry(athlete, ThresholdField.FTP, null, 50, LocalDate.of(2026, 1, 5), ThresholdHistoryKind.DECAYED);
+		Activity probe = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-20T07:00:00Z"), 368, 1200); // implies 350
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> from =
+				calculator.replayFrom(athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 20));
+
+		// Correctly seeded from the real row's 380 (7.9% off, within the 30% default band) - a
+		// seed wrongly picking up the DECAYED row's 50 would reject this (600% off) instead.
+		assertThat(from).hasSize(1);
+		assertThat(from.get(0).activityId()).isEqualTo(probe.getId());
+		assertThat(from.get(0).value()).isEqualTo(350);
+	}
 }

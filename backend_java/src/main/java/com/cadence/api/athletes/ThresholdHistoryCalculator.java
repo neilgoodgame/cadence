@@ -614,10 +614,11 @@ public class ThresholdHistoryCalculator {
 		// was (or will be) discovered by that activity's own iteration of the loop below, same
 		// as currentValue's own seed above already excludes it (firstDate's activity is
 		// re-scanned live, never read back from a row). Using on-or-before here would let a
-		// same-day row pre-empt what the live loop is about to decide for itself.
+		// same-day row pre-empt what the live loop is about to decide for itself. Excludes
+		// DECAYED too - see the repository method's own comment.
 		ThresholdHistory lastRealChange = thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
-						athlete.getId(), field, firstDate)
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
+						athlete.getId(), field, ThresholdHistoryKind.DECAYED, firstDate)
 				.orElse(null);
 		Double lastCorrectionValue = null;
 		LocalDate lastCorrectionDate = null;

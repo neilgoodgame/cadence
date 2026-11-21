@@ -159,9 +159,13 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	// - the latest *real* (non-correction) row's own currentFrom, strictly before the scan's
 	// first activity date: what the live per-activity loop's own sanity reference would still be
 	// holding at that point, correction-only rows aside. Strictly-before, not on-or-before - see
-	// replayFrom's own comment on this exact query for why.
-	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
-			String athleteId, ThresholdField field, LocalDate before);
+	// replayFrom's own comment on this exact query for why. Excludes DECAYED too - a leftover
+	// from a since-disabled thresholdDecayEnabled period isn't a real window-max event this
+	// (purely windowed-max, decay-unaware) replay ever produced, so using one here would seed
+	// the reference from a value this algorithm wouldn't otherwise recognize at all.
+	Optional<ThresholdHistory>
+			findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
+					String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate before);
 
 	// ThresholdHistoryService.recordManualValue's issue #494 diff - the measured rows already
 	// stored at/after a manual edit's own date, snapshotted before the edit is written, to

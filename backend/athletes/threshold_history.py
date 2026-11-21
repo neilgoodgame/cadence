@@ -599,11 +599,15 @@ def _replay_from_into(
     # (or will be) discovered by that activity's own iteration of the loop below, same as
     # current_value's own seed above already excludes it (first_date's activity is re-scanned
     # live, never read back from a row). Using <= here would let a same-day row pre-empt what
-    # the live loop is about to decide for itself.
+    # the live loop is about to decide for itself. Excludes kind="decayed" - a leftover from a
+    # since-disabled threshold_decay_enabled period isn't a real window-max event this (purely
+    # windowed-max, decay-unaware) replay ever produced, so using one here would seed the
+    # reference from a value this algorithm wouldn't otherwise recognize at all.
     last_real_change = (
         ThresholdHistory.objects.filter(
             athlete=athlete, field=field, is_correction_only=False, current_from__lt=first_date
         )
+        .exclude(kind="decayed")
         .order_by("-current_from", "-id")
         .first()
     )
@@ -1004,15 +1008,6 @@ def record_manual_value(
     value_numeric, value_pace = (None, raw_value) if field == "threshold_pace" else (raw_value, "")
 
     with transaction.atomic():
-        # Captured before the write below, for the would_requalify diff further down - inserting
-        # the new manual/correction row never touches an existing measured row, so the order
-        # relative to the insert doesn't matter, only that it's read before replay_from's own
-        # query sees a ledger whose *measured* rows already reflect anything this diff is meant
-        # to detect (they can't, by construction, but snapshotting first keeps the intent clear).
-        old_measured_rows = list(
-            ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="measured", current_from__gte=given_date)
-        )
-
         ThresholdHistory.objects.create(
             athlete=athlete,
             field=field,
@@ -1043,6 +1038,15 @@ def record_manual_value(
         # branch at all (see the early return above).
         would_requalify: list[QualificationDiff] = []
         if preview and not athlete.threshold_decay_enabled:
+            # Reading this now rather than before the insert above is fine (and cheaper, since
+            # most calls never reach this branch) - inserting the new manual/correction row
+            # never touches an existing measured row, so there's nothing for this query to see
+            # differently depending on when it runs relative to that insert.
+            old_measured_rows = list(
+                ThresholdHistory.objects.filter(
+                    athlete=athlete, field=field, kind="measured", current_from__gte=given_date
+                )
+            )
             new_entries = replay_from(athlete, field, given_date)
             would_requalify = _qualification_diff(field, old_measured_rows, new_entries)
 

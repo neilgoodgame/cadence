@@ -1590,6 +1590,36 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         self.assertEqual(from_entries[0].effective_from, from_date)
         self.assertEqual(from_entries[0].current_from, from_date)
 
+    def test_replay_from_seeding_skips_a_leftover_decayed_row_from_a_since_disabled_decay_period(self):
+        # A decayed row is never a real window-max event this (purely windowed-max, decay-
+        # unaware) replay would ever have produced itself - it's only ever written by
+        # threshold_decay_recompute.py, for an athlete who had threshold_decay_enabled at the
+        # time. If the athlete later disables decay, that leftover row must not get picked up as
+        # the seed's "last real change" just because is_correction_only=False and it's more
+        # recent than the true last real (measured/manual) row - it would seed a wildly wrong
+        # reference.
+        real = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        self._persist_measured_row(real, 400, date(2026, 1, 1), date(2026, 1, 1))
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=50,
+            effective_from=date(2026, 1, 5),
+            current_from=date(2026, 1, 5),
+            kind="decayed",
+        )
+        self.athlete.threshold_window_days = 10
+        self.athlete.save(update_fields=["threshold_window_days"])
+        probe = self._make_power_activity("bike", datetime(2026, 1, 20, 7, 0, tzinfo=UTC), power=368)  # implies 350
+
+        from_entries = replay_from(self.athlete, "ftp", date(2026, 1, 20))
+
+        # Correctly seeded from the real row's 380 (7.9% off, within the 30% default band) - a
+        # seed wrongly picking up the decayed row's 50 would reject this (600% off) instead.
+        self.assertEqual(len(from_entries), 1)
+        self.assertEqual(from_entries[0].activity_id, probe.id)
+        self.assertEqual(from_entries[0].value, 350)
+
     def test_critical_run_power_excludes_an_activity_whose_power_source_no_longer_matches_preference(self):
         self.athlete.running_power_source = "stryd"
         self.athlete.save(update_fields=["running_power_source"])

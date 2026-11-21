@@ -252,15 +252,6 @@ public class ThresholdHistoryService {
 			return new ManualEditResult(true, true, false, result.reratedCount(), result.wouldRerate(), result.wouldRequalify());
 		}
 
-		// Captured before the write below, for the wouldRequalify diff further down - inserting
-		// the new manual/correction row never touches an existing measured row, so the order
-		// relative to the insert doesn't matter, only that it's read before replayFrom's own
-		// query sees a ledger whose *measured* rows already reflect anything this diff is meant
-		// to detect (they can't, by construction, but snapshotting first keeps the intent clear).
-		List<ThresholdHistory> oldMeasuredRows = thresholdHistoryRepository
-				.findByAthleteIdAndFieldAndKindAndCurrentFromGreaterThanEqualOrderByEffectiveFromAsc(
-						athlete.getId(), field, ThresholdHistoryKind.MEASURED, givenDate);
-
 		ThresholdHistory entry = new ThresholdHistory();
 		entry.setAthlete(athlete);
 		entry.setField(field);
@@ -293,6 +284,13 @@ public class ThresholdHistoryService {
 		// this branch at all (see the early return above).
 		List<QualificationDiff> wouldRequalify = List.of();
 		if (preview && !athlete.isThresholdDecayEnabled()) {
+			// Reading this now rather than before the insert above is fine (and cheaper, since
+			// most calls never reach this branch) - inserting the new manual/correction row
+			// never touches an existing measured row, so there's nothing for this query to see
+			// differently depending on when it runs relative to that insert.
+			List<ThresholdHistory> oldMeasuredRows = thresholdHistoryRepository
+					.findByAthleteIdAndFieldAndKindAndCurrentFromGreaterThanEqualOrderByEffectiveFromAsc(
+							athlete.getId(), field, ThresholdHistoryKind.MEASURED, givenDate);
 			List<ThresholdHistoryEntry> newEntries = calculator.replayFrom(athlete, field, givenDate);
 			wouldRequalify = qualificationDiff(field, oldMeasuredRows, newEntries);
 		}
