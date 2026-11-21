@@ -32,13 +32,21 @@ public class FitnessTrendTools {
 	// something an athlete would ever ask for a fitness trend of.
 	private static final Set<Sport> FITNESS_TREND_SPORTS = Set.of(Sport.BIKE, Sport.RUN, Sport.SWIM, Sport.WALK, Sport.ROW);
 
+	// Issue #487: the only alternate per-day load getFitnessTrend can build the series from, in
+	// place of raw TSS - bike-only, since there's no pace-based above-Z2 histogram for runs.
+	private static final Set<String> FITNESS_TREND_INTENSITIES = Set.of("above_z2");
+
 	@McpTool(name = "get_fitness_trend", description = "Get the authenticated athlete's daily "
 			+ "CTL (fitness), ATL (fatigue), and TSB (form/freshness) trend over a date range - "
 			+ "default is the trailing 84 days. Useful for 'am I overtrained' or 'when's my next "
 			+ "good taper window' questions. includeDuplicates (default false) counts same-ride-"
 			+ "twice duplicate copies' TSS too, which otherwise never counts towards the trend "
 			+ "(issue #498) - useful for seeing how inflated the trend used to be before a pair "
-			+ "was resolved, not for everyday use.",
+			+ "was resolved, not for everyday use. intensity=\"above_z2\" (issue #487), if given, "
+			+ "builds the series from above-Z2 training load instead of raw TSS - a bike-only "
+			+ "series (there's no pace-based above-Z2 histogram for runs), for comparing against "
+			+ "the regular TSS-based trend when calibrating the threshold-decay load term; sport "
+			+ "must then be omitted or \"bike\".",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public List<FitnessPoint> getFitnessTrend(
@@ -48,15 +56,28 @@ public class FitnessTrendTools {
 					+ "bike-only CTL to compare against FTP, independent of running load. Default: "
 					+ "all sports combined.", required = false) String sport,
 			@McpToolParam(description = "Also count same-ride-twice duplicate copies' TSS, which are "
-					+ "excluded by default (default false)", required = false) Boolean includeDuplicates) {
+					+ "excluded by default (default false)", required = false) Boolean includeDuplicates,
+			@McpToolParam(description = "'above_z2' to build the series from above-Z2 training load "
+					+ "instead of raw TSS - bike-only, see the tool description", required = false) String intensity) {
 		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
 		Sport effectiveSport = parseSport(sport);
+		if (intensity != null && !FITNESS_TREND_INTENSITIES.contains(intensity)) {
+			throw new ValidationException("intensity must be 'above_z2'.", "intensity");
+		}
+		if (intensity != null && effectiveSport != null && effectiveSport != Sport.BIKE) {
+			throw new ValidationException("sport must be 'bike' (or omitted) when intensity is given.", "sport");
+		}
 		LocalDate effectiveTo = to != null ? to : LocalDate.now();
 		LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(84);
+		boolean effectiveIncludeDuplicates = Boolean.TRUE.equals(includeDuplicates);
+		if ("above_z2".equals(intensity)) {
+			return fitnessService.computeAboveZ2FitnessSeries(
+					athleteId, effectiveFrom, effectiveTo, effectiveIncludeDuplicates);
+		}
 		return fitnessService.computeFitnessSeries(
-				athleteId, effectiveFrom, effectiveTo, effectiveSport, Boolean.TRUE.equals(includeDuplicates));
+				athleteId, effectiveFrom, effectiveTo, effectiveSport, effectiveIncludeDuplicates);
 	}
 
 	private Sport parseSport(String sport) {

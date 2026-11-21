@@ -15,7 +15,7 @@ from accounts.models import User
 from activities.models import Activity, BestEffort
 from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
-from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
+from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_above_z2_fitness_series, compute_fitness_series
 
 from .decay_load import above_z2_load_for_activity
 from .models import ThresholdHistory
@@ -35,6 +35,9 @@ _THRESHOLD_FIELDS = ("ftp", "critical_run_power", "threshold_pace")
 # Real training sports only - multisport/transition are structural FIT-import artifacts, not
 # something an athlete would ever ask for a fitness trend of.
 _FITNESS_TREND_SPORTS = ("bike", "run", "swim", "walk", "row")
+# Issue #487: the only alternate per-day load get_fitness_trend can build the series from, in
+# place of raw TSS - bike-only, since there's no pace-based above-Z2 histogram for runs.
+_FITNESS_TREND_INTENSITIES = ("above_z2",)
 
 
 def _thresholds_summary(athlete: User) -> dict[str, Any]:
@@ -238,6 +241,7 @@ class AthleteMCPTools(ScopedMCPToolset):
         to_date: str | None = None,
         sport: str | None = None,
         include_duplicates: bool = False,
+        intensity: str | None = None,
     ) -> dict[str, Any]:
         """Get the authenticated athlete's daily CTL (fitness), ATL (fatigue), and TSB (form/
         freshness) trend over a date range - default is the trailing 84 days. Useful for 'am I
@@ -246,13 +250,21 @@ class AthleteMCPTools(ScopedMCPToolset):
         bike-only CTL to compare against FTP, independent of running load. `include_duplicates`
         (default false) counts same-ride-twice duplicate copies' TSS too, which otherwise never
         counts towards the trend (issue #498) - useful for seeing how inflated the trend used to
-        be before a pair was resolved, not for everyday use."""
+        be before a pair was resolved, not for everyday use. `intensity="above_z2"` (issue #487),
+        if given, builds the series from above-Z2 training load instead of raw TSS - a bike-only
+        series (there's no pace-based above-Z2 histogram for runs), for comparing against the
+        regular TSS-based trend when calibrating the threshold-decay load term; `sport` must then
+        be omitted or `"bike"`."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
 
         if sport is not None and sport not in _FITNESS_TREND_SPORTS:
             raise ValidationError({"sport": "Must be one of bike, run, swim, walk, row."})
+        if intensity is not None and intensity not in _FITNESS_TREND_INTENSITIES:
+            raise ValidationError({"intensity": "Must be 'above_z2'."})
+        if intensity is not None and sport is not None and sport != "bike":
+            raise ValidationError({"sport": "Must be 'bike' (or omitted) when intensity is given."})
         to_d = parse_date(to_date) if to_date else timezone.now().date()
         if to_d is None:
             raise ValidationError({"to_date": "Must be a date in YYYY-MM-DD format."})
@@ -262,7 +274,10 @@ class AthleteMCPTools(ScopedMCPToolset):
         if from_d > to_d:
             raise ValidationError({"from_date": "Must not be after to_date."})
 
-        series = compute_fitness_series(athlete_id, from_d, to_d, sport, include_duplicates=include_duplicates)
+        if intensity == "above_z2":
+            series = compute_above_z2_fitness_series(athlete_id, from_d, to_d, include_duplicates=include_duplicates)
+        else:
+            series = compute_fitness_series(athlete_id, from_d, to_d, sport, include_duplicates=include_duplicates)
         # Wrapped in {"data": [...]} rather than returned as a bare list - see
         # activities/mcp.py::get_activity_laps's comment for why.
         return {
