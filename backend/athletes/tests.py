@@ -1363,6 +1363,94 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         self.assertEqual(len(entries), len(powers))
         self.assertEqual(entries[-1].value, round(0.95 * powers[-1]))
 
+    # --- replay_full_history: correction-only row as sanity reference (issue #494) ---
+
+    def test_replay_accepts_a_later_activity_using_a_correction_only_row_as_sanity_reference(self):
+        # The #494 motivating case: a sensor-spike reading (400W -> 380 FTP) becomes the window's
+        # own reference, then a backdated correction-only row fixes the real value down to 220 -
+        # a later, genuinely plausible ride (implies 230) would fail the sanity band against the
+        # spike (39.5% off) but passes against the correction (4.5% off), and must now qualify.
+        spike = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=220,
+            source_activity=None,
+            effective_from=date(2026, 1, 5),
+            current_from=date(2026, 1, 5),
+            kind="manual",
+            is_correction_only=True,
+        )
+        probe = self._make_power_activity("bike", datetime(2026, 1, 10, 7, 0, tzinfo=UTC), power=242)  # implies 230
+        # >112 days after the spike (so it ages out of the window) but still within 112 days of
+        # probe - too short to be a candidate itself, purely the trigger that reveals the window.
+        trigger_date = datetime(2026, 1, 1, 7, 0, tzinfo=UTC) + timedelta(days=113)
+        self._make_power_activity("bike", trigger_date, power=999, duration_seconds=600)
+
+        entries = replay_full_history(self.athlete, "ftp")
+
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0].activity_id, spike.id)
+        self.assertEqual(entries[1].activity_id, probe.id)
+        self.assertEqual(entries[1].value, 230)
+        self.assertEqual(entries[1].effective_from, probe.start_date.date())
+        self.assertEqual(entries[1].current_from, trigger_date.date())
+
+    def test_replay_rejects_a_later_activity_using_a_correction_only_row_as_sanity_reference(self):
+        # The mirror case: a ride plausible against the stale spike (380) but implausible against
+        # the correction (220) must now be rejected, even though it would have qualified before
+        # the correction-only row existed - and the window-max/#484 guarantee is untouched: the
+        # correction itself never enters entries_out or the window.
+        spike = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=220,
+            source_activity=None,
+            effective_from=date(2026, 1, 5),
+            current_from=date(2026, 1, 5),
+            kind="manual",
+            is_correction_only=True,
+        )
+        rejected = self._make_power_activity("bike", datetime(2026, 1, 10, 7, 0, tzinfo=UTC), power=368)  # implies 350
+        trigger_date = datetime(2026, 1, 1, 7, 0, tzinfo=UTC) + timedelta(days=113)
+        self._make_power_activity("bike", trigger_date, power=999, duration_seconds=600)
+
+        entries = replay_full_history(self.athlete, "ftp")
+
+        self.assertEqual(len(entries), 1)  # only the spike - rejected never enters the ledger
+        self.assertEqual(entries[0].activity_id, spike.id)
+        self.assertNotIn(rejected.id, [e.activity_id for e in entries])
+
+    def test_replay_keeps_the_correction_only_sanity_reference_after_the_window_empties(self):
+        # Risk 1: the window emptying (current_value -> None) must not reset the sanity
+        # reference to None too, or _within_sanity_band's "no reference yet" passthrough would
+        # silently accept anything until the next window-max arrives.
+        self.athlete.threshold_window_days = 10
+        self.athlete.save(update_fields=["threshold_window_days"])
+        first = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=242)  # implies 230
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=220,
+            source_activity=None,
+            effective_from=date(2026, 1, 3),
+            current_from=date(2026, 1, 3),
+            kind="manual",
+            is_correction_only=True,
+        )
+        # >10 days after `first` - the window empties here (no qualifying candidate survives).
+        self._make_power_activity("bike", datetime(2026, 1, 15, 7, 0, tzinfo=UTC), power=999, duration_seconds=600)
+        # If the reference had reset to None, this (implies 600 - wildly implausible against the
+        # 220 correction) would wrongly qualify and become the new current value.
+        rejected = self._make_power_activity("bike", datetime(2026, 1, 16, 7, 0, tzinfo=UTC), power=632)
+
+        entries = replay_full_history(self.athlete, "ftp")
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].activity_id, first.id)
+        self.assertNotIn(rejected.id, [e.activity_id for e in entries])
+
     # --- replay_from (issue #545) ---
 
     def _persist_measured_row(self, source, power, effective_from, current_from):
@@ -1441,6 +1529,96 @@ class ThresholdHistoryAlgorithmTests(TestCase):
 
         self.assertEqual(from_entries, self._tail_from(full, from_date))  # exactly B's cross-boundary row
         self.assertEqual(len(from_entries), 1)
+
+    # --- replay_from: seeding the correction-only sanity reference (issue #494) ---
+
+    def test_replay_from_seeds_the_sanity_reference_from_a_correction_only_row_more_recent_than_the_last_real_change(
+        self,
+    ):
+        # Both the real change (S, 380) and the correction (220) land before scan_start, so this
+        # exercises the new seeding comparison itself, not just the live per-activity merge - the
+        # correction is the more recent of the two, so it alone must govern the probe's
+        # qualification. A naive seed (falling back to the then-empty window, i.e. no reference
+        # at all) would wrongly accept the probe regardless of its value - this wouldn't.
+        self.athlete.threshold_window_days = 10
+        self.athlete.save(update_fields=["threshold_window_days"])
+        s = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        self._persist_measured_row(s, 400, date(2026, 1, 1), date(2026, 1, 1))
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=220,
+            effective_from=date(2026, 1, 10),
+            current_from=date(2026, 1, 10),
+            kind="manual",
+            is_correction_only=True,
+        )
+        from_date = date(2026, 1, 30)
+        self._make_power_activity("bike", datetime(2026, 1, 30, 7, 0, tzinfo=UTC), power=632)  # implies 600 - rejected
+
+        from_entries = replay_from(self.athlete, "ftp", from_date)
+
+        self.assertEqual(from_entries, [])
+
+    def test_replay_from_seeds_the_sanity_reference_from_a_real_change_more_recent_than_a_stale_correction(self):
+        # The mirror seeding case: the correction (220) is the *stale* one here, predating a real
+        # change (S2, 380) that's since superseded it - both before scan_start. The probe must be
+        # checked against S2's 380, not the stale correction, and not against the window's own
+        # current value either (S2 has aged out of the window itself by the probe's date, but the
+        # sanity reference must stay sticky on S2's value regardless - see the Risk 1 guard this
+        # mirrors at the seed boundary).
+        correction = ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=220,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="manual",
+            is_correction_only=True,
+        )
+        self.assertIsNotNone(correction)
+        s2 = self._make_power_activity("bike", datetime(2026, 1, 10, 7, 0, tzinfo=UTC), power=400)
+        self._persist_measured_row(s2, 400, date(2026, 1, 10), date(2026, 1, 10))
+        from_date = date(2026, 6, 1)
+        probe = self._make_power_activity("bike", datetime(2026, 6, 1, 7, 0, tzinfo=UTC), power=474)  # implies 450
+
+        from_entries = replay_from(self.athlete, "ftp", from_date)
+
+        self.assertEqual(len(from_entries), 1)
+        self.assertEqual(from_entries[0].activity_id, probe.id)
+        self.assertEqual(from_entries[0].value, 450)
+        self.assertEqual(from_entries[0].effective_from, from_date)
+        self.assertEqual(from_entries[0].current_from, from_date)
+
+    def test_replay_from_seeding_skips_a_leftover_decayed_row_from_a_since_disabled_decay_period(self):
+        # A decayed row is never a real window-max event this (purely windowed-max, decay-
+        # unaware) replay would ever have produced itself - it's only ever written by
+        # threshold_decay_recompute.py, for an athlete who had threshold_decay_enabled at the
+        # time. If the athlete later disables decay, that leftover row must not get picked up as
+        # the seed's "last real change" just because is_correction_only=False and it's more
+        # recent than the true last real (measured/manual) row - it would seed a wildly wrong
+        # reference.
+        real = self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        self._persist_measured_row(real, 400, date(2026, 1, 1), date(2026, 1, 1))
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=50,
+            effective_from=date(2026, 1, 5),
+            current_from=date(2026, 1, 5),
+            kind="decayed",
+        )
+        self.athlete.threshold_window_days = 10
+        self.athlete.save(update_fields=["threshold_window_days"])
+        probe = self._make_power_activity("bike", datetime(2026, 1, 20, 7, 0, tzinfo=UTC), power=368)  # implies 350
+
+        from_entries = replay_from(self.athlete, "ftp", date(2026, 1, 20))
+
+        # Correctly seeded from the real row's 380 (7.9% off, within the 30% default band) - a
+        # seed wrongly picking up the decayed row's 50 would reject this (600% off) instead.
+        self.assertEqual(len(from_entries), 1)
+        self.assertEqual(from_entries[0].activity_id, probe.id)
+        self.assertEqual(from_entries[0].value, 350)
 
     def test_critical_run_power_excludes_an_activity_whose_power_source_no_longer_matches_preference(self):
         self.athlete.running_power_source = "stryd"
@@ -1637,6 +1815,19 @@ class ThresholdHistoryAlgorithmTests(TestCase):
             effective_from=date(2026, 3, 1),
             current_from=date(2026, 3, 1),
             kind="manual",
+        )
+
+        # A correction-only row too (issue #494) - exercises the new sanity-reference seeding
+        # path, so replay_from must agree with a full rebuild on whether it affects which later
+        # activities qualify, not just on the manual-phantom path above.
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=210,
+            effective_from=date(2026, 2, 1),
+            current_from=date(2026, 2, 1),
+            kind="manual",
+            is_correction_only=True,
         )
 
         # Establish the pre-change ledger, then mark a random qualifying activity as a duplicate
@@ -1990,6 +2181,72 @@ class RecordManualValueTests(TestCase):
         self.assertEqual(real_result.rerated_count, 1)
         activity.refresh_from_db()
         self.assertAlmostEqual(activity.intensity, diff.new_intensity, delta=0.0005)
+
+    def test_preview_reports_would_requalify_for_a_backdated_correction_only_edit(self):
+        # Issue #494's decay-off half: a backdated correction-only row (Piece A's new sanity
+        # reference) can make a later ride, rejected under the stale spike reference, newly
+        # plausible - preview must surface that as a would_requalify entry, matching exactly
+        # what a real rebuild from the correction's own date would produce (see the equivalent
+        # ThresholdHistoryAlgorithmTests.test_replay_accepts_... for the replay-level version of
+        # this same scenario).
+        spike = self._make_ride(datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=380,
+            source_activity=spike,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="measured",
+        )
+        probe = self._make_ride(datetime(2026, 1, 10, 7, 0, tzinfo=UTC), power=242)  # implies 230
+        trigger_date = datetime(2026, 1, 1, 7, 0, tzinfo=UTC) + timedelta(days=113)
+        Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Short", start_date=trigger_date, moving_time=600
+        )
+
+        result = record_manual_value(
+            self.athlete,
+            "ftp",
+            220,
+            effective_from=date(2026, 1, 5),
+            as_of=date(2026, 1, 5) + timedelta(days=200),  # stale on arrival -> correction-only
+            preview=True,
+        )
+
+        self.assertTrue(result.is_correction_only)
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp", kind="manual").count(), 0)
+        self.assertEqual(len(result.would_requalify), 1)
+        diff = result.would_requalify[0]
+        self.assertIsNone(diff.old_activity_id)
+        self.assertEqual(diff.new_activity_id, probe.id)
+        self.assertIsNone(diff.old_value)
+        self.assertEqual(diff.new_value, 230)
+        self.assertEqual(diff.current_from, trigger_date.date())
+
+    def test_preview_reports_no_requalification_when_nothing_would_change(self):
+        spike = self._make_ride(datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=380,
+            source_activity=spike,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="measured",
+        )
+
+        result = record_manual_value(
+            self.athlete,
+            "ftp",
+            220,
+            effective_from=date(2026, 1, 5),
+            as_of=date(2026, 1, 5) + timedelta(days=200),
+            preview=True,
+        )
+
+        self.assertTrue(result.is_correction_only)
+        self.assertEqual(result.would_requalify, [])
 
     def test_future_date_is_rejected(self):
         with self.assertRaises(ValidationError):

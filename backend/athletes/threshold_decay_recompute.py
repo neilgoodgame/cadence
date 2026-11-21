@@ -24,12 +24,14 @@ from .threshold_decay import DecayCandidate, DecaySettings, Step, simulate
 from .threshold_decay import ManualEntry as DecayManualEntry
 from .threshold_history import (
     FIELD_SPORT,
+    QualificationDiff,
     RerateDiff,
     _accepted_activity_ids,
     _batched_records_for,
     _chunked,
     _implied_value_detail,
     _latest_entry,
+    _qualification_diff,
     _rerate_activities_from,
     _row_value,
     _seconds_to_mmss,
@@ -41,6 +43,7 @@ class ResimulateResult:
     changed: bool
     rerated_count: int = 0
     would_rerate: list[RerateDiff] = dataclass_field(default_factory=list)
+    would_requalify: list[QualificationDiff] = dataclass_field(default_factory=list)
 
 
 def _decay_settings_for(athlete: User) -> DecaySettings:
@@ -151,6 +154,7 @@ def resimulate_suffix(
     manual_set_by: User | None = None,
     rerate_activities: bool = True,
     preview: bool = False,
+    collect_qualification_diff: bool = False,
 ) -> ResimulateResult:
     """Re-simulates `field`'s ledger from `from_date` through `end` (default today) and persists
     the result - the single operation behind every decay-enabled trigger (ingest, manual edit,
@@ -165,6 +169,13 @@ def resimulate_suffix(
     already_recorded=False`) rather than a separate direct write, and `manual_set_by` is attached
     to whichever resulting `Step` is that entry's own.
 
+    `collect_qualification_diff` (issue #494, record_manual_value's own preview flag) diffs the
+    `measured` rows this call is about to delete against the `measured` `Step`s it's about to
+    write in their place - same shape as threshold_history._qualification_diff's decay-off use,
+    deliberately excluding `decayed`/`manual` steps from both sides: those never carry an
+    activity_id, so they're not a "did a different ride qualify" event, the same way a manual
+    winner's own row is already excluded from would_rerate's diff.
+
     Runs inside a transaction holding a row lock on `athlete` for its duration (design doc 4.3) -
     guards against two triggers (e.g. a future daily job and an ingest) re-simulating the same
     field at once."""
@@ -173,6 +184,16 @@ def resimulate_suffix(
 
     with transaction.atomic():
         User.objects.select_for_update().get(pk=athlete.id)
+
+        old_measured_rows = (
+            list(
+                ThresholdHistory.objects.filter(
+                    athlete=athlete, field=field, kind="measured", current_from__gte=from_date
+                )
+            )
+            if collect_qualification_diff
+            else []
+        )
 
         seed_v = _seed_v(athlete, field, from_date)
         seed_anchor_value, seed_anchor_date, seed_anchor_kind = _seed_anchor(athlete, field, from_date)
@@ -200,6 +221,12 @@ def resimulate_suffix(
             from_date,
             end,
             seed_v_value=seed_v,
+        )
+
+        would_requalify = (
+            _qualification_diff(field, old_measured_rows, [step for step in steps if step.kind == "measured"])
+            if collect_qualification_diff
+            else []
         )
 
         ThresholdHistory.objects.filter(
@@ -252,7 +279,9 @@ def resimulate_suffix(
                 athlete, field, from_date, persist=rerate_activities, collect_diff=preview
             )
 
-    return ResimulateResult(changed=changed, rerated_count=rerated_count, would_rerate=would_rerate)
+    return ResimulateResult(
+        changed=changed, rerated_count=rerated_count, would_rerate=would_rerate, would_requalify=would_requalify
+    )
 
 
 def gather_preview_steps(

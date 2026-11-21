@@ -62,6 +62,13 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(
 			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
 
+	// ThresholdHistoryCalculator.replayFullHistory/replayFrom's correction-only sanity-reference
+	// merge (issue #494) - every correction-only row, oldest first. These never enter the
+	// replay's window (see replayFullHistory's own Javadoc), so this is deliberately the mirror
+	// of the CorrectionOnlyFalse finder above, not a filter on it.
+	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAsc(
+			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
+
 	// list_threshold_history MCP tool's optional date-range restriction - `fromDate`/`toDate` are
 	// each independently optional, so a derived "Between" method (which requires both bounds)
 	// doesn't fit; mirrors the "(:param is null or ...)" optional-filter shape used elsewhere in
@@ -147,6 +154,24 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	// currentFrom lookup above.
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
 			String athleteId, ThresholdField field, LocalDate before);
+
+	// ThresholdHistoryCalculator.replayFrom's correction-only sanity-reference seed (issue #494)
+	// - the latest *real* (non-correction) row's own currentFrom, strictly before the scan's
+	// first activity date: what the live per-activity loop's own sanity reference would still be
+	// holding at that point, correction-only rows aside. Strictly-before, not on-or-before - see
+	// replayFrom's own comment on this exact query for why. Excludes DECAYED too - a leftover
+	// from a since-disabled thresholdDecayEnabled period isn't a real window-max event this
+	// (purely windowed-max, decay-unaware) replay ever produced, so using one here would seed
+	// the reference from a value this algorithm wouldn't otherwise recognize at all.
+	Optional<ThresholdHistory>
+			findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
+					String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate before);
+
+	// ThresholdHistoryService.recordManualValue's issue #494 diff - the measured rows already
+	// stored at/after a manual edit's own date, snapshotted before the edit is written, to
+	// compare against a fresh replayFrom's own entries from that same date.
+	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCurrentFromGreaterThanEqualOrderByEffectiveFromAsc(
+			String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate currentFrom);
 
 	// ThresholdDecayRecomputeService's seed: the latest non-decayed row before `before` - the
 	// anchor simulate() decays away from.

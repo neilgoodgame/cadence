@@ -16,6 +16,7 @@ from activities.models import Activity, Record
 
 from .models import ThresholdHistory
 from .tasks import apply_threshold_decay
+from .threshold_decay import ManualEntry as DecayManualEntry
 from .threshold_decay_recompute import gather_preview_steps, resimulate_suffix
 from .threshold_history import recompute_for_activity, record_manual_value, refresh_field
 
@@ -121,6 +122,56 @@ class ResimulateSuffixIntegrationTests(TestCase):
 
         later_activity.refresh_from_db()
         self.assertNotEqual(later_activity.tss, old_tss)
+
+    def test_qualification_diff_detects_a_ride_that_would_now_qualify(self):
+        # Issue #494's decay-on half: a manual anchor correction can make a later ride, rejected
+        # under the old anchor, newly plausible - collect_qualification_diff must surface that as
+        # a would_requalify entry even though nothing is persisted differently about the ride
+        # itself (it simply has no measured row yet, before or after the correction decides it).
+        athlete = _decay_athlete(threshold_window_days=10, threshold_sanity_pct=20)
+        _make_power_activity(athlete, datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)  # implies 380
+        recompute_for_activity(Activity.objects.get(athlete=athlete))
+        probe = _make_power_activity(athlete, datetime(2026, 1, 8, 7, 0, tzinfo=UTC), power=632)  # implies 600
+
+        # Without the correction, 600 is 57.9% off the 380 anchor - well outside the 20% band.
+        baseline = resimulate_suffix(athlete, "ftp", date(2026, 1, 5), end=date(2026, 1, 10))
+        self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete, field="ftp", source_activity=probe).exists())
+
+        result = resimulate_suffix(
+            athlete,
+            "ftp",
+            date(2026, 1, 5),
+            end=date(2026, 1, 10),
+            new_manual_entry=DecayManualEntry(date=date(2026, 1, 5), value=580, already_recorded=False),
+            collect_qualification_diff=True,
+        )
+
+        self.assertEqual(baseline.rerated_count, 0)  # sanity-check the "before" state above is real
+        self.assertEqual(len(result.would_requalify), 1)
+        diff = result.would_requalify[0]
+        self.assertIsNone(diff.old_activity_id)
+        self.assertEqual(diff.new_activity_id, probe.id)
+        self.assertIsNone(diff.old_value)
+        self.assertEqual(diff.new_value, 600)
+        self.assertEqual(diff.current_from, date(2026, 1, 8))
+        probe_row = ThresholdHistory.objects.get(athlete=athlete, field="ftp", source_activity=probe)
+        self.assertEqual(probe_row.value_numeric, 600)  # the diff matches what was actually persisted
+
+    def test_qualification_diff_is_empty_when_nothing_would_requalify(self):
+        athlete = _decay_athlete(threshold_window_days=10, threshold_sanity_pct=20)
+        _make_power_activity(athlete, datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=260)
+        recompute_for_activity(Activity.objects.get(athlete=athlete))
+
+        result = resimulate_suffix(
+            athlete,
+            "ftp",
+            date(2026, 1, 5),
+            end=date(2026, 1, 10),
+            new_manual_entry=DecayManualEntry(date=date(2026, 1, 5), value=247, already_recorded=False),
+            collect_qualification_diff=True,
+        )
+
+        self.assertEqual(result.would_requalify, [])
 
 
 class RefreshFieldWiringTests(TestCase):

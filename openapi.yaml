@@ -2367,8 +2367,10 @@ paths:
                   default: false
                   description: >
                     Computes the same outcome - including which activities would be re-rated and
-                    their current vs. new intensity/tss - without saving anything. See
-                    `threshold_edit_results.would_rerate` in the response.
+                    their current vs. new intensity/tss, and which later ride(s) would newly (or
+                    no longer) qualify if a full rebuild were run from this edit's own date -
+                    without saving anything. See `threshold_edit_results.would_rerate`/
+                    `would_requalify` in the response.
                 threshold_window_days: { type: integer, description: See the User schema. }
                 threshold_sanity_pct: { type: integer, description: See the User schema. }
                 threshold_warning_days: { type: integer, enum: [14, 21, 28, 0], description: See the User schema. }
@@ -5942,6 +5944,16 @@ components:
           description: Populated only when preview=true - what rerate_activities=true would do, without saving it.
           items:
             $ref: "#/components/schemas/RerateDiff"
+        would_requalify:
+          type: array
+          description: >-
+            Populated only when preview=true - the ledger slots (by current_from) where running
+            a full rebuild from this edit's own date would pick a different winner than what's
+            currently stored, i.e. this correction would also change which later ride(s) qualify.
+            Always empty for a decay-enabled athlete's correction-only edit (one that doesn't
+            become the live value) - that combination isn't detectable yet.
+          items:
+            $ref: "#/components/schemas/QualificationDiff"
 
     RerateDiff:
       type: object
@@ -5953,6 +5965,21 @@ components:
         new_intensity: { type: [number, "null"] }
         old_tss: { type: [integer, "null"] }
         new_tss: { type: [integer, "null"] }
+
+    QualificationDiff:
+      type: object
+      description: >-
+        One ledger slot where a rebuild would produce a different winner than what's currently
+        stored (part of ThresholdEditResult.would_requalify). old_activity_id/new_activity_id are
+        null when that slot doesn't exist on that side (e.g. a ride that would newly qualify, or
+        one that would no longer). old_value/new_value follow the field's own wire convention -
+        a "M:SS" string for threshold_pace, a plain number otherwise - same as elsewhere.
+      properties:
+        current_from: { type: string, format: date }
+        old_activity_id: { type: [string, "null"], example: act_9f2a7c }
+        new_activity_id: { type: [string, "null"], example: act_3b81df }
+        old_value: { type: [number, string, "null"] }
+        new_value: { type: [number, string, "null"] }
 
     MergeResult:
       type: object

@@ -13,6 +13,7 @@ import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -98,6 +99,18 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 		entry.setEffectiveFrom(effectiveFrom);
 		entry.setCurrentFrom(effectiveFrom);
 		entry.setKind(kind);
+		return thresholdHistoryRepository.save(entry);
+	}
+
+	private ThresholdHistory newCorrectionOnlyRow(User owner, ThresholdField field, int valueNumeric, LocalDate effectiveFrom) {
+		ThresholdHistory entry = new ThresholdHistory();
+		entry.setAthlete(owner);
+		entry.setField(field);
+		entry.setValueNumeric(valueNumeric);
+		entry.setEffectiveFrom(effectiveFrom);
+		entry.setCurrentFrom(effectiveFrom);
+		entry.setKind(ThresholdHistoryKind.MANUAL);
+		entry.setCorrectionOnly(true);
 		return thresholdHistoryRepository.save(entry);
 	}
 
@@ -499,6 +512,78 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 		assertThat(entries.get(entries.size() - 1).value()).isEqualTo(Math.round(0.95 * powers[powers.length - 1]));
 	}
 
+	// --- replayFullHistory: correction-only row as sanity reference (issue #494) ---
+
+	@Test
+	void replayAcceptsALaterActivityUsingACorrectionOnlyRowAsSanityReference() {
+		// The #494 motivating case: a sensor-spike reading (400W -> 380 FTP) becomes the window's
+		// own reference, then a backdated correction-only row fixes the real value down to 220 -
+		// a later, genuinely plausible ride (implies 230) would fail the sanity band against the
+		// spike (39.5% off) but passes against the correction (4.5% off), and must now qualify.
+		athlete = newAthlete("threshold-history-494-accept@example.cc", 200);
+		Activity spike = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 400, 1200);
+		newCorrectionOnlyRow(athlete, ThresholdField.FTP, 220, LocalDate.of(2026, 1, 5));
+		Activity probe = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-10T07:00:00Z"), 242, 1200); // implies 230
+		// >112 days after the spike (so it ages out of the window) but still within 112 days of
+		// probe - too short to be a candidate itself, purely the trigger that reveals the window.
+		Instant triggerDate = Instant.parse("2026-01-01T07:00:00Z").plusSeconds(113L * 86400);
+		newPowerActivity(athlete, Sport.BIKE, triggerDate, 999, 600);
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> entries =
+				calculator.replayFullHistory(athlete, ThresholdField.FTP);
+
+		assertThat(entries).hasSize(2);
+		assertThat(entries.get(0).activityId()).isEqualTo(spike.getId());
+		assertThat(entries.get(1).activityId()).isEqualTo(probe.getId());
+		assertThat(entries.get(1).value()).isEqualTo(230);
+		assertThat(entries.get(1).effectiveFrom()).isEqualTo(LocalDate.of(2026, 1, 10));
+		assertThat(entries.get(1).currentFrom()).isEqualTo(triggerDate.atZone(ZoneOffset.UTC).toLocalDate());
+	}
+
+	@Test
+	void replayRejectsALaterActivityUsingACorrectionOnlyRowAsSanityReference() {
+		// The mirror case: a ride plausible against the stale spike (380) but implausible against
+		// the correction (220) must now be rejected, even though it would have qualified before
+		// the correction-only row existed - and the window-max/#484 guarantee is untouched: the
+		// correction itself never enters entries or the window.
+		athlete = newAthlete("threshold-history-494-reject@example.cc", 200);
+		Activity spike = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 400, 1200);
+		newCorrectionOnlyRow(athlete, ThresholdField.FTP, 220, LocalDate.of(2026, 1, 5));
+		Activity rejected = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-10T07:00:00Z"), 368, 1200); // implies 350
+		Instant triggerDate = Instant.parse("2026-01-01T07:00:00Z").plusSeconds(113L * 86400);
+		newPowerActivity(athlete, Sport.BIKE, triggerDate, 999, 600);
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> entries =
+				calculator.replayFullHistory(athlete, ThresholdField.FTP);
+
+		assertThat(entries).hasSize(1); // only the spike - rejected never enters the ledger
+		assertThat(entries.get(0).activityId()).isEqualTo(spike.getId());
+		assertThat(entries).noneMatch(e -> e.activityId().equals(rejected.getId()));
+	}
+
+	@Test
+	void replayKeepsTheCorrectionOnlySanityReferenceAfterTheWindowEmpties() {
+		// Risk 1: the window emptying (currentValue -> null) must not reset the sanity reference
+		// to null too, or withinSanityBand's "no reference yet" passthrough would silently accept
+		// anything until the next window-max arrives.
+		athlete = newAthlete("threshold-history-494-sticky@example.cc", 200);
+		athlete.setThresholdWindowDays(10);
+		Activity first = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 242, 1200); // implies 230
+		newCorrectionOnlyRow(athlete, ThresholdField.FTP, 220, LocalDate.of(2026, 1, 3));
+		// >10 days after `first` - the window empties here (no qualifying candidate survives).
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-15T07:00:00Z"), 999, 600);
+		// If the reference had reset to null, this (implies 600 - wildly implausible against the
+		// 220 correction) would wrongly qualify and become the new current value.
+		Activity rejected = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-16T07:00:00Z"), 632, 1200);
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> entries =
+				calculator.replayFullHistory(athlete, ThresholdField.FTP);
+
+		assertThat(entries).hasSize(1);
+		assertThat(entries.get(0).activityId()).isEqualTo(first.getId());
+		assertThat(entries).noneMatch(e -> e.activityId().equals(rejected.getId()));
+	}
+
 	// --- replayFrom (issue #545) ---
 
 	private ThresholdHistory persistRow(User owner, ThresholdField field, Activity source, int power,
@@ -579,5 +664,79 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 
 		assertThat(from).isEqualTo(tailFrom(full, fromDate)); // exactly B's cross-boundary row
 		assertThat(from).hasSize(1);
+	}
+
+	// --- replayFrom: seeding the correction-only sanity reference (issue #494) ---
+
+	@Test
+	void replayFromSeedsTheSanityReferenceFromACorrectionOnlyRowMoreRecentThanTheLastRealChange() {
+		// Both the real change (S, 380) and the correction (220) land before scanStart, so this
+		// exercises the new seeding comparison itself, not just the live per-activity merge - the
+		// correction is the more recent of the two, so it alone must govern the probe's
+		// qualification. A naive seed (falling back to the then-empty window, i.e. no reference
+		// at all) would wrongly accept the probe regardless of its value - this wouldn't.
+		athlete = newAthlete("threshold-history-494-from-correction-wins@example.cc", 200);
+		athlete.setThresholdWindowDays(10);
+		Activity s = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 400, 1200);
+		persistRow(athlete, ThresholdField.FTP, s, 400, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1));
+		newCorrectionOnlyRow(athlete, ThresholdField.FTP, 220, LocalDate.of(2026, 1, 10));
+		LocalDate fromDate = LocalDate.of(2026, 1, 30);
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-30T07:00:00Z"), 632, 1200); // implies 600 - rejected
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> from =
+				calculator.replayFrom(athlete, ThresholdField.FTP, fromDate);
+
+		assertThat(from).isEmpty();
+	}
+
+	@Test
+	void replayFromSeedsTheSanityReferenceFromARealChangeMoreRecentThanAStaleCorrection() {
+		// The mirror seeding case: the correction (220) is the *stale* one here, predating a real
+		// change (S2, 380) that's since superseded it - both before scanStart. The probe must be
+		// checked against S2's 380, not the stale correction, and not against the window's own
+		// current value either (S2 has aged out of the window itself by the probe's date, but the
+		// sanity reference must stay sticky on S2's value regardless - see the Risk 1 guard this
+		// mirrors at the seed boundary).
+		athlete = newAthlete("threshold-history-494-from-real-change-wins@example.cc", 200);
+		newCorrectionOnlyRow(athlete, ThresholdField.FTP, 220, LocalDate.of(2026, 1, 1));
+		Activity s2 = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-10T07:00:00Z"), 400, 1200);
+		persistRow(athlete, ThresholdField.FTP, s2, 400, LocalDate.of(2026, 1, 10), LocalDate.of(2026, 1, 10));
+		LocalDate fromDate = LocalDate.of(2026, 6, 1);
+		Activity probe = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-06-01T07:00:00Z"), 474, 1200); // implies 450
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> from =
+				calculator.replayFrom(athlete, ThresholdField.FTP, fromDate);
+
+		assertThat(from).hasSize(1);
+		assertThat(from.get(0).activityId()).isEqualTo(probe.getId());
+		assertThat(from.get(0).value()).isEqualTo(450);
+		assertThat(from.get(0).effectiveFrom()).isEqualTo(fromDate);
+		assertThat(from.get(0).currentFrom()).isEqualTo(fromDate);
+	}
+
+	@Test
+	void replayFromSeedingSkipsALeftoverDecayedRowFromASinceDisabledDecayPeriod() {
+		// A DECAYED row is never a real window-max event this (purely windowed-max, decay-
+		// unaware) replay would ever have produced itself - it's only ever written by
+		// ThresholdDecayRecomputeService, for an athlete who had thresholdDecayEnabled at the
+		// time. If the athlete later disables decay, that leftover row must not get picked up
+		// as the seed's "last real change" just because correctionOnly=false and it's more
+		// recent than the true last real (measured/manual) row - it would seed a wildly wrong
+		// reference.
+		athlete = newAthlete("threshold-history-494-skips-decayed@example.cc", 200);
+		athlete.setThresholdWindowDays(10);
+		Activity real = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 400, 1200);
+		persistRow(athlete, ThresholdField.FTP, real, 400, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1));
+		newEntry(athlete, ThresholdField.FTP, null, 50, LocalDate.of(2026, 1, 5), ThresholdHistoryKind.DECAYED);
+		Activity probe = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-20T07:00:00Z"), 368, 1200); // implies 350
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> from =
+				calculator.replayFrom(athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 20));
+
+		// Correctly seeded from the real row's 380 (7.9% off, within the 30% default band) - a
+		// seed wrongly picking up the DECAYED row's 50 would reject this (600% off) instead.
+		assertThat(from).hasSize(1);
+		assertThat(from.get(0).activityId()).isEqualTo(probe.getId());
+		assertThat(from.get(0).value()).isEqualTo(350);
 	}
 }

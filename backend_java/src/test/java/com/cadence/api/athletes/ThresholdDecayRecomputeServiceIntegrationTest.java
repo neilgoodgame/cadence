@@ -124,7 +124,7 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 		LocalDate expiry = anchorDate.plusDays(athlete.getThresholdWindowDays() + 1L);
 		LocalDate end = expiry.plusDays(30);
 		ThresholdDecayRecomputeService.ResimulateResult result =
-				decayRecomputeService.resimulateSuffix(athlete, ThresholdField.FTP, expiry, end, null, null, true, false);
+				decayRecomputeService.resimulateSuffix(athlete, ThresholdField.FTP, expiry, end, null, null, true, false, false);
 
 		assertThat(result.changed()).isTrue();
 		List<ThresholdHistory> decayed = thresholdHistoryRepository
@@ -132,6 +132,55 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 				.stream().filter(e -> e.getKind() == ThresholdHistoryKind.DECAYED).toList();
 		assertThat(decayed).isNotEmpty();
 		assertThat(decayed.get(decayed.size() - 1).getValueNumeric()).isLessThan(260);
+	}
+
+	// issue #494's decay-on half: a manual anchor correction can make a later ride, rejected
+	// under the old anchor, newly plausible - collectQualificationDiff must surface that as a
+	// wouldRequalify entry even though nothing is persisted differently about the ride itself
+	// (it simply has no measured row yet, before or after the correction decides it).
+	@Test
+	void qualificationDiffDetectsARideThatWouldNowQualify() {
+		User athlete = newDecayAthlete("decay-494-qualify@example.cc");
+		athlete.setThresholdSanityPct(20);
+		userRepository.save(athlete);
+		Activity anchor = newPowerActivity(athlete, LocalDate.of(2026, 1, 1).atStartOfDay(ZoneOffset.UTC).toInstant(), 400, 1200); // implies 380
+		thresholdHistoryService.recomputeForActivity(anchor);
+		Activity probe = newPowerActivity(athlete, LocalDate.of(2026, 1, 8).atStartOfDay(ZoneOffset.UTC).toInstant(), 632, 1200); // implies 600
+
+		// Without the correction, 600 is 57.9% off the 380 anchor - well outside the 20% band.
+		ThresholdDecayRecomputeService.ResimulateResult baseline = decayRecomputeService.resimulateSuffix(
+				athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 10), null, null, true, false, false);
+		assertThat(thresholdHistoryRepository.findBySourceActivityId(probe.getId())).isEmpty();
+
+		ThresholdDecay.ManualEntry correction = new ThresholdDecay.ManualEntry(LocalDate.of(2026, 1, 5), 580.0, null, false);
+		ThresholdDecayRecomputeService.ResimulateResult result = decayRecomputeService.resimulateSuffix(
+				athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 10), correction, null, true, false, true);
+
+		assertThat(baseline.reratedCount()).isEqualTo(0); // sanity-check the "before" state above is real
+		assertThat(result.wouldRequalify()).hasSize(1);
+		var diff = result.wouldRequalify().get(0);
+		assertThat(diff.oldActivityId()).isNull();
+		assertThat(diff.newActivityId()).isEqualTo(probe.getId());
+		assertThat(diff.oldValue()).isNull();
+		assertThat(diff.newValue()).isEqualTo(600);
+		assertThat(diff.currentFrom()).isEqualTo(LocalDate.of(2026, 1, 8));
+		ThresholdHistory probeRow = thresholdHistoryRepository.findBySourceActivityId(probe.getId()).get(0);
+		assertThat(probeRow.getValueNumeric()).isEqualTo(600); // the diff matches what was actually persisted
+	}
+
+	@Test
+	void qualificationDiffIsEmptyWhenNothingWouldRequalify() {
+		User athlete = newDecayAthlete("decay-494-noop@example.cc");
+		athlete.setThresholdSanityPct(20);
+		userRepository.save(athlete);
+		Activity anchor = newPowerActivity(athlete, LocalDate.of(2026, 1, 1).atStartOfDay(ZoneOffset.UTC).toInstant(), 260, 1200);
+		thresholdHistoryService.recomputeForActivity(anchor);
+
+		ThresholdDecay.ManualEntry correction = new ThresholdDecay.ManualEntry(LocalDate.of(2026, 1, 5), 247.0, null, false);
+		ThresholdDecayRecomputeService.ResimulateResult result = decayRecomputeService.resimulateSuffix(
+				athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 10), correction, null, true, false, true);
+
+		assertThat(result.wouldRequalify()).isEmpty();
 	}
 
 	@Test
@@ -145,7 +194,7 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 		Instant start = anchorDate.atStartOfDay(ZoneOffset.UTC).toInstant();
 		newPowerActivity(athlete, start, 260, 1200);
 		LocalDate yesterday = LocalDate.now().minusDays(1);
-		decayRecomputeService.resimulateSuffix(athlete, ThresholdField.FTP, anchorDate, yesterday, null, null, true, false);
+		decayRecomputeService.resimulateSuffix(athlete, ThresholdField.FTP, anchorDate, yesterday, null, null, true, false, false);
 		Set<Long> idsBefore = new HashSet<>(thresholdHistoryRepository
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)
 				.stream().map(ThresholdHistory::getId).toList());

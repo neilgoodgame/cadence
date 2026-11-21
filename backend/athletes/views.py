@@ -212,6 +212,16 @@ class AthleteDetailView(APIView):
                     }
                     for diff in result.would_rerate
                 ],
+                "would_requalify": [
+                    {
+                        "current_from": diff.current_from.isoformat(),
+                        "old_activity_id": diff.old_activity_id,
+                        "new_activity_id": diff.new_activity_id,
+                        "old_value": diff.old_value,
+                        "new_value": diff.new_value,
+                    }
+                    for diff in result.would_requalify
+                ],
             }
             for field, result in threshold_results.items()
         }

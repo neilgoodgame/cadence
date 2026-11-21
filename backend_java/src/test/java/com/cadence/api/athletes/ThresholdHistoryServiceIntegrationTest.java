@@ -18,6 +18,7 @@ import com.cadence.api.users.User;
 import com.cadence.api.users.UserRepository;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -369,6 +370,86 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		return new AthleteUpdateRequest(null, null, null, ftp, null, null, null, null, null, null, null, null, null, null,
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
 				null, null, null, null, true, preview, null, null, null, null, null, null, null, null);
+	}
+
+	// As previewRequest, but with an explicit effectiveFrom (issue #493/#494 backdating).
+	private AthleteUpdateRequest backdatedPreviewRequest(int ftp, LocalDate effectiveFrom, boolean preview) {
+		return new AthleteUpdateRequest(null, null, null, ftp, null, null, null, null, null, null, null, null, null, null,
+				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+				null, null, null, effectiveFrom, true, preview, null, null, null, null, null, null, null, null);
+	}
+
+	// issue #494: the decay-off half - a correction-only row (Piece A's new sanity reference)
+	// can make a later ride, rejected under the stale spike reference, newly plausible - preview
+	// must surface that as a wouldRequalify entry, matching exactly what a real rebuild from the
+	// correction's own date would produce (see the equivalent
+	// ThresholdHistoryCalculatorTest.replayAcceptsALaterActivityUsingACorrectionOnlyRowAsSanityReference
+	// for the replay-level version of this same scenario).
+	@Test
+	void previewReportsWouldRequalifyForABackdatedCorrectionOnlyEdit() {
+		User athlete = newAthlete("manual-threshold-494-accept@example.cc");
+		Activity spike = newPowerActivity(athlete, Instant.parse("2026-01-01T07:00:00Z"), 400, 1200);
+		ThresholdHistory spikeRow = new ThresholdHistory();
+		spikeRow.setAthlete(athlete);
+		spikeRow.setField(ThresholdField.FTP);
+		spikeRow.setValueNumeric(380);
+		spikeRow.setSourceActivity(spike);
+		spikeRow.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		spikeRow.setCurrentFrom(LocalDate.of(2026, 1, 1));
+		spikeRow.setKind(ThresholdHistoryKind.MEASURED);
+		thresholdHistoryRepository.save(spikeRow);
+		Activity probe = newPowerActivity(athlete, Instant.parse("2026-01-10T07:00:00Z"), 242, 1200); // implies 230
+		Instant triggerInstant = Instant.parse("2026-01-01T07:00:00Z").plusSeconds(113L * 86400);
+		newPowerActivity(athlete, triggerInstant, 999, 600);
+
+		AthleteService.Outcome previewOutcome;
+		try {
+			athleteService.updateProfile(athlete, backdatedPreviewRequest(220, LocalDate.of(2026, 1, 5), true));
+			throw new AssertionError("Expected PreviewRollbackSignal - preview=true didn't roll back.");
+		}
+		catch (PreviewRollbackSignal signal) {
+			previewOutcome = signal.outcome();
+		}
+
+		var result = previewOutcome.thresholdResults().get(ThresholdField.FTP);
+		assertThat(result.isCorrectionOnly()).isTrue();
+		assertThat(thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(1);
+		assertThat(result.wouldRequalify()).hasSize(1);
+		var diff = result.wouldRequalify().get(0);
+		assertThat(diff.oldActivityId()).isNull();
+		assertThat(diff.newActivityId()).isEqualTo(probe.getId());
+		assertThat(diff.oldValue()).isNull();
+		assertThat(diff.newValue()).isEqualTo(230);
+		assertThat(diff.currentFrom()).isEqualTo(triggerInstant.atZone(ZoneOffset.UTC).toLocalDate());
+	}
+
+	@Test
+	void previewReportsNoRequalificationWhenNothingWouldChange() {
+		User athlete = newAthlete("manual-threshold-494-noop@example.cc");
+		Activity spike = newPowerActivity(athlete, Instant.parse("2026-01-01T07:00:00Z"), 400, 1200);
+		ThresholdHistory spikeRow = new ThresholdHistory();
+		spikeRow.setAthlete(athlete);
+		spikeRow.setField(ThresholdField.FTP);
+		spikeRow.setValueNumeric(380);
+		spikeRow.setSourceActivity(spike);
+		spikeRow.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+		spikeRow.setCurrentFrom(LocalDate.of(2026, 1, 1));
+		spikeRow.setKind(ThresholdHistoryKind.MEASURED);
+		thresholdHistoryRepository.save(spikeRow);
+
+		AthleteService.Outcome previewOutcome;
+		try {
+			athleteService.updateProfile(athlete, backdatedPreviewRequest(220, LocalDate.of(2026, 1, 5), true));
+			throw new AssertionError("Expected PreviewRollbackSignal - preview=true didn't roll back.");
+		}
+		catch (PreviewRollbackSignal signal) {
+			previewOutcome = signal.outcome();
+		}
+
+		var result = previewOutcome.thresholdResults().get(ThresholdField.FTP);
+		assertThat(result.isCorrectionOnly()).isTrue();
+		assertThat(result.wouldRequalify()).isEmpty();
 	}
 
 	@Test
@@ -736,6 +817,19 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		manual.setCurrentFrom(LocalDate.of(2026, 3, 1));
 		manual.setKind(ThresholdHistoryKind.MANUAL);
 		thresholdHistoryRepository.save(manual);
+
+		// A correction-only row too (issue #494) - exercises the new sanity-reference seeding
+		// path, so rebuildHistoryFrom must agree with a full rebuild on whether it affects which
+		// later activities qualify, not just on the manual-phantom path above.
+		ThresholdHistory correction = new ThresholdHistory();
+		correction.setAthlete(athlete);
+		correction.setField(ThresholdField.FTP);
+		correction.setValueNumeric(210);
+		correction.setEffectiveFrom(LocalDate.of(2026, 2, 1));
+		correction.setCurrentFrom(LocalDate.of(2026, 2, 1));
+		correction.setKind(ThresholdHistoryKind.MANUAL);
+		correction.setCorrectionOnly(true);
+		thresholdHistoryRepository.save(correction);
 
 		// Establish the pre-change ledger, then mark a random qualifying activity as a duplicate
 		// of another one (direct FK - the point is to compare the two rebuild paths, not
