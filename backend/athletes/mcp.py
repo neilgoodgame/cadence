@@ -12,14 +12,15 @@ from django.utils.dateparse import parse_date
 from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
-from activities.models import BestEffort
+from activities.models import Activity, BestEffort
 from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 
+from .decay_load import above_z2_load_for_activity
 from .models import ThresholdHistory
 from .threshold_decay_recompute import gather_preview_steps
-from .threshold_history import _seconds_to_mmss, candidate_statuses
+from .threshold_history import FIELD_SPORT, _seconds_to_mmss, candidate_statuses
 from .views import (
     BEST_EFFORT_PERIOD_DAYS,
     LOWER_IS_BETTER_KINDS,
@@ -444,6 +445,57 @@ class AthleteMCPTools(ScopedMCPToolset):
                     "current_from": step.current_from.isoformat(),
                 }
                 for step in steps
+            ],
+        }
+
+    def list_activity_above_z2_load(
+        self,
+        field: str,
+        from_date: str,
+        to_date: str,
+        reference: int | None = None,
+        include_duplicates: bool = False,
+    ) -> dict[str, Any]:
+        """Issue #487: for every one of the athlete's activities of field's sport between
+        from_date and to_date, the above-Z2 training load above_z2_load_for_activity computes
+        from its stored intensity histogram - the same per-activity number the threshold-decay
+        load term sums into a 42-day EWMA, exposed directly here for calibrating that load term
+        against real history. reference, if given, overrides every activity's own in-effect
+        threshold (otherwise each uses whatever was actually recorded as current on its own
+        date) - e.g. to ask what this load would have looked like if FTP had been a fixed value
+        the whole time. above_z2_load is null for an activity with no usable histogram data, or
+        no reference to measure it against - never a fabricated 0.0. include_duplicates
+        (default false) also includes same-ride-twice duplicate copies, which are otherwise
+        excluded entirely (issue #498)."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        field = _validate_threshold_field(field)
+        from_d = parse_date(from_date)
+        if from_d is None:
+            raise ValidationError({"from_date": "Must be a date in YYYY-MM-DD format."})
+        to_d = parse_date(to_date)
+        if to_d is None:
+            raise ValidationError({"to_date": "Must be a date in YYYY-MM-DD format."})
+        if from_d > to_d:
+            raise ValidationError({"from_date": "Must not be after to_date."})
+
+        athlete = get_object_or_404(User, pk=athlete_id)
+        qs = Activity.objects.filter(
+            athlete=athlete, sport=FIELD_SPORT[field], start_date__date__gte=from_d, start_date__date__lte=to_d
+        )
+        if not include_duplicates:
+            qs = qs.filter(primary_activity__isnull=True)
+
+        return {
+            "field": field,
+            "data": [
+                {
+                    "activity_id": activity.id,
+                    "date": activity.start_date.date().isoformat(),
+                    "above_z2_load": above_z2_load_for_activity(activity, field, reference),
+                }
+                for activity in qs.order_by("start_date")
             ],
         }
 

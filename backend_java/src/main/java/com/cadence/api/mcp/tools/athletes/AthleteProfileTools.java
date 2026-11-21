@@ -1,5 +1,8 @@
 package com.cadence.api.mcp.tools.athletes;
 
+import com.cadence.api.activities.Activity;
+import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.athletes.DecayLoadService;
 import com.cadence.api.athletes.ThresholdDecay;
 import com.cadence.api.athletes.ThresholdDecayRecomputeService;
 import com.cadence.api.athletes.ThresholdField;
@@ -10,6 +13,7 @@ import com.cadence.api.athletes.ZoneService;
 import com.cadence.api.athletes.dto.ThresholdHistoryEntryResponse;
 import com.cadence.api.athletes.dto.ThresholdSummaryEntry;
 import com.cadence.api.athletes.dto.ZoneSetResponse;
+import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.mcp.dispatch.McpScopes;
 import com.cadence.api.mcp.dispatch.McpToolAuthorizer;
@@ -17,7 +21,9 @@ import com.cadence.api.mcp.dto.McpAthleteProfile;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,20 +44,28 @@ public class AthleteProfileTools {
 	private final ThresholdHistoryService thresholdHistoryService;
 	private final ThresholdHistoryCalculator thresholdHistoryCalculator;
 	private final ThresholdDecayRecomputeService thresholdDecayRecomputeService;
+	private final DecayLoadService decayLoadService;
+	private final ActivityRepository activityRepository;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public AthleteProfileTools(UserService userService, ZoneService zoneService,
 			ThresholdHistoryService thresholdHistoryService, ThresholdHistoryCalculator thresholdHistoryCalculator,
-			ThresholdDecayRecomputeService thresholdDecayRecomputeService, AccessGuard accessGuard,
-			McpToolAuthorizer authorizer) {
+			ThresholdDecayRecomputeService thresholdDecayRecomputeService, DecayLoadService decayLoadService,
+			ActivityRepository activityRepository, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.userService = userService;
 		this.zoneService = zoneService;
 		this.thresholdHistoryService = thresholdHistoryService;
 		this.thresholdHistoryCalculator = thresholdHistoryCalculator;
 		this.thresholdDecayRecomputeService = thresholdDecayRecomputeService;
+		this.decayLoadService = decayLoadService;
+		this.activityRepository = activityRepository;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
+	}
+
+	private static Sport sportFor(ThresholdField field) {
+		return field == ThresholdField.FTP ? Sport.BIKE : Sport.RUN;
 	}
 
 	private ThresholdField parseField(String field) {
@@ -266,6 +280,52 @@ public class AthleteProfileTools {
 					row.put("current_from", step.currentFrom());
 					return row;
 				}).toList());
+	}
+
+	@McpTool(name = "list_activity_above_z2_load", description = "Issue #487: for every one of "
+			+ "the athlete's activities of field's sport between from and to, the above-Z2 "
+			+ "training load DecayLoadService#aboveZ2LoadForActivity computes from its stored "
+			+ "intensity histogram - the same per-activity number the threshold-decay load term "
+			+ "sums into a 42-day EWMA, exposed directly here for calibrating that load term "
+			+ "against real history. reference, if given, overrides every activity's own "
+			+ "in-effect threshold (otherwise each uses whatever was actually recorded as "
+			+ "current on its own date) - e.g. to ask what this load would have looked like if "
+			+ "FTP had been a fixed value the whole time. aboveZ2Load is null for an activity "
+			+ "with no usable histogram data, or no reference to measure it against - never a "
+			+ "fabricated 0.0. includeDuplicates (default false) also includes same-ride-twice "
+			+ "duplicate copies, which are otherwise excluded entirely (issue #498).",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public Map<String, Object> listActivityAboveZ2Load(
+			@McpToolParam(description = "ftp, critical_run_power, or threshold_pace", required = true) String field,
+			@McpToolParam(description = "Start date (YYYY-MM-DD)", required = true) LocalDate from,
+			@McpToolParam(description = "End date (YYYY-MM-DD)", required = true) LocalDate to,
+			@McpToolParam(description = "Overrides every activity's own in-effect threshold, if given",
+					required = false) Double reference,
+			@McpToolParam(description = "Also include same-ride-twice duplicate copies, default false",
+					required = false) Boolean includeDuplicates) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireRead(athleteId);
+		ThresholdField effectiveField = parseField(field);
+		if (from.isAfter(to)) {
+			throw new ValidationException("Must not be after to.", "from");
+		}
+		User athlete = userService.getById(athleteId);
+		Instant start = from.atStartOfDay(ZoneOffset.UTC).toInstant();
+		Instant end = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+		List<Activity> activities = activityRepository.findForThresholdWindow(
+				athleteId, sportFor(effectiveField), start, end, Boolean.TRUE.equals(includeDuplicates));
+
+		List<Map<String, Object>> data = activities.stream().map(activity -> {
+			Map<String, Object> row = new LinkedHashMap<>();
+			row.put("activity_id", activity.getId());
+			row.put("date", activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
+			row.put("above_z2_load",
+					decayLoadService.aboveZ2LoadForActivity(activity, athlete, effectiveField, reference));
+			return row;
+		}).toList();
+		return Map.of("field", field, "data", data);
 	}
 
 	@McpTool(name = "get_sensor_preferences", description = "Get the authenticated athlete's "

@@ -27,14 +27,25 @@ public class DecayLoadService {
 
 	private final ActivityRepository activityRepository;
 	private final ActivityIntensityHistogramService histogramService;
+	private final ZoneService zoneService;
 
-	public DecayLoadService(ActivityRepository activityRepository, ActivityIntensityHistogramService histogramService) {
+	public DecayLoadService(ActivityRepository activityRepository, ActivityIntensityHistogramService histogramService,
+			ZoneService zoneService) {
 		this.activityRepository = activityRepository;
 		this.histogramService = histogramService;
+		this.zoneService = zoneService;
 	}
 
 	private static Sport sportFor(ThresholdField field) {
 		return field == ThresholdField.FTP ? Sport.BIKE : Sport.RUN;
+	}
+
+	private static ZoneType zoneTypeFor(ThresholdField field) {
+		return switch (field) {
+			case FTP -> ZoneType.BIKE_POWER;
+			case CRITICAL_RUN_POWER -> ZoneType.RUN_POWER;
+			case THRESHOLD_PACE -> ZoneType.PACE;
+		};
 	}
 
 	/** Every qualifying activity (same sport/primaryActivity-is-null filter {@code
@@ -57,5 +68,42 @@ public class DecayLoadService {
 		}
 
 		return DecayLoad.decayLoadSeries(dailyLoads);
+	}
+
+	/** Issue #487: {@link DecayLoad#activityLoad} for exactly one activity, resolving its own
+	 * histogram and reference threshold - the per-activity number {@code
+	 * listActivityAboveZ2Load} exposes directly, and the per-day building block {@code
+	 * computeAboveZ2FitnessSeries} sums into a CTL/ATL series. {@code athlete} is taken
+	 * explicitly, not read off {@code activity.getAthlete()} - this is called from a batch over
+	 * many activities outside any one transaction, so a lazy association on an activity fetched
+	 * in an earlier (already-closed) transaction would throw {@code LazyInitializationException}
+	 * (same gotcha as backend_java/CLAUDE.md's "controller loads an entity, lazy associations
+	 * can't be read" note); the caller already has the athlete loaded anyway. {@code reference}
+	 * overrides the activity's own in-effect anchor ({@link ZoneService#referenceFor(User,
+	 * ZoneType, Activity)}) when given, e.g. to ask "what if FTP had been X the whole time" for
+	 * calibration - never applies to the HR fallback's own lthr, which (like {@link
+	 * #loadByDayForAthlete}) always reads the athlete's current stored value. Returns null (not
+	 * 0.0) when there's no histogram data at all, or no reference to measure it against - {@link
+	 * DecayLoad#activityLoad} itself conflates either of those with "zero load above cutoff",
+	 * this wrapper doesn't.
+	 *
+	 * <p>For {@code THRESHOLD_PACE}, referenceFor resolves a pace-in-seconds number - if the same
+	 * activity also has a power histogram, activityLoad's power branch would divide watts by that
+	 * pace number, which is nonsensical. This is pre-existing behavior {@link
+	 * #loadByDayForAthlete} already has for this field (there's no pace-based histogram, and no
+	 * power/pace cross-check anywhere in this class) - not something this wrapper introduces or
+	 * fixes. */
+	public Double aboveZ2LoadForActivity(Activity activity, User athlete, ThresholdField field, Double reference) {
+		ActivityIntensityHistogram histogram = histogramService.ensureHistogram(activity);
+		if (histogram.getPower30s() == null && histogram.getHeartrate() == null) {
+			return null;
+		}
+		Double effectiveReference =
+				reference != null ? reference : zoneService.referenceFor(athlete, zoneTypeFor(field), activity);
+		if (effectiveReference == null || effectiveReference == 0.0) {
+			return null;
+		}
+		Double lthr = athlete.getLthr() != null ? athlete.getLthr().doubleValue() : null;
+		return DecayLoad.activityLoad(histogram.getPower30s(), histogram.getHeartrate(), effectiveReference, lthr);
 	}
 }

@@ -1115,6 +1115,108 @@ class McpToolsIntegrationTest extends IntegrationTest {
 				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
 	}
 
+	private ThresholdHistory saveFtpAnchor(User athlete, int value, LocalDate effectiveFrom) {
+		ThresholdHistory anchor = new ThresholdHistory();
+		anchor.setAthlete(athlete);
+		anchor.setField(ThresholdField.FTP);
+		anchor.setValueNumeric(value);
+		anchor.setEffectiveFrom(effectiveFrom);
+		anchor.setCurrentFrom(effectiveFrom);
+		anchor.setKind(ThresholdHistoryKind.MEASURED);
+		return thresholdHistoryRepository.save(anchor);
+	}
+
+	@Test
+	void listActivityAboveZ2LoadReportsAValuePerActivityInRange() {
+		User athlete = saveAthlete("mcp-above-z2-load@example.cc");
+		saveFtpAnchor(athlete, 260, LocalDate.of(2026, 1, 1));
+		Activity above = newBikeActivity(athlete, "Above", Instant.parse("2026-02-01T07:00:00Z"),
+				(int) Math.round(0.80 * 260), 3600);
+		Activity below = newBikeActivity(athlete, "Below", Instant.parse("2026-02-02T07:00:00Z"),
+				(int) Math.round(0.50 * 260), 3600);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.listActivityAboveZ2Load("ftp", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28), null, null);
+
+		assertThat(result.get("field")).isEqualTo("ftp");
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
+		Map<String, Object> byAbove = data.stream().filter(r -> r.get("activity_id").equals(above.getId())).findFirst().orElseThrow();
+		Map<String, Object> byBelow = data.stream().filter(r -> r.get("activity_id").equals(below.getId())).findFirst().orElseThrow();
+		assertThat((Double) byAbove.get("above_z2_load")).isGreaterThan(0.0);
+		assertThat((Double) byBelow.get("above_z2_load")).isEqualTo(0.0);
+	}
+
+	@Test
+	void listActivityAboveZ2LoadReportsNullWithNoInEffectAnchor() {
+		User athlete = saveAthlete("mcp-above-z2-load-null@example.cc");
+		Activity activity = newBikeActivity(athlete, "Ride", Instant.parse("2026-02-01T07:00:00Z"), 220, 3600);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.listActivityAboveZ2Load("ftp", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28), null, null);
+
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
+		assertThat(data).hasSize(1);
+		assertThat(data.get(0).get("activity_id")).isEqualTo(activity.getId());
+		assertThat(data.get(0).get("above_z2_load")).isNull();
+	}
+
+	@Test
+	void listActivityAboveZ2LoadAppliesAnExplicitReferenceToEveryActivity() {
+		User athlete = saveAthlete("mcp-above-z2-load-reference@example.cc");
+		newBikeActivity(athlete, "Ride", Instant.parse("2026-02-01T07:00:00Z"), (int) Math.round(0.80 * 300), 3600);
+		authAs(athlete.getId(), "activities:read");
+
+		var result = athleteProfileTools.listActivityAboveZ2Load(
+				"ftp", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28), 300.0, null);
+
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
+		// No ThresholdHistory row exists at all - without the override this would be null.
+		assertThat((Double) data.get(0).get("above_z2_load")).isGreaterThan(0.0);
+	}
+
+	@Test
+	void listActivityAboveZ2LoadExcludesDuplicatesByDefault() {
+		User athlete = saveAthlete("mcp-above-z2-load-dup@example.cc");
+		Activity primary = newBikeActivity(athlete, "Primary", Instant.parse("2026-02-01T07:00:00Z"), 220, 3600);
+		Activity duplicate = newBikeActivity(athlete, "Duplicate", Instant.parse("2026-02-01T07:00:00Z"), 220, 3600);
+		duplicate.setPrimaryActivity(primary);
+		activityRepository.save(duplicate);
+		authAs(athlete.getId(), "activities:read");
+
+		var defaultResult = athleteProfileTools.listActivityAboveZ2Load("ftp", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28), null, null);
+		var withDupResult = athleteProfileTools.listActivityAboveZ2Load("ftp", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28), null, true);
+
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> defaultData = (List<Map<String, Object>>) defaultResult.get("data");
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> withDupData = (List<Map<String, Object>>) withDupResult.get("data");
+		assertThat(defaultData).hasSize(1);
+		assertThat(withDupData).hasSize(2);
+	}
+
+	@Test
+	void listActivityAboveZ2LoadRejectsAnUnknownField() {
+		User athlete = saveAthlete("mcp-above-z2-load-field@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> athleteProfileTools.listActivityAboveZ2Load(
+				"not_a_field", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), null, null))
+				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
+	}
+
+	@Test
+	void listActivityAboveZ2LoadRejectsFromAfterTo() {
+		User athlete = saveAthlete("mcp-above-z2-load-range@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> athleteProfileTools.listActivityAboveZ2Load(
+				"ftp", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 1, 1), null, null))
+				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
+	}
+
 	@Test
 	void getImportSettingsReturnsTheAthletesOverlapHandling() {
 		User athlete = saveAthlete("mcp-import-settings@example.cc");

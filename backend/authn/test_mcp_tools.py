@@ -2021,6 +2021,92 @@ class AthleteToolsTests(TestCase):
         with self.assertRaises(ValidationError):
             tools.preview_threshold_decay(field="ftp", from_date="2026-01-01", to_date="2026-02-01", max_pct=1)
 
+    def _bike_ride(self, athlete, start_date, power, seconds=3600):
+        activity = Activity.objects.create(
+            id=generate_id("act"),
+            athlete=athlete,
+            sport="bike",
+            name="Ride",
+            start_date=start_date,
+            moving_time=seconds,
+        )
+        for t in range(0, seconds, 30):
+            Record.objects.create(activity=activity, t=t, ts=start_date + timedelta(seconds=t), power=power)
+        return activity
+
+    def test_list_activity_above_z2_load_reports_a_value_per_activity_in_range(self) -> None:
+        athlete = User.objects.create_user(email="mcp-above-z2-load@example.cc", password="x", name="Athlete")
+        ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=260,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="measured",
+        )
+        above = self._bike_ride(athlete, datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=round(0.80 * 260))
+        below = self._bike_ride(athlete, datetime(2026, 2, 2, 7, 0, tzinfo=UTC), power=round(0.50 * 260))
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_activity_above_z2_load(field="ftp", from_date="2026-02-01", to_date="2026-02-28")
+
+        self.assertEqual(result["field"], "ftp")
+        by_id = {row["activity_id"]: row for row in result["data"]}
+        self.assertGreater(by_id[above.id]["above_z2_load"], 0.0)
+        self.assertEqual(by_id[below.id]["above_z2_load"], 0.0)
+
+    def test_list_activity_above_z2_load_reports_null_with_no_in_effect_anchor(self) -> None:
+        athlete = User.objects.create_user(email="mcp-above-z2-load-null@example.cc", password="x", name="Athlete")
+        activity = self._bike_ride(athlete, datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=220)
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_activity_above_z2_load(field="ftp", from_date="2026-02-01", to_date="2026-02-28")
+
+        self.assertIsNone(result["data"][0]["above_z2_load"])
+        self.assertEqual(result["data"][0]["activity_id"], activity.id)
+
+    def test_list_activity_above_z2_load_applies_an_explicit_reference_to_every_activity(self) -> None:
+        athlete = User.objects.create_user(email="mcp-above-z2-load-reference@example.cc", password="x", name="Athlete")
+        self._bike_ride(athlete, datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=round(0.80 * 300))
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.list_activity_above_z2_load(
+            field="ftp", from_date="2026-02-01", to_date="2026-02-28", reference=300
+        )
+
+        # No ThresholdHistory row exists at all - without the override this would be null.
+        self.assertGreater(result["data"][0]["above_z2_load"], 0.0)
+
+    def test_list_activity_above_z2_load_excludes_duplicates_by_default(self) -> None:
+        athlete = User.objects.create_user(email="mcp-above-z2-load-dup@example.cc", password="x", name="Athlete")
+        primary = self._bike_ride(athlete, datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=220)
+        duplicate = self._bike_ride(athlete, datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=220)
+        duplicate.primary_activity = primary
+        duplicate.save(update_fields=["primary_activity"])
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        default_result = tools.list_activity_above_z2_load(field="ftp", from_date="2026-02-01", to_date="2026-02-28")
+        with_dup_result = tools.list_activity_above_z2_load(
+            field="ftp", from_date="2026-02-01", to_date="2026-02-28", include_duplicates=True
+        )
+
+        self.assertEqual(len(default_result["data"]), 1)
+        self.assertEqual(len(with_dup_result["data"]), 2)
+
+    def test_list_activity_above_z2_load_rejects_an_unknown_field(self) -> None:
+        athlete = User.objects.create_user(email="mcp-above-z2-load-field@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.list_activity_above_z2_load(field="not_a_field", from_date="2026-01-01", to_date="2026-02-01")
+
+    def test_list_activity_above_z2_load_rejects_from_date_after_to_date(self) -> None:
+        athlete = User.objects.create_user(email="mcp-above-z2-load-range@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.list_activity_above_z2_load(field="ftp", from_date="2026-02-01", to_date="2026-01-01")
+
     def test_get_fitness_trend_sport_filter_excludes_other_sports(self) -> None:
         athlete = User.objects.create_user(email="mcp-fitness-trend-sport@example.cc", password="x", name="Athlete")
         today = timezone.now().date()
