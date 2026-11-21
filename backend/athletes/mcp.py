@@ -493,7 +493,7 @@ class AthleteMCPTools(ScopedMCPToolset):
                 {
                     "activity_id": activity.id,
                     "date": activity.start_date.date().isoformat(),
-                    "above_z2_load": above_z2_load_for_activity(activity, field, reference),
+                    "above_z2_load": above_z2_load_for_activity(activity, athlete, field, reference),
                 }
                 for activity in qs.order_by("start_date")
             ],

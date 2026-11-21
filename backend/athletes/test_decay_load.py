@@ -215,7 +215,7 @@ class AboveZ2LoadForActivityTests(TestCase):
             athlete=self.athlete, sport="bike", name="No records", start_date=self.start, moving_time=3600
         )
 
-        self.assertIsNone(above_z2_load_for_activity(activity, "ftp"))
+        self.assertIsNone(above_z2_load_for_activity(activity, self.athlete, "ftp"))
 
     def test_returns_none_with_no_in_effect_anchor_even_if_the_athlete_has_a_live_ftp(self):
         """reference_for(athlete, zone_type, activity) only resolves from the historical ledger
@@ -225,14 +225,14 @@ class AboveZ2LoadForActivityTests(TestCase):
         self.athlete.save(update_fields=["ftp"])
         activity = self._bike_activity(power=220)
 
-        self.assertIsNone(above_z2_load_for_activity(activity, "ftp"))
+        self.assertIsNone(above_z2_load_for_activity(activity, self.athlete, "ftp"))
 
     def test_resolves_the_anchor_that_was_in_effect_on_the_activitys_own_date(self):
         self._anchor(260, date(2026, 1, 1))
         activity = self._bike_activity(power=round(0.80 * 260))
         histogram = ensure_histogram(activity)
 
-        load = above_z2_load_for_activity(activity, "ftp")
+        load = above_z2_load_for_activity(activity, self.athlete, "ftp")
 
         self.assertIsNotNone(load)
         self.assertGreater(load, 0.0)
@@ -243,7 +243,7 @@ class AboveZ2LoadForActivityTests(TestCase):
         activity = self._bike_activity(power=round(0.80 * 300))
         histogram = ensure_histogram(activity)
 
-        load = above_z2_load_for_activity(activity, "ftp", reference=300)
+        load = above_z2_load_for_activity(activity, self.athlete, "ftp", reference=300)
 
         # Against the 260 in-effect anchor this same power would clear the cutoff by a wider
         # margin - confirms the override, not the ledger anchor, was actually used.
@@ -254,4 +254,4 @@ class AboveZ2LoadForActivityTests(TestCase):
         self._anchor(260, date(2026, 1, 1))
         activity = self._bike_activity(power=round(0.50 * 260))  # well below the 0.75 cutoff
 
-        self.assertEqual(above_z2_load_for_activity(activity, "ftp"), 0.0)
+        self.assertEqual(above_z2_load_for_activity(activity, self.athlete, "ftp"), 0.0)
