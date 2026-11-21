@@ -17,8 +17,11 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeSet;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,14 +40,23 @@ public class ThresholdHistoryService {
 			String activityId, LocalDate date, Double oldIntensity, Double newIntensity, Integer oldTss, Integer newTss) {
 	}
 
+	/** One ledger slot (keyed by currentFrom) where a rebuild from a manual edit's effective date
+	 * onward would produce a different winner than what's currently stored (issue #494) -
+	 * oldValue/newValue are in the field's own wire convention ("M:SS" for THRESHOLD_PACE, a
+	 * plain Integer otherwise), matching how the stored/display value already looks elsewhere
+	 * (see ThresholdHistoryService.valueOf). */
+	public record QualificationDiff(
+			LocalDate currentFrom, String oldActivityId, String newActivityId, Object oldValue, Object newValue) {
+	}
+
 	/** Outcome of {@link #recordManualValue} - issue #493. {@code becameCurrent} is false exactly
 	 * when {@code isCorrectionOnly} is true (see that method's Javadoc for the two reasons why).
-	 * {@code reratedCount} is 0 during a preview (nothing is persisted); {@code wouldRerate} is
-	 * only populated during a preview. */
-	public record ManualEditResult(
-			boolean changed, boolean becameCurrent, boolean isCorrectionOnly, int reratedCount, List<RerateDiff> wouldRerate) {
+	 * {@code reratedCount} is 0 during a preview (nothing is persisted); {@code wouldRerate}/
+	 * {@code wouldRequalify} are only populated during a preview. */
+	public record ManualEditResult(boolean changed, boolean becameCurrent, boolean isCorrectionOnly, int reratedCount,
+			List<RerateDiff> wouldRerate, List<QualificationDiff> wouldRequalify) {
 		public ManualEditResult(boolean changed, boolean becameCurrent, boolean isCorrectionOnly) {
-			this(changed, becameCurrent, isCorrectionOnly, 0, List.of());
+			this(changed, becameCurrent, isCorrectionOnly, 0, List.of(), List.of());
 		}
 	}
 
@@ -236,9 +248,18 @@ public class ThresholdHistoryService {
 		if (athlete.isThresholdDecayEnabled() && becameCurrent) {
 			ThresholdDecay.ManualEntry newEntry = new ThresholdDecay.ManualEntry(givenDate, implied, null, false);
 			ThresholdDecayRecomputeService.ResimulateResult result = decayRecomputeService.resimulateSuffix(
-					athlete, field, givenDate, today, newEntry, setBy, rerateActivities, preview);
-			return new ManualEditResult(true, true, false, result.reratedCount(), result.wouldRerate());
+					athlete, field, givenDate, today, newEntry, setBy, rerateActivities, preview, preview);
+			return new ManualEditResult(true, true, false, result.reratedCount(), result.wouldRerate(), result.wouldRequalify());
 		}
+
+		// Captured before the write below, for the wouldRequalify diff further down - inserting
+		// the new manual/correction row never touches an existing measured row, so the order
+		// relative to the insert doesn't matter, only that it's read before replayFrom's own
+		// query sees a ledger whose *measured* rows already reflect anything this diff is meant
+		// to detect (they can't, by construction, but snapshotting first keeps the intent clear).
+		List<ThresholdHistory> oldMeasuredRows = thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndKindAndCurrentFromGreaterThanEqualOrderByEffectiveFromAsc(
+						athlete.getId(), field, ThresholdHistoryKind.MEASURED, givenDate);
 
 		ThresholdHistory entry = new ThresholdHistory();
 		entry.setAthlete(athlete);
@@ -258,6 +279,23 @@ public class ThresholdHistoryService {
 		thresholdHistoryRepository.save(entry);
 
 		RerateResult rerateResult = reRateActivitiesFrom(athlete, field, givenDate, rerateActivities, preview);
+
+		// issue #494: only for a decay-disabled athlete - replayFrom is the windowed-max
+		// algorithm that actually governs a decay-disabled athlete's real ledger (and, as of the
+		// correction-only sanity-reference fix, now sees this row as a sanity reference even when
+		// it's correction-only), so a fresh run of it from this row's own date is exactly "what a
+		// rebuild would produce" to diff against. It is NOT the algorithm that governs a
+		// decay-enabled athlete's ledger (ThresholdDecay.simulate is), and that algorithm has no
+		// way yet to treat a brand-new correction-only row as an input at all (its anchor lookup
+		// only looks strictly before the resimulation's own start date) - so this is deliberately
+		// left empty for a decay-enabled athlete's correction-only edit rather than computed with
+		// the wrong algorithm. A decay-enabled athlete's edit that *becomes current* never reaches
+		// this branch at all (see the early return above).
+		List<QualificationDiff> wouldRequalify = List.of();
+		if (preview && !athlete.isThresholdDecayEnabled()) {
+			List<ThresholdHistoryEntry> newEntries = calculator.replayFrom(athlete, field, givenDate);
+			wouldRequalify = qualificationDiff(field, oldMeasuredRows, newEntries);
+		}
 
 		// Never touched by the caller (unlike pre-#493) - becameCurrent already accounts for
 		// whether this edit is actually the one that should be live, so re-deriving "the" current
@@ -284,7 +322,52 @@ public class ThresholdHistoryService {
 		// returning anything, for every multi-field preview too (the first field's own commit
 		// couldn't be deferred until the others ran).
 
-		return new ManualEditResult(true, becameCurrent, correctionOnly, rerateResult.reratedCount(), rerateResult.diffs());
+		return new ManualEditResult(
+				true, becameCurrent, correctionOnly, rerateResult.reratedCount(), rerateResult.diffs(), wouldRequalify);
+	}
+
+	// Diffs the measured rows currently stored against what a fresh replay from the same point
+	// forward would produce (issue #494) - both sides keyed by currentFrom, the same key a
+	// replay entry and its superseded stored row always share (see ThresholdHistoryEntry's own
+	// Javadoc). Only measured rows/entries are ever compared: a manual winner's own row is
+	// excluded from both sides exactly as replayFrom/replayFullHistory themselves exclude it from
+	// their own entries (its row already exists untouched either way, so it can never be
+	// "different").
+	private static List<QualificationDiff> qualificationDiff(
+			ThresholdField field, List<ThresholdHistory> oldRows, List<ThresholdHistoryEntry> newEntries) {
+		Map<LocalDate, ThresholdHistory> oldByCurrentFrom =
+				oldRows.stream().collect(Collectors.toMap(ThresholdHistory::getCurrentFrom, r -> r, (a, b) -> a));
+		Map<LocalDate, ThresholdHistoryEntry> newByCurrentFrom =
+				newEntries.stream().collect(Collectors.toMap(ThresholdHistoryEntry::currentFrom, e -> e, (a, b) -> a));
+		TreeSet<LocalDate> currentFroms = new TreeSet<>();
+		currentFroms.addAll(oldByCurrentFrom.keySet());
+		currentFroms.addAll(newByCurrentFrom.keySet());
+
+		List<QualificationDiff> diffs = new ArrayList<>();
+		for (LocalDate currentFrom : currentFroms) {
+			ThresholdHistory oldRow = oldByCurrentFrom.get(currentFrom);
+			ThresholdHistoryEntry newEntry = newByCurrentFrom.get(currentFrom);
+			String oldActivityId = oldRow != null ? sourceActivityIdOf(oldRow) : null;
+			String newActivityId = newEntry != null ? newEntry.activityId() : null;
+			Double oldValue = oldRow != null ? rowValue(field, oldRow) : null;
+			Double newValue = newEntry != null ? newEntry.value() : null;
+			if (!Objects.equals(oldActivityId, newActivityId) || !Objects.equals(oldValue, newValue)) {
+				diffs.add(new QualificationDiff(
+						currentFrom, oldActivityId, newActivityId, wireValue(field, oldValue), wireValue(field, newValue)));
+			}
+		}
+		return diffs;
+	}
+
+	private static Double rowValue(ThresholdField field, ThresholdHistory row) {
+		return field == ThresholdField.THRESHOLD_PACE ? mmssToSeconds(row.getValuePace()) : row.getValueNumeric().doubleValue();
+	}
+
+	private static Object wireValue(ThresholdField field, Double value) {
+		if (value == null) {
+			return null;
+		}
+		return field == ThresholdField.THRESHOLD_PACE ? secondsToMmss(value) : (int) Math.round(value);
 	}
 
 	// The ledger value already in effect on `asOf` - the same currentFrom <= date lookup
@@ -508,7 +591,7 @@ public class ThresholdHistoryService {
 			// Same delegation as rebuildHistory's decay branch, but from the given date rather
 			// than a cold start - resimulateSuffix's own seed lookups find the pre-fromDate
 			// state. rerateActivities=false: the caller re-rates once for all changed fields.
-			decayRecomputeService.resimulateSuffix(athlete, field, fromDate, LocalDate.now(), null, null, false, false);
+			decayRecomputeService.resimulateSuffix(athlete, field, fromDate, LocalDate.now(), null, null, false, false, false);
 			onProgress.accept(1, 1);
 			return 0;
 		}

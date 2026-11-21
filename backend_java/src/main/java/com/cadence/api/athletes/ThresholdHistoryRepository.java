@@ -163,6 +163,12 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
 			String athleteId, ThresholdField field, LocalDate before);
 
+	// ThresholdHistoryService.recordManualValue's issue #494 diff - the measured rows already
+	// stored at/after a manual edit's own date, snapshotted before the edit is written, to
+	// compare against a fresh replayFrom's own entries from that same date.
+	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCurrentFromGreaterThanEqualOrderByEffectiveFromAsc(
+			String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate currentFrom);
+
 	// ThresholdDecayRecomputeService's seed: the latest non-decayed row before `before` - the
 	// anchor simulate() decays away from.
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndEffectiveFromLessThanAndKindNotOrderByEffectiveFromDescIdDesc(

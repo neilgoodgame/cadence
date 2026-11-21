@@ -97,10 +97,10 @@ class ThresholdDecayJobIntegrationTest extends IntegrationTest {
 		// the real today. recomputeForActivity would resimulate through the real today and
 		// pre-decay the anchor to its floor, making applyThresholdDecay a no-op; resimulating
 		// only through the activity's own date reproduces the ledger state a quiet athlete has.
-		// 8-arg overload (the only @Transactional one) - the 4-arg convenience form reaches it via
+		// 9-arg overload (the only @Transactional one) - the 4-arg convenience form reaches it via
 		// self-invocation and would run non-transactionally here, where the test has no enclosing tx.
 		recomputeService.resimulateSuffix(athlete, ThresholdField.FTP, LocalDate.of(2026, 1, 1),
-				LocalDate.of(2026, 1, 1), null, null, true, false);
+				LocalDate.of(2026, 1, 1), null, null, true, false, false);
 
 		thresholdDecayJob.applyThresholdDecay();
 

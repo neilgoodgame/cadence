@@ -65,12 +65,12 @@ public class ThresholdDecayJob {
 						.findFirstByAthleteIdAndFieldAndEffectiveFromLessThanAndKindNotOrderByEffectiveFromDescIdDesc(
 								athlete.getId(), field, today, ThresholdHistoryKind.DECAYED)
 						.filter(anchor -> anchor.getEffectiveFrom().isBefore(expiry))
-						// Call the 8-arg overload directly (as rebuildHistoryFrom does): only it is
+						// Call the 9-arg overload directly (as rebuildHistoryFrom does): only it is
 						// @Transactional - the 3/4-arg convenience overloads reach it via self-invocation,
 						// which bypasses Spring's proxy and would leave this call non-transactional here,
 						// where there is deliberately no enclosing transaction. Each field thus gets its own tx.
 						.ifPresent(anchor -> recomputeService.resimulateSuffix(athlete, field, today, today, null,
-								null, true, false));
+								null, true, false, false));
 			} catch (Exception ex) {
 				log.error("Threshold decay daily job failed for athlete {} field {}", athlete.getId(), field, ex);
 			}

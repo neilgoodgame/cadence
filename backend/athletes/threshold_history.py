@@ -22,7 +22,7 @@ from activities.models import Activity, Record
 from races.models import Race
 
 from .models import AcceptedThresholdCandidate, ThresholdHistory
-from .threshold_decay import DecaySettings, decay_load_ratio, decay_target
+from .threshold_decay import DecaySettings, Step, decay_load_ratio, decay_target
 
 FIELD_SPORT = {
     "ftp": "bike",
@@ -833,12 +833,68 @@ class RerateDiff:
 
 
 @dataclass(frozen=True)
+class QualificationDiff:
+    """One ledger slot (keyed by current_from) where a rebuild from a manual edit's effective
+    date onward would produce a different winner than what's currently stored (issue #494) -
+    `old_value`/`new_value` are in the field's own wire convention ("M:SS" for threshold_pace,
+    a plain number otherwise), matching how the stored/display value already looks elsewhere."""
+
+    current_from: date
+    old_activity_id: str | None
+    new_activity_id: str | None
+    old_value: str | int | None
+    new_value: str | int | None
+
+
+def _wire_value(field: str, value: float | None) -> str | int | None:
+    if value is None:
+        return None
+    return _seconds_to_mmss(value) if field == "threshold_pace" else round(value)
+
+
+def _qualification_diff(
+    field: str, old_rows: Sequence[ThresholdHistory], new_entries: Sequence[ThresholdHistoryEntry] | Sequence[Step]
+) -> list[QualificationDiff]:
+    """Diffs the measured rows currently stored against what a fresh replay from the same point
+    forward would produce (issue #494) - both sides keyed by current_from, the same key a replay
+    entry and its superseded stored row always share (see ThresholdHistoryEntry's own docstring).
+    Only measured rows/entries are ever compared: a manual winner's own row is excluded from both
+    sides exactly as replay_from/_replay_full_history_into themselves exclude it from entries_out
+    (its row already exists untouched either way, so it can never be "different"). `new_entries`
+    accepts either a decay-off replay's `ThresholdHistoryEntry`s or a decay-on resimulation's
+    `measured`-kind `Step`s (threshold_decay_recompute.py) - both expose the same
+    activity_id/value/current_from shape this function actually reads."""
+    old_by_current_from = {row.current_from: row for row in old_rows}
+    new_by_current_from = {entry.current_from: entry for entry in new_entries}
+    diffs = []
+    for current_from in sorted(set(old_by_current_from) | set(new_by_current_from)):
+        old_row = old_by_current_from.get(current_from)
+        new_entry = new_by_current_from.get(current_from)
+        old_activity_id = old_row.source_activity_id if old_row else None
+        new_activity_id = new_entry.activity_id if new_entry else None
+        old_value = _row_value(field, old_row) if old_row else None
+        new_value = new_entry.value if new_entry else None
+        if old_activity_id != new_activity_id or old_value != new_value:
+            diffs.append(
+                QualificationDiff(
+                    current_from=current_from,
+                    old_activity_id=old_activity_id,
+                    new_activity_id=new_activity_id,
+                    old_value=_wire_value(field, old_value),
+                    new_value=_wire_value(field, new_value),
+                )
+            )
+    return diffs
+
+
+@dataclass(frozen=True)
 class ManualValueResult:
     changed: bool
     became_current: bool
     is_correction_only: bool
     rerated_count: int = 0
     would_rerate: list[RerateDiff] = dataclass_field(default_factory=list)
+    would_requalify: list[QualificationDiff] = dataclass_field(default_factory=list)
 
 
 def record_manual_value(
@@ -932,6 +988,7 @@ def record_manual_value(
                 manual_set_by=set_by,
                 rerate_activities=rerate_activities,
                 preview=preview,
+                collect_qualification_diff=preview,
             )
             if preview:
                 transaction.set_rollback(True)
@@ -941,11 +998,21 @@ def record_manual_value(
             is_correction_only=False,
             rerated_count=result.rerated_count,
             would_rerate=result.would_rerate,
+            would_requalify=result.would_requalify,
         )
 
     value_numeric, value_pace = (None, raw_value) if field == "threshold_pace" else (raw_value, "")
 
     with transaction.atomic():
+        # Captured before the write below, for the would_requalify diff further down - inserting
+        # the new manual/correction row never touches an existing measured row, so the order
+        # relative to the insert doesn't matter, only that it's read before replay_from's own
+        # query sees a ledger whose *measured* rows already reflect anything this diff is meant
+        # to detect (they can't, by construction, but snapshotting first keeps the intent clear).
+        old_measured_rows = list(
+            ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="measured", current_from__gte=given_date)
+        )
+
         ThresholdHistory.objects.create(
             athlete=athlete,
             field=field,
@@ -962,6 +1029,22 @@ def record_manual_value(
         rerated_count, would_rerate = _rerate_activities_from(
             athlete, field, given_date, persist=rerate_activities, collect_diff=preview
         )
+
+        # issue #494: only for a decay-disabled athlete - replay_from is the windowed-max
+        # algorithm that actually governs a decay-disabled athlete's real ledger (and, as of
+        # Piece A, now sees this row as a sanity reference even when it's correction-only), so a
+        # fresh run of it from this row's own date is exactly "what a rebuild would produce" to
+        # diff against. It is NOT the algorithm that governs a decay-enabled athlete's ledger
+        # (threshold_decay_recompute.simulate is), and that algorithm has no way yet to treat a
+        # brand-new correction-only row as an input at all (its anchor lookup only looks strictly
+        # before the resimulation's own start date) - so this is deliberately left empty for a
+        # decay-enabled athlete's correction-only edit rather than computed with the wrong
+        # algorithm. A decay-enabled athlete's edit that *becomes current* never reaches this
+        # branch at all (see the early return above).
+        would_requalify: list[QualificationDiff] = []
+        if preview and not athlete.threshold_decay_enabled:
+            new_entries = replay_from(athlete, field, given_date)
+            would_requalify = _qualification_diff(field, old_measured_rows, new_entries)
 
         # Never touched by the caller (unlike pre-#493) - became_current already accounts for
         # whether this edit is actually the one that should be live, so this is always right,
@@ -987,6 +1070,7 @@ def record_manual_value(
         is_correction_only=is_correction_only,
         rerated_count=rerated_count,
         would_rerate=would_rerate,
+        would_requalify=would_requalify,
     )
 
 

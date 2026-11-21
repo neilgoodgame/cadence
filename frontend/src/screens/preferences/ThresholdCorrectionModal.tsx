@@ -197,6 +197,29 @@ export function ThresholdCorrectionModal({
                 </div>
               </div>
             )}
+            {!!previewResult.would_requalify?.length && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                  {previewResult.would_requalify.length} later ride{previewResult.would_requalify.length === 1 ? "" : "s"} would also change
+                  which ride sets your {label}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
+                  {previewResult.would_requalify.map((diff) => (
+                    <div
+                      key={diff.current_from}
+                      className="mono"
+                      style={{ fontSize: 12, display: "flex", gap: 8, justifyContent: "space-between" }}
+                    >
+                      <span>{diff.current_from}</span>
+                      <span style={{ color: "var(--ink3)" }}>
+                        {diff.old_activity_id ? <ActivityNameLink id={diff.old_activity_id} /> : "—"} ({diff.old_value ?? "—"}) &rarr;{" "}
+                        {diff.new_activity_id ? <ActivityNameLink id={diff.new_activity_id} /> : "—"} ({diff.new_value ?? "—"})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

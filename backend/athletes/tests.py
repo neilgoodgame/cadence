@@ -2152,6 +2152,72 @@ class RecordManualValueTests(TestCase):
         activity.refresh_from_db()
         self.assertAlmostEqual(activity.intensity, diff.new_intensity, delta=0.0005)
 
+    def test_preview_reports_would_requalify_for_a_backdated_correction_only_edit(self):
+        # Issue #494's decay-off half: a backdated correction-only row (Piece A's new sanity
+        # reference) can make a later ride, rejected under the stale spike reference, newly
+        # plausible - preview must surface that as a would_requalify entry, matching exactly
+        # what a real rebuild from the correction's own date would produce (see the equivalent
+        # ThresholdHistoryAlgorithmTests.test_replay_accepts_... for the replay-level version of
+        # this same scenario).
+        spike = self._make_ride(datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=380,
+            source_activity=spike,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="measured",
+        )
+        probe = self._make_ride(datetime(2026, 1, 10, 7, 0, tzinfo=UTC), power=242)  # implies 230
+        trigger_date = datetime(2026, 1, 1, 7, 0, tzinfo=UTC) + timedelta(days=113)
+        Activity.objects.create(
+            athlete=self.athlete, sport="bike", name="Short", start_date=trigger_date, moving_time=600
+        )
+
+        result = record_manual_value(
+            self.athlete,
+            "ftp",
+            220,
+            effective_from=date(2026, 1, 5),
+            as_of=date(2026, 1, 5) + timedelta(days=200),  # stale on arrival -> correction-only
+            preview=True,
+        )
+
+        self.assertTrue(result.is_correction_only)
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp", kind="manual").count(), 0)
+        self.assertEqual(len(result.would_requalify), 1)
+        diff = result.would_requalify[0]
+        self.assertIsNone(diff.old_activity_id)
+        self.assertEqual(diff.new_activity_id, probe.id)
+        self.assertIsNone(diff.old_value)
+        self.assertEqual(diff.new_value, 230)
+        self.assertEqual(diff.current_from, trigger_date.date())
+
+    def test_preview_reports_no_requalification_when_nothing_would_change(self):
+        spike = self._make_ride(datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=400)
+        ThresholdHistory.objects.create(
+            athlete=self.athlete,
+            field="ftp",
+            value_numeric=380,
+            source_activity=spike,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="measured",
+        )
+
+        result = record_manual_value(
+            self.athlete,
+            "ftp",
+            220,
+            effective_from=date(2026, 1, 5),
+            as_of=date(2026, 1, 5) + timedelta(days=200),
+            preview=True,
+        )
+
+        self.assertTrue(result.is_correction_only)
+        self.assertEqual(result.would_requalify, [])
+
     def test_future_date_is_rejected(self):
         with self.assertRaises(ValidationError):
             record_manual_value(self.athlete, "ftp", 250, effective_from=date(2026, 12, 1), as_of=date(2026, 11, 3))

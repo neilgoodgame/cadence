@@ -656,7 +656,8 @@ export interface AthleteUpdate {
   /** Recomputes intensity/tss for every activity of the affected sport on or after
    * effective_from. Defaults to true, matching the pre-existing same-day-edit behavior. */
   rerate_activities?: boolean;
-  /** Computes the same outcome - including would_rerate - without saving anything. */
+  /** Computes the same outcome - including would_rerate/would_requalify - without saving
+   * anything. */
   preview?: boolean;
 }
 
@@ -669,6 +670,19 @@ export interface RerateDiff {
   new_intensity: number | null;
   old_tss: number | null;
   new_tss: number | null;
+}
+
+/** One ledger slot where a rebuild would produce a different winner than what's currently
+ * stored - part of ThresholdEditResult.would_requalify. old_activity_id/new_activity_id are
+ * null when that slot doesn't exist on that side (a ride that would newly, or no longer,
+ * qualify). old_value/new_value follow the field's own display convention (a "M:SS" string for
+ * threshold_pace, a plain number otherwise). */
+export interface QualificationDiff {
+  current_from: string;
+  old_activity_id: string | null;
+  new_activity_id: string | null;
+  old_value: number | string | null;
+  new_value: number | string | null;
 }
 
 /** One threshold field's outcome from a manual edit (PATCH /v1/athletes/{id}) - part of
@@ -684,6 +698,10 @@ export interface ThresholdEditResult {
   rerated_count?: number;
   /** Populated only when preview=true - what rerate_activities=true would do, without saving it. */
   would_rerate?: RerateDiff[];
+  /** Populated only when preview=true - which later ride(s) would newly (or no longer) qualify
+   * if a full rebuild were run from this edit's own date. Always empty for a decay-enabled
+   * athlete's correction-only edit - see ThresholdEditResult's openapi.yaml description. */
+  would_requalify?: QualificationDiff[];
 }
 
 export interface ActivityComment {
