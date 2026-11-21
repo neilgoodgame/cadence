@@ -363,7 +363,17 @@ def _replay_full_history_into(
     rewritten here; this only makes sure a *measured* activity dated after it is correctly
     suppressed/revealed relative to it, the same #484 rule current_window_value already gets via
     _manual_anchor_candidate. A correction-only row is deliberately excluded from this merge - it
-    never competed to be current, so it shouldn't start winning the window on replay either."""
+    never competed to be current, so it shouldn't start winning the window on replay either.
+
+    The sanity-band reference used below (`sanity_reference_value`) is tracked separately from
+    `current_value`/`window` (issue #494). `current_value` is the window's best-*by-value*
+    candidate, which a correction-only row can never become (see above) - so without this, a
+    backdated correction-only row fixing a bogus high reading down would never be used to
+    sanity-check later activities against. `sanity_reference_value` instead tracks whichever of
+    (a) the latest correction-only row encountered so far, by effective_from, or (b) the latest
+    real current_value change, by the activity_date that discovered it, is more recent - exactly
+    the "latest non-decayed row" anchor concept threshold_decay_recompute.py's resimulate_suffix
+    already uses, applied here without disturbing window-max selection at all."""
     activities = list(
         Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field], primary_activity__isnull=True).order_by(
             "start_date"
@@ -377,9 +387,17 @@ def _replay_full_history_into(
         )
     )
     next_manual_idx = 0
+    correction_rows = list(
+        ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="manual", is_correction_only=True).order_by(
+            "effective_from"
+        )
+    )
+    next_correction_idx = 0
 
     window: list[Candidate] = []
     current_value: float | None = None
+    sanity_reference_value: float | None = None
+    sanity_reference_date: date | None = None
 
     for i, activity in enumerate(activities):
         activity_date = activity.start_date.date()
@@ -398,13 +416,30 @@ def _replay_full_history_into(
                 # row already exists (it wasn't deleted), so no entry is written for it below.
                 window.append(Candidate(activity_id=None, date=manual_row.effective_from, implied_value=manual_value))
 
+        # Correction-only rows never enter `window` (see this function's own docstring), but a
+        # still-pending one becomes the sanity reference the moment its effective_from arrives -
+        # unless a more recent one has already taken over (issue #494). Always consumes the row
+        # either way, so a superseded correction can't block the pointer from reaching a later one.
+        while (
+            next_correction_idx < len(correction_rows)
+            and correction_rows[next_correction_idx].effective_from <= activity_date
+        ):
+            correction_row = correction_rows[next_correction_idx]
+            next_correction_idx += 1
+            correction_value = _row_value(field, correction_row)
+            if correction_value is not None and (
+                sanity_reference_date is None or correction_row.effective_from >= sanity_reference_date
+            ):
+                sanity_reference_value = correction_value
+                sanity_reference_date = correction_row.effective_from
+
         cutoff = activity_date - timedelta(days=athlete.threshold_window_days)
         window = [c for c in window if c.date > cutoff]
 
         implied = _implied_value(activity, field)
         qualifies = implied is not None and (
             activity.id in accepted_ids
-            or _within_sanity_band(field, implied, current_value, athlete.threshold_sanity_pct)
+            or _within_sanity_band(field, implied, sanity_reference_value, athlete.threshold_sanity_pct)
         )
         if qualifies:
             candidate = Candidate(activity_id=activity.id, date=activity_date, implied_value=implied)
@@ -415,6 +450,12 @@ def _replay_full_history_into(
         new_value = best.implied_value if best else None
         if new_value != current_value:
             current_value = new_value
+            # A real window-max change always supersedes an older correction as the sanity
+            # reference (not the window emptying to None, which must leave the reference alone -
+            # see this function's own docstring) - that's the "latest of the two" rule.
+            if best is not None and activity_date >= (sanity_reference_date or date.min):
+                sanity_reference_value = new_value
+                sanity_reference_date = activity_date
             # Only a measured winner (a real activity) needs a fresh entry - a manual winner's
             # own row already exists in the ledger untouched (see this function's own
             # docstring), so writing one here would duplicate it.
@@ -488,7 +529,17 @@ def _replay_from_into(
     updating it when a manual candidate takes over without emitting an entry. Entries are only
     emitted for dates >= from_date: value changes discovered during the pre-from_date part of the
     scan correspond to rows that already exist with current_from < from_date and were not
-    deleted, so re-emitting them would duplicate."""
+    deleted, so re-emitting them would duplicate.
+
+    The sanity-band reference actually used below (`sanity_reference_value`) is seeded
+    separately from the window (issue #494), since a correction-only row never enters the window
+    (see above) but must still win as the reference when it's more recent than the ledger's own
+    last real (non-correction) current-value change - exactly the "latest of the two, by date"
+    rule _replay_full_history_into's own version of this tracks incrementally. Seeded once here,
+    at `first_date`, by comparing the latest correction-only row with effective_from <=
+    first_date against the latest is_correction_only=False row's own current_from <= first_date
+    (the ledger's record of when the real reference last changed) - whichever is later wins the
+    seed. From then on it's tracked exactly like _replay_full_history_into's."""
     window_days = athlete.threshold_window_days
     scan_start = from_date - timedelta(days=window_days)
 
@@ -506,6 +557,12 @@ def _replay_from_into(
         )
     )
     next_manual_idx = 0
+    correction_rows = list(
+        ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="manual", is_correction_only=True).order_by(
+            "effective_from"
+        )
+    )
+    next_correction_idx = 0
     while next_manual_idx < len(manual_rows) and manual_rows[next_manual_idx].effective_from <= scan_start:
         manual_row = manual_rows[next_manual_idx]
         next_manual_idx += 1
@@ -538,6 +595,45 @@ def _replay_from_into(
     window = [c for c in window if c.date > initial_cutoff]
     current_value = window[0].implied_value if window else None
 
+    # Strictly before first_date, not on-or-before: a row whose current_from *is* first_date was
+    # (or will be) discovered by that activity's own iteration of the loop below, same as
+    # current_value's own seed above already excludes it (first_date's activity is re-scanned
+    # live, never read back from a row). Using <= here would let a same-day row pre-empt what
+    # the live loop is about to decide for itself.
+    last_real_change = (
+        ThresholdHistory.objects.filter(
+            athlete=athlete, field=field, is_correction_only=False, current_from__lt=first_date
+        )
+        .order_by("-current_from", "-id")
+        .first()
+    )
+    last_correction_value: float | None = None
+    last_correction_date: date | None = None
+    while (
+        next_correction_idx < len(correction_rows) and correction_rows[next_correction_idx].effective_from <= first_date
+    ):
+        correction_row = correction_rows[next_correction_idx]
+        next_correction_idx += 1
+        correction_value = _row_value(field, correction_row)
+        if correction_value is not None:
+            last_correction_value, last_correction_date = correction_value, correction_row.effective_from
+    # Strictly later, not >=: on a same-day tie the live loop below would apply the correction
+    # merge first and then, within that same iteration, let a same-day real change overwrite it
+    # (see the `activity_date >= (sanity_reference_date or date.min)` check further down) - so a
+    # real change must also win a same-day tie here, to match.
+    if last_correction_date is not None and (
+        last_real_change is None or last_correction_date > last_real_change.current_from
+    ):
+        sanity_reference_value, sanity_reference_date = last_correction_value, last_correction_date
+    else:
+        # last_real_change's own stored value, not current_value - the latter is only the
+        # *current* window-max, which (like sanity_reference_value itself, see the loop's own
+        # "best is not None" guard below) can have since gone to None via pure aging with no new
+        # row written for it; last_real_change's value is exactly what a live replay's sticky
+        # sanity_reference would still be holding at this point, aged out of window or not.
+        sanity_reference_value = _row_value(field, last_real_change) if last_real_change else None
+        sanity_reference_date = last_real_change.current_from if last_real_change else None
+
     for i, activity in enumerate(activities):
         activity_date = activity.start_date.date()
 
@@ -552,13 +648,29 @@ def _replay_from_into(
                 window = [c for c in window if not _is_better(field, manual_value, c.implied_value)]
                 window.append(Candidate(activity_id=None, date=manual_row.effective_from, implied_value=manual_value))
 
+        # Same correction-only sanity-reference merge as _replay_full_history_into's - the
+        # pre-first_date ones were already seeded above, so the pointer starts at the first
+        # post-seed row.
+        while (
+            next_correction_idx < len(correction_rows)
+            and correction_rows[next_correction_idx].effective_from <= activity_date
+        ):
+            correction_row = correction_rows[next_correction_idx]
+            next_correction_idx += 1
+            correction_value = _row_value(field, correction_row)
+            if correction_value is not None and (
+                sanity_reference_date is None or correction_row.effective_from >= sanity_reference_date
+            ):
+                sanity_reference_value = correction_value
+                sanity_reference_date = correction_row.effective_from
+
         cutoff = activity_date - timedelta(days=window_days)
         window = [c for c in window if c.date > cutoff]
 
         implied = _implied_value(activity, field)
         qualifies = implied is not None and (
             activity.id in accepted_ids
-            or _within_sanity_band(field, implied, current_value, athlete.threshold_sanity_pct)
+            or _within_sanity_band(field, implied, sanity_reference_value, athlete.threshold_sanity_pct)
         )
         if qualifies:
             candidate = Candidate(activity_id=activity.id, date=activity_date, implied_value=implied)
@@ -569,6 +681,9 @@ def _replay_from_into(
         new_value = best.implied_value if best else None
         if new_value != current_value:
             current_value = new_value
+            if best is not None and activity_date >= (sanity_reference_date or date.min):
+                sanity_reference_value = new_value
+                sanity_reference_date = activity_date
             # Only a measured winner (a real activity) needs an entry - and only from from_date
             # onward: a change discovered earlier corresponds to a row that already exists with
             # current_from < from_date and was deliberately left in place. A manual winner's own

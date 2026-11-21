@@ -384,6 +384,17 @@ public class ThresholdHistoryCalculator {
 	 * A correction-only row is deliberately excluded from this merge - it never competed to be
 	 * current, so it shouldn't start winning the window on replay either.
 	 *
+	 * <p>The sanity-band reference actually used below ({@code sanityReferenceValue}) is tracked
+	 * separately from {@code currentValue}/{@code window} (issue #494). {@code currentValue} is
+	 * the window's best-*by-value* candidate, which a correction-only row can never become (see
+	 * above) - so without this, a backdated correction-only row fixing a bogus high reading down
+	 * would never be used to sanity-check later activities against. {@code sanityReferenceValue}
+	 * instead tracks whichever of (a) the latest correction-only row encountered so far, by
+	 * effectiveFrom, or (b) the latest real currentValue change, by the activityDate that
+	 * discovered it, is more recent - the same "latest non-decayed row" anchor concept
+	 * ThresholdDecayRecomputeService already uses, applied here without disturbing window-max
+	 * selection at all.
+	 *
 	 * <p>Used only by the bulk "recompute history from oldest" tool - currentWindowValue is what
 	 * ingest/refresh use day to day. */
 	public List<ThresholdHistoryEntry> replayFullHistory(User athlete, ThresholdField field) {
@@ -399,10 +410,15 @@ public class ThresholdHistoryCalculator {
 		List<ThresholdHistory> manualRows = thresholdHistoryRepository
 				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(athlete.getId(), field, ThresholdHistoryKind.MANUAL);
 		int nextManualIdx = 0;
+		List<ThresholdHistory> correctionRows = thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAsc(athlete.getId(), field, ThresholdHistoryKind.MANUAL);
+		int nextCorrectionIdx = 0;
 
 		List<ThresholdHistoryEntry> entries = new ArrayList<>();
 		List<Candidate> window = new ArrayList<>();
 		Double currentValue = null;
+		Double sanityReferenceValue = null;
+		LocalDate sanityReferenceDate = null;
 		int total = activities.size();
 		int current = 0;
 
@@ -426,12 +442,27 @@ public class ThresholdHistoryCalculator {
 				}
 			}
 
+			// Correction-only rows never enter `window` (see this method's own Javadoc), but a
+			// still-pending one becomes the sanity reference the moment its effectiveFrom
+			// arrives - unless a more recent one has already taken over (issue #494). Always
+			// consumes the row either way, so a superseded correction can't block the pointer
+			// from reaching a later one.
+			while (nextCorrectionIdx < correctionRows.size() && !correctionRows.get(nextCorrectionIdx).getEffectiveFrom().isAfter(activityDate)) {
+				ThresholdHistory correctionRow = correctionRows.get(nextCorrectionIdx++);
+				Double correctionValue = rowValue(field, correctionRow);
+				if (correctionValue != null
+						&& (sanityReferenceDate == null || !correctionRow.getEffectiveFrom().isBefore(sanityReferenceDate))) {
+					sanityReferenceValue = correctionValue;
+					sanityReferenceDate = correctionRow.getEffectiveFrom();
+				}
+			}
+
 			LocalDate cutoff = activityDate.minusDays(athlete.getThresholdWindowDays());
 			window = window.stream().filter(c -> c.date().isAfter(cutoff)).collect(Collectors.toCollection(ArrayList::new));
 
 			Double implied = impliedValue(activity, athlete, field);
 			boolean qualifies = implied != null && (acceptedIds.contains(activity.getId())
-					|| withinSanityBand(implied, currentValue, athlete.getThresholdSanityPct()));
+					|| withinSanityBand(implied, sanityReferenceValue, athlete.getThresholdSanityPct()));
 			if (qualifies) {
 				Candidate candidate = new Candidate(activity.getId(), activityDate, implied);
 				window = window.stream()
@@ -444,6 +475,13 @@ public class ThresholdHistoryCalculator {
 			Double newValue = best == null ? null : best.impliedValue();
 			if (!Objects.equals(newValue, currentValue)) {
 				currentValue = newValue;
+				// A real window-max change always supersedes an older correction as the sanity
+				// reference (not the window emptying to null, which must leave the reference
+				// alone - see this method's own Javadoc) - that's the "latest of the two" rule.
+				if (best != null && (sanityReferenceDate == null || !activityDate.isBefore(sanityReferenceDate))) {
+					sanityReferenceValue = newValue;
+					sanityReferenceDate = activityDate;
+				}
 				// Only a measured winner (a real activity) needs a fresh entry - a manual
 				// winner's own row already exists in the ledger untouched (see this method's own
 				// Javadoc), so writing one here would duplicate it.
@@ -496,7 +534,17 @@ public class ThresholdHistoryCalculator {
 	 * updating it when a manual candidate takes over without emitting an entry. Entries are only
 	 * emitted for dates &gt;= fromDate: value changes discovered during the pre-fromDate part of
 	 * the scan correspond to rows that already exist with currentFrom &lt; fromDate and were not
-	 * deleted, so re-emitting them would duplicate. */
+	 * deleted, so re-emitting them would duplicate.
+	 *
+	 * <p>The sanity-band reference actually used below ({@code sanityReferenceValue}) is seeded
+	 * separately from the window (issue #494), since a correction-only row never enters the
+	 * window (see above) but must still win as the reference when it's more recent than the
+	 * ledger's own last real (non-correction) currentValue change - the same "latest of the two,
+	 * by date" rule {@code replayFullHistory}'s own version of this tracks incrementally. Seeded
+	 * once, at {@code firstDate}, by comparing the latest correction-only row with effectiveFrom
+	 * &lt;= firstDate against the latest correctionOnly=false row's own currentFrom &lt;
+	 * firstDate (the ledger's record of when the real reference last changed) - whichever is
+	 * later wins the seed. From then on it's tracked exactly like {@code replayFullHistory}'s. */
 	public List<ThresholdHistoryEntry> replayFrom(User athlete, ThresholdField field, LocalDate fromDate) {
 		return replayFrom(athlete, field, fromDate, (current, total) -> { });
 	}
@@ -531,6 +579,10 @@ public class ThresholdHistoryCalculator {
 				window.add(new Candidate(null, manualRow.getEffectiveFrom(), manualValue));
 			}
 		}
+		List<ThresholdHistory> correctionRows = thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAsc(athlete.getId(), field,
+						ThresholdHistoryKind.MANUAL);
+		int nextCorrectionIdx = 0;
 
 		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
 		Instant start = scanStart.atStartOfDay(ZoneOffset.UTC).toInstant();
@@ -558,6 +610,45 @@ public class ThresholdHistoryCalculator {
 		window = window.stream().filter(c -> c.date().isAfter(initialCutoff)).collect(Collectors.toCollection(ArrayList::new));
 		Double currentValue = window.isEmpty() ? null : window.get(0).impliedValue();
 
+		// Strictly before firstDate, not on-or-before: a row whose currentFrom *is* firstDate
+		// was (or will be) discovered by that activity's own iteration of the loop below, same
+		// as currentValue's own seed above already excludes it (firstDate's activity is
+		// re-scanned live, never read back from a row). Using on-or-before here would let a
+		// same-day row pre-empt what the live loop is about to decide for itself.
+		ThresholdHistory lastRealChange = thresholdHistoryRepository
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
+						athlete.getId(), field, firstDate)
+				.orElse(null);
+		Double lastCorrectionValue = null;
+		LocalDate lastCorrectionDate = null;
+		for (; nextCorrectionIdx < correctionRows.size()
+				&& !correctionRows.get(nextCorrectionIdx).getEffectiveFrom().isAfter(firstDate); nextCorrectionIdx++) {
+			ThresholdHistory correctionRow = correctionRows.get(nextCorrectionIdx);
+			Double correctionValue = rowValue(field, correctionRow);
+			if (correctionValue != null) {
+				lastCorrectionValue = correctionValue;
+				lastCorrectionDate = correctionRow.getEffectiveFrom();
+			}
+		}
+		Double sanityReferenceValue;
+		LocalDate sanityReferenceDate;
+		// Strictly later, not on-or-after: on a same-day tie the live loop below would apply the
+		// correction merge first and then, within that same iteration, let a same-day real
+		// change overwrite it (see the sanity-reference update further down) - so a real change
+		// must also win a same-day tie here, to match.
+		if (lastCorrectionDate != null && (lastRealChange == null || lastCorrectionDate.isAfter(lastRealChange.getCurrentFrom()))) {
+			sanityReferenceValue = lastCorrectionValue;
+			sanityReferenceDate = lastCorrectionDate;
+		} else {
+			// lastRealChange's own stored value, not currentValue - the latter is only the
+			// *current* window-max, which (like sanityReferenceValue itself, see the loop's own
+			// "best != null" guard below) can have since gone to null via pure aging with no new
+			// row written for it; lastRealChange's value is exactly what a live replay's sticky
+			// sanity reference would still be holding at this point, aged out of window or not.
+			sanityReferenceValue = lastRealChange == null ? null : rowValue(field, lastRealChange);
+			sanityReferenceDate = lastRealChange == null ? null : lastRealChange.getCurrentFrom();
+		}
+
 		List<ThresholdHistoryEntry> entries = new ArrayList<>();
 		int total = activities.size();
 		int current = 0;
@@ -579,12 +670,26 @@ public class ThresholdHistoryCalculator {
 				}
 			}
 
+			// Same correction-only sanity-reference merge as replayFullHistory's - the
+			// pre-firstDate ones were already seeded above, so the pointer starts at the first
+			// post-seed row.
+			while (nextCorrectionIdx < correctionRows.size()
+					&& !correctionRows.get(nextCorrectionIdx).getEffectiveFrom().isAfter(activityDate)) {
+				ThresholdHistory correctionRow = correctionRows.get(nextCorrectionIdx++);
+				Double correctionValue = rowValue(field, correctionRow);
+				if (correctionValue != null
+						&& (sanityReferenceDate == null || !correctionRow.getEffectiveFrom().isBefore(sanityReferenceDate))) {
+					sanityReferenceValue = correctionValue;
+					sanityReferenceDate = correctionRow.getEffectiveFrom();
+				}
+			}
+
 			LocalDate cutoff = activityDate.minusDays(windowDays);
 			window = window.stream().filter(c -> c.date().isAfter(cutoff)).collect(Collectors.toCollection(ArrayList::new));
 
 			Double implied = impliedValue(activity, athlete, field);
 			boolean qualifies = implied != null && (acceptedIds.contains(activity.getId())
-					|| withinSanityBand(implied, currentValue, athlete.getThresholdSanityPct()));
+					|| withinSanityBand(implied, sanityReferenceValue, athlete.getThresholdSanityPct()));
 			if (qualifies) {
 				Candidate candidate = new Candidate(activity.getId(), activityDate, implied);
 				window = window.stream()
@@ -597,6 +702,10 @@ public class ThresholdHistoryCalculator {
 			Double newValue = best == null ? null : best.impliedValue();
 			if (!Objects.equals(newValue, currentValue)) {
 				currentValue = newValue;
+				if (best != null && (sanityReferenceDate == null || !activityDate.isBefore(sanityReferenceDate))) {
+					sanityReferenceValue = newValue;
+					sanityReferenceDate = activityDate;
+				}
 				// Only a measured winner (a real activity) needs an entry - and only from
 				// fromDate onward: a change discovered earlier corresponds to a row that already
 				// exists with currentFrom < fromDate and was deliberately left in place. A manual

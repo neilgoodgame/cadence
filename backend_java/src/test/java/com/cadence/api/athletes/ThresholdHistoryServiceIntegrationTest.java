@@ -737,6 +737,19 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		manual.setKind(ThresholdHistoryKind.MANUAL);
 		thresholdHistoryRepository.save(manual);
 
+		// A correction-only row too (issue #494) - exercises the new sanity-reference seeding
+		// path, so rebuildHistoryFrom must agree with a full rebuild on whether it affects which
+		// later activities qualify, not just on the manual-phantom path above.
+		ThresholdHistory correction = new ThresholdHistory();
+		correction.setAthlete(athlete);
+		correction.setField(ThresholdField.FTP);
+		correction.setValueNumeric(210);
+		correction.setEffectiveFrom(LocalDate.of(2026, 2, 1));
+		correction.setCurrentFrom(LocalDate.of(2026, 2, 1));
+		correction.setKind(ThresholdHistoryKind.MANUAL);
+		correction.setCorrectionOnly(true);
+		thresholdHistoryRepository.save(correction);
+
 		// Establish the pre-change ledger, then mark a random qualifying activity as a duplicate
 		// of another one (direct FK - the point is to compare the two rebuild paths, not
 		// markDuplicate's own validation).

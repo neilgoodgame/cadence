@@ -62,6 +62,13 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(
 			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
 
+	// ThresholdHistoryCalculator.replayFullHistory/replayFrom's correction-only sanity-reference
+	// merge (issue #494) - every correction-only row, oldest first. These never enter the
+	// replay's window (see replayFullHistory's own Javadoc), so this is deliberately the mirror
+	// of the CorrectionOnlyFalse finder above, not a filter on it.
+	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAsc(
+			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
+
 	// list_threshold_history MCP tool's optional date-range restriction - `fromDate`/`toDate` are
 	// each independently optional, so a derived "Between" method (which requires both bounds)
 	// doesn't fit; mirrors the "(:param is null or ...)" optional-filter shape used elsewhere in
@@ -146,6 +153,14 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	// day - any kind, including decayed. Tiebroken by id - see the comment on the other
 	// currentFrom lookup above.
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
+			String athleteId, ThresholdField field, LocalDate before);
+
+	// ThresholdHistoryCalculator.replayFrom's correction-only sanity-reference seed (issue #494)
+	// - the latest *real* (non-correction) row's own currentFrom, strictly before the scan's
+	// first activity date: what the live per-activity loop's own sanity reference would still be
+	// holding at that point, correction-only rows aside. Strictly-before, not on-or-before - see
+	// replayFrom's own comment on this exact query for why.
+	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
 			String athleteId, ThresholdField field, LocalDate before);
 
 	// ThresholdDecayRecomputeService's seed: the latest non-decayed row before `before` - the
