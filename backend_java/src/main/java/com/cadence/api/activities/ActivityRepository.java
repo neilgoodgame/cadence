@@ -31,6 +31,16 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 			@Param("sport") com.cadence.api.common.domain.Sport sport, @Param("start") Instant start,
 			@Param("end") Instant end, @Param("includeDuplicates") boolean includeDuplicates);
 
+	// Issue #487: FitnessService's above-Z2 fitness trend (DecayLoadService#aboveZ2LoadForActivity
+	// needs the full entity, not just startDate/tss) - same sport/multisport/duplicate exclusion
+	// as findStartDatesAndTssInRangeForSport above.
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.sport = :sport "
+			+ "and a.startDate >= :start and a.startDate < :end and a.parentActivity is null "
+			+ "and (:includeDuplicates = true or a.primaryActivity is null) order by a.startDate")
+	List<Activity> findForSportRange(@Param("athleteId") String athleteId,
+			@Param("sport") com.cadence.api.common.domain.Sport sport, @Param("start") Instant start,
+			@Param("end") Instant end, @Param("includeDuplicates") boolean includeDuplicates);
+
 	@Query("select min(a.startDate) from Activity a where a.athlete.id = :athleteId")
 	Optional<Instant> findEarliestStartDate(@Param("athleteId") String athleteId);
 

@@ -2165,6 +2165,60 @@ class AthleteToolsTests(TestCase):
         with self.assertRaises(ValidationError):
             tools.get_fitness_trend(sport="triathlon")
 
+    def test_get_fitness_trend_intensity_above_z2_is_built_from_above_z2_load_not_tss(self) -> None:
+        athlete = User.objects.create_user(email="mcp-fitness-trend-above-z2@example.cc", password="x", name="Athlete")
+        ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=260,
+            effective_from=date(2026, 1, 1),
+            current_from=date(2026, 1, 1),
+            kind="measured",
+        )
+        today = date(2026, 2, 1)
+        start = datetime(2026, 2, 1, 7, 0, tzinfo=UTC)
+        # tss deliberately left at its default (0) - the above_z2 series must not be reading it.
+        activity = Activity.objects.create(
+            id=generate_id("act"), athlete=athlete, sport="bike", name="Ride", start_date=start, moving_time=1200
+        )
+        for t in range(1200):
+            Record.objects.create(activity=activity, t=t, ts=start + timedelta(seconds=t), power=round(0.80 * 260))
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        above_z2 = tools.get_fitness_trend(from_date=str(today), to_date=str(today), intensity="above_z2")
+        regular = tools.get_fitness_trend(from_date=str(today), to_date=str(today))
+
+        self.assertGreater(above_z2["data"][0]["ctl"], 0.0)
+        self.assertEqual(regular["data"][0]["ctl"], 0.0)  # tss is 0 - confirms these are two distinct series
+
+    def test_get_fitness_trend_rejects_an_unknown_intensity(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-fitness-trend-bad-intensity@example.cc", password="x", name="Athlete"
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.get_fitness_trend(intensity="above_z3")
+
+    def test_get_fitness_trend_intensity_above_z2_rejects_a_non_bike_sport(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-fitness-trend-intensity-sport@example.cc", password="x", name="Athlete"
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(ValidationError):
+            tools.get_fitness_trend(sport="run", intensity="above_z2")
+
+    def test_get_fitness_trend_intensity_above_z2_allows_sport_bike_explicitly(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-fitness-trend-intensity-bike@example.cc", password="x", name="Athlete"
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        result = tools.get_fitness_trend(sport="bike", intensity="above_z2")  # must not raise
+
+        self.assertEqual(result["data"][0]["ctl"], 0.0)
+
     def test_get_threshold_settings_returns_the_athletes_settings(self) -> None:
         athlete = User.objects.create_user(
             email="mcp-threshold-settings@example.cc",

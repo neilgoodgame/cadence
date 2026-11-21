@@ -895,8 +895,8 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		authAs(athlete.getId(), "activities:read");
 		LocalDate today = LocalDate.now();
 
-		List<FitnessPoint> bikeOnly = fitnessTrendTools.getFitnessTrend(today, today, "bike", null);
-		List<FitnessPoint> combined = fitnessTrendTools.getFitnessTrend(today, today, null, null);
+		List<FitnessPoint> bikeOnly = fitnessTrendTools.getFitnessTrend(today, today, "bike", null, null);
+		List<FitnessPoint> combined = fitnessTrendTools.getFitnessTrend(today, today, null, null, null);
 
 		assertThat(bikeOnly.get(0).ctl()).isLessThan(combined.get(0).ctl());
 	}
@@ -906,8 +906,52 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		User athlete = saveAthlete("mcp-fitness-trend-bad-sport@example.cc");
 		authAs(athlete.getId(), "activities:read");
 
-		assertThatThrownBy(() -> fitnessTrendTools.getFitnessTrend(null, null, "triathlon", null))
+		assertThatThrownBy(() -> fitnessTrendTools.getFitnessTrend(null, null, "triathlon", null, null))
 				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void getFitnessTrendIntensityAboveZ2IsBuiltFromAboveZ2LoadNotTss() {
+		User athlete = saveAthlete("mcp-fitness-trend-above-z2@example.cc");
+		saveFtpAnchor(athlete, 260, LocalDate.of(2026, 1, 1));
+		LocalDate today = LocalDate.of(2026, 2, 1);
+		// tss deliberately left at its default (0) - the above_z2 series must not be reading it.
+		newBikeActivity(athlete, "Ride", Instant.parse("2026-02-01T07:00:00Z"), (int) Math.round(0.80 * 260), 1200);
+		authAs(athlete.getId(), "activities:read");
+
+		List<FitnessPoint> aboveZ2 = fitnessTrendTools.getFitnessTrend(today, today, null, null, "above_z2");
+		List<FitnessPoint> regular = fitnessTrendTools.getFitnessTrend(today, today, null, null, null);
+
+		assertThat(aboveZ2.get(0).ctl()).isGreaterThan(0.0);
+		assertThat(regular.get(0).ctl()).isEqualTo(0.0); // tss is 0 - confirms these are two distinct series
+	}
+
+	@Test
+	void getFitnessTrendRejectsAnUnknownIntensity() {
+		User athlete = saveAthlete("mcp-fitness-trend-bad-intensity@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> fitnessTrendTools.getFitnessTrend(null, null, null, null, "above_z3"))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void getFitnessTrendIntensityAboveZ2RejectsANonBikeSport() {
+		User athlete = saveAthlete("mcp-fitness-trend-intensity-sport@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> fitnessTrendTools.getFitnessTrend(null, null, "run", null, "above_z2"))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void getFitnessTrendIntensityAboveZ2AllowsSportBikeExplicitly() {
+		User athlete = saveAthlete("mcp-fitness-trend-intensity-bike@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		List<FitnessPoint> result = fitnessTrendTools.getFitnessTrend(null, null, "bike", null, "above_z2"); // must not throw
+
+		assertThat(result.get(0).ctl()).isEqualTo(0.0);
 	}
 
 	@Test
@@ -934,8 +978,8 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		authAs(athlete.getId(), "activities:read");
 		LocalDate today = LocalDate.now();
 
-		List<FitnessPoint> defaultResult = fitnessTrendTools.getFitnessTrend(today, today, null, null);
-		List<FitnessPoint> withDup = fitnessTrendTools.getFitnessTrend(today, today, null, true);
+		List<FitnessPoint> defaultResult = fitnessTrendTools.getFitnessTrend(today, today, null, null, null);
+		List<FitnessPoint> withDup = fitnessTrendTools.getFitnessTrend(today, today, null, true, null);
 
 		assertThat(defaultResult.get(0).ctl()).isLessThan(withDup.get(0).ctl());
 	}
