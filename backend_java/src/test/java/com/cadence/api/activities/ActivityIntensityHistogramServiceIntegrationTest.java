@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.cadence.api.athletes.DecayLoadService;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.athletes.ThresholdField;
+import com.cadence.api.athletes.ThresholdHistory;
+import com.cadence.api.athletes.ThresholdHistoryKind;
+import com.cadence.api.athletes.ThresholdHistoryRepository;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
@@ -39,6 +42,8 @@ class ActivityIntensityHistogramServiceIntegrationTest extends IntegrationTest {
 	private DerivedStatsRecomputeService derivedStatsRecomputeService;
 	@Autowired
 	private DecayLoadService decayLoadService;
+	@Autowired
+	private ThresholdHistoryRepository thresholdHistoryRepository;
 
 	private User newAthlete(String email) {
 		User user = new User();
@@ -160,5 +165,74 @@ class ActivityIntensityHistogramServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(series.keySet()).containsExactly(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 2));
 		assertThat(series.get(LocalDate.of(2026, 1, 2))).isGreaterThan(series.get(LocalDate.of(2026, 1, 1)));
+	}
+
+	private ThresholdHistory saveAnchor(User athlete, int value, LocalDate effectiveFrom) {
+		ThresholdHistory anchor = new ThresholdHistory();
+		anchor.setAthlete(athlete);
+		anchor.setField(ThresholdField.FTP);
+		anchor.setValueNumeric(value);
+		anchor.setEffectiveFrom(effectiveFrom);
+		anchor.setCurrentFrom(effectiveFrom);
+		anchor.setKind(ThresholdHistoryKind.MEASURED);
+		return thresholdHistoryRepository.save(anchor);
+	}
+
+	// Issue #487: DecayLoadService#aboveZ2LoadForActivity - activityLoad for exactly one
+	// activity, resolving its own histogram and in-effect reference.
+
+	@Test
+	void aboveZ2LoadForActivityReturnsNullWithNoHistogramDataAtAll() {
+		User athlete = newAthlete("above-z2-no-histogram@example.cc");
+		Activity activity = new Activity();
+		activity.setAthlete(athlete);
+		activity.setSport(Sport.BIKE);
+		activity.setName("No records");
+		activity.setStartDate(Instant.parse("2026-02-01T08:00:00Z"));
+		activity = activityRepository.save(activity);
+
+		assertThat(decayLoadService.aboveZ2LoadForActivity(activity, athlete, ThresholdField.FTP, null)).isNull();
+	}
+
+	@Test
+	void aboveZ2LoadForActivityReturnsNullWithNoInEffectAnchorEvenWithALiveFtp() {
+		User athlete = newAthlete("above-z2-no-anchor@example.cc");
+		athlete.setFtp(260);
+		athlete = userRepository.save(athlete);
+		Activity activity = activityWithRecords(athlete, Sport.BIKE, 220, 150, 3600);
+
+		assertThat(decayLoadService.aboveZ2LoadForActivity(activity, athlete, ThresholdField.FTP, null)).isNull();
+	}
+
+	@Test
+	void aboveZ2LoadForActivityResolvesTheAnchorInEffectOnTheActivitysOwnDate() {
+		User athlete = newAthlete("above-z2-resolves-anchor@example.cc");
+		saveAnchor(athlete, 260, LocalDate.of(2026, 1, 1));
+		Activity activity = activityWithRecords(athlete, Sport.BIKE, (int) Math.round(0.80 * 260), 150, 3600);
+
+		Double load = decayLoadService.aboveZ2LoadForActivity(activity, athlete, ThresholdField.FTP, null);
+
+		assertThat(load).isNotNull().isGreaterThan(0.0);
+	}
+
+	@Test
+	void aboveZ2LoadForActivityExplicitReferenceOverridesTheInEffectAnchor() {
+		User athlete = newAthlete("above-z2-override@example.cc");
+		saveAnchor(athlete, 260, LocalDate.of(2026, 1, 1));
+		Activity activity = activityWithRecords(athlete, Sport.BIKE, (int) Math.round(0.80 * 300), 150, 3600);
+
+		Double withOverride = decayLoadService.aboveZ2LoadForActivity(activity, athlete, ThresholdField.FTP, 300.0);
+		Double withoutOverride = decayLoadService.aboveZ2LoadForActivity(activity, athlete, ThresholdField.FTP, null);
+
+		assertThat(withOverride).isNotEqualTo(withoutOverride);
+	}
+
+	@Test
+	void aboveZ2LoadForActivityIsZeroWhenNothingClearsTheCutoff() {
+		User athlete = newAthlete("above-z2-below-cutoff@example.cc");
+		saveAnchor(athlete, 260, LocalDate.of(2026, 1, 1));
+		Activity activity = activityWithRecords(athlete, Sport.BIKE, (int) Math.round(0.50 * 260), 150, 3600);
+
+		assertThat(decayLoadService.aboveZ2LoadForActivity(activity, athlete, ThresholdField.FTP, null)).isEqualTo(0.0);
 	}
 }

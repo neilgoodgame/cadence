@@ -20,6 +20,13 @@ from activities.intensity_histogram import ensure_histogram
 from activities.models import Activity
 
 from .threshold_history import FIELD_SPORT
+from .zones import reference_for
+
+# field -> the zone_type whose percentages are relative to that field - the inverse of
+# athletes.zones.THRESHOLD_FIELD_BY_ZONE_TYPE, restricted to the three fields FIELD_SPORT covers
+# (heart_rate/lthr has no per-activity history to resolve against - see reference_for's own
+# docstring - and isn't a threshold-decay field at all).
+_ZONE_TYPE_BY_FIELD = {"ftp": "bike_power", "critical_run_power": "run_power", "threshold_pace": "pace"}
 
 # How far above Z2 counts toward the load (0.75 x anchor) - resolved open question 9 of the design
 # doc: ship the hard cutoff, not the smooth-ramp alternative; the histogram means switching later
@@ -60,6 +67,40 @@ def activity_load(
                 total += (ratio**2) * 100 / 3600 * seconds
         return total
     return 0.0
+
+
+def above_z2_load_for_activity(
+    activity: Activity, athlete: User, field: str, reference: int | None = None
+) -> float | None:
+    """Issue #487: activity_load() for exactly one activity, resolving its own histogram and
+    reference threshold - the per-activity number list_activity_above_z2_load exposes directly,
+    and the per-day building block compute_above_z2_fitness_series sums into a CTL/ATL series.
+    athlete is taken explicitly rather than read off activity.athlete - list_activity_above_z2_load
+    calls this once per activity in a (possibly large) queryset, and the caller already has the
+    athlete loaded, so reading it off each activity instead would re-fetch the same User row once
+    per activity (an N+1 query pattern); matches load_by_day_for_athlete's own convention, and the
+    Java mirror's equivalent fix for an analogous lazy-association problem. reference overrides
+    the activity's own in-effect anchor (reference_for) when given, e.g. to ask "what if FTP had
+    been X the whole time" for calibration - never applies to the HR fallback's own lthr, which
+    (like load_by_day_for_athlete) always reads the athlete's current stored value. Returns None
+    (not 0.0) when there's no histogram data at all, or no reference to measure it against -
+    activity_load() itself conflates either of those with "zero load above cutoff", this wrapper
+    doesn't.
+
+    For field="threshold_pace", reference_for resolves a pace-in-seconds number - if the same
+    activity also has a power histogram, activity_load's power branch would divide watts by that
+    pace number, which is nonsensical. This is pre-existing behavior load_by_day_for_athlete
+    already has for this field (there's no pace-based histogram, and no power/pace cross-check
+    anywhere in this module) - not something this wrapper introduces or fixes."""
+    histogram = ensure_histogram(activity)
+    if not histogram.power_30s and not histogram.heartrate:
+        return None
+    effective_reference = (
+        reference if reference is not None else reference_for(athlete, _ZONE_TYPE_BY_FIELD[field], activity)
+    )
+    if not effective_reference:
+        return None
+    return activity_load(histogram.power_30s, histogram.heartrate, effective_reference, athlete.lthr)
 
 
 def decay_load_series(daily_loads: dict[date, float]) -> dict[date, float]:
