@@ -1,5 +1,7 @@
 package com.cadence.api.mcp.tools.athletes;
 
+import com.cadence.api.athletes.ThresholdDecay;
+import com.cadence.api.athletes.ThresholdDecayRecomputeService;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistoryCalculator;
 import com.cadence.api.athletes.ThresholdHistoryCalculator.CandidateStatusEntry;
@@ -16,6 +18,7 @@ import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
 import com.cadence.api.users.UserService;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -34,16 +37,19 @@ public class AthleteProfileTools {
 	private final ZoneService zoneService;
 	private final ThresholdHistoryService thresholdHistoryService;
 	private final ThresholdHistoryCalculator thresholdHistoryCalculator;
+	private final ThresholdDecayRecomputeService thresholdDecayRecomputeService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public AthleteProfileTools(UserService userService, ZoneService zoneService,
 			ThresholdHistoryService thresholdHistoryService, ThresholdHistoryCalculator thresholdHistoryCalculator,
-			AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			ThresholdDecayRecomputeService thresholdDecayRecomputeService, AccessGuard accessGuard,
+			McpToolAuthorizer authorizer) {
 		this.userService = userService;
 		this.zoneService = zoneService;
 		this.thresholdHistoryService = thresholdHistoryService;
 		this.thresholdHistoryCalculator = thresholdHistoryCalculator;
+		this.thresholdDecayRecomputeService = thresholdDecayRecomputeService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -190,6 +196,52 @@ public class AthleteProfileTools {
 				"ftp_calculation_method", athlete.getFtpCalculationMethod(),
 				"running_power_source", athlete.getRunningPowerSource(),
 				"bike_power_source", athlete.getBikePowerSource());
+	}
+
+	@McpTool(name = "preview_threshold_decay", description = "Issue #487: models what the "
+			+ "threshold-decay ledger would look like for field between from and to, using "
+			+ "tauDays/minPct/maxPct in place of the athlete's own saved decay settings where "
+			+ "given (any omitted one falls back to the athlete's saved value) - for calibrating "
+			+ "those parameters against real history before turning decay on, or trying "
+			+ "alternatives once it already is. Never writes to the ledger, and the simulation "
+			+ "always runs as if decay were enabled regardless of the athlete's own "
+			+ "thresholdDecayEnabled - otherwise every override here would be silently ignored. "
+			+ "settingsUsed reports the tauDays/minPct/maxPct the simulation actually ran with.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public Map<String, Object> previewThresholdDecay(
+			@McpToolParam(description = "ftp, critical_run_power, or threshold_pace", required = true) String field,
+			@McpToolParam(description = "Start date (YYYY-MM-DD)", required = true) LocalDate from,
+			@McpToolParam(description = "End date (YYYY-MM-DD)", required = true) LocalDate to,
+			@McpToolParam(description = "Overrides the athlete's saved tau (days), if given",
+					required = false) Double tauDays,
+			@McpToolParam(description = "Overrides the athlete's saved min amplitude (%), if given",
+					required = false) Double minPct,
+			@McpToolParam(description = "Overrides the athlete's saved max amplitude (%), if given",
+					required = false) Double maxPct) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		String athleteId = accessGuard.effectiveAthleteId();
+		accessGuard.requireRead(athleteId);
+		ThresholdField effectiveField = parseField(field);
+		User athlete = userService.getById(athleteId);
+		ThresholdDecayRecomputeService.PreviewResult result = thresholdDecayRecomputeService.gatherPreviewSteps(
+				athlete, effectiveField, from, to, tauDays, minPct, maxPct);
+		ThresholdDecay.DecaySettings settings = result.settingsUsed();
+		return Map.of(
+				"field", field,
+				"settings_used",
+				Map.of("tau_days", settings.tauDays(), "min_pct", settings.minPct(), "max_pct", settings.maxPct()),
+				"data", result.steps().stream().map(step -> {
+					Map<String, Object> row = new LinkedHashMap<>();
+					row.put("value", effectiveField == ThresholdField.THRESHOLD_PACE
+							? ThresholdDecayRecomputeService.secondsToMmss(step.value())
+							: (int) Math.round(step.value()));
+					row.put("kind", step.kind());
+					row.put("activity_id", step.activityId());
+					row.put("effective_from", step.effectiveFrom());
+					row.put("current_from", step.currentFrom());
+					return row;
+				}).toList());
 	}
 
 	@McpTool(name = "get_sensor_preferences", description = "Get the authenticated athlete's "

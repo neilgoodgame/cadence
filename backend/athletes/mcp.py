@@ -18,7 +18,8 @@ from authn.mcp_toolset import ScopedMCPToolset
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 
 from .models import ThresholdHistory
-from .threshold_history import candidate_statuses
+from .threshold_decay_recompute import gather_preview_steps
+from .threshold_history import _seconds_to_mmss, candidate_statuses
 from .views import (
     BEST_EFFORT_PERIOD_DAYS,
     LOWER_IS_BETTER_KINDS,
@@ -377,6 +378,57 @@ class AthleteMCPTools(ScopedMCPToolset):
             "ftp_calculation_method": athlete.ftp_calculation_method,
             "running_power_source": athlete.running_power_source,
             "bike_power_source": athlete.bike_power_source,
+        }
+
+    def preview_threshold_decay(
+        self,
+        field: str,
+        from_date: str,
+        to_date: str,
+        tau_days: float | None = None,
+        min_pct: float | None = None,
+        max_pct: float | None = None,
+    ) -> dict[str, Any]:
+        """Issue #487: models what the threshold-decay ledger would look like for field between
+        from_date and to_date, using tau_days/min_pct/max_pct in place of the athlete's own saved
+        decay settings where given (any omitted one falls back to the athlete's saved value) -
+        for calibrating those parameters against real history before turning decay on, or trying
+        alternatives once it already is. Never writes to the ledger, and the simulation always
+        runs as if decay were enabled regardless of the athlete's own threshold_decay_enabled -
+        otherwise every override here would be silently ignored. settings_used reports the
+        tau_days/min_pct/max_pct the simulation actually ran with."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        field = _validate_threshold_field(field)
+        from_d = parse_date(from_date)
+        if from_d is None:
+            raise ValidationError({"from_date": "Must be a date in YYYY-MM-DD format."})
+        to_d = parse_date(to_date)
+        if to_d is None:
+            raise ValidationError({"to_date": "Must be a date in YYYY-MM-DD format."})
+        if from_d > to_d:
+            raise ValidationError({"from_date": "Must not be after to_date."})
+
+        athlete = get_object_or_404(User, pk=athlete_id)
+        steps, settings_used = gather_preview_steps(athlete, field, from_d, to_d, tau_days, min_pct, max_pct)
+        return {
+            "field": field,
+            "settings_used": {
+                "tau_days": settings_used.tau_days,
+                "min_pct": settings_used.min_pct,
+                "max_pct": settings_used.max_pct,
+            },
+            "data": [
+                {
+                    "value": _seconds_to_mmss(step.value) if field == "threshold_pace" else round(step.value),
+                    "kind": step.kind,
+                    "activity_id": step.activity_id,
+                    "effective_from": step.effective_from.isoformat(),
+                    "current_from": step.current_from.isoformat(),
+                }
+                for step in steps
+            ],
         }
 
     def get_sensor_preferences(self) -> dict[str, Any]:

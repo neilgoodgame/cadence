@@ -16,7 +16,7 @@ from activities.models import Activity, Record
 
 from .models import ThresholdHistory
 from .tasks import apply_threshold_decay
-from .threshold_decay_recompute import resimulate_suffix
+from .threshold_decay_recompute import gather_preview_steps, resimulate_suffix
 from .threshold_history import recompute_for_activity, record_manual_value, refresh_field
 
 
@@ -283,3 +283,66 @@ class ApplyThresholdDecayJobTests(TestCase):
         apply_threshold_decay()  # must not raise for a field with no anchor at all
 
         self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete).exists())
+
+
+class GatherPreviewStepsTests(TestCase):
+    """Issue #487: the read-only half of resimulate_suffix, for preview_threshold_decay."""
+
+    def test_never_writes_to_the_ledger_or_the_athletes_live_value(self):
+        athlete = _decay_athlete(email="preview-no-write@example.cc")
+        anchor_date = date(2026, 1, 1)
+        _make_power_activity(athlete, datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=260)
+        recompute_for_activity(Activity.objects.get(athlete=athlete))
+        athlete.refresh_from_db()
+        expiry = anchor_date + timedelta(days=athlete.threshold_window_days + 1)
+        end = expiry + timedelta(days=30)
+        rows_before = list(ThresholdHistory.objects.filter(athlete=athlete, field="ftp").values_list("id", flat=True))
+        ftp_before = athlete.ftp
+
+        steps, _settings = gather_preview_steps(athlete, "ftp", expiry, end)
+
+        self.assertGreater(len(steps), 0)  # a non-trivial preview, not a vacuous pass
+        self.assertEqual(
+            list(ThresholdHistory.objects.filter(athlete=athlete, field="ftp").values_list("id", flat=True)),
+            rows_before,
+        )
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.ftp, ftp_before)
+
+    def test_defaults_to_the_athletes_own_settings_when_nothing_is_overridden(self):
+        athlete = _decay_athlete(email="preview-defaults@example.cc")
+        _make_power_activity(athlete, datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=260)
+        recompute_for_activity(Activity.objects.get(athlete=athlete))
+
+        _steps, settings = gather_preview_steps(athlete, "ftp", date(2026, 1, 1), date(2026, 2, 1))
+
+        self.assertEqual(settings.tau_days, athlete.threshold_decay_tau_days)
+        self.assertEqual(settings.min_pct, athlete.threshold_decay_min_pct)
+        self.assertEqual(settings.max_pct, athlete.threshold_decay_max_pct)
+
+    def test_overrides_only_the_params_actually_given(self):
+        athlete = _decay_athlete(email="preview-partial-override@example.cc")
+        _make_power_activity(athlete, datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=260)
+        recompute_for_activity(Activity.objects.get(athlete=athlete))
+
+        _steps, settings = gather_preview_steps(athlete, "ftp", date(2026, 1, 1), date(2026, 2, 1), tau_days=99)
+
+        self.assertEqual(settings.tau_days, 99)
+        self.assertEqual(settings.min_pct, athlete.threshold_decay_min_pct)
+        self.assertEqual(settings.max_pct, athlete.threshold_decay_max_pct)
+
+    def test_forces_enabled_even_for_a_decay_disabled_athlete(self):
+        """_simulate_disabled (the cliff-based legacy path) can never emit a 'decayed' kind step -
+        only _simulate_enabled can. Seeing one here proves the forced enabled=True actually took
+        effect, not just that settings_used reports it."""
+        athlete = _decay_athlete(email="preview-forces-enabled@example.cc", threshold_decay_enabled=False)
+        anchor_date = date(2026, 1, 1)
+        _make_power_activity(athlete, datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=260)
+        recompute_for_activity(Activity.objects.get(athlete=athlete))
+        self.assertFalse(athlete.threshold_decay_enabled)
+        expiry = anchor_date + timedelta(days=athlete.threshold_window_days + 1)
+
+        steps, settings = gather_preview_steps(athlete, "ftp", expiry, expiry + timedelta(days=30))
+
+        self.assertTrue(settings.enabled)
+        self.assertTrue(any(step.kind == "decayed" for step in steps))

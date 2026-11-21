@@ -79,6 +79,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -120,6 +121,9 @@ class McpToolsIntegrationTest extends IntegrationTest {
 
 	@Autowired
 	private ThresholdHistoryRepository thresholdHistoryRepository;
+
+	@Autowired
+	private com.cadence.api.athletes.ThresholdHistoryService thresholdHistoryService;
 
 	@Autowired
 	private AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository;
@@ -996,6 +1000,60 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		assertThat(result.get("threshold_sanity_pct")).isEqualTo(20);
 		assertThat(result.get("ftp_calculation_method")).isEqualTo(athlete.getFtpCalculationMethod());
 		assertThat(result.get("running_power_source")).isEqualTo(athlete.getRunningPowerSource());
+	}
+
+	@Test
+	void previewThresholdDecayModelsADecayedLedgerWithoutWritingAnything() {
+		// Issue #487: never writes to the ledger, and uses tauDays/minPct/maxPct in place of the
+		// athlete's own saved settings when given.
+		User athlete = new User();
+		athlete.setEmail("mcp-preview-decay@example.cc");
+		athlete.setName("Preview Decay");
+		athlete.setPassword("irrelevant-for-this-test");
+		athlete.setThresholdWindowDays(10);
+		athlete.setThresholdSanityPct(50);
+		athlete.setThresholdDecayEnabled(true);
+		athlete.setThresholdDecayTauDays(5);
+		athlete.setThresholdDecayMinPct(3);
+		athlete.setThresholdDecayMaxPct(12);
+		athlete = userRepository.save(athlete);
+		Instant start = Instant.parse("2026-01-01T07:00:00Z");
+		Activity activity = newBikeActivity(athlete, "Ride", start, 260, 1200);
+		thresholdHistoryService.recomputeForActivity(activity);
+		athlete = userRepository.findById(athlete.getId()).orElseThrow();
+		long rowsBefore = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).size();
+		Integer ftpBefore = athlete.getFtp();
+		authAs(athlete.getId(), "activities:read");
+		LocalDate expiry = LocalDate.of(2026, 1, 1).plusDays(athlete.getThresholdWindowDays() + 1L);
+		LocalDate to = expiry.plusDays(30);
+
+		var result = athleteProfileTools.previewThresholdDecay("ftp", expiry, to, 99.0, null, null);
+
+		assertThat(result.get("field")).isEqualTo("ftp");
+		@SuppressWarnings("unchecked")
+		Map<String, Object> settingsUsed = (Map<String, Object>) result.get("settings_used");
+		assertThat(settingsUsed.get("tau_days")).isEqualTo(99.0);
+		assertThat(settingsUsed.get("min_pct")).isEqualTo(3.0);
+		assertThat(settingsUsed.get("max_pct")).isEqualTo(12.0);
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
+		assertThat(data).isNotEmpty();
+		assertThat(data).anyMatch(step -> "decayed".equals(step.get("kind")));
+		assertThat(thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize((int) rowsBefore);
+		User reloaded = userRepository.findById(athlete.getId()).orElseThrow();
+		assertThat(reloaded.getFtp()).isEqualTo(ftpBefore);
+	}
+
+	@Test
+	void previewThresholdDecayRejectsAnUnknownField() {
+		User athlete = saveAthlete("mcp-preview-decay-field@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> athleteProfileTools.previewThresholdDecay(
+				"not_a_field", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1), null, null, null))
+				.isInstanceOf(com.cadence.api.common.error.ValidationException.class);
 	}
 
 	@Test

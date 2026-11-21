@@ -78,7 +78,11 @@ public class ThresholdDecayRecomputeService {
 		}
 	}
 
-	private static String secondsToMmss(double seconds) {
+	/** Public (unlike this class's other static helpers) so previewThresholdDecay's MCP tool -
+	 * in a different package, with no other reason to depend on this service's internals - can
+	 * format a raw Step.value() the same way a real resimulation's own ThresholdHistory.valuePace
+	 * would be. */
+	public static String secondsToMmss(double seconds) {
 		int total = (int) Math.round(seconds);
 		return "%d:%02d".formatted(total / 60, total % 60);
 	}
@@ -269,6 +273,48 @@ public class ThresholdDecayRecomputeService {
 		}
 
 		return new ResimulateResult(changed, reratedCount, wouldRerate);
+	}
+
+	public record PreviewResult(List<ThresholdDecay.Step> steps, ThresholdDecay.DecaySettings settingsUsed) {
+	}
+
+	/** Issue #487: resimulateSuffix's own read-only half, stopped before its write block (no
+	 * ThresholdHistory delete/save, no athlete save, no re-rating) - gathers the exact same
+	 * inputs and calls simulate(), but never touches the ledger, so a caller can try different
+	 * tauDays/minPct/maxPct against real history with zero side effects. Returns the Steps
+	 * alongside the DecaySettings actually used, so a caller overriding only one of the three can
+	 * see what the other two defaulted to (the athlete's own saved settings).
+	 *
+	 * <p>{@code enabled} is forced true regardless of {@code athlete.isThresholdDecayEnabled()} -
+	 * simulate() takes a different, legacy ("disabled") branch when enabled is false that ignores
+	 * tauDays/minPct/maxPct entirely, which would silently make every override here a no-op for
+	 * an athlete who hasn't turned decay on yet. windowDays/sanityPct are never overridden - the
+	 * issue's own signature doesn't offer that, and gatherCandidates' own window scan already
+	 * reads athlete.getThresholdWindowDays() directly, so overriding settings.windowDays() alone
+	 * wouldn't even change what candidates are gathered. */
+	public PreviewResult gatherPreviewSteps(User athlete, ThresholdField field, LocalDate fromDate, LocalDate end,
+			Double tauDays, Double minPct, Double maxPct) {
+		ThresholdDecay.DecaySettings base = decaySettingsFor(athlete);
+		ThresholdDecay.DecaySettings settings = new ThresholdDecay.DecaySettings(base.windowDays(), base.sanityPct(),
+				tauDays != null ? tauDays : base.tauDays(), minPct != null ? minPct : base.minPct(),
+				maxPct != null ? maxPct : base.maxPct(), true);
+
+		Double seedV = seedV(athlete, field, fromDate);
+		SeedAnchor anchor = seedAnchor(athlete, field, fromDate);
+
+		List<ThresholdDecay.DecayCandidate> candidates = gatherCandidates(athlete, field, fromDate, end);
+		List<ThresholdDecay.ManualEntry> manualEntries = gatherManualEntries(athlete, field, fromDate, end, null);
+
+		Map<LocalDate, Double> loadByDay = anchor.value() != null
+				? decayLoadService.loadByDayForAthlete(athlete, field, anchor.value(),
+						athlete.getLthr() != null ? athlete.getLthr().doubleValue() : null,
+						fromDate.minusDays(settings.windowDays()), end)
+				: Map.of();
+
+		List<ThresholdDecay.Step> steps = ThresholdDecay.simulate(field, settings, anchor.value(), anchor.date(),
+				anchor.kind() != null ? anchor.kind().wireValue() : null, candidates, manualEntries, loadByDay, fromDate, end,
+				seedV);
+		return new PreviewResult(steps, settings);
 	}
 
 	/** issue #485: anchorValue/anchorEffectiveFrom/decayingSince/target for a currently-decaying
