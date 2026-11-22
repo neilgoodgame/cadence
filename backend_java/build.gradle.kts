@@ -43,10 +43,10 @@ dependencies {
 
 	// Auth via the default credentials/region provider chain (the EC2 instance profile in
 	// prod, ~/.aws/credentials locally) - no static keys configured anywhere in this repo.
-	implementation("software.amazon.awssdk:sesv2:2.58.0")
+	implementation("software.amazon.awssdk:sesv2:2.59.4")
 
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
-	implementation("com.garmin:fit:21.221.0")
+	implementation("com.garmin:fit:21.222.0")
 	// Course GPX parsing (races feature) - distance/elevation/track points off a course's
 	// uploaded GPX, separate from GpxFileParser (which builds an Activity's full sample
 	// stream, not what a Course needs).
