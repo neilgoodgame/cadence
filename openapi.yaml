@@ -2699,6 +2699,95 @@ paths:
                     items:
                       $ref: "#/components/schemas/FitnessPoint"
 
+  /v1/athletes/{id}/streams/agreement:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Athletes & zones]
+      summary: Agreement trend between two device-class tags over a date range
+      operationId: getDeviceAgreementTrend
+      description: >-
+        Issue #540 (phase 5). For each of the athlete's activities in [from_date, to_date]
+        (sport filter applied if given; multisport children and - unless include_duplicates -
+        same-ride-twice duplicate copies excluded), resolves device_a/device_b each to a stream
+        via the activity's current primary classification or a stored source carrying that tag,
+        and reports per-activity agreement statistics: bias (mean of b minus a), MAE, RMSE,
+        Pearson r, percent within tolerance (5bpm for heartrate, 3% of a's value otherwise),
+        residual lag, and - for field=power only - each side's confirmed power-meter dropout
+        seconds (excluded from the statistics by default, exclude_dropouts=true). device_a/
+        device_b are device-class tags, not source ids: power+bike is trainer|pedals,
+        power+run is native|stryd, heartrate is strap|wrist, cadence is pedals|trainer|watch.
+        sport is required when field=power (bike or run); optional otherwise. An activity where
+        a tag has no matching stream is skipped and tallied in `skipped` rather than erroring;
+        one point per activity with at least 30 overlapping, non-null seconds.
+      parameters:
+        - name: field
+          in: query
+          required: true
+          schema:
+            type: string
+            description: "'power', 'heartrate', or 'cadence'."
+            example: power
+        - name: device_a
+          in: query
+          required: true
+          schema:
+            type: string
+            description: >-
+              A device-class tag - power+bike: trainer|pedals; power+run: native|stryd;
+              heartrate: strap|wrist; cadence: pedals|trainer|watch.
+        - name: device_b
+          in: query
+          required: true
+          schema:
+            type: string
+            description: A second device-class tag; must differ from device_a.
+        - name: sport
+          in: query
+          required: false
+          schema:
+            type: string
+            description: >-
+              Required when field=power ('bike' or 'run'); optional otherwise (filters which
+              activities are included).
+        - name: from_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Defaults to to_date minus 84 days.
+        - name: to_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Defaults to today.
+        - name: exclude_dropouts
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+          description: >-
+            field=power only: exclude each side's confirmed power-meter dropout seconds from
+            the statistics. Dropouts are still detected and reported (dropout_seconds_a/b)
+            when this is false.
+        - name: include_duplicates
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+          description: >-
+            Also include same-ride-twice duplicate copies, which are otherwise excluded
+            entirely (issue #498). Multisport children are always excluded.
+      responses:
+        "200":
+          description: The agreement trend.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceAgreementTrend" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/shares:
     get:
       tags: [Sharing]
@@ -6167,6 +6256,84 @@ components:
           description: The individual dropout runs making up dropout_seconds_b.
           items:
             $ref: "#/components/schemas/DropoutRun"
+
+    DeviceAgreementTrend:
+      type: object
+      description: Issue #540 (phase 5). See GET /v1/athletes/{id}/streams/agreement.
+      properties:
+        field:
+          type: string
+          example: power
+        device_a:
+          type: string
+          description: Echoes the request's device_a.
+        device_b:
+          type: string
+          description: Echoes the request's device_b.
+        sport:
+          type: [string, "null"]
+          description: Echoes the request's sport - null when not sent (heartrate/cadence).
+        from_date:
+          type: string
+          format: date
+        to_date:
+          type: string
+          format: date
+        points:
+          type: array
+          description: >-
+            One entry per activity where both tags resolved to a stream with at least 30
+            overlapping, non-null seconds - the per-activity statistics GET .../streams/compare
+            reports for a single activity, flattened (no power_fit or zone_breakdown at trend
+            level).
+          items:
+            type: object
+            properties:
+              activity_id:
+                type: string
+              name:
+                type: string
+              date:
+                type: string
+                format: date
+              overlap_seconds:
+                type: integer
+                description: Paired, non-null seconds the statistics below are computed over.
+              bias:
+                type: number
+                description: Mean of (b - a).
+              mae:
+                type: number
+              rmse:
+                type: number
+              pearson_r:
+                type: number
+              within_tolerance_pct:
+                type: number
+                description: "% of paired seconds within tolerance (5bpm absolute for heartrate, 3% of a's value otherwise)."
+              lag_seconds:
+                type: [integer, "null"]
+                description: >-
+                  Residual lag from cross-correlation - positive means b trails a; null only if
+                  no candidate lag in [-30s, 30s] had enough overlap to score.
+              dropout_seconds_a:
+                type: integer
+                description: field=power only - 0 for heartrate/cadence.
+              dropout_seconds_b:
+                type: integer
+                description: field=power only - 0 for heartrate/cadence.
+        skipped:
+          type: object
+          description: >-
+            Why the date range produced fewer points than it had activities - "this device
+            wasn't used that day" is the expected common case, not a fault. no_device_a and
+            no_device_b count activities where that tag resolved to no stream at all;
+            insufficient_overlap counts activities where both resolved but had fewer than 30
+            overlapping, non-null seconds.
+          properties:
+            no_device_a: { type: integer }
+            no_device_b: { type: integer }
+            insufficient_overlap: { type: integer }
 
     DropoutRun:
       type: object
