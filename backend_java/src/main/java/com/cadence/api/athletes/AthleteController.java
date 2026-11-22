@@ -2,6 +2,7 @@ package com.cadence.api.athletes;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
+import com.cadence.api.activities.AgreementTrendService;
 import com.cadence.api.activities.DerivedStatsRecomputeService;
 import com.cadence.api.activities.RunningPowerSourceRecomputeService;
 import com.cadence.api.activities.TssRecomputeService;
@@ -18,6 +19,7 @@ import com.cadence.api.common.RecomputeLockRegistry;
 import com.cadence.api.common.SseHeartbeat;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.DataListResponse;
 import com.cadence.api.security.AccessGuard;
 import com.cadence.api.users.User;
@@ -60,6 +62,7 @@ public class AthleteController {
 	private final ThresholdHistoryService thresholdHistoryService;
 	private final ThresholdSuggestionService thresholdSuggestionService;
 	private final ActivityRepository activityRepository;
+	private final AgreementTrendService agreementTrendService;
 	private final AccessGuard accessGuard;
 	private final RecomputeLockRegistry lockRegistry;
 	private final Executor taskExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -70,7 +73,7 @@ public class AthleteController {
 			RunningPowerSourceRecomputeService runningPowerSourceRecomputeService,
 			ThresholdHistoryService thresholdHistoryService,
 			ThresholdSuggestionService thresholdSuggestionService, ActivityRepository activityRepository,
-			AccessGuard accessGuard, RecomputeLockRegistry lockRegistry) {
+			AgreementTrendService agreementTrendService, AccessGuard accessGuard, RecomputeLockRegistry lockRegistry) {
 		this.userService = userService;
 		this.userMapper = userMapper;
 		this.athleteService = athleteService;
@@ -82,6 +85,7 @@ public class AthleteController {
 		this.thresholdHistoryService = thresholdHistoryService;
 		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.activityRepository = activityRepository;
+		this.agreementTrendService = agreementTrendService;
 		this.accessGuard = accessGuard;
 		this.lockRegistry = lockRegistry;
 	}
@@ -301,6 +305,33 @@ public class AthleteController {
 		LocalDate effectiveTo = to != null ? to : LocalDate.now();
 		LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(84);
 		return new DataListResponse<>(fitnessService.computeFitnessSeries(id, effectiveFrom, effectiveTo));
+	}
+
+	/** Issue #540 (phase 5): per-activity agreement statistics between two device-class tags for
+	 * {@code field}, across the athlete's activities in a date range - see {@link
+	 * AgreementTrendService#computeAgreementTrend}. field/device_a/device_b are passed through
+	 * (a missing one is a 400 from the service's own vocabulary check, not Spring's
+	 * missing-parameter error), same as backend's AgreementTrendView. */
+	@GetMapping("/v1/athletes/{id}/streams/agreement")
+	public AgreementTrendService.AgreementTrendResponse getAgreementTrend(@PathVariable String id,
+			@RequestParam(required = false) String field,
+			@RequestParam(name = "device_a", required = false) String deviceA,
+			@RequestParam(name = "device_b", required = false) String deviceB,
+			@RequestParam(required = false) String sport,
+			@RequestParam(name = "from_date", required = false) LocalDate fromDate,
+			@RequestParam(name = "to_date", required = false) LocalDate toDate,
+			@RequestParam(name = "exclude_dropouts", defaultValue = "true") boolean excludeDropouts,
+			@RequestParam(name = "include_duplicates", defaultValue = "false") boolean includeDuplicates) {
+		accessGuard.requireRead(id);
+		LocalDate effectiveTo = toDate != null ? toDate : LocalDate.now();
+		LocalDate effectiveFrom = fromDate != null ? fromDate : effectiveTo.minusDays(84);
+		if (effectiveFrom.isAfter(effectiveTo)) {
+			throw new ValidationException("Must not be after to_date.", "from_date");
+		}
+		AgreementTrendService.AgreementTrendResult result = agreementTrendService.computeAgreementTrend(id, field,
+				deviceA, deviceB, sport, effectiveFrom, effectiveTo, excludeDropouts, includeDuplicates);
+		return new AgreementTrendService.AgreementTrendResponse(field, deviceA, deviceB, sport, effectiveFrom,
+				effectiveTo, result.points(), result.skipped());
 	}
 
 	/** Actionable suggestions where the auto-derivation in getThresholds falls short - see

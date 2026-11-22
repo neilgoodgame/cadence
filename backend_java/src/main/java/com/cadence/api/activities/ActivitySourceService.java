@@ -752,7 +752,10 @@ public class ActivitySourceService {
 				dropoutSecondsA.size(), dropoutSecondsB.size(), dropoutRunsA, dropoutRunsB);
 	}
 
-	private record PowerDropouts(Set<Integer> secondsA, List<DropoutDetector.DropoutRun> runsA,
+	// Package-visible (not private): AgreementTrendService reuses this exact pass per activity,
+	// the same way backend's agreement_trend_service.py imports _detect_power_dropouts from
+	// activity_source_service.
+	record PowerDropouts(Set<Integer> secondsA, List<DropoutDetector.DropoutRun> runsA,
 			Set<Integer> secondsB, List<DropoutDetector.DropoutRun> runsB) {
 	}
 
@@ -760,8 +763,9 @@ public class ActivitySourceService {
 	 * using the *other* side as its reference. The activity's own primary cadence (the
 	 * single-stream fallback) is only loaded if at least one side's reference comes back empty
 	 * - the common case is two real streams corroborating each other, where cadence is never
-	 * consulted at all. */
-	private PowerDropouts detectPowerDropouts(Activity activity, Map<Integer, Integer> seriesA,
+	 * consulted at all. Package-visible for {@link AgreementTrendService} - see PowerDropouts'
+	 * own comment. */
+	PowerDropouts detectPowerDropouts(Activity activity, Map<Integer, Integer> seriesA,
 			Map<Integer, Integer> seriesB) {
 		Map<Integer, Integer> referenceForA = DropoutDetector.buildReference(seriesB, 0, seriesA.keySet());
 		Map<Integer, Integer> referenceForB = DropoutDetector.buildReference(seriesA, 0, seriesB.keySet());
@@ -787,6 +791,10 @@ public class ActivitySourceService {
 		}
 		ActivityStream stream = streamRepository.findByActivityIdAndFieldAndSourceId(activity.getId(), field, sourceRef)
 				.orElseThrow(() -> new NotFoundException("No such source for this activity/field."));
+		return seriesFromStream(stream);
+	}
+
+	private static Map<Integer, Integer> seriesFromStream(ActivityStream stream) {
 		Short[] values = stream.getStreamValues();
 		int t0 = stream.getT0();
 		Map<Integer, Integer> series = new HashMap<>();
@@ -796,5 +804,78 @@ public class ActivitySourceService {
 			}
 		}
 		return series;
+	}
+
+	/** Issue #540 (phase 5): the device-class tag of the activity's *current* primary stream for
+	 * {@code field} - the inverse read of {@link #isPrimaryForField}: power/bike via
+	 * {@link #currentPrimarySource}, power/run and heartrate/cadence off the activity's own
+	 * resolved-source field (blank when never tagged, in which case no tag matches the primary
+	 * and only a stored source can resolve). Package-visible for {@link AgreementTrendService} -
+	 * mirrors backend's activity_source_service._primary_tag_for_field. */
+	static String primaryTagForField(Activity activity, String field) {
+		if (field.equals("power")) {
+			if (activity.getSport() == Sport.RUN) {
+				return activity.getPowerSource() != null ? activity.getPowerSource().wireValue() : "";
+			}
+			return currentPrimarySource(activity).wireValue();
+		}
+		if (field.equals("heartrate")) {
+			return activity.getHrSource() != null ? activity.getHrSource().wireValue() : "";
+		}
+		if (field.equals("cadence")) {
+			return activity.getCadenceSource() != null ? activity.getCadenceSource().wireValue() : "";
+		}
+		return "";
+	}
+
+	/** Issue #540 (phase 5): whether a stored source's stream for {@code field} carries the given
+	 * device-class tag - exactly {@link #isPrimaryForField}'s own comparisons, with the
+	 * activity's current primary replaced by tag. Package-visible for {@link
+	 * AgreementTrendService} - mirrors backend's activity_source_service._source_matches_tag. */
+	static boolean sourceMatchesTag(ActivitySource source, String field, String tag, Activity activity) {
+		if (!source.getSensorKind().equals(field)) {
+			return false;
+		}
+		if (field.equals("power")) {
+			if (activity.getSport() == Sport.RUN) {
+				return tag.equals(source.getSourceKind());
+			}
+			return classify(source.getDevice()).wireValue().equals(tag);
+		}
+		if (field.equals("heartrate") || field.equals("cadence")) {
+			return tag.equals(source.getSourceKind());
+		}
+		return false;
+	}
+
+	/** Issue #540 (phase 5): resolves a device-class tag to this activity's series for
+	 * {@code field} - the primary ({@link Record}) when the tag matches the activity's current
+	 * primary classification, else the most recently created stored {@link ActivitySource} whose
+	 * stream carries the tag (the schema allows more than one; practice shouldn't produce it - a
+	 * judgment call, flagged in the PR). {@code null} when nothing matches: "this device wasn't
+	 * used that day" is the expected common case across a date range, so callers skip rather
+	 * than error. Package-visible for {@link AgreementTrendService} - mirrors backend's
+	 * activity_source_service._resolve_tagged_series. */
+	Map<Integer, Integer> resolveTaggedSeries(Activity activity, String field, String tag) {
+		if (primaryTagForField(activity, field).equals(tag)) {
+			return loadFieldSeries(activity, field, PRIMARY_SOURCE_REF);
+		}
+		List<ActivitySource> candidates = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId())
+				.stream().filter(source -> sourceMatchesTag(source, field, tag, activity)).toList();
+		if (candidates.isEmpty()) {
+			return null;
+		}
+		// Most recently created wins on an ambiguous tag - Python's max() keeps the FIRST maximum
+		// it sees, so replicate that (strictly-after comparison) rather than taking the list's
+		// last element, which would flip the winner when two created_at values tie.
+		ActivitySource source = candidates.get(0);
+		for (int i = 1; i < candidates.size(); i++) {
+			if (candidates.get(i).getCreatedAt().isAfter(source.getCreatedAt())) {
+				source = candidates.get(i);
+			}
+		}
+		ActivityStream stream = streamRepository.findByActivityIdAndFieldAndSourceId(activity.getId(), field,
+				source.getId()).orElse(null);
+		return stream == null ? null : seriesFromStream(stream);
 	}
 }
