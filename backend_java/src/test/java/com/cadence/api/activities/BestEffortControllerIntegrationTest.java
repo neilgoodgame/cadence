@@ -13,6 +13,7 @@ import com.cadence.api.common.RecomputeLockRegistry;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.ForbiddenException;
+import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.security.AuthContext;
 import com.cadence.api.security.AuthContextHolder;
 import com.cadence.api.support.IntegrationTest;
@@ -121,7 +122,7 @@ class BestEffortControllerIntegrationTest extends IntegrationTest {
 		bestEffortComputeService.trim(athlete.getId(), BestEffortKind.RUNNING_PACE, "1km", true, 2);
 
 		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
-		BestEffortListResponse response = bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.RUNNING_PACE, "16w");
+		BestEffortListResponse response = bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.RUNNING_PACE, "16w", null, null);
 
 		assertThat(response.data()).extracting(BestEffortResponse::activityId)
 				.containsExactlyInAnyOrder(recent1.getActivity().getId(), recent2.getActivity().getId());
@@ -165,9 +166,129 @@ class BestEffortControllerIntegrationTest extends IntegrationTest {
 		activityRepository.save(duplicate.getActivity());
 
 		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
-		BestEffortListResponse response = bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, "all");
+		BestEffortListResponse response = bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, "all", null, null);
 
 		assertThat(response.data()).extracting(BestEffortResponse::value).containsExactly(300.0);
+	}
+
+	// Issue #582: explicit date-range queries (start_date/end_date). Mirrors the Django
+	// BestEffortListViewTests cases - messages and status must stay in lockstep across backends.
+
+	@Test
+	void dateRangeFiltersInclusivelyOnBothBounds() {
+		User athlete = newAthlete("befrange-bounds@example.cc", 10);
+		BestEffort insideStart = makeEffort(athlete, BestEffortKind.RUNNING_PACE, Sport.RUN, "5km", 310.0, 10); // on the start boundary
+		BestEffort insideEnd = makeEffort(athlete, BestEffortKind.RUNNING_PACE, Sport.RUN, "5km", 301.0, 1); // on the end boundary
+		makeEffort(athlete, BestEffortKind.RUNNING_PACE, Sport.RUN, "5km", 311.0, 11); // one day before the start
+		makeEffort(athlete, BestEffortKind.RUNNING_PACE, Sport.RUN, "5km", 300.0, 0); // today, one day after the end
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		BestEffortListResponse response = bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.RUNNING_PACE, null,
+				LocalDate.now().minusDays(10).toString(), LocalDate.now().minusDays(1).toString());
+
+		assertThat(response.data()).extracting(BestEffortResponse::activityId)
+				.containsExactlyInAnyOrder(insideStart.getActivity().getId(), insideEnd.getActivity().getId());
+	}
+
+	@Test
+	void dateRangeResponseEchoesDatesAndNullPeriod() {
+		User athlete = newAthlete("befrange-echo@example.cc", 10);
+		LocalDate start = LocalDate.now().minusDays(30);
+		LocalDate end = LocalDate.now();
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		BestEffortListResponse response = bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, null,
+				start.toString(), end.toString());
+
+		assertThat(response.period()).isNull();
+		assertThat(response.startDate()).isEqualTo(start);
+		assertThat(response.endDate()).isEqualTo(end);
+	}
+
+	@Test
+	void periodResponseIncludesNullDates() {
+		User athlete = newAthlete("befrange-periodnull@example.cc", 10);
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		BestEffortListResponse response = bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, "1y", null, null);
+
+		assertThat(response.period()).isEqualTo("1y");
+		assertThat(response.startDate()).isNull();
+		assertThat(response.endDate()).isNull();
+	}
+
+	@Test
+	void oneSidedRangeThrows() {
+		User athlete = newAthlete("befrange-onesided@example.cc", 10);
+		LocalDate today = LocalDate.now();
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, null, today.toString(), null))
+				.isInstanceOf(ValidationException.class);
+		assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, null, null, today.toString()))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void periodCombinedWithRangeThrows() {
+		User athlete = newAthlete("befrange-combined@example.cc", 10);
+		LocalDate start = LocalDate.now().minusDays(30);
+		LocalDate end = LocalDate.now();
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		// The explicit default value "all" is rejected too - only an omitted period may combine with a range.
+		assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, "all", start.toString(), end.toString()))
+				.isInstanceOf(ValidationException.class);
+		assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, "1y", start.toString(), end.toString()))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void malformedRangeDateThrows() {
+		User athlete = newAthlete("befrange-malformed@example.cc", 10);
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		// "20260803" (ISO 8601 basic form) and "+2026-08-03" (signed year) are rejected as well
+		// - the contract is unsigned dashed YYYY-MM-DD only, matching Django's
+		// fromisoformat+round-trip check.
+		for (String bad : new String[] { "2026-13-45", "not-a-date", "20260803", "+2026-08-03" }) {
+			assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, null, bad, "2026-08-31"))
+					.isInstanceOf(ValidationException.class);
+		}
+	}
+
+	@Test
+	void unknownPeriodWithRangeThrowsTheEnumError() {
+		// Doubly-invalid input: the period enum error must win on both backends (Django checks
+		// it first too) - pins the validation order, not just the single-error messages.
+		User athlete = newAthlete("befrange-doubleinvalid@example.cc", 10);
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, "banana",
+				LocalDate.now().minusDays(30).toString(), LocalDate.now().toString()))
+				.isInstanceOf(ValidationException.class)
+				.hasMessage("Must be one of 4w, 3m, 16w, 1y, all.");
+	}
+
+	@Test
+	void startAfterEndThrows() {
+		User athlete = newAthlete("befrange-order@example.cc", 10);
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, null,
+				LocalDate.now().toString(), LocalDate.now().minusDays(30).toString()))
+				.isInstanceOf(ValidationException.class);
+	}
+
+	@Test
+	void unknownPeriodThrows() {
+		// Parity fix: previously an unknown period silently fell back to all-time (default -> null);
+		// Django and the documented enum both 400, so Java must too.
+		User athlete = newAthlete("befrange-badperiod@example.cc", 10);
+
+		AuthContextHolder.set(AuthContext.self(athlete.getId(), Set.of("activities:read"), AuthContext.CredentialKind.OAUTH2));
+		assertThatThrownBy(() -> bestEffortController.listBestEfforts(athlete.getId(), BestEffortKind.CYCLING_POWER, "banana", null, null))
+				.isInstanceOf(ValidationException.class);
 	}
 
 	@Test

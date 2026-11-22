@@ -64,7 +64,10 @@ public class BestEffortTools {
 			case "3m" -> LocalDate.now().minusDays(90);
 			case "16w" -> LocalDate.now().minusDays(112);
 			case "1y" -> LocalDate.now().minusDays(365);
-			default -> null;
+			case "all" -> null;
+			// Match the REST endpoint and Django's MCP tool: an unknown period is a 400, not a
+			// silent all-time fallback (a typo'd period would otherwise answer with lifetime data).
+			default -> throw new ValidationException("Must be one of 4w, 3m, 16w, 1y, all.", "period");
 		};
 		List<BestEffort> efforts = since != null
 				? bestEffortRepository.findByAthleteIdAndKindAndDateGreaterThanEqualOrderByWindowAscValueDesc(
@@ -78,7 +81,7 @@ public class BestEffortTools {
 		List<BestEffortResponse> data = capped.stream()
 				.map(e -> new BestEffortResponse(e.getWindow(), e.getValue(), e.getUnit(), e.getDate(), e.getActivity().getId()))
 				.toList();
-		return new BestEffortListResponse(effectiveKind, effectivePeriod, data);
+		return new BestEffortListResponse(effectiveKind, effectivePeriod, data, null, null);
 	}
 
 	private BestEffortKind parseKind(String kind) {

@@ -263,6 +263,21 @@ class ZoneSetDetailView(APIView):
         return Response({"type": type, "reference": reference_for(athlete, type), "updated": True})
 
 
+def _parse_range_date(raw: str | None, name: str) -> date | None:
+    """Strict YYYY-MM-DD parse for the best-efforts range params. fromisoformat alone also
+    accepts ISO 8601 basic form ("20260803") on Python >= 3.11, which the contract doesn't -
+    the round-trip check rejects it while Java's LocalDate.parse (ISO_LOCAL_DATE) does too."""
+    if raw is None:
+        return None
+    try:
+        parsed = date.fromisoformat(raw)
+    except ValueError:
+        raise ValidationError({name: "Must be a YYYY-MM-DD date."}) from None
+    if parsed.isoformat() != raw:
+        raise ValidationError({name: "Must be a YYYY-MM-DD date."})
+    return parsed
+
+
 class BestEffortListView(APIView):
     def get(self, request: Request, id: str) -> Response:
         _require_read(request, id)
@@ -277,17 +292,43 @@ class BestEffortListView(APIView):
         if period not in ("4w", "3m", "16w", "1y", "all"):
             raise ValidationError({"period": "Must be one of 4w, 3m, 16w, 1y, all."})
 
+        raw_start = request.query_params.get("start_date")
+        raw_end = request.query_params.get("end_date")
+        if (raw_start is None) != (raw_end is None):
+            missing = "start_date" if raw_start is None else "end_date"
+            raise ValidationError({missing: "start_date and end_date must be provided together."})
+        if raw_start is not None:
+            # An explicit period (even the default value "all") can't be combined with a range.
+            if "period" in request.query_params:
+                raise ValidationError({"period": "period cannot be combined with start_date/end_date."})
+            start_date = _parse_range_date(raw_start, "start_date")
+            end_date = _parse_range_date(raw_end, "end_date")
+            if start_date > end_date:
+                raise ValidationError({"start_date": "start_date must not be after end_date."})
+        else:
+            start_date = end_date = None
+
         qs = BestEffort.objects.filter(athlete_id=id, kind=kind, activity__primary_activity__isnull=True).order_by(
             "window", "-value"
         )
-        if period in BEST_EFFORT_PERIOD_DAYS:
+        if start_date is not None:
+            qs = qs.filter(date__gte=start_date, date__lte=end_date)
+        elif period in BEST_EFFORT_PERIOD_DAYS:
             cutoff = timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
             qs = qs.filter(date__gte=cutoff)
 
         athlete = get_object_or_404(User, pk=id)
         capped = cap_per_window(list(qs), kind in LOWER_IS_BETTER_KINDS, athlete.best_effort_top_n)
 
-        return Response({"kind": kind, "period": period, "data": BestEffortSerializer(capped, many=True).data})
+        return Response(
+            {
+                "kind": kind,
+                "period": None if start_date is not None else period,
+                "start_date": start_date.isoformat() if start_date is not None else None,
+                "end_date": end_date.isoformat() if end_date is not None else None,
+                "data": BestEffortSerializer(capped, many=True).data,
+            }
+        )
 
 
 # The design spec's wire vocabulary calls cycling "ride" throughout (query param, JSON sport
