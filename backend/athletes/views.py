@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.serializers import UserSerializer
+from activities.agreement_trend_service import agreement_trend_response, compute_agreement_trend
 from activities.models import Activity, ActivityDurability, BestEffort
 from activities.serializers import BestEffortSerializer
 from core.auth_context import get_effective_athlete_id
@@ -598,6 +599,52 @@ class FitnessListView(APIView):
 
         series = compute_fitness_series(id, from_date, to_date)
         return Response({"data": FitnessPointSerializer(series, many=True).data})
+
+
+class AgreementTrendView(APIView):
+    """Issue #540 (phase 5): GET /v1/athletes/{id}/streams/agreement - per-activity agreement
+    statistics (bias/MAE/RMSE/Pearson r/tolerance/lag/dropouts) between two device-class tags
+    for field, across the athlete's activities in a date range. See
+    agreement_trend_service.compute_agreement_trend for the computation."""
+
+    def get(self, request: Request, id: str) -> Response:
+        _require_read(request, id)
+
+        field = request.query_params.get("field", "")
+        device_a = request.query_params.get("device_a", "")
+        device_b = request.query_params.get("device_b", "")
+        sport_param = request.query_params.get("sport")
+
+        to_param = request.query_params.get("to_date")
+        to_date = parse_date(to_param) if to_param else timezone.now().date()
+        if to_date is None:
+            raise ValidationError({"to_date": "Must be a date in YYYY-MM-DD format."})
+
+        from_param = request.query_params.get("from_date")
+        from_date = parse_date(from_param) if from_param else to_date - timedelta(days=DEFAULT_FITNESS_WINDOW_DAYS)
+        if from_date is None:
+            raise ValidationError({"from_date": "Must be a date in YYYY-MM-DD format."})
+
+        if from_date > to_date:
+            raise ValidationError({"from_date": "Must not be after to_date."})
+
+        exclude_dropouts = request.query_params.get("exclude_dropouts", "true").lower() == "true"
+        include_duplicates = request.query_params.get("include_duplicates", "false").lower() == "true"
+
+        points, skipped = compute_agreement_trend(
+            id,
+            field,
+            device_a,
+            device_b,
+            sport_param,
+            from_date,
+            to_date,
+            exclude_dropouts=exclude_dropouts,
+            include_duplicates=include_duplicates,
+        )
+        return Response(
+            agreement_trend_response(field, device_a, device_b, sport_param, from_date, to_date, points, skipped)
+        )
 
 
 class RecomputeAthleteTssView(APIView):

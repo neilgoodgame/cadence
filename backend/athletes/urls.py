@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     ActivityBestEffortRanksView,
+    AgreementTrendView,
     AthleteDetailView,
     AthleteDurabilityView,
     AthleteThresholdsView,
@@ -64,6 +65,7 @@ urlpatterns = [
     ),
     path("v1/athletes/<str:id>/durability", AthleteDurabilityView.as_view(), name="athlete-durability"),
     path("v1/athletes/<str:id>/fitness", FitnessListView.as_view(), name="athlete-fitness"),
+    path("v1/athletes/<str:id>/streams/agreement", AgreementTrendView.as_view(), name="athlete-streams-agreement"),
     path("v1/athletes/<str:id>/recompute-tss", RecomputeAthleteTssView.as_view(), name="athlete-recompute-tss"),
     path("v1/athletes/<str:id>/recompute-stats", RecomputeAthleteStatsView.as_view(), name="athlete-recompute-stats"),
     path(

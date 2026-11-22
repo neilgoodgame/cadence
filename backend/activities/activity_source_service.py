@@ -529,6 +529,57 @@ def _load_field_series(activity: Activity, field: str, source_ref: str) -> dict[
     return {stream.t0 + i: value for i, value in enumerate(stream.values) if value is not None}
 
 
+def _primary_tag_for_field(activity: Activity, field: str) -> str:
+    """The device-class tag of the activity's *current* primary stream for field - the inverse
+    read of _is_primary_for_field: power/bike via _current_primary_source, power/run and
+    heartrate/cadence off the activity's own resolved-source field (blank when never tagged, in
+    which case no tag matches the primary and only a stored source can resolve)."""
+    if field == "power":
+        if activity.sport == "run":
+            return activity.power_source
+        return _current_primary_source(activity)
+    if field == "heartrate":
+        return activity.hr_source
+    if field == "cadence":
+        return activity.cadence_source
+    return ""
+
+
+def _source_matches_tag(source: ActivitySource, field: str, tag: str, activity: Activity) -> bool:
+    """Whether a stored source's stream for field carries the given device-class tag - exactly
+    _is_primary_for_field's own comparisons, with the activity's current primary replaced by tag."""
+    if source.sensor_kind != field:
+        return False
+    if field == "power":
+        if activity.sport == "run":
+            return source.source_kind == tag
+        return classify(source.device) == tag
+    if field in ("heartrate", "cadence"):
+        return source.source_kind == tag
+    return False
+
+
+def _resolve_tagged_series(activity: Activity, field: str, tag: str) -> dict[int, int] | None:
+    """Issue #540 (phase 5): resolves a device-class tag to this activity's series for field -
+    the primary (Record) when the tag matches the activity's current primary classification,
+    else the most recently created stored ActivitySource whose stream carries the tag (the schema
+    allows more than one; practice shouldn't produce it - a judgment call, flagged in the PR).
+    None when nothing matches: "this device wasn't used that day" is the expected common case
+    across a date range, so callers skip rather than error. Reads activity.sources/streams from
+    the prefetch cache (callers must .prefetch_related("sources__streams")) rather than calling
+    _load_field_series, whose per-source get_object_or_404 would N+1 across a trend query."""
+    if _primary_tag_for_field(activity, field) == tag:
+        return {row.t: getattr(row, field) for row in activity.records.order_by("t") if getattr(row, field) is not None}
+    candidates = [source for source in activity.sources.all() if _source_matches_tag(source, field, tag, activity)]
+    if not candidates:
+        return None
+    source = max(candidates, key=lambda s: s.created_at)
+    stream = next((st for st in source.streams.all() if st.field == field), None)
+    if stream is None:
+        return None
+    return {stream.t0 + i: value for i, value in enumerate(stream.values) if value is not None}
+
+
 def _detect_power_dropouts(
     activity: Activity, series_a: dict[int, int], series_b: dict[int, int]
 ) -> tuple[set[int], list[DropoutRun], set[int], list[DropoutRun]]:
