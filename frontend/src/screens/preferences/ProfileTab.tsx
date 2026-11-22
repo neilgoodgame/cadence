@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deleteAllActivities } from "../../api/activities";
 import { updateAthlete } from "../../api/athletes";
@@ -282,6 +283,25 @@ export function ProfileTab() {
             skipped. With a trailing window shorter than 12 weeks, a quarter of the window is
             used instead.
           </p>
+        </div>
+      </div>
+
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>Device agreement</h3>
+        <p style={{ fontSize: 12, color: "var(--ink3)", margin: "0 0 8px", lineHeight: 1.5 }}>
+          How two of your sensors for the same field disagree, activity by activity over time -
+          useful when one source reads consistently higher or lower than the other.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <Link to="/devices/power/agreement-trend" style={{ fontSize: 13, fontWeight: 600, color: "var(--ember)", textDecoration: "none" }}>
+            Power (trainer vs pedals, native vs Stryd) &rarr;
+          </Link>
+          <Link to="/devices/heartrate/agreement-trend" style={{ fontSize: 13, fontWeight: 600, color: "var(--ember)", textDecoration: "none" }}>
+            Heartrate (strap vs wrist) &rarr;
+          </Link>
+          <Link to="/devices/cadence/agreement-trend" style={{ fontSize: 13, fontWeight: 600, color: "var(--ember)", textDecoration: "none" }}>
+            Cadence (pedals vs trainer vs watch) &rarr;
+          </Link>
         </div>
       </div>
 

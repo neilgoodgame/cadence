@@ -9,6 +9,7 @@ import { AdminScreen } from "./screens/AdminScreen";
 import { BestEffortsScreen } from "./screens/BestEffortsScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
+import { DeviceAgreementTrendScreen } from "./screens/DeviceAgreementTrendScreen";
 import { GearScreen } from "./screens/GearScreen";
 import { ImportScreen } from "./screens/ImportScreen";
 import { LoginScreen } from "./screens/LoginScreen";
@@ -42,6 +43,9 @@ export function App() {
                 <Route path="/admin" element={<AdminScreen />} />
                 <Route path="/best-efforts" element={<BestEffortsScreen />} />
                 <Route path="/calendar" element={<CalendarScreen />} />
+                {/* DeviceAgreementTrendScreen itself redirects an invalid :field to power (via
+                    Navigate) - same guard placement as /thresholds/:field above. */}
+                <Route path="/devices/:field/agreement-trend" element={<DeviceAgreementTrendScreen />} />
                 <Route path="/gear" element={<GearScreen />} />
                 <Route path="/import" element={<ImportScreen />} />
                 <Route path="/workouts" element={<WorkoutDesignerScreen />} />

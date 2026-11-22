@@ -9,9 +9,11 @@ import type {
   BestEffortPeriod,
   BestEffortRecomputeJob,
   DataList,
+  DeviceAgreementTrend,
   DurabilityResponse,
   FitnessPoint,
   RecentTopEffort,
+  StreamComparisonField,
   ThresholdFieldName,
   ThresholdHistoryPoint,
   ThresholdHistoryResponse,
@@ -43,6 +45,31 @@ export function getFitness(athleteId: string, from?: string, to?: string): Promi
   if (to) params.set("to", to);
   const query = params.toString();
   return apiFetch<DataList<FitnessPoint>>(`/v1/athletes/${athleteId}/fitness${query ? `?${query}` : ""}`);
+}
+
+/** Issue #540 phase 5 - how two device-class tags (e.g. pedals vs trainer power) agree with
+ * each other, one point per activity in the range. `sport` is required by the backend when
+ * field="power" (its device vocabulary differs between bike and run); `excludeDropouts` is
+ * only meaningful for power (the backend ignores it otherwise). */
+export function getDeviceAgreementTrend(
+  athleteId: string,
+  field: StreamComparisonField,
+  deviceA: string,
+  deviceB: string,
+  sport?: string,
+  fromDate?: string,
+  toDate?: string,
+  excludeDropouts = true,
+): Promise<DeviceAgreementTrend> {
+  const params = new URLSearchParams();
+  params.set("field", field);
+  params.set("device_a", deviceA);
+  params.set("device_b", deviceB);
+  if (sport) params.set("sport", sport);
+  if (fromDate) params.set("from_date", fromDate);
+  if (toDate) params.set("to_date", toDate);
+  params.set("exclude_dropouts", String(excludeDropouts));
+  return apiFetch<DeviceAgreementTrend>(`/v1/athletes/${athleteId}/streams/agreement?${params.toString()}`);
 }
 
 export function excludeActivityFromBestEfforts(athleteId: string, activityId: string, kind: BestEffortKind): Promise<void> {

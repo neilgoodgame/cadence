@@ -846,6 +846,37 @@ export interface StreamComparison {
   dropout_runs_b: DropoutRun[];
 }
 
+/** Issue #540 phase 5. One activity's agreement between two device-class tags - bias is the
+ * mean of (device_b - device_a) per overlapping second, same convention as StreamComparison. */
+export interface DeviceAgreementTrendPoint {
+  activity_id: string;
+  name: string;
+  date: string;
+  overlap_seconds: number;
+  bias: number;
+  mae: number;
+  rmse: number;
+  pearson_r: number;
+  within_tolerance_pct: number;
+  lag_seconds: number | null;
+  dropout_seconds_a: number;
+  dropout_seconds_b: number;
+}
+
+/** GET /v1/athletes/{id}/streams/agreement (issue #540, phase 5). `sport` is null when the
+ * caller didn't send one (heartrate/cadence). `skipped` tallies why activities in range
+ * produced no point, so an empty chart has an explanation instead of silence. */
+export interface DeviceAgreementTrend {
+  field: StreamComparisonField;
+  device_a: string;
+  device_b: string;
+  sport: string | null;
+  from_date: string;
+  to_date: string;
+  points: DeviceAgreementTrendPoint[];
+  skipped: { no_device_a: number; no_device_b: number; insufficient_overlap: number };
+}
+
 export interface BestEffort {
   window: string;
   value: number;
