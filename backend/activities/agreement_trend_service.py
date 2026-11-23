@@ -110,7 +110,7 @@ def compute_agreement_trend(
     if not include_duplicates:
         qs = qs.filter(primary_activity__isnull=True)
     # sources/streams prefetched so _resolve_tagged_series looks them up in memory instead of
-    # calling _load_field_series (a get_object_or_404 per source) - see its own docstring.
+    # calling load_field_series (a get_object_or_404 per source) - see its own docstring.
     qs = qs.order_by("start_date").prefetch_related("sources__streams")
 
     tolerance = (

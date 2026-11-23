@@ -523,7 +523,7 @@ class CompareStreamsResult:
     dropout_runs_b: list[DropoutRun]
 
 
-def _load_field_series(activity: Activity, field: str, source_ref: str) -> dict[int, int]:
+def load_field_series(activity: Activity, field: str, source_ref: str) -> dict[int, int]:
     """Resolves source_ref (PRIMARY_SOURCE_REF or a real ActivitySource id) to an ordered
     {t: value} series for field on activity."""
     if source_ref == PRIMARY_SOURCE_REF:
@@ -570,7 +570,7 @@ def _resolve_tagged_series(activity: Activity, field: str, tag: str) -> dict[int
     None when nothing matches: "this device wasn't used that day" is the expected common case
     across a date range, so callers skip rather than error. Reads activity.sources/streams from
     the prefetch cache (callers must .prefetch_related("sources__streams")) rather than calling
-    _load_field_series, whose per-source get_object_or_404 would N+1 across a trend query."""
+    load_field_series, whose per-source get_object_or_404 would N+1 across a trend query."""
     if _primary_tag_for_field(activity, field) == tag:
         return {row.t: getattr(row, field) for row in activity.records.order_by("t") if getattr(row, field) is not None}
     candidates = [source for source in activity.sources.all() if _source_matches_tag(source, field, tag, activity)]
@@ -601,7 +601,7 @@ def _detect_power_dropouts(
     # while genuinely stopped) doesn't carry the same guarantee, so for sport="run" an unconfirmed
     # side with no reference just stays unconfirmed rather than guessing off cadence.
     cadence_series = (
-        _load_field_series(activity, "cadence", PRIMARY_SOURCE_REF)
+        load_field_series(activity, "cadence", PRIMARY_SOURCE_REF)
         if (reference_for_a is None or reference_for_b is None) and activity.sport != "run"
         else None
     )
@@ -681,8 +681,8 @@ def compare_streams(
         )
 
     activity = get_object_or_404(Activity, pk=activity_id)
-    series_a = _load_field_series(activity, field, source_a)
-    series_b = _load_field_series(activity, field, source_b)
+    series_a = load_field_series(activity, field, source_a)
+    series_b = load_field_series(activity, field, source_b)
 
     dropout_seconds_a: set[int] = set()
     dropout_runs_a: list[DropoutRun] = []

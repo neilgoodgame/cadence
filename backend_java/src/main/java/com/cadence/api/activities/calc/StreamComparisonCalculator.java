@@ -206,7 +206,11 @@ public final class StreamComparisonCalculator {
 		return pairs;
 	}
 
-	private static double pearson(List<double[]> pairs) {
+	// Issue #540 (phase 6): package-visible (not private) since CadenceLockDetector, a different
+	// class in this same package, reuses this rather than duplicating the formula a third time
+	// (ActivityMergeAlignmentCalculator's own pearson is the existing second copy, pre-dating
+	// this class and left as-is - not touched by this change).
+	static double pearson(List<double[]> pairs) {
 		int n = pairs.size();
 		double sumX = 0;
 		double sumY = 0;

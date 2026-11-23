@@ -737,3 +737,41 @@ class ActivityStream(models.Model):
 
     def __str__(self) -> str:
         return f"{self.activity_id} {self.field} <- {self.source_id}"
+
+
+class StreamPatch(PrefixedIDModel):
+    """Issue #540 (phase 6): one applied repair - replaces activity's primary stream for field,
+    at the given segments, with from_source's own stored reading there. Always patches the
+    *primary* stream (never a stored ActivitySource) - repair targets what the athlete trains/
+    races by; patching a non-primary stored source has no use case here and isn't supported.
+    Reversible via unpatch_stream as long as this row exists - previous_values snapshots exactly
+    what primary held before the patch, since (unlike Merge's overwrite rows) there's no stored
+    upload file to re-parse for an arbitrary flagged-segment edit. Mirrors backend_java's
+    StreamPatch entity - keep the two in sync."""
+
+    id_prefix = "pat"
+
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="stream_patches")
+    # Reuse activity_source_service.VALID_FIELDS ("power", "heartrate", "cadence") rather than
+    # redefining a same-named constant here - merge_service.py already hit this exact collision
+    # risk and resolved it by importing VALID_FIELDS aliased (`as ATTACHABLE_FIELDS`).
+    field = models.CharField(max_length=20)  # activity_source_service.VALID_FIELDS
+    from_source = models.ForeignKey(ActivitySource, on_delete=models.PROTECT, related_name="+")
+    # Issue #540: "contact_loss" or "cadence_lock" when segments came from detect_stream_flags'
+    # live detector output at patch time; null when the caller passed explicit segments instead -
+    # the detector's own flags are never persisted (recomputed live, same as dropout_detection's
+    # existing stance), so this just records which detector (if any) produced them, not a
+    # reference back to a stored flag row.
+    detected_kind = models.CharField(max_length=20, null=True, blank=True)  # noqa: DJ001
+    segments = models.JSONField()  # [[start_t, end_t], ...] - inclusive, applied
+    # {str(t): original_value_or_null} for exactly the patched seconds - small (bounded by
+    # segment length, not the whole stream), unlike Merge's file-reparse restore path.
+    previous_values = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    undone_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.id}: {self.activity_id} {self.field}"

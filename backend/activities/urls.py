@@ -26,7 +26,10 @@ from .views import (
     RecomputeActivityTssView,
     RegenerateActivityLapsView,
     StreamComparisonView,
+    StreamFlagsView,
+    StreamPatchView,
     StreamsView,
+    StreamUnpatchView,
     TagDetailView,
     TagListView,
 )
@@ -79,6 +82,21 @@ urlpatterns = [
         "v1/activities/<str:id>/streams/compare",
         StreamComparisonView.as_view(),
         name="activity-streams-compare",
+    ),
+    path(
+        "v1/activities/<str:id>/streams/flags",
+        StreamFlagsView.as_view(),
+        name="activity-streams-flags",
+    ),
+    path(
+        "v1/activities/<str:id>/streams/patch",
+        StreamPatchView.as_view(),
+        name="activity-streams-patch",
+    ),
+    path(
+        "v1/activities/<str:id>/streams/unpatch",
+        StreamUnpatchView.as_view(),
+        name="activity-streams-unpatch",
     ),
     path("v1/activities/<str:id>/curves", CurvesView.as_view(), name="activity-curves"),
     path("v1/activities/<str:id>/comments", ActivityCommentListView.as_view(), name="activity-comments"),
