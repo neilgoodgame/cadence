@@ -210,6 +210,42 @@ class DetachSourceSerializer(serializers.Serializer):
     preview = serializers.BooleanField(required=False, default=False)
 
 
+class StreamPatchSerializer(serializers.Serializer):
+    """POST /v1/activities/{id}/streams/patch request body (issue #540, phase 6)."""
+
+    field = serializers.CharField()
+    from_source = serializers.CharField()
+    # [[start_t, end_t], ...] inclusive pairs, or the literal string "flagged" - see
+    # validate_segments. kind/reference are only meaningful (and required) for "flagged"; ignored
+    # otherwise.
+    segments = serializers.JSONField()
+    kind = serializers.ChoiceField(
+        choices=[("contact_loss", "Contact loss"), ("cadence_lock", "Cadence lock")],
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+    reference = serializers.CharField(required=False, allow_null=True, default=None)
+    preview = serializers.BooleanField(required=False, default=False)
+
+    def validate_segments(self, value):
+        if value == "flagged":
+            return value
+        malformed = not isinstance(value, list) or not all(
+            isinstance(seg, list) and len(seg) == 2 and all(isinstance(x, int) for x in seg) for seg in value
+        )
+        if malformed:
+            raise serializers.ValidationError("segments must be 'flagged' or a list of [start_t, end_t] pairs.")
+        return [tuple(seg) for seg in value]
+
+
+class StreamUnpatchSerializer(serializers.Serializer):
+    """POST /v1/activities/{id}/streams/unpatch request body (issue #540, phase 6). patch_id is
+    optional, same "required only if more than one active" rule as POST .../unmerge's merge_id."""
+
+    patch_id = serializers.CharField(required=False, allow_null=True, default=None)
+
+
 class LapSerializer(serializers.ModelSerializer):
     # step_* fields are flattened directly onto the lap (rather than a nested workout_step
     # object) so the frontend can render step context without an N+1 workout-step lookup per

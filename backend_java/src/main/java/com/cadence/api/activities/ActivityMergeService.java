@@ -68,19 +68,22 @@ public class ActivityMergeService {
 	private final RecordRepository recordRepository;
 	private final MergeRepository mergeRepository;
 	private final ActivitySourceRepository sourceRepository;
+	private final StreamPatchRepository streamPatchRepository;
 	private final ActivityService activityService;
 	private final ActivityMergeApplyService mergeApplyService;
 	private final ActivityPostProcessingService postProcessingService;
 	private final ActivitySourceService sourceService;
 
 	public ActivityMergeService(ActivityRepository activityRepository, RecordRepository recordRepository,
-			MergeRepository mergeRepository, ActivitySourceRepository sourceRepository, ActivityService activityService,
+			MergeRepository mergeRepository, ActivitySourceRepository sourceRepository,
+			StreamPatchRepository streamPatchRepository, ActivityService activityService,
 			ActivityMergeApplyService mergeApplyService, ActivityPostProcessingService postProcessingService,
 			ActivitySourceService sourceService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.mergeRepository = mergeRepository;
 		this.sourceRepository = sourceRepository;
+		this.streamPatchRepository = streamPatchRepository;
 		this.activityService = activityService;
 		this.mergeApplyService = mergeApplyService;
 		this.sourceService = sourceService;
@@ -227,6 +230,15 @@ public class ActivityMergeService {
 
 		Map<String, FieldRewriteCounts> counts = mergeApplyService.applyMergeFields(targetId, sourceId, fields,
 				nullPolicy, offset.offsetSeconds(), zeroPolicy);
+		// Code review finding on issue #540's own PR: an overwrite merge can rewrite a field out
+		// from under an active StreamPatch with no conflict check - see
+		// StreamPatchRepository.invalidateActiveForField's own Javadoc. No-op for a field with
+		// no active patch, and for any field outside StreamPatch's own valid-fields set.
+		for (String field : fields) {
+			if (ActivityMergeApplyService.isStreamField(field)) {
+				streamPatchRepository.invalidateActiveForField(targetId, field, Instant.now());
+			}
+		}
 
 		boolean applyHide = hideSource && !alreadyHiddenUnder(source, target);
 		if (applyHide) {

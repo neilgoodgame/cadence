@@ -12,17 +12,19 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from django.db import transaction
+from django.db.models import ProtectedError
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
 from athletes.zones import get_or_create_zone_set, reference_for
+from core.exceptions import ConflictError
 
 from . import stream_comparison
 from .activity_post_processing import recompute_after_merge
 from .dropout_detection import DropoutRun, build_reference, detect_dropouts
 from .merge_alignment import align
 from .merge_apply import ZeroPolicy
-from .models import Activity, ActivitySource, ActivityStream, Record
+from .models import Activity, ActivitySource, ActivityStream, Record, StreamPatch
 
 VALID_FIELDS = ("power", "heartrate", "cadence")
 
@@ -81,7 +83,7 @@ def _current_primary_source(activity: Activity) -> str:
     return activity.bike_power_source or classify(activity.device)
 
 
-def _validate_field(field: str) -> None:
+def validate_field(field: str) -> None:
     if field not in VALID_FIELDS:
         raise ValidationError({"field": "field must be 'power', 'heartrate', or 'cadence'."})
 
@@ -159,7 +161,7 @@ def attach_stream(
     preview=True computes and returns the result without writing anything (no
     transaction-rollback trick needed here, unlike ``overwrite`` - nothing is written unless
     preview is False, so there's nothing to undo)."""
-    _validate_field(field)
+    validate_field(field)
     _validate_source_kind(field, source_kind)
     target = get_object_or_404(Activity, pk=target_id)
     source = get_object_or_404(Activity, pk=source_id)
@@ -332,7 +334,7 @@ def _swap_primary_stream(activity_id: str, field: str, source_id: str) -> tuple[
     activity's own upload, not an attach), so swapping never loses data either direction. Returns
     that new snapshot's source id alongside the activity, so a caller that needs to undo this
     exact swap later (issue #542) knows what to swap back to."""
-    _validate_field(field)
+    validate_field(field)
     activity = get_object_or_404(Activity, pk=activity_id)
     new_primary_stream = get_object_or_404(ActivityStream, activity_id=activity_id, field=field, source_id=source_id)
 
@@ -367,6 +369,7 @@ def _swap_primary_stream(activity_id: str, field: str, source_id: str) -> tuple[
             setattr(row, field, new_values[index] if 0 <= index < len(new_values) else None)
             changed_rows.append(row)
         Record.objects.bulk_update(changed_rows, [field])
+        StreamPatch.invalidate_active_for_field(activity_id, field)
 
         new_source = new_primary_stream.source
         _stamp_activity_after_swap(activity, field, new_source)
@@ -444,7 +447,18 @@ def detach_and_restore(activity_id: str, field: str, source_id: str, demoted_sou
             _, redundant_snapshot_id = _swap_primary_stream(activity_id, field, restore_to)
             recompute_after_merge(activity_id)
             ActivitySource.objects.filter(pk=redundant_snapshot_id).delete()
-        source.delete()
+        try:
+            source.delete()
+        except ProtectedError as exc:
+            # Issue #540 (phase 6): a StreamPatch.from_source PROTECT reference - a source ever
+            # used in any patch (even a fully-undone one, by design - see StreamPatch's own
+            # "accepted consequence" note) can't be deleted. Converted to a clean 409 here rather
+            # than letting ProtectedError propagate as an unhandled 500 - cadence_exception_handler
+            # only special-cases CQLParseError, so this is the one place in the detach path that
+            # can actually hit this FK.
+            raise ConflictError(
+                f"Can't detach '{source_id}' - it's referenced by an active or past stream patch."
+            ) from exc
     return needs_restore
 
 
@@ -523,7 +537,7 @@ class CompareStreamsResult:
     dropout_runs_b: list[DropoutRun]
 
 
-def _load_field_series(activity: Activity, field: str, source_ref: str) -> dict[int, int]:
+def load_field_series(activity: Activity, field: str, source_ref: str) -> dict[int, int]:
     """Resolves source_ref (PRIMARY_SOURCE_REF or a real ActivitySource id) to an ordered
     {t: value} series for field on activity."""
     if source_ref == PRIMARY_SOURCE_REF:
@@ -570,7 +584,7 @@ def _resolve_tagged_series(activity: Activity, field: str, tag: str) -> dict[int
     None when nothing matches: "this device wasn't used that day" is the expected common case
     across a date range, so callers skip rather than error. Reads activity.sources/streams from
     the prefetch cache (callers must .prefetch_related("sources__streams")) rather than calling
-    _load_field_series, whose per-source get_object_or_404 would N+1 across a trend query."""
+    load_field_series, whose per-source get_object_or_404 would N+1 across a trend query."""
     if _primary_tag_for_field(activity, field) == tag:
         return {row.t: getattr(row, field) for row in activity.records.order_by("t") if getattr(row, field) is not None}
     candidates = [source for source in activity.sources.all() if _source_matches_tag(source, field, tag, activity)]
@@ -601,7 +615,7 @@ def _detect_power_dropouts(
     # while genuinely stopped) doesn't carry the same guarantee, so for sport="run" an unconfirmed
     # side with no reference just stays unconfirmed rather than guessing off cadence.
     cadence_series = (
-        _load_field_series(activity, "cadence", PRIMARY_SOURCE_REF)
+        load_field_series(activity, "cadence", PRIMARY_SOURCE_REF)
         if (reference_for_a is None or reference_for_b is None) and activity.sport != "run"
         else None
     )
@@ -672,7 +686,7 @@ def compare_streams(
     once, at attach time), so offset_seconds is always 0 here - unlike attach_stream's own
     dropout call, which resolves a real cross-activity offset first.
     """
-    _validate_field(field)
+    validate_field(field)
     if source_a == source_b:
         raise ValidationError({"b": "a and b must refer to two different sources."})
     if zone_breakdown and field == "cadence":
@@ -681,8 +695,8 @@ def compare_streams(
         )
 
     activity = get_object_or_404(Activity, pk=activity_id)
-    series_a = _load_field_series(activity, field, source_a)
-    series_b = _load_field_series(activity, field, source_b)
+    series_a = load_field_series(activity, field, source_a)
+    series_b = load_field_series(activity, field, source_b)
 
     dropout_seconds_a: set[int] = set()
     dropout_runs_a: list[DropoutRun] = []

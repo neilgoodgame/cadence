@@ -1320,6 +1320,183 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/activities/{id}/streams/flags:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    get:
+      tags: [Activities]
+      summary: Detect contact-loss or cadence-lock runs on one of this activity's streams
+      operationId: detectActivityStreamFlags
+      description: >-
+        Issue #540 (phase 6). Read-only - flags are always recomputed fresh on every call, never
+        persisted, same stance GET .../streams/compare's own dropout detection already takes.
+        kind=contact_loss: field="power" re-runs the same dropout detection
+        GET .../streams/compare's own dropout_seconds/dropout_runs use; field="heartrate" or
+        "cadence" instead detects a physiologically-impossible second-to-second jump (frozen or
+        garbage sensor value), confirmed only when a reference stream stays smooth and plausible
+        throughout the run - with no reference, nothing is confirmed. kind=cadence_lock
+        (field must be "heartrate") detects a wrist HR stream correlating with this activity's
+        own cadence instead of a true pulse signal, over a sliding 60s window; each flagged
+        segment reports reference_confirmed=true only when a reference HR stream was supplied
+        and tracked this activity's HR less well than cadence did - with no reference stream,
+        segments are flagged on the cadence correlation alone (weaker evidence), so callers must
+        not present an unconfirmed segment the same as a confirmed one.
+      parameters:
+        - name: field
+          in: query
+          required: true
+          schema:
+            type: string
+            description: >-
+              "power", "heartrate", or "cadence" for kind=contact_loss; must be "heartrate" for
+              kind=cadence_lock.
+            example: heartrate
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [contact_loss, cadence_lock]
+        - name: reference
+          in: query
+          required: false
+          schema:
+            type: string
+            description: >-
+              "primary" or a source id from GET .../sources - the corroborating stream. Omitting
+              it is allowed but yields weaker (or, for kind=contact_loss on heartrate/cadence,
+              no) confirmation - see each kind's own description above.
+      responses:
+        "200":
+          description: The detected segments.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamFlags" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/activities/{id}/streams/patch:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Replace this activity's primary stream at given seconds with a stored source's reading
+      operationId: patchActivityStream
+      description: >-
+        Issue #540 (phase 6). Always rewrites the *primary* stream (Record), never a stored
+        ActivitySource - repair targets what the athlete trains/races by. segments="flagged"
+        calls the same detection GET .../streams/flags would, live, right now, using kind/
+        reference, and patches whatever it currently finds - flags are never stored, so the
+        response always echoes the segments actually applied (not just a count), since a preview
+        and its later commit could otherwise silently diverge if the underlying data changes
+        between the two. Explicit segments bypass detection entirely and are capped at 3600s
+        total (a bigger request is whole-stream-rewrite territory - use merge/attach instead).
+        409 if the segments overlap any other active (un-undone) patch on this activity/field -
+        this keeps undo order-independent. preview=true computes and returns the exact result
+        without writing anything.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [field, from_source, segments]
+              properties:
+                field:
+                  type: string
+                  description: "'power', 'heartrate', or 'cadence' - must match from_source's own field."
+                  example: heartrate
+                from_source:
+                  type: string
+                  description: A source id from GET .../sources, storing field's replacement reading.
+                segments:
+                  oneOf:
+                    - type: array
+                      items:
+                        type: array
+                        items: { type: integer }
+                        minItems: 2
+                        maxItems: 2
+                      description: "[[start_t, end_t], ...] inclusive target-local second ranges."
+                    - type: string
+                      enum: [flagged]
+                      description: Use GET .../streams/flags' own live result as the segments to apply.
+                kind:
+                  type: string
+                  enum: [contact_loss, cadence_lock]
+                  nullable: true
+                  description: Required when segments="flagged"; ignored otherwise.
+                reference:
+                  type: string
+                  nullable: true
+                  description: >-
+                    Required when segments="flagged" (passed through to the live detection call);
+                    ignored otherwise.
+                preview:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: The patch's outcome.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamPatchResult" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: segments overlap an active StreamPatch on this activity/field.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/activities/{id}/streams/unpatch:
+    parameters:
+      - $ref: "#/components/parameters/ActivityId"
+    post:
+      tags: [Activities]
+      summary: Undo an active StreamPatch
+      operationId: unpatchActivityStream
+      description: >-
+        Issue #540 (phase 6). Restores Record's field values at the patch's segments from the
+        patch's own previous_values snapshot, marks it undone, and re-runs the recompute cascade.
+        patch_id is required only if more than one active patch exists on this activity, same
+        rule as POST .../unmerge's merge_id.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                patch_id:
+                  type: string
+                  nullable: true
+                  description: Required only if this activity has more than one active patch.
+      responses:
+        "200":
+          description: The undone patch's id and undone_at timestamp.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patch_id: { type: string }
+                  undone_at: { type: string, format: date-time }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /v1/activities/{id}/primary-source:
     parameters:
       - $ref: "#/components/parameters/ActivityId"
@@ -6302,6 +6479,75 @@ components:
           description: The individual dropout runs making up dropout_seconds_b.
           items:
             $ref: "#/components/schemas/DropoutRun"
+
+    StreamFlags:
+      type: object
+      description: Issue #540 (phase 6). See GET /v1/activities/{id}/streams/flags.
+      properties:
+        field:
+          type: string
+          example: heartrate
+        kind:
+          type: string
+          enum: [contact_loss, cadence_lock]
+        segments:
+          type: array
+          items:
+            type: object
+            properties:
+              start_t:
+                type: integer
+              end_t:
+                type: integer
+                description: Inclusive - matches end_t, not start_t + length.
+              reference_confirmed:
+                type: boolean
+                description: >-
+                  Always true for kind=contact_loss (both of its detectors already discard
+                  anything they can't confirm). For kind=cadence_lock, false means this segment
+                  was flagged on the cadence correlation alone, with no reference stream to
+                  confirm it - weaker evidence; callers must not present it the same as a
+                  confirmed segment.
+
+    StreamPatchResult:
+      type: object
+      description: Issue #540 (phase 6). See POST /v1/activities/{id}/streams/patch.
+      properties:
+        patch_id:
+          type: [string, "null"]
+          description: Null when the request was a preview - nothing was created.
+        field:
+          type: string
+        from_source:
+          type: string
+          description: Echoes the request's from_source.
+        detected_kind:
+          type: [string, "null"]
+          description: Echoes the request's kind when segments="flagged" was used; null otherwise.
+        segments:
+          type: array
+          description: >-
+            The segments actually applied - always echoed back (not just a count), even for
+            segments="flagged", so a preview and its later commit can't silently diverge.
+          items:
+            type: array
+            items: { type: integer }
+            minItems: 2
+            maxItems: 2
+        counts:
+          type: object
+          description: Same shape as POST .../merge's own field_counts, for this one field.
+          properties:
+            copied:
+              type: integer
+            kept_original:
+              type: integer
+              description: Always 0 here - a patch always applies; there's no "keep original" case.
+            nulled:
+              type: integer
+            dropouts_nulled:
+              type: integer
+              description: Always 0 here - dropout masking is a merge/attach concept, not a patch one.
 
     DeviceAgreementTrend:
       type: object

@@ -33,7 +33,7 @@ from workouts.inference import infer_workout
 from workouts.match_scan import DURATION_TOLERANCE_SECONDS, rank_workouts_for_activity
 from workouts.models import Workout
 
-from . import activity_source_service
+from . import activity_source_service, stream_flag_service, stream_patch_service
 from .comments import resolve_parent_comment
 from .elevation import SECTION_SPORTS, ensure_elevation, rebuild_elevation, sections_payload
 from .lap_derivation import replace_laps_with_derived
@@ -51,6 +51,8 @@ from .serializers import (
     LapSerializer,
     MergeActivitiesSerializer,
     SetPrimarySourceSerializer,
+    StreamPatchSerializer,
+    StreamUnpatchSerializer,
     TagAttachSerializer,
     TagNameSerializer,
     TagSerializer,
@@ -690,6 +692,68 @@ class StreamComparisonView(APIView):
             id, field, source_a, source_b, zone_breakdown, exclude_dropouts
         )
         return Response(activity_source_service.compare_streams_response(result))
+
+
+class StreamFlagsView(APIView):
+    """Issue #540 (phase 6): GET .../streams/flags - detects contact-loss or cadence-lock runs,
+    read-only, never persisted. See stream_flag_service.detect_stream_flags for the actual
+    dispatch/computation."""
+
+    def get(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_read(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have read access to that athlete's data.")
+
+        field = request.query_params.get("field", "")
+        kind = request.query_params.get("kind", "")
+        reference = request.query_params.get("reference") or None
+        result = stream_flag_service.detect_stream_flags(id, field, kind, reference)
+        return Response(stream_flag_service.stream_flags_response(result))
+
+
+class StreamPatchView(APIView):
+    """Issue #540 (phase 6): POST .../streams/patch - applies (or previews) a StreamPatch. See
+    stream_patch_service.patch_stream for the actual orchestration."""
+
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        serializer = StreamPatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        result = stream_patch_service.patch_stream(
+            id,
+            data["field"],
+            data["from_source"],
+            data["segments"],
+            kind=data["kind"],
+            reference=data["reference"],
+            preview=data["preview"],
+        )
+        return Response(stream_patch_service.stream_patch_response(result))
+
+
+class StreamUnpatchView(APIView):
+    """Issue #540 (phase 6): POST .../streams/unpatch - undoes an active StreamPatch. See
+    stream_patch_service.unpatch_stream for the actual orchestration."""
+
+    def post(self, request: Request, id: str) -> Response:
+        activity = get_object_or_404(Activity, pk=id)
+        sub, _ = get_effective_athlete_id(request)
+        if not user_may_write(sub, activity.athlete_id):
+            raise PermissionDenied("You do not have write access to that athlete's data.")
+
+        serializer = StreamUnpatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        patch = stream_patch_service.unpatch_stream(id, data["patch_id"])
+        return Response({"patch_id": patch.id, "undone_at": patch.undone_at})
 
 
 class ActivityPrimarySourceView(APIView):

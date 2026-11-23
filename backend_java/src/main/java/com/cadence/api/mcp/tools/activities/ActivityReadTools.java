@@ -6,6 +6,8 @@ import com.cadence.api.activities.ActivityOverlapService;
 import com.cadence.api.activities.ActivityService;
 import com.cadence.api.activities.ActivitySourceService;
 import com.cadence.api.activities.ActivitySplitsService;
+import com.cadence.api.activities.ActivityStreamFlagService;
+import com.cadence.api.activities.ActivityStreamFlagService.Kind;
 import com.cadence.api.activities.Environment;
 import com.cadence.api.activities.LapMapper;
 import com.cadence.api.activities.LapRepository;
@@ -52,13 +54,14 @@ public class ActivityReadTools {
 	private final ActivityMergeService mergeService;
 	private final MergeRuleService mergeRuleService;
 	private final ActivitySourceService sourceService;
+	private final ActivityStreamFlagService streamFlagService;
 	private final AccessGuard accessGuard;
 	private final McpToolAuthorizer authorizer;
 
 	public ActivityReadTools(ActivityService activityService, LapRepository lapRepository, LapMapper lapMapper,
 			TagService tagService, ActivitySplitsService splitsService, ActivityOverlapService overlapService,
 			ActivityMergeService mergeService, MergeRuleService mergeRuleService, ActivitySourceService sourceService,
-			AccessGuard accessGuard, McpToolAuthorizer authorizer) {
+			ActivityStreamFlagService streamFlagService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
 		this.lapMapper = lapMapper;
@@ -68,6 +71,7 @@ public class ActivityReadTools {
 		this.mergeService = mergeService;
 		this.mergeRuleService = mergeRuleService;
 		this.sourceService = sourceService;
+		this.streamFlagService = streamFlagService;
 		this.accessGuard = accessGuard;
 		this.authorizer = authorizer;
 	}
@@ -276,6 +280,36 @@ public class ActivityReadTools {
 		accessGuard.requireRead(activity.getAthlete().getId());
 		return sourceService.compareStreams(activityId, field, sourceA, sourceB,
 				zoneBreakdown != null && zoneBreakdown, excludeDropouts == null || excludeDropouts);
+	}
+
+	@McpTool(name = "detect_stream_flags", description = "Issue #540 (phase 6): detects "
+			+ "contact-loss or cadence-lock runs on one of activityId's streams - read-only, "
+			+ "always recomputed fresh, never persisted, same stance compareStreams' own dropout "
+			+ "detection already takes. kind=contact_loss: field=power re-runs compareStreams' own "
+			+ "dropout detection; field=heartrate or cadence instead detects a "
+			+ "physiologically-impossible second-to-second jump (frozen or garbage sensor value), "
+			+ "confirmed only when reference stays smooth and plausible throughout the run - with "
+			+ "no reference, nothing is confirmed. kind=cadence_lock (field must be heartrate) "
+			+ "detects a wrist HR stream correlating with activityId's own cadence instead of a "
+			+ "true pulse signal; each flagged segment's referenceConfirmed is true only when "
+			+ "reference was given and tracked HR less well than cadence did - with no reference, "
+			+ "segments are flagged on the cadence correlation alone (weaker evidence); don't "
+			+ "treat an unconfirmed segment the same as a confirmed one. reference accepts either "
+			+ "\"primary\" or a real source id from list_activity_sources.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public ActivityStreamFlagService.StreamFlagsResult detectStreamFlags(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
+			@McpToolParam(description = "'power', 'heartrate', or 'cadence' for kind=contact_loss; must be "
+					+ "'heartrate' for kind=cadence_lock.", required = true) String field,
+			@McpToolParam(description = "'contact_loss' or 'cadence_lock'.", required = true) Kind kind,
+			@McpToolParam(description = "\"primary\" or a source id from list_activity_sources - the "
+					+ "corroborating stream. Omitting it is allowed but yields weaker (or no) confirmation.",
+					required = false) String reference) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return streamFlagService.detectStreamFlags(activityId, field, kind, reference);
 	}
 
 	@McpTool(name = "get_merge_rules", description = "Issue #501 (phase 4): the automatic-merge "

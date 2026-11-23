@@ -13,6 +13,7 @@ import com.cadence.api.athletes.ZoneService;
 import com.cadence.api.athletes.ZoneSet;
 import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.users.User;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +48,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ActivitySourceService {
 
-	private static final List<String> VALID_FIELDS = List.of("power", "heartrate", "cadence");
+	// Package-visible (not private) since ActivityStreamFlagService/ActivityStreamPatchService
+	// (issue #540, phase 6) reuse this and validateField/loadFieldSeries below rather than
+	// duplicating the same three-field whitelist and lookup a second time.
+	static final List<String> VALID_FIELDS = List.of("power", "heartrate", "cadence");
 
 	@PersistenceContext
 	private EntityManager entityManager;
@@ -55,16 +60,19 @@ public class ActivitySourceService {
 	private final RecordRepository recordRepository;
 	private final ActivitySourceRepository sourceRepository;
 	private final ActivityStreamRepository streamRepository;
+	private final StreamPatchRepository streamPatchRepository;
 	private final ActivityPostProcessingService postProcessingService;
 	private final ZoneService zoneService;
 
 	public ActivitySourceService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			ActivitySourceRepository sourceRepository, ActivityStreamRepository streamRepository,
-			ActivityPostProcessingService postProcessingService, ZoneService zoneService) {
+			StreamPatchRepository streamPatchRepository, ActivityPostProcessingService postProcessingService,
+			ZoneService zoneService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.sourceRepository = sourceRepository;
 		this.streamRepository = streamRepository;
+		this.streamPatchRepository = streamPatchRepository;
 		this.postProcessingService = postProcessingService;
 		this.zoneService = zoneService;
 	}
@@ -94,7 +102,7 @@ public class ActivitySourceService {
 		return activity.getBikePowerSource() != null ? activity.getBikePowerSource() : classify(activity.getDevice());
 	}
 
-	private static void validateField(String field) {
+	static void validateField(String field) {
 		if (!VALID_FIELDS.contains(field)) {
 			throw new ValidationException("field must be 'power', 'heartrate', or 'cadence'.", "field");
 		}
@@ -428,6 +436,7 @@ public class ActivitySourceService {
 			changedRows.add(row);
 		}
 		recordRepository.saveAll(changedRows);
+		streamPatchRepository.invalidateActiveForField(activityId, field, Instant.now());
 
 		stampActivityAfterSwap(activity, field, newPrimaryStream.getSource());
 		activityRepository.save(activity);
@@ -607,7 +616,21 @@ public class ActivitySourceService {
 			postProcessingService.recomputeAfterMerge(activityId);
 			sourceRepository.deleteById(redundantSnapshotId);
 		}
-		sourceRepository.delete(source);
+		try {
+			sourceRepository.delete(source);
+			// Without this, Hibernate defers the actual DELETE (and any resulting constraint
+			// violation) to flush time - normally transaction commit, which happens after this
+			// method returns, well outside this try block. Flushing here forces it to surface
+			// now instead.
+			sourceRepository.flush();
+		}
+		catch (DataIntegrityViolationException ex) {
+			// Issue #540 (phase 6): a StreamPatch.fromSource FK reference (no ON DELETE clause -
+			// a source ever used in any patch, even a fully-undone one by design, can't be
+			// deleted). Converted to a clean 409 here rather than letting the raw constraint
+			// violation fall through to ApiExceptionHandler's catch-all generic 500.
+			throw new ConflictException("Can't detach '" + sourceId + "' - it's referenced by an active or past stream patch.");
+		}
 		return needsRestore;
 	}
 
@@ -845,7 +868,7 @@ public class ActivitySourceService {
 
 	/** Resolves {@code sourceRef} ({@link #PRIMARY_SOURCE_REF} or a real {@link ActivitySource}
 	 * id) to an ordered {@code t -> value} series for {@code field} on {@code activity}. */
-	private Map<Integer, Integer> loadFieldSeries(Activity activity, String field, String sourceRef) {
+	Map<Integer, Integer> loadFieldSeries(Activity activity, String field, String sourceRef) {
 		if (PRIMARY_SOURCE_REF.equals(sourceRef)) {
 			Map<Integer, Integer> series = new HashMap<>();
 			for (Record row : recordRepository.findByActivityIdOrderByT(activity.getId())) {

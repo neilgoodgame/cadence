@@ -73,7 +73,11 @@ class Tolerance(NamedTuple):
         return Tolerance(None, pct)
 
 
-def _pearson(pairs: list[tuple[float, float]]) -> float:
+def pearson(pairs: list[tuple[float, float]]) -> float:
+    """Pearson r over (x, y) pairs, 0.0 if the denominator is degenerate (e.g. one series is
+    constant). Public since issue #540 (phase 6): cadence_lock_detection.py reuses this rather
+    than duplicating the formula a third time (merge_alignment.py's own _pearson is the existing
+    second copy, pre-dating this module and left as-is - not touched by this change)."""
     n = len(pairs)
     sum_x = sum(x for x, _ in pairs)
     sum_y = sum(y for _, y in pairs)
@@ -102,7 +106,7 @@ def compare(series_a: dict[int, int], series_b: dict[int, int], tolerance: Toler
     mae = sum(abs(d) for d in diffs) / n
     rmse = (sum(d * d for d in diffs) / n) ** 0.5
     stddev = (sum((d - bias) ** 2 for d in diffs) / n) ** 0.5
-    pearson_r = _pearson(pairs)
+    pearson_r = pearson(pairs)
 
     allowed = [
         tolerance.absolute if tolerance.absolute is not None else abs(a) * tolerance.relative_pct / 100.0
@@ -133,7 +137,7 @@ def find_lag(series_a: dict[int, int], series_b: dict[int, int]) -> LagResult | 
         pairs = [(series_a[t - lag], series_b[t]) for t in series_b if (t - lag) in series_a]
         if len(pairs) < MIN_OVERLAP_SAMPLES:
             continue
-        score = _pearson(pairs)
+        score = pearson(pairs)
         if score > best_score:
             best_lag, best_score, best_overlap = lag, score, len(pairs)
     return None if best_overlap == 0 else LagResult(best_lag, best_score, best_overlap)

@@ -6,10 +6,15 @@ import com.cadence.api.activities.ActivityMergeApplyService.ZeroPolicy;
 import com.cadence.api.activities.ActivityMergeOrchestrator;
 import com.cadence.api.activities.ActivityMergeService;
 import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.ActivityMergeApplyService.Segment;
 import com.cadence.api.activities.ActivitySourceService;
+import com.cadence.api.activities.ActivityStreamFlagService.Kind;
+import com.cadence.api.activities.ActivityStreamPatchService;
 import com.cadence.api.activities.ActivityTagRepository;
 import com.cadence.api.activities.ActivityUnmergeService;
 import com.cadence.api.activities.DetachSourcePreviewRollbackSignal;
+import com.cadence.api.activities.StreamPatch;
+import com.cadence.api.activities.StreamPatchPreviewRollbackSignal;
 import com.cadence.api.activities.DuplicateResolutionBatchService;
 import com.cadence.api.activities.DuplicateResolutionBatchService.ExplicitPair;
 import com.cadence.api.activities.DuplicateResolutionBatchService.OverlapQueryFilters;
@@ -61,6 +66,7 @@ public class ActivityWriteTools {
 	private final ActivityUnmergeService activityUnmergeService;
 	private final MergeRuleService mergeRuleService;
 	private final ActivitySourceService sourceService;
+	private final ActivityStreamPatchService streamPatchService;
 	private final TagService tagService;
 	private final TagMapper tagMapper;
 	private final ActivityTagRepository activityTagRepository;
@@ -72,16 +78,17 @@ public class ActivityWriteTools {
 	public ActivityWriteTools(ActivityService activityService,
 			DuplicateResolutionBatchService duplicateResolutionBatchService,
 			ActivityMergeOrchestrator activityMergeOrchestrator, ActivityUnmergeService activityUnmergeService,
-			MergeRuleService mergeRuleService, ActivitySourceService sourceService, TagService tagService,
-			TagMapper tagMapper, ActivityTagRepository activityTagRepository,
-			WorkoutTagRepository workoutTagRepository, UserService userService, AccessGuard accessGuard,
-			McpToolAuthorizer authorizer) {
+			MergeRuleService mergeRuleService, ActivitySourceService sourceService,
+			ActivityStreamPatchService streamPatchService, TagService tagService, TagMapper tagMapper,
+			ActivityTagRepository activityTagRepository, WorkoutTagRepository workoutTagRepository,
+			UserService userService, AccessGuard accessGuard, McpToolAuthorizer authorizer) {
 		this.activityService = activityService;
 		this.duplicateResolutionBatchService = duplicateResolutionBatchService;
 		this.activityMergeOrchestrator = activityMergeOrchestrator;
 		this.activityUnmergeService = activityUnmergeService;
 		this.mergeRuleService = mergeRuleService;
 		this.sourceService = sourceService;
+		this.streamPatchService = streamPatchService;
 		this.tagService = tagService;
 		this.tagMapper = tagMapper;
 		this.activityTagRepository = activityTagRepository;
@@ -300,6 +307,70 @@ public class ActivityWriteTools {
 			return new DetachSourceResponse(activityService.toResponse(activityService.getActivity(activityId)),
 					signal.needsRestore());
 		}
+	}
+
+	@McpTool(name = "patch_stream", description = "Issue #540 (phase 6): rewrites activityId's "
+			+ "*primary* stream for field, at segments, with fromSource's own stored reading "
+			+ "there (from list_activity_sources) - never touches a stored source, only the "
+			+ "primary. segments is either an explicit list of [startT, endT] inclusive pairs "
+			+ "(capped at 3600s total - a bigger request is whole-stream-rewrite territory, "
+			+ "use merge_activities instead), or the literal string \"flagged\", which calls "
+			+ "detect_stream_flags live right now (using kind/reference, both required in that "
+			+ "case) and patches whatever it currently finds - flags are never stored, so the "
+			+ "response always echoes the segments actually applied, not just a count, since a "
+			+ "preview and its later commit could otherwise silently diverge if the underlying "
+			+ "data changes between the two. Rejected if segments overlap another active patch "
+			+ "on this activity/field - keeps undo order-independent. preview defaults to true "
+			+ "here (the opposite of the web app's own default) - call again with preview=false "
+			+ "once you're happy with it.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = true, idempotentHint = false, openWorldHint = false))
+	public ActivityStreamPatchService.StreamPatchResult patchStream(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
+			@McpToolParam(description = "'power', 'heartrate', or 'cadence' - must match fromSource's own field.",
+					required = true) String field,
+			@McpToolParam(description = "A source id from list_activity_sources, storing field's replacement "
+					+ "reading.", required = true) String fromSource,
+			@McpToolParam(description = "A list of [startT, endT] inclusive pairs, or the literal string "
+					+ "\"flagged\".", required = true) Object segments,
+			@McpToolParam(description = "Required when segments=\"flagged\"; ignored otherwise.",
+					required = false) Kind kind,
+			@McpToolParam(description = "Required when segments=\"flagged\" (passed through to the live "
+					+ "detection call); ignored otherwise.", required = false) String reference,
+			@McpToolParam(description = "Compute and return the result without writing anything, default true "
+					+ "(opposite of the REST/web default)", required = false) Boolean preview) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		List<Segment> explicitSegments = ActivityStreamPatchService.parseSegments(segments);
+		boolean effectivePreview = preview == null || preview;
+		try {
+			return streamPatchService.patchStream(activityId, field, fromSource, explicitSegments, kind, reference,
+					effectivePreview);
+		}
+		catch (StreamPatchPreviewRollbackSignal signal) {
+			return signal.result();
+		}
+	}
+
+	@McpTool(name = "unpatch_stream", description = "Issue #540 (phase 6): undoes one of "
+			+ "activityId's active StreamPatches (from patch_stream) - restores the primary "
+			+ "stream's values at the patch's segments from its own previousValues snapshot "
+			+ "and marks it undone. patchId picks a specific patch when more than one is "
+			+ "active on this activity; omit it when there's at most one. Fails if there's no "
+			+ "active patch (or none matching patchId), or more than one is active and patchId "
+			+ "wasn't given.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = true, idempotentHint = false, openWorldHint = false))
+	public Map<String, Object> unpatchStream(
+			@McpToolParam(description = "The activity id, e.g. act_xxxxxxxxxxxx", required = true) String activityId,
+			@McpToolParam(description = "The patch id to undo, e.g. pat_xxxxxxxxxxxx - required only if more "
+					+ "than one active patch exists", required = false) String patchId) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		Activity activity = activityService.getActivity(activityId);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		StreamPatch patch = streamPatchService.unpatchStream(activityId, patchId);
+		return Map.of("patch_id", patch.getId(), "undone_at", patch.getUndoneAt());
 	}
 
 	private NullPolicy parseNullPolicy(String nulls) {

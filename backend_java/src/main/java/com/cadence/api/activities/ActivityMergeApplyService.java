@@ -211,6 +211,24 @@ public class ActivityMergeApplyService {
 			Map<String, Object> newActivityValues) {
 	}
 
+	/** Issue #540 (phase 6): one inclusive {@code [startT, endT]} target-local range -
+	 * {@code computeStreamField}'s {@code segments} param restricts the rewrite to seconds
+	 * inside at least one of these. */
+	public record Segment(int startT, int endT) {
+	}
+
+	private static boolean inSegments(int t, List<Segment> segments) {
+		if (segments == null) {
+			return true;
+		}
+		for (Segment segment : segments) {
+			if (t >= segment.startT() && t <= segment.endT()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Searches, for every t the target has, the source's value at (t - offsetSeconds) -
 	 * offsetSeconds is how much later the source started than the target (see
 	 * ActivityMergeAlignmentCalculator's own Javadoc for the sign convention). A target second
@@ -218,10 +236,16 @@ public class ActivityMergeApplyService {
 	 * (issue #541), when given, is a set of *source*-local seconds confirmed as power-meter
 	 * dropouts - those are masked the same way as a missing source value (so nullPolicy's own
 	 * branches handle them uniformly), but counted separately as dropoutsNulled rather than
-	 * copied/nulled. */
-	private static Map.Entry<Map<Integer, Object>, FieldRewriteCounts> computeStreamField(
+	 * copied/nulled. segments (issue #540, phase 6), when given, restricts the rewrite to target
+	 * seconds inside at least one of them - every other target t is left exactly as its current
+	 * value, uncounted, rather than rewritten at all; this is the stream-patch use case
+	 * ("rewrite target from source, restricted to certain seconds") layered onto the same
+	 * rewrite a full merge already does. Package-visible (not private) since
+	 * ActivityStreamPatchService, a different class in this same package, reuses it rather than
+	 * duplicating this rewrite a second time. */
+	static Map.Entry<Map<Integer, Object>, FieldRewriteCounts> computeStreamField(
 			Map<Integer, Object> targetValues, Map<Integer, Object> sourceValues, int offsetSeconds,
-			NullPolicy nullPolicy, Set<Integer> dropoutTs) {
+			NullPolicy nullPolicy, Set<Integer> dropoutTs, List<Segment> segments) {
 		Map<Integer, Object> newValues = new HashMap<>();
 		int copied = 0;
 		int keptOriginal = 0;
@@ -229,6 +253,10 @@ public class ActivityMergeApplyService {
 		int dropoutsNulled = 0;
 		for (Map.Entry<Integer, Object> entry : targetValues.entrySet()) {
 			int t = entry.getKey();
+			if (!inSegments(t, segments)) {
+				newValues.put(t, entry.getValue());
+				continue;
+			}
 			int sourceT = t - offsetSeconds;
 			if (dropoutTs != null && dropoutTs.contains(sourceT)) {
 				newValues.put(t, nullPolicy == NullPolicy.KEEP_ORIGINAL ? entry.getValue() : null);
@@ -304,7 +332,7 @@ public class ActivityMergeApplyService {
 					}
 					dropoutTs = DropoutDetector.detectDropouts(sourcePower, reference, sourceCadence).dropoutTs();
 				}
-				var result = computeStreamField(targetValues, sourceValues, offsetSeconds, nullPolicy, dropoutTs);
+				var result = computeStreamField(targetValues, sourceValues, offsetSeconds, nullPolicy, dropoutTs, null);
 				newStreamValues.put(field, result.getKey());
 				counts.put(field, result.getValue());
 			}

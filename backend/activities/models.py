@@ -1,5 +1,6 @@
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
+from django.utils import timezone
 
 from accounts.models import User
 from core.models import PrefixedIDModel
@@ -737,3 +738,61 @@ class ActivityStream(models.Model):
 
     def __str__(self) -> str:
         return f"{self.activity_id} {self.field} <- {self.source_id}"
+
+
+class StreamPatch(PrefixedIDModel):
+    """Issue #540 (phase 6): one applied repair - replaces activity's primary stream for field,
+    at the given segments, with from_source's own stored reading there. Always patches the
+    *primary* stream (never a stored ActivitySource) - repair targets what the athlete trains/
+    races by; patching a non-primary stored source has no use case here and isn't supported.
+    Reversible via unpatch_stream as long as this row exists - previous_values snapshots exactly
+    what primary held before the patch, since (unlike Merge's overwrite rows) there's no stored
+    upload file to re-parse for an arbitrary flagged-segment edit. Mirrors backend_java's
+    StreamPatch entity - keep the two in sync."""
+
+    id_prefix = "pat"
+
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="stream_patches")
+    # Reuse activity_source_service.VALID_FIELDS ("power", "heartrate", "cadence") rather than
+    # redefining a same-named constant here - merge_service.py already hit this exact collision
+    # risk and resolved it by importing VALID_FIELDS aliased (`as ATTACHABLE_FIELDS`).
+    field = models.CharField(max_length=20)  # activity_source_service.VALID_FIELDS
+    from_source = models.ForeignKey(ActivitySource, on_delete=models.PROTECT, related_name="+")
+    # Issue #540: "contact_loss" or "cadence_lock" when segments came from detect_stream_flags'
+    # live detector output at patch time; null when the caller passed explicit segments instead -
+    # the detector's own flags are never persisted (recomputed live, same as dropout_detection's
+    # existing stance), so this just records which detector (if any) produced them, not a
+    # reference back to a stored flag row.
+    detected_kind = models.CharField(max_length=20, null=True, blank=True)  # noqa: DJ001
+    segments = models.JSONField()  # [[start_t, end_t], ...] - inclusive, applied
+    # {str(t): original_value_or_null} for exactly the patched seconds - small (bounded by
+    # segment length, not the whole stream), unlike Merge's file-reparse restore path.
+    previous_values = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    undone_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.id}: {self.activity_id} {self.field}"
+
+    @classmethod
+    def invalidate_active_for_field(cls, activity_id: str, field: str) -> None:
+        """Code review finding on issue #540's own PR: something else (set_primary_source's own
+        swap, or a merge's overwrite) can rewrite Record.<field> out from under an active patch
+        with no conflict check - a later unpatch_stream would then restore the patch's now-stale
+        previous_values right back over that legitimate new data. Call this from every such
+        write path, in the same transaction as the write, so the patch can never outlive the
+        data it was snapshotted against. Deliberately just marks undone_at rather than restoring
+        previous_values first - the field was replaced wholesale by something else, not reverted
+        by its own patch, so there's nothing for this patch to meaningfully restore to anymore.
+        A no-op (not an error) when there's no active patch for this activity/field - this is a
+        defensive invalidation on every write path, not a user-facing action that should ever
+        reject the write itself. Lives here (not in stream_patch_service.py) so
+        activity_source_service.py/merge_service.py can call it without importing
+        stream_patch_service.py, which itself imports activity_source_service.py. Mirrors
+        backend_java's StreamPatch.invalidateActiveForField - keep the two in sync."""
+        cls.objects.filter(activity_id=activity_id, field=field, undone_at__isnull=True).update(
+            undone_at=timezone.now()
+        )

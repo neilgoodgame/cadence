@@ -8,10 +8,11 @@ from django.test import TestCase
 from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
+from core.exceptions import ConflictError
 
-from .. import activity_source_service
+from .. import activity_source_service, stream_patch_service
 from ..dropout_detection import DropoutRun
-from ..models import ActivitySource, Record
+from ..models import ActivitySource, Record, StreamPatch
 from .helpers import _bearer_client, _make_activity
 
 
@@ -216,6 +217,36 @@ class ActivitySourceServiceTests(TestCase):
         target.refresh_from_db()
         self.assertEqual(target.bike_power_source, "pedals")
 
+    def test_set_primary_source_invalidates_an_active_patch_on_the_swapped_field(self):
+        """Code review finding: set_primary_source's own Record rewrite had no awareness of an
+        active StreamPatch on the same field - a later unpatch_stream would have restored the
+        patch's now-stale previous_values right back over the swap's legitimate new data. The
+        swap now invalidates (undone_at, not restored) any active patch on the field it
+        touches."""
+        athlete = self._athlete("source-swap-invalidates-patch@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        reference = self._activity(athlete, "Favero Assioma", name="Reference")
+        self._add_records_with(target, 10, power=lambda t: 0 if t in (4, 5) else 200)
+        self._add_records(reference, 10, power=220)
+        reference_attach = activity_source_service.attach_stream(
+            target.id, reference.id, "power", offset_seconds=0, preview=False
+        )
+        patch = stream_patch_service.patch_stream(
+            target.id, "power", reference_attach.source_id, segments=[(4, 5)], preview=False
+        )
+
+        new_primary = self._activity(athlete, "Zwift", name="New primary")
+        self._add_records(new_primary, 10, power=300)
+        swap_attach = activity_source_service.attach_stream(
+            target.id, new_primary.id, "power", offset_seconds=0, preview=False
+        )
+        activity_source_service.set_primary_source(target.id, "power", swap_attach.source_id)
+
+        saved_patch = StreamPatch.objects.get(pk=patch.patch_id)
+        self.assertIsNotNone(saved_patch.undone_at)
+        for record in target.records.all():
+            self.assertEqual(record.power, 300)  # the swap's data, not the patch's restored snapshot
+
     def test_detach_and_restore_deletes_a_non_primary_attach_without_touching_record(self):
         athlete = self._athlete("source-detach-non-primary@example.cc")
         target = self._activity(athlete, "Edge 530", name="Target")
@@ -354,6 +385,23 @@ class ActivitySourceServiceTests(TestCase):
 
         with self.assertRaises(ValidationError):
             activity_source_service.detach_source(target.id, file_origin_source.id)
+
+    def test_detach_source_referenced_by_a_stream_patch_is_a_clean_conflict_not_a_raw_500(self):
+        """Code review finding: StreamPatch.from_source is on_delete=PROTECT (issue #540, phase
+        6), but detach_source's own source.delete() had no handling for the resulting
+        ProtectedError - it isn't a DRF APIException and cadence_exception_handler only
+        special-cases CQLParseError, so it would have propagated as an unhandled, raw 500
+        instead of the API's usual {"error": {...}} envelope."""
+        athlete = self._athlete("source-detach-protected-by-patch@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_records_with(target, 10, power=lambda t: 0 if t in (4, 5) else 200)
+        self._add_records(source, 10, power=220)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+        stream_patch_service.patch_stream(target.id, "power", attach.source_id, segments=[(4, 5)], preview=False)
+
+        with self.assertRaises(ConflictError):
+            activity_source_service.detach_source(target.id, attach.source_id)
 
     def test_list_sources_reports_is_primary_against_the_activitys_current_primary(self):
         athlete = self._athlete("source-list-is-primary@example.cc")

@@ -27,7 +27,7 @@ from core.cql.compiler import compile_ast_to_q
 from core.cql.parser import parse
 from core.units import parse_distance_meters
 
-from . import activity_source_service, merge_rule_service
+from . import activity_source_service, merge_rule_service, stream_flag_service, stream_patch_service
 from .comments import resolve_parent_comment
 from .duplicate_batches import resolve_duplicates_batch as resolve_duplicates_batch_action
 from .duplicate_batches import undo_batch as undo_batch_action
@@ -754,6 +754,72 @@ class ActivityMCPTools(ScopedMCPToolset):
         result = self.get_activity(activity_id)
         result["needs_restore"] = needs_restore
         return result
+
+    def detect_stream_flags(
+        self, activity_id: str, field: str, kind: str, reference: str | None = None
+    ) -> dict[str, Any]:
+        """Issue #540 (phase 6): detects contact-loss or cadence-lock runs on one of activity_id's
+        streams - read-only, always recomputed fresh, never persisted, same stance
+        compare_streams' own dropout detection already takes. kind="contact_loss":
+        field="power" re-runs compare_streams' own dropout detection; field="heartrate" or
+        "cadence" instead detects a physiologically-impossible second-to-second jump (frozen or
+        garbage sensor value), confirmed only when reference stays smooth and plausible
+        throughout the run - with no reference, nothing is confirmed. kind="cadence_lock" (field
+        must be "heartrate") detects a wrist HR stream correlating with activity_id's own cadence
+        instead of a true pulse signal; each flagged segment's reference_confirmed is true only
+        when reference was given and tracked HR less well than cadence did - with no reference,
+        segments are flagged on the cadence correlation alone (weaker evidence); don't treat an
+        unconfirmed segment the same as a confirmed one. reference accepts either "primary" or a
+        real source id from list_activity_sources."""
+        self._require_scope(ACTIVITIES_READ)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_read(activity.athlete_id)
+        result = stream_flag_service.detect_stream_flags(activity_id, field, kind, reference)
+        return stream_flag_service.stream_flags_response(result)
+
+    def patch_stream(
+        self,
+        activity_id: str,
+        field: str,
+        from_source: str,
+        segments: list[list[int]] | str,
+        kind: str | None = None,
+        reference: str | None = None,
+        preview: bool = True,
+    ) -> dict[str, Any]:
+        """Issue #540 (phase 6): rewrites activity_id's *primary* stream for field, at segments,
+        with from_source's own stored reading there (from list_activity_sources) - never touches
+        a stored source, only the primary. segments is either an explicit list of [start_t,
+        end_t] inclusive pairs (capped at 3600s total - a bigger request is whole-stream-rewrite
+        territory, use merge_activities instead), or the literal string "flagged", which calls
+        detect_stream_flags live right now (using kind/reference, both required in that case) and
+        patches whatever it currently finds - flags are never stored, so the response always
+        echoes the segments actually applied, not just a count, since a preview and its later
+        commit could otherwise silently diverge if the underlying data changes between the two.
+        Rejected (409-equivalent) if segments overlap another active patch on this activity/
+        field - keeps undo order-independent. preview defaults to true here (the opposite of the
+        web app's own default) - call again with preview=false once you're happy with it."""
+        self._require_scope(ACTIVITIES_WRITE)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        normalized_segments = segments if segments == "flagged" else [tuple(s) for s in segments]
+        result = stream_patch_service.patch_stream(
+            activity_id, field, from_source, normalized_segments, kind=kind, reference=reference, preview=preview
+        )
+        return stream_patch_service.stream_patch_response(result)
+
+    def unpatch_stream(self, activity_id: str, patch_id: str | None = None) -> dict[str, Any]:
+        """Issue #540 (phase 6): undoes one of activity_id's active StreamPatches (from
+        patch_stream) - restores the primary stream's values at the patch's segments from its own
+        previous_values snapshot and marks it undone. patch_id picks a specific patch when more
+        than one is active on this activity; omit it when there's at most one. Fails if there's
+        no active patch (or none matching patch_id), or more than one is active and patch_id
+        wasn't given."""
+        self._require_scope(ACTIVITIES_WRITE)
+        activity = get_object_or_404(Activity, pk=activity_id)
+        self._require_write(activity.athlete_id)
+        patch = stream_patch_service.unpatch_stream(activity_id, patch_id)
+        return {"patch_id": patch.id, "undone_at": patch.undone_at}
 
     def set_merge_rule(
         self,

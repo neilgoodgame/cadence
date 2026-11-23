@@ -35,7 +35,7 @@ from .merge_apply import (
     ZeroPolicy,
     apply_merge_fields,
 )
-from .models import Activity, Merge
+from .models import Activity, Merge, StreamPatch
 
 _VALID_FIELDS = set(STREAM_FIELDS) | set(ACTIVITY_FIELDS)
 
@@ -238,6 +238,13 @@ def run_merge(
 
     with transaction.atomic():
         counts = apply_merge_fields(target_id, source_id, fields, null_policy, resolved_offset, zero_policy)
+        # Code review finding on issue #540's own PR: an overwrite merge can rewrite a field
+        # out from under an active StreamPatch with no conflict check - see
+        # StreamPatch.invalidate_active_for_field's own docstring. No-op for a field with no
+        # active patch, and for any field outside StreamPatch's own VALID_FIELDS.
+        for field in fields:
+            if field in STREAM_FIELDS:
+                StreamPatch.invalidate_active_for_field(target_id, field)
 
         apply_hide = hide_source and not _already_hidden_under(source, target)
         if apply_hide:

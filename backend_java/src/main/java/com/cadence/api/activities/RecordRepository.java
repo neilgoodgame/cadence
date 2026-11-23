@@ -2,6 +2,7 @@ package com.cadence.api.activities;
 
 import jakarta.persistence.QueryHint;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Stream;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -24,6 +25,14 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 
 	@Query("select r from Record r where r.id.activityId = :activityId order by r.t")
 	List<Record> findByActivityIdOrderByT(@Param("activityId") String activityId);
+
+	/** Issue #540 (phase 6): for ActivityStreamPatchService.unpatchStream, which only ever
+	 * needs to restore a bounded handful of previously-patched seconds - using
+	 * findByActivityIdOrderByT there would fully hydrate every Record entity on the activity
+	 * into the persistence context just to touch a few dozen of them, the same full-table-load
+	 * pattern this repository's own comments elsewhere warn caused a real OOM in staging. */
+	@Query("select r from Record r where r.id.activityId = :activityId and r.t in :ts")
+	List<Record> findByActivityIdAndTIn(@Param("activityId") String activityId, @Param("ts") Collection<Integer> ts);
 
 	/** Just (t, distance_km), as scalars rather than managed Record entities - for callers that
 	 * scan many activities' streams inside one transaction, where every entity a full

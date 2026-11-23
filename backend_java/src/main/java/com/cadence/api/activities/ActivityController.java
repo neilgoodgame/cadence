@@ -1,5 +1,6 @@
 package com.cadence.api.activities;
 
+import com.cadence.api.activities.ActivityStreamFlagService.Kind;
 import com.cadence.api.activities.dto.ActivityResponse;
 import com.cadence.api.activities.dto.ActivityWorkoutMatchCandidateResponse;
 import com.cadence.api.activities.dto.DetachSourceRequest;
@@ -7,6 +8,7 @@ import com.cadence.api.activities.dto.DetachSourceResponse;
 import com.cadence.api.activities.dto.MergeActivitiesRequest;
 import com.cadence.api.activities.dto.OverlapPairResponse;
 import com.cadence.api.activities.dto.SetPrimarySourceRequest;
+import com.cadence.api.activities.dto.StreamPatchRequest;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.common.paging.CursorPage;
@@ -39,12 +41,15 @@ public class ActivityController {
 	private final ActivityMergeService activityMergeService;
 	private final ActivityUnmergeService activityUnmergeService;
 	private final ActivitySourceService activitySourceService;
+	private final ActivityStreamFlagService activityStreamFlagService;
+	private final ActivityStreamPatchService activityStreamPatchService;
 	private final AccessGuard accessGuard;
 
 	public ActivityController(ActivityService activityService, TssRecomputeService tssRecomputeService,
 			DerivedStatsRecomputeService derivedStatsRecomputeService, WorkoutMatchScanService workoutMatchScanService,
 			ActivityOverlapService activityOverlapService, ActivityMergeService activityMergeService,
 			ActivityUnmergeService activityUnmergeService, ActivitySourceService activitySourceService,
+			ActivityStreamFlagService activityStreamFlagService, ActivityStreamPatchService activityStreamPatchService,
 			AccessGuard accessGuard) {
 		this.activityService = activityService;
 		this.tssRecomputeService = tssRecomputeService;
@@ -54,6 +59,8 @@ public class ActivityController {
 		this.activityMergeService = activityMergeService;
 		this.activityUnmergeService = activityUnmergeService;
 		this.activitySourceService = activitySourceService;
+		this.activityStreamFlagService = activityStreamFlagService;
+		this.activityStreamPatchService = activityStreamPatchService;
 		this.accessGuard = accessGuard;
 	}
 
@@ -228,6 +235,51 @@ public class ActivityController {
 		Activity activity = activityService.getActivity(id);
 		accessGuard.requireRead(activity.getAthlete().getId());
 		return activitySourceService.compareStreams(id, field, a, b, zoneBreakdown, excludeDropouts);
+	}
+
+	/** Issue #540 (phase 6): detects contact-loss or cadence-lock runs on one of {@code id}'s
+	 * streams, read-only, never persisted. See {@link ActivityStreamFlagService#detectStreamFlags}. */
+	@GetMapping("/v1/activities/{id}/streams/flags")
+	public ActivityStreamFlagService.StreamFlagsResult detectStreamFlags(@PathVariable String id,
+			@RequestParam String field, @RequestParam Kind kind,
+			@RequestParam(required = false) String reference) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireRead(activity.getAthlete().getId());
+		return activityStreamFlagService.detectStreamFlags(id, field, kind, reference);
+	}
+
+	/** Issue #540 (phase 6): applies (or previews) a {@link StreamPatch}. See {@link
+	 * ActivityStreamPatchService#patchStream}. */
+	@PostMapping("/v1/activities/{id}/streams/patch")
+	public ActivityStreamPatchService.StreamPatchResult patchStream(@PathVariable String id,
+			@Valid @RequestBody StreamPatchRequest request) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		List<ActivityMergeApplyService.Segment> segments = ActivityStreamPatchService.parseSegments(request.segments());
+		try {
+			return activityStreamPatchService.patchStream(id, request.field(), request.fromSource(), segments,
+					request.kind(), request.reference(), request.previewOrDefault());
+		}
+		catch (StreamPatchPreviewRollbackSignal signal) {
+			// See StreamPatchPreviewRollbackSignal - patchStream's preview=true transaction is
+			// rolled back (not committed) by the time this is caught; the payload it's carrying
+			// was computed before that rollback and is exactly what a real call would have
+			// returned.
+			return signal.result();
+		}
+	}
+
+	/** Issue #540 (phase 6): undoes an active {@link StreamPatch}. {@code patch_id} is required
+	 * only if more than one active patch exists on this activity, same rule as POST .../unmerge's
+	 * {@code merge_id}. See {@link ActivityStreamPatchService#unpatchStream}. */
+	@PostMapping("/v1/activities/{id}/streams/unpatch")
+	public Map<String, Object> unpatchStream(@PathVariable String id,
+			@RequestBody(required = false) Map<String, Object> body) {
+		Activity activity = activityService.getActivity(id);
+		accessGuard.requireWrite(activity.getAthlete().getId());
+		String patchId = body == null ? null : (String) body.get("patch_id");
+		StreamPatch patch = activityStreamPatchService.unpatchStream(id, patchId);
+		return Map.of("patch_id", patch.getId(), "undone_at", patch.getUndoneAt());
 	}
 
 	/** Issue #503 (phase 1): swaps {@code id}'s current primary stream for {@code field} with the

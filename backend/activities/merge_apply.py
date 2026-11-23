@@ -81,12 +81,17 @@ class FieldRewriteCounts:
     dropouts_nulled: int = 0
 
 
-def _compute_stream_field(
+def _in_segments(t: int, segments: list[tuple[int, int]] | None) -> bool:
+    return segments is None or any(start <= t <= end for start, end in segments)
+
+
+def compute_stream_field(
     target_values: dict[int, object],
     source_values: dict[int, object],
     offset_seconds: int,
     null_policy: NullPolicy,
     dropout_ts: set[int] | None = None,
+    segments: list[tuple[int, int]] | None = None,
 ) -> tuple[dict[int, object], FieldRewriteCounts]:
     """Pure: for every t the target has, looks up the source's value at (t - offset_seconds) -
     offset_seconds is how much later the source started than the target (see
@@ -94,12 +99,19 @@ def _compute_stream_field(
     matching source row is treated the same as an explicit source null. dropout_ts (issue #541),
     when given, is a set of *source*-local seconds confirmed as power-meter dropouts - those are
     masked the same way as a missing source value (so null_policy's own branches handle them
-    uniformly), but counted separately as dropouts_nulled rather than copied/nulled. Returns the
-    new value for every target t (even where unchanged), plus the counts preview/apply both
-    report."""
+    uniformly), but counted separately as dropouts_nulled rather than copied/nulled. segments
+    (issue #540, phase 6), when given, is a list of [start_t, end_t] inclusive target-local
+    ranges - every target t outside all of them is left exactly as target_value, uncounted,
+    rather than rewritten at all; this is the stream-patch use case ("rewrite target from
+    source, restricted to certain seconds") layered onto the same rewrite this function already
+    does for a full merge. Returns the new value for every target t (even where unchanged), plus
+    the counts preview/apply both report."""
     new_values: dict[int, object] = {}
     copied = kept_original = nulled = dropouts_nulled = 0
     for t, target_value in target_values.items():
+        if not _in_segments(t, segments):
+            new_values[t] = target_value
+            continue
         source_t = t - offset_seconds
         if dropout_ts is not None and source_t in dropout_ts:
             new_values[t] = target_value if null_policy == "keep_original" else None
@@ -161,7 +173,7 @@ def _compute(
                 reference = build_reference(target_values, offset_seconds, source_values.keys())
                 source_cadence = {row.t: row.cadence for row in source_rows}
                 dropout_ts, _ = detect_dropouts(source_values, reference, source_cadence)
-            new_values, field_counts = _compute_stream_field(
+            new_values, field_counts = compute_stream_field(
                 target_values, source_values, offset_seconds, null_policy, dropout_ts
             )
             counts[field] = field_counts
