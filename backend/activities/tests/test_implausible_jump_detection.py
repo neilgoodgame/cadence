@@ -125,3 +125,24 @@ def test_a_long_cadence_run_gets_no_freeze_exemption():
 def test_an_unsupported_field_raises():
     with pytest.raises(ValueError):
         detect_implausible_jumps({0: 0, 1: 300}, "power", reference=None)
+
+
+def test_a_missing_sample_inside_a_run_does_not_crash():
+    """Code review finding: a run built as range(entry_boundary, exit_boundary) assumed every
+    second in between was present. A single missing sample inside the held span (one that was
+    never itself a boundary, since it has no neighbor to be adjacent to) used to KeyError in
+    _median - the gap must be skipped, not treated as a real held value."""
+    primary = {
+        **_constant(4, 80, start=0),
+        4: 180,
+        5: 180,
+        # t=6 is missing entirely - a genuine gap inside the held span.
+        7: 180,
+        **_constant(4, 80, start=8),
+    }
+    reference = _constant(12, 150)
+
+    confirmed_ts, runs = detect_implausible_jumps(primary, "heartrate", reference)
+
+    assert confirmed_ts == {4, 5, 7}
+    assert runs == [ImplausibleRun(start_t=4, length=3, peak_delta=100.0)]

@@ -45,9 +45,11 @@ public class ActivityStreamPatchService {
 	// this implausible stretch", not "fill gaps".
 	private static final NullPolicy NULL_POLICY = NullPolicy.OVERWRITE;
 	// Repair targets a glitch run, not a whole-stream rewrite (that's merge/attach territory) -
-	// a bigger explicit request is almost certainly a caller bug. segments="flagged" is exempt -
-	// a detector's own run-length caps already bound it. Untested guess, flag in the PR.
-	private static final int MAX_EXPLICIT_SEGMENTS_SECONDS = 3600;
+	// a bigger request is almost certainly a caller bug. Enforced on segments="flagged" too, not
+	// just explicit input - contact_loss's two detectors each already cap an individual run's
+	// length, but CadenceLockDetector's merged runs have no length cap of their own, so
+	// "flagged" output can't be assumed pre-bounded for every kind. Untested guess, flag in the PR.
+	private static final int MAX_SEGMENTS_SECONDS = 3600;
 
 	/** The segments actually applied - always echoed back (not just a count), so a preview and
 	 * its later commit can never silently diverge if segments="flagged" and the underlying data
@@ -75,7 +77,7 @@ public class ActivityStreamPatchService {
 		this.postProcessingService = postProcessingService;
 	}
 
-	private static void validateExplicitSegments(List<Segment> segments) {
+	private static void validateSegments(List<Segment> segments) {
 		for (Segment segment : segments) {
 			if (segment.endT() < segment.startT()) {
 				throw new ValidationException(
@@ -83,10 +85,9 @@ public class ActivityStreamPatchService {
 			}
 		}
 		int total = segments.stream().mapToInt(s -> s.endT() - s.startT() + 1).sum();
-		if (total > MAX_EXPLICIT_SEGMENTS_SECONDS) {
-			throw new ValidationException("Explicit segments total " + total + "s, more than the "
-					+ MAX_EXPLICIT_SEGMENTS_SECONDS + "s repair cap - that's whole-stream-rewrite territory "
-					+ "(merge/attach), not a repair.", "segments");
+		if (total > MAX_SEGMENTS_SECONDS) {
+			throw new ValidationException("Segments total " + total + "s, more than the " + MAX_SEGMENTS_SECONDS
+					+ "s repair cap - that's whole-stream-rewrite territory (merge/attach), not a repair.", "segments");
 		}
 	}
 
@@ -124,19 +125,25 @@ public class ActivityStreamPatchService {
 	 * detection entirely - the caller already knows what to patch. */
 	private ResolvedSegments resolveSegments(String activityId, String field, List<Segment> explicitSegments,
 			Kind kind, String reference) {
+		List<Segment> segments;
+		String detectedKind;
 		if (explicitSegments == null) {
 			if (kind == null) {
 				throw new ValidationException("kind is required when segments='flagged'.", "kind");
 			}
 			StreamFlagsResult flags = streamFlagService.detectStreamFlags(activityId, field, kind, reference);
-			List<Segment> segments = new ArrayList<>();
+			segments = new ArrayList<>();
 			for (FlagSegment flagSegment : flags.segments()) {
 				segments.add(new Segment(flagSegment.startT(), flagSegment.endT()));
 			}
-			return new ResolvedSegments(segments, kind.wireValue());
+			detectedKind = kind.wireValue();
 		}
-		validateExplicitSegments(explicitSegments);
-		return new ResolvedSegments(explicitSegments, null);
+		else {
+			segments = explicitSegments;
+			detectedKind = null;
+		}
+		validateSegments(segments);
+		return new ResolvedSegments(segments, detectedKind);
 	}
 
 	/** A patch is rejected when its segments overlap any *active* ({@code undoneAt == null})
@@ -301,8 +308,9 @@ public class ActivityStreamPatchService {
 	@Transactional
 	public StreamPatch unpatchStream(String activityId, String patchId) {
 		StreamPatch patch = activePatch(activityId, patchId);
+		List<Integer> patchedTs = patch.getPreviousValues().keySet().stream().map(Integer::parseInt).toList();
 		Map<Integer, Record> rowsByT = new HashMap<>();
-		for (Record row : recordRepository.findByActivityIdOrderByT(activityId)) {
+		for (Record row : recordRepository.findByActivityIdAndTIn(activityId, patchedTs)) {
 			rowsByT.put(row.getT(), row);
 		}
 

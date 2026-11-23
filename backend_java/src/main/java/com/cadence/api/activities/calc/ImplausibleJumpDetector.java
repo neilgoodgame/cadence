@@ -82,20 +82,36 @@ public final class ImplausibleJumpDetector {
 		return boundaries;
 	}
 
+	/** A run of present seconds, plus the boundary pair it was built from - entryBoundary - 1 /
+	 * exitBoundary - 1 are guaranteed present by boundaryTs's own adjacency check, whereas
+	 * run.get(0) - 1 / run.get(run.size() - 1) + 1 aren't once a gap sits right at either edge
+	 * (see findRuns' own Javadoc), so callers needing the entry/exit delta use the boundaries,
+	 * not the run's own first/last element. */
+	private record Run(List<Integer> ts, int entryBoundary, int exitBoundary) {
+	}
+
 	/** A candidate run is the held span between two consecutive boundary jumps - "jump away,
 	 * hold at an implausible level, jump back", not a smooth ramp. A boundary jump with no
 	 * following boundary (the glitch never resolves before the data ends) isn't reported - same
 	 * "no trailing bracket, no confirmation" stance DropoutDetector's single-stream fallback
-	 * already takes at the very start of a recording. */
-	private static List<List<Integer>> findRuns(Map<Integer, Integer> primary, int maxDelta) {
+	 * already takes at the very start of a recording. Only seconds actually present in primary
+	 * are included in the run itself - a data gap inside the span (a missing sample that wasn't
+	 * itself adjacent to its neighbor, so never became a boundary) is skipped rather than
+	 * treated as a real held value; both boundaries are always present and included, so a run is
+	 * never empty. */
+	private static List<Run> findRuns(Map<Integer, Integer> primary, int maxDelta) {
 		List<Integer> boundaries = boundaryTs(primary, maxDelta);
-		List<List<Integer>> runs = new ArrayList<>();
+		List<Run> runs = new ArrayList<>();
 		for (int i = 0; i < boundaries.size() - 1; i++) {
-			List<Integer> run = new ArrayList<>();
-			for (int t = boundaries.get(i); t < boundaries.get(i + 1); t++) {
-				run.add(t);
+			int entryBoundary = boundaries.get(i);
+			int exitBoundary = boundaries.get(i + 1);
+			List<Integer> ts = new ArrayList<>();
+			for (int t = entryBoundary; t < exitBoundary; t++) {
+				if (primary.get(t) != null) {
+					ts.add(t);
+				}
 			}
-			runs.add(run);
+			runs.add(new Run(ts, entryBoundary, exitBoundary));
 		}
 		return runs;
 	}
@@ -120,7 +136,8 @@ public final class ImplausibleJumpDetector {
 
 		Set<Integer> confirmedTs = new HashSet<>();
 		List<ImplausibleRun> confirmedRuns = new ArrayList<>();
-		for (List<Integer> run : findRuns(primary, maxDelta)) {
+		for (Run candidate : findRuns(primary, maxDelta)) {
+			List<Integer> run = candidate.ts();
 			List<Integer> heldValues = run.stream().map(primary::get).toList();
 			double heldLevel = median(heldValues);
 			boolean longFreezeExempt = field.equals("heartrate") && heldLevel > MAX_PLAUSIBLE_HR;
@@ -135,9 +152,13 @@ public final class ImplausibleJumpDetector {
 			if (referenceValues.stream().anyMatch(java.util.Objects::isNull)) {
 				continue;
 			}
+			// Only checked across genuinely adjacent seconds in the run (a gap, if any, isn't a
+			// real per-second rate to hold reference to - same adjacency-only stance boundaryTs
+			// itself takes).
 			boolean smooth = true;
 			for (int i = 1; i < referenceValues.size(); i++) {
-				if (Math.abs(referenceValues.get(i) - referenceValues.get(i - 1)) > maxDelta) {
+				if (run.get(i) == run.get(i - 1) + 1
+						&& Math.abs(referenceValues.get(i) - referenceValues.get(i - 1)) > maxDelta) {
 					smooth = false;
 					break;
 				}
@@ -147,10 +168,10 @@ public final class ImplausibleJumpDetector {
 				continue;
 			}
 
-			int entryDelta = Math.abs(primary.get(run.get(0)) - primary.get(run.get(0) - 1));
-			int exitDelta = Math.abs(primary.get(run.get(run.size() - 1) + 1) - primary.get(run.get(run.size() - 1)));
+			int entryDelta = Math.abs(primary.get(candidate.entryBoundary()) - primary.get(candidate.entryBoundary() - 1));
+			int exitDelta = Math.abs(primary.get(candidate.exitBoundary()) - primary.get(candidate.exitBoundary() - 1));
 			confirmedTs.addAll(run);
-			confirmedRuns.add(new ImplausibleRun(run.get(0), run.size(), Math.max(entryDelta, exitDelta)));
+			confirmedRuns.add(new ImplausibleRun(candidate.entryBoundary(), run.size(), Math.max(entryDelta, exitDelta)));
 		}
 		return new ImplausibleJumpResult(confirmedTs, confirmedRuns);
 	}

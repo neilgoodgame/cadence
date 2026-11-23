@@ -8,8 +8,9 @@ from django.test import TestCase
 from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
+from core.exceptions import ConflictError
 
-from .. import activity_source_service
+from .. import activity_source_service, stream_patch_service
 from ..dropout_detection import DropoutRun
 from ..models import ActivitySource, Record
 from .helpers import _bearer_client, _make_activity
@@ -354,6 +355,23 @@ class ActivitySourceServiceTests(TestCase):
 
         with self.assertRaises(ValidationError):
             activity_source_service.detach_source(target.id, file_origin_source.id)
+
+    def test_detach_source_referenced_by_a_stream_patch_is_a_clean_conflict_not_a_raw_500(self):
+        """Code review finding: StreamPatch.from_source is on_delete=PROTECT (issue #540, phase
+        6), but detach_source's own source.delete() had no handling for the resulting
+        ProtectedError - it isn't a DRF APIException and cadence_exception_handler only
+        special-cases CQLParseError, so it would have propagated as an unhandled, raw 500
+        instead of the API's usual {"error": {...}} envelope."""
+        athlete = self._athlete("source-detach-protected-by-patch@example.cc")
+        target = self._activity(athlete, "Edge 530", name="Target")
+        source = self._activity(athlete, "Favero Assioma", name="Source")
+        self._add_records_with(target, 10, power=lambda t: 0 if t in (4, 5) else 200)
+        self._add_records(source, 10, power=220)
+        attach = activity_source_service.attach_stream(target.id, source.id, "power", offset_seconds=0, preview=False)
+        stream_patch_service.patch_stream(target.id, "power", attach.source_id, segments=[(4, 5)], preview=False)
+
+        with self.assertRaises(ConflictError):
+            activity_source_service.detach_source(target.id, attach.source_id)
 
     def test_list_sources_reports_is_primary_against_the_activitys_current_primary(self):
         athlete = self._athlete("source-list-is-primary@example.cc")

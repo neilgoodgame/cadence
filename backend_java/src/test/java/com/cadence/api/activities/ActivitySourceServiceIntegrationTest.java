@@ -3,11 +3,13 @@ package com.cadence.api.activities;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.cadence.api.activities.ActivityMergeApplyService.Segment;
 import com.cadence.api.activities.calc.DropoutDetector;
 import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.HrSource;
 import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
@@ -34,6 +36,8 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 	private ActivitySourceRepository sourceRepository;
 	@Autowired
 	private ActivityStreamRepository streamRepository;
+	@Autowired
+	private ActivityStreamPatchService streamPatchService;
 	@Autowired
 	private UserRepository userRepository;
 
@@ -468,6 +472,27 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 
 		assertThatThrownBy(() -> sourceService.detachSource(target.getId(), fileOriginSource.getId(), false))
 				.isInstanceOf(ValidationException.class);
+	}
+
+	/** Code review finding: StreamPatch.fromSource has no ON DELETE clause (issue #540, phase
+	 * 6), but detachAndRestore's own sourceRepository.delete(source) had no handling for the
+	 * resulting DataIntegrityViolationException - ApiExceptionHandler's catch-all would still
+	 * wrap it in the error envelope, but as an unhelpful generic 500 instead of a specific 409
+	 * naming the real cause. */
+	@Test
+	void detachSourceReferencedByAStreamPatchIsACleanConflictNotAGenericFiveHundred() {
+		User athlete = newAthlete("source-detach-protected-by-patch@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity source = newActivity(athlete, "Source", "Favero Assioma");
+		addRecordsWith(target, 10, (record, t) -> record.setPower(t == 4 || t == 5 ? 0 : 200));
+		addRecords(source, 10, 220);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power",
+				0, false, null);
+		streamPatchService.patchStream(target.getId(), "power", attach.sourceId(), List.of(new Segment(4, 5)), null,
+				null, false);
+
+		assertThatThrownBy(() -> sourceService.detachSource(target.getId(), attach.sourceId(), false))
+				.isInstanceOf(ConflictException.class);
 	}
 
 	@Test

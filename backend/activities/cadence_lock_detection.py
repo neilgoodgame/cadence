@@ -12,12 +12,12 @@ auto-patches anything itself; it only ever reports what it found."""
 
 from dataclasses import dataclass
 
-from .stream_comparison import pearson
+from .stream_comparison import MIN_OVERLAP_SAMPLES, pearson
 
 _WINDOW_SECONDS = 60
 _STEP_SECONDS = 10  # sliding window hop
 _LOCK_CORRELATION_THRESHOLD = 0.85  # Pearson r between HR and cadence within a window
-_MIN_WINDOW_SAMPLES = 30  # reuses stream_comparison.MIN_OVERLAP_SAMPLES's floor, not a new value
+_MIN_WINDOW_SAMPLES = MIN_OVERLAP_SAMPLES  # reuses stream_comparison's own floor, not a new value
 _MIN_CADENCE_CV = 0.02  # coefficient of variation (std/mean) the window's cadence series must
 # reach before its Pearson r is trusted - on a near-constant cadence (steady-state running, the
 # common case) r between two low-variance series is noise-dominated and can spuriously cross the

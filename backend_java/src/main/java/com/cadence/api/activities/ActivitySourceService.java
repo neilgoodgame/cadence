@@ -13,6 +13,7 @@ import com.cadence.api.athletes.ZoneService;
 import com.cadence.api.athletes.ZoneSet;
 import com.cadence.api.athletes.ZoneType;
 import com.cadence.api.common.domain.Sport;
+import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.users.User;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -610,7 +612,21 @@ public class ActivitySourceService {
 			postProcessingService.recomputeAfterMerge(activityId);
 			sourceRepository.deleteById(redundantSnapshotId);
 		}
-		sourceRepository.delete(source);
+		try {
+			sourceRepository.delete(source);
+			// Without this, Hibernate defers the actual DELETE (and any resulting constraint
+			// violation) to flush time - normally transaction commit, which happens after this
+			// method returns, well outside this try block. Flushing here forces it to surface
+			// now instead.
+			sourceRepository.flush();
+		}
+		catch (DataIntegrityViolationException ex) {
+			// Issue #540 (phase 6): a StreamPatch.fromSource FK reference (no ON DELETE clause -
+			// a source ever used in any patch, even a fully-undone one by design, can't be
+			// deleted). Converted to a clean 409 here rather than letting the raw constraint
+			// violation fall through to ApiExceptionHandler's catch-all generic 500.
+			throw new ConflictException("Can't detach '" + sourceId + "' - it's referenced by an active or past stream patch.");
+		}
 		return needsRestore;
 	}
 

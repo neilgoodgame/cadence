@@ -12,10 +12,12 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from django.db import transaction
+from django.db.models import ProtectedError
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
 from athletes.zones import get_or_create_zone_set, reference_for
+from core.exceptions import ConflictError
 
 from . import stream_comparison
 from .activity_post_processing import recompute_after_merge
@@ -81,7 +83,7 @@ def _current_primary_source(activity: Activity) -> str:
     return activity.bike_power_source or classify(activity.device)
 
 
-def _validate_field(field: str) -> None:
+def validate_field(field: str) -> None:
     if field not in VALID_FIELDS:
         raise ValidationError({"field": "field must be 'power', 'heartrate', or 'cadence'."})
 
@@ -159,7 +161,7 @@ def attach_stream(
     preview=True computes and returns the result without writing anything (no
     transaction-rollback trick needed here, unlike ``overwrite`` - nothing is written unless
     preview is False, so there's nothing to undo)."""
-    _validate_field(field)
+    validate_field(field)
     _validate_source_kind(field, source_kind)
     target = get_object_or_404(Activity, pk=target_id)
     source = get_object_or_404(Activity, pk=source_id)
@@ -332,7 +334,7 @@ def _swap_primary_stream(activity_id: str, field: str, source_id: str) -> tuple[
     activity's own upload, not an attach), so swapping never loses data either direction. Returns
     that new snapshot's source id alongside the activity, so a caller that needs to undo this
     exact swap later (issue #542) knows what to swap back to."""
-    _validate_field(field)
+    validate_field(field)
     activity = get_object_or_404(Activity, pk=activity_id)
     new_primary_stream = get_object_or_404(ActivityStream, activity_id=activity_id, field=field, source_id=source_id)
 
@@ -444,7 +446,18 @@ def detach_and_restore(activity_id: str, field: str, source_id: str, demoted_sou
             _, redundant_snapshot_id = _swap_primary_stream(activity_id, field, restore_to)
             recompute_after_merge(activity_id)
             ActivitySource.objects.filter(pk=redundant_snapshot_id).delete()
-        source.delete()
+        try:
+            source.delete()
+        except ProtectedError as exc:
+            # Issue #540 (phase 6): a StreamPatch.from_source PROTECT reference - a source ever
+            # used in any patch (even a fully-undone one, by design - see StreamPatch's own
+            # "accepted consequence" note) can't be deleted. Converted to a clean 409 here rather
+            # than letting ProtectedError propagate as an unhandled 500 - cadence_exception_handler
+            # only special-cases CQLParseError, so this is the one place in the detach path that
+            # can actually hit this FK.
+            raise ConflictError(
+                f"Can't detach '{source_id}' - it's referenced by an active or past stream patch."
+            ) from exc
     return needs_restore
 
 
@@ -672,7 +685,7 @@ def compare_streams(
     once, at attach time), so offset_seconds is always 0 here - unlike attach_stream's own
     dropout call, which resolves a real cross-activity offset first.
     """
-    _validate_field(field)
+    validate_field(field)
     if source_a == source_b:
         raise ValidationError({"b": "a and b must refer to two different sources."})
     if zone_breakdown and field == "cadence":

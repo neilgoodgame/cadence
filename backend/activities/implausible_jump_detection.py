@@ -59,14 +59,28 @@ def _boundary_ts(primary: dict[int, int | None], max_delta: float) -> list[int]:
     ]
 
 
-def _find_runs(primary: dict[int, int | None], max_delta: float) -> list[list[int]]:
+def _find_runs(primary: dict[int, int | None], max_delta: float) -> list[tuple[list[int], int, int]]:
     """A candidate run is the held span between two consecutive boundary jumps - "jump away,
     hold at an implausible level, jump back", not a smooth ramp. A boundary jump with no
     following boundary (the glitch never resolves before the data ends) isn't reported - same
     "no trailing bracket, no confirmation" stance dropout_detection's single-stream fallback
-    already takes at the very start of a recording."""
+    already takes at the very start of a recording. Only seconds actually present in primary are
+    included in the run itself - a data gap inside the span (a missing sample that wasn't itself
+    adjacent to its neighbor, so never became a boundary) is skipped rather than treated as a
+    real held value. Each boundary pair is returned alongside the run (not re-derived from the
+    filtered run's own first/last element) because entry_boundary - 1 / exit_boundary - 1 are
+    guaranteed present by _boundary_ts's own adjacency check, whereas run[0] - 1 / run[-1] + 1
+    aren't once a gap sits right at either edge - both boundaries are always present and included
+    in the run, so a run is never empty."""
     boundaries = _boundary_ts(primary, max_delta)
-    return [list(range(boundaries[i], boundaries[i + 1])) for i in range(len(boundaries) - 1)]
+    return [
+        (
+            [t for t in range(boundaries[i], boundaries[i + 1]) if primary.get(t) is not None],
+            boundaries[i],
+            boundaries[i + 1],
+        )
+        for i in range(len(boundaries) - 1)
+    ]
 
 
 def detect_implausible_jumps(
@@ -90,7 +104,7 @@ def detect_implausible_jumps(
 
     confirmed_ts: set[int] = set()
     confirmed_runs: list[ImplausibleRun] = []
-    for run in _find_runs(primary, max_delta):
+    for run, entry_boundary, exit_boundary in _find_runs(primary, max_delta):
         held_level = _median([primary[t] for t in run])
         long_freeze_exempt = field == "heartrate" and held_level > _MAX_PLAUSIBLE_HR
         if len(run) > _MAX_RUN_SECONDS and not long_freeze_exempt:
@@ -101,15 +115,22 @@ def detect_implausible_jumps(
         reference_values = [reference.get(t) for t in run]
         if any(v is None for v in reference_values):
             continue
+        # Only checked across genuinely adjacent seconds in the run (a gap, if any, isn't a
+        # real per-second rate to hold reference to - same adjacency-only stance _boundary_ts
+        # itself takes).
         smooth = all(
-            abs(reference_values[i] - reference_values[i - 1]) <= max_delta for i in range(1, len(reference_values))
+            abs(reference_values[i] - reference_values[i - 1]) <= max_delta
+            for i in range(1, len(reference_values))
+            if run[i] == run[i - 1] + 1
         )
         plausible = field != "heartrate" or all(v <= _MAX_PLAUSIBLE_HR for v in reference_values)
         if not (smooth and plausible):
             continue
 
-        entry_delta = abs(primary[run[0]] - primary[run[0] - 1])
-        exit_delta = abs(primary[run[-1] + 1] - primary[run[-1]])
+        entry_delta = abs(primary[entry_boundary] - primary[entry_boundary - 1])
+        exit_delta = abs(primary[exit_boundary] - primary[exit_boundary - 1])
         confirmed_ts.update(run)
-        confirmed_runs.append(ImplausibleRun(start_t=run[0], length=len(run), peak_delta=max(entry_delta, exit_delta)))
+        confirmed_runs.append(
+            ImplausibleRun(start_t=entry_boundary, length=len(run), peak_delta=max(entry_delta, exit_delta))
+        )
     return confirmed_ts, confirmed_runs

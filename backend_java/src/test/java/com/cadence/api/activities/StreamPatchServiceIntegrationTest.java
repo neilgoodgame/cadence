@@ -210,4 +210,29 @@ class StreamPatchServiceIntegrationTest extends IntegrationTest {
 		assertThatThrownBy(() -> streamPatchService.unpatchStream(fixture.target().getId(), "pat_doesnotexist"))
 				.isInstanceOf(UnprocessableEntityException.class);
 	}
+
+	/** Code review finding: segments="flagged" skipped the sanity cap entirely on the theory
+	 * that a detector's own run-length cap already bounds it - true for contact_loss's two
+	 * detectors, but CadenceLockDetector's merged runs have no length cap of their own, so a
+	 * long-running lock episode could otherwise patch an unbounded span. The cap is now applied
+	 * to the resolved segments regardless of path; a real 3700s cadence-lock run (continuously
+	 * correlated, so it merges into one run spanning the whole fixture) is long enough to exceed
+	 * the 3600s cap without needing to shrink the constant for the test. */
+	@Test
+	void flaggedCadenceLockSegmentsAreStillCapped() {
+		User athlete = newAthlete("java-patch-cadence-lock-cap@example.cc");
+		Activity target = newActivity(athlete, "Target", "Epix");
+		Activity source = newActivity(athlete, "Source", "Tickr");
+		addRecordsWith(target, 3700, (record, t) -> {
+			record.setHeartrate(t % 2 == 0 ? 152 : 148);
+			record.setCadence(t % 2 == 0 ? 90 : 70);
+		});
+		addConstant(source, 3700, "heartrate", 150);
+		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(),
+				"heartrate", 0, false, "strap");
+
+		assertThatThrownBy(() -> streamPatchService.patchStream(target.getId(), "heartrate", attach.sourceId(), null,
+				Kind.CADENCE_LOCK, attach.sourceId(), false))
+				.isInstanceOf(ValidationException.class);
+	}
 }

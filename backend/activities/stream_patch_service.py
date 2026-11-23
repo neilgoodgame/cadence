@@ -22,7 +22,7 @@ from rest_framework.exceptions import ValidationError
 from core.exceptions import ConflictError, UnprocessableEntityError
 
 from .activity_post_processing import recompute_activity_level_only, recompute_after_merge
-from .activity_source_service import VALID_FIELDS
+from .activity_source_service import validate_field
 from .merge_apply import FieldRewriteCounts, compute_stream_field
 from .models import Activity, ActivityStream, Record, StreamPatch
 from .stream_flag_service import detect_stream_flags
@@ -32,9 +32,11 @@ from .stream_flag_service import detect_stream_flags
 # implausible stretch", not "fill gaps".
 _NULL_POLICY = "overwrite"
 # Repair targets a glitch run, not a whole-stream rewrite (that's merge/attach territory) - a
-# bigger explicit request is almost certainly a caller bug. segments="flagged" is exempt - a
-# detector's own run-length caps already bound it. Untested guess, flag in the PR.
-_MAX_EXPLICIT_SEGMENTS_SECONDS = 3600
+# bigger request is almost certainly a caller bug. Enforced on segments="flagged" too, not just
+# explicit input - contact_loss's two detectors each already cap an individual run's length, but
+# cadence_lock_detection's merged runs have no length cap of their own, so "flagged" output can't
+# be assumed pre-bounded for every kind. Untested guess, flag in the PR.
+_MAX_SEGMENTS_SECONDS = 3600
 
 Segments = list[tuple[int, int]] | Literal["flagged"]
 
@@ -53,21 +55,16 @@ class StreamPatchResult:
     counts: FieldRewriteCounts
 
 
-def _validate_field(field: str) -> None:
-    if field not in VALID_FIELDS:
-        raise ValidationError({"field": "field must be 'power', 'heartrate', or 'cadence'."})
-
-
-def _validate_explicit_segments(segments: list[tuple[int, int]]) -> None:
+def _validate_segments(segments: list[tuple[int, int]]) -> None:
     for start, end in segments:
         if end < start:
             raise ValidationError({"segments": f"Segment [{start}, {end}] has end before start."})
     total = sum(end - start + 1 for start, end in segments)
-    if total > _MAX_EXPLICIT_SEGMENTS_SECONDS:
+    if total > _MAX_SEGMENTS_SECONDS:
         raise ValidationError(
             {
-                "segments": f"Explicit segments total {total}s, more than the "
-                f"{_MAX_EXPLICIT_SEGMENTS_SECONDS}s repair cap - that's whole-stream-rewrite "
+                "segments": f"Segments total {total}s, more than the "
+                f"{_MAX_SEGMENTS_SECONDS}s repair cap - that's whole-stream-rewrite "
                 "territory (merge/attach), not a repair."
             }
         )
@@ -76,14 +73,18 @@ def _validate_explicit_segments(segments: list[tuple[int, int]]) -> None:
 def _resolve_segments(
     activity_id: str, field: str, segments: Segments, kind: str | None, reference: str | None
 ) -> tuple[list[tuple[int, int]], str | None]:
-    """Returns (resolved segments, detected_kind for the StreamPatch row)."""
+    """Returns (resolved segments, detected_kind for the StreamPatch row). The length cap is
+    enforced on the resolved segments regardless of path - see _MAX_SEGMENTS_SECONDS' own
+    comment for why "flagged" isn't exempt."""
     if segments == "flagged":
         if kind is None:
             raise ValidationError({"kind": "kind is required when segments='flagged'."})
         flags = detect_stream_flags(activity_id, field, kind, reference)
-        return [(s.start_t, s.end_t) for s in flags.segments], kind
-    _validate_explicit_segments(segments)
-    return segments, None
+        resolved, detected_kind = [(s.start_t, s.end_t) for s in flags.segments], kind
+    else:
+        resolved, detected_kind = segments, None
+    _validate_segments(resolved)
+    return resolved, detected_kind
 
 
 def _reject_overlap(activity_id: str, field: str, segments: list[tuple[int, int]]) -> None:
@@ -108,7 +109,7 @@ def patch_stream(
     reference: str | None = None,
     preview: bool = False,
 ) -> StreamPatchResult:
-    _validate_field(field)
+    validate_field(field)
     activity = get_object_or_404(Activity, pk=activity_id)
     source_stream = get_object_or_404(ActivityStream, activity_id=activity_id, field=field, source_id=from_source)
 

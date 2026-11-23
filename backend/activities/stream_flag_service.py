@@ -17,7 +17,7 @@ from typing import Literal
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
-from .activity_source_service import PRIMARY_SOURCE_REF, VALID_FIELDS, load_field_series
+from .activity_source_service import PRIMARY_SOURCE_REF, load_field_series, validate_field
 from .cadence_lock_detection import detect_cadence_lock
 from .dropout_detection import detect_dropouts
 from .implausible_jump_detection import detect_implausible_jumps
@@ -49,13 +49,8 @@ class StreamFlagsResult:
     segments: list[FlagSegment]
 
 
-def _validate_field(field: str) -> None:
-    if field not in VALID_FIELDS:
-        raise ValidationError({"field": "field must be 'power', 'heartrate', or 'cadence'."})
-
-
 def _contact_loss_segments(activity: Activity, field: str, reference_ref: str | None) -> list[FlagSegment]:
-    _validate_field(field)
+    validate_field(field)
     primary = load_field_series(activity, field, PRIMARY_SOURCE_REF)
     reference_series = load_field_series(activity, field, reference_ref) if reference_ref else None
 

@@ -3,6 +3,7 @@ GET .../streams/flags. Integration-style (real Activity/Record/ActivitySource ro
 test_activity_source_service.py. Mirrors backend_java's StreamPatchServiceIntegrationTest."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 from django.test import TestCase
 from rest_framework.exceptions import ValidationError
@@ -148,3 +149,36 @@ class StreamPatchServiceTests(TestCase):
 
         with self.assertRaises(UnprocessableEntityError):
             stream_patch_service.unpatch_stream(target.id, "pat_doesnotexist")
+
+    def test_flagged_cadence_lock_segments_are_still_capped(self):
+        """Code review finding: segments="flagged" skipped the sanity cap entirely on the theory
+        that a detector's own run-length cap already bounds it - true for contact_loss's two
+        detectors, but cadence_lock_detection's merged runs have no length cap of their own, so a
+        long-running lock episode could otherwise patch an unbounded span. The cap is now applied
+        to the resolved segments regardless of path; lower it here so a realistic (60s) cadence
+        lock run is enough to exceed it without building a multi-hour fixture."""
+        athlete = self._athlete("patch-cadence-lock-cap@example.cc")
+        target = self._activity(athlete, "Epix", name="Target")
+        source = self._activity(athlete, "Tickr", name="Source")
+        self._add_records_with(
+            target,
+            60,
+            heartrate=lambda t: 152 if t % 2 == 0 else 148,
+            cadence=lambda t: 90 if t % 2 == 0 else 70,
+        )
+        self._add_constant(source, 60, "heartrate", 150)
+        attach = activity_source_service.attach_stream(
+            target.id, source.id, "heartrate", offset_seconds=0, preview=False, source_kind="strap"
+        )
+
+        with patch("activities.stream_patch_service._MAX_SEGMENTS_SECONDS", 30):
+            with self.assertRaises(ValidationError):
+                stream_patch_service.patch_stream(
+                    target.id,
+                    "heartrate",
+                    attach.source_id,
+                    segments="flagged",
+                    kind="cadence_lock",
+                    reference=attach.source_id,
+                    preview=False,
+                )

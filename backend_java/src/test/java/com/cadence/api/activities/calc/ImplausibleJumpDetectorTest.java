@@ -155,4 +155,24 @@ class ImplausibleJumpDetectorTest {
 		assertThatThrownBy(() -> ImplausibleJumpDetector.detectImplausibleJumps(primary, "power", null))
 				.isInstanceOf(IllegalArgumentException.class);
 	}
+
+	/** Code review finding: a run built as range(entryBoundary, exitBoundary) assumed every
+	 * second in between was present. A single missing sample inside the held span (one that was
+	 * never itself a boundary, since it has no neighbor to be adjacent to) used to NPE in
+	 * median() - the gap must be skipped, not treated as a real held value. */
+	@Test
+	void aMissingSampleInsideARunDoesNotCrash() {
+		Map<Integer, Integer> primary = new HashMap<>(constant(4, 80, 0));
+		primary.put(4, 180);
+		primary.put(5, 180);
+		// t=6 is missing entirely - a genuine gap inside the held span.
+		primary.put(7, 180);
+		primary.putAll(constant(4, 80, 8));
+		Map<Integer, Integer> reference = constant(12, 150, 0);
+
+		ImplausibleJumpResult result = ImplausibleJumpDetector.detectImplausibleJumps(primary, "heartrate", reference);
+
+		assertThat(result.confirmedTs()).containsExactlyInAnyOrder(4, 5, 7);
+		assertThat(result.runs()).containsExactly(new ImplausibleRun(4, 3, 100.0));
+	}
 }
