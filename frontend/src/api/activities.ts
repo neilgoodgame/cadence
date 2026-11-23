@@ -17,7 +17,11 @@ import type {
   SplitsMode,
   StreamComparison,
   StreamComparisonField,
+  StreamFlagKind,
+  StreamFlags,
+  StreamPatchResult,
   StreamsResponse,
+  StreamUnpatchResult,
   Tag,
   WorkoutSport,
   WorkoutStep,
@@ -215,6 +219,47 @@ export function getStreamComparison(
     exclude_dropouts: excludeDropouts,
   });
   return apiFetch<StreamComparison>(`/v1/activities/${id}/streams/compare${params}`);
+}
+
+/** Issue #540 (phase 6). Detects contact-loss or cadence-lock runs on one of this activity's
+ * streams - read-only, always recomputed fresh, never persisted. reference accepts "primary" or
+ * a real source id from listActivitySources; omitting it yields weaker (or, for contact_loss on
+ * heartrate/cadence, no) confirmation. */
+export function detectStreamFlags(
+  id: string,
+  field: StreamComparisonField,
+  kind: StreamFlagKind,
+  reference?: string,
+): Promise<StreamFlags> {
+  const params = toQueryString({ field, kind, reference });
+  return apiFetch<StreamFlags>(`/v1/activities/${id}/streams/flags${params}`);
+}
+
+export interface PatchStreamParams {
+  field: StreamComparisonField;
+  from_source: string;
+  /** Either an explicit [start_t, end_t] inclusive pair, or "flagged" to patch whatever
+   * detectStreamFlags currently finds (kind/reference then required). */
+  segments: [number, number][] | "flagged";
+  kind?: StreamFlagKind;
+  reference?: string;
+  preview: boolean;
+}
+
+/** Issue #540 (phase 6). Rewrites id's *primary* stream for field, at segments, with
+ * from_source's own stored reading there - never touches a stored source, only the primary. */
+export function patchStream(id: string, params: PatchStreamParams): Promise<StreamPatchResult> {
+  return apiFetch<StreamPatchResult>(`/v1/activities/${id}/streams/patch`, { method: "POST", body: params });
+}
+
+/** Issue #540 (phase 6). Undoes one of id's active StreamPatches (from patchStream). patchId is
+ * required only if more than one active patch exists on this activity (not just this field) -
+ * omit it when there's at most one, same convention unmergeActivity's own merge_id uses. */
+export function unpatchStream(id: string, patchId?: string): Promise<StreamUnpatchResult> {
+  return apiFetch<StreamUnpatchResult>(`/v1/activities/${id}/streams/unpatch`, {
+    method: "POST",
+    body: patchId ? { patch_id: patchId } : {},
+  });
 }
 
 export function listTags(): Promise<DataList<Tag>> {
