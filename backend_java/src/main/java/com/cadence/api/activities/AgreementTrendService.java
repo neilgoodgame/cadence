@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Issue #540 (phase 5): agreement trends over time - per-activity agreement statistics
@@ -114,8 +113,13 @@ public class AgreementTrendService {
 	 * uses) plus findLag and - for field="power" - the same dropout detection compareStreams
 	 * runs, per activity. Returns the points plus a skip-reason tally. Never raises for "not
 	 * enough data on this one activity" - that activity is just skipped and counted; only a bad
-	 * field/device_a/device_b/sport combination is a 400. */
-	@Transactional
+	 * field/device_a/device_b/sport combination is a 400.
+	 *
+	 * <p>Deliberately NOT {@code @Transactional}: the loop only reads simple entity columns and
+	 * issues fresh repository calls (each its own short read-only transaction), so wrapping the
+	 * whole multi-activity sweep in one long transaction would just pin a connection and keep
+	 * every loaded entity managed for the range's full size - the Python twin has no such
+	 * transaction, and FitnessService's same-shaped per-activity aggregations aren't either. */
 	public AgreementTrendResult computeAgreementTrend(String athleteId, String field, String deviceA,
 			String deviceB, String sport, LocalDate fromDate, LocalDate toDate, boolean excludeDropouts,
 			boolean includeDuplicates) {
@@ -141,12 +145,15 @@ public class AgreementTrendService {
 		skipped.put("insufficient_overlap", 0);
 
 		for (Activity activity : activities) {
-			Map<Integer, Integer> seriesA = sourceService.resolveTaggedSeries(activity, field, deviceA);
+			// Load this activity's stored sources + streams once so both device tags resolve in
+			// memory (mirrors backend's prefetched sources__streams) instead of re-querying per tag.
+			ActivitySourceService.TaggedSeriesLookup lookup = sourceService.loadTaggedSeriesLookup(activity);
+			Map<Integer, Integer> seriesA = sourceService.resolveTaggedSeries(activity, field, deviceA, lookup);
 			if (seriesA == null) {
 				skipped.merge("no_device_a", 1, Integer::sum);
 				continue;
 			}
-			Map<Integer, Integer> seriesB = sourceService.resolveTaggedSeries(activity, field, deviceB);
+			Map<Integer, Integer> seriesB = sourceService.resolveTaggedSeries(activity, field, deviceB, lookup);
 			if (seriesB == null) {
 				skipped.merge("no_device_b", 1, Integer::sum);
 				continue;

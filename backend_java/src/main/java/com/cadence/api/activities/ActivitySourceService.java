@@ -848,20 +848,45 @@ public class ActivitySourceService {
 		return false;
 	}
 
+	/** Issue #540 (phase 5): an activity's stored sources + all their streams, loaded ONCE so the
+	 * agreement trend resolves both device tags in memory (mirrors backend's prefetched
+	 * sources__streams) instead of re-querying per tag. {@code streamsBySource} indexes each
+	 * stream by (source id, field) - at most one per pair. */
+	public record TaggedSeriesLookup(List<ActivitySource> sources, Map<String, Map<String, ActivityStream>> streamsBySource) {
+
+		public ActivityStream streamFor(ActivitySource source, String field) {
+			Map<String, ActivityStream> byField = streamsBySource.get(source.getId());
+			return byField == null ? null : byField.get(field);
+		}
+	}
+
+	/** Loads {@link TaggedSeriesLookup} for one activity - its stored sources in created_at order
+	 * plus every stream (each with its source fetched, so the id is readable after this query's
+	 * short transaction ends). Two queries total - the same two backend's prefetch_related issues. */
+	public TaggedSeriesLookup loadTaggedSeriesLookup(Activity activity) {
+		List<ActivitySource> sources = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId());
+		Map<String, Map<String, ActivityStream>> streamsBySource = new HashMap<>();
+		for (ActivityStream stream : streamRepository.findForTrendByActivityId(activity.getId())) {
+			streamsBySource.computeIfAbsent(stream.getSource().getId(), k -> new HashMap<>()).put(stream.getField(),
+					stream);
+		}
+		return new TaggedSeriesLookup(sources, streamsBySource);
+	}
+
 	/** Issue #540 (phase 5): resolves a device-class tag to this activity's series for
-	 * {@code field} - the primary ({@link Record}) when the tag matches the activity's current
-	 * primary classification, else the most recently created stored {@link ActivitySource} whose
-	 * stream carries the tag (the schema allows more than one; practice shouldn't produce it - a
-	 * judgment call, flagged in the PR). {@code null} when nothing matches: "this device wasn't
-	 * used that day" is the expected common case across a date range, so callers skip rather
-	 * than error. Package-visible for {@link AgreementTrendService} - mirrors backend's
-	 * activity_source_service._resolve_tagged_series. */
-	Map<Integer, Integer> resolveTaggedSeries(Activity activity, String field, String tag) {
+	 * {@code field} from pre-loaded {@code lookup} data - the primary ({@link Record}) when the
+	 * tag matches the activity's current primary classification, else the most recently created
+	 * stored {@link ActivitySource} whose stream carries the tag (the schema allows more than one;
+	 * practice shouldn't produce it - a judgment call, flagged in the PR). {@code null} when
+	 * nothing matches: "this device wasn't used that day" is the expected common case across a
+	 * date range, so callers skip rather than error. Package-visible for {@link
+	 * AgreementTrendService} - mirrors backend's activity_source_service._resolve_tagged_series. */
+	Map<Integer, Integer> resolveTaggedSeries(Activity activity, String field, String tag, TaggedSeriesLookup lookup) {
 		if (primaryTagForField(activity, field).equals(tag)) {
 			return loadFieldSeries(activity, field, PRIMARY_SOURCE_REF);
 		}
-		List<ActivitySource> candidates = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId())
-				.stream().filter(source -> sourceMatchesTag(source, field, tag, activity)).toList();
+		List<ActivitySource> candidates = lookup.sources().stream()
+				.filter(source -> sourceMatchesTag(source, field, tag, activity)).toList();
 		if (candidates.isEmpty()) {
 			return null;
 		}
@@ -874,8 +899,7 @@ public class ActivitySourceService {
 				source = candidates.get(i);
 			}
 		}
-		ActivityStream stream = streamRepository.findByActivityIdAndFieldAndSourceId(activity.getId(), field,
-				source.getId()).orElse(null);
+		ActivityStream stream = lookup.streamFor(source, field);
 		return stream == null ? null : seriesFromStream(stream);
 	}
 }
