@@ -303,7 +303,7 @@ public class AthleteController {
 			@RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to) {
 		accessGuard.requireRead(id);
 		LocalDate effectiveTo = to != null ? to : LocalDate.now();
-		LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(84);
+		LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(FitnessService.DEFAULT_FITNESS_WINDOW_DAYS);
 		return new DataListResponse<>(fitnessService.computeFitnessSeries(id, effectiveFrom, effectiveTo));
 	}
 
@@ -324,7 +324,7 @@ public class AthleteController {
 			@RequestParam(name = "include_duplicates", defaultValue = "false") boolean includeDuplicates) {
 		accessGuard.requireRead(id);
 		LocalDate effectiveTo = toDate != null ? toDate : LocalDate.now();
-		LocalDate effectiveFrom = fromDate != null ? fromDate : effectiveTo.minusDays(84);
+		LocalDate effectiveFrom = fromDate != null ? fromDate : effectiveTo.minusDays(FitnessService.DEFAULT_FITNESS_WINDOW_DAYS);
 		if (effectiveFrom.isAfter(effectiveTo)) {
 			throw new ValidationException("Must not be after to_date.", "from_date");
 		}

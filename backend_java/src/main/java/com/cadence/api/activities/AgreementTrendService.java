@@ -7,13 +7,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import org.springframework.stereotype.Service;
 
 /**
@@ -164,18 +161,12 @@ public class AgreementTrendService {
 			int dropoutSecondsA = 0;
 			int dropoutSecondsB = 0;
 			if (field.equals("power")) {
-				ActivitySourceService.PowerDropouts dropouts = sourceService.detectPowerDropouts(activity, seriesA,
-						seriesB);
-				dropoutSecondsA = dropouts.secondsA().size();
-				dropoutSecondsB = dropouts.secondsB().size();
-				if (excludeDropouts) {
-					Set<Integer> excluded = new HashSet<>(dropouts.secondsA());
-					excluded.addAll(dropouts.secondsB());
-					if (!excluded.isEmpty()) {
-						compareSeriesA = excludeSeconds(seriesA, excluded);
-						compareSeriesB = excludeSeconds(seriesB, excluded);
-					}
-				}
+				ActivitySourceService.PowerDropoutExclusion exclusion = sourceService.applyPowerDropoutExclusion(activity,
+						seriesA, seriesB, excludeDropouts);
+				compareSeriesA = exclusion.compareSeriesA();
+				compareSeriesB = exclusion.compareSeriesB();
+				dropoutSecondsA = exclusion.dropoutSecondsA().size();
+				dropoutSecondsB = exclusion.dropoutSecondsB().size();
 			}
 
 			StreamComparisonCalculator.ComparisonResult comparison = StreamComparisonCalculator.compare(compareSeriesA,
@@ -194,15 +185,5 @@ public class AgreementTrendService {
 		}
 
 		return new AgreementTrendResult(points, skipped);
-	}
-
-	private static Map<Integer, Integer> excludeSeconds(Map<Integer, Integer> series, Set<Integer> excluded) {
-		Map<Integer, Integer> filtered = new HashMap<>();
-		for (Map.Entry<Integer, Integer> entry : series.entrySet()) {
-			if (!excluded.contains(entry.getKey())) {
-				filtered.put(entry.getKey(), entry.getValue());
-			}
-		}
-		return filtered;
 	}
 }

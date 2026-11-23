@@ -21,7 +21,7 @@ from rest_framework.exceptions import ValidationError
 from . import stream_comparison
 from .activity_source_service import (
     VALID_FIELDS,
-    _detect_power_dropouts,
+    _apply_power_dropout_exclusion,
     _resolve_tagged_series,
 )
 from .models import Activity
@@ -136,13 +136,9 @@ def compute_agreement_trend(
         dropout_seconds_a = 0
         dropout_seconds_b = 0
         if field == "power":
-            dropouts_a, _runs_a, dropouts_b, _runs_b = _detect_power_dropouts(activity, series_a, series_b)
-            dropout_seconds_a, dropout_seconds_b = len(dropouts_a), len(dropouts_b)
-            if exclude_dropouts:
-                excluded = dropouts_a | dropouts_b
-                if excluded:
-                    compare_series_a = {t: v for t, v in series_a.items() if t not in excluded}
-                    compare_series_b = {t: v for t, v in series_b.items() if t not in excluded}
+            exclusion = _apply_power_dropout_exclusion(activity, series_a, series_b, exclude_dropouts)
+            compare_series_a, compare_series_b = exclusion.compare_series_a, exclusion.compare_series_b
+            dropout_seconds_a, dropout_seconds_b = len(exclusion.dropout_seconds_a), len(exclusion.dropout_seconds_b)
 
         comparison = stream_comparison.compare(compare_series_a, compare_series_b, tolerance)
         if comparison is None:

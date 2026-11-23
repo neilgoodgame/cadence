@@ -28,11 +28,13 @@ export interface AgreementTrendPoint {
  * d3-shape, padded linear y-axis) with the same hover-crosshair technique (nearest-point lookup
  * via x.invert(), a dashed crosshair + circle marker, a readout below the chart). The readout
  * carries the point's full stat set, not just the plotted value. */
-export function DeviceAgreementTrendChart({ points, formatValue, unit = "" }: {
+export function DeviceAgreementTrendChart({ points, formatValue, unit = "", color = "var(--ember, #e0703d)" }: {
   points: AgreementTrendPoint[];
   formatValue: (value: number) => string;
   /** Appended to the MAE/RMSE readout (e.g. "W", "bpm") - bias shares the field's unit. */
   unit?: string;
+  /** Same convention as WorkoutComparisonChart.tsx's own color prop. */
+  color?: string;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -98,9 +100,9 @@ export function DeviceAgreementTrendChart({ points, formatValue, unit = "" }: {
             </g>
           ))}
 
-          <path d={chart.seriesLine(points) ?? ""} fill="none" stroke="var(--ember, #e0703d)" strokeWidth={1.5} />
+          <path d={chart.seriesLine(points) ?? ""} fill="none" stroke={color} strokeWidth={1.5} />
           {points.map((p, i) => (
-            <circle key={p.activityId} cx={chart.x(p.date)} cy={chart.y(p.value)} r={hoverIndex === i ? 4 : 2.5} fill="var(--ember, #e0703d)" />
+            <circle key={p.activityId} cx={chart.x(p.date)} cy={chart.y(p.value)} r={hoverIndex === i ? 4 : 2.5} fill={color} />
           ))}
 
           {hovered && (

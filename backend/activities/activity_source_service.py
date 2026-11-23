@@ -386,7 +386,10 @@ def _previous_primary_source_for_field(activity: Activity, field: str, exclude_s
     return (
         ActivitySource.objects.filter(activity=activity, sensor_kind=field, origin="file")
         .exclude(pk=exclude_source_id)
-        .order_by("-created_at")
+        # id is a secondary sort key purely so an exact-created_at tie (e.g. a bulk import)
+        # resolves the same way on every call - see _resolve_tagged_series, which breaks ties
+        # on the same two columns.
+        .order_by("-created_at", "-id")
         .values_list("id", flat=True)
         .first()
     )
@@ -573,7 +576,11 @@ def _resolve_tagged_series(activity: Activity, field: str, tag: str) -> dict[int
     candidates = [source for source in activity.sources.all() if _source_matches_tag(source, field, tag, activity)]
     if not candidates:
         return None
-    source = max(candidates, key=lambda s: s.created_at)
+    # Most recently created wins on an ambiguous tag; id is a secondary key purely so an
+    # exact-created_at tie (e.g. a bulk import) resolves deterministically - same convention
+    # _previous_primary_source_for_field's own order_by uses - rather than depending on
+    # queryset iteration order. Java's resolveTaggedSeries mirrors this compound comparison.
+    source = max(candidates, key=lambda s: (s.created_at, s.id))
     stream = next((st for st in source.streams.all() if st.field == field), None)
     if stream is None:
         return None
@@ -589,14 +596,55 @@ def _detect_power_dropouts(
     is two real streams corroborating each other, where cadence is never consulted at all."""
     reference_for_a = build_reference(series_b, 0, series_a.keys())
     reference_for_b = build_reference(series_a, 0, series_b.keys())
+    # The single-stream fallback assumes bike-pedalling semantics (cadence > 0 while coasting at
+    # 0 W = confirmed glitch) - running cadence (often accelerometer-based, and not reliably zero
+    # while genuinely stopped) doesn't carry the same guarantee, so for sport="run" an unconfirmed
+    # side with no reference just stays unconfirmed rather than guessing off cadence.
     cadence_series = (
         _load_field_series(activity, "cadence", PRIMARY_SOURCE_REF)
-        if reference_for_a is None or reference_for_b is None
+        if (reference_for_a is None or reference_for_b is None) and activity.sport != "run"
         else None
     )
     dropout_seconds_a, dropout_runs_a = detect_dropouts(series_a, reference_for_a, cadence_series)
     dropout_seconds_b, dropout_runs_b = detect_dropouts(series_b, reference_for_b, cadence_series)
     return dropout_seconds_a, dropout_runs_a, dropout_seconds_b, dropout_runs_b
+
+
+@dataclass(frozen=True)
+class PowerDropoutExclusion:
+    compare_series_a: dict[int, int]
+    compare_series_b: dict[int, int]
+    dropout_seconds_a: set[int]
+    dropout_runs_a: list[DropoutRun]
+    dropout_seconds_b: set[int]
+    dropout_runs_b: list[DropoutRun]
+
+
+def _apply_power_dropout_exclusion(
+    activity: Activity, series_a: dict[int, int], series_b: dict[int, int], exclude_dropouts: bool
+) -> PowerDropoutExclusion:
+    """Issue #541/#540: runs _detect_power_dropouts, then - when exclude_dropouts - filters both
+    series down to the seconds neither side dropped out on. Shared by compare_streams and
+    agreement_trend_service.compute_agreement_trend (both field="power" only) so this exact
+    detect-union-filter rule can't drift between the two call sites, or between a future third
+    one (the design doc names contact-loss-repair as a near-term candidate)."""
+    dropout_seconds_a, dropout_runs_a, dropout_seconds_b, dropout_runs_b = _detect_power_dropouts(
+        activity, series_a, series_b
+    )
+    compare_series_a, compare_series_b = series_a, series_b
+    if exclude_dropouts:
+        excluded = dropout_seconds_a | dropout_seconds_b
+        if excluded:
+            compare_series_a = {t: v for t, v in series_a.items() if t not in excluded}
+            compare_series_b = {t: v for t, v in series_b.items() if t not in excluded}
+    return PowerDropoutExclusion(
+        compare_series_a=compare_series_a,
+        compare_series_b=compare_series_b,
+        dropout_seconds_a=dropout_seconds_a,
+        dropout_runs_a=dropout_runs_a,
+        dropout_seconds_b=dropout_seconds_b,
+        dropout_runs_b=dropout_runs_b,
+    )
 
 
 def compare_streams(
@@ -642,14 +690,10 @@ def compare_streams(
     dropout_runs_b: list[DropoutRun] = []
     compare_series_a, compare_series_b = series_a, series_b
     if field == "power":
-        dropout_seconds_a, dropout_runs_a, dropout_seconds_b, dropout_runs_b = _detect_power_dropouts(
-            activity, series_a, series_b
-        )
-        if exclude_dropouts:
-            excluded = dropout_seconds_a | dropout_seconds_b
-            if excluded:
-                compare_series_a = {t: v for t, v in series_a.items() if t not in excluded}
-                compare_series_b = {t: v for t, v in series_b.items() if t not in excluded}
+        exclusion = _apply_power_dropout_exclusion(activity, series_a, series_b, exclude_dropouts)
+        compare_series_a, compare_series_b = exclusion.compare_series_a, exclusion.compare_series_b
+        dropout_seconds_a, dropout_runs_a = exclusion.dropout_seconds_a, exclusion.dropout_runs_a
+        dropout_seconds_b, dropout_runs_b = exclusion.dropout_seconds_b, exclusion.dropout_runs_b
 
     tolerance = (
         stream_comparison.Tolerance.of_absolute(5.0)

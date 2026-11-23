@@ -50,7 +50,9 @@ export function getFitness(athleteId: string, from?: string, to?: string): Promi
 /** Issue #540 phase 5 - how two device-class tags (e.g. pedals vs trainer power) agree with
  * each other, one point per activity in the range. `sport` is required by the backend when
  * field="power" (its device vocabulary differs between bike and run); `excludeDropouts` is
- * only meaningful for power (the backend ignores it otherwise). */
+ * only meaningful for power (the backend ignores it otherwise). `includeDuplicates` also
+ * includes same-ride-twice duplicate copies, which are otherwise excluded entirely - same flag
+ * as the fitness trend's own, default false. */
 export function getDeviceAgreementTrend(
   athleteId: string,
   field: StreamComparisonField,
@@ -60,6 +62,7 @@ export function getDeviceAgreementTrend(
   fromDate?: string,
   toDate?: string,
   excludeDropouts = true,
+  includeDuplicates = false,
 ): Promise<DeviceAgreementTrend> {
   const params = new URLSearchParams();
   params.set("field", field);
@@ -69,6 +72,7 @@ export function getDeviceAgreementTrend(
   if (fromDate) params.set("from_date", fromDate);
   if (toDate) params.set("to_date", toDate);
   params.set("exclude_dropouts", String(excludeDropouts));
+  params.set("include_duplicates", String(includeDuplicates));
   return apiFetch<DeviceAgreementTrend>(`/v1/athletes/${athleteId}/streams/agreement?${params.toString()}`);
 }
 

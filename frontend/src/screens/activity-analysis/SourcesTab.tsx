@@ -128,6 +128,9 @@ function FieldSourcesCard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["activity", activityId] });
       queryClient.invalidateQueries({ queryKey: ["activity-sources", activityId] });
+      // The device agreement trend resolves each device tag off this same primary-source field
+      // (see ActivitySourceService#resolveTaggedSeries) - a swap here can change its numbers too.
+      queryClient.invalidateQueries({ queryKey: ["device-agreement-trend"] });
     },
   });
 

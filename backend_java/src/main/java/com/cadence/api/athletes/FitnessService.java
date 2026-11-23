@@ -27,6 +27,12 @@ public class FitnessService {
 	private static final int CTL_DAYS = 42;
 	private static final int ATL_DAYS = 7;
 
+	/** The trailing-window default every date-range endpoint over activities falls back to when
+	 * {@code from} isn't given - REST and MCP alike, for both the fitness trend and the agreement
+	 * trend. Mirrors backend's {@code core.derived.DEFAULT_FITNESS_WINDOW_DAYS} - keep the two in
+	 * sync when changing either. */
+	public static final int DEFAULT_FITNESS_WINDOW_DAYS = 84;
+
 	private final ActivityRepository activityRepository;
 	private final UserRepository userRepository;
 	private final DecayLoadService decayLoadService;

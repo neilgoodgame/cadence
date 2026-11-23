@@ -1,6 +1,7 @@
 package com.cadence.api.mcp.tools.athletes;
 
 import com.cadence.api.activities.AgreementTrendService;
+import com.cadence.api.athletes.FitnessService;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.mcp.dispatch.McpScopes;
 import com.cadence.api.mcp.dispatch.McpToolAuthorizer;
@@ -48,7 +49,7 @@ public class AgreementTrendTools {
 		accessGuard.requireRead(athleteId);
 
 		LocalDate effectiveTo = toDate != null ? toDate : LocalDate.now();
-		LocalDate effectiveFrom = fromDate != null ? fromDate : effectiveTo.minusDays(84);
+		LocalDate effectiveFrom = fromDate != null ? fromDate : effectiveTo.minusDays(FitnessService.DEFAULT_FITNESS_WINDOW_DAYS);
 		if (effectiveFrom.isAfter(effectiveTo)) {
 			throw new ValidationException("Must not be after to_date.", "from_date");
 		}

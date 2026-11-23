@@ -115,10 +115,10 @@ class RunningPowerSourceIngestionTest extends IntegrationTest {
 		Activity nativePreferenceActivity = uploadStrydOnlyFixture(nativePreferenceAthlete);
 
 		// stryd preference: native is "the other" candidate, and this file never had it.
-		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(strydPreferenceActivity.getId())).isEmpty();
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(strydPreferenceActivity.getId())).isEmpty();
 
 		// native preference: stryd is "the other" candidate, and this file DOES have it.
-		var sources = sourceRepository.findByActivityIdOrderByCreatedAtAsc(nativePreferenceActivity.getId());
+		var sources = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(nativePreferenceActivity.getId());
 		assertThat(sources).hasSize(1);
 		assertThat(sources.get(0).getSourceKind()).isEqualTo("stryd");
 		assertThat(sources.get(0).getOrigin()).isEqualTo(ActivitySourceOrigin.FILE);

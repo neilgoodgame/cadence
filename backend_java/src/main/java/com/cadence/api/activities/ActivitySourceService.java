@@ -494,7 +494,7 @@ public class ActivitySourceService {
 	public List<SourceSummary> listSources(String activityId) {
 		Activity activity = activityRepository.findById(activityId)
 				.orElseThrow(() -> new NotFoundException("No such activity."));
-		return sourceRepository.findByActivityIdOrderByCreatedAtAsc(activityId).stream()
+		return sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(activityId).stream()
 				.map(source -> new SourceSummary(source.getId(), source.getLabel(), source.getDevice(),
 						source.getSensorKind(), source.getOrigin().wireValue(), source.getCreatedAt(),
 						isPrimaryForField(source, activity), source.getSourceKind()))
@@ -560,7 +560,7 @@ public class ActivitySourceService {
 	 * immediately before the current one", by construction. */
 	private String previousPrimarySourceForField(String activityId, String field) {
 		return sourceRepository
-				.findFirstByActivityIdAndSensorKindAndOriginOrderByCreatedAtDesc(activityId, field, ActivitySourceOrigin.FILE)
+				.findFirstByActivityIdAndSensorKindAndOriginOrderByCreatedAtDescIdDesc(activityId, field, ActivitySourceOrigin.FILE)
 				.map(ActivitySource::getId).orElse(null);
 	}
 
@@ -699,21 +699,13 @@ public class ActivitySourceService {
 		Map<Integer, Integer> compareSeriesA = seriesA;
 		Map<Integer, Integer> compareSeriesB = seriesB;
 		if (field.equals("power")) {
-			PowerDropouts dropouts = detectPowerDropouts(activity, seriesA, seriesB);
-			dropoutSecondsA = dropouts.secondsA();
-			dropoutRunsA = dropouts.runsA();
-			dropoutSecondsB = dropouts.secondsB();
-			dropoutRunsB = dropouts.runsB();
-			if (excludeDropouts) {
-				Set<Integer> excluded = new HashSet<>(dropoutSecondsA);
-				excluded.addAll(dropoutSecondsB);
-				if (!excluded.isEmpty()) {
-					compareSeriesA = seriesA.entrySet().stream().filter(e -> !excluded.contains(e.getKey()))
-							.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-					compareSeriesB = seriesB.entrySet().stream().filter(e -> !excluded.contains(e.getKey()))
-							.collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-				}
-			}
+			PowerDropoutExclusion exclusion = applyPowerDropoutExclusion(activity, seriesA, seriesB, excludeDropouts);
+			compareSeriesA = exclusion.compareSeriesA();
+			compareSeriesB = exclusion.compareSeriesB();
+			dropoutSecondsA = exclusion.dropoutSecondsA();
+			dropoutRunsA = exclusion.dropoutRunsA();
+			dropoutSecondsB = exclusion.dropoutSecondsB();
+			dropoutRunsB = exclusion.dropoutRunsB();
 		}
 
 		StreamComparisonCalculator.Tolerance tolerance = field.equals("heartrate")
@@ -769,11 +761,54 @@ public class ActivitySourceService {
 			Map<Integer, Integer> seriesB) {
 		Map<Integer, Integer> referenceForA = DropoutDetector.buildReference(seriesB, 0, seriesA.keySet());
 		Map<Integer, Integer> referenceForB = DropoutDetector.buildReference(seriesA, 0, seriesB.keySet());
-		Map<Integer, Integer> cadenceSeries = referenceForA == null || referenceForB == null
-				? loadFieldSeries(activity, "cadence", PRIMARY_SOURCE_REF) : null;
+		// The single-stream fallback assumes bike-pedalling semantics (cadence > 0 while coasting
+		// at 0 W = confirmed glitch) - running cadence (often accelerometer-based, and not
+		// reliably zero while genuinely stopped) doesn't carry the same guarantee, so for
+		// Sport.RUN an unconfirmed side with no reference just stays unconfirmed rather than
+		// guessing off cadence.
+		Map<Integer, Integer> cadenceSeries = (referenceForA == null || referenceForB == null)
+				&& activity.getSport() != Sport.RUN ? loadFieldSeries(activity, "cadence", PRIMARY_SOURCE_REF) : null;
 		DropoutDetector.DropoutResult resultA = DropoutDetector.detectDropouts(seriesA, referenceForA, cadenceSeries);
 		DropoutDetector.DropoutResult resultB = DropoutDetector.detectDropouts(seriesB, referenceForB, cadenceSeries);
 		return new PowerDropouts(resultA.dropoutTs(), resultA.runs(), resultB.dropoutTs(), resultB.runs());
+	}
+
+	record PowerDropoutExclusion(Map<Integer, Integer> compareSeriesA, Map<Integer, Integer> compareSeriesB,
+			Set<Integer> dropoutSecondsA, List<DropoutDetector.DropoutRun> dropoutRunsA,
+			Set<Integer> dropoutSecondsB, List<DropoutDetector.DropoutRun> dropoutRunsB) {
+	}
+
+	/** Issue #541/#540: runs {@link #detectPowerDropouts}, then - when {@code excludeDropouts} -
+	 * filters both series down to the seconds neither side dropped out on. Shared by {@link
+	 * #compareStreams} and {@link AgreementTrendService#computeAgreementTrend} (both
+	 * field="power" only) so this exact detect-union-filter rule can't drift between the two call
+	 * sites. Package-visible for {@link AgreementTrendService}. Mirrors backend's
+	 * activity_source_service._apply_power_dropout_exclusion. */
+	PowerDropoutExclusion applyPowerDropoutExclusion(Activity activity, Map<Integer, Integer> seriesA,
+			Map<Integer, Integer> seriesB, boolean excludeDropouts) {
+		PowerDropouts dropouts = detectPowerDropouts(activity, seriesA, seriesB);
+		Map<Integer, Integer> compareSeriesA = seriesA;
+		Map<Integer, Integer> compareSeriesB = seriesB;
+		if (excludeDropouts) {
+			Set<Integer> excluded = new HashSet<>(dropouts.secondsA());
+			excluded.addAll(dropouts.secondsB());
+			if (!excluded.isEmpty()) {
+				compareSeriesA = excludeSeconds(seriesA, excluded);
+				compareSeriesB = excludeSeconds(seriesB, excluded);
+			}
+		}
+		return new PowerDropoutExclusion(compareSeriesA, compareSeriesB, dropouts.secondsA(), dropouts.runsA(),
+				dropouts.secondsB(), dropouts.runsB());
+	}
+
+	private static Map<Integer, Integer> excludeSeconds(Map<Integer, Integer> series, Set<Integer> excluded) {
+		Map<Integer, Integer> filtered = new HashMap<>();
+		for (Map.Entry<Integer, Integer> entry : series.entrySet()) {
+			if (!excluded.contains(entry.getKey())) {
+				filtered.put(entry.getKey(), entry.getValue());
+			}
+		}
+		return filtered;
 	}
 
 	/** Resolves {@code sourceRef} ({@link #PRIMARY_SOURCE_REF} or a real {@link ActivitySource}
@@ -864,7 +899,7 @@ public class ActivitySourceService {
 	 * plus every stream (each with its source fetched, so the id is readable after this query's
 	 * short transaction ends). Two queries total - the same two backend's prefetch_related issues. */
 	public TaggedSeriesLookup loadTaggedSeriesLookup(Activity activity) {
-		List<ActivitySource> sources = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId());
+		List<ActivitySource> sources = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(activity.getId());
 		Map<String, Map<String, ActivityStream>> streamsBySource = new HashMap<>();
 		for (ActivityStream stream : streamRepository.findForTrendByActivityId(activity.getId())) {
 			streamsBySource.computeIfAbsent(stream.getSource().getId(), k -> new HashMap<>()).put(stream.getField(),
@@ -890,13 +925,17 @@ public class ActivitySourceService {
 		if (candidates.isEmpty()) {
 			return null;
 		}
-		// Most recently created wins on an ambiguous tag - Python's max() keeps the FIRST maximum
-		// it sees, so replicate that (strictly-after comparison) rather than taking the list's
-		// last element, which would flip the winner when two created_at values tie.
+		// Most recently created wins on an ambiguous tag; id is a secondary key purely so an
+		// exact-created_at tie (e.g. a bulk import) resolves deterministically - same convention
+		// previousPrimarySourceForField's own ORDER BY uses - rather than depending on whatever
+		// order candidates happens to be in. Python's _resolve_tagged_series mirrors this with
+		// max(candidates, key=lambda s: (s.created_at, s.id)).
 		ActivitySource source = candidates.get(0);
 		for (int i = 1; i < candidates.size(); i++) {
-			if (candidates.get(i).getCreatedAt().isAfter(source.getCreatedAt())) {
-				source = candidates.get(i);
+			ActivitySource candidate = candidates.get(i);
+			int byCreatedAt = candidate.getCreatedAt().compareTo(source.getCreatedAt());
+			if (byCreatedAt > 0 || (byCreatedAt == 0 && candidate.getId().compareTo(source.getId()) > 0)) {
+				source = candidate;
 			}
 		}
 		ActivityStream stream = lookup.streamFor(source, field);

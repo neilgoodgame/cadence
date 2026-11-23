@@ -73,7 +73,7 @@ function skipCaption(skipped: DeviceAgreementTrend["skipped"], field: StreamComp
     parts.push(`${skipped.insufficient_overlap} had both sources but not enough overlap to compare`);
   }
   if (parts.length === 0) return null;
-  const firstCount = Number(parts[0].match(/^\d+/)![0]);
+  const firstCount = skipped.no_device_a > 0 ? skipped.no_device_a : skipped.no_device_b > 0 ? skipped.no_device_b : skipped.insufficient_overlap;
   parts[0] = parts[0].replace(/^(\d+)/, `$1 ${firstCount === 1 ? "activity" : "activities"} in range`);
   return parts.join("; ");
 }
@@ -107,6 +107,9 @@ function DeviceAgreementTrendContent({ field }: { field: StreamComparisonField }
   // the endpoint's per-activity comparison cost stays bounded (see the phase 5 design doc).
   const [fromDate, setFromDate] = useState(() => isoDaysAgo(90));
   const [toDate, setToDate] = useState(() => todayISODate());
+  // Only meaningful for field="power" (the backend ignores it otherwise).
+  const [excludeDropouts, setExcludeDropouts] = useState(true);
+  const [includeDuplicates, setIncludeDuplicates] = useState(false);
 
   // Switching bike<->run changes power's whole tag vocabulary, so reset both pickers to the
   // new defaults rather than keeping a now-invalid tag selected.
@@ -132,9 +135,19 @@ function DeviceAgreementTrendContent({ field }: { field: StreamComparisonField }
   }
 
   const trendQuery = useQuery({
-    queryKey: ["device-agreement-trend", user?.id, field, deviceA, deviceB, sport, fromDate, toDate],
+    queryKey: ["device-agreement-trend", user?.id, field, deviceA, deviceB, sport, fromDate, toDate, excludeDropouts, includeDuplicates],
     queryFn: () =>
-      getDeviceAgreementTrend(user!.id, field, deviceA, deviceB, sport || undefined, fromDate || undefined, toDate || undefined),
+      getDeviceAgreementTrend(
+        user!.id,
+        field,
+        deviceA,
+        deviceB,
+        sport || undefined,
+        fromDate || undefined,
+        toDate || undefined,
+        excludeDropouts,
+        includeDuplicates,
+      ),
     enabled: !!user && deviceA !== deviceB,
   });
 
@@ -208,6 +221,20 @@ function DeviceAgreementTrendContent({ field }: { field: StreamComparisonField }
           </Control>
           <Control label="To">
             <input type="date" className="mono" style={controlStyle} value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} />
+          </Control>
+          {field === "power" && (
+            <Control label="Dropouts">
+              <label style={{ ...controlStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={excludeDropouts} onChange={(e) => setExcludeDropouts(e.target.checked)} />
+                Exclude confirmed dropouts
+              </label>
+            </Control>
+          )}
+          <Control label="Duplicates">
+            <label style={{ ...controlStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={includeDuplicates} onChange={(e) => setIncludeDuplicates(e.target.checked)} />
+              Include same-ride-twice duplicates
+            </label>
           </Control>
         </div>
       </Card>

@@ -7,11 +7,15 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface ActivitySourceRepository extends JpaRepository<ActivitySource, String> {
 
-	List<ActivitySource> findByActivityIdOrderByCreatedAtAsc(String activityId);
+	// Id is a secondary sort key purely so an exact-created_at tie (e.g. a bulk import) resolves
+	// the same way on every call instead of whatever arbitrary order the DB happens to return -
+	// see ActivitySourceService#resolveTaggedSeries, which breaks ties on the same two columns.
+	List<ActivitySource> findByActivityIdOrderByCreatedAtAscIdAsc(String activityId);
 
 	// Issue #542: the swap-back candidate for detaching a currently-primary source with no
 	// explicitly recorded demotedSourceId - see ActivitySourceService#previousPrimarySourceForField.
-	Optional<ActivitySource> findFirstByActivityIdAndSensorKindAndOriginOrderByCreatedAtDesc(String activityId,
+	// Id is a secondary sort key for the same tie-break reason as findByActivityIdOrderByCreatedAtAscIdAsc.
+	Optional<ActivitySource> findFirstByActivityIdAndSensorKindAndOriginOrderByCreatedAtDescIdDesc(String activityId,
 			String sensorKind, ActivitySourceOrigin origin);
 
 	// Issue #542: every attached source with no Merge row at all - either a pre-PR-575 attach
