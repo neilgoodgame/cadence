@@ -14,7 +14,7 @@ import dataclasses
 from dataclasses import dataclass
 from typing import Literal
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -87,6 +87,23 @@ def _resolve_segments(
     return resolved, detected_kind
 
 
+def _acquire_patch_lock(activity_id: str, field: str) -> None:
+    """Code review follow-up on issue #540's own PR: closes the TOCTOU race between
+    _reject_overlap's read and the later StreamPatch.objects.create - without this, two
+    concurrent patch_stream calls on the same activity/field could both pass the overlap check
+    before either writes, breaking the "unpatch is order-independent" invariant the overlap
+    check exists to guarantee. A transaction-scoped Postgres advisory lock, keyed by a stable
+    hash of (activity_id, field) computed server-side (hashtextextended - not Python's own
+    hash(), which PYTHONHASHSEED makes unstable across processes and so useless as a lock key),
+    serializes concurrent callers on the same key without a schema change. Released
+    automatically at commit or rollback, so preview's own transaction.set_rollback(True) still
+    releases it correctly. Must be called from inside the same transaction that does the
+    overlap check and the write - a lock taken in its own separate transaction would release
+    before that work even starts."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", [f"{activity_id}:{field}"])
+
+
 def _reject_overlap(activity_id: str, field: str, segments: list[tuple[int, int]]) -> None:
     """A patch is rejected when its segments overlap any *active* (undone_at IS NULL)
     StreamPatch on the same activity+field - without this, a second patch's previous_values
@@ -114,7 +131,6 @@ def patch_stream(
     source_stream = get_object_or_404(ActivityStream, activity_id=activity_id, field=field, source_id=from_source)
 
     resolved_segments, detected_kind = _resolve_segments(activity_id, field, segments, kind, reference)
-    _reject_overlap(activity_id, field, resolved_segments)
 
     target_rows = list(activity.records.only("t", field))
     target_values = {row.t: getattr(row, field) for row in target_rows}
@@ -128,6 +144,11 @@ def patch_stream(
 
     patch: StreamPatch | None = None
     with transaction.atomic():
+        # The lock must come before the overlap check, in the same transaction as the write
+        # below - see _acquire_patch_lock's own docstring.
+        _acquire_patch_lock(activity_id, field)
+        _reject_overlap(activity_id, field, resolved_segments)
+
         changed_rows = []
         for row in target_rows:
             if row.t in patched_ts and getattr(row, field) != new_values[row.t]:

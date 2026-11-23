@@ -1,5 +1,6 @@
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
+from django.utils import timezone
 
 from accounts.models import User
 from core.models import PrefixedIDModel
@@ -775,3 +776,23 @@ class StreamPatch(PrefixedIDModel):
 
     def __str__(self) -> str:
         return f"{self.id}: {self.activity_id} {self.field}"
+
+    @classmethod
+    def invalidate_active_for_field(cls, activity_id: str, field: str) -> None:
+        """Code review finding on issue #540's own PR: something else (set_primary_source's own
+        swap, or a merge's overwrite) can rewrite Record.<field> out from under an active patch
+        with no conflict check - a later unpatch_stream would then restore the patch's now-stale
+        previous_values right back over that legitimate new data. Call this from every such
+        write path, in the same transaction as the write, so the patch can never outlive the
+        data it was snapshotted against. Deliberately just marks undone_at rather than restoring
+        previous_values first - the field was replaced wholesale by something else, not reverted
+        by its own patch, so there's nothing for this patch to meaningfully restore to anymore.
+        A no-op (not an error) when there's no active patch for this activity/field - this is a
+        defensive invalidation on every write path, not a user-facing action that should ever
+        reject the write itself. Lives here (not in stream_patch_service.py) so
+        activity_source_service.py/merge_service.py can call it without importing
+        stream_patch_service.py, which itself imports activity_source_service.py. Mirrors
+        backend_java's StreamPatch.invalidateActiveForField - keep the two in sync."""
+        cls.objects.filter(activity_id=activity_id, field=field, undone_at__isnull=True).update(
+            undone_at=timezone.now()
+        )

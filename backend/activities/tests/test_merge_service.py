@@ -8,7 +8,8 @@ from django.test import TestCase
 
 from accounts.models import User
 
-from ..models import Merge, Record
+from .. import activity_source_service, stream_patch_service
+from ..models import Merge, Record, StreamPatch
 from .helpers import _bearer_client, _make_activity
 
 
@@ -64,6 +65,38 @@ class MergeServiceTests(TestCase):
 
         target.refresh_from_db()
         self.assertEqual(target.avg_power, 250)
+
+    def test_an_overwrite_merge_invalidates_an_active_patch_on_the_same_field(self):
+        """Code review finding: apply_merge_fields' own Record rewrite had no awareness of an
+        active StreamPatch on the same field - a later unpatch_stream would have restored the
+        patch's now-stale previous_values right back over the merge's legitimate result. The
+        merge now invalidates (undone_at, not restored) any active patch on every field it
+        overwrites."""
+        target = self._activity(self.athlete, name="Target")
+        reference = self._activity(self.athlete, name="Reference")
+        self._add_records_with(target, 10, power=lambda t: 0 if t in (4, 5) else 200)
+        self._add_records(reference, 10, power=220)
+        reference_attach = activity_source_service.attach_stream(
+            target.id, reference.id, "power", offset_seconds=0, preview=False
+        )
+        patch = stream_patch_service.patch_stream(
+            target.id, "power", reference_attach.source_id, segments=[(4, 5)], preview=False
+        )
+
+        source = self._activity(self.athlete, name="Source")
+        self._add_records(source, 10, power=300)
+
+        response = _bearer_client(self.athlete).post(
+            f"/v1/activities/{target.id}/merge",
+            {"source_id": source.id, "fields": ["power"], "null_policy": "keep_original", "offset_seconds": 0},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        saved_patch = StreamPatch.objects.get(pk=patch.patch_id)
+        self.assertIsNotNone(saved_patch.undone_at)
+        for record in target.records.all():
+            self.assertEqual(record.power, 300)  # the merge's data, not the patch's restored snapshot
 
     def test_preview_has_no_side_effects(self):
         target = self._activity(self.athlete, name="Target")

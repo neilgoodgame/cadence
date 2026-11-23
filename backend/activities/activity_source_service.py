@@ -24,7 +24,7 @@ from .activity_post_processing import recompute_after_merge
 from .dropout_detection import DropoutRun, build_reference, detect_dropouts
 from .merge_alignment import align
 from .merge_apply import ZeroPolicy
-from .models import Activity, ActivitySource, ActivityStream, Record
+from .models import Activity, ActivitySource, ActivityStream, Record, StreamPatch
 
 VALID_FIELDS = ("power", "heartrate", "cadence")
 
@@ -369,6 +369,7 @@ def _swap_primary_stream(activity_id: str, field: str, source_id: str) -> tuple[
             setattr(row, field, new_values[index] if 0 <= index < len(new_values) else None)
             changed_rows.append(row)
         Record.objects.bulk_update(changed_rows, [field])
+        StreamPatch.invalidate_active_for_field(activity_id, field)
 
         new_source = new_primary_stream.source
         _stamp_activity_after_swap(activity, field, new_source)

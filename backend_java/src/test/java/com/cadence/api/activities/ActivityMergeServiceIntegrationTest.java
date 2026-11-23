@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.activities.ActivityMergeApplyService.NullPolicy;
+import com.cadence.api.activities.ActivityMergeApplyService.Segment;
+import com.cadence.api.activities.ActivityStreamPatchService.StreamPatchResult;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
 import com.cadence.api.support.IntegrationTest;
@@ -12,6 +14,7 @@ import com.cadence.api.users.UserRepository;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiConsumer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -28,6 +31,12 @@ class ActivityMergeServiceIntegrationTest extends IntegrationTest {
 	private RecordRepository recordRepository;
 	@Autowired
 	private MergeRepository mergeRepository;
+	@Autowired
+	private ActivitySourceService sourceService;
+	@Autowired
+	private ActivityStreamPatchService streamPatchService;
+	@Autowired
+	private StreamPatchRepository streamPatchRepository;
 	@Autowired
 	private UserRepository userRepository;
 
@@ -61,6 +70,19 @@ class ActivityMergeServiceIntegrationTest extends IntegrationTest {
 		recordRepository.saveAll(records);
 	}
 
+	private void addRecordsWith(Activity activity, int count, BiConsumer<Record, Integer> customize) {
+		List<Record> records = new ArrayList<>();
+		for (int t = 0; t < count; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), START.plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			customize.accept(record, t);
+			records.add(record);
+		}
+		recordRepository.saveAll(records);
+	}
+
 	@Test
 	void mergesAndRecordsAnAuditRow() {
 		User athlete = newAthlete("merge-service-audit@example.cc");
@@ -84,6 +106,34 @@ class ActivityMergeServiceIntegrationTest extends IntegrationTest {
 
 		Activity reloaded = activityRepository.findById(target.getId()).orElseThrow();
 		assertThat(reloaded.getAvgPower()).isEqualTo(250);
+	}
+
+	/** Code review finding: applyMergeFields' own Record rewrite had no awareness of an active
+	 * StreamPatch on the same field - a later unpatchStream would have restored the patch's
+	 * now-stale previousValues right back over the merge's legitimate result. The merge now
+	 * invalidates (undoneAt, not restored) any active patch on every field it overwrites. */
+	@Test
+	void anOverwriteMergeInvalidatesAnActivePatchOnTheSameField() {
+		User athlete = newAthlete("merge-service-invalidates-patch@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity reference = newActivity(athlete, "Reference");
+		addRecordsWith(target, 10, (record, t) -> record.setPower(t == 4 || t == 5 ? 0 : 200));
+		addRecords(reference, 10, 220);
+		ActivitySourceService.AttachResult referenceAttach = sourceService.attachStream(target.getId(),
+				reference.getId(), "power", 0, false, null);
+		StreamPatchResult patch = streamPatchService.patchStream(target.getId(), "power", referenceAttach.sourceId(),
+				List.of(new Segment(4, 5)), null, null, false);
+
+		Activity source = newActivity(athlete, "Source");
+		addRecords(source, 10, 300);
+
+		mergeService.runMerge(target.getId(), source.getId(), List.of("power"), NullPolicy.KEEP_ORIGINAL, 0, false,
+				false);
+
+		StreamPatch savedPatch = streamPatchRepository.findById(patch.patchId()).orElseThrow();
+		assertThat(savedPatch.getUndoneAt()).isNotNull();
+		List<Record> rows = recordRepository.findByActivityIdOrderByT(target.getId());
+		assertThat(rows).allSatisfy(r -> assertThat(r.getPower()).isEqualTo(300));
 	}
 
 	@Test

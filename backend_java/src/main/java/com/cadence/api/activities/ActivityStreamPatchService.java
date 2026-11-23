@@ -10,6 +10,8 @@ import com.cadence.api.common.error.ConflictException;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.UnprocessableEntityException;
 import com.cadence.api.common.error.ValidationException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -58,6 +60,9 @@ public class ActivityStreamPatchService {
 	public record StreamPatchResult(String patchId, String field, String fromSource, String detectedKind,
 			List<Segment> segments, FieldRewriteCounts counts) {
 	}
+
+	@PersistenceContext
+	private EntityManager entityManager;
 
 	private final ActivityRepository activityRepository;
 	private final RecordRepository recordRepository;
@@ -146,6 +151,24 @@ public class ActivityStreamPatchService {
 		return new ResolvedSegments(segments, detectedKind);
 	}
 
+	/** Code review follow-up on issue #540's own PR: closes the TOCTOU race between {@link
+	 * #rejectOverlap}'s read and this method's own write - without this, two concurrent {@link
+	 * #patchStream} calls on the same activity/field could both pass the overlap check before
+	 * either committed, breaking the "unpatch is order-independent" invariant the overlap check
+	 * exists to guarantee. A transaction-scoped Postgres advisory lock, keyed by a stable hash
+	 * of (activityId, field) computed server-side (hashtextextended, not {@code
+	 * String#hashCode()} - not guaranteed stable across JVMs/versions and so useless as a lock
+	 * key), serializes concurrent callers on the same key without a schema change. Released
+	 * automatically at commit or rollback. Must be called from inside the same transaction that
+	 * does the overlap check and the write - {@link #patchStream} is {@code @Transactional} for
+	 * its entire body, so this just needs to run before {@link #rejectOverlap}, not in any
+	 * separately-opened transaction. */
+	private void acquirePatchLock(String activityId, String field) {
+		entityManager.createNativeQuery("select pg_advisory_xact_lock(hashtextextended(?1, 0))")
+				.setParameter(1, activityId + ":" + field)
+				.getSingleResult();
+	}
+
 	/** A patch is rejected when its segments overlap any *active* ({@code undoneAt == null})
 	 * StreamPatch on the same activity+field - without this, a second patch's previousValues
 	 * would snapshot the first patch's already-patched values and unpatch order would matter
@@ -193,6 +216,7 @@ public class ActivityStreamPatchService {
 				.orElseThrow(() -> new NotFoundException("No such source stream for this activity/field."));
 
 		ResolvedSegments resolved = resolveSegments(activityId, field, explicitSegments, kind, reference);
+		acquirePatchLock(activityId, field);
 		rejectOverlap(activityId, field, resolved.segments());
 
 		List<Record> targetRows = recordRepository.findByActivityIdOrderByT(activityId);

@@ -60,16 +60,19 @@ public class ActivitySourceService {
 	private final RecordRepository recordRepository;
 	private final ActivitySourceRepository sourceRepository;
 	private final ActivityStreamRepository streamRepository;
+	private final StreamPatchRepository streamPatchRepository;
 	private final ActivityPostProcessingService postProcessingService;
 	private final ZoneService zoneService;
 
 	public ActivitySourceService(ActivityRepository activityRepository, RecordRepository recordRepository,
 			ActivitySourceRepository sourceRepository, ActivityStreamRepository streamRepository,
-			ActivityPostProcessingService postProcessingService, ZoneService zoneService) {
+			StreamPatchRepository streamPatchRepository, ActivityPostProcessingService postProcessingService,
+			ZoneService zoneService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.sourceRepository = sourceRepository;
 		this.streamRepository = streamRepository;
+		this.streamPatchRepository = streamPatchRepository;
 		this.postProcessingService = postProcessingService;
 		this.zoneService = zoneService;
 	}
@@ -433,6 +436,7 @@ public class ActivitySourceService {
 			changedRows.add(row);
 		}
 		recordRepository.saveAll(changedRows);
+		streamPatchRepository.invalidateActiveForField(activityId, field, Instant.now());
 
 		stampActivityAfterSwap(activity, field, newPrimaryStream.getSource());
 		activityRepository.save(activity);

@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CyclicBarrier;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -234,5 +235,57 @@ class StreamPatchServiceIntegrationTest extends IntegrationTest {
 		assertThatThrownBy(() -> streamPatchService.patchStream(target.getId(), "heartrate", attach.sourceId(), null,
 				Kind.CADENCE_LOCK, attach.sourceId(), false))
 				.isInstanceOf(ValidationException.class);
+	}
+
+	/** Code review follow-up: closes the TOCTOU race between rejectOverlap's read and this
+	 * method's own write - two concurrent patchStream calls on the same activity/field with
+	 * overlapping segments must never both succeed. A CyclicBarrier starts both threads at
+	 * (as close to) the same instant; repeated trials give real DB round-trip timing a good
+	 * chance of actually overlapping at the critical section on at least one of them, and the
+	 * invariant - never more than one of the two ever succeeds - must hold on every trial
+	 * regardless. */
+	@Test
+	void concurrentOverlappingPatchesAreSerializedNotARace() throws Exception {
+		for (int trial = 0; trial < 5; trial++) {
+			Fixture fixture = targetAndAttachedPowerSource("concurrent-" + trial);
+			CyclicBarrier barrier = new CyclicBarrier(2);
+			List<StreamPatchResult> results = new ArrayList<>();
+			List<Exception> errors = new ArrayList<>();
+
+			Runnable attempt1 = concurrentAttempt(barrier, fixture, new Segment(4, 5), results, errors);
+			Runnable attempt2 = concurrentAttempt(barrier, fixture, new Segment(5, 6), results, errors);
+			Thread t1 = new Thread(attempt1);
+			Thread t2 = new Thread(attempt2);
+			t1.start();
+			t2.start();
+			t1.join();
+			t2.join();
+
+			assertThat(results).hasSize(1);
+			assertThat(errors).hasSize(1);
+			assertThat(errors.get(0)).isInstanceOf(ConflictException.class);
+		}
+	}
+
+	private Runnable concurrentAttempt(CyclicBarrier barrier, Fixture fixture, Segment segment,
+			List<StreamPatchResult> results, List<Exception> errors) {
+		return () -> {
+			try {
+				barrier.await();
+				StreamPatchResult result = streamPatchService.patchStream(fixture.target().getId(), "power",
+						fixture.attach().sourceId(), List.of(segment), null, null, false);
+				synchronized (results) {
+					results.add(result);
+				}
+			}
+			catch (ConflictException ex) {
+				synchronized (errors) {
+					errors.add(ex);
+				}
+			}
+			catch (Exception ex) {
+				throw new RuntimeException(ex);
+			}
+		};
 	}
 }

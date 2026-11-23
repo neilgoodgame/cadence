@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.cadence.api.activities.ActivityMergeApplyService.Segment;
+import com.cadence.api.activities.ActivityStreamPatchService.StreamPatchResult;
 import com.cadence.api.activities.calc.DropoutDetector;
 import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.HrSource;
@@ -38,6 +39,8 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 	private ActivityStreamRepository streamRepository;
 	@Autowired
 	private ActivityStreamPatchService streamPatchService;
+	@Autowired
+	private StreamPatchRepository streamPatchRepository;
 	@Autowired
 	private UserRepository userRepository;
 
@@ -306,6 +309,34 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		assertThat(afterSwapBack).allSatisfy(r -> assertThat(r.getPower()).isEqualTo(200));
 		Activity reloadedAfterSwapBack = activityRepository.findById(target.getId()).orElseThrow();
 		assertThat(reloadedAfterSwapBack.getBikePowerSource()).isEqualTo(BikePowerSource.PEDALS);
+	}
+
+	/** Code review finding: setPrimarySource's own Record rewrite had no awareness of an active
+	 * StreamPatch on the same field - a later unpatchStream would have restored the patch's
+	 * now-stale previousValues right back over the swap's legitimate new data. The swap now
+	 * invalidates (undoneAt, not restored) any active patch on the field it touches. */
+	@Test
+	void setPrimarySourceInvalidatesAnActivePatchOnTheSwappedField() {
+		User athlete = newAthlete("source-swap-invalidates-patch@example.cc");
+		Activity target = newActivity(athlete, "Target", "Edge 530");
+		Activity reference = newActivity(athlete, "Reference", "Favero Assioma");
+		addRecordsWith(target, 10, (record, t) -> record.setPower(t == 4 || t == 5 ? 0 : 200));
+		addRecords(reference, 10, 220);
+		ActivitySourceService.AttachResult referenceAttach = sourceService.attachStream(target.getId(),
+				reference.getId(), "power", 0, false, null);
+		StreamPatchResult patch = streamPatchService.patchStream(target.getId(), "power", referenceAttach.sourceId(),
+				List.of(new Segment(4, 5)), null, null, false);
+
+		Activity newPrimary = newActivity(athlete, "New primary", "Zwift");
+		addRecords(newPrimary, 10, 300);
+		ActivitySourceService.AttachResult swapAttach = sourceService.attachStream(target.getId(), newPrimary.getId(),
+				"power", 0, false, null);
+		sourceService.setPrimarySource(target.getId(), "power", swapAttach.sourceId());
+
+		StreamPatch savedPatch = streamPatchRepository.findById(patch.patchId()).orElseThrow();
+		assertThat(savedPatch.getUndoneAt()).isNotNull();
+		List<Record> rows = recordRepository.findByActivityIdOrderByT(target.getId());
+		assertThat(rows).allSatisfy(r -> assertThat(r.getPower()).isEqualTo(300));
 	}
 
 	@Test
